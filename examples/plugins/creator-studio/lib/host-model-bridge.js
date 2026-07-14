@@ -3074,6 +3074,7 @@ const generateKeyframeActionSpriteRow = async ({
   requestedTimeoutMs,
   action,
   originalReferenceImages = [],
+  qualityReferenceImages = originalReferenceImages,
   generationDeadlineMs = 0,
   qualityProfile = getDefaultQualityProfile(),
   qualityGuidance = null,
@@ -3085,6 +3086,14 @@ const generateKeyframeActionSpriteRow = async ({
     ...reference,
     role: String(reference?.role || 'canonical-reference').trim() || 'canonical-reference'
   }))
+  const normalizedQualityReferenceImages = (
+    Array.isArray(qualityReferenceImages) && qualityReferenceImages.length > 0
+      ? qualityReferenceImages
+      : normalizedOriginalReferenceImages
+  ).map((reference) => ({
+    ...reference,
+    role: String(reference?.role || 'canonical-quality-reference').trim() || 'canonical-quality-reference'
+  }))
   const startKeyframeResult = await generateActionKeyframe({
     dataDir,
     run,
@@ -3094,6 +3103,7 @@ const generateKeyframeActionSpriteRow = async ({
     action,
     keyframeRole: 'start',
     referenceImages: normalizedOriginalReferenceImages,
+    qualityReferenceImages: normalizedQualityReferenceImages,
     generationDeadlineMs,
     qualityProfile,
     qualityGuidance,
@@ -3145,7 +3155,7 @@ const generateKeyframeActionSpriteRow = async ({
     action,
     keyframeRole: 'peak',
     referenceImages: [peakConditioningReferenceImage],
-    qualityReferenceImages: normalizedOriginalReferenceImages,
+    qualityReferenceImages: normalizedQualityReferenceImages,
     generationDeadlineMs,
     qualityProfile,
     qualityGuidance,
@@ -3786,6 +3796,7 @@ const generateFullPetBasicActionSource = async ({
   selectedModel,
   requestedTimeoutMs,
   referenceImages,
+  qualityReferenceImages = referenceImages,
   generationDeadlineMs = 0,
   qualityProfile = getDefaultQualityProfile(),
   qualityGuidance = null
@@ -3815,6 +3826,7 @@ const generateFullPetBasicActionSource = async ({
       requestedTimeoutMs: Math.max(requestedTimeoutMs, BASIC_ACTION_MIN_TIMEOUT_MS),
       action,
       originalReferenceImages: referenceImages,
+      qualityReferenceImages,
       generationDeadlineMs,
       qualityProfile,
       qualityGuidance
@@ -3883,6 +3895,7 @@ const generateFullPetBasicActionSources = async ({
   selectedModel,
   requestedTimeoutMs,
   referenceImages,
+  qualityReferenceImages = referenceImages,
   generationDeadlineMs = 0,
   qualityProfile = getDefaultQualityProfile(),
   qualityGuidance = null,
@@ -3941,6 +3954,7 @@ const generateFullPetBasicActionSources = async ({
       selectedModel,
       requestedTimeoutMs,
       referenceImages,
+      qualityReferenceImages,
       generationDeadlineMs,
       qualityProfile,
       qualityGuidance
@@ -4038,6 +4052,91 @@ const hasUsableLocalReferenceImages = (referenceImages = [], dataDir = '') => (
   ))
 )
 
+const createFullPetActionIdentityContext = async ({
+  dataDir,
+  run,
+  baseOutputs = [],
+  originalReferenceImages = [],
+  qualityProfile = getDefaultQualityProfile(),
+  qualityGuidance = null
+}) => {
+  if (baseOutputs.length > 1) {
+    throw new Error(
+      `Creator Studio full-pet action identity requires exactly one canonical generated output; received ${baseOutputs.length}`
+    )
+  }
+  const canonicalReference = createGeneratedOutputReferenceImage({
+    dataDir,
+    output: baseOutputs[0],
+    role: 'canonical-generated-identity'
+  })
+  const usableOriginal = hasUsableLocalReferenceImages(originalReferenceImages, dataDir)
+    ? originalReferenceImages[0]
+    : null
+  if (!canonicalReference) {
+    const references = usableOriginal ? [usableOriginal] : []
+    return {
+      referenceImages: references,
+      qualityReferenceImages: references,
+      evidence: null
+    }
+  }
+  const sourceReferences = [
+    canonicalReference,
+    usableOriginal
+      ? {
+          ...usableOriginal,
+          role: 'original-source-identity'
+        }
+      : null
+  ].filter(Boolean)
+  if (sourceReferences.length === 1) {
+    return {
+      referenceImages: [canonicalReference],
+      qualityReferenceImages: [canonicalReference],
+      evidence: {
+        role: canonicalReference.role,
+        relativePath: canonicalReference.relativePath,
+        metadataRelativePath: '',
+        qualityReferenceRole: canonicalReference.role,
+        qualityReferenceRelativePath: canonicalReference.relativePath
+      }
+    }
+  }
+  const board = await buildAnchorReferenceBoard({
+    dataDir,
+    runId: run.runId,
+    sourceReferences,
+    characterBrief: [
+      resolveAnchorCharacterBrief(run),
+      'Canonical generated identity is the pose, framing, scale, and cross-row continuity authority; original source remains the visible-detail authority.'
+    ].filter(Boolean).join(' '),
+    outputRelativeDir: path.join('runs', run.runId, 'inputs', 'keyframes', 'identity').replace(/\\/g, '/'),
+    boardRole: 'full-pet-action-identity-board',
+    fileBaseName: 'full-pet-action-identity-board',
+    qualityProfile,
+    qualityGuidance
+  })
+  const boardReference = {
+    path: board.path,
+    fileName: path.basename(board.relativePath),
+    relativePath: board.relativePath,
+    metadataRelativePath: board.metadataRelativePath,
+    role: board.role
+  }
+  return {
+    referenceImages: [boardReference],
+    qualityReferenceImages: [canonicalReference],
+    evidence: {
+      role: board.role,
+      relativePath: board.relativePath,
+      metadataRelativePath: board.metadataRelativePath,
+      qualityReferenceRole: canonicalReference.role,
+      qualityReferenceRelativePath: canonicalReference.relativePath
+    }
+  }
+}
+
 const hasAnchorEligibleRunReference = (run = {}) => {
   const referenceImage = run?.input?.referenceImage
   return Number(referenceImage?.width) > 0 && Number(referenceImage?.height) > 0
@@ -4068,14 +4167,15 @@ const regenerateFullPetActionsViaHostModelBridge = async ({ dataDir, run, action
   const baseOutputs = Array.isArray(previousGenerationResult.outputs)
     ? previousGenerationResult.outputs
     : []
-  const referenceImages = originalReferenceImages.length > 0
-    ? originalReferenceImages
-    : [createGeneratedOutputReferenceImage({
-        dataDir,
-        output: baseOutputs[0],
-        role: 'canonical-reference'
-      })].filter(Boolean)
-  if (referenceImages.length === 0) {
+  const actionIdentityContext = await createFullPetActionIdentityContext({
+    dataDir,
+    run,
+    baseOutputs,
+    originalReferenceImages,
+    qualityProfile: governance.qualityProfile,
+    qualityGuidance: governance.qualityGuidance
+  })
+  if (actionIdentityContext.referenceImages.length === 0) {
     throw new Error('Creator Studio scoped action repair requires a usable identity reference')
   }
   const repaired = await generateFullPetBasicActionSources({
@@ -4084,7 +4184,8 @@ const regenerateFullPetActionsViaHostModelBridge = async ({ dataDir, run, action
     settings,
     selectedModel: modelSnapshot.model,
     requestedTimeoutMs,
-    referenceImages,
+    referenceImages: actionIdentityContext.referenceImages,
+    qualityReferenceImages: actionIdentityContext.qualityReferenceImages,
     generationDeadlineMs: Date.now() + FULL_PET_WORKFLOW_MAX_DURATION_MS,
     qualityProfile: governance.qualityProfile,
     qualityGuidance: governance.qualityGuidance,
@@ -4114,6 +4215,7 @@ const regenerateFullPetActionsViaHostModelBridge = async ({ dataDir, run, action
     generatedAt: new Date().toISOString(),
     qualityGovernance: governance.evidence,
     artReadiness,
+    actionIdentityReference: actionIdentityContext.evidence,
     outputs: baseOutputs,
     officialRows: repaired.officialRows,
     basicActionGeneration: repaired.basicActionGeneration,
@@ -4550,13 +4652,17 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
     generationResult: result
   })
   const baseOutputs = Array.isArray(result.outputs) ? result.outputs : []
-  const officialActionReferenceImages = hasUsableLocalReferenceImages(originalReferenceImages, dataDir)
-    ? originalReferenceImages
-    : [createGeneratedOutputReferenceImage({
-        dataDir,
-        output: baseOutputs[0],
-        role: 'canonical-reference'
-      })].filter(Boolean)
+  const actionIdentityContext = await createFullPetActionIdentityContext({
+    dataDir,
+    run,
+    baseOutputs,
+    originalReferenceImages,
+    qualityProfile,
+    qualityGuidance
+  })
+  if (actionIdentityContext.referenceImages.length === 0) {
+    throw new Error('Creator Studio full-pet action generation requires a usable canonical identity reference')
+  }
   let fullPetBasicActionSources
   try {
     fullPetBasicActionSources = await generateFullPetBasicActionSources({
@@ -4565,7 +4671,8 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
       settings,
       selectedModel,
       requestedTimeoutMs,
-      referenceImages: officialActionReferenceImages,
+      referenceImages: actionIdentityContext.referenceImages,
+      qualityReferenceImages: actionIdentityContext.qualityReferenceImages,
       generationDeadlineMs,
       qualityProfile,
       qualityGuidance
@@ -4593,6 +4700,7 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
         approvals: providerArtApprovals
       }),
       outputs: baseOutputs,
+      actionIdentityReference: actionIdentityContext.evidence,
       officialRows: partialSources.officialRows,
       basicActionGeneration: partialSources.basicActionGeneration,
       keyframes: Array.isArray(partialSources.keyframes) ? partialSources.keyframes : [],
@@ -4611,6 +4719,7 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
   const fullPetResult = {
     ...result,
     outputs: baseOutputs,
+    actionIdentityReference: actionIdentityContext.evidence,
     officialRows: fullPetBasicActionSources.officialRows,
     basicActionGeneration: fullPetBasicActionSources.basicActionGeneration,
     actionAvailability: fullPetBasicActionSources.actionAvailability,
@@ -4654,6 +4763,7 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
 module.exports = {
   __testInternals: {
     buildModelCandidateList,
+    createFullPetActionIdentityContext,
     generateActionKeyframe,
     generateWithModelFallback,
     evaluateActionKeyframeQuality,
