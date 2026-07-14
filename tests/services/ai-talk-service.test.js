@@ -329,6 +329,7 @@ test('ai talk service can send a merged user batch while preserving separate tra
     '第二句',
     '我一起接住了。'
   ])
+  assert.equal(store.listTraces({ limit: 1 })[0].messageChars, '第一句\n第二句'.length)
 })
 
 test('ai talk service persists an acquired user batch before provider completion', async () => {

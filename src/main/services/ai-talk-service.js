@@ -1341,21 +1341,188 @@ const createAiTalkService = ({
     }
   }
 
-  const streamChat = async ({ message, messageBatch = null, entrypoint = 'control-center', requestId, onState = null } = {}) => {
-    const startedAt = Date.now()
-    const controller = new AbortController()
-    const safeRequestId = (normalizeString(requestId) || `chat-${Date.now().toString(36)}`).slice(0, 120)
+  const createTurnRequest = ({ message, messageBatch, entrypoint, requestId, generateRequestId = false }) => {
     const normalizedBatch = Array.isArray(messageBatch)
       ? messageBatch.map(normalizeString).filter(Boolean)
       : []
     const content = normalizeString(message)
     const userContents = normalizedBatch.length ? normalizedBatch : [content].filter(Boolean)
-    const diagnostics = {
+    const normalizedRequestId = normalizeString(requestId)
+    const safeRequestId = (
+      normalizedRequestId || (generateRequestId ? `chat-${Date.now().toString(36)}` : '')
+    ).slice(0, 120)
+    return {
       entrypoint,
       requestId: safeRequestId,
-      messageChars: userContents.join('\n').length,
-      messageCount: userContents.length
+      userContents,
+      diagnostics: {
+        entrypoint,
+        requestId: safeRequestId,
+        messageChars: userContents.join('\n').length,
+        messageCount: userContents.length
+      }
     }
+  }
+
+  const resolveTurnContext = ({ request, requireStreaming = false, activePack = null }) => {
+    const { diagnostics, entrypoint, userContents } = request
+    if (!userContents.length) throw new Error('AI chat message is empty')
+    if (userContents.some((item) => item.length > MAX_USER_MESSAGE_CHARS)) throw new Error('AI chat message is too long')
+    const config = typeof aiService.getConfig === 'function' ? aiService.getConfig() : { enabled: true }
+    Object.assign(diagnostics, {
+      provider: normalizeString(config.provider),
+      model: normalizeString(config.model)
+    })
+    if (!config.enabled) throw new Error('AI chat is disabled')
+    if (requireStreaming && typeof aiService.streamComplete !== 'function') throw new Error('AI streaming is not available')
+
+    const { manifest, petPackId } = activePack || resolveActivePack()
+    diagnostics.petPackId = petPackId
+    const { persona, systemPrompt: personaPrompt, personaHash } = resolvePersona(manifest, petPackId)
+    diagnostics.personaHash = personaHash
+    migrateLegacyConversationIfNeeded({ manifest, petPackId, personaHash })
+    const { sessionId, conversationId } = aiTalkStore.ensureMainConversation({ entrypoint, petPackId, personaHash })
+    migrateLegacyConversationIfNeeded({ sessionId, conversationId, petPackId })
+    const conversationPublicId = `${sessionId}:${conversationId}`
+    diagnostics.conversationId = conversationPublicId
+    return {
+      ...request,
+      config,
+      manifest,
+      petPackId,
+      persona,
+      personaPrompt,
+      personaHash,
+      sessionId,
+      conversationId,
+      conversationPublicId
+    }
+  }
+
+  const prepareTurn = (context) => {
+    const {
+      config,
+      diagnostics,
+      manifest,
+      petPackId,
+      personaPrompt,
+      sessionId,
+      conversationId,
+      conversationPublicId,
+      userContents
+    } = context
+    const history = aiTalkStore.getMessages(sessionId, conversationId)
+    const userMessages = userContents.map((entry) => ({ role: 'user', content: entry }))
+    const unresolvedPrefixLength = getUnresolvedUserPrefixLength(history, userContents)
+    const pendingUserMessages = userMessages.slice(unresolvedPrefixLength)
+    const memoryContext = getMemoryContext({ petPackId, userMessage: userContents.join('\n'), history })
+    const memoryIdsInjected = memoryContext.map((memory) => memory.id).filter(Boolean)
+    const memoryContextPrompt = compileMemoryContextPrompt(memoryContext)
+    const recentPetActivity = getRecentPetActivity(petPackId)
+    const recentPetActivityPrompt = compileRecentPetActivityPrompt(recentPetActivity)
+    const actionCandidates = getCurrentActionCandidates(manifest)
+    const tools = config.behavior?.enabled && config.behavior?.useTools !== false
+      ? [getBehaviorToolDefinition({ actions: actionCandidates })]
+      : []
+    const messages = [
+      { role: 'system', content: compileSystemPrompt({ personaPrompt, globalPrompt: config.systemPrompt }) },
+      ...(memoryContextPrompt ? [{ role: 'system', content: memoryContextPrompt }] : []),
+      ...(recentPetActivityPrompt ? [{ role: 'system', content: recentPetActivityPrompt }] : []),
+      ...getRecentMessages(history).map(({ role, content }) => ({ role, content })),
+      ...pendingUserMessages
+    ]
+    if (pendingUserMessages.length) aiTalkStore.appendMessages(sessionId, conversationId, pendingUserMessages)
+    Object.assign(diagnostics, {
+      historyCount: history.length,
+      messagesCount: messages.length,
+      memoryContextCount: memoryContext.length,
+      recentPetActivityCount: recentPetActivity.length,
+      actionCandidateCount: actionCandidates.length,
+      toolsCount: tools.length,
+      memoryEnabled: config.memory?.enabled === true,
+      behaviorEnabled: config.behavior?.enabled === true
+    })
+    if (recentPetActivity.length) {
+      recordLog({
+        level: 'info',
+        event: 'ai-talk.pet-activity.injected',
+        message: 'AI talk recent pet activity injected',
+        details: {
+          petPackId,
+          conversationId: conversationPublicId,
+          activityCount: recentPetActivity.length
+        }
+      })
+    }
+    return {
+      ...context,
+      history,
+      userMessages,
+      pendingUserMessages,
+      memoryContext,
+      memoryIdsInjected,
+      recentPetActivity,
+      actionCandidates,
+      tools,
+      messages,
+      traceContext: {
+        petPackId,
+        conversationPublicId,
+        personaHash: context.personaHash,
+        provider: normalizeString(config.provider),
+        baseUrl: sanitizeProviderBaseUrl(config.baseUrl),
+        model: normalizeString(config.model),
+        historyCount: history.length,
+        messagesCount: messages.length,
+        memoryContextCount: memoryContext.length,
+        memoryIdsInjected,
+        recentPetActivityCount: recentPetActivity.length,
+        toolsCount: tools.length,
+        persistedMessageCount: aiTalkStore.getMessages(sessionId, conversationId).length
+      }
+    }
+  }
+
+  const finalizeSuccessfulTurn = ({ turn, reply, behaviorIntent }) => {
+    if (!reply.trim()) throw new Error('AI provider returned an empty response')
+    const bubbleSegments = createBubbleSegments(reply)
+    const bubble = createReplyBubble({ reply, behaviorIntent })
+    const nextMessages = aiTalkStore.appendMessages(turn.sessionId, turn.conversationId, [{ role: 'assistant', content: reply }])
+    markMemoryContextUsed({
+      petPackId: turn.petPackId,
+      conversationId: turn.conversationPublicId,
+      memories: turn.memoryContext
+    })
+    const sourceMessages = nextMessages.slice(-(turn.userMessages.length + 1))
+    const memoryExtractionScheduled = turn.config.memory?.enabled === true && typeof aiTalkStore.applyMemoryOperations === 'function'
+    scheduleMemoryExtraction({
+      config: turn.config,
+      petPackId: turn.petPackId,
+      conversationPublicId: turn.conversationPublicId,
+      sourceMessages,
+      userMessage: turn.userContents.join('\n'),
+      assistantReply: reply,
+      persona: turn.persona
+    })
+    return {
+      reply,
+      bubble,
+      bubbleSegments,
+      behaviorIntent: behaviorIntent || undefined,
+      messages: nextMessages,
+      memoryExtractionScheduled,
+      behaviorDecisionScheduled: Boolean(behaviorIntent),
+      persistedMessageCount: nextMessages.length
+    }
+  }
+
+  const streamChat = async ({ message, messageBatch = null, entrypoint = 'control-center', requestId, onState = null } = {}) => {
+    const startedAt = Date.now()
+    const controller = new AbortController()
+    const turnRequest = createTurnRequest({ message, messageBatch, entrypoint, requestId, generateRequestId: true })
+    const safeRequestId = turnRequest.requestId
+    const userContents = turnRequest.userContents
+    const diagnostics = turnRequest.diagnostics
     let registryEntry = null
     let streamCoalescer = null
     let partialReply = ''
@@ -1381,81 +1548,22 @@ const createAiTalkService = ({
     }
 
     try {
-      if (!userContents.length) throw new Error('AI chat message is empty')
-      if (userContents.some((item) => item.length > MAX_USER_MESSAGE_CHARS)) throw new Error('AI chat message is too long')
-      const config = typeof aiService.getConfig === 'function' ? aiService.getConfig() : { enabled: true }
-      Object.assign(diagnostics, {
-        provider: normalizeString(config.provider),
-        model: normalizeString(config.model)
-      })
-      if (!config.enabled) throw new Error('AI chat is disabled')
-      if (typeof aiService.streamComplete !== 'function') throw new Error('AI streaming is not available')
-
-      const { manifest, petPackId } = resolveActivePack()
-      diagnostics.petPackId = petPackId
-      const { persona, systemPrompt: personaPrompt, personaHash } = resolvePersona(manifest, petPackId)
-      diagnostics.personaHash = personaHash
-      migrateLegacyConversationIfNeeded({ manifest, petPackId, personaHash })
-      const { sessionId, conversationId } = aiTalkStore.ensureMainConversation({
-        entrypoint,
-        petPackId,
-        personaHash
-      })
-      migrateLegacyConversationIfNeeded({
-        sessionId,
-        conversationId,
-        petPackId
-      })
-      const conversationPublicId = `${sessionId}:${conversationId}`
-      diagnostics.conversationId = conversationPublicId
-
-      return await enqueueConversation(conversationPublicId, async () => {
-        const history = aiTalkStore.getMessages(sessionId, conversationId)
-        const userMessages = userContents.map((entry) => ({ role: 'user', content: entry }))
-        const unresolvedPrefixLength = getUnresolvedUserPrefixLength(history, userContents)
-        const pendingUserMessages = userMessages.slice(unresolvedPrefixLength)
-        const memoryContext = getMemoryContext({ petPackId, userMessage: userContents.join('\n'), history })
-        const memoryIdsInjected = memoryContext.map((memory) => memory.id).filter(Boolean)
-        const memoryContextPrompt = compileMemoryContextPrompt(memoryContext)
-        const recentPetActivity = getRecentPetActivity(petPackId)
-        const recentPetActivityPrompt = compileRecentPetActivityPrompt(recentPetActivity)
-        const actionCandidates = getCurrentActionCandidates(manifest)
-        const tools = config.behavior?.enabled && config.behavior?.useTools !== false
-          ? [getBehaviorToolDefinition({ actions: actionCandidates })]
-          : []
-        const messages = [
-          { role: 'system', content: compileSystemPrompt({ personaPrompt, globalPrompt: config.systemPrompt }) },
-          ...(memoryContextPrompt ? [{ role: 'system', content: memoryContextPrompt }] : []),
-          ...(recentPetActivityPrompt ? [{ role: 'system', content: recentPetActivityPrompt }] : []),
-          ...getRecentMessages(history).map(({ role, content }) => ({ role, content })),
-          ...pendingUserMessages
-        ]
-        if (pendingUserMessages.length) aiTalkStore.appendMessages(sessionId, conversationId, pendingUserMessages)
-        Object.assign(diagnostics, {
-          historyCount: history.length,
-          messagesCount: messages.length,
-          memoryContextCount: memoryContext.length,
-          recentPetActivityCount: recentPetActivity.length,
-          actionCandidateCount: actionCandidates.length,
-          toolsCount: tools.length,
-          memoryEnabled: config.memory?.enabled === true,
-          behaviorEnabled: config.behavior?.enabled === true
-        })
-        traceContext = {
-          petPackId,
+      const turnContext = resolveTurnContext({ request: turnRequest, requireStreaming: true })
+      return await enqueueConversation(turnContext.conversationPublicId, async () => {
+        const turn = prepareTurn(turnContext)
+        const {
+          config,
           conversationPublicId,
-          personaHash,
-          provider: normalizeString(config.provider),
-          baseUrl: sanitizeProviderBaseUrl(config.baseUrl),
-          model: normalizeString(config.model),
-          historyCount: history.length,
-          messagesCount: messages.length,
-          memoryContextCount: memoryContext.length,
+          history,
+          memoryContext,
           memoryIdsInjected,
-          recentPetActivityCount: recentPetActivity.length,
-          toolsCount: tools.length,
-          persistedMessageCount: aiTalkStore.getMessages(sessionId, conversationId).length
-        }
+          messages,
+          personaHash,
+          petPackId,
+          recentPetActivity,
+          tools
+        } = turn
+        traceContext = turn.traceContext
 
         registryEntry = {
           requestId: safeRequestId,
@@ -1514,23 +1622,14 @@ const createAiTalkService = ({
         providerLatencyMs = Number.isFinite(Number(result.elapsedMs)) ? Number(result.elapsedMs) : 0
         finishReason = normalizeString(result.finishReason)
         const reply = normalizeProviderText(result.reply || partialReply)
-        if (!reply.trim()) throw new Error('AI provider returned an empty response')
         streamCoalescer.flush()
-        const bubbleSegments = createBubbleSegments(reply)
-        const bubble = createReplyBubble({ reply, behaviorIntent: result.behaviorIntent })
-        const nextMessages = aiTalkStore.appendMessages(sessionId, conversationId, [{ role: 'assistant', content: reply }])
-        markMemoryContextUsed({ petPackId, conversationId: conversationPublicId, memories: memoryContext })
-        const sourceMessages = nextMessages.slice(-(userMessages.length + 1))
-        const memoryExtractionScheduled = config.memory?.enabled === true && typeof aiTalkStore.applyMemoryOperations === 'function'
-        scheduleMemoryExtraction({
-          config,
-          petPackId,
-          conversationPublicId,
-          sourceMessages,
-          userMessage: userContents.join('\n'),
-          assistantReply: reply,
-          persona
-        })
+        const finalized = finalizeSuccessfulTurn({ turn, reply, behaviorIntent: result.behaviorIntent })
+        const {
+          bubble,
+          bubbleSegments,
+          memoryExtractionScheduled,
+          messages: nextMessages
+        } = finalized
         terminalStatus = 'completed'
         registryEntry.status = 'completed'
         streamingRequests.delete(safeRequestId)
@@ -1594,11 +1693,11 @@ const createAiTalkService = ({
         streamCoalescer.dispose()
         return {
           conversationId: conversationPublicId,
-          reply,
-          bubble,
-          bubbleSegments,
-          behaviorIntent: result.behaviorIntent || undefined,
-          messages: nextMessages,
+          reply: finalized.reply,
+          bubble: finalized.bubble,
+          bubbleSegments: finalized.bubbleSegments,
+          behaviorIntent: finalized.behaviorIntent,
+          messages: finalized.messages,
           requestId: safeRequestId,
           providerLatencyMs
         }
@@ -1707,18 +1806,10 @@ const createAiTalkService = ({
 
   const chat = async ({ message, messageBatch = null, entrypoint = 'control-center', requestId } = {}) => {
     const startedAt = Date.now()
-    const normalizedBatch = Array.isArray(messageBatch)
-      ? messageBatch.map(normalizeString).filter(Boolean)
-      : []
-    const content = normalizeString(message)
-    const userContents = normalizedBatch.length ? normalizedBatch : [content].filter(Boolean)
+    const turnRequest = createTurnRequest({ message, messageBatch, entrypoint, requestId })
+    const userContents = turnRequest.userContents
     let activePackDiagnostics = null
-    const diagnostics = {
-      entrypoint,
-      messageChars: userContents.join('\n').length,
-      messageCount: userContents.length,
-      requestId: typeof requestId === 'string' && requestId.trim() ? requestId.trim().slice(0, 120) : ''
-    }
+    const diagnostics = turnRequest.diagnostics
     try {
       try {
         activePackDiagnostics = resolveActivePack()
@@ -1726,73 +1817,21 @@ const createAiTalkService = ({
       } catch (_) {
         activePackDiagnostics = null
       }
-      if (!userContents.length) throw new Error('AI chat message is empty')
-      if (userContents.some((item) => item.length > MAX_USER_MESSAGE_CHARS)) throw new Error('AI chat message is too long')
-      const config = typeof aiService.getConfig === 'function' ? aiService.getConfig() : { enabled: true }
-      diagnostics.provider = normalizeString(config.provider)
-      diagnostics.model = normalizeString(config.model)
-      if (!config.enabled) throw new Error('AI chat is disabled')
-      const { manifest, petPackId } = activePackDiagnostics || resolveActivePack()
-      const { persona, systemPrompt: personaPrompt, personaHash } = resolvePersona(manifest, petPackId)
-      diagnostics.personaHash = personaHash
-      migrateLegacyConversationIfNeeded({ manifest, petPackId, personaHash })
-      const { sessionId, conversationId } = aiTalkStore.ensureMainConversation({
-        entrypoint,
-        petPackId,
-        personaHash
-      })
-      migrateLegacyConversationIfNeeded({
-        sessionId,
-        conversationId,
-        petPackId
-      })
-      const conversationPublicId = `${sessionId}:${conversationId}`
-      return await enqueueConversation(conversationPublicId, async () => {
-        const history = aiTalkStore.getMessages(sessionId, conversationId)
-        const userMessages = userContents.map((entry) => ({ role: 'user', content: entry }))
-        const unresolvedPrefixLength = getUnresolvedUserPrefixLength(history, userContents)
-        const pendingUserMessages = userMessages.slice(unresolvedPrefixLength)
-        const memoryContext = getMemoryContext({ petPackId, userMessage: userContents.join('\n'), history })
-        const memoryIdsInjected = memoryContext.map((memory) => memory.id).filter(Boolean)
-        const memoryContextPrompt = compileMemoryContextPrompt(memoryContext)
-        const recentPetActivity = getRecentPetActivity(petPackId)
-        const recentPetActivityPrompt = compileRecentPetActivityPrompt(recentPetActivity)
-        const messages = [
-          { role: 'system', content: compileSystemPrompt({ personaPrompt, globalPrompt: config.systemPrompt }) },
-          ...(memoryContextPrompt ? [{ role: 'system', content: memoryContextPrompt }] : []),
-          ...(recentPetActivityPrompt ? [{ role: 'system', content: recentPetActivityPrompt }] : []),
-          ...getRecentMessages(history).map(({ role, content }) => ({ role, content })),
-          ...pendingUserMessages
-        ]
-        if (pendingUserMessages.length) aiTalkStore.appendMessages(sessionId, conversationId, pendingUserMessages)
-        const actionCandidates = getCurrentActionCandidates(manifest)
-        const tools = config.behavior?.enabled && config.behavior?.useTools !== false
-          ? [getBehaviorToolDefinition({ actions: actionCandidates })]
-          : []
-        Object.assign(diagnostics, {
+      const turnContext = resolveTurnContext({ request: turnRequest, activePack: activePackDiagnostics })
+      return await enqueueConversation(turnContext.conversationPublicId, async () => {
+        const turn = prepareTurn(turnContext)
+        const {
+          config,
+          conversationPublicId,
+          history,
+          memoryContext,
+          memoryIdsInjected,
+          messages,
+          personaHash,
           petPackId,
-          conversationId: conversationPublicId,
-          historyCount: history.length,
-          messagesCount: messages.length,
-          memoryContextCount: memoryContext.length,
-          recentPetActivityCount: recentPetActivity.length,
-          actionCandidateCount: actionCandidates.length,
-          toolsCount: tools.length,
-          memoryEnabled: config.memory?.enabled === true,
-          behaviorEnabled: config.behavior?.enabled === true
-        })
-        if (recentPetActivity.length) {
-          recordLog({
-            level: 'info',
-            event: 'ai-talk.pet-activity.injected',
-            message: 'AI talk recent pet activity injected',
-            details: {
-              petPackId,
-              conversationId: conversationPublicId,
-              activityCount: recentPetActivity.length
-            }
-          })
-        }
+          recentPetActivity,
+          tools
+        } = turn
         recordLog({
           level: 'info',
           event: 'ai-talk.chat.started',
@@ -1801,21 +1840,8 @@ const createAiTalkService = ({
         })
         const result = await aiService.complete({ messages, tools })
         const reply = normalizeString(result.reply)
-        if (!reply) throw new Error('AI provider returned an empty response')
-        const bubbleSegments = createBubbleSegments(reply)
-        const bubble = createReplyBubble({ reply, behaviorIntent: result.behaviorIntent })
-        const nextMessages = aiTalkStore.appendMessages(sessionId, conversationId, [{ role: 'assistant', content: reply }])
-        markMemoryContextUsed({ petPackId, conversationId: conversationPublicId, memories: memoryContext })
-        const sourceMessages = nextMessages.slice(-(userMessages.length + 1))
-        scheduleMemoryExtraction({
-          config,
-          petPackId,
-          conversationPublicId,
-          sourceMessages,
-          userMessage: userContents.join('\n'),
-          assistantReply: reply,
-          persona
-        })
+        const finalized = finalizeSuccessfulTurn({ turn, reply, behaviorIntent: result.behaviorIntent })
+        const { bubble, bubbleSegments, messages: nextMessages } = finalized
         recordLog({
           level: 'info',
           event: 'ai-talk.chat.completed',
@@ -1840,7 +1866,7 @@ const createAiTalkService = ({
           entrypoint,
           historyCount: history.length,
           messagesCount: messages.length,
-          messageChars: content.length,
+          messageChars: diagnostics.messageChars,
           memoryContextCount: memoryContext.length,
           memoryIdsInjected,
           recentPetActivityCount: recentPetActivity.length,
@@ -1861,11 +1887,11 @@ const createAiTalkService = ({
         })
         return {
           conversationId: conversationPublicId,
-          reply,
-          bubble,
-          bubbleSegments,
-          behaviorIntent: result.behaviorIntent || undefined,
-          messages: nextMessages,
+          reply: finalized.reply,
+          bubble: finalized.bubble,
+          bubbleSegments: finalized.bubbleSegments,
+          behaviorIntent: finalized.behaviorIntent,
+          messages: finalized.messages,
           requestId: diagnostics.requestId,
           providerLatencyMs: Number.isFinite(result.elapsedMs) ? result.elapsedMs : 0
         }
