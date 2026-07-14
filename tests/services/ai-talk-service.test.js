@@ -1789,6 +1789,28 @@ test('ai talk service disposal clears pending stream timers and aborts active re
   assert.equal(timers.pendingCount(), 0)
 })
 
+test('ai talk service delegates pending memory job interruption and keeps disposal idempotent', () => {
+  const interruptionCalls = []
+  const store = createStore()
+  store.interruptPendingMemoryJobs = (errorCode) => {
+    interruptionCalls.push(errorCode)
+    return { interruptedCount: 2 }
+  }
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({ enabled: true, behavior: { enabled: false }, memory: { enabled: false } })
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({ id: 'mochi-cat', persona: null })
+  })
+
+  service.dispose()
+  service.dispose()
+
+  assert.deepEqual(service.interruptPendingMemoryJobs(), { interruptedCount: 2 })
+  assert.deepEqual(interruptionCalls, ['shutdown_interrupted'])
+})
+
 test('ai talk service streamChat preserves whitespace across streamed deltas', async () => {
   const store = createStore()
   const states = []

@@ -81,6 +81,42 @@ test('ai talk store backs up corrupt data and starts from a safe empty state', (
   assert.equal(backups.length, 1)
 })
 
+test('ai talk store interrupts only pending memory jobs', () => {
+  const store = createAiTalkStore({ storePath: createTempStorePath(), now: () => '2026-07-15T00:00:00.000Z' })
+  const pending = store.createMemoryJob({ petPackId: 'mochi-cat', conversationId: 'control-center:mochi-cat:main' })
+  const completed = store.createMemoryJob({ petPackId: 'mochi-cat', conversationId: 'control-center:mochi-cat:main' })
+  store.finishMemoryJob(completed.id, { status: 'completed', appliedCount: 1 })
+
+  const result = store.interruptPendingMemoryJobs('shutdown_interrupted')
+  const state = store.getState()
+
+  assert.deepEqual(result, { interruptedCount: 1 })
+  assert.equal(state.memoryJobs[pending.id].status, 'interrupted')
+  assert.equal(state.memoryJobs[pending.id].errorCode, 'shutdown_interrupted')
+  assert.equal(state.memoryJobs[completed.id].status, 'completed')
+  assert.equal(state.memoryJobs[completed.id].errorCode, '')
+  assert.deepEqual(store.interruptPendingMemoryJobs('shutdown_interrupted'), { interruptedCount: 0 })
+
+  store.finishMemoryJob(pending.id, { status: 'completed', appliedCount: 1 })
+  assert.equal(store.getState().memoryJobs[pending.id].status, 'interrupted')
+  assert.equal(store.getState().memoryJobs[pending.id].errorCode, 'shutdown_interrupted')
+})
+
+test('ai talk store persists restart recovery for orphaned pending memory jobs', () => {
+  const storePath = createTempStorePath()
+  const store = createAiTalkStore({ storePath, now: () => '2026-07-15T00:00:00.000Z' })
+  const pending = store.createMemoryJob({ petPackId: 'mochi-cat', conversationId: 'control-center:mochi-cat:main' })
+
+  const restarted = createAiTalkStore({ storePath, now: () => '2026-07-15T00:01:00.000Z' })
+  const recovered = restarted.getState().memoryJobs[pending.id]
+  const persisted = JSON.parse(fs.readFileSync(storePath, 'utf8')).memoryJobs[pending.id]
+
+  assert.equal(recovered.status, 'interrupted')
+  assert.equal(recovered.errorCode, 'process_restarted')
+  assert.equal(recovered.updatedAt, '2026-07-15T00:01:00.000Z')
+  assert.deepEqual(persisted, recovered)
+})
+
 test('ai talk store persists local persona overrides by pet pack', () => {
   const storePath = createTempStorePath()
   const store = createAiTalkStore({ storePath, now: () => '2026-06-20T00:00:00.000Z' })

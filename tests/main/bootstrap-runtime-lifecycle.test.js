@@ -99,6 +99,79 @@ test('runtime app lifecycle attributes a combined shutdown timeout to runtime cl
   assert.equal(safeLogs.some((entry) => entry.event === 'plugins.shutdown.timed_out'), false)
 })
 
+test('runtime app lifecycle disposes ai talk immediately and waits for pending memory jobs', async () => {
+  const appHandlers = new Map()
+  const calls = []
+  const safeLogs = []
+  let resolveMemoryJobs
+  let quitCalls = 0
+  const memoryJobs = new Promise((resolve) => { resolveMemoryJobs = resolve })
+
+  registerRuntimeAppLifecycle({
+    app: { quit: () => { quitCalls += 1 } },
+    appLogService: { record: () => {} },
+    registerAppLifecycleLogs: ({ onBeforeQuit }) => appHandlers.set('before-quit', onBeforeQuit),
+    safeRecordAppLog: (_service, entry) => safeLogs.push(entry),
+    triggerRuleRuntimeService: { stop: () => calls.push('trigger-stop') },
+    aiTalkService: {
+      dispose: () => calls.push('ai-talk-dispose'),
+      flushMemoryJobs: () => {
+        calls.push('ai-talk-flush')
+        return memoryJobs
+      },
+      interruptPendingMemoryJobs: () => calls.push('ai-talk-interrupt')
+    },
+    systemCursorService: { dispose: async () => calls.push('cursor-dispose') },
+    getPluginService: () => ({ stopAllServices: async () => calls.push('plugins-stop') }),
+    shutdownTimeoutMs: 100
+  })
+
+  appHandlers.get('before-quit')({ preventDefault: () => {} })
+
+  assert.deepEqual(calls.slice(0, 2), ['trigger-stop', 'ai-talk-dispose'])
+  await delay(10)
+  assert.equal(quitCalls, 0)
+  assert.equal(calls.includes('ai-talk-flush'), true)
+
+  resolveMemoryJobs()
+  await delay(10)
+
+  assert.equal(quitCalls, 1)
+  assert.equal(calls.includes('ai-talk-interrupt'), false)
+  assert.equal(safeLogs.some((entry) => entry.event === 'ai-talk.shutdown.started'), true)
+  assert.equal(safeLogs.some((entry) => entry.event === 'ai-talk.shutdown.completed'), true)
+})
+
+test('runtime app lifecycle interrupts pending ai talk jobs when shutdown times out', async () => {
+  const appHandlers = new Map()
+  const calls = []
+  const safeLogs = []
+  let quitCalls = 0
+
+  registerRuntimeAppLifecycle({
+    app: { quit: () => { quitCalls += 1 } },
+    appLogService: { record: () => {} },
+    registerAppLifecycleLogs: ({ onBeforeQuit }) => appHandlers.set('before-quit', onBeforeQuit),
+    safeRecordAppLog: (_service, entry) => safeLogs.push(entry),
+    triggerRuleRuntimeService: { stop: () => {} },
+    aiTalkService: {
+      dispose: () => calls.push('dispose'),
+      flushMemoryJobs: () => new Promise(() => {}),
+      interruptPendingMemoryJobs: () => calls.push('interrupt')
+    },
+    systemCursorService: { dispose: async () => {} },
+    getPluginService: () => ({ stopAllServices: async () => {} }),
+    shutdownTimeoutMs: 5
+  })
+
+  appHandlers.get('before-quit')({ preventDefault: () => {} })
+  await delay(20)
+
+  assert.deepEqual(calls, ['dispose', 'interrupt'])
+  assert.equal(quitCalls, 1)
+  assert.equal(safeLogs.some((entry) => entry.event === 'ai-talk.memory.jobs.interrupted'), true)
+})
+
 test('display lifecycle normalizes pet window and persists adjusted home anchor', () => {
   const screenHandlers = new Map()
   const positionCalls = []

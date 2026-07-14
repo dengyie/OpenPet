@@ -9,6 +9,7 @@ const registerRuntimeAppLifecycle = ({
   registerAppLifecycleLogs,
   safeRecordAppLog,
   triggerRuleRuntimeService,
+  aiTalkService,
   systemCursorService,
   getPluginService,
   shutdownTimeoutMs = PLUGIN_SHUTDOWN_TIMEOUT_MS
@@ -35,6 +36,25 @@ const registerRuntimeAppLifecycle = ({
         })
       }
 
+      safeRecordAppLog(appLogService, {
+        scope: 'ai-talk',
+        level: 'info',
+        actor: 'system',
+        event: 'ai-talk.shutdown.started',
+        message: 'AI talk shutdown started'
+      })
+      try {
+        aiTalkService?.dispose?.()
+      } catch (error) {
+        safeRecordAppLog(appLogService, {
+          scope: 'ai-talk',
+          level: 'error',
+          actor: 'system',
+          event: 'ai-talk.shutdown.failed',
+          message: error?.message || 'AI talk disposal failed before app quit'
+        })
+      }
+
       const pluginShutdown = Promise.resolve()
         .then(() => getPluginService()?.stopAllServices?.())
         .catch((error) => {
@@ -44,6 +64,26 @@ const registerRuntimeAppLifecycle = ({
             actor: 'system',
             event: 'plugins.shutdown.failed',
             message: error?.message || 'Plugin shutdown failed before app quit'
+          })
+        })
+      const aiTalkShutdown = Promise.resolve()
+        .then(() => aiTalkService?.flushMemoryJobs?.())
+        .then(() => {
+          safeRecordAppLog(appLogService, {
+            scope: 'ai-talk',
+            level: 'info',
+            actor: 'system',
+            event: 'ai-talk.shutdown.completed',
+            message: 'AI talk shutdown completed'
+          })
+        })
+        .catch((error) => {
+          safeRecordAppLog(appLogService, {
+            scope: 'ai-talk',
+            level: 'error',
+            actor: 'system',
+            event: 'ai-talk.shutdown.failed',
+            message: error?.message || 'AI talk memory job shutdown failed before app quit'
           })
         })
       const systemCursorShutdown = Promise.resolve()
@@ -57,9 +97,11 @@ const registerRuntimeAppLifecycle = ({
             message: error?.message || 'System cursor restoration failed before app quit'
           })
         })
-      const runtimeShutdown = Promise.all([pluginShutdown, systemCursorShutdown])
+      const runtimeShutdown = Promise.all([pluginShutdown, aiTalkShutdown, systemCursorShutdown])
+      let shutdownTimedOut = false
       const shutdownTimeout = new Promise((resolve) => {
         const timeoutId = setTimeout(() => {
+          shutdownTimedOut = true
           safeRecordAppLog(appLogService, {
             scope: 'runtime',
             level: 'error',
@@ -75,6 +117,31 @@ const registerRuntimeAppLifecycle = ({
 
       Promise.resolve()
         .then(() => Promise.race([runtimeShutdown, shutdownTimeout]))
+        .then(() => {
+          if (!shutdownTimedOut) return
+          try {
+            const result = aiTalkService?.interruptPendingMemoryJobs?.('shutdown_interrupted')
+            safeRecordAppLog(appLogService, {
+              scope: 'ai-talk',
+              level: 'warn',
+              actor: 'system',
+              event: 'ai-talk.memory.jobs.interrupted',
+              message: 'AI talk pending memory jobs interrupted during shutdown',
+              details: {
+                interruptedCount: Number(result?.interruptedCount) || 0,
+                errorCode: 'shutdown_interrupted'
+              }
+            })
+          } catch (error) {
+            safeRecordAppLog(appLogService, {
+              scope: 'ai-talk',
+              level: 'error',
+              actor: 'system',
+              event: 'ai-talk.shutdown.failed',
+              message: error?.message || 'AI talk pending memory jobs could not be interrupted'
+            })
+          }
+        })
         .finally(() => {
           app.quit()
         })

@@ -118,6 +118,7 @@ const createOpenPetRuntime = ({
     registerAppLifecycleLogs,
     safeRecordAppLog,
     triggerRuleRuntimeService,
+    aiTalkService,
     systemCursorService,
     getPluginService: () => pluginService
   })

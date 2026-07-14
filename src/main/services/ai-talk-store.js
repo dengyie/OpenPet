@@ -323,6 +323,24 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
   if (!storePath) throw new Error('storePath is required')
   let state = loadState({ storePath, now })
 
+  const recoverOrphanedMemoryJobs = () => {
+    const timestamp = now()
+    let interruptedCount = 0
+    for (const [id, job] of Object.entries(state.memoryJobs || {})) {
+      if (job?.status !== 'pending') continue
+      state.memoryJobs[id] = {
+        ...job,
+        status: 'interrupted',
+        errorCode: 'process_restarted',
+        updatedAt: timestamp
+      }
+      interruptedCount += 1
+    }
+    return interruptedCount
+  }
+
+  const recoveredMemoryJobCount = recoverOrphanedMemoryJobs()
+
   // Sync-write contract: persist() writes the full state to disk synchronously
   // and returns a deep clone of that persisted state. Many call sites depend on
   // the synchronous return — they mutate state, call persist(), and use the
@@ -335,6 +353,8 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
     writeJsonAtomic(storePath, state)
     return clone(state)
   }
+
+  if (recoveredMemoryJobCount > 0) persist()
 
   const getState = () => clone(state)
 
@@ -707,6 +727,7 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
 
   const finishMemoryJob = (jobId, patch = {}) => {
     if (!jobId || !state.memoryJobs[jobId]) return null
+    if (state.memoryJobs[jobId].status !== 'pending') return clone(state.memoryJobs[jobId])
     state.memoryJobs[jobId] = {
       ...state.memoryJobs[jobId],
       status: typeof patch.status === 'string' ? patch.status : state.memoryJobs[jobId].status,
@@ -717,6 +738,26 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
     }
     persist()
     return clone(state.memoryJobs[jobId])
+  }
+
+  const interruptPendingMemoryJobs = (errorCode = 'shutdown_interrupted') => {
+    const normalizedErrorCode = typeof errorCode === 'string' && errorCode.trim()
+      ? errorCode.trim().slice(0, 120)
+      : 'shutdown_interrupted'
+    const timestamp = now()
+    let interruptedCount = 0
+    for (const [id, job] of Object.entries(state.memoryJobs || {})) {
+      if (job?.status !== 'pending') continue
+      state.memoryJobs[id] = {
+        ...job,
+        status: 'interrupted',
+        errorCode: normalizedErrorCode,
+        updatedAt: timestamp
+      }
+      interruptedCount += 1
+    }
+    if (interruptedCount > 0) persist()
+    return { interruptedCount }
   }
 
   const pruneTraces = () => {
@@ -1058,6 +1099,7 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
     getState,
     exportTraceDiagnostics,
     importMessagesIfEmpty,
+    interruptPendingMemoryJobs,
     listRecentPetUtterances,
     listMemories,
     listTraces,

@@ -1699,6 +1699,12 @@ const createAiTalkService = ({
     streamingRequests.clear()
   }
 
+  const interruptPendingMemoryJobs = (errorCode = 'shutdown_interrupted') => (
+    typeof aiTalkStore.interruptPendingMemoryJobs === 'function'
+      ? aiTalkStore.interruptPendingMemoryJobs(errorCode)
+      : { interruptedCount: 0 }
+  )
+
   const chat = async ({ message, messageBatch = null, entrypoint = 'control-center', requestId } = {}) => {
     const startedAt = Date.now()
     const normalizedBatch = Array.isArray(messageBatch)
@@ -1916,6 +1922,7 @@ const createAiTalkService = ({
     exportTrace,
     getLatestTraceSummary,
     flushMemoryJobs: () => Promise.allSettled(Array.from(pendingMemoryJobs)),
+    interruptPendingMemoryJobs,
     getConversation,
     createBubbleSegments,
     getTraceExport,
