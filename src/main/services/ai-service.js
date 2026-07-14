@@ -279,38 +279,42 @@ const resolveRuntimeProviderConfig = (config, label = 'AI') => {
 const buildEffectiveVisionConfig = ({ config, secretService, storedState }) => {
   const normalizedVision = normalizeVisionConfig(config?.vision)
   if (normalizedVision.mode !== 'override') {
+    const chatApiKey = secretService.getSecretValue(config.apiKeyRef)
     return {
       ...normalizedVision,
       provider: config.provider,
       baseUrl: config.baseUrl,
       model: config.model,
       apiKeyRef: config.apiKeyRef,
-      hasApiKey: Boolean(secretService.getSecretValue(config.apiKeyRef)),
+      hasApiKey: Boolean(chatApiKey),
       modelCatalog: getScopedProviderModelCatalog({
         capability: 'chat',
         provider: config.provider,
         baseUrl: config.baseUrl,
-        catalog: storedState?.modelCatalog
+        catalog: storedState?.modelCatalog,
+        secrets: [chatApiKey]
       }),
       effectiveProvider: config.provider,
       effectiveBaseUrl: sanitizeBaseUrlForDisplay(config.baseUrl),
       effectiveModel: config.model,
-      effectiveHasApiKey: Boolean(secretService.getSecretValue(config.apiKeyRef))
+      effectiveHasApiKey: Boolean(chatApiKey)
     }
   }
+  const visionApiKey = secretService.getSecretValue(normalizedVision.apiKeyRef)
   return {
     ...normalizedVision,
-    hasApiKey: Boolean(secretService.getSecretValue(normalizedVision.apiKeyRef)),
+    hasApiKey: Boolean(visionApiKey),
     modelCatalog: getScopedProviderModelCatalog({
       capability: 'vision',
       provider: normalizedVision.provider,
       baseUrl: normalizedVision.baseUrl,
-      catalog: storedState?.visionModelCatalog
+      catalog: storedState?.visionModelCatalog,
+      secrets: [visionApiKey]
     }),
     effectiveProvider: normalizedVision.provider,
     effectiveBaseUrl: sanitizeBaseUrlForDisplay(normalizedVision.baseUrl),
     effectiveModel: normalizedVision.model,
-    effectiveHasApiKey: Boolean(secretService.getSecretValue(normalizedVision.apiKeyRef))
+    effectiveHasApiKey: Boolean(visionApiKey)
   }
 }
 
@@ -325,7 +329,7 @@ const getSafeProviderErrorMessage = (status, code) => {
   return 'AI provider request failed'
 }
 
-const createProviderError = ({ message, status, code }) => {
+const createProviderError = ({ status, code }) => {
   const safeCode = sanitizeDiagnosticText(code)
   const error = new Error(getSafeProviderErrorMessage(status, safeCode))
   error.providerStatus = status
@@ -366,7 +370,33 @@ const createLinkedAbortSignal = (externalSignal, timeoutMs) => {
   }
 }
 
-const readStreamTextChunks = async function * (body) {
+const createAbortError = (linkedSignal) => {
+  if (linkedSignal?.isTimeout?.()) return createTimeoutError()
+  const error = new Error('AI provider request aborted')
+  error.name = 'AbortError'
+  return error
+}
+
+const raceWithLinkedAbort = async (operation, linkedSignal) => {
+  const pendingOperation = Promise.resolve(operation)
+  if (!linkedSignal?.signal) return await pendingOperation
+  if (linkedSignal.signal.aborted) {
+    pendingOperation.catch(() => {})
+    throw createAbortError(linkedSignal)
+  }
+  let abortHandler
+  const aborted = new Promise((_, reject) => {
+    abortHandler = () => reject(createAbortError(linkedSignal))
+    linkedSignal.signal.addEventListener('abort', abortHandler, { once: true })
+  })
+  try {
+    return await Promise.race([pendingOperation, aborted])
+  } finally {
+    linkedSignal.signal.removeEventListener('abort', abortHandler)
+  }
+}
+
+const readStreamTextChunks = async function * (body, linkedSignal = null) {
   if (!body) return
   if (typeof body.getReader === 'function') {
     const reader = body.getReader()
@@ -374,7 +404,7 @@ const readStreamTextChunks = async function * (body) {
     let reachedEnd = false
     try {
       while (true) {
-        const { done, value } = await reader.read()
+        const { done, value } = await raceWithLinkedAbort(reader.read(), linkedSignal)
         if (done) {
           reachedEnd = true
           break
@@ -386,7 +416,7 @@ const readStreamTextChunks = async function * (body) {
     } finally {
       if (!reachedEnd) {
         try {
-          await reader.cancel()
+          Promise.resolve(reader.cancel()).catch(() => {})
         } catch (_) {
           // Preserve the original stream result or failure when cleanup is already complete.
         }
@@ -395,13 +425,31 @@ const readStreamTextChunks = async function * (body) {
     }
     return
   }
-  for await (const chunk of body) {
-    if (Buffer.isBuffer(chunk)) {
-      yield chunk.toString('utf8')
-    } else if (chunk instanceof Uint8Array) {
-      yield new TextDecoder().decode(chunk)
-    } else {
-      yield String(chunk || '')
+  const iterator = body[Symbol.asyncIterator]?.()
+  if (!iterator) return
+  let reachedEnd = false
+  try {
+    while (true) {
+      const { done, value: chunk } = await raceWithLinkedAbort(iterator.next(), linkedSignal)
+      if (done) {
+        reachedEnd = true
+        break
+      }
+      if (Buffer.isBuffer(chunk)) {
+        yield chunk.toString('utf8')
+      } else if (chunk instanceof Uint8Array) {
+        yield new TextDecoder().decode(chunk)
+      } else {
+        yield String(chunk || '')
+      }
+    }
+  } finally {
+    if (!reachedEnd) {
+      try {
+        Promise.resolve(iterator.return?.()).catch(() => {})
+      } catch (_) {
+        // Preserve the original stream result or failure when cleanup is already complete.
+      }
     }
   }
 }
@@ -421,22 +469,22 @@ const parseOpenAiStreamLine = (line) => {
 
 const isOptionalModelsProbeStatus = (status) => [404, 405, 501].includes(Number(status))
 
-const extractDiscoveredModelIds = (body) => {
+const extractDiscoveredModelIds = (body, { secrets = [], sort = true } = {}) => {
   const entries = Array.isArray(body?.data) ? body.data : []
-  return Array.from(new Set(
-    entries
-      .map((entry) => (typeof entry?.id === 'string' ? entry.id.trim() : ''))
-      .filter(Boolean)
-  )).sort()
+  return uniqueModelIds(
+    entries.map((entry) => (typeof entry?.id === 'string' ? entry.id : '')),
+    { secrets, sort }
+  )
 }
 
-const readJsonBody = async (response) => {
+const readJsonBody = async (response, linkedSignal = null) => {
   if (!response || typeof response.json !== 'function') {
     return { ok: false, body: {} }
   }
   try {
-    return { ok: true, body: await response.json() }
-  } catch (_) {
+    return { ok: true, body: await raceWithLinkedAbort(response.json(), linkedSignal) }
+  } catch (error) {
+    if (error?.name === 'AbortError' || error?.name === 'TimeoutError') throw error
     return { ok: false, body: {} }
   }
 }
@@ -483,74 +531,62 @@ const probeAvailableModels = async ({ config, fetchImpl, apiKey, requestTimeoutM
   }
 
   let response
-  const timeout = createTimeoutController(requestTimeoutMs)
+  const linkedSignal = createLinkedAbortSignal(null, requestTimeoutMs)
   try {
-    response = await fetchImpl(`${config.baseUrl}/models`, {
+    response = await raceWithLinkedAbort(fetchImpl(`${config.baseUrl}/models`, {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json'
       },
-      signal: timeout.signal
-    })
-  } catch (error) {
-    if (error?.name === 'AbortError') {
+      signal: linkedSignal.signal
+    }), linkedSignal)
+    if (!response || typeof response.ok !== 'boolean') {
       return {
         modelsProbe: 'failed',
         availableModels: [],
         currentModelDiscovered: false
       }
     }
+
+    if (!response.ok) {
+      if ([401, 403, 404, 405, 501].includes(Number(response.status) || 0)) {
+        return {
+          modelsProbe: 'unavailable',
+          availableModels: [],
+          currentModelDiscovered: false
+        }
+      }
+      return {
+        modelsProbe: 'failed',
+        availableModels: [],
+        currentModelDiscovered: false
+      }
+    }
+
+    const parsed = await readJsonBody(response, linkedSignal)
+    if (!parsed.ok) {
+      return {
+        modelsProbe: 'failed',
+        availableModels: [],
+        currentModelDiscovered: false
+      }
+    }
+    const availableModels = extractDiscoveredModelIds(parsed.body, { secrets: [apiKey], sort: false })
+
+    return {
+      modelsProbe: 'ok',
+      availableModels,
+      currentModelDiscovered: availableModels.includes(String(config.model || '').trim())
+    }
+  } catch (error) {
     return {
       modelsProbe: 'failed',
       availableModels: [],
       currentModelDiscovered: false
     }
   } finally {
-    timeout.clear()
-  }
-
-  if (!response || typeof response.ok !== 'boolean') {
-    return {
-      modelsProbe: 'failed',
-      availableModels: [],
-      currentModelDiscovered: false
-    }
-  }
-
-  if (!response.ok) {
-    if ([401, 403, 404, 405, 501].includes(Number(response.status) || 0)) {
-      return {
-        modelsProbe: 'unavailable',
-        availableModels: [],
-        currentModelDiscovered: false
-      }
-    }
-    return {
-      modelsProbe: 'failed',
-      availableModels: [],
-      currentModelDiscovered: false
-    }
-  }
-
-  const parsed = await readJsonBody(response)
-  if (!parsed.ok) {
-    return {
-      modelsProbe: 'failed',
-      availableModels: [],
-      currentModelDiscovered: false
-    }
-  }
-  const availableModels = Array.isArray(parsed.body?.data)
-    ? parsed.body.data
-      .map((entry) => (typeof entry?.id === 'string' ? entry.id.trim() : ''))
-      .filter(Boolean)
-    : []
-
-  return {
-    modelsProbe: 'ok',
-    availableModels,
-    currentModelDiscovered: availableModels.includes(String(config.model || '').trim())
+    linkedSignal.clear()
   }
 }
 
@@ -584,7 +620,8 @@ const createAiService = ({
       capability: 'chat',
       provider: config.provider,
       baseUrl: config.baseUrl,
-      catalog: storedState.modelCatalog
+      catalog: storedState.modelCatalog,
+      secrets: [secretService.getSecretValue(config.apiKeyRef)]
     })
   )
 
@@ -646,8 +683,9 @@ const createAiService = ({
       capability: 'chat',
       provider: config.provider,
       baseUrl: config.baseUrl,
-      models: uniqueModelIds(models),
-      fetchedAt: new Date().toISOString()
+      models,
+      fetchedAt: new Date().toISOString(),
+      secrets: [secretService.getSecretValue(config.apiKeyRef)]
     })
     settingsService.update((settings) => {
       const currentAi = isPlainObject(settings.ai) ? settings.ai : {}
@@ -669,8 +707,9 @@ const createAiService = ({
       capability: 'vision',
       provider: visionConfig.provider,
       baseUrl: visionConfig.baseUrl,
-      models: uniqueModelIds(models),
-      fetchedAt: new Date().toISOString()
+      models,
+      fetchedAt: new Date().toISOString(),
+      secrets: [secretService.getSecretValue(visionConfig.apiKeyRef)]
     })
     settingsService.update((settings) => {
       const currentAi = isPlainObject(settings.ai) ? settings.ai : {}
@@ -991,7 +1030,7 @@ const createAiService = ({
       if (tools.length) body.tools = tools
 
       try {
-        response = await fetchImpl(`${runtimeConfig.baseUrl}/chat/completions`, {
+        response = await raceWithLinkedAbort(fetchImpl(`${runtimeConfig.baseUrl}/chat/completions`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${apiKey}`,
@@ -999,26 +1038,20 @@ const createAiService = ({
           },
           signal: linkedSignal.signal,
           body: JSON.stringify(body)
-        })
+        }), linkedSignal)
       } catch (error) {
-        if (error?.name === 'AbortError') {
-          if (linkedSignal?.isTimeout?.()) throw createTimeoutError()
-          throw error
-        }
+        if (error?.name === 'AbortError' || error?.name === 'TimeoutError') throw error
         const safeError = new Error('AI provider request failed')
         Object.defineProperty(safeError, 'diagnosticMessage', {
           value: sanitizeDiagnosticText(error?.message || error),
           enumerable: false
         })
         throw safeError
-      } finally {
-        linkedSignal?.clear()
       }
 
-      const data = await response.json().catch(() => ({}))
+      const { body: data } = await readJsonBody(response, linkedSignal)
       if (!response.ok) {
         throw createProviderError({
-          message: data?.error?.message || `AI provider request failed with status ${response.status}`,
           status: response.status,
           code: data?.error?.code
         })
@@ -1061,6 +1094,8 @@ const createAiService = ({
         }
       })
       throw error
+    } finally {
+      linkedSignal?.clear()
     }
   }
 
@@ -1186,7 +1221,7 @@ const createAiService = ({
 
       linkedSignal = createLinkedAbortSignal(signal, requestTimeoutMs)
       try {
-        response = await fetchImpl(`${runtimeConfig.baseUrl}/chat/completions`, {
+        response = await raceWithLinkedAbort(fetchImpl(`${runtimeConfig.baseUrl}/chat/completions`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${apiKey}`,
@@ -1198,9 +1233,9 @@ const createAiService = ({
             messages,
             stream: true
           })
-        })
+        }), linkedSignal)
       } catch (error) {
-        if (error?.name === 'AbortError') throw error
+        if (error?.name === 'AbortError' || error?.name === 'TimeoutError') throw error
         const safeError = new Error('AI provider stream failed')
         Object.defineProperty(safeError, 'diagnosticMessage', {
           value: sanitizeDiagnosticText(error?.message || error),
@@ -1210,11 +1245,10 @@ const createAiService = ({
       }
 
       if (!response.ok) {
-        const data = await response.json?.().catch(() => ({}))
+        const { body: data } = await readJsonBody(response, linkedSignal)
         const providerMessage = typeof data?.error?.message === 'string' ? data.error.message : ''
         const providerCode = typeof data?.error?.code === 'string' ? data.error.code : ''
         const providerError = createProviderError({
-          message: providerMessage || `AI provider stream failed with status ${response.status}`,
           status: response.status,
           code: providerCode
         })
@@ -1225,6 +1259,23 @@ const createAiService = ({
           linkedSignal.clear()
           linkedSignal = null
           const fallbackResult = await complete({ messages, tools, requestId: safeRequestId, signal })
+          recordLog({
+            level: 'info',
+            event: 'ai.provider.stream.completed',
+            message: 'AI provider stream completed through non-streaming fallback',
+            details: {
+              ...baseDetails,
+              outcome: 'completed',
+              status: response.status,
+              durationMs: Date.now() - startedAt,
+              elapsedMs: Date.now() - startedAt,
+              chunkCount: 0,
+              replyChars: String(fallbackResult.reply || '').length,
+              finishReason: '',
+              fallback: true,
+              fallbackReason: 'unsupported-stream'
+            }
+          })
           return {
             ...fallbackResult,
             streaming: false,
@@ -1250,7 +1301,7 @@ const createAiService = ({
         if (typeof onDelta === 'function') onDelta(event.delta)
         return false
       }
-      for await (const textChunk of readStreamTextChunks(response.body)) {
+      for await (const textChunk of readStreamTextChunks(response.body, linkedSignal)) {
         if (linkedSignal.signal.aborted) {
           if (linkedSignal.isTimeout()) throw createTimeoutError()
           const abortError = new Error('AI provider stream aborted')
@@ -1490,6 +1541,7 @@ const createAiService = ({
       }
     })
     let response
+    let linkedSignal = null
     let discoveryResult = null
     const completeDiscovery = (result) => {
       discoveryResult = result
@@ -1525,28 +1577,17 @@ const createAiService = ({
         })
       }
 
-      const timeout = createTimeoutController(requestTimeoutMs)
-      try {
-        response = await fetchImpl(`${config.baseUrl}/models`, {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
-          },
-          signal: timeout.signal
-        })
-      } catch (error) {
-        if (error?.name === 'AbortError') {
-          const timeoutError = new Error('AI provider request timed out')
-          timeoutError.name = 'AbortError'
-          throw timeoutError
-        }
-        throw error
-      } finally {
-        timeout.clear()
-      }
+      linkedSignal = createLinkedAbortSignal(null, requestTimeoutMs)
+      response = await raceWithLinkedAbort(fetchImpl(`${config.baseUrl}/models`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        signal: linkedSignal.signal
+      }), linkedSignal)
 
-      const body = await response.json().catch(() => ({}))
+      const { body } = await readJsonBody(response, linkedSignal)
       if (!response.ok) {
         if (isOptionalModelsProbeStatus(response.status)) {
           return completeDiscovery({
@@ -1558,13 +1599,12 @@ const createAiService = ({
           })
         }
         throw createProviderError({
-          message: body?.error?.message || `AI provider request failed with status ${response.status}`,
           status: response.status,
           code: body?.error?.code
         })
       }
 
-      const discoveredModels = extractDiscoveredModelIds(body)
+      const discoveredModels = extractDiscoveredModelIds(body, { secrets: [apiKey] })
       persistModelCatalog(config, discoveredModels)
       return completeDiscovery({
         ok: true,
@@ -1583,6 +1623,7 @@ const createAiService = ({
         message: classified.message
       })
     } finally {
+      linkedSignal?.clear()
       const succeeded = discoveryResult?.ok === true
       recordLog({
         scope: 'ai-settings',
@@ -1668,6 +1709,7 @@ const createAiService = ({
       })
       return result
     }
+    let linkedSignal = null
     try {
       visionConfig = resolveRuntimeProviderConfig(storedEffectiveVisionConfig, 'Vision')
       const apiKey = secretService.getSecretValue(visionConfig.apiKeyRef)
@@ -1698,25 +1740,18 @@ const createAiService = ({
           message: 'Fetch is not available'
         })
       }
-      const timeout = createTimeoutController(requestTimeoutMs)
       let response
-      try {
-        response = await fetchImpl(`${visionConfig.baseUrl}/models`, {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
-          },
-          signal: timeout.signal
-        })
-      } catch (error) {
-        if (error?.name === 'AbortError') throw createTimeoutError()
-        throw error
-      } finally {
-        timeout.clear()
-      }
+      linkedSignal = createLinkedAbortSignal(null, requestTimeoutMs)
+      response = await raceWithLinkedAbort(fetchImpl(`${visionConfig.baseUrl}/models`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        signal: linkedSignal.signal
+      }), linkedSignal)
       const status = response?.status || 'error'
-      const body = response?.json ? await response.json().catch(() => ({})) : {}
+      const { body } = await readJsonBody(response, linkedSignal)
       if (!response?.ok) {
         if (isOptionalModelsProbeStatus(status)) {
           return completeDiscovery({
@@ -1735,7 +1770,7 @@ const createAiService = ({
           message: `Vision provider request failed with status ${status}`
         }, { status })
       }
-      const discoveredModels = extractDiscoveredModelIds(body)
+      const discoveredModels = extractDiscoveredModelIds(body, { secrets: [apiKey] })
       if (followsChat) persistModelCatalog(visionConfig, discoveredModels)
       else persistVisionModelCatalog(visionConfig, discoveredModels)
       return completeDiscovery({
@@ -1754,6 +1789,8 @@ const createAiService = ({
         code: classified.code,
         message: classified.message
       })
+    } finally {
+      linkedSignal?.clear()
     }
   }
 

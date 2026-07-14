@@ -1,5 +1,13 @@
 const MODEL_CATALOG_SOURCE_VALUES = new Set(['none', 'saved'])
 const MAX_MODEL_CATALOG_MODELS = 200
+const MAX_PROVIDER_MODEL_ID_CHARS = 256
+
+const SECRET_LIKE_MODEL_PATTERNS = [
+  /\bsk-cpa-[A-Za-z0-9_-]{8,}\b/i,
+  /\bsk-[A-Za-z0-9_-]{8,}\b/i,
+  /\bbearer\s+[A-Za-z0-9._-]{8,}\b/i,
+  /\b(?:api[_ -]?key|authorization|password|secret|[A-Za-z0-9_-]*token[A-Za-z0-9_-]*)\b\s*[:=]\s*\S+/i
+]
 
 const normalizeProviderCatalogBaseUrl = (value) => {
   const raw = String(value || '').trim()
@@ -20,16 +28,34 @@ const normalizeProviderCatalogBaseUrl = (value) => {
   }
 }
 
-const uniqueModelIds = (items = []) => {
-  /** @type {string[]} */
-  const models = []
+const normalizeSecrets = (secrets = []) => (
+  (Array.isArray(secrets) ? secrets : [secrets])
+    .map((secret) => String(secret || '').trim())
+    .filter(Boolean)
+)
+
+const containsSecretValue = (modelId, secrets) => secrets.some((secret) => (
+  modelId === secret || (secret.length >= 4 && modelId.includes(secret))
+))
+
+const uniqueModelIds = (items = [], { secrets = [], sort = true } = {}) => {
+  const normalizedSecrets = normalizeSecrets(secrets)
+  const models = new Set()
   for (const item of Array.isArray(items) ? items : []) {
-    const modelId = String(item || '').trim()
-    if (!modelId || models.includes(modelId)) continue
-    models.push(modelId)
-    if (models.length >= MAX_MODEL_CATALOG_MODELS) break
+    const modelId = String(item || '')
+      .replace(/[\u0000-\u001F\u007F]/g, '')
+      .trim()
+    if (
+      !modelId ||
+      modelId.length > MAX_PROVIDER_MODEL_ID_CHARS ||
+      containsSecretValue(modelId, normalizedSecrets) ||
+      SECRET_LIKE_MODEL_PATTERNS.some((pattern) => pattern.test(modelId))
+    ) continue
+    models.add(modelId)
   }
-  return models.sort()
+  const normalizedModels = Array.from(models)
+  if (sort) normalizedModels.sort()
+  return normalizedModels.slice(0, MAX_MODEL_CATALOG_MODELS)
 }
 
 const buildProviderCacheKey = (capability, provider, baseUrl) => [
@@ -38,20 +64,20 @@ const buildProviderCacheKey = (capability, provider, baseUrl) => [
   normalizeProviderCatalogBaseUrl(baseUrl)
 ].join(':')
 
-const normalizeProviderModelCatalog = (catalog = {}) => ({
+const normalizeProviderModelCatalog = (catalog = {}, options = {}) => ({
   cacheKey: typeof catalog?.cacheKey === 'string' ? catalog.cacheKey : '',
-  models: uniqueModelIds(catalog?.models),
+  models: uniqueModelIds(catalog?.models, options),
   fetchedAt: typeof catalog?.fetchedAt === 'string' ? catalog.fetchedAt : '',
   source: MODEL_CATALOG_SOURCE_VALUES.has(String(catalog?.source || ''))
     ? String(catalog.source)
     : 'none'
 })
 
-const getScopedProviderModelCatalog = ({ capability, provider, baseUrl, catalog }) => {
-  const normalizedCatalog = normalizeProviderModelCatalog(catalog)
+const getScopedProviderModelCatalog = ({ capability, provider, baseUrl, catalog, secrets = [] }) => {
+  const normalizedCatalog = normalizeProviderModelCatalog(catalog, { secrets })
   const expectedCacheKey = buildProviderCacheKey(capability, provider, baseUrl)
   if (!expectedCacheKey || normalizedCatalog.cacheKey !== expectedCacheKey) {
-    return normalizeProviderModelCatalog()
+    return normalizeProviderModelCatalog({}, { secrets })
   }
   return normalizedCatalog
 }
@@ -61,18 +87,21 @@ const createSavedProviderModelCatalog = ({
   provider,
   baseUrl,
   models,
-  fetchedAt
+  fetchedAt,
+  secrets = []
 }) => normalizeProviderModelCatalog({
   cacheKey: buildProviderCacheKey(capability, provider, baseUrl),
   models,
   fetchedAt: String(fetchedAt || '').trim(),
   source: 'saved'
-})
+}, { secrets })
 
 module.exports = {
   buildProviderCacheKey,
   createSavedProviderModelCatalog,
   getScopedProviderModelCatalog,
+  MAX_MODEL_CATALOG_MODELS,
+  MAX_PROVIDER_MODEL_ID_CHARS,
   normalizeProviderModelCatalog,
   uniqueModelIds
 }

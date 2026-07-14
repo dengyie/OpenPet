@@ -54,6 +54,7 @@ import type {
   ReleaseEvidenceArchiveSummary,
   SignedReleaseClosureReport,
   SignedReleaseClaimSummary,
+  VisionConfigSaveRequest,
   WindowsSmokeArchiveManifest,
   WindowsSmokeReport,
   WindowsSmokeEvidenceSummary
@@ -69,6 +70,16 @@ const imageGenerationConfigSaveFixture = {
 
 // @ts-expect-error API key references are owned by the host and cannot be saved by the renderer.
 const invalidImageGenerationConfigSaveFixture: ImageGenerationConfigSaveRequest = { apiKeyRef: 'ai.default' }
+
+const visionConfigSaveFixture = {
+  mode: 'override',
+  provider: 'openai-compatible',
+  baseUrl: 'https://vision.example.test/v1',
+  model: 'vision-model'
+} satisfies VisionConfigSaveRequest
+
+// @ts-expect-error Vision secret references are owned by the host.
+const invalidVisionConfigSaveFixture: VisionConfigSaveRequest = { apiKeyRef: 'ai.vision' }
 
 const controlCenterSettingsFixture = {
   scale: 1,

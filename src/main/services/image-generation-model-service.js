@@ -193,17 +193,21 @@ const fetchWithTimeout = async ({
   url,
   options = {},
   timeoutMs,
-  timeoutMessage
+  timeoutMessage,
+  consumeResponse = async (response) => response
 }) => {
   const controller = new AbortController()
   const effectiveTimeoutMs = normalizeTimeoutMs(timeoutMs, PROVIDER_GENERATION_TIMEOUT_MS)
   let timeoutHandle = null
   try {
     return await Promise.race([
-      fetchImpl(url, {
-        ...options,
-        signal: controller.signal
-      }),
+      (async () => {
+        const response = await fetchImpl(url, {
+          ...options,
+          signal: controller.signal
+        })
+        return await consumeResponse(response, controller.signal)
+      })(),
       new Promise((_, reject) => {
         timeoutHandle = setTimeout(() => {
           controller.abort(new Error(timeoutMessage))
@@ -221,6 +225,16 @@ const fetchWithTimeout = async ({
   }
 }
 
+const readOptionalJsonResponse = async (response, signal) => {
+  if (!response?.ok || typeof response.json !== 'function') return {}
+  try {
+    return await response.json()
+  } catch (error) {
+    if (signal?.aborted) throw error
+    return {}
+  }
+}
+
 const getUrlHost = (value) => {
   try {
     return new URL(String(value || '')).host
@@ -228,10 +242,6 @@ const getUrlHost = (value) => {
     return ''
   }
 }
-
-const sanitizeModelId = (value) => String(value || '')
-  .replace(/[\u0000-\u001F\u007F]/g, '')
-  .trim()
 
 const extractProviderBusinessError = (body) => {
   if (!isPlainObject(body)) return ''
@@ -243,21 +253,16 @@ const extractProviderBusinessError = (body) => {
 
 const isOptionalModelsProbeStatus = (status) => [404, 405, 501].includes(Number(status))
 
-const extractDiscoveredModels = (body) => {
+const extractDiscoveredModels = (body, { secrets = [] } = {}) => {
   const source = Array.isArray(body?.data)
     ? body.data
     : Array.isArray(body?.models)
       ? body.models
       : []
-  const models = []
-  for (const entry of source) {
-    const modelId = sanitizeModelId(typeof entry === 'string'
-      ? entry
-      : entry?.id)
-    if (!modelId || models.includes(modelId)) continue
-    models.push(modelId)
-  }
-  return models
+  return uniqueModelIds(
+    source.map((entry) => (typeof entry === 'string' ? entry : entry?.id)),
+    { secrets, sort: false }
+  )
 }
 
 const getImageMimeType = (filePath) => {
@@ -427,7 +432,8 @@ const createImageGenerationModelService = ({
       capability: 'image',
       provider: config.provider,
       baseUrl: config.baseUrl,
-      catalog: storedState.modelCatalog
+      catalog: storedState.modelCatalog,
+      secrets: [secretService.getSecretValue(config.apiKeyRef)]
     })
   )
   const getProviderTimeoutMs = (config) => Math.max(1, Number(cloudGenerationTimeoutMs ?? providerGenerationTimeoutMs ?? config.timeoutMs ?? PROVIDER_GENERATION_TIMEOUT_MS) || PROVIDER_GENERATION_TIMEOUT_MS)
@@ -536,8 +542,9 @@ const createImageGenerationModelService = ({
       capability: 'image',
       provider: config.provider,
       baseUrl: config.baseUrl,
-      models: uniqueModelIds(models),
-      fetchedAt: now().toISOString()
+      models,
+      fetchedAt: now().toISOString(),
+      secrets: [secretService.getSecretValue(config.apiKeyRef)]
     })
     const current = getStoredImageGenerationState()
     saveStoredConfig({
@@ -630,9 +637,11 @@ const createImageGenerationModelService = ({
   const saveProviderApiKey = (apiKey) => {
     const config = getStoredConfig()
     const requestId = idFactory()
+    const value = String(apiKey || '').trim()
+    if (!value) throw new Error('Image Provider API Key 不能为空')
     secretService.setSecret({
       id: config.apiKeyRef,
-      value: String(apiKey || ''),
+      value,
       label: 'Image API Key'
     })
     recordLog({
@@ -751,7 +760,7 @@ const createImageGenerationModelService = ({
       if (!apiKey) {
         return completeHealth({ ok: false, provider: config.provider, code: 'missing_api_key', message: 'Image generation API key is missing' })
       }
-      const response = await fetchWithTimeout({
+      const { response, body } = await fetchWithTimeout({
         fetchImpl,
         url: `${baseUrl}/models`,
         timeoutMs,
@@ -761,7 +770,11 @@ const createImageGenerationModelService = ({
           headers: {
             Authorization: `Bearer ${apiKey}`
           }
-        }
+        },
+        consumeResponse: async (response, signal) => ({
+          response,
+          body: await readOptionalJsonResponse(response, signal)
+        })
       })
       const status = response?.status || 'error'
       if (!response?.ok) {
@@ -792,11 +805,7 @@ const createImageGenerationModelService = ({
           { status, modelsProbe: 'failed' }
         )
       }
-      let body = {}
-      try {
-        body = await response.json()
-      } catch (_) {}
-      const availableModels = extractDiscoveredModels(body)
+      const availableModels = extractDiscoveredModels(body, { secrets: [apiKey] })
       persistModelCatalog(runtimeConfig, availableModels)
       return completeHealth(
         {
@@ -907,7 +916,7 @@ const createImageGenerationModelService = ({
           message: 'Image generation API key is missing'
         })
       }
-      const response = await fetchWithTimeout({
+      const { response, body } = await fetchWithTimeout({
         fetchImpl,
         url: `${baseUrl}/models`,
         timeoutMs,
@@ -917,7 +926,11 @@ const createImageGenerationModelService = ({
           headers: {
             Authorization: `Bearer ${apiKey}`
           }
-        }
+        },
+        consumeResponse: async (response, signal) => ({
+          response,
+          body: await readOptionalJsonResponse(response, signal)
+        })
       })
       const status = response?.status || 'error'
       if (!response?.ok) {
@@ -944,8 +957,7 @@ const createImageGenerationModelService = ({
           { status, modelsProbe: 'failed' }
         )
       }
-      const body = response?.json ? await response.json().catch(() => ({})) : {}
-      const discoveredModels = extractDiscoveredModels(body)
+      const discoveredModels = extractDiscoveredModels(body, { secrets: [apiKey] })
       persistModelCatalog(runtimeConfig, discoveredModels)
       return completeDiscovery(
         {
@@ -1020,6 +1032,7 @@ const createImageGenerationModelService = ({
       }
     })
     let response
+    let responseBody = {}
     try {
       const multipartRequest = normalizedReferenceImages.length > 0
         ? buildProviderEditMultipartRequest({
@@ -1045,7 +1058,7 @@ const createImageGenerationModelService = ({
             Authorization: `Bearer ${apiKey}`,
             'Content-Type': 'application/json'
           }
-      response = await fetchWithTimeout({
+      const providerResponse = await fetchWithTimeout({
         fetchImpl,
         url: `${baseUrl}${endpoint}`,
         timeoutMs,
@@ -1054,8 +1067,16 @@ const createImageGenerationModelService = ({
           method: 'POST',
           headers,
           body: requestBody
-        }
+        },
+        consumeResponse: async (response) => ({
+          response,
+          body: response?.ok && typeof response.json === 'function'
+            ? await response.json()
+            : {}
+        })
       })
+      response = providerResponse.response
+      responseBody = providerResponse.body
     } catch (error) {
       const isTimeout = /timed out/i.test(String(error?.message || ''))
       recordLog({
@@ -1119,7 +1140,7 @@ const createImageGenerationModelService = ({
       })
       throw new Error(`Image Provider generation failed with HTTP ${status}`)
     }
-    const body = await response.json()
+    const body = responseBody
     const items = Array.isArray(body?.data) ? body.data : []
     if (!items.length) {
       const businessError = extractProviderBusinessError(body)

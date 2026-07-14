@@ -4,6 +4,7 @@ import type {
   AiConfigSaveRequest,
   ImageGenerationConfigSaveRequest,
   ImageGenerationConfigViewState,
+  VisionConfigSaveRequest,
   VisionConfigViewState
 } from '../../../shared/openpet-contracts'
 
@@ -116,8 +117,8 @@ export const hasVisionConfigChanges = (
 export const buildVisionConfigSavePayload = (
   config: VisionConfigViewState,
   activeConfig: VisionConfigViewState
-): Partial<VisionConfigViewState> => {
-  const payload: Partial<VisionConfigViewState> = {}
+): VisionConfigSaveRequest => {
+  const payload: VisionConfigSaveRequest = {}
   if (config.mode !== activeConfig.mode) {
     payload.mode = config.mode
   }

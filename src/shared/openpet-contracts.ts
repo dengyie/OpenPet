@@ -602,6 +602,13 @@ export interface VisionConfigViewState {
   effectiveHasApiKey: boolean
 }
 
+export interface VisionConfigSaveRequest {
+  mode?: VisionProviderMode
+  provider?: string
+  baseUrl?: string
+  model?: string
+}
+
 export interface AiConfigSaveRequest {
   enabled?: boolean
   provider?: string
@@ -609,12 +616,7 @@ export interface AiConfigSaveRequest {
   model?: string
   systemPrompt?: string
   memory?: Partial<AiMemoryConfig>
-  vision?: {
-    mode?: VisionProviderMode
-    provider?: string
-    baseUrl?: string
-    model?: string
-  }
+  vision?: VisionConfigSaveRequest
 }
 
 export interface ServiceLogEntry {

@@ -354,6 +354,22 @@ test('image generation model service saves and clears provider api keys through 
   assert.equal(JSON.stringify(logs).includes('sk-demo-1234'), false)
 })
 
+test('image generation model service rejects blank provider api keys without mutating the secret', () => {
+  const secretService = createSecretService({
+    'secret:model.image.openai.apiKey': { value: 'sk-existing-1234', label: 'Image API Key' }
+  })
+  const logs = []
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(),
+    secretService,
+    appLogService: { record: (entry) => logs.push(entry) }
+  })
+
+  assert.throws(() => service.saveProviderApiKey('   '), /API Key.*不能为空/i)
+  assert.equal(secretService.getSecretValue('secret:model.image.openai.apiKey'), 'sk-existing-1234')
+  assert.equal(logs.some((entry) => entry.event === 'imageGeneration.settings.api-key.saved'), false)
+})
+
 test('image generation model service logs safe provider settings when config is saved', () => {
   const logs = []
   const service = createImageGenerationModelService({
@@ -509,6 +525,35 @@ test('image generation model service discovers available models through the opti
   assert.equal(service.getConfig().modelCatalog.source, 'saved')
 })
 
+test('image generation model service filters secrets and bounds discovered models', async () => {
+  const apiKey = 'sk-image-secret-123456'
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings()),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: apiKey, label: 'Image API Key' }
+    }),
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: [
+          { id: apiKey },
+          { id: `token=${apiKey}` },
+          { id: `model-${'x'.repeat(300)}` },
+          ...Array.from({ length: 250 }, (_, index) => ({ id: `safe-image-model-${String(index).padStart(3, '0')}` }))
+        ]
+      })
+    })
+  })
+
+  const result = await service.discoverModels()
+
+  assert.equal(result.models.length, 200)
+  assert.deepEqual(result.models, service.getConfig().modelCatalog.models)
+  assert.equal(result.models.some((model) => model.includes(apiKey)), false)
+  assert.equal(result.models.some((model) => model.length > 256), false)
+})
+
 test('image generation model discovery does not expose provider response text in logs', async () => {
   const logs = []
   const service = createImageGenerationModelService({
@@ -564,6 +609,28 @@ test('image generation model service bounds model discovery and returns sanitize
   assert.equal(logs.at(-1).details.outcome, 'failed')
   assert.equal(logs.at(-1).details.errorCode, 'model_discovery_timeout')
   assert.equal(JSON.stringify(logs).includes('sk-image-secret'), false)
+})
+
+test('image generation model service times out model discovery while reading a stalled body', async () => {
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings()),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-image-secret', label: 'Image API Key' }
+    }),
+    providerGenerationTimeoutMs: 5,
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => new Promise(() => {})
+    })
+  })
+
+  const result = await Promise.race([
+    service.discoverModels(),
+    new Promise((resolve) => setTimeout(() => resolve({ code: 'response_body_stalled' }), 50))
+  ])
+
+  assert.equal(result.code, 'model_discovery_timeout')
 })
 
 test('image generation model service strips control characters from discovered model ids', async () => {
@@ -1363,6 +1430,40 @@ test('image generation model service times out provider generation requests and 
   assert.equal(JSON.stringify(logs).includes('sk-test-secret'), false)
   assert.equal(JSON.stringify(logs).includes('private detailed custom pet prompt'), false)
   assert.equal(JSON.stringify(logs).includes(dataDir), false)
+})
+
+test('image generation model service times out while reading a stalled generation response body', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-'))
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings()),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-secret', label: 'Image API Key' }
+    }),
+    providerGenerationTimeoutMs: 5,
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => new Promise(() => {})
+    })
+  })
+
+  const result = await Promise.race([
+    service.generateImage({
+      prompt: 'private detailed custom pet prompt',
+      output: {
+        dataDir,
+        dataRelativeDir: 'runs/provider-body-timeout/frames/base'
+      },
+      constraints: {
+        width: 1024,
+        height: 1024,
+        transparent: true
+      }
+    }).catch((error) => error),
+    new Promise((resolve) => setTimeout(() => resolve(new Error('response body stayed pending')), 50))
+  ])
+
+  assert.match(result.message, /timed out after 5ms/i)
 })
 
 test('image generation model service uses the saved provider timeout for generation requests', async () => {
