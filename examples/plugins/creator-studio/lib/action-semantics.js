@@ -11,6 +11,10 @@ const getActionIdentityText = (action = {}) => [
   action.name
 ].map(normalizeText).filter(Boolean).join(' ')
 
+const isIdleAction = (value = '') => /(^|\s)(idle|idling|resting-idle)(\s|$)|待机|空闲/i.test(
+  typeof value === 'object' ? getActionText(value) : normalizeText(value)
+)
+
 const isWavingAction = (value = '') => /wave|waving|挥手|招手|挥爪|paw\s*wave/i.test(
   typeof value === 'object' ? getActionText(value) : normalizeText(value)
 )
@@ -38,6 +42,7 @@ const isReactionAction = (value = '') => /reaction|react|clicked|tap|touch|surpr
 const inferAnimationTypeFromText = (value = '') => {
   const text = normalizeText(value)
   if (!text) return ''
+  if (isIdleAction(text)) return 'stationary_loop'
   if (isWavingAction(text)) return 'stationary_loop'
   if (isVerticalBounceAction(text)) return 'vertical_bounce'
   if (isLocomotionAction(text)) return 'locomotion_loop'
@@ -48,6 +53,7 @@ const inferAnimationTypeFromText = (value = '') => {
 }
 
 const inferAnimationType = (action = {}) => {
+  if (isIdleAction(action)) return 'stationary_loop'
   const explicit = normalizeText(action.animationType)
   if (explicit) return explicit
   const identityType = inferAnimationTypeFromText(getActionIdentityText(action))
@@ -59,6 +65,7 @@ const inferAnimationType = (action = {}) => {
 }
 
 const resolvePrimaryAnimatedPart = (action = {}) => {
+  if (isIdleAction(action)) return 'subtle chest breathing, blink, ear movement, and tail-tip motion only'
   const custom = Array.isArray(action.animatedParts)
     ? action.animatedParts.map(normalizeText).filter(Boolean)
     : []
@@ -73,10 +80,26 @@ const resolvePrimaryAnimatedPart = (action = {}) => {
 }
 
 const buildActionFramePlan = ({ action = {}, frameCount = 6 } = {}) => {
+  const count = Math.max(1, Number(frameCount) || 1)
+  if (isIdleAction(action)) {
+    if (count === 1) {
+      return ['Frame 1: match the canonical identity pose, viewpoint, silhouette, scale, markings, accessories, and lower-center root exactly.']
+    }
+    if (count === 2) {
+      return [
+        'Frame 1: match the canonical identity pose, viewpoint, silhouette, scale, markings, accessories, and lower-center root exactly.',
+        'Frame 2: add only a subtle breathing, blink, ear, or tail-tip change that can loop directly back to frame 1 without moving the body root.'
+      ]
+    }
+    return [
+      'Frame 1: match the canonical identity pose, viewpoint, silhouette, scale, markings, accessories, and lower-center root exactly.',
+      `Frame ${Math.max(2, Math.ceil(count / 2))}: add only a subtle breathing, blink, ear, or tail-tip change without moving the body root or redesigning any feature.`,
+      `Frame ${count}: settle back to the canonical frame-1 pose for a seamless quiet loop.`
+    ]
+  }
   if (Array.isArray(action.framePlan) && action.framePlan.length > 0) {
     return action.framePlan.map(normalizeText).filter(Boolean)
   }
-  const count = Math.max(1, Number(frameCount) || 1)
   if (isWavingAction(action)) {
     if (count <= 1) {
       return ['Frame 1: readable raised-paw wave pose with the full character visible and anchored.']
@@ -175,6 +198,11 @@ const buildActionFramePlan = ({ action = {}, frameCount = 6 } = {}) => {
 const getKeyframePoseInstruction = ({ action = {}, keyframeRole = 'start' } = {}) => {
   const isStart = /start|first|neutral/i.test(normalizeText(keyframeRole))
   const animationType = inferAnimationType(action)
+  if (isIdleAction(action)) {
+    return isStart
+      ? 'Pose: match the canonical reference pose and viewpoint as closely as possible; do not force a new front-facing view or change limb placement merely to neutralize the pose.'
+      : 'Pose: preserve the canonical pose and silhouette with only a subtle breathing, blink, ear, or tail-tip change; no action extreme or large limb movement.'
+  }
   if (isStart) {
     if (animationType === 'locomotion_loop') return 'Pose: first contact pose of an in-place gait cycle, full body visible, with opposing locomotion limbs clearly separated.'
     if (animationType === 'vertical_bounce') return 'Pose: grounded anticipation pose at the original baseline, full body visible and ready to jump.'
@@ -192,6 +220,7 @@ module.exports = {
   getKeyframePoseInstruction,
   inferAnimationType,
   isEmoteAction,
+  isIdleAction,
   isLocomotionAction,
   isPoseTransitionAction,
   isReactionAction,

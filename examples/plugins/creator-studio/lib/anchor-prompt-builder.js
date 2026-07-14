@@ -5,11 +5,12 @@ const {
   buildActionFramePlan,
   getKeyframePoseInstruction,
   inferAnimationType,
+  isIdleAction,
   isWavingAction,
   resolvePrimaryAnimatedPart
 } = require('./action-semantics')
 
-const PROMPT_BUILDER_VERSION = 3
+const PROMPT_BUILDER_VERSION = 4
 
 const normalizeActionText = (value, fallback = '') => sanitizeCreativeBrief(value || fallback)
 
@@ -95,10 +96,11 @@ const buildActionSpriteRowPrompt = ({
       'Use one single local conditioning board as the only image input for this final sprite-sheet request.',
       'This single conditioning board is the only reference image for the final provider call.',
       'The conditioning board is guidance only, not deliverable output.',
-      'The conditioning board uses a fixed template: user source main view as highest identity authority, normalized start keyframe, normalized peak keyframe, clear whitespace, safe padding, and a shared lower-center root anchor.',
+      'The conditioning board uses a fixed template: one identity panel, normalized start keyframe, normalized peak keyframe, clear whitespace, safe padding, and a shared lower-center root anchor.',
       'The provider-generated start keyframe and peak/end keyframe appear inside that single conditioning board.',
       'The normalized start keyframe and normalized peak keyframe are provider-generated keyframes and must be treated as motion timing anchors.',
-      'Read the user source main view as identity authority and read the normalized start keyframe and normalized peak keyframe as motion timing anchors.',
+      'Read the identity panel as the character authority and read the normalized start keyframe and normalized peak keyframe as motion timing anchors.',
+      'When the identity panel is itself a full-pet action identity board, its canonical generated primary panel controls pose, framing, scale, and cross-row continuity while its original-source panel controls visible identity details.',
       'Generate the missing in-between frames with the image model; do not copy keyframes as repeated static cells.',
       'Do not copy reference labels, presentation panels, captions, borders, or background into the output.',
       'Do not copy the conditioning board itself, and do not reinterpret it as a pseudo sprite sheet or model sheet.',
@@ -157,6 +159,8 @@ const buildActionKeyframePrompt = ({
   const animationType = inferAnimationType(action)
   const role = normalizeActionText(keyframeRole, 'start')
   const isStart = /start|first|neutral/i.test(role)
+  const idleAction = isIdleAction(action)
+  const usesFullPetIdentityBoard = /full-pet-action-identity-board/i.test(String(referenceRole || ''))
   const usesPeakConditioningBoard = !isStart && /conditioning-board|action-start-keyframe|start keyframe/i.test(String(referenceRole || ''))
   return {
     role: 'action-keyframe',
@@ -169,8 +173,14 @@ const buildActionKeyframePrompt = ({
       `Reference role: ${sanitizeCreativeBrief(referenceRole)}.`,
       'The original user source image is the highest identity authority.',
       'If the written description conflicts with the reference image, follow the reference image.',
+      usesFullPetIdentityBoard
+        ? 'The reference image is one full-pet action identity board: the canonical generated primary panel controls pose, framing, scale, and cross-row continuity; the original-source secondary panel controls visible identity details.'
+        : '',
+      usesFullPetIdentityBoard
+        ? 'Do not copy the board layout, panels, white background, presentation spacing, or repeated character views into the output.'
+        : '',
       usesPeakConditioningBoard
-        ? 'The reference image is a single conditioning board: it contains the original user source image plus the normalized start keyframe. Use it only to lock identity, scale, lower-center root, and the neutral-to-peak pose change.'
+        ? 'The reference image is a single conditioning board: it contains the current identity reference plus the normalized start keyframe. Use it only to lock identity, scale, lower-center root, and the start-to-peak pose change.'
         : '',
       usesPeakConditioningBoard
         ? 'Do not copy the board layout, panels, white background, presentation spacing, or any repeated reference image into the output.'
@@ -182,9 +192,13 @@ const buildActionKeyframePrompt = ({
       `Animation type: ${animationType}`,
       brief ? `User pet description: ${brief}.` : '',
       '',
-      isStart
-        ? 'Keyframe role: START FRAME. Create the neutral first frame before the action begins.'
-        : `Keyframe role: PEAK/END FRAME. Create the clearest action extreme: ${movingPart} reaches the requested motion pose.`,
+      idleAction
+        ? (isStart
+            ? 'Keyframe role: IDLE START. Match the canonical identity pose and viewpoint; this is not a redesign or pose-normalization request.'
+            : 'Keyframe role: IDLE MOTION PEAK. Show only a minimal loopable breathing, blink, ear, or tail-tip change from the canonical pose.')
+        : (isStart
+            ? 'Keyframe role: START FRAME. Create the neutral first frame before the action begins.'
+            : `Keyframe role: PEAK/END FRAME. Create the clearest action extreme: ${movingPart} reaches the requested motion pose.`),
       getKeyframePoseInstruction({ action, keyframeRole: role }),
       '',
       'Output contract:',
