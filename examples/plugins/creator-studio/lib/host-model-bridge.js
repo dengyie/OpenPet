@@ -13,12 +13,7 @@ const DEFAULT_CONSTRAINTS = {
 
 const CREATOR_PROVIDER_MIN_TIMEOUT_MS = 300000
 const BASIC_ACTION_POSE_TIMEOUT_MS = 300000
-const FALLBACK_MODEL_MIN_TIMEOUT_MS = 600000
 const PROMPT_PREVIEW_MAX_LENGTH = 8000
-const KNOWN_FALLBACK_IMAGE_MODELS = [
-  'gpt-image-2',
-  'gpt-image-1.5'
-]
 
 const safeUrlHost = (value) => {
   try {
@@ -37,66 +32,6 @@ const createSafeRelativePath = (value) => {
 const normalizeModelName = (value) => String(value || '')
   .replace(/[\u0000-\u001F\u007F]/g, '')
   .trim()
-
-const isLikelyImageModel = (value) => (
-  /(image|banana|imagine)/i.test(normalizeModelName(value))
-)
-
-const isSupportedOpenAiCompatibleEditModel = (value) => (
-  /^(gpt-image-(1\.5|2)|grok-imagine-image(?:-quality)?)$/i.test(normalizeModelName(value))
-)
-
-const isEligibleFallbackModel = ({ settings = {}, candidate = '' }) => {
-  const normalized = normalizeModelName(candidate)
-  if (!normalized) return false
-  const provider = normalizeModelName(settings?.provider).toLowerCase()
-  if (provider === 'openai-compatible' || provider === 'openai') {
-    return isSupportedOpenAiCompatibleEditModel(normalized)
-  }
-  return isLikelyImageModel(normalized)
-}
-
-const buildModelCandidateList = ({ settings = {}, preferredModel = '' }) => {
-  const candidates = []
-  const seen = new Set()
-  const addCandidate = (value) => {
-    const normalized = normalizeModelName(value)
-    if (!normalized || seen.has(normalized)) return
-    seen.add(normalized)
-    candidates.push(normalized)
-  }
-  addCandidate(preferredModel)
-  for (const candidate of KNOWN_FALLBACK_IMAGE_MODELS) {
-    if (isEligibleFallbackModel({ settings, candidate })) addCandidate(candidate)
-  }
-  const discoveredModels = Array.isArray(settings?.modelCatalog?.models) ? settings.modelCatalog.models : []
-  for (const candidate of discoveredModels) {
-    if (isEligibleFallbackModel({ settings, candidate })) addCandidate(candidate)
-  }
-  return candidates
-}
-
-const shouldRetryWithAnotherModel = (error) => {
-  const message = String(error?.message || error || '').trim().toLowerCase()
-  if (
-    message.includes('api key is missing') ||
-    message.includes('provider backend is not configured') ||
-    message.includes('openpet bridge is not available') ||
-    message.includes('allowed data directory')
-  ) {
-    return false
-  }
-  return (
-    message.includes('timed out') ||
-    message.includes('fetch failed') ||
-    message.includes('socks5') ||
-    message.includes('cannot complete') ||
-    message.includes('generation failed with http') ||
-    message.includes('returned no outputs') ||
-    ((message.includes('model') || message.includes('provider')) &&
-      (message.includes('unsupported') || message.includes('not found')))
-  )
-}
 
 const resolveRunReferenceImages = ({ dataDir, run }) => {
   if (!dataDir || !run || typeof run !== 'object') return []
@@ -198,8 +133,7 @@ const createFullPetActionPosePrompt = ({ run = {}, actionId }) => {
   ].join(' ')
 }
 
-const callHostImageGenerate = ({ prompt, requestedTimeoutMs, referenceImages, runId, dataRelativeDir, model }) => callBridge('/creator/model-image-generate', {
-  model,
+const callHostImageGenerate = ({ prompt, requestedTimeoutMs, referenceImages, runId, dataRelativeDir }) => callBridge('/creator/model-image-generate', {
   prompt,
   timeoutMs: requestedTimeoutMs,
   referenceImages,
@@ -223,62 +157,51 @@ const summarizeBasicActionAttempt = (result) => ({
   ...(result.error ? { error: result.error } : {})
 })
 
-const generateWithModelFallback = async ({
+const generateWithOwnerModel = async ({
   prompt,
   requestedTimeoutMs,
   referenceImages,
   runId,
   dataRelativeDir,
-  settings,
-  preferredModel
+  configuredModel
 }) => {
-  const attempts = []
-  const modelCandidates = buildModelCandidateList({ settings, preferredModel })
-  let lastError = null
-  for (const model of modelCandidates) {
-    try {
-      const effectiveTimeoutMs = normalizeModelName(model) === normalizeModelName(preferredModel)
-        ? requestedTimeoutMs
-        : Math.max(Number(requestedTimeoutMs) || 0, FALLBACK_MODEL_MIN_TIMEOUT_MS)
-      const response = await callHostImageGenerate({
-        model,
-        prompt,
-        requestedTimeoutMs: effectiveTimeoutMs,
-        referenceImages,
-        runId,
-        dataRelativeDir
-      })
-      attempts.push(createGenerationAttemptRecord({ model, ok: true }))
-      return {
-        response,
-        selectedModel: model,
-        attempts
-      }
-    } catch (error) {
-      attempts.push(createGenerationAttemptRecord({ model, ok: false, error: error?.message || error }))
-      lastError = error
-      if (!shouldRetryWithAnotherModel(error)) break
+  try {
+    const response = await callHostImageGenerate({
+      prompt,
+      requestedTimeoutMs,
+      referenceImages,
+      runId,
+      dataRelativeDir
+    })
+    const selectedModel = normalizeModelName(response?.result?.model) || normalizeModelName(configuredModel)
+    return {
+      response,
+      selectedModel,
+      attempts: [createGenerationAttemptRecord({ model: selectedModel, ok: true })]
     }
+  } catch (error) {
+    if (error && typeof error === 'object') {
+      error.modelAttempts = [createGenerationAttemptRecord({
+        model: configuredModel,
+        ok: false,
+        error: error?.message || error
+      })]
+    }
+    throw error
   }
-  if (lastError && typeof lastError === 'object') {
-    lastError.modelAttempts = attempts
-  }
-  throw lastError || new Error('Creator Studio image generation failed')
 }
 
 const generateFullPetBasicActionSource = async ({
   actionId,
   dataDir,
   run,
-  settings,
   selectedModel,
   requestedTimeoutMs,
   referenceImages
 }) => {
   try {
-    const actionAttempt = await generateWithModelFallback({
-      settings,
-      preferredModel: selectedModel,
+    const actionAttempt = await generateWithOwnerModel({
+      configuredModel: selectedModel,
       prompt: createFullPetActionPosePrompt({ run, actionId }),
       requestedTimeoutMs: Math.min(requestedTimeoutMs, BASIC_ACTION_POSE_TIMEOUT_MS),
       referenceImages,
@@ -317,7 +240,6 @@ const generateFullPetBasicActionSource = async ({
 const generateFullPetBasicActionSources = async ({
   dataDir,
   run,
-  settings,
   selectedModel,
   requestedTimeoutMs,
   referenceImages
@@ -327,7 +249,6 @@ const generateFullPetBasicActionSources = async ({
       actionId,
       dataDir,
       run,
-      settings,
       selectedModel,
       requestedTimeoutMs,
       referenceImages
@@ -387,9 +308,8 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
   let selectedModel = configuredModelSnapshot.model
   let modelAttempts = []
   try {
-    const generationAttempt = await generateWithModelFallback({
-      settings,
-      preferredModel: configuredModelSnapshot.model,
+    const generationAttempt = await generateWithOwnerModel({
+      configuredModel: configuredModelSnapshot.model,
       prompt: providerPrompt,
       requestedTimeoutMs,
       referenceImages,
@@ -429,7 +349,6 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
   const fullPetBasicActionSources = await generateFullPetBasicActionSources({
     dataDir,
     run,
-    settings,
     selectedModel,
     requestedTimeoutMs,
     referenceImages

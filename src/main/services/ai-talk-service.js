@@ -878,13 +878,18 @@ const createAiTalkService = ({
       })
     })
     try {
-      const visionConfig = generationRequest.usesVisionConfig && typeof aiService.getEffectiveVisionConfig === 'function'
-        ? aiService.getEffectiveVisionConfig()
-        : null
-      const result = await aiService.complete({
+      const completionMethod = generationRequest.usesVisionConfig
+        ? aiService.completeVision
+        : aiService.complete
+      if (typeof completionMethod !== 'function') {
+        throw new Error(generationRequest.usesVisionConfig
+          ? 'Vision completion is not available'
+          : 'AI completion is not available')
+      }
+      const result = await completionMethod({
         messages: generationRequest.messages,
         tools: [],
-        ...(visionConfig ? { configOverride: visionConfig } : {})
+        requestId: `persona-${Date.now().toString(36)}`
       })
       const draftPersona = parsePersonaDraft(result.reply)
       if (!Object.keys(draftPersona).length) {
@@ -1157,7 +1162,8 @@ const createAiTalkService = ({
       try {
         const extraction = await aiService.complete({
           messages: buildMemoryExtractionMessages({ userMessage, assistantReply, petPackId, persona }),
-          tools: []
+          tools: [],
+          requestId: job?.id ? `memory-${job.id}` : ''
         })
         const result = aiTalkStore.applyMemoryOperations({
           petPackId,
@@ -1838,7 +1844,7 @@ const createAiTalkService = ({
           message: 'AI talk chat started',
           details: diagnostics
         })
-        const result = await aiService.complete({ messages, tools })
+        const result = await aiService.complete({ messages, tools, requestId: diagnostics.requestId })
         const reply = normalizeString(result.reply)
         const finalized = finalizeSuccessfulTurn({ turn, reply, behaviorIntent: result.behaviorIntent })
         const { bubble, bubbleSegments, messages: nextMessages } = finalized

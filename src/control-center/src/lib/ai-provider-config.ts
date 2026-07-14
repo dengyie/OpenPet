@@ -2,6 +2,7 @@ import type {
   AiConfigViewState,
   AiConnectionTestResult,
   AiConfigSaveRequest,
+  ImageGenerationConfigSaveRequest,
   ImageGenerationConfigViewState,
   VisionConfigViewState
 } from '../../../shared/openpet-contracts'
@@ -183,8 +184,8 @@ export const hasImageGenerationConfigChanges = (
 export const buildImageGenerationConfigSavePayload = (
   config: ImageGenerationConfigViewState,
   activeConfig: ImageGenerationConfigViewState
-): Partial<ImageGenerationConfigViewState> => {
-  const payload: Partial<ImageGenerationConfigViewState> = {}
+): ImageGenerationConfigSaveRequest => {
+  const payload: ImageGenerationConfigSaveRequest = {}
 
   if (String(config.provider || '') !== String(activeConfig.provider || '')) {
     payload.provider = String(config.provider || '')

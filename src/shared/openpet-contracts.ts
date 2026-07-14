@@ -602,8 +602,19 @@ export interface VisionConfigViewState {
   effectiveHasApiKey: boolean
 }
 
-export type AiConfigSaveRequest = Partial<Omit<AiConfigViewState, 'vision'>> & {
-  vision?: Partial<VisionConfigViewState>
+export interface AiConfigSaveRequest {
+  enabled?: boolean
+  provider?: string
+  baseUrl?: string
+  model?: string
+  systemPrompt?: string
+  memory?: Partial<AiMemoryConfig>
+  vision?: {
+    mode?: VisionProviderMode
+    provider?: string
+    baseUrl?: string
+    model?: string
+  }
 }
 
 export interface ServiceLogEntry {
@@ -2783,6 +2794,16 @@ export interface ImageGenerationConfigViewState {
   modelCatalog: ProviderModelCatalogViewState
 }
 
+export interface ImageGenerationConfigSaveRequest {
+  provider?: string
+  baseUrl?: string
+  model?: string
+  organization?: string
+  project?: string
+  timeoutMs?: number
+  maxConcurrentJobs?: number
+}
+
 export interface ImageGenerationSaveApiKeyResult {
   apiKeyRef: string
   hasApiKey: boolean
@@ -3350,7 +3371,7 @@ export interface ControlCenterApi {
   getAiTalkTraceSummary: (payload?: AiTalkTraceExportRequest) => Promise<AiTalkTraceSummaryViewState>
   exportAiTalkTrace: (payload?: AiTalkTraceExportRequest) => Promise<string>
   getImageGenerationConfig: () => Promise<ImageGenerationConfigViewState>
-  saveImageGenerationConfig: (config: Partial<ImageGenerationConfigViewState>) => Promise<ImageGenerationConfigViewState>
+  saveImageGenerationConfig: (config: ImageGenerationConfigSaveRequest) => Promise<ImageGenerationConfigViewState>
   saveImageGenerationApiKey: (apiKey: string) => Promise<ImageGenerationSaveApiKeyResult>
   clearImageGenerationApiKey: () => Promise<ImageGenerationSaveApiKeyResult>
   checkImageGenerationHealth: (payload?: ImageGenerationHealthCheckRequest) => Promise<ImageGenerationHealthCheckResult>

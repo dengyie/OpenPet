@@ -2445,7 +2445,7 @@ button {
 
 .plugin-log-row {
   display: grid;
-  grid-template-columns: 76px 48px minmax(140px, 220px) minmax(0, 1fr);
+  grid-template-columns: 76px 64px minmax(140px, 220px) minmax(0, 1fr);
   gap: 10px;
   align-items: start;
   padding: 10px 0;
@@ -2465,6 +2465,10 @@ button {
 
 .plugin-log-row.error strong {
   color: #b91c1c;
+}
+
+.plugin-log-row.warn strong {
+  color: #a16207;
 }
 
 .plugin-log-row p {

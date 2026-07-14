@@ -10,7 +10,7 @@ import type {
 } from '../../../shared/openpet-contracts'
 import { PluginEntryDetails } from '../components/PluginEntryDetails'
 import { Toggle } from '../components/Toggle'
-import { formatBytes, formatPluginLogTime } from '../lib/format'
+import { formatBytes, formatPluginLogLevel, formatPluginLogTime, getPluginLogLevelClass } from '../lib/format'
 
 type ExportFormat = 'json' | 'csv'
 
@@ -619,6 +619,7 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
           <select className="text-input" value={filters.level} onChange={(event) => onChangeFilters({ ...filters, level: event.target.value })}>
             <option value="">全部级别</option>
             <option value="info">Info</option>
+            <option value="warn">Warning</option>
             <option value="error">Error</option>
           </select>
           <input
@@ -632,9 +633,9 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
           {logs.length === 0 ? (
             <div className="empty-chat">暂无日志</div>
           ) : logs.map((log) => (
-            <div className={log.level === 'error' ? 'plugin-log-row error' : 'plugin-log-row'} key={log.id}>
+            <div className={`plugin-log-row ${getPluginLogLevelClass(log.level)}`} key={log.id}>
               <span>{formatPluginLogTime(log.timestamp)}</span>
-              <strong>{log.level === 'error' ? 'Error' : 'Info'}</strong>
+              <strong>{formatPluginLogLevel(log.level)}</strong>
               <div>
                 <span>{log.pluginId || 'plugin'}</span>
                 {log.commandId ? <span>/{log.commandId}</span> : null}

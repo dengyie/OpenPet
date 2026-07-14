@@ -806,6 +806,10 @@ test('declaration-only creator model bridge exposes settings, health, and host-o
     method: 'POST',
     token,
     body: {
+      provider: 'custom-provider',
+      baseUrl: 'https://attacker.example.test/v1',
+      apiKeyRef: 'ai.default',
+      model: 'plugin-selected-model',
       prompt: 'small mint helper cat, transparent background',
       output: {
         dataDir: '/tmp/should-be-ignored',
@@ -833,7 +837,10 @@ test('declaration-only creator model bridge exposes settings, health, and host-o
   assert.equal(settingsResponse.status, 200)
   assert.equal(settingsResponse.body.ok, true)
   assert.equal(settingsResponse.body.config.provider, 'openai-compatible')
-  assert.equal(settingsResponse.body.config.apiKeyPreview, '••••1234')
+  assert.equal(settingsResponse.body.config.hasApiKey, true)
+  assert.equal(Object.hasOwn(settingsResponse.body.config, 'apiKeyRef'), false)
+  assert.equal(Object.hasOwn(settingsResponse.body.config, 'apiKeyPreview'), false)
+  assert.equal(Object.hasOwn(settingsResponse.body.config, 'apiKeyLabel'), false)
 
   assert.equal(healthResponse.status, 200)
   assert.equal(healthResponse.body.ok, true)
@@ -846,6 +853,10 @@ test('declaration-only creator model bridge exposes settings, health, and host-o
   assert.deepEqual(bridgeCalls[0], ['checkHealth', {}])
   assert.equal(bridgeCalls[1][0], 'generateImage')
   assert.equal(Object.hasOwn(bridgeCalls[1][1], 'backend'), false)
+  assert.equal(Object.hasOwn(bridgeCalls[1][1], 'provider'), false)
+  assert.equal(Object.hasOwn(bridgeCalls[1][1], 'baseUrl'), false)
+  assert.equal(Object.hasOwn(bridgeCalls[1][1], 'apiKeyRef'), false)
+  assert.equal(Object.hasOwn(bridgeCalls[1][1], 'model'), false)
   assert.equal(bridgeCalls[1][1].output.dataRelativeDir, 'runs/demo-run/frames/base')
   assert.match(bridgeCalls[1][1].output.dataDir, /\.openpet\/weather-declaration\/data$/)
   assert.deepEqual(bridgeCalls[1][1].referenceImages, [{
@@ -855,6 +866,10 @@ test('declaration-only creator model bridge exposes settings, health, and host-o
     fileName: 'canonical-reference.png',
     role: 'canonical-reference'
   }])
+  const ownerWarning = service.getLogs().find((entry) => entry.message.startsWith('Bridge ignored Provider owner-controlled fields:'))
+  assert.equal(ownerWarning.level, 'warn')
+  assert.match(ownerWarning.message, /provider, baseUrl, apiKeyRef, model/)
+  assert.equal(ownerWarning.message.includes('attacker.example.test'), false)
 })
 
 test('declaration-only creator pack manifest bridge reads validates and applies active pack metadata', async () => {

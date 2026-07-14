@@ -407,7 +407,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     const entry = {
       id: maxLogId + 1,
       timestamp: new Date().toISOString(),
-      level: level === 'error' ? 'error' : 'info',
+      level: ['error', 'warn'].includes(level) ? level : 'info',
       pluginId,
       commandId,
       message: String(message || '')
@@ -764,7 +764,21 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       assertPermission(plugin.manifest, 'model:image-generate')
       if (!imageGenerationModelService?.getConfig) throw new Error('Creator model settings are not available')
       appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.model-settings read invoked' })
-      return { ok: true, config: imageGenerationModelService.getConfig() }
+      const config = imageGenerationModelService.getConfig()
+      return {
+        ok: true,
+        config: {
+          provider: config.provider,
+          baseUrl: config.baseUrl,
+          model: config.model,
+          organization: config.organization,
+          project: config.project,
+          timeoutMs: config.timeoutMs,
+          maxConcurrentJobs: config.maxConcurrentJobs,
+          hasApiKey: config.hasApiKey,
+          modelCatalog: config.modelCatalog
+        }
+      }
     },
     creatorModelHealthCheck: async () => {
       assertPermission(plugin.manifest, 'model:image-generate')
@@ -776,7 +790,24 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       assertPermission(plugin.manifest, 'model:image-generate')
       if (!imageGenerationModelService?.generateImage) throw new Error('Creator model image generation is not available')
       appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.model-image-generate invoked' })
-      const { backend: _ignoredBackend, ...providerPayload } = payload
+      const {
+        backend: _ignoredBackend,
+        provider: _ignoredProvider,
+        baseUrl: _ignoredBaseUrl,
+        apiKeyRef: _ignoredApiKeyRef,
+        model: _ignoredModel,
+        ...providerPayload
+      } = payload
+      const ignoredOwnerFields = ['provider', 'baseUrl', 'apiKeyRef', 'model']
+        .filter((field) => Object.hasOwn(payload, field))
+      if (ignoredOwnerFields.length) {
+        appendLog({
+          pluginId: plugin.manifest.id,
+          commandId,
+          level: 'warn',
+          message: `Bridge ignored Provider owner-controlled fields: ${ignoredOwnerFields.join(', ')}`
+        })
+      }
       return {
         ok: true,
         result: await imageGenerationModelService.generateImage({

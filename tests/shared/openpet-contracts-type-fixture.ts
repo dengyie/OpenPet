@@ -24,6 +24,7 @@ import type {
   DesktopPickerArchiveManifest,
   DesktopPickerSmokeReport,
   DesktopPickerEvidenceSummary,
+  ImageGenerationConfigSaveRequest,
   MacosReleaseEvidenceArtifactArchiveManifest,
   MacosReleaseEvidenceCommand,
   MacosReleaseEvidenceSummary,
@@ -57,6 +58,17 @@ import type {
   WindowsSmokeReport,
   WindowsSmokeEvidenceSummary
 } from '../../src/shared/openpet-contracts'
+
+const imageGenerationConfigSaveFixture = {
+  provider: 'openai-compatible',
+  baseUrl: 'https://images.example.test/v1',
+  model: 'gpt-image-2',
+  timeoutMs: 120000,
+  maxConcurrentJobs: 1
+} satisfies ImageGenerationConfigSaveRequest
+
+// @ts-expect-error API key references are owned by the host and cannot be saved by the renderer.
+const invalidImageGenerationConfigSaveFixture: ImageGenerationConfigSaveRequest = { apiKeyRef: 'ai.default' }
 
 const controlCenterSettingsFixture = {
   scale: 1,

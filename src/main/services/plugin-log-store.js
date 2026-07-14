@@ -3,7 +3,7 @@ const MAX_PLUGIN_LOG_ENTRIES = 200
 const normalizePluginLog = (entry = {}, index = 0) => ({
   id: Number.isFinite(Number(entry.id)) ? Number(entry.id) : index + 1,
   timestamp: entry.timestamp || new Date().toISOString(),
-  level: entry.level === 'error' ? 'error' : 'info',
+  level: ['error', 'warn'].includes(entry.level) ? entry.level : 'info',
   pluginId: String(entry.pluginId || ''),
   commandId: String(entry.commandId || ''),
   message: String(entry.message || '')

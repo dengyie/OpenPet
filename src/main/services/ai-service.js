@@ -1,16 +1,25 @@
+const crypto = require('crypto')
 const { sanitizeLogText } = require('./log-safety')
 const {
   createSavedProviderModelCatalog,
   getScopedProviderModelCatalog,
   uniqueModelIds
 } = require('./provider-model-catalog')
+const {
+  assertProviderConfigPayload,
+  createProviderOperationDetails,
+  findOwnerFieldOverrides,
+  getCapabilitySecretRef,
+  sanitizeProviderBaseUrlForDisplay: sanitizeBaseUrlForDisplay,
+  validateProviderConfigInput
+} = require('./provider-owner-policy')
 
 const DEFAULT_AI_CONFIG = {
   enabled: false,
   provider: 'openai-compatible',
   baseUrl: 'https://api.openai.com/v1',
   model: 'gpt-4o-mini',
-  apiKeyRef: 'ai.default',
+  apiKeyRef: getCapabilitySecretRef('chat'),
   systemPrompt: 'You are a friendly desktop pet companion.',
   memory: {
     enabled: false
@@ -27,7 +36,7 @@ const DEFAULT_AI_CONFIG = {
     provider: 'openai-compatible',
     baseUrl: 'https://api.openai.com/v1',
     model: 'gpt-4o-mini',
-    apiKeyRef: 'ai.vision'
+    apiKeyRef: getCapabilitySecretRef('vision')
   }
 }
 
@@ -79,20 +88,18 @@ const normalizeMemoryConfig = (memory = {}) => ({
 const normalizeVisionMode = (value) => (value === 'override' ? 'override' : 'follow-chat')
 
 const normalizeVisionConfig = (vision = {}) => ({
-  ...DEFAULT_AI_CONFIG.vision,
-  ...(isPlainObject(vision) ? vision : {}),
   mode: normalizeVisionMode(vision?.mode),
   provider: vision?.provider || DEFAULT_AI_CONFIG.vision.provider,
-  baseUrl: (vision?.baseUrl || DEFAULT_AI_CONFIG.vision.baseUrl).replace(/\/+$/, ''),
+  baseUrl: String(vision?.baseUrl || DEFAULT_AI_CONFIG.vision.baseUrl).replace(/\/+$/, ''),
   model: vision?.model || DEFAULT_AI_CONFIG.vision.model,
-  apiKeyRef: vision?.apiKeyRef || DEFAULT_AI_CONFIG.vision.apiKeyRef
+  apiKeyRef: getCapabilitySecretRef('vision')
 })
 
 const normalizeConfig = (config = {}) => ({
   provider: config.provider || DEFAULT_AI_CONFIG.provider,
-  baseUrl: (config.baseUrl || DEFAULT_AI_CONFIG.baseUrl).replace(/\/+$/, ''),
+  baseUrl: String(config.baseUrl || DEFAULT_AI_CONFIG.baseUrl).replace(/\/+$/, ''),
   model: config.model || DEFAULT_AI_CONFIG.model,
-  apiKeyRef: config.apiKeyRef || DEFAULT_AI_CONFIG.apiKeyRef,
+  apiKeyRef: getCapabilitySecretRef('chat'),
   systemPrompt: config.systemPrompt ?? DEFAULT_AI_CONFIG.systemPrompt,
   enabled: Boolean(config.enabled),
   memory: normalizeMemoryConfig(config.memory),
@@ -102,9 +109,9 @@ const normalizeConfig = (config = {}) => ({
 
 const normalizeCompletionConfig = (config = {}) => ({
   provider: config.provider || DEFAULT_AI_CONFIG.provider,
-  baseUrl: (config.baseUrl || DEFAULT_AI_CONFIG.baseUrl).replace(/\/+$/, ''),
+  baseUrl: String(config.baseUrl || DEFAULT_AI_CONFIG.baseUrl).replace(/\/+$/, ''),
   model: config.model || DEFAULT_AI_CONFIG.model,
-  apiKeyRef: config.apiKeyRef || DEFAULT_AI_CONFIG.apiKeyRef
+  apiKeyRef: config.apiKeyRef || getCapabilitySecretRef('chat')
 })
 
 const parseBehaviorToolArguments = (value) => {
@@ -245,35 +252,6 @@ const createTimeoutError = () => {
   return error
 }
 
-const sanitizeBaseUrlForDisplay = (value) => {
-  const raw = typeof value === 'string' ? value.trim() : ''
-  if (!raw) return ''
-  try {
-    const parsed = new URL(raw)
-    parsed.username = ''
-    parsed.password = ''
-    parsed.search = ''
-    parsed.hash = ''
-    const normalizedPath = parsed.pathname.replace(/\/+$/, '')
-    return `${parsed.origin}${normalizedPath === '/' ? '' : normalizedPath}`
-  } catch (_) {
-    return raw
-      .replace(/^([a-z]+:\/\/)([^/@]+)@/i, '$1')
-      .replace(/[?#].*$/, '')
-      .replace(/\/+$/, '')
-  }
-}
-
-const mergeConfigWithoutDisplayDowngrade = (currentConfig = {}, partialConfig = {}) => {
-  const nextConfig = { ...(isPlainObject(currentConfig) ? currentConfig : {}), ...(isPlainObject(partialConfig) ? partialConfig : {}) }
-  const currentBaseUrl = typeof currentConfig.baseUrl === 'string' ? currentConfig.baseUrl : ''
-  const nextBaseUrl = typeof partialConfig.baseUrl === 'string' ? partialConfig.baseUrl : ''
-  if (currentBaseUrl && nextBaseUrl && sanitizeBaseUrlForDisplay(currentBaseUrl) === nextBaseUrl && currentBaseUrl !== nextBaseUrl) {
-    nextConfig.baseUrl = currentBaseUrl
-  }
-  return nextConfig
-}
-
 const normalizeEndpointForLog = (baseUrl) => {
   try {
     const url = new URL(String(baseUrl || ''))
@@ -284,6 +262,19 @@ const normalizeEndpointForLog = (baseUrl) => {
 }
 
 const sanitizeDiagnosticText = (value) => sanitizeLogText(value, { maxChars: 240 })
+
+const resolveRuntimeProviderConfig = (config, label = 'AI') => {
+  const normalized = normalizeCompletionConfig(config)
+  return {
+    ...normalized,
+    ...validateProviderConfigInput({
+      provider: normalized.provider,
+      baseUrl: normalized.baseUrl,
+      model: normalized.model,
+      label
+    })
+  }
+}
 
 const buildEffectiveVisionConfig = ({ config, secretService, storedState }) => {
   const normalizedVision = normalizeVisionConfig(config?.vision)
@@ -296,10 +287,10 @@ const buildEffectiveVisionConfig = ({ config, secretService, storedState }) => {
       apiKeyRef: config.apiKeyRef,
       hasApiKey: Boolean(secretService.getSecretValue(config.apiKeyRef)),
       modelCatalog: getScopedProviderModelCatalog({
-        capability: 'vision',
+        capability: 'chat',
         provider: config.provider,
         baseUrl: config.baseUrl,
-        catalog: storedState?.visionModelCatalog
+        catalog: storedState?.modelCatalog
       }),
       effectiveProvider: config.provider,
       effectiveBaseUrl: sanitizeBaseUrlForDisplay(config.baseUrl),
@@ -335,9 +326,10 @@ const getSafeProviderErrorMessage = (status, code) => {
 }
 
 const createProviderError = ({ message, status, code }) => {
-  const error = new Error(getSafeProviderErrorMessage(status, code))
+  const safeCode = sanitizeDiagnosticText(code)
+  const error = new Error(getSafeProviderErrorMessage(status, safeCode))
   error.providerStatus = status
-  error.providerCode = code || ''
+  error.providerCode = safeCode
   return error
 }
 
@@ -569,7 +561,8 @@ const createAiService = ({
   requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
   maxHistoryMessages = DEFAULT_MAX_HISTORY_MESSAGES,
   maxConversations = DEFAULT_MAX_CONVERSATIONS,
-  appLogService
+  appLogService,
+  idFactory = () => crypto.randomUUID()
 }) => {
   if (!settingsService) throw new Error('settingsService is required')
   if (!secretService) throw new Error('secretService is required')
@@ -577,6 +570,12 @@ const createAiService = ({
   const historyLimit = Math.max(0, Number(maxHistoryMessages) || 0)
   const conversationLimit = Math.max(0, Number(maxConversations) || 0)
   const conversationQueues = new Map()
+  const createRequestId = (value = '') => {
+    const requested = String(value || '').replace(/[\u0000-\u001F\u007F]/g, '').trim().slice(0, 120)
+    if (requested) return requested
+    const generated = String(idFactory?.() || '').replace(/[\u0000-\u001F\u007F]/g, '').trim().slice(0, 120)
+    return generated || `ai-${Date.now().toString(36)}`
+  }
 
   const getRawConfig = () => normalizeConfig(settingsService.get().ai)
   const getStoredAiState = () => (isPlainObject(settingsService.get().ai) ? settingsService.get().ai : {})
@@ -701,14 +700,60 @@ const createAiService = ({
   }
 
   const saveConfig = (partialConfig) => {
+    assertProviderConfigPayload(partialConfig, 'AI Provider')
+    const requestId = createRequestId()
+    const ownerFieldOverrides = findOwnerFieldOverrides(partialConfig, {
+      topLevel: ['apiKeyRef'],
+      nested: { vision: ['apiKeyRef'] }
+    })
+    if (ownerFieldOverrides.length) {
+      recordLog({
+        scope: 'ai-settings',
+        level: 'warn',
+        event: 'ai.settings.owner-fields.rejected',
+        message: 'AI Provider owner-controlled fields were rejected',
+        details: {
+          ...createProviderOperationDetails({
+            capability: 'chat',
+            operation: 'save-config',
+            config: getRawConfig(),
+            configSource: 'chat',
+            requestId,
+            outcome: 'rejected'
+          }),
+          fields: ownerFieldOverrides
+        }
+      })
+      throw new Error(`AI Provider owner-controlled fields cannot be changed: ${ownerFieldOverrides.join(', ')}`)
+    }
+
     const settings = settingsService.get()
     const currentAi = getStoredAiState()
-    const merged = mergeConfigWithoutDisplayDowngrade(settings.ai, partialConfig)
+    const editableConfig = {}
+    for (const field of ['enabled', 'provider', 'baseUrl', 'model', 'systemPrompt', 'memory']) {
+      if (Object.hasOwn(partialConfig, field)) editableConfig[field] = partialConfig[field]
+    }
+    const merged = {
+      ...currentAi,
+      ...editableConfig,
+      behavior: currentAi.behavior,
+      baseUrl: Object.hasOwn(editableConfig, 'baseUrl')
+        ? editableConfig.baseUrl
+        : sanitizeBaseUrlForDisplay(currentAi.baseUrl)
+    }
+    const submittedVision = isPlainObject(partialConfig.vision) ? partialConfig.vision : {}
+    const editableVision = {}
+    for (const field of ['mode', 'provider', 'baseUrl', 'model']) {
+      if (Object.hasOwn(submittedVision, field)) editableVision[field] = submittedVision[field]
+    }
     const nextVision = normalizeVisionConfig({
-      ...(currentAi.vision || {}),
-      ...(isPlainObject(partialConfig?.vision) ? partialConfig.vision : {})
+      ...(isPlainObject(currentAi.vision) ? currentAi.vision : {}),
+      ...editableVision,
+      baseUrl: Object.hasOwn(editableVision, 'baseUrl')
+        ? editableVision.baseUrl
+        : sanitizeBaseUrlForDisplay(currentAi.vision?.baseUrl)
     })
-    const nextAi = {
+    let nextAi = {
       ...normalizeConfig({
         ...merged,
         vision: nextVision
@@ -717,13 +762,43 @@ const createAiService = ({
       modelCatalog: currentAi.modelCatalog,
       visionModelCatalog: currentAi.visionModelCatalog
     }
+    const validated = validateProviderConfigInput({
+      provider: nextAi.provider,
+      baseUrl: nextAi.baseUrl,
+      model: nextAi.model,
+      label: 'AI'
+    })
+    nextAi = { ...nextAi, ...validated }
+    if (nextVision.mode === 'override') {
+      const validatedVision = validateProviderConfigInput({
+        provider: nextVision.provider,
+        baseUrl: nextVision.baseUrl,
+        model: nextVision.model,
+        label: 'Vision'
+      })
+      nextAi.vision = {
+        ...nextAi.vision,
+        ...validatedVision,
+        apiKeyRef: getCapabilitySecretRef('vision')
+      }
+    }
     settingsService.save({ ...settings, ai: nextAi })
     recordLog({
       scope: 'ai-settings',
       level: 'info',
       event: 'ai.settings.saved',
       message: 'AI provider settings saved',
-      details: getConfigLogDetails(nextAi)
+      details: {
+        ...createProviderOperationDetails({
+          capability: 'chat',
+          operation: 'save-config',
+          config: nextAi,
+          configSource: 'chat',
+          requestId,
+          outcome: 'completed'
+        }),
+        ...getConfigLogDetails(nextAi)
+      }
     })
     return getConfig()
   }
@@ -732,6 +807,7 @@ const createAiService = ({
     const apiKey = String(value || '').trim()
     if (!apiKey) throw new Error('API Key 不能为空')
     const config = getRawConfig()
+    const requestId = createRequestId()
     const updatedAt = new Date().toISOString()
     secretService.setSecret({ id: config.apiKeyRef, value: apiKey, label: 'AI API Key' })
     recordLog({
@@ -740,6 +816,14 @@ const createAiService = ({
       event: 'ai.settings.api-key.saved',
       message: 'AI provider API key saved',
       details: {
+        ...createProviderOperationDetails({
+          capability: 'chat',
+          operation: 'save-secret',
+          config,
+          configSource: 'chat',
+          requestId,
+          outcome: 'completed'
+        }),
         ...getConfigLogDetails(config),
         apiKeyRef: config.apiKeyRef,
         updatedAt
@@ -757,6 +841,7 @@ const createAiService = ({
     if (!apiKey) throw new Error('Vision API Key 不能为空')
     const config = getRawConfig()
     const visionConfig = normalizeVisionConfig(config.vision)
+    const requestId = createRequestId()
     const updatedAt = new Date().toISOString()
     secretService.setSecret({ id: visionConfig.apiKeyRef, value: apiKey, label: 'Vision API Key' })
     recordLog({
@@ -765,6 +850,14 @@ const createAiService = ({
       event: 'ai.settings.vision-api-key.saved',
       message: 'Vision provider API key saved',
       details: {
+        ...createProviderOperationDetails({
+          capability: 'vision',
+          operation: 'save-secret',
+          config: visionConfig,
+          configSource: 'vision-override',
+          requestId,
+          outcome: 'completed'
+        }),
         provider: visionConfig.provider,
         model: visionConfig.model,
         endpoint: normalizeEndpointForLog(visionConfig.baseUrl),
@@ -782,6 +875,7 @@ const createAiService = ({
   const clearVisionApiKey = () => {
     const config = getRawConfig()
     const visionConfig = normalizeVisionConfig(config.vision)
+    const requestId = createRequestId()
     secretService.deleteSecret?.(visionConfig.apiKeyRef)
     recordLog({
       scope: 'ai-settings',
@@ -789,6 +883,14 @@ const createAiService = ({
       event: 'ai.settings.vision-api-key.cleared',
       message: 'Vision provider API key cleared',
       details: {
+        ...createProviderOperationDetails({
+          capability: 'vision',
+          operation: 'clear-secret',
+          config: visionConfig,
+          configSource: 'vision-override',
+          requestId,
+          outcome: 'completed'
+        }),
         provider: visionConfig.provider,
         model: visionConfig.model,
         endpoint: normalizeEndpointForLog(visionConfig.baseUrl),
@@ -842,14 +944,26 @@ const createAiService = ({
     return []
   }
 
-  const complete = async ({ messages, tools = [], configOverride = null, signal = null } = {}) => {
-    const config = normalizeCompletionConfig(configOverride || getRawConfig())
+  const completeWithConfig = async ({
+    messages,
+    tools = [],
+    resolvedConfig,
+    capability,
+    configSource,
+    requestId,
+    signal = null
+  } = {}) => {
+    const config = normalizeCompletionConfig(resolvedConfig)
     const apiKey = secretService.getSecretValue(config.apiKeyRef)
     const startedAt = Date.now()
     const baseDetails = {
-      configSource: configOverride ? 'override' : 'chat',
-      provider: config.provider,
-      model: config.model,
+      ...createProviderOperationDetails({
+        capability,
+        operation: 'complete',
+        config,
+        configSource,
+        requestId
+      }),
       endpoint: normalizeEndpointForLog(config.baseUrl),
       messagesCount: Array.isArray(messages) ? messages.length : 0,
       toolsCount: Array.isArray(tools) ? tools.length : 0,
@@ -860,26 +974,24 @@ const createAiService = ({
       level: 'info',
       event: 'ai.provider.request.started',
       message: 'AI provider request started',
-      details: baseDetails
+      details: { ...baseDetails, outcome: 'started' }
     })
     let response
     let linkedSignal = null
     try {
+      const runtimeConfig = resolveRuntimeProviderConfig(config, capability === 'vision' ? 'Vision' : 'AI')
       if (!apiKey) throw new Error('AI API key is not configured')
-      if (config.provider !== 'openai-compatible') {
-        throw new Error(`Unsupported AI provider: ${config.provider}`)
-      }
       if (typeof fetchImpl !== 'function') throw new Error('fetch is not available')
 
       linkedSignal = createLinkedAbortSignal(signal, requestTimeoutMs)
       const body = {
-        model: config.model,
+        model: runtimeConfig.model,
         messages
       }
       if (tools.length) body.tools = tools
 
       try {
-        response = await fetchImpl(`${config.baseUrl}/chat/completions`, {
+        response = await fetchImpl(`${runtimeConfig.baseUrl}/chat/completions`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${apiKey}`,
@@ -893,7 +1005,12 @@ const createAiService = ({
           if (linkedSignal?.isTimeout?.()) throw createTimeoutError()
           throw error
         }
-        throw error
+        const safeError = new Error('AI provider request failed')
+        Object.defineProperty(safeError, 'diagnosticMessage', {
+          value: sanitizeDiagnosticText(error?.message || error),
+          enumerable: false
+        })
+        throw safeError
       } finally {
         linkedSignal?.clear()
       }
@@ -913,7 +1030,9 @@ const createAiService = ({
         message: 'AI provider request completed',
         details: {
           ...baseDetails,
+          outcome: 'completed',
           status: response.status,
+          durationMs: Date.now() - startedAt,
           elapsedMs: Date.now() - startedAt,
           replyChars: String(result.reply || '').length,
           hasBehaviorIntent: Boolean(result.behaviorIntent)
@@ -930,22 +1049,95 @@ const createAiService = ({
         message: 'AI provider request failed',
         details: {
           ...baseDetails,
+          outcome: 'failed',
           status: error?.providerStatus || response?.status || 0,
           providerCode: error?.providerCode || '',
+          durationMs: Date.now() - startedAt,
           elapsedMs: Date.now() - startedAt,
           errorName: sanitizeDiagnosticText(error?.name || 'Error'),
           errorMessage: error?.providerStatus
             ? 'AI provider returned an error response'
-            : sanitizeDiagnosticText(error?.message)
+            : sanitizeDiagnosticText(error?.diagnosticMessage || error?.message)
         }
       })
       throw error
     }
   }
 
-  const streamComplete = async ({ messages, tools = [], configOverride = null, requestId = '', signal = null, onDelta = null } = {}) => {
+  const complete = async (request = {}) => {
+    const requestId = createRequestId(request?.requestId)
+    if (Object.hasOwn(request, 'configOverride')) {
+      recordLog({
+        level: 'warn',
+        event: 'ai.provider.owner-fields.rejected',
+        message: 'AI Provider owner-controlled completion config was rejected',
+        details: {
+          ...createProviderOperationDetails({
+            capability: 'chat',
+            operation: 'complete',
+            config: getRawConfig(),
+            configSource: 'chat',
+            requestId,
+            outcome: 'rejected'
+          }),
+          fields: ['configOverride']
+        }
+      })
+      throw new Error('AI Provider owner-controlled configOverride cannot be supplied by consumers')
+    }
+    return completeWithConfig({
+      messages: request.messages,
+      tools: request.tools,
+      signal: request.signal,
+      resolvedConfig: getRawConfig(),
+      capability: 'chat',
+      configSource: 'chat',
+      requestId
+    })
+  }
+
+  const completeVision = async ({ messages, tools = [], requestId = '', signal = null } = {}) => {
+    const visionConfig = getEffectiveVisionConfig()
+    return completeWithConfig({
+      messages,
+      tools,
+      signal,
+      resolvedConfig: visionConfig,
+      capability: 'vision',
+      configSource: visionConfig.mode === 'override' ? 'vision-override' : 'vision-follow-chat',
+      requestId: createRequestId(requestId)
+    })
+  }
+
+  const streamComplete = async (request = {}) => {
+    const safeRequestId = createRequestId(request?.requestId)
+    if (Object.hasOwn(request, 'configOverride')) {
+      recordLog({
+        level: 'warn',
+        event: 'ai.provider.owner-fields.rejected',
+        message: 'AI Provider owner-controlled stream config was rejected',
+        details: {
+          ...createProviderOperationDetails({
+            capability: 'chat',
+            operation: 'stream',
+            config: getRawConfig(),
+            configSource: 'chat',
+            requestId: safeRequestId,
+            outcome: 'rejected'
+          }),
+          fields: ['configOverride']
+        }
+      })
+      throw new Error('AI Provider owner-controlled configOverride cannot be supplied by consumers')
+    }
+    const {
+      messages,
+      tools = [],
+      signal = null,
+      onDelta = null
+    } = request
     if (Array.isArray(tools) && tools.length) {
-      const result = await complete({ messages, tools, configOverride, signal })
+      const result = await complete({ messages, tools, requestId: safeRequestId, signal })
       return {
         ...result,
         streaming: false,
@@ -956,14 +1148,19 @@ const createAiService = ({
       }
     }
 
-    const config = normalizeCompletionConfig(configOverride || getRawConfig())
+    const config = normalizeCompletionConfig(getRawConfig())
     const apiKey = secretService.getSecretValue(config.apiKeyRef)
     const startedAt = Date.now()
+    const capability = 'chat'
+    const configSource = 'chat'
     const baseDetails = {
-      requestId: typeof requestId === 'string' ? requestId.trim().slice(0, 120) : '',
-      configSource: configOverride ? 'override' : 'chat',
-      provider: config.provider,
-      model: config.model,
+      ...createProviderOperationDetails({
+        capability,
+        operation: 'stream',
+        config,
+        configSource,
+        requestId: safeRequestId
+      }),
       endpoint: normalizeEndpointForLog(config.baseUrl),
       messagesCount: Array.isArray(messages) ? messages.length : 0,
       toolsCount: Array.isArray(tools) ? tools.length : 0,
@@ -974,7 +1171,7 @@ const createAiService = ({
       level: 'info',
       event: 'ai.provider.stream.started',
       message: 'AI provider stream started',
-      details: baseDetails
+      details: { ...baseDetails, outcome: 'started' }
     })
 
     let response
@@ -983,26 +1180,34 @@ const createAiService = ({
     let chunkCount = 0
     let finishReason = ''
     try {
+      const runtimeConfig = resolveRuntimeProviderConfig(config, 'AI')
       if (!apiKey) throw new Error('AI API key is not configured')
-      if (config.provider !== 'openai-compatible') {
-        throw new Error(`Unsupported AI provider: ${config.provider}`)
-      }
       if (typeof fetchImpl !== 'function') throw new Error('fetch is not available')
 
       linkedSignal = createLinkedAbortSignal(signal, requestTimeoutMs)
-      response = await fetchImpl(`${config.baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        signal: linkedSignal.signal,
-        body: JSON.stringify({
-          model: config.model,
-          messages,
-          stream: true
+      try {
+        response = await fetchImpl(`${runtimeConfig.baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          signal: linkedSignal.signal,
+          body: JSON.stringify({
+            model: runtimeConfig.model,
+            messages,
+            stream: true
+          })
         })
-      })
+      } catch (error) {
+        if (error?.name === 'AbortError') throw error
+        const safeError = new Error('AI provider stream failed')
+        Object.defineProperty(safeError, 'diagnosticMessage', {
+          value: sanitizeDiagnosticText(error?.message || error),
+          enumerable: false
+        })
+        throw safeError
+      }
 
       if (!response.ok) {
         const data = await response.json?.().catch(() => ({}))
@@ -1019,7 +1224,7 @@ const createAiService = ({
         })) {
           linkedSignal.clear()
           linkedSignal = null
-          const fallbackResult = await complete({ messages, tools, configOverride, signal })
+          const fallbackResult = await complete({ messages, tools, requestId: safeRequestId, signal })
           return {
             ...fallbackResult,
             streaming: false,
@@ -1071,7 +1276,9 @@ const createAiService = ({
         message: 'AI provider stream completed',
         details: {
           ...baseDetails,
+          outcome: 'completed',
           status: response.status,
+          durationMs: Date.now() - startedAt,
           elapsedMs: Date.now() - startedAt,
           chunkCount,
           replyChars: reply.length,
@@ -1098,15 +1305,17 @@ const createAiService = ({
         message: 'AI provider stream failed',
         details: {
           ...baseDetails,
+          outcome: 'failed',
           status: reportedError?.providerStatus || response?.status || 0,
           providerCode: reportedError?.providerCode || '',
+          durationMs: Date.now() - startedAt,
           elapsedMs: Date.now() - startedAt,
           chunkCount,
           partialReplyChars: reply.length,
           errorName: sanitizeDiagnosticText(reportedError?.name || 'Error'),
           errorMessage: reportedError?.providerStatus
             ? 'AI provider returned an error response'
-            : sanitizeDiagnosticText(reportedError?.message)
+            : sanitizeDiagnosticText(reportedError?.diagnosticMessage || reportedError?.message)
         }
       })
       throw reportedError
@@ -1143,6 +1352,7 @@ const createAiService = ({
     const apiKey = secretService.getSecretValue(config.apiKeyRef)
     const hasApiKey = Boolean(apiKey)
     const startedAt = Date.now()
+    const requestId = createRequestId()
     const baseResult = {
       provider: config.provider,
       baseUrl: sanitizeBaseUrlForDisplay(config.baseUrl),
@@ -1154,10 +1364,21 @@ const createAiService = ({
       level: 'info',
       event: 'ai.settings.connection-test.started',
       message: 'AI provider connection test started',
-      details: baseResult
+      details: {
+        ...createProviderOperationDetails({
+          capability: 'chat',
+          operation: 'connection-test',
+          config,
+          configSource: 'chat',
+          requestId,
+          outcome: 'started'
+        }),
+        ...baseResult
+      }
     })
     try {
       const result = await complete({
+        requestId,
         messages: [
           { role: 'user', content: 'Reply with ok.' }
         ]
@@ -1186,7 +1407,16 @@ const createAiService = ({
         event: 'ai.settings.connection-test.completed',
         message: 'AI provider connection test completed',
         details: {
+          ...createProviderOperationDetails({
+            capability: 'chat',
+            operation: 'connection-test',
+            config,
+            configSource: 'chat',
+            requestId,
+            outcome: 'completed'
+          }),
           ...baseResult,
+          durationMs: response.elapsedMs,
           elapsedMs: response.elapsedMs,
           replyChars: response.reply.length,
           modelsProbe: response.modelsProbe || 'failed',
@@ -1209,7 +1439,16 @@ const createAiService = ({
         event: 'ai.settings.connection-test.failed',
         message: 'AI provider connection test failed',
         details: {
+          ...createProviderOperationDetails({
+            capability: 'chat',
+            operation: 'connection-test',
+            config,
+            configSource: 'chat',
+            requestId,
+            outcome: 'failed'
+          }),
           ...baseResult,
+          durationMs: response.elapsedMs,
           elapsedMs: response.elapsedMs,
           status: error?.providerStatus || 0,
           providerCode: error?.providerCode || '',
@@ -1222,9 +1461,11 @@ const createAiService = ({
   }
 
   const discoverModels = async () => {
-    const config = getRawConfig()
-    const apiKey = secretService.getSecretValue(config.apiKeyRef)
+    const storedConfig = getRawConfig()
+    let config = storedConfig
+    const apiKey = secretService.getSecretValue(storedConfig.apiKeyRef)
     const startedAt = Date.now()
+    const requestId = createRequestId()
     const baseResult = {
       provider: config.provider,
       baseUrl: sanitizeBaseUrlForDisplay(config.baseUrl),
@@ -1236,36 +1477,52 @@ const createAiService = ({
       level: 'info',
       event: 'ai.settings.model-discovery.started',
       message: 'AI provider model discovery started',
-      details: baseResult
+      details: {
+        ...createProviderOperationDetails({
+          capability: 'chat',
+          operation: 'discover-models',
+          config,
+          configSource: 'chat',
+          requestId,
+          outcome: 'started'
+        }),
+        ...baseResult
+      }
     })
     let response
+    let discoveryResult = null
+    const completeDiscovery = (result) => {
+      discoveryResult = result
+      return result
+    }
     try {
+      config = resolveRuntimeProviderConfig(storedConfig, 'AI')
       if (!apiKey) {
-        return {
+        return completeDiscovery({
           ok: false,
           ...baseResult,
           models: [],
           code: 'missing_api_key',
           message: 'AI API key is not configured'
-        }
+        })
       }
       if (config.provider !== 'openai-compatible') {
-        return {
+        return completeDiscovery({
           ok: false,
           ...baseResult,
           models: [],
           code: 'unsupported_provider',
           message: 'Unsupported AI provider'
-        }
+        })
       }
       if (typeof fetchImpl !== 'function') {
-        return {
+        return completeDiscovery({
           ok: false,
           ...baseResult,
           models: [],
           code: 'fetch_unavailable',
           message: 'Fetch is not available'
-        }
+        })
       }
 
       const timeout = createTimeoutController(requestTimeoutMs)
@@ -1292,13 +1549,13 @@ const createAiService = ({
       const body = await response.json().catch(() => ({}))
       if (!response.ok) {
         if (isOptionalModelsProbeStatus(response.status)) {
-          return {
+          return completeDiscovery({
             ok: true,
             ...baseResult,
             models: [],
             code: 'provider_reachable_models_unavailable',
             message: 'AI provider is reachable, but the optional /models probe is unavailable'
-          }
+          })
         }
         throw createProviderError({
           message: body?.error?.message || `AI provider request failed with status ${response.status}`,
@@ -1309,32 +1566,45 @@ const createAiService = ({
 
       const discoveredModels = extractDiscoveredModelIds(body)
       persistModelCatalog(config, discoveredModels)
-      return {
+      return completeDiscovery({
         ok: true,
         ...baseResult,
         models: discoveredModels,
         code: 'ok',
         message: 'AI provider model discovery succeeded'
-      }
+      })
     } catch (error) {
       const classified = classifyConnectionError(error)
-      return {
+      return completeDiscovery({
         ok: false,
         ...baseResult,
         models: [],
         code: classified.code,
         message: classified.message
-      }
+      })
     } finally {
+      const succeeded = discoveryResult?.ok === true
       recordLog({
         scope: 'ai-settings',
-        level: 'info',
-        event: 'ai.settings.model-discovery.completed',
-        message: 'AI provider model discovery completed',
+        level: succeeded ? 'info' : 'error',
+        event: succeeded ? 'ai.settings.model-discovery.completed' : 'ai.settings.model-discovery.failed',
+        message: succeeded ? 'AI provider model discovery completed' : 'AI provider model discovery failed',
         details: {
+          ...createProviderOperationDetails({
+            capability: 'chat',
+            operation: 'discover-models',
+            config,
+            configSource: 'chat',
+            requestId,
+            outcome: succeeded ? 'completed' : 'failed'
+          }),
           ...baseResult,
+          durationMs: Date.now() - startedAt,
           elapsedMs: Date.now() - startedAt,
-          status: response?.status || 0
+          status: response?.status || 0,
+          modelCount: Array.isArray(discoveryResult?.models) ? discoveryResult.models.length : 0,
+          errorCode: succeeded ? '' : String(discoveryResult?.code || 'model_discovery_error'),
+          errorMessage: succeeded ? '' : sanitizeDiagnosticText(discoveryResult?.message || 'AI provider model discovery failed')
         }
       })
     }
@@ -1342,8 +1612,13 @@ const createAiService = ({
 
   const discoverVisionModels = async () => {
     const config = getRawConfig()
-    const visionConfig = normalizeVisionConfig(config.vision)
-    const requestId = `vision-models-${Date.now()}`
+    const storedState = getStoredAiState()
+    const storedVisionConfig = normalizeVisionConfig(config.vision)
+    const storedEffectiveVisionConfig = buildEffectiveVisionConfig({ config, secretService, storedState })
+    let visionConfig = storedEffectiveVisionConfig
+    const followsChat = storedVisionConfig.mode !== 'override'
+    const configSource = followsChat ? 'vision-follow-chat' : 'vision-override'
+    const requestId = createRequestId()
     const startedAt = Date.now()
     const baseResult = {
       provider: visionConfig.provider,
@@ -1356,95 +1631,129 @@ const createAiService = ({
       event: 'ai.vision-models.started',
       message: 'Vision provider model discovery started',
       details: {
+        ...createProviderOperationDetails({
+          capability: 'vision',
+          operation: 'discover-models',
+          config: visionConfig,
+          configSource,
+          requestId,
+          outcome: 'started'
+        }),
         requestId,
         provider: visionConfig.provider,
         model: visionConfig.model,
         endpoint: normalizeEndpointForLog(visionConfig.baseUrl)
       }
     })
+    const completeDiscovery = (result, { level = result.ok ? 'info' : 'error', status = 0 } = {}) => {
+      recordLog({
+        level,
+        event: result.ok ? 'ai.vision-models.completed' : 'ai.vision-models.failed',
+        message: result.ok ? 'Vision provider model discovery completed' : 'Vision provider model discovery failed',
+        details: {
+          ...createProviderOperationDetails({
+            capability: 'vision',
+            operation: 'discover-models',
+            config: visionConfig,
+            configSource,
+            requestId,
+            outcome: result.ok ? 'completed' : 'failed'
+          }),
+          durationMs: Date.now() - startedAt,
+          status,
+          modelCount: Array.isArray(result.models) ? result.models.length : 0,
+          errorCode: result.ok ? '' : result.code,
+          errorMessage: result.ok ? '' : sanitizeDiagnosticText(result.message)
+        }
+      })
+      return result
+    }
     try {
+      visionConfig = resolveRuntimeProviderConfig(storedEffectiveVisionConfig, 'Vision')
       const apiKey = secretService.getSecretValue(visionConfig.apiKeyRef)
       if (!apiKey) {
-        return {
+        return completeDiscovery({
           ok: false,
           ...baseResult,
           models: [],
           code: 'missing_api_key',
           message: 'Vision API key is not configured'
-        }
+        })
       }
       if (visionConfig.provider !== 'openai-compatible') {
-        return {
+        return completeDiscovery({
           ok: false,
           ...baseResult,
           models: [],
           code: 'unsupported_provider',
           message: 'Unsupported vision provider'
-        }
+        })
       }
-      const response = await fetchImpl(`${visionConfig.baseUrl}/models`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        }
-      })
+      if (typeof fetchImpl !== 'function') {
+        return completeDiscovery({
+          ok: false,
+          ...baseResult,
+          models: [],
+          code: 'fetch_unavailable',
+          message: 'Fetch is not available'
+        })
+      }
+      const timeout = createTimeoutController(requestTimeoutMs)
+      let response
+      try {
+        response = await fetchImpl(`${visionConfig.baseUrl}/models`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          signal: timeout.signal
+        })
+      } catch (error) {
+        if (error?.name === 'AbortError') throw createTimeoutError()
+        throw error
+      } finally {
+        timeout.clear()
+      }
       const status = response?.status || 'error'
       const body = response?.json ? await response.json().catch(() => ({})) : {}
       if (!response?.ok) {
         if (isOptionalModelsProbeStatus(status)) {
-          return {
+          return completeDiscovery({
             ok: true,
             ...baseResult,
             models: [],
             code: 'provider_reachable_models_unavailable',
             message: 'Vision provider is reachable, but the optional /models probe is unavailable'
-          }
+          }, { status })
         }
-        return {
+        return completeDiscovery({
           ok: false,
           ...baseResult,
           models: [],
           code: 'provider_http_error',
           message: `Vision provider request failed with status ${status}`
-        }
+        }, { status })
       }
       const discoveredModels = extractDiscoveredModelIds(body)
-      persistVisionModelCatalog(visionConfig, discoveredModels)
-      recordLog({
-        level: 'info',
-        event: 'ai.vision-models.completed',
-        message: 'Vision provider model discovery completed',
-        details: {
-          requestId,
-          provider: visionConfig.provider,
-          model: visionConfig.model,
-          durationMs: Date.now() - startedAt,
-          modelCount: discoveredModels.length
-        }
-      })
-      return {
+      if (followsChat) persistModelCatalog(visionConfig, discoveredModels)
+      else persistVisionModelCatalog(visionConfig, discoveredModels)
+      return completeDiscovery({
         ok: true,
         ...baseResult,
         models: discoveredModels,
         code: 'ok',
         message: 'Vision provider model discovery succeeded'
-      }
+      }, { status })
     } catch (error) {
-      recordLog({
-        level: 'error',
-        event: 'ai.vision-models.failed',
-        message: 'Vision provider model discovery failed',
-        details: {
-          requestId,
-          provider: visionConfig.provider,
-          model: visionConfig.model,
-          durationMs: Date.now() - startedAt,
-          errorCode: 'vision_model_discovery_error',
-          errorMessage: sanitizeDiagnosticText(error?.message || error)
-        }
+      const classified = classifyConnectionError(error)
+      return completeDiscovery({
+        ok: false,
+        ...baseResult,
+        models: [],
+        code: classified.code,
+        message: classified.message
       })
-      throw error
     }
   }
 
@@ -1459,6 +1768,7 @@ const createAiService = ({
     clearConversation,
     chat,
     complete,
+    completeVision,
     streamComplete,
     testConnection,
     discoverModels,

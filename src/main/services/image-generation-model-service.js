@@ -7,12 +7,21 @@ const {
   getScopedProviderModelCatalog,
   uniqueModelIds
 } = require('./provider-model-catalog')
+const {
+  assertProviderConfigPayload,
+  assertProviderBaseUrl,
+  createProviderOperationDetails,
+  findOwnerFieldOverrides,
+  getCapabilitySecretRef,
+  sanitizeProviderBaseUrlForDisplay,
+  validateProviderConfigInput
+} = require('./provider-owner-policy')
 
 const DEFAULT_CONFIG = {
   provider: 'openai-compatible',
   baseUrl: 'https://api.openai.com/v1',
   model: 'gpt-image-2',
-  apiKeyRef: 'secret:model.image.openai.apiKey',
+  apiKeyRef: getCapabilitySecretRef('image'),
   organization: '',
   project: '',
   timeoutMs: 120000,
@@ -25,12 +34,6 @@ const isPlainObject = (value) => value && typeof value === 'object' && !Array.is
 
 const normalizeBaseUrl = (value, fallback) => String(value || fallback || '').trim().replace(/\/+$/, '')
 
-const normalizeImageApiKeyRef = (value, fallback = DEFAULT_CONFIG.apiKeyRef) => {
-  const candidate = String(value || '').trim()
-  if (/^secret:model\.image\.[A-Za-z0-9._:-]+$/.test(candidate)) return candidate
-  return fallback
-}
-
 const hasLegacyProviderConfig = (config = {}) => (
   Object.hasOwn(config, 'defaultBackend') ||
   isPlainObject(config.cloud) ||
@@ -41,7 +44,6 @@ const flatConfigLooksDefault = (config = {}) => (
   String(config?.provider || DEFAULT_CONFIG.provider).trim() === DEFAULT_CONFIG.provider &&
   normalizeBaseUrl(config?.baseUrl, DEFAULT_CONFIG.baseUrl) === DEFAULT_CONFIG.baseUrl &&
   String(config?.model || DEFAULT_CONFIG.model).trim() === DEFAULT_CONFIG.model &&
-  normalizeImageApiKeyRef(config?.apiKeyRef) === DEFAULT_CONFIG.apiKeyRef &&
   Number(config?.timeoutMs ?? DEFAULT_CONFIG.timeoutMs) === DEFAULT_CONFIG.timeoutMs &&
   Number(config?.maxConcurrentJobs ?? DEFAULT_CONFIG.maxConcurrentJobs) === DEFAULT_CONFIG.maxConcurrentJobs
 )
@@ -55,7 +57,6 @@ const pickLegacyProviderConfig = (config = {}) => {
       provider: legacyLocal.provider || 'openai-compatible',
       baseUrl: legacyLocal.baseUrl || legacyLocal.endpoint || DEFAULT_CONFIG.baseUrl,
       model: legacyLocal.model || DEFAULT_CONFIG.model,
-      apiKeyRef: normalizeImageApiKeyRef(legacyLocal.apiKeyRef || legacyCloud.apiKeyRef),
       organization: legacyLocal.organization || legacyCloud.organization || '',
       project: legacyLocal.project || legacyCloud.project || '',
       timeoutMs: legacyLocal.timeoutMs,
@@ -66,7 +67,6 @@ const pickLegacyProviderConfig = (config = {}) => {
     provider: legacyCloud.provider || 'openai-compatible',
     baseUrl: legacyCloud.baseUrl || DEFAULT_CONFIG.baseUrl,
     model: legacyCloud.model || DEFAULT_CONFIG.model,
-    apiKeyRef: normalizeImageApiKeyRef(legacyCloud.apiKeyRef),
     organization: legacyCloud.organization || '',
     project: legacyCloud.project || '',
     timeoutMs: legacyCloud.timeoutMs || config.timeoutMs,
@@ -82,21 +82,12 @@ const normalizeConfig = (config = {}) => {
     provider: String(preferLegacy ? legacy.provider : (config?.provider || legacy.provider || DEFAULT_CONFIG.provider)).trim() || DEFAULT_CONFIG.provider,
     baseUrl: normalizeBaseUrl(preferLegacy ? legacy.baseUrl : (config?.baseUrl || legacy.baseUrl), DEFAULT_CONFIG.baseUrl),
     model: String(preferLegacy ? legacy.model : (config?.model || legacy.model || DEFAULT_CONFIG.model)).trim() || DEFAULT_CONFIG.model,
-    apiKeyRef: normalizeImageApiKeyRef(preferLegacy ? legacy.apiKeyRef : (config?.apiKeyRef || legacy.apiKeyRef)),
+    apiKeyRef: DEFAULT_CONFIG.apiKeyRef,
     organization: String(config?.organization || legacy.organization || '').trim(),
     project: String(config?.project || legacy.project || '').trim(),
     timeoutMs: Math.max(1000, Number(preferLegacy ? legacy.timeoutMs : (config?.timeoutMs ?? legacy.timeoutMs ?? DEFAULT_CONFIG.timeoutMs)) || DEFAULT_CONFIG.timeoutMs),
     maxConcurrentJobs: Math.max(1, Number(preferLegacy ? legacy.maxConcurrentJobs : (config?.maxConcurrentJobs ?? legacy.maxConcurrentJobs ?? DEFAULT_CONFIG.maxConcurrentJobs)) || DEFAULT_CONFIG.maxConcurrentJobs)
   }
-}
-
-const withRuntimeModelOverride = (config = {}, overrideModel = '') => {
-  const normalizedModel = String(overrideModel || '').trim()
-  if (!normalizedModel) return config
-  return normalizeConfig({
-    ...config,
-    model: normalizedModel
-  })
 }
 
 const toPersistedConfig = (config = {}) => {
@@ -113,29 +104,22 @@ const toPersistedConfig = (config = {}) => {
   }
 }
 
+const resolveImageRuntimeConfig = (config = {}) => ({
+  ...config,
+  ...validateProviderConfigInput({
+    provider: config.provider,
+    baseUrl: config.baseUrl,
+    model: config.model,
+    label: 'Image',
+    allowedProviders: ['openai-compatible', 'openai']
+  }),
+  apiKeyRef: DEFAULT_CONFIG.apiKeyRef
+})
+
 const maskSecret = (value) => {
   const text = String(value || '').trim()
   if (!text) return ''
   return `••••${text.slice(-4)}`
-}
-
-const assertProviderBaseUrl = (value) => {
-  let parsed
-  try {
-    parsed = new URL(String(value || ''))
-  } catch (_) {
-    throw new Error('Image Provider Base URL must be a valid URL')
-  }
-  if (!['http:', 'https:'].includes(parsed.protocol)) {
-    throw new Error('Image Provider Base URL must use HTTP or HTTPS')
-  }
-  if (parsed.username || parsed.password) {
-    throw new Error('Image Provider Base URL must not include credentials')
-  }
-  if (parsed.search || parsed.hash) {
-    throw new Error('Image Provider Base URL must not include query or hash')
-  }
-  return parsed.toString().replace(/\/+$/, '')
 }
 
 const ensureInsideDataDir = ({ dataDir, dataRelativeDir }) => {
@@ -240,15 +224,6 @@ const fetchWithTimeout = async ({
 const getUrlHost = (value) => {
   try {
     return new URL(String(value || '')).host
-  } catch (_) {
-    return ''
-  }
-}
-
-const getErrorMessage = async (response) => {
-  try {
-    const body = await response?.json?.()
-    return String(body?.error?.message || body?.message || '').slice(0, 240)
   } catch (_) {
     return ''
   }
@@ -578,6 +553,7 @@ const createImageGenerationModelService = ({
     const secretValue = secretService.getSecretValue(config.apiKeyRef)
     return {
       ...config,
+      baseUrl: sanitizeProviderBaseUrlForDisplay(config.baseUrl),
       hasApiKey: Boolean(secretValue),
       apiKeyPreview: maskSecret(secretValue),
       apiKeyLabel: 'Image API Key',
@@ -585,12 +561,47 @@ const createImageGenerationModelService = ({
     }
   }
 
-  const saveConfig = (partialConfig = {}) => {
+  const saveConfig = (partialConfig) => {
+    assertProviderConfigPayload(partialConfig, 'Image Provider')
     const current = getStoredConfig()
+    const requestId = idFactory()
     const currentState = getStoredImageGenerationState()
+    const ownerFieldOverrides = Object.hasOwn(partialConfig, 'apiKeyRef') && partialConfig.apiKeyRef !== current.apiKeyRef
+      ? ['apiKeyRef']
+      : []
+    if (ownerFieldOverrides.length) {
+      recordLog({
+        scope: 'image-generation-settings',
+        level: 'warn',
+        event: 'imageGeneration.settings.owner-fields.rejected',
+        message: 'Image Provider owner-controlled config fields were rejected',
+        details: {
+          ...createProviderOperationDetails({
+            capability: 'image',
+            operation: 'save-config',
+            config: current,
+            configSource: 'image',
+            requestId,
+            outcome: 'rejected'
+          }),
+          fields: ownerFieldOverrides
+        }
+      })
+      throw new Error(`Image Provider owner-controlled fields cannot be changed: ${ownerFieldOverrides.join(', ')}`)
+    }
+    const validated = validateProviderConfigInput({
+      provider: Object.hasOwn(partialConfig, 'provider') ? partialConfig.provider : current.provider,
+      baseUrl: Object.hasOwn(partialConfig, 'baseUrl')
+        ? partialConfig.baseUrl
+        : sanitizeProviderBaseUrlForDisplay(current.baseUrl),
+      model: Object.hasOwn(partialConfig, 'model') ? partialConfig.model : current.model,
+      label: 'Image',
+      allowedProviders: ['openai-compatible', 'openai']
+    })
     const next = toPersistedConfig({
       ...current,
       ...(isPlainObject(partialConfig) ? partialConfig : {}),
+      ...validated,
       apiKeyRef: current.apiKeyRef
     })
     next.modelCatalog = currentState.modelCatalog
@@ -601,13 +612,24 @@ const createImageGenerationModelService = ({
       level: 'info',
       event: 'imageGeneration.settings.saved',
       message: 'Image Provider settings saved',
-      details: getConfigLogDetails(next)
+      details: {
+        ...createProviderOperationDetails({
+          capability: 'image',
+          operation: 'save-config',
+          config: next,
+          configSource: 'image',
+          requestId,
+          outcome: 'completed'
+        }),
+        ...getConfigLogDetails(next)
+      }
     })
     return getConfig()
   }
 
   const saveProviderApiKey = (apiKey) => {
     const config = getStoredConfig()
+    const requestId = idFactory()
     secretService.setSecret({
       id: config.apiKeyRef,
       value: String(apiKey || ''),
@@ -619,6 +641,14 @@ const createImageGenerationModelService = ({
       event: 'imageGeneration.settings.api-key.saved',
       message: 'Image Provider API key saved',
       details: {
+        ...createProviderOperationDetails({
+          capability: 'image',
+          operation: 'save-secret',
+          config,
+          configSource: 'image',
+          requestId,
+          outcome: 'completed'
+        }),
         ...getConfigLogDetails(config),
         apiKeyRef: config.apiKeyRef
       }
@@ -633,6 +663,7 @@ const createImageGenerationModelService = ({
 
   const clearProviderApiKey = () => {
     const config = getStoredConfig()
+    const requestId = idFactory()
     secretService.deleteSecret(config.apiKeyRef)
     recordLog({
       scope: 'image-generation-settings',
@@ -640,6 +671,14 @@ const createImageGenerationModelService = ({
       event: 'imageGeneration.settings.api-key.cleared',
       message: 'Image Provider API key cleared',
       details: {
+        ...createProviderOperationDetails({
+          capability: 'image',
+          operation: 'clear-secret',
+          config,
+          configSource: 'image',
+          requestId,
+          outcome: 'completed'
+        }),
         ...getConfigLogDetails(config),
         apiKeyRef: config.apiKeyRef
       }
@@ -653,6 +692,7 @@ const createImageGenerationModelService = ({
 
   const checkHealth = async (options = {}) => {
     const config = getStoredConfig()
+    let runtimeConfig = config
     const requestId = idFactory()
     const startedMs = nowMs()
     const timeoutMs = normalizeTimeoutMs(options?.timeoutMs, getProviderTimeoutMs(config))
@@ -661,6 +701,14 @@ const createImageGenerationModelService = ({
       event: 'imageGeneration.health.started',
       message: 'Image Provider health check started',
       details: {
+        ...createProviderOperationDetails({
+          capability: 'image',
+          operation: 'health-check',
+          config,
+          configSource: 'image',
+          requestId,
+          outcome: 'started'
+        }),
         requestId,
         provider: config.provider,
         model: config.model,
@@ -675,9 +723,17 @@ const createImageGenerationModelService = ({
         event: result.ok ? 'imageGeneration.health.completed' : 'imageGeneration.health.failed',
         message: result.ok ? 'Image Provider health check completed' : 'Image Provider health check failed',
         details: {
+          ...createProviderOperationDetails({
+            capability: 'image',
+            operation: 'health-check',
+            config: runtimeConfig,
+            configSource: 'image',
+            requestId,
+            outcome: result.ok ? 'completed' : 'failed'
+          }),
           requestId,
-          provider: config.provider,
-          model: config.model,
+          provider: runtimeConfig.provider,
+          model: runtimeConfig.model,
           baseUrlHost: getUrlHost(config.baseUrl),
           durationMs: nowMs() - startedMs,
           errorCode: result.ok ? '' : result.code,
@@ -689,8 +745,9 @@ const createImageGenerationModelService = ({
     }
 
     try {
-      const baseUrl = assertProviderBaseUrl(config.baseUrl)
-      const apiKey = secretService.getSecretValue(config.apiKeyRef)
+      runtimeConfig = resolveImageRuntimeConfig(config)
+      const baseUrl = assertProviderBaseUrl(runtimeConfig.baseUrl, 'Image Provider')
+      const apiKey = secretService.getSecretValue(runtimeConfig.apiKeyRef)
       if (!apiKey) {
         return completeHealth({ ok: false, provider: config.provider, code: 'missing_api_key', message: 'Image generation API key is missing' })
       }
@@ -740,7 +797,7 @@ const createImageGenerationModelService = ({
         body = await response.json()
       } catch (_) {}
       const availableModels = extractDiscoveredModels(body)
-      persistModelCatalog(config, availableModels)
+      persistModelCatalog(runtimeConfig, availableModels)
       return completeHealth(
         {
           ok: true,
@@ -754,7 +811,7 @@ const createImageGenerationModelService = ({
         { status, modelsProbe: 'ok', discoveredModelCount: availableModels.length }
       )
     } catch (error) {
-      const errorMessage = String(error?.message || error).slice(0, 240)
+      const errorMessage = sanitizeLogText(error?.message || error, { maxChars: 240 })
       const isTimeout = /health check timed out/i.test(errorMessage)
       return completeHealth(
         {
@@ -776,18 +833,30 @@ const createImageGenerationModelService = ({
 
   const discoverModels = async () => {
     const config = getStoredConfig()
+    let runtimeConfig = config
     const requestId = idFactory()
     const startedMs = nowMs()
-    const baseUrl = assertProviderBaseUrl(config.baseUrl)
+    let baseUrl = sanitizeProviderBaseUrlForDisplay(config.baseUrl)
+    const timeoutMs = getProviderTimeoutMs(config)
+    const hasApiKey = Boolean(secretService.getSecretValue(config.apiKeyRef))
     recordLog({
       level: 'info',
       event: 'imageGeneration.models.started',
       message: 'Image Provider model discovery started',
       details: {
+        ...createProviderOperationDetails({
+          capability: 'image',
+          operation: 'discover-models',
+          config,
+          configSource: 'image',
+          requestId,
+          outcome: 'started'
+        }),
         requestId,
         provider: config.provider,
         model: config.model,
-        baseUrlHost: getUrlHost(baseUrl)
+        baseUrlHost: getUrlHost(baseUrl),
+        timeoutMs
       }
     })
 
@@ -797,13 +866,22 @@ const createImageGenerationModelService = ({
         event: result.ok ? 'imageGeneration.models.completed' : 'imageGeneration.models.failed',
         message: result.ok ? 'Image Provider model discovery completed' : 'Image Provider model discovery failed',
         details: {
+          ...createProviderOperationDetails({
+            capability: 'image',
+            operation: 'discover-models',
+            config: runtimeConfig,
+            configSource: 'image',
+            requestId,
+            outcome: result.ok ? 'completed' : 'failed'
+          }),
           requestId,
-          provider: config.provider,
-          model: config.model,
+          provider: runtimeConfig.provider,
+          model: runtimeConfig.model,
           baseUrlHost: getUrlHost(baseUrl),
           durationMs: nowMs() - startedMs,
           errorCode: result.ok ? '' : result.code,
           modelCount: Array.isArray(result.models) ? result.models.length : 0,
+          timeoutMs,
           ...extraDetails
         }
       })
@@ -811,12 +889,14 @@ const createImageGenerationModelService = ({
     }
 
     try {
-      const apiKey = secretService.getSecretValue(config.apiKeyRef)
+      runtimeConfig = resolveImageRuntimeConfig(config)
+      baseUrl = assertProviderBaseUrl(runtimeConfig.baseUrl, 'Image Provider')
+      const apiKey = secretService.getSecretValue(runtimeConfig.apiKeyRef)
       const baseResult = {
         provider: config.provider,
         baseUrl,
         model: config.model,
-        hasApiKey: Boolean(apiKey)
+        hasApiKey
       }
       if (!apiKey) {
         return completeDiscovery({
@@ -827,14 +907,19 @@ const createImageGenerationModelService = ({
           message: 'Image generation API key is missing'
         })
       }
-      const response = await fetchImpl(`${baseUrl}/models`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${apiKey}`
+      const response = await fetchWithTimeout({
+        fetchImpl,
+        url: `${baseUrl}/models`,
+        timeoutMs,
+        timeoutMessage: `Image Provider model discovery timed out after ${timeoutMs}ms`,
+        options: {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${apiKey}`
+          }
         }
       })
       const status = response?.status || 'error'
-      const body = response?.json ? await response.json().catch(() => ({})) : {}
       if (!response?.ok) {
         if (isOptionalModelsProbeStatus(status)) {
           return completeDiscovery(
@@ -856,11 +941,12 @@ const createImageGenerationModelService = ({
             code: 'provider_unhealthy',
             message: `Image Provider responded with HTTP ${status}`
           },
-          { status, modelsProbe: 'failed', providerMessage: extractProviderBusinessError(body) }
+          { status, modelsProbe: 'failed' }
         )
       }
+      const body = response?.json ? await response.json().catch(() => ({})) : {}
       const discoveredModels = extractDiscoveredModels(body)
-      persistModelCatalog(config, discoveredModels)
+      persistModelCatalog(runtimeConfig, discoveredModels)
       return completeDiscovery(
         {
           ok: true,
@@ -872,47 +958,56 @@ const createImageGenerationModelService = ({
         { status, modelsProbe: 'ok' }
       )
     } catch (error) {
-      recordLog({
-        level: 'error',
-        event: 'imageGeneration.models.failed',
-        message: 'Image Provider model discovery failed',
-        details: {
-          requestId,
-          provider: config.provider,
-          model: config.model,
-          baseUrlHost: getUrlHost(baseUrl),
-          durationMs: nowMs() - startedMs,
-          errorCode: 'model_discovery_error',
-          errorMessage: sanitizeLogText(error?.message || error, { maxChars: 240 })
-        }
+      const errorMessage = sanitizeLogText(error?.message || error, { maxChars: 240 })
+      const isTimeout = /model discovery timed out/i.test(errorMessage)
+      return completeDiscovery({
+        ok: false,
+        provider: config.provider,
+        baseUrl,
+        model: config.model,
+        hasApiKey,
+        models: [],
+        code: isTimeout ? 'model_discovery_timeout' : 'model_discovery_error',
+        message: errorMessage
+      }, {
+        modelsProbe: isTimeout ? 'timed_out' : 'failed',
+        errorMessage
       })
-      throw error
     }
   }
 
   const generateProviderImage = async ({ config, prompt, targetDir, relativeDir, constraints, requestId, timeoutMs: timeoutOverrideMs, referenceImages = [] }) => {
-    const apiKey = secretService.getSecretValue(config.apiKeyRef)
+    const runtimeConfig = resolveImageRuntimeConfig(config)
+    const apiKey = secretService.getSecretValue(runtimeConfig.apiKeyRef)
     if (!apiKey) throw new Error('Image generation API key is missing')
-    const baseUrl = assertProviderBaseUrl(config.baseUrl)
+    const baseUrl = assertProviderBaseUrl(runtimeConfig.baseUrl, 'Image Provider')
     const providerStartMs = nowMs()
-    const timeoutMs = normalizeTimeoutMs(timeoutOverrideMs, getProviderTimeoutMs(config))
-    const backgroundMode = getProviderGenerationBackgroundMode({ model: config.model, constraints })
+    const timeoutMs = normalizeTimeoutMs(timeoutOverrideMs, getProviderTimeoutMs(runtimeConfig))
+    const backgroundMode = getProviderGenerationBackgroundMode({ model: runtimeConfig.model, constraints })
     const normalizedReferenceImages = normalizeReferenceImages(referenceImages)
     const endpoint = normalizedReferenceImages.length > 0 ? '/images/edits' : '/images/generations'
     const conditioning = createConditioningSummary({
       endpoint,
       referenceImages: normalizedReferenceImages,
       constraints,
-      model: config.model
+      model: runtimeConfig.model
     })
     recordLog({
       level: 'info',
       event: 'imageGeneration.provider.request.started',
       message: 'Image Provider request started',
       details: {
+        ...createProviderOperationDetails({
+          capability: 'image',
+          operation: 'provider-generate',
+          config: runtimeConfig,
+          configSource: 'image',
+          requestId,
+          outcome: 'started'
+        }),
         requestId,
-        provider: config.provider,
-        model: config.model,
+        provider: runtimeConfig.provider,
+        model: runtimeConfig.model,
         baseUrlHost: getUrlHost(baseUrl),
         width: constraints.width,
         height: constraints.height,
@@ -928,7 +1023,7 @@ const createImageGenerationModelService = ({
     try {
       const multipartRequest = normalizedReferenceImages.length > 0
         ? buildProviderEditMultipartRequest({
-            model: config.model,
+            model: runtimeConfig.model,
             prompt,
             constraints,
             referenceImages: normalizedReferenceImages
@@ -937,7 +1032,7 @@ const createImageGenerationModelService = ({
       const requestBody = multipartRequest
         ? multipartRequest.body
         : JSON.stringify(buildProviderGenerationPayload({
-            model: config.model,
+            model: runtimeConfig.model,
             prompt,
             constraints
           }))
@@ -962,37 +1057,56 @@ const createImageGenerationModelService = ({
         }
       })
     } catch (error) {
+      const isTimeout = /timed out/i.test(String(error?.message || ''))
       recordLog({
         level: 'error',
         event: 'imageGeneration.provider.request.failed',
         message: 'Image Provider request failed',
         details: {
+          ...createProviderOperationDetails({
+            capability: 'image',
+            operation: 'provider-generate',
+            config: runtimeConfig,
+            configSource: 'image',
+            requestId,
+            outcome: 'failed'
+          }),
           requestId,
-          provider: config.provider,
-          model: config.model,
+          provider: runtimeConfig.provider,
+          model: runtimeConfig.model,
           baseUrlHost: getUrlHost(baseUrl),
           durationMs: nowMs() - providerStartMs,
           endpoint,
           requestMode: conditioning.mode,
           referenceImageCount: normalizedReferenceImages.length,
           timeoutMs,
-          errorCode: /timed out/i.test(String(error?.message || '')) ? 'provider_timeout' : 'provider_request_error',
+          errorCode: isTimeout ? 'provider_timeout' : 'provider_request_error',
           errorMessage: sanitizeLogText(error?.message || error, { maxChars: 240 })
         }
       })
-      throw error
+      throw new Error(isTimeout
+        ? `Image Provider generation timed out after ${timeoutMs}ms`
+        : 'Image Provider request failed')
     }
     if (!response?.ok) {
       const status = response?.status || 'error'
-      const errorMessage = await getErrorMessage(response)
+      const errorMessage = 'Image Provider returned an error response'
       recordLog({
         level: 'error',
         event: 'imageGeneration.provider.request.failed',
         message: 'Image Provider request failed',
         details: {
+          ...createProviderOperationDetails({
+            capability: 'image',
+            operation: 'provider-generate',
+            config: runtimeConfig,
+            configSource: 'image',
+            requestId,
+            outcome: 'failed'
+          }),
           requestId,
-          provider: config.provider,
-          model: config.model,
+          provider: runtimeConfig.provider,
+          model: runtimeConfig.model,
           baseUrlHost: getUrlHost(baseUrl),
           status,
           durationMs: nowMs() - providerStartMs,
@@ -1010,14 +1124,23 @@ const createImageGenerationModelService = ({
     if (!items.length) {
       const businessError = extractProviderBusinessError(body)
       if (businessError) {
+        const errorMessage = 'Image Provider returned a business error'
         recordLog({
           level: 'error',
           event: 'imageGeneration.provider.request.failed',
           message: 'Image Provider returned a business error',
           details: {
+            ...createProviderOperationDetails({
+              capability: 'image',
+              operation: 'provider-generate',
+              config: runtimeConfig,
+              configSource: 'image',
+              requestId,
+              outcome: 'failed'
+            }),
             requestId,
-            provider: config.provider,
-            model: config.model,
+            provider: runtimeConfig.provider,
+            model: runtimeConfig.model,
             baseUrlHost: getUrlHost(baseUrl),
             status: response.status || 200,
             durationMs: nowMs() - providerStartMs,
@@ -1026,19 +1149,27 @@ const createImageGenerationModelService = ({
             referenceImageCount: normalizedReferenceImages.length,
             outputCount: 0,
             errorCode: 'provider_business_error',
-            errorMessage: sanitizeLogText(businessError, { maxChars: 240 })
+            errorMessage
           }
         })
-        throw new Error(businessError)
+        throw new Error(errorMessage)
       }
       recordLog({
         level: 'error',
         event: 'imageGeneration.provider.request.failed',
         message: 'Image Provider returned no outputs',
         details: {
+          ...createProviderOperationDetails({
+            capability: 'image',
+            operation: 'provider-generate',
+            config: runtimeConfig,
+            configSource: 'image',
+            requestId,
+            outcome: 'failed'
+          }),
           requestId,
-          provider: config.provider,
-          model: config.model,
+          provider: runtimeConfig.provider,
+          model: runtimeConfig.model,
           baseUrlHost: getUrlHost(baseUrl),
           status: response.status || 200,
           durationMs: nowMs() - providerStartMs,
@@ -1073,9 +1204,17 @@ const createImageGenerationModelService = ({
         event: 'imageGeneration.provider.request.failed',
         message: 'Image Provider returned invalid image bytes',
         details: {
+          ...createProviderOperationDetails({
+            capability: 'image',
+            operation: 'provider-generate',
+            config: runtimeConfig,
+            configSource: 'image',
+            requestId,
+            outcome: 'failed'
+          }),
           requestId,
-          provider: config.provider,
-          model: config.model,
+          provider: runtimeConfig.provider,
+          model: runtimeConfig.model,
           baseUrlHost: getUrlHost(baseUrl),
           status: response.status || 200,
           durationMs: nowMs() - providerStartMs,
@@ -1095,9 +1234,17 @@ const createImageGenerationModelService = ({
       event: 'imageGeneration.provider.request.completed',
       message: 'Image Provider request completed',
       details: {
+        ...createProviderOperationDetails({
+          capability: 'image',
+          operation: 'provider-generate',
+          config: runtimeConfig,
+          configSource: 'image',
+          requestId,
+          outcome: 'completed'
+        }),
         requestId,
-        provider: config.provider,
-        model: config.model,
+        provider: runtimeConfig.provider,
+        model: runtimeConfig.model,
         baseUrlHost: getUrlHost(baseUrl),
         status: response.status || 200,
         durationMs: nowMs() - providerStartMs,
@@ -1111,8 +1258,8 @@ const createImageGenerationModelService = ({
     return {
       ok: true,
       requestId,
-      provider: config.provider,
-      model: config.model,
+      provider: runtimeConfig.provider,
+      model: runtimeConfig.model,
       generatedAt: now().toISOString(),
       conditioning,
       outputs,
@@ -1122,9 +1269,38 @@ const createImageGenerationModelService = ({
     }
   }
 
-  const generateImage = async ({ prompt, output, constraints, timeoutMs, referenceImages = [], model = '' }) => {
-    const config = withRuntimeModelOverride(getStoredConfig(), model)
+  const generateImage = async (request = {}) => {
+    const config = getStoredConfig()
     const requestId = idFactory()
+    const ownerFieldOverrides = findOwnerFieldOverrides(request, {
+      topLevel: ['provider', 'baseUrl', 'apiKeyRef', 'model']
+    })
+    if (ownerFieldOverrides.length) {
+      recordLog({
+        level: 'warn',
+        event: 'imageGeneration.owner-fields.rejected',
+        message: 'Image Provider owner-controlled request fields were rejected',
+        details: {
+          ...createProviderOperationDetails({
+            capability: 'image',
+            operation: 'generate',
+            config,
+            configSource: 'image',
+            requestId,
+            outcome: 'rejected'
+          }),
+          fields: ownerFieldOverrides
+        }
+      })
+      throw new Error(`Image Provider owner-controlled fields cannot be changed: ${ownerFieldOverrides.join(', ')}`)
+    }
+    const {
+      prompt,
+      output,
+      constraints,
+      timeoutMs,
+      referenceImages = []
+    } = request
     const startedMs = nowMs()
     const { relativeDir, targetDir } = ensureInsideDataDir({
       dataDir: output?.dataDir,
@@ -1136,6 +1312,14 @@ const createImageGenerationModelService = ({
       event: 'imageGeneration.request.started',
       message: 'Image generation request started',
       details: {
+        ...createProviderOperationDetails({
+          capability: 'image',
+          operation: 'generate',
+          config,
+          configSource: 'image',
+          requestId,
+          outcome: 'started'
+        }),
         requestId,
         provider: config.provider,
         model: config.model,
@@ -1164,6 +1348,14 @@ const createImageGenerationModelService = ({
         event: 'imageGeneration.request.completed',
         message: 'Image generation request completed',
         details: {
+          ...createProviderOperationDetails({
+            capability: 'image',
+            operation: 'generate',
+            config,
+            configSource: 'image',
+            requestId,
+            outcome: 'completed'
+          }),
           requestId,
           provider: config.provider,
           model: config.model,
@@ -1178,6 +1370,14 @@ const createImageGenerationModelService = ({
         event: 'imageGeneration.request.failed',
         message: 'Image generation request failed',
         details: {
+          ...createProviderOperationDetails({
+            capability: 'image',
+            operation: 'generate',
+            config,
+            configSource: 'image',
+            requestId,
+            outcome: 'failed'
+          }),
           requestId,
           provider: config.provider,
           model: config.model,

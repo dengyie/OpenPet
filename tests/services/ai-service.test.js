@@ -156,9 +156,76 @@ test('ai service saves config and api key separately', () => {
     'ai.settings.api-key.saved'
   ])
   assert.equal(logs[0].details.endpoint, 'https://example.test/v1/chat/completions')
+  assert.ok(logs[0].details.requestId)
   assert.equal(logs[1].details.apiKeyRef, 'ai.default')
+  assert.ok(logs[1].details.requestId)
+  assert.deepEqual({
+    capability: logs[1].details.capability,
+    operation: logs[1].details.operation,
+    configSource: logs[1].details.configSource,
+    outcome: logs[1].details.outcome,
+    endpointHost: logs[1].details.endpointHost
+  }, {
+    capability: 'chat',
+    operation: 'save-secret',
+    configSource: 'chat',
+    outcome: 'completed',
+    endpointHost: 'example.test'
+  })
   assert.equal(JSON.stringify(logs).includes('sk-new'), false)
   assert.throws(() => service.saveApiKey('   '), /API Key 不能为空/)
+})
+
+test('ai service rejects owner-controlled secret refs and invalid provider config without mutating settings', () => {
+  const logs = []
+  const settingsService = createSettingsService()
+  const service = createAiService({
+    settingsService,
+    secretService: {
+      getSecretValue: () => '',
+      setSecret: () => {}
+    },
+    appLogService: { record: (entry) => logs.push(entry) }
+  })
+
+  assert.throws(() => service.saveConfig({
+    apiKeyRef: 'secret:model.image.openai.apiKey',
+    vision: { apiKeyRef: 'ai.default' }
+  }), /owner-controlled/i)
+  assert.throws(() => service.saveConfig({ provider: 'custom-provider' }), /Unsupported AI provider/)
+  assert.throws(() => service.saveConfig({ baseUrl: 'file:///tmp/provider' }), /HTTP or HTTPS/)
+  assert.throws(() => service.saveConfig({ baseUrl: 42 }), /valid URL/)
+  assert.throws(() => service.saveConfig({ model: '   ' }), /model is required/i)
+  assert.throws(() => service.saveConfig({
+    vision: { mode: 'override', baseUrl: 42 }
+  }), /valid URL/)
+
+  assert.equal(settingsService.get().ai.apiKeyRef, 'ai.default')
+  assert.equal(settingsService.get().ai.vision, undefined)
+  assert.equal(logs.some((entry) => (
+    entry.event === 'ai.settings.owner-fields.rejected' &&
+    entry.level === 'warn' &&
+    entry.details.fields.includes('apiKeyRef') &&
+    entry.details.fields.includes('vision.apiKeyRef')
+  )), true)
+  assert.ok(logs.find((entry) => entry.event === 'ai.settings.owner-fields.rejected').details.requestId)
+  assert.equal(JSON.stringify(logs).includes('secret:model.image.openai.apiKey'), false)
+})
+
+test('ai service rejects non-object config payloads without mutating settings', () => {
+  const settingsService = createSettingsService()
+  const before = structuredClone(settingsService.get())
+  const service = createAiService({
+    settingsService,
+    secretService: {
+      getSecretValue: () => '',
+      setSecret: () => {}
+    }
+  })
+
+  assert.throws(() => service.saveConfig(null), /config payload must be an object/i)
+  assert.throws(() => service.saveConfig([]), /config payload must be an object/i)
+  assert.deepEqual(settingsService.get(), before)
 })
 
 test('ai service persists automatic memory config through saveConfig', () => {
@@ -179,8 +246,24 @@ test('ai service persists automatic memory config through saveConfig', () => {
   assert.equal(settingsService.get().ai.memory.enabled, true)
 })
 
-test('ai service does not persist derived config fields', () => {
-  const settingsService = createSettingsService()
+test('ai service only persists owner-approved config fields', () => {
+  const settingsService = createSettingsService({
+    ai: {
+      enabled: false,
+      provider: 'openai-compatible',
+      baseUrl: 'https://api.openai.com/v1',
+      model: 'gpt-4o-mini',
+      apiKeyRef: 'ai.default',
+      systemPrompt: 'You are a friendly desktop pet companion.',
+      behavior: {
+        enabled: false,
+        useTools: true,
+        cooldownMs: 1500,
+        rules: [],
+        decisions: []
+      }
+    }
+  })
   const service = createAiService({
     settingsService,
     secretService: {
@@ -192,14 +275,37 @@ test('ai service does not persist derived config fields', () => {
   service.saveConfig({
     enabled: true,
     hasApiKey: true,
-    unexpectedField: 'ignore me'
+    unexpectedField: 'ignore me',
+    behavior: {
+      enabled: true,
+      useTools: false,
+      cooldownMs: 0,
+      rules: [{ id: 'renderer-injected-rule' }],
+      decisions: []
+    },
+    vision: {
+      mode: 'follow-chat',
+      hasApiKey: true,
+      effectiveProvider: 'renderer-controlled',
+      modelCatalog: {
+        cacheKey: 'renderer-controlled',
+        models: ['renderer-controlled'],
+        fetchedAt: '2026-07-15T00:00:00.000Z',
+        source: 'saved'
+      }
+    }
   })
 
   assert.equal(Object.hasOwn(settingsService.get().ai, 'hasApiKey'), false)
   assert.equal(Object.hasOwn(settingsService.get().ai, 'unexpectedField'), false)
+  assert.equal(settingsService.get().ai.behavior.enabled, false)
+  assert.deepEqual(settingsService.get().ai.behavior.rules, [])
+  assert.equal(Object.hasOwn(settingsService.get().ai.vision, 'hasApiKey'), false)
+  assert.equal(Object.hasOwn(settingsService.get().ai.vision, 'effectiveProvider'), false)
+  assert.equal(Object.hasOwn(settingsService.get().ai.vision, 'modelCatalog'), false)
 })
 
-test('ai service saveConfig preserves a richer stored baseUrl when a renderer sends the sanitized display value', () => {
+test('ai service saveConfig canonicalizes a sanitized display baseUrl instead of retaining hidden credentials', () => {
   const settingsService = createSettingsService({
     ai: {
       enabled: false,
@@ -223,7 +329,7 @@ test('ai service saveConfig preserves a richer stored baseUrl when a renderer se
     memory: { enabled: true }
   })
 
-  assert.equal(settingsService.get().ai.baseUrl, 'https://user:pass@example.test/v1?token=secret')
+  assert.equal(settingsService.get().ai.baseUrl, 'https://example.test/v1')
   assert.equal(settingsService.get().ai.memory.enabled, true)
 })
 
@@ -296,6 +402,48 @@ test('ai service sends openai-compatible chat completions requests', async () =>
   })
 })
 
+test('ai service rejects credentialed persisted provider URLs before sending a request', async () => {
+  const logs = []
+  let requested = false
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://user:pass@example.test/v1?token=secret',
+        model: 'example-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test-secret',
+      setSecret: () => {}
+    },
+    fetchImpl: async () => {
+      requested = true
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ choices: [{ message: { content: 'unexpected' } }] })
+      }
+    },
+    appLogService: { record: (entry) => logs.push(entry) }
+  })
+
+  await assert.rejects(
+    () => service.complete({ messages: [{ role: 'user', content: 'hello' }] }),
+    /must not include credentials/i
+  )
+  const discovery = await service.discoverModels()
+
+  assert.equal(requested, false)
+  assert.equal(discovery.ok, false)
+  assert.equal(logs.some((entry) => entry.event === 'ai.provider.request.failed'), true)
+  assert.equal(JSON.stringify(logs).includes('user:pass'), false)
+  assert.equal(JSON.stringify(logs).includes('token=secret'), false)
+})
+
 test('ai service records provider lifecycle without leaking secrets or prompt text', async () => {
   const logs = []
   const service = createAiService({
@@ -323,7 +471,8 @@ test('ai service records provider lifecycle without leaking secrets or prompt te
         }
       })
     }),
-    appLogService: { record: (entry) => logs.push(entry) }
+    appLogService: { record: (entry) => logs.push(entry) },
+    idFactory: () => 'ai-request-1'
   })
 
   await assert.rejects(
@@ -338,6 +487,34 @@ test('ai service records provider lifecycle without leaking secrets or prompt te
   assert.equal(serializedLogs.includes('hidden user prompt'), false)
   assert.equal(logs.at(-1).details.status, 400)
   assert.equal(logs.at(-1).details.providerCode, 'bad_request')
+  assert.equal(logs[0].details.requestId, 'ai-request-1')
+  assert.equal(logs[1].details.requestId, 'ai-request-1')
+  assert.equal(typeof logs[1].details.durationMs, 'number')
+  assert.deepEqual(logs.map((entry) => ({
+    event: entry.event,
+    capability: entry.details.capability,
+    operation: entry.details.operation,
+    configSource: entry.details.configSource,
+    outcome: entry.details.outcome,
+    endpointHost: entry.details.endpointHost
+  })), [
+    {
+      event: 'ai.provider.request.started',
+      capability: 'chat',
+      operation: 'complete',
+      configSource: 'chat',
+      outcome: 'started',
+      endpointHost: 'example.test'
+    },
+    {
+      event: 'ai.provider.request.failed',
+      capability: 'chat',
+      operation: 'complete',
+      configSource: 'chat',
+      outcome: 'failed',
+      endpointHost: 'example.test'
+    }
+  ])
 })
 
 test('ai service chat redacts provider error bodies before throwing', async () => {
@@ -378,6 +555,87 @@ test('ai service chat redacts provider error bodies before throwing', async () =
       return true
     }
   )
+})
+
+test('ai service redacts sensitive provider error codes before logging or returning them', async () => {
+  const leakedApiKey = 'sk-test-secret'
+  const leakedPrompt = 'private user request'
+  const leakedPath = '/Users/mango/private/input.txt'
+  const logs = []
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://example.test/v1',
+        model: 'example-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => leakedApiKey,
+      setSecret: () => {}
+    },
+    fetchImpl: async () => ({
+      ok: false,
+      status: 400,
+      json: async () => ({
+        error: {
+          message: 'Provider request failed',
+          code: `api_key=${leakedApiKey} prompt="${leakedPrompt}" path=${leakedPath}`
+        }
+      })
+    }),
+    appLogService: { record: (entry) => logs.push(entry) }
+  })
+
+  await assert.rejects(
+    () => service.complete({ messages: [{ role: 'user', content: leakedPrompt }] }),
+    (error) => {
+      assert.equal(error.providerCode.includes(leakedApiKey), false)
+      assert.equal(error.providerCode.includes(leakedPrompt), false)
+      assert.equal(error.providerCode.includes(leakedPath), false)
+      return true
+    }
+  )
+
+  const serializedLogs = JSON.stringify(logs)
+  assert.equal(serializedLogs.includes(leakedApiKey), false)
+  assert.equal(serializedLogs.includes(leakedPrompt), false)
+  assert.equal(serializedLogs.includes(leakedPath), false)
+})
+
+test('ai service redacts sensitive network exceptions before returning them to consumers', async () => {
+  const logs = []
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://example.test/v1',
+        model: 'example-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test-secret',
+      setSecret: () => {}
+    },
+    fetchImpl: async () => {
+      throw new Error('Prompt "private user request" failed at /Users/mango/private/input.txt with sk-test-secret')
+    },
+    appLogService: { record: (entry) => logs.push(entry) }
+  })
+
+  await assert.rejects(
+    () => service.complete({ messages: [{ role: 'user', content: 'private user request' }] }),
+    (error) => error?.message === 'AI provider request failed'
+  )
+  assert.equal(JSON.stringify(logs).includes('private user request'), false)
+  assert.equal(JSON.stringify(logs).includes('/Users/mango/private/input.txt'), false)
+  assert.equal(JSON.stringify(logs).includes('sk-test-secret'), false)
 })
 
 test('ai service sends behavior tool definition and parses tool call intent', async () => {
@@ -847,7 +1105,7 @@ test('ai service times out stalled provider requests', async () => {
   )
 })
 
-test('ai service complete supports an override config without mutating chat config', async () => {
+test('ai service rejects generic config overrides and resolves Vision through its owner method', async () => {
   const requests = []
   const logs = []
   const service = createAiService({
@@ -858,7 +1116,14 @@ test('ai service complete supports an override config without mutating chat conf
         baseUrl: 'https://chat.example.test/v1',
         model: 'chat-model',
         apiKeyRef: 'ai.default',
-        systemPrompt: ''
+        systemPrompt: '',
+        vision: {
+          mode: 'override',
+          provider: 'openai-compatible',
+          baseUrl: 'https://vision.example.test/v1',
+          model: 'vision-model',
+          apiKeyRef: 'ai.vision'
+        }
       }
     }),
     secretService: {
@@ -880,14 +1145,18 @@ test('ai service complete supports an override config without mutating chat conf
     appLogService: { record: (entry) => logs.push(entry) }
   })
 
-  const result = await service.complete({
+  await assert.rejects(service.complete({
     messages: [{ role: 'user', content: 'describe the pet' }],
     configOverride: {
       provider: 'openai-compatible',
-      baseUrl: 'https://vision.example.test/v1',
-      model: 'vision-model',
-      apiKeyRef: 'ai.vision'
+      baseUrl: 'https://attacker.example.test/v1',
+      model: 'attacker-model',
+      apiKeyRef: 'secret:model.image.openai.apiKey'
     }
+  }), /owner-controlled/i)
+
+  const result = await service.completeVision({
+    messages: [{ role: 'user', content: 'describe the pet' }]
   })
 
   assert.equal(result.reply, 'override reply')
@@ -898,8 +1167,9 @@ test('ai service complete supports an override config without mutating chat conf
   assert.equal(service.getConfig().model, 'chat-model')
   const startedLog = logs.find((entry) => entry.event === 'ai.provider.request.started')
   const completedLog = logs.find((entry) => entry.event === 'ai.provider.request.completed')
-  assert.equal(startedLog.details.configSource, 'override')
+  assert.equal(startedLog.details.configSource, 'vision-override')
   assert.equal(completedLog.details.endpoint, 'https://vision.example.test/v1/chat/completions')
+  assert.equal(JSON.stringify(logs).includes('attacker.example.test'), false)
 })
 
 test('ai service testConnection validates provider response', async () => {
@@ -1095,13 +1365,12 @@ test('ai service testConnection returns missing key failure metadata', async () 
 
 test('ai service testConnection logs provider failures without leaking secrets or prompt text', async () => {
   const logs = []
-  const credentialedBaseUrl = 'https://user:pass@example.test/v1?token=secret#frag'
   const service = createAiService({
     settingsService: createSettingsService({
       ai: {
         enabled: true,
         provider: 'openai-compatible',
-        baseUrl: credentialedBaseUrl,
+        baseUrl: 'https://example.test/v1',
         model: 'example-model',
         apiKeyRef: 'ai.default',
         systemPrompt: 'hidden system prompt'
@@ -1133,14 +1402,12 @@ test('ai service testConnection logs provider failures without leaking secrets o
   assert.equal(result.baseUrl, 'https://example.test/v1')
   assert.equal(serializedLogs.includes('sk-test-secret'), false)
   assert.equal(serializedLogs.includes('hidden system prompt'), false)
-  assert.equal(serializedLogs.includes(credentialedBaseUrl), false)
-  assert.equal(serializedLogs.includes('user:pass'), false)
-  assert.equal(serializedLogs.includes('token=secret'), false)
   assert.match(serializedLogs, /ai\.settings\.connection-test\.failed/)
 })
 
 test('ai service discovers available models through the optional /models probe', async () => {
   const requests = []
+  const logs = []
   const service = createAiService({
     settingsService: createSettingsService({
       ai: {
@@ -1156,6 +1423,8 @@ test('ai service discovers available models through the optional /models probe',
       getSecretValue: () => 'sk-test',
       setSecret: () => {}
     },
+    idFactory: () => 'chat-models-1',
+    appLogService: { record: (entry) => logs.push(entry) },
     fetchImpl: async (url, options) => {
       requests.push({ url, options })
       return {
@@ -1183,6 +1452,9 @@ test('ai service discovers available models through the optional /models probe',
   assert.equal(requests[0].options.method, 'GET')
   assert.deepEqual(service.getConfig().modelCatalog.models, ['gpt-4.1-mini', 'gpt-4o-mini'])
   assert.equal(service.getConfig().modelCatalog.source, 'saved')
+  assert.equal(logs[0].details.requestId, 'chat-models-1')
+  assert.equal(logs.at(-1).details.requestId, 'chat-models-1')
+  assert.equal(typeof logs.at(-1).details.durationMs, 'number')
 })
 
 test('ai service only exposes cached models for the active provider owner key', async () => {
@@ -1218,7 +1490,7 @@ test('ai service only exposes cached models for the active provider owner key', 
   })
 })
 
-test('ai service exposes a renderer-safe model catalog cache key', async () => {
+test('ai service exposes a renderer-safe model catalog cache key', () => {
   const settingsService = createSettingsService({
     ai: {
       enabled: true,
@@ -1226,7 +1498,13 @@ test('ai service exposes a renderer-safe model catalog cache key', async () => {
       baseUrl: 'https://user:pass@models.example.test/v1?token=secret#frag',
       model: 'gpt-4o-mini',
       apiKeyRef: 'ai.default',
-      systemPrompt: ''
+      systemPrompt: '',
+      modelCatalog: {
+        cacheKey: 'chat:openai-compatible:https://models.example.test/v1',
+        models: ['gpt-4o-mini'],
+        fetchedAt: '2026-07-14T00:00:00.000Z',
+        source: 'saved'
+      }
     }
   })
   const service = createAiService({
@@ -1234,22 +1512,13 @@ test('ai service exposes a renderer-safe model catalog cache key', async () => {
     secretService: {
       getSecretValue: () => 'sk-test',
       setSecret: () => {}
-    },
-    fetchImpl: async () => ({
-      ok: true,
-      status: 200,
-      json: async () => ({
-        data: [{ id: 'gpt-4o-mini' }]
-      })
-    })
+    }
   })
-
-  await service.discoverModels()
 
   assert.deepEqual(service.getConfig().modelCatalog, {
     cacheKey: 'chat:openai-compatible:https://models.example.test/v1',
     models: ['gpt-4o-mini'],
-    fetchedAt: settingsService.get().ai.modelCatalog.fetchedAt,
+    fetchedAt: '2026-07-14T00:00:00.000Z',
     source: 'saved'
   })
   assert.equal(service.getConfig().modelCatalog.cacheKey.includes('user:pass'), false)
@@ -1357,6 +1626,90 @@ test('ai service resolves vision provider to chat config by default and to overr
     effectiveModel: 'gpt-4.1-mini',
     effectiveHasApiKey: true
   })
+})
+
+test('ai service discovers follow-chat vision models through the effective chat provider', async () => {
+  const requests = []
+  const settingsService = createSettingsService({
+    ai: {
+      enabled: true,
+      provider: 'openai-compatible',
+      baseUrl: 'https://chat.example.test/v1',
+      model: 'gpt-5.5',
+      apiKeyRef: 'ai.default',
+      systemPrompt: '',
+      vision: {
+        mode: 'follow-chat',
+        provider: 'openai-compatible',
+        baseUrl: 'https://stale-vision.example.test/v1',
+        model: 'stale-vision-model',
+        apiKeyRef: 'ai.vision'
+      }
+    }
+  })
+  const service = createAiService({
+    settingsService,
+    secretService: {
+      getSecretValue: (key) => (key === 'ai.default' ? 'sk-chat' : 'sk-vision'),
+      setSecret: () => {}
+    },
+    fetchImpl: async (url, options) => {
+      requests.push({ url, options })
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ data: [{ id: 'gpt-5.5' }, { id: 'gpt-4o' }] })
+      }
+    }
+  })
+
+  const result = await service.discoverVisionModels()
+
+  assert.equal(result.ok, true)
+  assert.equal(result.model, 'gpt-5.5')
+  assert.equal(requests[0].url, 'https://chat.example.test/v1/models')
+  assert.equal(requests[0].options.headers.Authorization, 'Bearer sk-chat')
+  assert.deepEqual(service.getConfig().vision.modelCatalog, service.getConfig().modelCatalog)
+})
+
+test('ai service bounds follow-chat vision model discovery and logs a sanitized timeout', async () => {
+  const logs = []
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://chat.example.test/v1',
+        model: 'gpt-5.5',
+        apiKeyRef: 'ai.default',
+        systemPrompt: '',
+        vision: { mode: 'follow-chat' }
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-chat-secret',
+      setSecret: () => {}
+    },
+    requestTimeoutMs: 5,
+    appLogService: { record: (entry) => logs.push(entry) },
+    fetchImpl: async (_url, options) => new Promise((_resolve, reject) => {
+      options.signal.addEventListener('abort', () => {
+        const error = new Error('aborted')
+        error.name = 'AbortError'
+        reject(error)
+      }, { once: true })
+    })
+  })
+
+  const result = await service.discoverVisionModels()
+
+  assert.equal(result.ok, false)
+  assert.equal(result.code, 'timeout')
+  assert.equal(logs.at(-1).details.capability, 'vision')
+  assert.equal(logs.at(-1).details.operation, 'discover-models')
+  assert.equal(logs.at(-1).details.configSource, 'vision-follow-chat')
+  assert.equal(logs.at(-1).details.outcome, 'failed')
+  assert.equal(JSON.stringify(logs).includes('sk-chat-secret'), false)
 })
 
 test('ai service discovers vision models with an override-scoped catalog', async () => {
@@ -1611,6 +1964,7 @@ test('ai service streamComplete classifies internal timeout separately from call
 
 test('ai service streamComplete falls back before chunks when streaming is unsupported', async () => {
   let callCount = 0
+  const logs = []
   const service = createAiService({
     settingsService: createSettingsService({
       ai: {
@@ -1626,6 +1980,7 @@ test('ai service streamComplete falls back before chunks when streaming is unsup
       getSecretValue: () => 'sk-test',
       setSecret: () => {}
     },
+    appLogService: { record: (entry) => logs.push(entry) },
     fetchImpl: async (_url, options) => {
       callCount += 1
       const body = JSON.parse(options.body)
@@ -1655,6 +2010,12 @@ test('ai service streamComplete falls back before chunks when streaming is unsup
   assert.equal(result.streaming, false)
   assert.equal(result.fallback, true)
   assert.equal(result.fallbackReason, 'unsupported-stream')
+  assert.deepEqual(
+    logs
+      .filter((entry) => ['ai.provider.stream.started', 'ai.provider.request.started', 'ai.provider.request.completed'].includes(entry.event))
+      .map((entry) => entry.details.requestId),
+    ['stream-fallback-1', 'stream-fallback-1', 'stream-fallback-1']
+  )
 })
 
 test('ai service streamComplete does not retry a generic 404 as non-streaming', async () => {

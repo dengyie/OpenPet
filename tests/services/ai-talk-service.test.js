@@ -893,14 +893,14 @@ test('ai talk service routes persona draft through vision config when an active 
   const service = createAiTalkService({
     aiService: {
       getConfig: () => ({ enabled: true, behavior: { enabled: false, useTools: true } }),
-      getEffectiveVisionConfig: () => ({
-        provider: 'openai-compatible',
-        baseUrl: 'https://vision.example.test/v1',
-        model: 'vision-model',
-        apiKeyRef: 'ai.vision'
-      }),
       complete: async (request) => {
         requests.push(request)
+        return {
+          reply: '{"persona":{"identity":"A visually grounded desk companion.","tone":"focused"}}'
+        }
+      },
+      completeVision: async (request) => {
+        requests.push({ ...request, ownerMethod: 'vision' })
         return {
           reply: '{"persona":{"identity":"A visually grounded desk companion.","tone":"focused"}}'
         }
@@ -923,7 +923,8 @@ test('ai talk service routes persona draft through vision config when an active 
   const draft = await service.generatePersonaDraft({ instruction: '根据形象增强角色设定' })
 
   assert.equal(draft.draftPersona.tone, 'focused')
-  assert.equal(requests[0].configOverride.model, 'vision-model')
+  assert.equal(requests[0].ownerMethod, 'vision')
+  assert.equal(Object.hasOwn(requests[0], 'configOverride'), false)
   assert.equal(requests[0].messages[1].role, 'user')
   assert.equal(requests[0].messages[1].content[0].type, 'text')
   assert.equal(requests[0].messages[1].content[1].type, 'image_url')
@@ -939,9 +940,6 @@ test('ai talk service falls back to chat config for persona draft when no usable
   const service = createAiTalkService({
     aiService: {
       getConfig: () => ({ enabled: true, behavior: { enabled: false, useTools: true } }),
-      getEffectiveVisionConfig: () => {
-        throw new Error('should not resolve vision config without image')
-      },
       complete: async (request) => {
         requests.push(request)
         return {
@@ -961,6 +959,7 @@ test('ai talk service falls back to chat config for persona draft when no usable
 
   assert.equal(draft.draftPersona.tone, 'gentle')
   assert.equal(Object.hasOwn(requests[0], 'configOverride'), false)
+  assert.equal(Object.hasOwn(requests[0], 'ownerMethod'), false)
   assert.equal(typeof requests[0].messages[1].content, 'string')
 })
 

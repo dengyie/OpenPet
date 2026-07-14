@@ -1141,11 +1141,12 @@ test('creator studio run-step command uses host bridge for provider generation w
       role: 'canonical-reference'
     }])
     assert.equal(requests[1].payload.prompt.includes('bridge-token'), false)
+    assert.equal(Object.hasOwn(requests[1].payload, 'model'), false)
     assert.equal(requests[1].payload.timeoutMs, 300000)
     assert.deepEqual(run.modelSnapshot, {
       backend: 'provider',
       provider: 'openai-compatible',
-      model: 'local-custom-sprite-v2',
+      model: 'local-pet-sprite',
       baseUrlHost: '127.0.0.1:7860'
     })
     assert.deepEqual(run.artifacts.generatedImage.modelSnapshot, run.modelSnapshot)
