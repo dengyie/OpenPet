@@ -7,16 +7,6 @@ const MAX_STRING_CHARS = 4000
 const MAX_ARRAY_ITEMS = 100
 const MAX_OBJECT_KEYS = 160
 const MAX_DEPTH = 10
-const REDACTED_PATH = '[redacted-path]'
-const SAFE_ENDPOINT_PATHS = new Set(['/images/generations'])
-
-const ABSOLUTE_HOST_PATH_PATTERNS = [
-  /(^|[\s"'`([{:;,=])file:\/\/\/(?:[a-zA-Z]:\/)?[^\s"'`),，。}\]]*/gi,
-  /(^|[\s"'`([{:;,=])\/(?:Applications|Library|System|bin|sbin|lib(?:64)?|run|dev|proc|sys)(?:\/[^\s"'`),，。}\]]*)?(?=$|[\s"'`),，。}\]])/g,
-  /(^|[\s"'`([{:;,=])\/(?:Users|home|root|var|tmp|private|Volumes|opt|etc|usr|srv|mnt)(?:\/[^\s"'`),，。}\]]*)?(?=$|[\s"'`),，。}\]])/g,
-  /(^|[\s"'`([{:;,=])[a-zA-Z]:[\\/][^\s"'`),，。}\]]*/g,
-  /(^|[\s"'`([{:;,=])\\\\[^\\/\s"'`),，。}\]]+[\\/][^\\/\s"'`),，。}\]]+(?:[\\/][^\s"'`),，。}\]]*)?/g
-]
 
 const isPlainObject = (value) => value && typeof value === 'object' && !Array.isArray(value)
 
@@ -57,21 +47,12 @@ const normalizeRelativePath = (value) => {
 const shouldDropKey = (key) => (
   /^(authorization|headers?|rawProviderResponse|rawResponse|hiddenReasoning|reasoning)$/i.test(key) ||
   /(apiKey|secret|credential)/i.test(key) ||
-  /token/i.test(key)
+  /^(reference|access|refresh|session)?Token$/i.test(key)
 )
-
-const redactAbsoluteHostPaths = (value) => {
-  let sanitized = String(value || '')
-  for (const pattern of ABSOLUTE_HOST_PATH_PATTERNS) {
-    sanitized = sanitized.replace(pattern, (_, prefix) => `${prefix}${REDACTED_PATH}`)
-  }
-  return sanitized
-}
 
 const sanitizeString = (value, key) => {
   const normalized = String(value || '')
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
-  if (SAFE_ENDPOINT_PATHS.has(normalized)) return normalized
   if (/(paths?|dirs?)$/i.test(key)) return normalizeRelativePath(normalized)
   if (/baseUrl$/i.test(key)) {
     try {
@@ -80,14 +61,13 @@ const sanitizeString = (value, key) => {
       parsed.password = ''
       parsed.search = ''
       parsed.hash = ''
-      return redactAbsoluteHostPaths(parsed.toString().replace(/\/$/, '')).slice(0, 2048)
+      return parsed.toString().replace(/\/$/, '').slice(0, 2048)
     } catch (_) {
       return ''
     }
   }
-  const sanitized = redactAbsoluteHostPaths(normalized)
-  if (/summary$/i.test(key)) return sanitized.slice(0, 1000)
-  return sanitized.slice(0, MAX_STRING_CHARS)
+  if (/summary$/i.test(key)) return normalized.slice(0, 1000)
+  return normalized.slice(0, MAX_STRING_CHARS)
 }
 
 const sanitizeAgentArtifact = (value, key = '', depth = 0) => {
@@ -259,7 +239,6 @@ const createHatchPetAgentStore = ({
 module.exports = {
   __testInternals: {
     normalizeRelativePath,
-    redactAbsoluteHostPaths,
     resolveInside,
     sanitizeAgentArtifact
   },
