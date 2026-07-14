@@ -9,7 +9,6 @@ const {
 const { createHatchPetAgentStore } = require('./hatch-pet-agent-store')
 
 const CREATOR_STUDIO_PLUGIN_ID = 'openpet.creator-studio'
-const HATCH_PET_API_KEY_REF = 'ai.hatch-pet'
 const HATCH_PET_DECISION_TOOL_NAME = 'hatch_pet_decision'
 const HATCH_PET_CAPABILITY_TOOL_NAME = 'hatch_pet_capability_check'
 const HATCH_PET_SHADOW_SYSTEM_PROMPT = [
@@ -28,12 +27,7 @@ const normalizeText = (value, maxChars = 2000) => String(value || '')
   .slice(0, maxChars)
 
 const sanitizeErrorMessage = (error) => sanitizeLogText(error?.message || error || 'Unknown error', { maxChars: 240 })
-const isInvalidModelDecisionError = (error) => {
-  const message = error?.message || ''
-  return /^Invalid hatch-pet decision:/.test(message) ||
-    message === `AI provider did not return required tool call: ${HATCH_PET_DECISION_TOOL_NAME}` ||
-    message === `AI provider returned invalid tool arguments for ${HATCH_PET_DECISION_TOOL_NAME}`
-}
+const isInvalidDecisionError = (error) => /^Invalid hatch-pet decision:/.test(error?.message || '')
 
 const createDecisionTool = () => ({
   type: 'function',
@@ -181,33 +175,26 @@ const createHatchPetAgentService = ({
     return isPlainObject(settings.ai) ? settings.ai : {}
   }
 
-  const normalizeStoredConfig = (value) => ({
-    ...normalizeHatchPetAgentConfig(value),
-    apiKeyRef: HATCH_PET_API_KEY_REF
-  })
+  const getStoredConfig = () => normalizeHatchPetAgentConfig(getStoredAiConfig().hatchPet)
 
-  const getStoredConfig = (aiConfig = getStoredAiConfig()) => normalizeStoredConfig(aiConfig.hatchPet)
-
-  const getEffectiveCompletionConfig = (aiConfig = getStoredAiConfig()) => {
-    const resolved = resolveHatchPetCompletionConfig({
+  const getEffectiveCompletionConfig = () => {
+    const aiConfig = getStoredAiConfig()
+    return resolveHatchPetCompletionConfig({
       aiConfig,
-      hatchPetConfig: getStoredConfig(aiConfig)
+      hatchPetConfig: aiConfig.hatchPet
     })
-    return resolved.source === 'hatch-pet-override'
-      ? { ...resolved, apiKeyRef: HATCH_PET_API_KEY_REF }
-      : resolved
   }
 
-  const hasEffectiveApiKey = (completionConfig = getEffectiveCompletionConfig()) => {
+  const hasEffectiveApiKey = () => {
+    const completionConfig = getEffectiveCompletionConfig()
     return Boolean(secretService.getSecretValue(completionConfig.apiKeyRef))
   }
 
   const getConfig = () => {
-    const aiConfig = getStoredAiConfig()
-    const stored = getStoredConfig(aiConfig)
-    const effective = getEffectiveCompletionConfig(aiConfig)
+    const stored = getStoredConfig()
+    const effective = getEffectiveCompletionConfig()
     return {
-      ...createHatchPetAgentPublicConfig(stored, hasEffectiveApiKey(effective)),
+      ...createHatchPetAgentPublicConfig(stored, hasEffectiveApiKey()),
       configSource: effective.source,
       effectiveProvider: effective.provider,
       effectiveBaseUrl: createHatchPetAgentPublicConfig({
@@ -221,7 +208,7 @@ const createHatchPetAgentService = ({
   const saveConfig = (partialConfig = {}) => {
     settingsService.update((settings) => {
       const currentAi = isPlainObject(settings.ai) ? settings.ai : {}
-      const currentConfig = normalizeStoredConfig(currentAi.hatchPet)
+      const currentConfig = normalizeHatchPetAgentConfig(currentAi.hatchPet)
       const partial = isPlainObject(partialConfig) ? partialConfig : {}
       const publicCurrent = createHatchPetAgentPublicConfig(currentConfig, false)
       const nextBaseUrl = typeof partial.baseUrl === 'string' &&
@@ -229,11 +216,10 @@ const createHatchPetAgentService = ({
         partial.baseUrl !== currentConfig.baseUrl
         ? currentConfig.baseUrl
         : partial.baseUrl
-      const nextConfig = normalizeStoredConfig({
+      const nextConfig = normalizeHatchPetAgentConfig({
         ...currentConfig,
         ...partial,
         ...(nextBaseUrl ? { baseUrl: nextBaseUrl } : {}),
-        apiKeyRef: HATCH_PET_API_KEY_REF,
         budgets: {
           ...currentConfig.budgets,
           ...(isPlainObject(partial.budgets) ? partial.budgets : {})
@@ -266,18 +252,20 @@ const createHatchPetAgentService = ({
   const saveApiKey = (value) => {
     const apiKey = String(value || '').trim()
     if (!apiKey) throw new Error('Hatch-pet API Key 不能为空')
-    secretService.setSecret({ id: HATCH_PET_API_KEY_REF, value: apiKey, label: 'Hatch Pet Agent API Key' })
+    const config = getStoredConfig()
+    secretService.setSecret({ id: config.apiKeyRef, value: apiKey, label: 'Hatch Pet Agent API Key' })
     return {
-      apiKeyRef: HATCH_PET_API_KEY_REF,
+      apiKeyRef: config.apiKeyRef,
       hasApiKey: true,
       updatedAt: now()
     }
   }
 
   const clearApiKey = () => {
-    secretService.deleteSecret?.(HATCH_PET_API_KEY_REF)
+    const config = getStoredConfig()
+    secretService.deleteSecret?.(config.apiKeyRef)
     return {
-      apiKeyRef: HATCH_PET_API_KEY_REF,
+      apiKeyRef: config.apiKeyRef,
       hasApiKey: false,
       updatedAt: now()
     }
@@ -327,7 +315,8 @@ const createHatchPetAgentService = ({
     now
   })
 
-  const requestDecision = async ({ snapshot, legalDecisions, completionConfig, repairReason = '' }) => {
+  const requestDecision = async ({ snapshot, legalDecisions, repairReason = '' }) => {
+    const completionConfig = getEffectiveCompletionConfig()
     const messages = [
       { role: 'system', content: HATCH_PET_SHADOW_SYSTEM_PROMPT },
       ...(repairReason
@@ -426,13 +415,12 @@ const createHatchPetAgentService = ({
 
       let requested
       try {
-        requested = await requestDecision({ snapshot, legalDecisions, completionConfig })
+        requested = await requestDecision({ snapshot, legalDecisions })
       } catch (error) {
-        if (!isInvalidModelDecisionError(error)) throw error
+        if (!isInvalidDecisionError(error)) throw error
         requested = await requestDecision({
           snapshot,
           legalDecisions,
-          completionConfig,
           repairReason: error.message
         })
       }
@@ -485,7 +473,7 @@ const createHatchPetAgentService = ({
         recordedAt: record.recordedAt
       }
     } catch (error) {
-      const resultCode = isInvalidModelDecisionError(error)
+      const resultCode = isInvalidDecisionError(error)
         ? 'invalid_model_decision'
         : 'hatch_pet_shadow_failed'
       try {
