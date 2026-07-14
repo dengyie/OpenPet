@@ -64,6 +64,14 @@ const MAX_TRANSIENT_GATEWAY_ATTEMPTS_PER_MODEL = 2
 const FULL_PET_WORKFLOW_MAX_DURATION_MS = 90 * 60 * 1000
 const PROMPT_PREVIEW_MAX_LENGTH = 8000
 const DIRECT_SOURCE_ACTION_ANCHOR_CANDIDATE_COUNT = 3
+const TRANSIENT_TRANSPORT_ERROR_CODES = new Set([
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'EPIPE',
+  'ETIMEDOUT',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_SOCKET'
+])
 const KNOWN_FALLBACK_IMAGE_MODELS = [
   'gpt-image-2',
   'gpt-image-1.5'
@@ -285,6 +293,14 @@ const resolveProviderArtReadinessForModels = ({ settings, models, governance, ap
 
 const isTransientGatewayHttpFailure = (error) => {
   const message = String(error?.message || error || '').trim()
+  const normalizedMessage = message.toLowerCase()
+  const causeCode = String(error?.cause?.code || error?.code || '').trim().toUpperCase()
+  if (
+    normalizedMessage.includes('fetch failed') ||
+    normalizedMessage.includes('connection reset') ||
+    normalizedMessage.includes('socket closed') ||
+    TRANSIENT_TRANSPORT_ERROR_CODES.has(causeCode)
+  ) return true
   const statusMatch = message.match(/generation failed with HTTP\s+(\d{3})/i)
   if (!statusMatch) return false
   const status = Number(statusMatch[1])
@@ -3193,6 +3209,7 @@ const generateKeyframeActionSpriteRow = async ({
     prompt: promptBuild.prompt
   })
   let finalStageTimeoutMs = Math.max(1, Number(requestedTimeoutMs) || CREATOR_PROVIDER_MIN_TIMEOUT_MS)
+  let providerOutputCount = 0
   try {
     finalStageTimeoutMs = resolveGenerationStageTimeout({ requestedTimeoutMs, deadlineMs: generationDeadlineMs })
     const attempt = await generateWithFallbackImpl({
@@ -3205,9 +3222,22 @@ const generateKeyframeActionSpriteRow = async ({
       runId: run.runId,
       dataRelativeDir: path.join('runs', run.runId, 'frames', 'base', `${actionId}-keyframe-row`).replace(/\\/g, '/')
     })
-    const output = getFirstExistingOutput({ dataDir, response: attempt.response })
-    if (!output) throw new Error(`Creator Studio keyframe sprite row generation returned no outputs for ${actionId}`)
-    const materializedOutput = createOutputFromGeneratedPath({ dataDir, output })
+    const outputs = filterExistingGeneratedOutputs({
+      dataDir,
+      outputs: Array.isArray(attempt.response?.result?.outputs)
+        ? attempt.response.result.outputs
+        : []
+    })
+    providerOutputCount = outputs.length
+    if (outputs.length !== 1) {
+      const error = new Error(
+        `Creator Studio keyframe sprite row generation requires exactly one complete provider output for ${actionId}; received ${outputs.length}`
+      )
+      error.modelAttempts = attempt.attempts
+      error.providerOutputCount = outputs.length
+      throw error
+    }
+    const materializedOutput = createOutputFromGeneratedPath({ dataDir, output: outputs[0] })
     if (!materializedOutput) throw new Error(`Creator Studio keyframe sprite row output was not materialized for ${actionId}`)
     const stage = createProviderGenerationStage({
       stage: 'final-image',
@@ -3220,7 +3250,7 @@ const generateKeyframeActionSpriteRow = async ({
       modelAttempts: attempt.attempts,
       outputRelativePath: materializedOutput.dataRelativePath,
       promptRelativePath: promptFile.relativePath,
-      outputCount: 1,
+      outputCount: providerOutputCount,
       qualityProfile
     })
     return {
@@ -3259,7 +3289,7 @@ const generateKeyframeActionSpriteRow = async ({
       model: selectedModel,
       modelAttempts,
       promptRelativePath: promptFile.relativePath,
-      outputCount: 0,
+      outputCount: Number(error?.providerOutputCount ?? providerOutputCount) || 0,
       qualityProfile,
       error: error?.message || error
     })
