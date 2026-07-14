@@ -30,6 +30,7 @@ const DEFAULT_CONFIG = {
 
 const PROVIDER_GENERATION_TIMEOUT_MS = 120000
 const DEFAULT_GPT_IMAGE_2_QUALITY = 'high'
+const REQUESTED_PROVIDER_OUTPUT_COUNT = 1
 const VERIFIED_CREATOR_WORKFLOW_IMAGE_MODELS = Object.freeze(['gpt-image-2'])
 
 const isPlainObject = (value) => value && typeof value === 'object' && !Array.isArray(value)
@@ -184,49 +185,6 @@ const isAbortError = (error) => (
   error?.name === 'AbortError' ||
   error?.code === 'ABORT_ERR'
 )
-
-const TRANSIENT_PROVIDER_TRANSPORT_CODES = new Set([
-  'ECONNABORTED',
-  'ECONNREFUSED',
-  'ECONNRESET',
-  'EHOSTUNREACH',
-  'ENETDOWN',
-  'ENETUNREACH',
-  'EPIPE',
-  'ETIMEDOUT',
-  'UND_ERR_CONNECT_TIMEOUT',
-  'UND_ERR_HEADERS_TIMEOUT',
-  'UND_ERR_SOCKET'
-])
-
-const isTransientProviderHttpStatus = (status) => {
-  const normalizedStatus = Number(status)
-  return normalizedStatus === 408 || normalizedStatus === 425 || normalizedStatus === 429 ||
-    (normalizedStatus >= 500 && normalizedStatus <= 504) ||
-    (normalizedStatus >= 520 && normalizedStatus <= 524)
-}
-
-const isTransientProviderTransportError = (error) => {
-  const code = String(error?.cause?.code || error?.code || '').trim().toUpperCase()
-  if (TRANSIENT_PROVIDER_TRANSPORT_CODES.has(code)) return true
-  const message = String(error?.message || error || '').trim().toLowerCase()
-  return (
-    message.includes('fetch failed') ||
-    message.includes('connection reset') ||
-    message.includes('socket closed') ||
-    message.includes('socks5') ||
-    message.includes('cannot complete') ||
-    message.includes('timed out')
-  )
-}
-
-const cancelProviderResponseBody = (response) => {
-  try {
-    Promise.resolve(response?.body?.cancel?.()).catch(() => {})
-  } catch (_) {
-    // Releasing a failed Provider response must not replace the original retry outcome.
-  }
-}
 
 const getSafeTransportCauseCode = (error) => String(
   error?.cause?.code || error?.code || ''
@@ -445,7 +403,8 @@ const buildProviderGenerationPayload = ({ model, prompt, constraints }) => {
   const payload = {
     model,
     prompt,
-    size: `${constraints.width}x${constraints.height}`
+    size: `${constraints.width}x${constraints.height}`,
+    n: REQUESTED_PROVIDER_OUTPUT_COUNT
   }
   if (quality) payload.quality = quality
   if (model !== 'gpt-image-2') {
@@ -494,6 +453,7 @@ const buildProviderEditMultipartRequest = ({ model, prompt, constraints, referen
   appendMultipartTextPart(buffers, boundary, 'model', model)
   appendMultipartTextPart(buffers, boundary, 'prompt', prompt)
   appendMultipartTextPart(buffers, boundary, 'size', `${constraints.width}x${constraints.height}`)
+  appendMultipartTextPart(buffers, boundary, 'n', REQUESTED_PROVIDER_OUTPUT_COUNT)
   if (quality) appendMultipartTextPart(buffers, boundary, 'quality', quality)
   if (model !== 'gpt-image-2') {
     appendMultipartTextPart(buffers, boundary, 'background', constraints.transparent ? 'transparent' : 'white')
@@ -683,7 +643,6 @@ const createConditioningSummary = ({
   mode: 'image-edit',
   endpoint,
   referenceImageCount: referenceImages.length,
-  multipartImageField: 'image',
   requestedOutputCount: REQUESTED_PROVIDER_OUTPUT_COUNT,
   requestedTransparent: Boolean(constraints?.transparent),
   size: `${constraints?.width || 0}x${constraints?.height || 0}`,
@@ -1331,7 +1290,6 @@ const createImageGenerationModelService = ({
         endpoint,
         requestMode: conditioning.mode,
         referenceImageCount: normalizedReferenceImages.length,
-        multipartImageField: 'image',
         requestedOutputCount: REQUESTED_PROVIDER_OUTPUT_COUNT,
         timeoutMs
       }
@@ -1362,11 +1320,10 @@ const createImageGenerationModelService = ({
           endpoint,
           requestMode: conditioning.mode,
           referenceImageCount: normalizedReferenceImages.length,
-          attempt: requestAttempt,
-          nextAttempt: requestAttempt + 1,
-          remainingTimeoutMs: Math.max(0, requestDeadlineMs - Date.now()),
-          status: Number(status) || 0,
-          errorCauseCode: getSafeTransportCauseCode(error)
+          timeoutMs,
+          errorCode: /timed out/i.test(String(error?.message || '')) ? 'provider_timeout' : 'provider_request_error',
+          errorCauseCode: getSafeTransportCauseCode(error),
+          errorMessage: sanitizeLogText(error?.message || error, { maxChars: 240 })
         }
       })
     }
