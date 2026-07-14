@@ -21,7 +21,7 @@ const DEFAULT_HATCH_PET_AGENT_CONFIG = Object.freeze({
 })
 
 const HATCH_PET_CONFIG_MODES = new Set(['follow-chat', 'override'])
-const HATCH_PET_EXECUTION_MODES = new Set(['shadow'])
+const HATCH_PET_EXECUTION_MODES = new Set(['shadow', 'bounded'])
 const HATCH_PET_DECISIONS = new Set([
   'generate-identity',
   'retry-identity',
@@ -133,9 +133,12 @@ const normalizeHatchPetAgentConfig = (value = {}) => {
   const configMode = HATCH_PET_CONFIG_MODES.has(source.configMode)
     ? source.configMode
     : DEFAULT_HATCH_PET_AGENT_CONFIG.configMode
+  const executionMode = HATCH_PET_EXECUTION_MODES.has(source.executionMode)
+    ? source.executionMode
+    : DEFAULT_HATCH_PET_AGENT_CONFIG.executionMode
   return {
     enabled: source.enabled === true,
-    executionMode: DEFAULT_HATCH_PET_AGENT_CONFIG.executionMode,
+    executionMode,
     configMode,
     provider: normalizeText(source.provider, DEFAULT_HATCH_PET_AGENT_CONFIG.provider),
     baseUrl: normalizeBaseUrl(source.baseUrl, DEFAULT_HATCH_PET_AGENT_CONFIG.baseUrl),

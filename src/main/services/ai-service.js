@@ -6,14 +6,6 @@ const {
   uniqueModelIds
 } = require('./provider-model-catalog')
 const {
-  assertProviderConfigPayload,
-  createProviderOperationDetails,
-  findOwnerFieldOverrides,
-  getCapabilitySecretRef,
-  sanitizeProviderBaseUrlForDisplay: sanitizeBaseUrlForDisplay,
-  validateProviderConfigInput
-} = require('./provider-owner-policy')
-const {
   DEFAULT_HATCH_PET_AGENT_CONFIG,
   createHatchPetAgentPublicConfig,
   normalizeHatchPetAgentConfig
@@ -41,7 +33,7 @@ const DEFAULT_AI_CONFIG = {
     provider: 'openai-compatible',
     baseUrl: 'https://api.openai.com/v1',
     model: 'gpt-4o-mini',
-    apiKeyRef: getCapabilitySecretRef('vision')
+    apiKeyRef: 'ai.vision'
   },
   hatchPet: DEFAULT_HATCH_PET_AGENT_CONFIG
 }
@@ -271,6 +263,23 @@ const createTimeoutError = () => {
   const error = new Error('AI provider request timed out')
   error.name = 'TimeoutError'
   return error
+}
+
+const mergeHatchPetConfigWithoutDisplayDowngrade = (currentConfig = {}, partialConfig = {}) => {
+  const current = isPlainObject(currentConfig) ? currentConfig : {}
+  const partial = isPlainObject(partialConfig) ? partialConfig : {}
+  const next = { ...current, ...partial }
+  const currentBaseUrl = typeof current.baseUrl === 'string' ? current.baseUrl : ''
+  const nextBaseUrl = typeof partial.baseUrl === 'string' ? partial.baseUrl : ''
+  if (
+    currentBaseUrl &&
+    nextBaseUrl &&
+    sanitizeBaseUrlForDisplay(currentBaseUrl) === nextBaseUrl &&
+    currentBaseUrl !== nextBaseUrl
+  ) {
+    next.baseUrl = currentBaseUrl
+  }
+  return next
 }
 
 const mergeHatchPetConfigWithoutDisplayDowngrade = (currentConfig = {}, partialConfig = {}) => {
@@ -948,7 +957,7 @@ const createAiService = ({
         partialConfig?.hatchPet
       )
     })
-    let nextAi = {
+    const nextAi = {
       ...normalizeConfig({
         ...merged,
         vision: nextVision,
