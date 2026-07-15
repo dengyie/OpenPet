@@ -906,6 +906,9 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
           elapsedMs: Date.now() - startedAt
         }
       })
+      const failureState = lastCommandResult?.commandId === CREATOR_STUDIO_IMPORT_ACTION_COMMAND_ID || lastCommandResult?.commandId === CREATOR_STUDIO_IMPORT_PET_COMMAND_ID
+        ? 'import-failed'
+        : 'review-required'
       const contractFailureCodes = new Set([
         'reference_image_required',
         'reference_image_count_invalid',
@@ -916,9 +919,11 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
       ])
       const failureCode = contractFailureCodes.has(normalizeText(error?.code))
         ? normalizeText(error.code)
-        : 'workflow_failed'
+        : failureState === 'import-failed'
+          ? 'import_failed'
+          : 'workflow_failed'
       const result = createWorkflowResult({
-        state: 'review-required',
+        state: failureState,
         code: failureCode,
         message: runId
           ? `生成流程在 run ${runId} 失败：${error.message || '未知错误'}。可到 Creator Studio 查看详情。`

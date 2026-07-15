@@ -186,28 +186,17 @@ const createPublicPromptPreview = ({ dataDir, promptPreview = {} }) => {
 }
 
 const createPublicPromptCompiler = ({ dataDir, promptCompiler = {} }) => {
-  if (!promptCompiler || typeof promptCompiler !== 'object' || Object.keys(promptCompiler).length === 0) return undefined
+  if (!promptCompiler || typeof promptCompiler !== 'object') return undefined
   return {
-    visualPlanVersion: Math.max(0, Number(promptCompiler.visualPlanVersion) || 0),
-    providerImageTaskVersion: Math.max(0, Number(promptCompiler.providerImageTaskVersion) || 0),
     version: Number(promptCompiler.promptCompilerVersion || promptCompiler.version || 0),
-    promptRenderer: createPublicText({ dataDir, value: promptCompiler.promptRenderer || '' }),
-    modelCapabilityProfile: createPublicText({ dataDir, value: promptCompiler.modelCapabilityProfile || '' }),
     taskType: createPublicText({ dataDir, value: promptCompiler.taskType || '' }),
     stage: createPublicText({ dataDir, value: promptCompiler.stage || '' }),
     width: Math.max(0, Number(promptCompiler.width) || 0),
     height: Math.max(0, Number(promptCompiler.height) || 0),
     aspectRatio: createPublicText({ dataDir, value: promptCompiler.aspectRatio || '' }),
-    referenceImageCount: Math.max(0, Number(promptCompiler.referenceImageCount) || 0),
-    requestedOutputCount: Math.max(0, Number(promptCompiler.requestedOutputCount) || 0),
-    backgroundStrategy: createPublicText({ dataDir, value: promptCompiler.backgroundStrategy || '' }),
-    frameBeatCount: Math.max(0, Number(promptCompiler.frameBeatCount) || 0),
-    promptCharacterCount: Math.max(0, Number(promptCompiler.promptCharacterCount) || 0),
-    promptClauseIds: (Array.isArray(promptCompiler.promptClauseIds) ? promptCompiler.promptClauseIds : [])
-      .slice(0, 64)
-      .map((clauseId) => createPublicText({ dataDir, value: clauseId }))
-      .filter(Boolean),
-    promptSafety: createPublicText({ dataDir, value: promptCompiler.promptSafety || '' })
+    referenceImageCount: 1,
+    requestedOutputCount: 1,
+    promptSafety: 'provider-neutral'
   }
 }
 
@@ -237,7 +226,7 @@ const createPublicModelSnapshot = ({ dataDir, modelSnapshot = {} }) => {
 }
 
 const createPublicConditioning = ({ dataDir, conditioning = {} }) => {
-  if (!conditioning || typeof conditioning !== 'object' || Object.keys(conditioning).length === 0) return undefined
+  if (!conditioning || typeof conditioning !== 'object') return undefined
   return {
     mode: createPublicText({ dataDir, value: conditioning.mode || '' }),
     endpoint: createPublicText({ dataDir, value: conditioning.endpoint || '' }),
@@ -302,7 +291,7 @@ const createPublicRecovery = ({ dataDir, run }) => {
   const generatedImage = run.artifacts?.generatedImage || {}
   const conditioning = generatedImage?.conditioning && typeof generatedImage.conditioning === 'object'
     ? generatedImage.conditioning
-    : null
+    : {}
   const outputCount = Array.isArray(generatedImage.outputs) ? generatedImage.outputs.length : 0
   const canRetryGeneration = run.status === 'failed' && run.taskStatus === 'confirmed' && run.currentStep === 'generate'
   const isFullPet = run.generationTask?.mode === 'full-pet'
@@ -319,15 +308,13 @@ const createPublicRecovery = ({ dataDir, run }) => {
     attemptFailedAt: createPublicText({ dataDir, value: generatedImage.failedAt || '' }),
     generatedAt: createPublicText({ dataDir, value: generatedImage.generatedAt || '' }),
     outputCount: Number(outputCount) || 0,
-    conditioning: conditioning
-      ? {
-          mode: createPublicText({ dataDir, value: conditioning.mode || '' }),
-          endpoint: createPublicText({ dataDir, value: conditioning.endpoint || '' }),
-          referenceImageCount: Math.max(0, Number(conditioning.referenceImageCount) || 0),
-          multipartImageField: createPublicText({ dataDir, value: conditioning.multipartImageField || '' }),
-          requestedOutputCount: Math.max(0, Number(conditioning.requestedOutputCount) || 0)
-        }
-      : null
+    conditioning: {
+      mode: createPublicText({ dataDir, value: conditioning.mode || '' }),
+      endpoint: createPublicText({ dataDir, value: conditioning.endpoint || '' }),
+      referenceImageCount: Number(conditioning.referenceImageCount) || 0,
+      multipartImageField: createPublicText({ dataDir, value: conditioning.multipartImageField || '' }),
+      requestedOutputCount: Number(conditioning.requestedOutputCount) || 0
+    }
   }
 }
 
@@ -1319,10 +1306,17 @@ const createPromptProvenance = ({ dataDir, run, developerMode = false }) => {
     warnings: Array.isArray(promptBuilder?.warnings) ? promptBuilder.warnings.map((warning) => String(warning || '')).filter(Boolean) : [],
     ...(promptBuilder?.promptCompiler
       ? {
-          promptCompiler: createPublicPromptCompiler({
-            dataDir,
-            promptCompiler: promptBuilder.promptCompiler
-          })
+          promptCompiler: {
+            version: Number(promptBuilder.promptCompiler.promptCompilerVersion || promptBuilder.promptCompiler.version || 0),
+            taskType: String(promptBuilder.promptCompiler.taskType || ''),
+            stage: String(promptBuilder.promptCompiler.stage || ''),
+            width: Number(promptBuilder.promptCompiler.width) || 0,
+            height: Number(promptBuilder.promptCompiler.height) || 0,
+            aspectRatio: String(promptBuilder.promptCompiler.aspectRatio || ''),
+            referenceImageCount: 1,
+            requestedOutputCount: 1,
+            promptSafety: 'provider-neutral'
+          }
         }
       : {})
   }

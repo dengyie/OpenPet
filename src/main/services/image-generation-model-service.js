@@ -490,160 +490,23 @@ const getProviderGenerationBackgroundMode = ({ model, constraints }) => {
     : 'white'
 }
 
-const shouldTryFallbackImageModel = (error) => {
-  const message = String(error?.message || error || '').trim().toLowerCase()
-  if (!message) return false
-  if (
-    message.includes('api key is missing') ||
-    message.includes('allowed data directory') ||
-    message.includes('reference image') ||
-    message.includes('owner-controlled') ||
-    message.includes('model configuration changed')
-  ) return false
-  const statusMatch = message.match(/http\s+(\d{3})/i)
-  if (statusMatch) {
-    const status = Number(statusMatch[1])
-    if (
-      status === 408 || status === 425 || status === 429 ||
-      (status >= 500 && status <= 504) ||
-      (status >= 520 && status <= 524)
-    ) return true
-  }
-  return (
-    message.includes('request failed') ||
-    message.includes('timed out') ||
-    message.includes('unsupported model') ||
-    message.includes('model not found')
-  )
-}
-
 const normalizePromptCompilerEvidence = (value = {}) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const taskType = String(value.taskType || '').trim()
   const stage = String(value.stage || '').trim()
   const aspectRatio = String(value.aspectRatio || '').trim()
-  const normalizeIdentifier = (entry, maxLength = 120) => {
-    const text = String(entry || '').trim().slice(0, maxLength)
-    return /^[a-z0-9][a-z0-9._:-]*$/i.test(text) ? text : ''
-  }
-  const promptClauseIds = Array.isArray(value.promptClauseIds)
-    ? value.promptClauseIds.map((entry) => normalizeIdentifier(entry)).filter(Boolean).slice(0, 64)
-    : []
   return {
-    visualPlanVersion: Math.max(0, Number(value.visualPlanVersion) || 0),
-    providerImageTaskVersion: Math.max(0, Number(value.providerImageTaskVersion) || 0),
     promptCompilerVersion: Math.max(0, Number(value.promptCompilerVersion || value.version) || 0),
-    promptRenderer: normalizeIdentifier(value.promptRenderer),
-    modelCapabilityProfile: normalizeIdentifier(value.modelCapabilityProfile),
     taskType: /^[a-z][a-z-]{0,79}$/.test(taskType) ? taskType : '',
     stage: /^[a-z][a-z-]{0,79}$/.test(stage) ? stage : '',
     width: Math.max(0, Number(value.width) || 0),
     height: Math.max(0, Number(value.height) || 0),
     aspectRatio: /^\d+:\d+$/.test(aspectRatio) ? aspectRatio : '',
-    referenceImageCount: Math.max(0, Number(value.referenceImageCount) || 0),
-    requestedOutputCount: Math.max(0, Number(value.requestedOutputCount) || 0),
-    backgroundStrategy: normalizeIdentifier(value.backgroundStrategy),
-    frameBeatCount: Math.max(0, Number(value.frameBeatCount) || 0),
-    promptCharacterCount: Math.max(0, Number(value.promptCharacterCount) || 0),
-    promptClauseIds,
-    promptSafety: String(value.promptSafety || '').trim()
+    referenceImageCount: 1,
+    requestedOutputCount: REQUESTED_PROVIDER_OUTPUT_COUNT,
+    promptSafety: 'provider-neutral'
   }
 }
-
-const normalizePromptVariantConstraints = (value = {}, fallback = {}) => ({
-  width: Math.max(0, Number(value.width ?? fallback.width) || 0),
-  height: Math.max(0, Number(value.height ?? fallback.height) || 0),
-  transparent: Boolean(value.transparent ?? fallback.transparent),
-  backgroundStrategy: String(value.backgroundStrategy || fallback.backgroundStrategy || '').trim(),
-  ...(normalizeProviderQuality(value.quality || fallback.quality)
-    ? { quality: normalizeProviderQuality(value.quality || fallback.quality) }
-    : {})
-})
-
-const resolvePromptVariantCapabilityContract = (model) => {
-  const capabilityKey = normalizeImageModelCapabilityKey(model)
-  if (capabilityKey === 'gpt-image-2') {
-    return {
-      profile: 'gpt-image-2-v1',
-      backgroundStrategy: 'solid-background-then-local-removal',
-      transparent: false
-    }
-  }
-  if (DIRECT_TRANSPARENT_IMAGE_MODELS.has(capabilityKey)) {
-    return {
-      profile: 'gpt-image-edit-transparent-v1',
-      backgroundStrategy: 'direct-transparent-output',
-      transparent: true
-    }
-  }
-  return {
-    profile: `generic-image-edit-v1:${capabilityKey.slice(0, 80)}`,
-    backgroundStrategy: 'solid-background-then-local-removal',
-    transparent: false
-  }
-}
-
-const assertPromptVariantCapabilityContract = ({ model, prompt, promptCompiler, constraints }) => {
-  if (!promptCompiler) return
-  const hasCapabilityEvidence = (
-    Number(promptCompiler.promptCompilerVersion) >= 3 ||
-    Boolean(promptCompiler.modelCapabilityProfile) ||
-    Boolean(promptCompiler.backgroundStrategy)
-  )
-  if (!hasCapabilityEvidence) return
-  const expected = resolvePromptVariantCapabilityContract(model)
-  if (
-    promptCompiler.modelCapabilityProfile !== expected.profile ||
-    promptCompiler.backgroundStrategy !== expected.backgroundStrategy ||
-    Boolean(constraints.transparent) !== expected.transparent ||
-    (constraints.backgroundStrategy && constraints.backgroundStrategy !== expected.backgroundStrategy) ||
-    (!expected.transparent && /\btransparent\b/i.test(prompt))
-  ) {
-    const error = new Error(`Image Provider prompt variant capability contract does not match model ${sanitizeModelId(model)}`)
-    error.code = 'image_prompt_capability_conflict'
-    throw error
-  }
-}
-
-const normalizeProviderPromptVariants = ({ variants, prompt, promptCompiler, constraints, model }) => {
-  const source = Array.isArray(variants) && variants.length
-    ? variants.slice(0, 8)
-    : [{ model, prompt, promptCompiler, constraints }]
-  const seen = new Set()
-  const normalized = []
-  for (const entry of source) {
-    if (!isPlainObject(entry)) continue
-    const candidateModel = sanitizeModelId(entry.model)
-    const capabilityKey = normalizeImageModelCapabilityKey(candidateModel)
-    const candidatePrompt = String(entry.prompt || '').trim()
-    if (!candidateModel || !capabilityKey || !candidatePrompt || candidatePrompt.length > 12000 || seen.has(capabilityKey)) continue
-    const candidateConstraints = normalizePromptVariantConstraints(entry.constraints, constraints)
-    if (!candidateConstraints.width || !candidateConstraints.height) continue
-    const normalizedPromptCompiler = normalizePromptCompilerEvidence(entry.promptCompiler)
-    assertPromptVariantCapabilityContract({
-      model: candidateModel,
-      prompt: candidatePrompt,
-      promptCompiler: normalizedPromptCompiler,
-      constraints: candidateConstraints
-    })
-    seen.add(capabilityKey)
-    normalized.push({
-      model: candidateModel,
-      prompt: candidatePrompt,
-      promptCompiler: normalizedPromptCompiler,
-      constraints: candidateConstraints
-    })
-  }
-  return normalized
-}
-
-const createProviderModelAttempt = ({ model, ok, timeoutMs, durationMs, error = '' }) => ({
-  model: sanitizeModelId(model),
-  ok: Boolean(ok),
-  timeoutMs: Math.max(0, Number(timeoutMs) || 0),
-  durationMs: Math.max(0, Number(durationMs) || 0),
-  ...(error ? { error: sanitizeLogText(error, { maxChars: 240 }) } : {})
-})
 
 const createConditioningSummary = ({
   endpoint,
@@ -660,6 +523,7 @@ const createConditioningSummary = ({
   requestedTransparent: Boolean(constraints?.transparent),
   size: `${constraints?.width || 0}x${constraints?.height || 0}`,
   quality: getProviderImageQuality({ model, constraints }),
+  ...(promptCompiler ? { promptCompiler } : {}),
   references: referenceImages.map((referenceImage) => ({
     fileName: referenceImage.fileName,
     mimeType: referenceImage.mimeType,
@@ -1257,7 +1121,7 @@ const createImageGenerationModelService = ({
     }
   }
 
-  const generateProviderImage = async ({ config, prompt, targetDir, relativeDir, constraints, requestId, timeoutMs: timeoutOverrideMs, referenceImages = [] }) => {
+  const generateProviderImage = async ({ config, prompt, promptCompiler = null, targetDir, relativeDir, constraints, requestId, timeoutMs: timeoutOverrideMs, referenceImages = [] }) => {
     assertExactlyOneReferenceImage(referenceImages)
     const apiKey = secretService.getSecretValue(config.apiKeyRef)
     if (!apiKey) throw new Error('Image generation API key is missing')
@@ -1272,7 +1136,7 @@ const createImageGenerationModelService = ({
       endpoint,
       referenceImages: normalizedReferenceImages,
       constraints,
-      model: runtimeConfig.model,
+      model: config.model,
       promptCompiler
     })
     recordLog({
@@ -1303,6 +1167,7 @@ const createImageGenerationModelService = ({
         referenceImageCount: normalizedReferenceImages.length,
         multipartImageField: 'image',
         requestedOutputCount: REQUESTED_PROVIDER_OUTPUT_COUNT,
+        ...(promptCompiler || {}),
         timeoutMs
       }
     })
@@ -1616,12 +1481,13 @@ const createImageGenerationModelService = ({
     }
   }
 
-  const generateImage = async ({ prompt, output, constraints, timeoutMs, referenceImages = [], model = '' }) => {
+  const generateImage = async ({ prompt, promptCompiler, output, constraints, timeoutMs, referenceImages = [], model = '' }) => {
     assertExactlyOneReferenceImage(referenceImages)
     const normalizedReferenceImages = normalizeReferenceImages(referenceImages, {
       dataDir: output?.dataDir
     })
     assertExactlyOneReferenceImage(normalizedReferenceImages)
+    const normalizedPromptCompiler = normalizePromptCompilerEvidence(promptCompiler)
     const config = withRuntimeModelOverride(getStoredConfig(), model)
     const requestId = idFactory()
     const ownerFieldOverrides = findOwnerFieldOverrides(request, {
@@ -1721,7 +1587,8 @@ const createImageGenerationModelService = ({
         requestedTransparent: Boolean(constraints?.transparent),
         referenceImageCount: normalizedReferenceImages.length,
         multipartImageField: 'image',
-        requestedOutputCount: REQUESTED_PROVIDER_OUTPUT_COUNT
+        requestedOutputCount: REQUESTED_PROVIDER_OUTPUT_COUNT,
+        ...(normalizedPromptCompiler || {})
       }
     })
 
@@ -1731,6 +1598,7 @@ const createImageGenerationModelService = ({
       const result = await generateProviderImage({
         config,
         prompt,
+        promptCompiler: normalizedPromptCompiler,
         targetDir,
         relativeDir,
         constraints,

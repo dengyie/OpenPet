@@ -419,7 +419,7 @@ const readHostModelSettings = async () => {
   }
 }
 
-const createDefaultConditioningSummary = ({ model, referenceImages = [] }) => {
+const createDefaultConditioningSummary = ({ model, referenceImages = [], promptCompiler = null }) => {
   assertExactlyOneProviderReferenceImage(referenceImages)
   return {
     mode: 'image-edit',
@@ -427,6 +427,7 @@ const createDefaultConditioningSummary = ({ model, referenceImages = [] }) => {
     referenceImageCount: 1,
     multipartImageField: 'image',
     requestedOutputCount: 1,
+    ...(promptCompiler ? { promptCompiler } : {}),
     references: referenceImages.map((referenceImage) => ({
       fileName: referenceImage.fileName,
       relativePath: referenceImage.relativePath,
@@ -437,7 +438,7 @@ const createDefaultConditioningSummary = ({ model, referenceImages = [] }) => {
   }
 }
 
-const createKeyframeSpriteRowConditioningSummary = ({ model, referenceImages = [] }) => {
+const createKeyframeSpriteRowConditioningSummary = ({ model, referenceImages = [], promptCompiler = null }) => {
   assertExactlyOneProviderReferenceImage(referenceImages)
   return {
     mode: 'image-edit',
@@ -445,6 +446,7 @@ const createKeyframeSpriteRowConditioningSummary = ({ model, referenceImages = [
     referenceImageCount: 1,
     multipartImageField: 'image',
     requestedOutputCount: 1,
+    ...(promptCompiler ? { promptCompiler } : {}),
     references: referenceImages.map((referenceImage) => ({
       fileName: referenceImage.fileName,
       relativePath: referenceImage.relativePath,
@@ -626,11 +628,12 @@ const resolveCompiledPromptConstraints = (promptBuild = {}) => ({
   transparent: true
 })
 
-const callHostImageGenerate = ({ prompt, requestedTimeoutMs, referenceImages, runId, dataRelativeDir, model, constraints = DEFAULT_CONSTRAINTS }) => {
+const callHostImageGenerate = ({ prompt, promptCompiler, requestedTimeoutMs, referenceImages, runId, dataRelativeDir, model, constraints = DEFAULT_CONSTRAINTS }) => {
   assertExactlyOneProviderReferenceImage(referenceImages)
   return callBridge('/creator/model-image-generate', {
     model,
     prompt,
+    promptCompiler,
     timeoutMs: requestedTimeoutMs,
     referenceImages,
     output: {
@@ -704,6 +707,7 @@ const averageKeyframeIdentityDescriptor = (keyframes = []) => averageIdentityDes
 const generateWithModelFallback = async ({
   settings = {},
   prompt,
+  promptCompiler = null,
   constraints = DEFAULT_CONSTRAINTS,
   requestedTimeoutMs,
   referenceImages,
@@ -734,6 +738,7 @@ const generateWithModelFallback = async ({
         const response = await callHostImageGenerateImpl({
           model,
           prompt,
+          promptCompiler,
           requestedTimeoutMs: effectiveTimeoutMs,
           referenceImages,
           runId,
@@ -2934,6 +2939,7 @@ const generateActionKeyframe = async ({
       preferredModel: selectedModel,
       model: selectedModel,
       prompt: promptBuild.prompt,
+      promptCompiler: promptBuild.promptCompiler,
       constraints: resolveCompiledPromptConstraints(promptBuild),
       requestedTimeoutMs: stageTimeoutMs,
       referenceImages,
@@ -3002,6 +3008,7 @@ const generateActionKeyframe = async ({
       actionId,
       keyframeRole: normalizedKeyframeRole,
       promptRelativePath: promptFile.relativePath,
+      promptCompiler: promptBuild.promptCompiler,
       model: attempt.selectedModel,
       modelAttempts: attempt.attempts,
       quality
@@ -3025,6 +3032,7 @@ const generateActionKeyframe = async ({
       keyframe,
       referenceImage,
       promptRelativePath: promptFile.relativePath,
+      promptCompiler: promptBuild.promptCompiler,
       model: attempt.selectedModel,
       modelAttempts: attempt.attempts,
       stage: createProviderGenerationStage({
@@ -3243,6 +3251,7 @@ const generateKeyframeActionSpriteRow = async ({
       preferredModel: selectedModel,
       model: selectedModel,
       prompt: promptBuild.prompt,
+      promptCompiler: promptBuild.promptCompiler,
       constraints: resolveCompiledPromptConstraints(promptBuild),
       requestedTimeoutMs: finalStageTimeoutMs,
       referenceImages: [conditioningBoardReferenceImage],
@@ -3291,6 +3300,7 @@ const generateKeyframeActionSpriteRow = async ({
         ...(attempt.attempts || [])
       ],
       promptRelativePath: promptFile.relativePath,
+      promptCompiler: promptBuild.promptCompiler,
       keyframes: [
         startKeyframeResult.keyframe,
         peakKeyframeResult.keyframe
@@ -3331,6 +3341,7 @@ const generateKeyframeActionSpriteRow = async ({
         ...modelAttempts
       ],
       promptRelativePath: promptFile.relativePath,
+      promptCompiler: promptBuild.promptCompiler,
       keyframes: [
         startKeyframeResult.keyframe,
         peakKeyframeResult.keyframe
@@ -3436,6 +3447,7 @@ const generateDirectSourceActionAnchorCandidateSet = async ({
         preferredModel: selectedModel,
         model: selectedModel,
         prompt,
+        promptCompiler: candidatePromptBuild.promptCompiler,
         constraints: resolveCompiledPromptConstraints(candidatePromptBuild),
         requestedTimeoutMs,
         referenceImages: [actionReferenceImage],
@@ -3606,6 +3618,7 @@ const generateAnchorReferences = async ({
       preferredModel: selectedModel,
       model: selectedModel,
       prompt: characterPromptBuild.prompt,
+      promptCompiler: characterPromptBuild.promptCompiler,
       constraints: resolveCompiledPromptConstraints(characterPromptBuild),
       requestedTimeoutMs,
       referenceImages: [compositeReferenceImage],
@@ -3698,6 +3711,7 @@ const generateAnchorReferences = async ({
           preferredModel: selectedModel,
           model: selectedModel,
           prompt: actionPromptBuild.prompt,
+          promptCompiler: actionPromptBuild.promptCompiler,
           constraints: resolveCompiledPromptConstraints(actionPromptBuild),
           requestedTimeoutMs,
           referenceImages: [actionReferenceImage],
@@ -4436,11 +4450,13 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
   const defaultConditioning = keyframeSpriteRow?.ok
     ? createKeyframeSpriteRowConditioningSummary({
         model: keyframeSpriteRow.model || configuredModelSnapshot.model,
-        referenceImages: keyframeSpriteRow.referenceImages
+        referenceImages: keyframeSpriteRow.referenceImages,
+        promptCompiler: keyframeSpriteRow.promptCompiler
       })
     : createDefaultConditioningSummary({
         model: configuredModelSnapshot.model,
-        referenceImages
+        referenceImages,
+        promptCompiler: promptBuild.promptCompiler
       })
   const promptBuilder = createPromptBuilderSummary({
     promptBuild,
@@ -4530,7 +4546,8 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
       }),
       conditioning: createKeyframeSpriteRowConditioningSummary({
         model: configuredModelSnapshot.model,
-        referenceImages: keyframeSpriteRow.referenceImages
+        referenceImages: keyframeSpriteRow.referenceImages,
+        promptCompiler: keyframeSpriteRow.promptCompiler
       }),
       outputs: [],
       generationStages: partialGenerationStages,
@@ -4587,6 +4604,7 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
       settings,
       preferredModel: configuredModelSnapshot.model,
       prompt: providerPrompt,
+      promptCompiler: promptBuild.promptCompiler,
       constraints: resolveCompiledPromptConstraints(promptBuild),
       requestedTimeoutMs: baseStageTimeoutMs,
       referenceImages,
