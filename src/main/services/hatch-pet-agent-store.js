@@ -11,6 +11,8 @@ const REDACTED_PATH = '[redacted-path]'
 const SAFE_ENDPOINT_PATHS = new Set(['/images/generations'])
 
 const ABSOLUTE_HOST_PATH_PATTERNS = [
+  /(^|[\s"'`([{:;,=])file:\/\/\/(?:[a-zA-Z]:\/)?[^\s"'`),，。}\]]*/gi,
+  /(^|[\s"'`([{:;,=])\/(?:Applications|Library|System|bin|sbin|lib(?:64)?|run|dev|proc|sys)(?:\/[^\s"'`),，。}\]]*)?(?=$|[\s"'`),，。}\]])/g,
   /(^|[\s"'`([{:;,=])\/(?:Users|home|root|var|tmp|private|Volumes|opt|etc|usr|srv|mnt)(?:\/[^\s"'`),，。}\]]*)?(?=$|[\s"'`),，。}\]])/g,
   /(^|[\s"'`([{:;,=])[a-zA-Z]:[\\/][^\s"'`),，。}\]]*/g,
   /(^|[\s"'`([{:;,=])\\\\[^\\/\s"'`),，。}\]]+[\\/][^\\/\s"'`),，。}\]]+(?:[\\/][^\s"'`),，。}\]]*)?/g
