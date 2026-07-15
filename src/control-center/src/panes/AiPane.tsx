@@ -1858,6 +1858,260 @@ export function AiPane({
         </div>
       </CollapsibleAiSection>
 
+      <CollapsibleAiSection
+        title="Hatch Pet Agent"
+        note="配置 Creator workflow 的只读 Shadow 建议记录、独立模型和安全预算"
+        defaultOpen
+      >
+        <div className="provider-capability-card provider-capability-body" data-testid="hatch-pet-agent-card">
+          <div className="provider-card-header">
+            <div>
+              <h3>Hatch Pet Agent</h3>
+              <p>Shadow mode records bounded suggestions for diagnostics and does not alter generation, approval, import, or activation.</p>
+            </div>
+            <div className="provider-card-actions">
+              <button type="button" className="primary" onClick={onSaveHatchPetAgentConfig} disabled={saving || !hatchPetAgentConfigDirty}>
+                {saving ? '保存中' : '保存 Agent 配置'}
+              </button>
+              <button type="button" className="ghost" onClick={onCheckHatchPetAgentCapability} disabled={saving}>
+                Capability check
+              </button>
+            </div>
+          </div>
+
+          <div className="provider-status-strip">
+            <ProviderStatusItem label="Execution mode" value="Shadow" tone="ok" />
+            <ProviderStatusItem label="Config source" value={activeHatchPetAgentConfig.configMode === 'override' ? 'Dedicated model' : 'Follow chat model'} />
+            <ProviderStatusItem label="Effective endpoint" value={hatchPetAgentEffectiveHost} />
+            <ProviderStatusItem label="Effective model" value={activeHatchPetAgentConfig.effectiveModel || '未设置'} tone={activeHatchPetAgentConfig.hasApiKey ? 'ok' : 'warn'} />
+          </div>
+
+          <div className="section provider-summary">
+            <div className="field-row">
+              <div>
+                <div className="field-label">Enabled</div>
+                <div className="field-note">关闭时 Creator workflow 不请求或记录 Hatch Pet Agent shadow decision。</div>
+              </div>
+              <Toggle
+                ariaLabel="Enable Hatch Pet Agent"
+                checked={hatchPetAgentConfig.enabled}
+                onChange={(enabled) => onChangeHatchPetAgent({ enabled })}
+              />
+            </div>
+
+            <div className="field-row">
+              <div>
+                <div className="field-label">Model source</div>
+                <div className="field-note">跟随聊天模型会复用已保存的聊天 Provider；Dedicated model 使用下面的专用配置。</div>
+              </div>
+              <div className="segmented" role="group" aria-label="Hatch Pet Agent model source">
+                <button
+                  type="button"
+                  className={hatchPetAgentConfig.configMode === 'follow-chat' ? 'active' : ''}
+                  onClick={() => onChangeHatchPetAgent({ configMode: 'follow-chat' })}
+                >
+                  Follow chat model
+                </button>
+                <button
+                  type="button"
+                  className={hatchPetAgentConfig.configMode === 'override' ? 'active' : ''}
+                  onClick={() => onChangeHatchPetAgent({ configMode: 'override' })}
+                >
+                  Dedicated model
+                </button>
+              </div>
+            </div>
+
+            <div className="readonly-row">
+              <strong>Execution mode</strong>
+              <div className="provider-inline-summary">
+                <span className="provider-model-source-badge provider-model-source-cached">Shadow</span>
+                <span>只记录建议，不改变固定生成流程。</span>
+              </div>
+            </div>
+
+            {hatchPetAgentConfig.configMode === 'override' ? (
+              <details className="provider-disclosure" open>
+                <summary>Dedicated model</summary>
+                <div className="provider-disclosure-body">
+                  <label className="field-row">
+                    <span className="field-label">Provider</span>
+                    <select
+                      className="text-input"
+                      value={hatchPetAgentConfig.provider}
+                      onChange={(event) => onChangeHatchPetAgent({ provider: event.target.value })}
+                    >
+                      <option value="openai-compatible">OpenAI compatible</option>
+                    </select>
+                  </label>
+
+                  <label className="field-row">
+                    <span className="field-label">Base URL</span>
+                    <input
+                      aria-label="Hatch Pet Agent Base URL"
+                      className="text-input"
+                      value={hatchPetAgentConfig.baseUrl}
+                      onChange={(event) => onChangeHatchPetAgent({ baseUrl: event.target.value })}
+                    />
+                  </label>
+
+                  <label className="field-row">
+                    <span className="field-label">Model</span>
+                    <input
+                      aria-label="Hatch Pet Agent Model"
+                      className="text-input"
+                      value={hatchPetAgentConfig.model}
+                      onChange={(event) => onChangeHatchPetAgent({ model: event.target.value })}
+                    />
+                  </label>
+
+                  <div className="field-row">
+                    <div>
+                      <div className="field-label">API Key</div>
+                      <div className="field-note">{hatchPetAgentConfig.hasApiKey ? '专用密钥已保存' : '专用密钥未保存'} · secret ref 只读</div>
+                    </div>
+                    <div className="inline-action">
+                      <input
+                        aria-label="Hatch Pet Agent API Key"
+                        className="text-input"
+                        type="password"
+                        value={hatchPetAgentApiKeyDraft}
+                        placeholder={hatchPetAgentConfig.hasApiKey ? '输入新密钥覆盖' : '输入专用 API Key'}
+                        onChange={(event) => setHatchPetAgentApiKeyDraft(event.target.value)}
+                      />
+                      <button type="button" className="ghost" onClick={onSaveHatchPetAgentApiKey} disabled={saving || !hatchPetAgentApiKeyDraftReady}>
+                        保存密钥
+                      </button>
+                      <button type="button" className="danger-text" onClick={onClearHatchPetAgentApiKey} disabled={saving || !hatchPetAgentConfig.hasApiKey}>
+                        清除
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="readonly-row">
+                    <strong>Secret reference</strong>
+                    <code>{hatchPetAgentConfig.apiKeyRef}</code>
+                  </div>
+                </div>
+              </details>
+            ) : (
+              <div className="provider-feedback" data-testid="hatch-pet-agent-follow-chat">
+                <strong>Follow chat model</strong>
+                <span>当前继承：{activeHatchPetAgentConfig.effectiveProvider} · {activeHatchPetAgentConfig.effectiveBaseUrl} · {activeHatchPetAgentConfig.effectiveModel}</span>
+                <span>API Key 仍由 OpenPet host 管理，renderer 不读取或保存聊天密钥值。</span>
+              </div>
+            )}
+
+            <details className="provider-disclosure" open>
+              <summary>Budgets</summary>
+              <div className="provider-disclosure-body">
+                <label className="field-row">
+                  <span className="field-label">Identity regenerations</span>
+                  <input
+                    className="text-input"
+                    type="number"
+                    min={0}
+                    max={3}
+                    value={hatchPetAgentConfig.budgets.maxIdentityRegenerations}
+                    onChange={(event) => onChangeHatchPetAgent({ budgets: { ...hatchPetAgentConfig.budgets, maxIdentityRegenerations: Number(event.target.value) } })}
+                  />
+                </label>
+                <label className="field-row">
+                  <span className="field-label">Action attempts per action</span>
+                  <input
+                    className="text-input"
+                    type="number"
+                    min={1}
+                    max={6}
+                    value={hatchPetAgentConfig.budgets.maxActionAttemptsPerAction}
+                    onChange={(event) => onChangeHatchPetAgent({ budgets: { ...hatchPetAgentConfig.budgets, maxActionAttemptsPerAction: Number(event.target.value) } })}
+                  />
+                </label>
+                <label className="field-row">
+                  <span className="field-label">Evaluation attempts per artifact</span>
+                  <input
+                    className="text-input"
+                    type="number"
+                    min={1}
+                    max={3}
+                    value={hatchPetAgentConfig.budgets.maxEvaluationAttemptsPerArtifact}
+                    onChange={(event) => onChangeHatchPetAgent({ budgets: { ...hatchPetAgentConfig.budgets, maxEvaluationAttemptsPerArtifact: Number(event.target.value) } })}
+                  />
+                </label>
+                <label className="field-row">
+                  <span className="field-label">Provider-call budget</span>
+                  <input
+                    className="text-input"
+                    type="number"
+                    min={1}
+                    max={200}
+                    value={hatchPetAgentConfig.budgets.maxProviderCalls}
+                    onChange={(event) => onChangeHatchPetAgent({ budgets: { ...hatchPetAgentConfig.budgets, maxProviderCalls: Number(event.target.value) } })}
+                  />
+                </label>
+                <label className="field-row">
+                  <span className="field-label">Time budget (ms)</span>
+                  <input
+                    className="text-input"
+                    type="number"
+                    min={60000}
+                    max={14400000}
+                    step={60000}
+                    value={hatchPetAgentConfig.budgets.maxElapsedMs}
+                    onChange={(event) => onChangeHatchPetAgent({ budgets: { ...hatchPetAgentConfig.budgets, maxElapsedMs: Number(event.target.value) } })}
+                  />
+                </label>
+                <label className="field-row">
+                  <div>
+                    <div className="field-label">Estimated cost budget (USD)</div>
+                    <div className="field-note">留空表示不设置估算成本上限。</div>
+                  </div>
+                  <input
+                    className="text-input"
+                    type="number"
+                    min={0.01}
+                    max={10000}
+                    step={0.01}
+                    value={hatchPetAgentConfig.budgets.maxEstimatedCost ?? ''}
+                    onChange={(event) => onChangeHatchPetAgent({ budgets: { ...hatchPetAgentConfig.budgets, maxEstimatedCost: event.target.value === '' ? null : Number(event.target.value) } })}
+                  />
+                </label>
+              </div>
+            </details>
+
+            <div className="field-row">
+              <div>
+                <div className="field-label">Identity checkpoint</div>
+                <div className="field-note">在动作阶段前要求身份人工复查；Shadow 仍不会自行批准或改变生成。</div>
+              </div>
+              <Toggle
+                ariaLabel="Require identity checkpoint before actions"
+                checked={hatchPetAgentConfig.requireIdentityReviewBeforeActions}
+                onChange={(requireIdentityReviewBeforeActions) => onChangeHatchPetAgent({ requireIdentityReviewBeforeActions })}
+              />
+            </div>
+
+            {hatchPetAgentConfigDirty ? (
+              <div className="provider-warning" data-testid="hatch-pet-agent-dirty">
+                Hatch Pet Agent 有未保存配置；capability check 只使用已保存配置。
+              </div>
+            ) : null}
+
+            {(hatchPetAgentStatus || hatchPetAgentCapabilityResult) ? (
+              <div className={`provider-feedback ${hatchPetAgentCapabilityResult ? hatchPetAgentCapabilityTone : ''}`.trim()} data-testid="hatch-pet-agent-status" aria-live="polite">
+                <strong>Hatch Pet Agent status</strong>
+                {hatchPetAgentStatus ? <span>{hatchPetAgentStatus}</span> : null}
+                {hatchPetAgentCapabilityResult ? (
+                  <span>
+                    {hatchPetAgentCapabilityResult.ok ? 'Supported' : 'Unsupported'} · {hatchPetAgentCapabilityResult.provider} · {hatchPetAgentCapabilityResult.model} · {hatchPetAgentCapabilityResult.elapsedMs}ms · {hatchPetAgentCapabilityResult.code}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </CollapsibleAiSection>
+
       <CollapsibleAiSection title="长期记忆" note="查看和管理自动抽取的用户与宠物关系记忆">
         <div className="section memory-section" data-testid="ai-memory-profile">
           <div className="field-row">
