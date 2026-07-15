@@ -581,7 +581,9 @@ const probeAvailableModels = async ({ config, fetchImpl, apiKey, requestTimeoutM
     }
   } catch (error) {
     return {
-      modelsProbe: 'failed',
+      modelsProbe: error?.name === 'TimeoutError' || linkedSignal.isTimeout()
+        ? 'timed_out'
+        : 'failed',
       availableModels: [],
       currentModelDiscovered: false
     }

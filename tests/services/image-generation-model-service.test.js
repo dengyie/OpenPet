@@ -487,6 +487,27 @@ test('image generation model service returns discovered models when the optional
   assert.equal(result.currentModelDiscovered, true)
 })
 
+test('image generation health times out while reading a stalled response body', async () => {
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings()),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-image', label: 'Image API Key' }
+    }),
+    providerGenerationTimeoutMs: 5,
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => new Promise(() => {})
+    })
+  })
+
+  const result = await service.checkHealth()
+
+  assert.equal(result.ok, false)
+  assert.equal(result.code, 'health_check_timeout')
+  assert.equal(result.modelsProbe, 'timed_out')
+})
+
 test('image generation model service discovers available models through the optional /models probe', async () => {
   const requests = []
   const service = createImageGenerationModelService({
@@ -552,6 +573,26 @@ test('image generation model service filters secrets and bounds discovered model
   assert.deepEqual(result.models, service.getConfig().modelCatalog.models)
   assert.equal(result.models.some((model) => model.includes(apiKey)), false)
   assert.equal(result.models.some((model) => model.length > 256), false)
+})
+
+test('image generation model service filters short owner secrets from discovery and persisted catalogs', async () => {
+  const apiKey = 'abc'
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings()),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: apiKey, label: 'Image API Key' }
+    }),
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: [{ id: `image-${apiKey}-private` }, { id: 'safe-image-model' }] })
+    })
+  })
+
+  const result = await service.discoverModels()
+
+  assert.deepEqual(result.models, ['safe-image-model'])
+  assert.deepEqual(service.getConfig().modelCatalog.models, ['safe-image-model'])
 })
 
 test('image generation model discovery does not expose provider response text in logs', async () => {

@@ -35,7 +35,7 @@ const normalizeSecrets = (secrets = []) => (
 )
 
 const containsSecretValue = (modelId, secrets) => secrets.some((secret) => (
-  modelId === secret || (secret.length >= 4 && modelId.includes(secret))
+  modelId.includes(secret)
 ))
 
 const uniqueModelIds = (items = [], { secrets = [], sort = true } = {}) => {

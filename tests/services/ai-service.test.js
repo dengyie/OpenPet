@@ -1377,6 +1377,57 @@ test('ai service testConnection keeps chat success when optional models probe pa
   ])
 })
 
+test('ai service testConnection distinguishes model probe timeout during fetch and body parsing', async () => {
+  const createService = (modelsFetch) => createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: false,
+        provider: 'openai-compatible',
+        baseUrl: 'https://models-timeout.example.test/v1',
+        model: 'example-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    requestTimeoutMs: 5,
+    fetchImpl: async (url, options) => {
+      if (url.endsWith('/chat/completions')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ choices: [{ message: { content: 'ok' } }] })
+        }
+      }
+      return await modelsFetch(options)
+    }
+  })
+
+  const fetchTimeout = await createService((options) => new Promise((_resolve, reject) => {
+    options.signal.addEventListener('abort', () => {
+      const error = new Error('aborted')
+      error.name = 'AbortError'
+      reject(error)
+    }, { once: true })
+  })).testConnection()
+  const bodyTimeout = await createService(async () => ({
+    ok: true,
+    status: 200,
+    json: async () => new Promise(() => {})
+  })).testConnection()
+
+  for (const result of [fetchTimeout, bodyTimeout]) {
+    assert.equal(result.ok, true)
+    assert.equal(result.code, 'ok')
+    assert.equal(result.modelsProbe, 'timed_out')
+    assert.deepEqual(result.availableModels, [])
+    assert.equal(result.currentModelDiscovered, false)
+  }
+})
+
 test('ai service testConnection returns missing key failure metadata', async () => {
   const service = createAiService({
     settingsService: createSettingsService({
@@ -1539,6 +1590,36 @@ test('ai service filters secrets and bounds model discovery results before cachi
   assert.deepEqual(result.models, cachedModels)
   assert.equal(result.models.some((model) => model.includes(apiKey)), false)
   assert.equal(result.models.some((model) => model.length > 256), false)
+})
+
+test('ai service filters short owner secrets from model discovery and persisted catalogs', async () => {
+  const apiKey = 'abc'
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://models.example.test/v1',
+        model: 'safe-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => apiKey,
+      setSecret: () => {}
+    },
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: [{ id: `model-${apiKey}-private` }, { id: 'safe-model' }] })
+    })
+  })
+
+  const result = await service.discoverModels()
+
+  assert.deepEqual(result.models, ['safe-model'])
+  assert.deepEqual(service.getConfig().modelCatalog.models, ['safe-model'])
 })
 
 test('ai service times out model discovery when the response body stalls', async () => {
@@ -1816,6 +1897,43 @@ test('ai service filters the effective Vision secret from discovered model ids',
       ok: true,
       status: 200,
       json: async () => ({ data: [{ id: visionApiKey }, { id: 'safe-vision-model' }] })
+    })
+  })
+
+  const result = await service.discoverVisionModels()
+
+  assert.deepEqual(result.models, ['safe-vision-model'])
+  assert.deepEqual(service.getConfig().vision.modelCatalog.models, ['safe-vision-model'])
+})
+
+test('ai service filters a short Vision owner secret from discovery and persisted catalogs', async () => {
+  const visionApiKey = 'abc'
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://chat.example.test/v1',
+        model: 'chat-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: '',
+        vision: {
+          mode: 'override',
+          provider: 'openai-compatible',
+          baseUrl: 'https://vision.example.test/v1',
+          model: 'safe-vision-model',
+          apiKeyRef: 'ai.vision'
+        }
+      }
+    }),
+    secretService: {
+      getSecretValue: (key) => (key === 'ai.vision' ? visionApiKey : 'chat-key'),
+      setSecret: () => {}
+    },
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: [{ id: `vision-${visionApiKey}-private` }, { id: 'safe-vision-model' }] })
     })
   })
 
@@ -2113,6 +2231,50 @@ test('ai service streamComplete classifies internal timeout separately from call
     }),
     (error) => error?.name === 'TimeoutError' && error?.message === 'AI provider request timed out'
   )
+})
+
+test('ai service streamComplete times out after headers when the stream reader stalls', async () => {
+  let canceled = false
+  let released = false
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://stream.example.test/v1',
+        model: 'stream-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    requestTimeoutMs: 5,
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      body: {
+        getReader: () => ({
+          read: async () => new Promise(() => {}),
+          cancel: () => { canceled = true },
+          releaseLock: () => { released = true }
+        })
+      }
+    })
+  })
+
+  await assert.rejects(
+    () => service.streamComplete({
+      requestId: 'stream-body-timeout-1',
+      messages: [{ role: 'user', content: 'Long reply' }],
+      onDelta: () => {}
+    }),
+    (error) => error?.name === 'TimeoutError'
+  )
+  assert.equal(canceled, true)
+  assert.equal(released, true)
 })
 
 test('ai service streamComplete falls back before chunks when streaming is unsupported', async () => {
