@@ -3,7 +3,6 @@ const STAGES = new Set(['identity', 'start', 'peak', 'final', 'repair'])
 const REFERENCE_TYPES = new Set(['single-character', 'identity-comparison', 'identity-and-motion'])
 const MAX_VISUAL_DIRECTIVE_LENGTH = 240
 const MAX_VISUAL_DIRECTIVES = 12
-const MAX_APPEARANCE_INTENT_DIRECTIVES = 6
 const MIN_CANVAS_EDGE = 64
 const MAX_CANVAS_EDGE = 4096
 
@@ -22,41 +21,18 @@ const DEFAULT_FULL_BODY_SUBJECT = Object.freeze({
 })
 
 const DEFAULT_STYLE_LOCKS = Object.freeze([
-  'same visible identity-bearing features',
+  'same face and eye design',
   'same visible markings and colors',
-  'same material, surface, or texture rendering',
+  'same material or fur rendering',
   'same body proportions and silhouette',
-  'same visible accessories or garments when present',
-  'same subject lighting and rendering style'
+  'same accessories and clothing when visible',
+  'same lighting and rendering style'
 ])
 
-const INTERNAL_VISUAL_TEXT = /\b(?:openpet|creator[-_ ]?studio|codex[-_ ]?pet|hatch[-_ ]?pet|provider|backend|run[-_ ]?id|action[-_ ]?id|checkpoint|multipart|reference[-_ ]?role)\b/gi
-const SECRET_LIKE_TEXT = /\b(?:sk-[A-Za-z0-9_-]+|bearer\s+[A-Za-z0-9._~-]+|(?:[A-Za-z0-9_-]*token[A-Za-z0-9_-]*|api[-_ ]?key|secret|credential|password|authorization)\s*[:=]\s*(?:(?:bearer|basic)\s+)?\S+)\b/gi
-const TOKEN_IDENTIFIER_TEXT = /\b[A-Za-z0-9_-]*token[A-Za-z0-9_-]*\b/gi
+const INTERNAL_VISUAL_TEXT = /\b(?:openpet|provider|backend|run[-_ ]?id|action[-_ ]?id|checkpoint|multipart|reference[-_ ]?role)\b/gi
+const SECRET_LIKE_TEXT = /\b(?:sk-[A-Za-z0-9_-]+|bearer\s+[A-Za-z0-9._~-]+|[A-Za-z0-9_-]*token[A-Za-z0-9_-]*\s*[:=]\s*\S+)\b/gi
 const HOST_PATH_TEXT = /(?:\/Users|\/var|\/tmp|\/private|\/Volumes)\/[^\s,，。)]+/g
 const URL_TEXT = /https?:\/\/\S+/gi
-const FILE_URI_TEXT = /\bfile:\/{2,3}\S+/gi
-const TRAVERSAL_TEXT = /(?:^|\s)(?:\.\.[/\\])+\S*/g
-const WINDOWS_PATH_TEXT = /\b[A-Za-z]:[\\/]\S+/g
-const UNC_PATH_TEXT = /\\\\[^\\/\s]+[\\/]\S+/g
-const PROJECT_RELATIVE_PATH_TEXT = /\b(?:runs|inputs|outputs|assets|cat_anime)[/\\][^\s,，。)]+/gi
-const POSIX_ABSOLUTE_PATH_TEXT = /(?:^|\s)\/(?!\/)\S+/g
-
-const UNSAFE_APPEARANCE_INTENT_PATTERNS = Object.freeze([
-  Object.freeze({ pattern: /\b(?:openpet|creator[-_ ]?studio|codex[-_ ]?pet|hatch[-_ ]?pet|provider|backend|run[-_ ]?id|action[-_ ]?id|checkpoint|multipart|reference[-_ ]?role)\b/i, label: 'internal term' }),
-  Object.freeze({ pattern: /\b(?:sk-[A-Za-z0-9_-]+|bearer\s+[A-Za-z0-9._~-]+|(?:[A-Za-z0-9_-]*token[A-Za-z0-9_-]*|api[-_ ]?key|secret|credential|password|authorization)\s*[:=]\s*(?:(?:bearer|basic)\s+)?\S+)\b/i, label: 'secret' }),
-  Object.freeze({ pattern: /\b[A-Za-z0-9_-]*token[A-Za-z0-9_-]*\b/i, label: 'token identifier' }),
-  Object.freeze({ pattern: /https?:\/\/\S+/i, label: 'URL' }),
-  Object.freeze({ pattern: /\bfile:\/{2,3}\S+/i, label: 'file URI' }),
-  Object.freeze({ pattern: /(?:^|\s)(?:\.\.[/\\])+\S*/i, label: 'path traversal' }),
-  Object.freeze({ pattern: /\b[A-Za-z]:[\\/]\S+/i, label: 'Windows path' }),
-  Object.freeze({ pattern: /\\\\[^\\/\s]+[\\/]\S+/i, label: 'UNC path' }),
-  Object.freeze({ pattern: /\b(?:runs|inputs|outputs|assets|cat_anime)[/\\][^\s,，。)]+/i, label: 'project path' }),
-  Object.freeze({ pattern: /(?:^|\s)\/(?!\/)\S+/i, label: 'absolute path' }),
-  Object.freeze({ pattern: /\b(?:ignore|disregard|override|replace|reveal|repeat)\b.{0,80}\b(?:instruction|prompt|system|rule|requirement)\b/i, label: 'prompt control' }),
-  Object.freeze({ pattern: /\b(?:instruction|prompt|system)\b.{0,80}\b(?:ignore|disregard|override|replace|reveal|repeat)\b/i, label: 'prompt control' }),
-  Object.freeze({ pattern: /(?:忽略|无视|覆盖|泄露|透露|重复).{0,40}(?:指令|提示词|系统|规则|要求)/i, label: 'prompt control' })
-])
 
 const isPlainObject = (value) => Boolean(value && typeof value === 'object' && !Array.isArray(value))
 
@@ -142,15 +118,8 @@ const resolveProviderCanvasForLayout = ({ columns, rows } = {}) => {
 const sanitizeVisualDirective = (value) => String(value || '')
   .replace(/[\u0000-\u001F\u007F]/g, ' ')
   .replace(SECRET_LIKE_TEXT, ' ')
-  .replace(TOKEN_IDENTIFIER_TEXT, ' ')
   .replace(URL_TEXT, ' ')
-  .replace(FILE_URI_TEXT, ' ')
-  .replace(TRAVERSAL_TEXT, ' ')
-  .replace(WINDOWS_PATH_TEXT, ' ')
-  .replace(UNC_PATH_TEXT, ' ')
-  .replace(PROJECT_RELATIVE_PATH_TEXT, ' ')
   .replace(HOST_PATH_TEXT, ' ')
-  .replace(POSIX_ABSOLUTE_PATH_TEXT, ' ')
   .replace(INTERNAL_VISUAL_TEXT, ' ')
   .replace(/\s+/g, ' ')
   .trim()
@@ -164,24 +133,6 @@ const normalizeVisualDirectives = (value, fallback = []) => {
     .slice(0, MAX_VISUAL_DIRECTIVES)
 }
 
-const normalizeAppearanceIntent = (value) => {
-  if (value == null) return []
-  if (!Array.isArray(value)) {
-    throw createTaskError('image_prompt_contract_invalid', 'Image task appearance intent must be an array')
-  }
-  return value.slice(0, MAX_APPEARANCE_INTENT_DIRECTIVES).map((entry) => {
-    if (typeof entry !== 'string') {
-      throw createTaskError('image_prompt_contract_invalid', 'Image task appearance intent must contain text')
-    }
-    const raw = entry.trim()
-    const unsafe = UNSAFE_APPEARANCE_INTENT_PATTERNS.find(({ pattern }) => pattern.test(raw))
-    if (unsafe) {
-      throw createTaskError('image_prompt_contract_invalid', `Image task appearance intent contains forbidden ${unsafe.label}`)
-    }
-    return sanitizeVisualDirective(raw)
-  }).filter(Boolean)
-}
-
 const resolveReferenceInterpretation = (referenceRole = '') => {
   const role = String(referenceRole || '').trim().toLowerCase()
   if (role === 'full-pet-action-identity-board') {
@@ -189,14 +140,6 @@ const resolveReferenceInterpretation = (referenceRole = '') => {
       type: 'identity-comparison',
       primaryRegion: 'the larger primary character view',
       secondaryRegion: 'the smaller source-detail view',
-      ignorePresentationLayout: true
-    })
-  }
-  if (/composite-reference-board|source-action-reference-board/.test(role)) {
-    return deepFreeze({
-      type: 'identity-comparison',
-      primaryRegion: 'the main identity view',
-      secondaryRegion: 'the supporting identity views',
       ignorePresentationLayout: true
     })
   }
@@ -293,84 +236,20 @@ const normalizeSubject = (value = DEFAULT_FULL_BODY_SUBJECT) => {
   })
 }
 
-const createFrameCell = ({ frame, sheet }) => {
-  if (!sheet) return ''
-  const index = frame - 1
-  return `row ${Math.floor(index / sheet.columns) + 1} column ${(index % sheet.columns) + 1}`
-}
-
-const normalizeFrameBeats = (value, sheet) => {
-  if (value == null) return []
-  if (!Array.isArray(value)) {
-    throw createTaskError('image_prompt_contract_invalid', 'Image task action frame beats must be an array')
-  }
-  const normalized = value.map((entry, index) => {
-    const frame = index + 1
-    if (typeof entry === 'string') {
-      return {
-        frame,
-        cell: createFrameCell({ frame, sheet }),
-        beat: sanitizeVisualDirective(entry.replace(/^Frame\s+\d+\s*:\s*/i, ''))
-      }
-    }
-    assertAllowedKeys(entry, new Set(['frame', 'cell', 'beat']), `action.frameBeats[${index}]`)
-    const normalizedFrame = Number(entry.frame)
-    if (!Number.isInteger(normalizedFrame) || normalizedFrame !== frame) {
-      throw createTaskError('image_prompt_frame_plan_incomplete', 'Image task frame beats must be contiguous from frame 1')
-    }
-    const expectedCell = createFrameCell({ frame, sheet })
-    const providedCell = sanitizeVisualDirective(entry.cell)
-    if (sheet && providedCell && providedCell !== expectedCell) {
-      throw createTaskError('image_prompt_frame_plan_incomplete', 'Image task frame beat cell does not match sheet geometry')
-    }
-    return {
-      frame,
-      cell: expectedCell || providedCell,
-      beat: sanitizeVisualDirective(entry.beat)
-    }
-  })
-  if (sheet && normalized.length !== sheet.frameCount) {
-    throw createTaskError('image_prompt_frame_plan_incomplete', 'Image task frame beats must cover every required frame')
-  }
-  if (normalized.some((entry) => !entry.beat)) {
-    throw createTaskError('image_prompt_frame_plan_incomplete', 'Image task frame beat text is required')
-  }
-  return normalized
-}
-
-const normalizeAction = (value, sheet) => {
+const normalizeAction = (value) => {
   if (value == null) return null
   assertAllowedKeys(
     value,
-    new Set([
-      'name',
-      'animationType',
-      'moment',
-      'viewDirection',
-      'loopType',
-      'movingParts',
-      'secondaryMotion',
-      'lockedParts',
-      'forbiddenMotion',
-      'loopIntent',
-      'framePlan',
-      'frameBeats'
-    ]),
+    new Set(['name', 'moment', 'movingParts', 'lockedParts', 'loopIntent', 'framePlan']),
     'action'
   )
-  const frameBeats = normalizeFrameBeats(value.frameBeats ?? value.framePlan, sheet)
   return deepFreeze({
     name: sanitizeVisualDirective(value.name),
-    animationType: sanitizeVisualDirective(value.animationType),
     moment: sanitizeVisualDirective(value.moment),
-    viewDirection: sanitizeVisualDirective(value.viewDirection),
-    loopType: sanitizeVisualDirective(value.loopType),
     movingParts: normalizeVisualDirectives(value.movingParts),
-    secondaryMotion: normalizeVisualDirectives(value.secondaryMotion),
     lockedParts: normalizeVisualDirectives(value.lockedParts),
-    forbiddenMotion: normalizeVisualDirectives(value.forbiddenMotion),
     loopIntent: sanitizeVisualDirective(value.loopIntent),
-    frameBeats: deepFreeze(frameBeats)
+    framePlan: normalizeVisualDirectives(value.framePlan)
   })
 }
 
@@ -387,7 +266,6 @@ const createProviderImageTask = (input = {}) => {
       'subject',
       'action',
       'styleLocks',
-      'appearanceIntent',
       'strategyId',
       'requestedChanges'
     ]),
@@ -413,7 +291,7 @@ const createProviderImageTask = (input = {}) => {
     : sheet
       ? resolveProviderCanvasForLayout(sheet)
       : createCanvas(PROVIDER_CANVASES.square)
-  const action = normalizeAction(input.action, sheet)
+  const action = normalizeAction(input.action)
   if (taskType !== 'character-image' && !action) {
     throw createTaskError('image_prompt_contract_invalid', 'Action image task requires a visual action')
   }
@@ -422,7 +300,7 @@ const createProviderImageTask = (input = {}) => {
     throw createTaskError('image_prompt_contract_invalid', 'Image task strategy is invalid')
   }
   return deepFreeze({
-    version: 3,
+    version: 1,
     taskType,
     stage,
     canvas,
@@ -434,7 +312,6 @@ const createProviderImageTask = (input = {}) => {
     subject: normalizeSubject(input.subject || DEFAULT_FULL_BODY_SUBJECT),
     action,
     styleLocks: normalizeVisualDirectives(input.styleLocks, DEFAULT_STYLE_LOCKS),
-    appearanceIntent: normalizeAppearanceIntent(input.appearanceIntent),
     strategyId,
     requestedChanges: normalizeVisualDirectives(input.requestedChanges)
   })
@@ -444,7 +321,6 @@ module.exports = {
   DEFAULT_FULL_BODY_SUBJECT,
   DEFAULT_STYLE_LOCKS,
   PROVIDER_CANVASES,
-  UNSAFE_APPEARANCE_INTENT_PATTERNS,
   createCanvas,
   createProviderImageTask,
   createTaskError,
