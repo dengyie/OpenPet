@@ -592,14 +592,29 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     return realTargetPath
   }
 
-  const assertSingleCreatorModelReferenceImage = (referenceImages) => {
-    if (!Array.isArray(referenceImages) || referenceImages.length <= 1) return
-    throw new Error('Image generation accepts at most one reference image; compose multiple sources into one local reference board')
+  const createCreatorReferenceContractError = (code, message) => {
+    const error = new Error(message)
+    error.code = code
+    return error
+  }
+
+  const assertExactlyOneCreatorModelReferenceImage = (referenceImages) => {
+    if (!Array.isArray(referenceImages) || referenceImages.length === 0) {
+      throw createCreatorReferenceContractError(
+        'reference_image_required',
+        'Image generation requires exactly one reference image'
+      )
+    }
+    if (referenceImages.length !== 1) {
+      throw createCreatorReferenceContractError(
+        'reference_image_count_invalid',
+        'Image generation requires exactly one reference image; compose multiple sources into one local reference image'
+      )
+    }
   }
 
   const sanitizeCreatorModelReferenceImages = (manifest, referenceImages = []) => {
-    if (!Array.isArray(referenceImages)) return []
-    assertSingleCreatorModelReferenceImage(referenceImages)
+    assertExactlyOneCreatorModelReferenceImage(referenceImages)
     return referenceImages.map((referenceImage) => {
       if (!referenceImage || typeof referenceImage !== 'object') {
         throw createCreatorReferenceContractError(

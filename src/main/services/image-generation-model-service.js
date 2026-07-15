@@ -330,13 +330,44 @@ const createSafeReferenceRelativePath = (value) => {
   return normalized
 }
 
-const assertSingleReferenceImage = (referenceImages) => {
-  if (!Array.isArray(referenceImages) || referenceImages.length <= 1) return
-  throw new Error('Image generation accepts at most one reference image; compose multiple sources into one local reference board')
+const createReferenceContractError = (code, message) => {
+  const error = new Error(message)
+  error.code = code
+  return error
 }
 
-const normalizeReferenceImages = (referenceImages = []) => {
-  if (!Array.isArray(referenceImages)) return []
+const assertExactlyOneReferenceImage = (referenceImages) => {
+  if (!Array.isArray(referenceImages) || referenceImages.length === 0) {
+    throw createReferenceContractError(
+      'reference_image_required',
+      'Image generation requires exactly one reference image'
+    )
+  }
+  if (referenceImages.length !== 1) {
+    throw createReferenceContractError(
+      'reference_image_count_invalid',
+      'Image generation requires exactly one reference image; compose multiple sources into one local reference image'
+    )
+  }
+}
+
+const normalizeReferenceImages = (referenceImages = [], { dataDir } = {}) => {
+  assertExactlyOneReferenceImage(referenceImages)
+  const rawDataDir = String(dataDir || '').trim()
+  if (!rawDataDir) {
+    throw createReferenceContractError(
+      'reference_image_unusable',
+      'Reference image data directory is unavailable'
+    )
+  }
+  const root = path.resolve(rawDataDir)
+  if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
+    throw createReferenceContractError(
+      'reference_image_unusable',
+      'Reference image data directory is unavailable'
+    )
+  }
+  const realRoot = fs.realpathSync.native(root)
   return referenceImages
     .map((entry, index) => {
       if (!entry || typeof entry !== 'object') {
@@ -395,23 +426,6 @@ const normalizeReferenceImages = (referenceImages = []) => {
         bytes
       }
     })
-    .filter(Boolean)
-}
-
-const buildProviderGenerationPayload = ({ model, prompt, constraints }) => {
-  const quality = getProviderImageQuality({ model, constraints })
-  const payload = {
-    model,
-    prompt,
-    size: `${constraints.width}x${constraints.height}`,
-    n: REQUESTED_PROVIDER_OUTPUT_COUNT
-  }
-  if (quality) payload.quality = quality
-  if (model !== 'gpt-image-2') {
-    payload.background = constraints.transparent ? 'transparent' : 'white'
-    payload.response_format = 'b64_json'
-  }
-  return payload
 }
 
 const createMultipartBoundary = () => `----OpenPetFormBoundary${crypto.randomBytes(12).toString('hex')}`
@@ -443,13 +457,11 @@ const appendMultipartFilePart = (buffers, boundary, name, referenceImage) => {
 }
 
 const buildProviderEditMultipartRequest = ({ model, prompt, constraints, referenceImages = [] }) => {
-  assertSingleReferenceImage(referenceImages)
+  assertExactlyOneReferenceImage(referenceImages)
   const boundary = createMultipartBoundary()
   const buffers = []
   const quality = getProviderImageQuality({ model, constraints })
-  for (const referenceImage of referenceImages) {
-    appendMultipartFilePart(buffers, boundary, 'image', referenceImage)
-  }
+  appendMultipartFilePart(buffers, boundary, 'image', referenceImages[0])
   appendMultipartTextPart(buffers, boundary, 'model', model)
   appendMultipartTextPart(buffers, boundary, 'prompt', prompt)
   appendMultipartTextPart(buffers, boundary, 'size', `${constraints.width}x${constraints.height}`)
@@ -643,6 +655,7 @@ const createConditioningSummary = ({
   mode: 'image-edit',
   endpoint,
   referenceImageCount: referenceImages.length,
+  multipartImageField: 'image',
   requestedOutputCount: REQUESTED_PROVIDER_OUTPUT_COUNT,
   requestedTransparent: Boolean(constraints?.transparent),
   size: `${constraints?.width || 0}x${constraints?.height || 0}`,
@@ -1244,18 +1257,16 @@ const createImageGenerationModelService = ({
     }
   }
 
-  const generateProviderImage = async ({ config, prompt, promptCompiler = null, targetDir, relativeDir, constraints, requestId, timeoutMs: timeoutOverrideMs, referenceImages = [] }) => {
+  const generateProviderImage = async ({ config, prompt, targetDir, relativeDir, constraints, requestId, timeoutMs: timeoutOverrideMs, referenceImages = [] }) => {
     assertExactlyOneReferenceImage(referenceImages)
-    const runtimeConfig = resolveImageRuntimeConfig(config)
-    const apiKey = secretService.getSecretValue(runtimeConfig.apiKeyRef)
+    const apiKey = secretService.getSecretValue(config.apiKeyRef)
     if (!apiKey) throw new Error('Image generation API key is missing')
     const baseUrl = assertProviderBaseUrl(runtimeConfig.baseUrl, 'Image Provider')
     const providerStartMs = nowMs()
     const timeoutMs = normalizeTimeoutMs(timeoutOverrideMs, getProviderTimeoutMs(config))
     const backgroundMode = getProviderGenerationBackgroundMode({ model: config.model, constraints })
-    assertSingleReferenceImage(referenceImages)
-    const normalizedReferenceImages = normalizeReferenceImages(referenceImages)
-    const endpoint = normalizedReferenceImages.length > 0 ? '/images/edits' : '/images/generations'
+    const normalizedReferenceImages = referenceImages
+    const endpoint = '/images/edits'
     const quality = getProviderImageQuality({ model: config.model, constraints })
     const conditioning = createConditioningSummary({
       endpoint,
@@ -1290,16 +1301,36 @@ const createImageGenerationModelService = ({
         endpoint,
         requestMode: conditioning.mode,
         referenceImageCount: normalizedReferenceImages.length,
+        multipartImageField: 'image',
         requestedOutputCount: REQUESTED_PROVIDER_OUTPUT_COUNT,
         timeoutMs
       }
     })
     let response
-    let responseBody = {}
-    const requestDeadlineMs = Date.now() + timeoutMs
-    let requestAttempt = 0
-    const canRetryWithinBudget = () => requestAttempt < 2 && Date.now() < requestDeadlineMs
-    const recordTransientRetry = ({ status = 0, error = null }) => {
+    try {
+      const multipartRequest = buildProviderEditMultipartRequest({
+        model: config.model,
+        prompt,
+        constraints,
+        referenceImages: normalizedReferenceImages
+      })
+      const requestBody = multipartRequest.body
+      const headers = {
+        Authorization: `Bearer ${apiKey}`,
+        ...multipartRequest.headers
+      }
+      response = await fetchWithTimeout({
+        fetchImpl,
+        url: `${baseUrl}${endpoint}`,
+        timeoutMs,
+        timeoutMessage: `Image Provider generation timed out after ${timeoutMs}ms`,
+        options: {
+          method: 'POST',
+          headers,
+          body: requestBody
+        }
+      })
+    } catch (error) {
       recordLog({
         level: 'warn',
         event: 'imageGeneration.provider.request.retrying',
@@ -1586,7 +1617,11 @@ const createImageGenerationModelService = ({
   }
 
   const generateImage = async ({ prompt, output, constraints, timeoutMs, referenceImages = [], model = '' }) => {
-    assertSingleReferenceImage(referenceImages)
+    assertExactlyOneReferenceImage(referenceImages)
+    const normalizedReferenceImages = normalizeReferenceImages(referenceImages, {
+      dataDir: output?.dataDir
+    })
+    assertExactlyOneReferenceImage(normalizedReferenceImages)
     const config = withRuntimeModelOverride(getStoredConfig(), model)
     const requestId = idFactory()
     const ownerFieldOverrides = findOwnerFieldOverrides(request, {
@@ -1681,9 +1716,9 @@ const createImageGenerationModelService = ({
         requestId,
         provider: config.provider,
         model: config.model,
-        width: primaryVariant.constraints.width,
-        height: primaryVariant.constraints.height,
-        requestedTransparent: Boolean(primaryVariant.constraints.transparent),
+        width: constraints?.width,
+        height: constraints?.height,
+        requestedTransparent: Boolean(constraints?.transparent),
         referenceImageCount: normalizedReferenceImages.length,
         multipartImageField: 'image',
         requestedOutputCount: REQUESTED_PROVIDER_OUTPUT_COUNT
@@ -1693,51 +1728,16 @@ const createImageGenerationModelService = ({
     let releaseProviderJobSlot = null
     try {
       releaseProviderJobSlot = await acquireProviderJobSlot({ config, requestId })
-      const totalTimeoutMs = normalizeTimeoutMs(timeoutMs, getProviderTimeoutMs(config))
-      const deadlineMs = Date.now() + totalTimeoutMs
-      const modelAttempts = []
-      let result = null
-      for (const [index, variant] of candidateVariants.entries()) {
-        const remainingTimeoutMs = index === 0
-          ? totalTimeoutMs
-          : Math.max(1, deadlineMs - Date.now())
-        const attemptStartedMs = Date.now()
-        try {
-          result = await generateProviderImage({
-            config: { ...config, model: variant.model },
-            prompt: variant.prompt,
-            promptCompiler: variant.promptCompiler,
-            targetDir,
-            relativeDir,
-            constraints: variant.constraints,
-            requestId,
-            timeoutMs: remainingTimeoutMs,
-            referenceImages: normalizedReferenceImages
-          })
-          modelAttempts.push(createProviderModelAttempt({
-            model: variant.model,
-            ok: true,
-            timeoutMs: remainingTimeoutMs,
-            durationMs: Date.now() - attemptStartedMs
-          }))
-          break
-        } catch (error) {
-          modelAttempts.push(createProviderModelAttempt({
-            model: variant.model,
-            ok: false,
-            timeoutMs: remainingTimeoutMs,
-            durationMs: Date.now() - attemptStartedMs,
-            error: error?.message || error
-          }))
-          const hasFallback = index < candidateVariants.length - 1 && Date.now() < deadlineMs
-          if (!hasFallback || !shouldTryFallbackImageModel(error)) {
-            error.modelAttempts = modelAttempts
-            throw error
-          }
-        }
-      }
-      if (!result) throw new Error('Image Provider generation exhausted all Host model candidates')
-      result.modelAttempts = modelAttempts
+      const result = await generateProviderImage({
+        config,
+        prompt,
+        targetDir,
+        relativeDir,
+        constraints,
+        requestId,
+        timeoutMs,
+        referenceImages: normalizedReferenceImages
+      })
       recordLog({
         level: 'info',
         event: 'imageGeneration.request.completed',

@@ -413,7 +413,7 @@ const readHostModelSettings = async () => {
   }
 }
 
-const createDefaultConditioningSummary = ({ model, referenceImages = [], promptCompiler = null }) => {
+const createDefaultConditioningSummary = ({ model, referenceImages = [] }) => {
   assertExactlyOneProviderReferenceImage(referenceImages)
   return {
     mode: 'image-edit',
@@ -421,7 +421,6 @@ const createDefaultConditioningSummary = ({ model, referenceImages = [], promptC
     referenceImageCount: 1,
     multipartImageField: 'image',
     requestedOutputCount: 1,
-    ...(promptCompiler ? { promptCompiler } : {}),
     references: referenceImages.map((referenceImage) => ({
       fileName: referenceImage.fileName,
       relativePath: referenceImage.relativePath,
@@ -432,7 +431,7 @@ const createDefaultConditioningSummary = ({ model, referenceImages = [], promptC
   }
 }
 
-const createKeyframeSpriteRowConditioningSummary = ({ model, referenceImages = [], promptCompiler = null }) => {
+const createKeyframeSpriteRowConditioningSummary = ({ model, referenceImages = [] }) => {
   assertExactlyOneProviderReferenceImage(referenceImages)
   return {
     mode: 'image-edit',
@@ -440,7 +439,6 @@ const createKeyframeSpriteRowConditioningSummary = ({ model, referenceImages = [
     referenceImageCount: 1,
     multipartImageField: 'image',
     requestedOutputCount: 1,
-    ...(promptCompiler ? { promptCompiler } : {}),
     references: referenceImages.map((referenceImage) => ({
       fileName: referenceImage.fileName,
       relativePath: referenceImage.relativePath,
@@ -450,21 +448,6 @@ const createKeyframeSpriteRowConditioningSummary = ({ model, referenceImages = [
     model: String(model || '')
   }
 }
-
-const createKeyframeSpriteRowConditioningSummary = ({ model, referenceImages = [] }) => ({
-  mode: 'provider-keyframe-sprite-row',
-  endpoint: '/images/edits',
-  referenceImageCount: Array.isArray(referenceImages) ? referenceImages.length : 0,
-  references: Array.isArray(referenceImages)
-    ? referenceImages.map((referenceImage) => ({
-        fileName: referenceImage.fileName,
-        relativePath: referenceImage.relativePath,
-        metadataRelativePath: referenceImage.metadataRelativePath,
-        role: referenceImage.role
-      }))
-    : [],
-  model: String(model || '')
-})
 
 const createPromptBuilderSummary = ({ promptBuild, promptPreviewText }) => ({
   version: promptBuild.promptBuilderVersion,
@@ -503,9 +486,25 @@ const listReferenceRoles = (referenceImages = []) => (
     : []
 )
 
-const assertSingleProviderReferenceImage = (referenceImages = []) => {
-  if (!Array.isArray(referenceImages) || referenceImages.length <= 1) return
-  throw new Error('Creator Studio provider image requests support at most one local reference image; build one conditioning board before calling the image provider.')
+const createProviderReferenceContractError = (code, message) => {
+  const error = new Error(message)
+  error.code = code
+  return error
+}
+
+const assertExactlyOneProviderReferenceImage = (referenceImages = []) => {
+  if (!Array.isArray(referenceImages) || referenceImages.length === 0) {
+    throw createProviderReferenceContractError(
+      'reference_image_required',
+      'Creator Studio image generation requires exactly one local reference image'
+    )
+  }
+  if (referenceImages.length !== 1) {
+    throw createProviderReferenceContractError(
+      'reference_image_count_invalid',
+      'Creator Studio image generation requires exactly one local reference image; build one local reference image before calling the image service'
+    )
+  }
 }
 
 const sumAttemptDurationsMs = (attempts = []) => attempts.reduce((total, attempt) => (
@@ -621,16 +620,19 @@ const resolveCompiledPromptConstraints = (promptBuild = {}) => ({
   transparent: true
 })
 
-const callHostImageGenerate = ({ prompt, requestedTimeoutMs, referenceImages, runId, dataRelativeDir, model, constraints = DEFAULT_CONSTRAINTS }) => callBridge('/creator/model-image-generate', {
-  model,
-  prompt,
-  timeoutMs: requestedTimeoutMs,
-  referenceImages,
-  output: {
-    dataRelativeDir
-  },
-  constraints
-})
+const callHostImageGenerate = ({ prompt, requestedTimeoutMs, referenceImages, runId, dataRelativeDir, model, constraints = DEFAULT_CONSTRAINTS }) => {
+  assertExactlyOneProviderReferenceImage(referenceImages)
+  return callBridge('/creator/model-image-generate', {
+    model,
+    prompt,
+    timeoutMs: requestedTimeoutMs,
+    referenceImages,
+    output: {
+      dataRelativeDir
+    },
+    constraints
+  })
+}
 
 const callHostImageGenerate = ({
   expectedModel,
@@ -707,7 +709,7 @@ const generateWithModelFallback = async ({
   retryDelayMs = TRANSIENT_GATEWAY_RETRY_DELAY_MS,
   sleepImpl = sleep
 }) => {
-  assertSingleProviderReferenceImage(referenceImages)
+  assertExactlyOneProviderReferenceImage(referenceImages)
   const attempts = []
   const modelCandidates = buildModelCandidateList({ settings, preferredModel })
   if (modelCandidates.length === 0) {
