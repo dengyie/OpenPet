@@ -333,6 +333,77 @@ const recoverStaleGeneratingRuns = ({ dataDir, now = () => new Date().toISOStrin
   return recoveredRunIds
 }
 
+const toTimestampMs = (value) => {
+  const timestamp = Date.parse(String(value || ''))
+  return Number.isFinite(timestamp) ? timestamp : 0
+}
+
+const createGenerationLease = ({ commandId, startedAt, leaseId }) => ({
+  commandId: String(commandId || 'run-step'),
+  leaseId: String(leaseId || `${process.pid}-${startedAt}`),
+  startedAt,
+  heartbeatAt: startedAt
+})
+
+const createGenerationLeaseHeartbeat = ({ dataDir, runId, leaseId, now = () => new Date().toISOString() }) => {
+  const interval = setInterval(() => {
+    const current = readRun({ dataDir, runId })
+    if (current.status !== 'generating' || current.generationLease?.leaseId !== leaseId) return
+    writeRun({
+      dataDir,
+      run: {
+        ...current,
+        generationLease: {
+          ...current.generationLease,
+          heartbeatAt: now()
+        }
+      }
+    })
+  }, GENERATION_LEASE_HEARTBEAT_INTERVAL_MS)
+  interval.unref?.()
+  return () => clearInterval(interval)
+}
+
+const recoverStaleGeneratingRuns = ({ dataDir, now = () => new Date().toISOString() }) => {
+  const recoveredRunIds = []
+  const recoveredAt = now()
+  const recoveredAtMs = toTimestampMs(recoveredAt)
+  for (const run of listRuns({ dataDir })) {
+    if (run.status !== 'generating') continue
+    const lease = run.generationLease
+    const referenceAt = lease?.heartbeatAt || run.updatedAt || run.createdAt
+    const staleAfterMs = lease ? GENERATION_LEASE_STALE_AFTER_MS : FULL_PET_COMMAND_TIMEOUT_MS
+    if (!recoveredAtMs || recoveredAtMs - toTimestampMs(referenceAt) < staleAfterMs) continue
+    const { generationLease: _generationLease, ...runWithoutLease } = run
+    const recoveredRun = {
+      ...runWithoutLease,
+      status: 'failed',
+      currentStep: 'generate',
+      updatedAt: recoveredAt,
+      backendStatus: {
+        ...(run.backendStatus || {}),
+        backend: run.backendStatus?.backend || run.backend || run.input?.backend || '',
+        state: 'failed',
+        message: GENERATION_COMMAND_TERMINATED_REASON,
+        updatedAt: recoveredAt
+      },
+      error: GENERATION_COMMAND_TERMINATED_REASON
+    }
+    writeRun({ dataDir, run: recoveredRun })
+    appendRunLog({
+      dataDir,
+      runId: run.runId,
+      level: 'error',
+      event: 'generate.recovered-stale-command',
+      message: GENERATION_COMMAND_TERMINATED_REASON,
+      data: { commandId: String(lease?.commandId || ''), leaseId: String(lease?.leaseId || '') },
+      now: () => recoveredAt
+    })
+    recoveredRunIds.push(run.runId)
+  }
+  return recoveredRunIds
+}
+
 const listRuns = ({ dataDir }) => {
   const runsDir = getRunsDir(dataDir)
   if (!dataDir || !fs.existsSync(runsDir)) return []

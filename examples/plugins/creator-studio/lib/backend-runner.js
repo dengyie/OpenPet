@@ -1,7 +1,14 @@
 const fs = require('fs')
 const path = require('path')
 const { getBackendAdapter } = require('./backend-adapters')
-const { appendRunLog, readRun, updateRunStatus, writeRun } = require('./run-store')
+const {
+  appendRunLog,
+  createGenerationLease,
+  createGenerationLeaseHeartbeat,
+  readRun,
+  updateRunStatus,
+  writeRun
+} = require('./run-store')
 const {
   generateViaHostModelBridge,
   regenerateFullPetActionsViaHostModelBridge
@@ -380,6 +387,11 @@ const runFullPetActionRepair = async ({
     ...createRepairBaseRun({ run, preserveGeneratedImage: true }),
     status: 'generating',
     updatedAt: startedAt,
+    generationLease: createGenerationLease({
+      commandId: 'retry-action',
+      startedAt,
+      leaseId: `${runId}-retry-action-${startedAt}`
+    }),
     backendStatus: createBackendStatus({
       backend: PROVIDER_BACKEND,
       state: 'running',
@@ -388,6 +400,12 @@ const runFullPetActionRepair = async ({
     })
   }
   writeRun({ dataDir, run: repairRun })
+  const stopLeaseHeartbeat = createGenerationLeaseHeartbeat({
+    dataDir,
+    runId,
+    leaseId: repairRun.generationLease.leaseId,
+    now
+  })
   appendRunLog({
     dataDir,
     runId,
@@ -416,8 +434,9 @@ const runFullPetActionRepair = async ({
       now
     })
     const completedAt = now()
+    const { generationLease: _generationLease, ...outputRun } = output.run
     const completedRun = {
-      ...output.run,
+      ...outputRun,
       backendStatus: createBackendStatus({
         backend: PROVIDER_BACKEND,
         state: 'ready',
@@ -457,7 +476,8 @@ const runFullPetActionRepair = async ({
           message: error?.message || 'Creator Studio action repair failed',
           updatedAt: failedAt
         }),
-        error: error?.message || 'Creator Studio action repair failed'
+        error: error?.message || 'Creator Studio action repair failed',
+        generationLease: undefined
       },
       now: () => failedAt
     })
@@ -472,6 +492,8 @@ const runFullPetActionRepair = async ({
     })
     error.run = failedRun
     throw error
+  } finally {
+    stopLeaseHeartbeat()
   }
 }
 
@@ -562,13 +584,6 @@ const runGenerationStep = async ({ dataDir, runId, now = () => new Date().toISOS
       status: 'generating',
       currentStep: 'generate',
       updatedAt: startedAt,
-      humanApproval: undefined,
-      importedActionId: '',
-      importedPackId: '',
-      activatedPackId: '',
-      triggerProposalSubmission: undefined,
-      reviewStatus: 'pending',
-      importStatus: 'not-imported',
       generationLease,
       backendStatus: createBackendStatus({
         backend,

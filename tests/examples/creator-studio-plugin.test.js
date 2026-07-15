@@ -15,6 +15,10 @@ const {
   OFFICIAL_FULL_PET_ROWS
 } = require('../../examples/plugins/creator-studio/lib/full-pet-row-contract')
 const { getActionSheetLayout } = require('../../examples/plugins/creator-studio/lib/action-sheet-layout')
+const {
+  FULL_PET_COMMAND_TIMEOUT_MS,
+  FULL_PET_WORKFLOW_MAX_DURATION_MS
+} = require('../../examples/plugins/creator-studio/lib/full-pet-workflow-contract')
 
 const pluginRoot = path.resolve(__dirname, '../../examples/plugins/creator-studio')
 const OFFICIAL_FULL_PET_ROW_BY_ID = new Map(OFFICIAL_FULL_PET_ROWS.map((row) => [row.id, row]))

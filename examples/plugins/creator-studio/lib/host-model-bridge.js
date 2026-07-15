@@ -1,4 +1,5 @@
 const { callBridge } = require('./bridge-client')
+const { FULL_PET_WORKFLOW_MAX_DURATION_MS } = require('./full-pet-workflow-contract')
 const {
   buildActionSpriteReferenceBoard,
   buildAnchorReferenceBoard
@@ -61,7 +62,6 @@ const BASIC_ACTION_MIN_TIMEOUT_MS = 300000
 const FALLBACK_MODEL_MIN_TIMEOUT_MS = 600000
 const TRANSIENT_GATEWAY_RETRY_DELAY_MS = 1500
 const MAX_TRANSIENT_GATEWAY_ATTEMPTS_PER_MODEL = 2
-const FULL_PET_WORKFLOW_MAX_DURATION_MS = 90 * 60 * 1000
 const PROMPT_PREVIEW_MAX_LENGTH = 8000
 const DIRECT_SOURCE_ACTION_ANCHOR_CANDIDATE_COUNT = 3
 const TRANSIENT_TRANSPORT_ERROR_CODES = new Set([
@@ -4821,5 +4821,6 @@ module.exports = {
   generateViaHostModelBridge,
   regenerateFullPetActionsViaHostModelBridge,
   resolveRequiredRunReferenceImages,
-  resolveRunReferenceImages
+  resolveRunReferenceImages,
+  FULL_PET_WORKFLOW_MAX_DURATION_MS
 }
