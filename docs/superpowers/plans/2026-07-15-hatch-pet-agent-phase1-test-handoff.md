@@ -2,9 +2,8 @@
 
 > Source branch: `codex/dev8`
 > Testing branch: `codex/dev8-hatch-pet-phase1-test` in a new isolated worktree
-> Verified test branch: `codex/dev8-hatch-pet-phase1-test`
-> Verified test HEAD: `662d7c9e3b0abbbff661c35cfd6be06e258a1e9e`
-> Automated result: PASS for Phase 1 text-only shadow planning; final integrated image-generation remediation remains separately unverified
+> Required start: the final Phase 1 `codex/dev8` HEAD that already contains this handoff
+> Development status: implemented but unverified
 
 ## Isolation And Starting State
 
@@ -43,7 +42,7 @@ Independently verify these claims without relying on the development conversatio
 - budgets and `requireIdentityReviewBeforeActions` are normalized, persisted, displayed, and snapshotted, but do not govern the fixed Phase 1 generation workflow;
 - durable agent artifacts stay inside the Creator Studio data directory and public IPC/renderer/log surfaces expose neither secrets nor absolute host paths.
 
-This assignment passed its automated gate at `662d7c9e`. The result covers only Phase 1 text-only shadow planning and cannot create Provider approval, human visual acceptance, or a `production-art-ready` claim. Later integrated generation changes must be verified from their own final HEAD through the Provider-neutral remediation handoff.
+The expected result remains **implemented but unverified** until this assignment passes. This task cannot create Provider approval, human visual acceptance, or a `production-art-ready` claim.
 
 ## Focused Automated Test Work
 
@@ -148,4 +147,4 @@ The final report must include:
 - the known Minor evidence and disposition, without an unapproved production fix;
 - every unresolved defect and a final pass/fail decision.
 
-The Phase 1 automated checks passed on the recorded isolated branch. Regardless of that result, this task remains text-only shadow verification and cannot justify Provider approval, image quality acceptance, import/activation evidence, or `production-art-ready`.
+Until all required automated checks pass and the report closes every Phase 1 contract, continue to describe `codex/dev8` as **implemented but unverified**. Regardless of automated success, this Phase 1 task remains text-only shadow verification and cannot justify Provider approval or `production-art-ready`.

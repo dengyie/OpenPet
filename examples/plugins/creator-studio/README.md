@@ -4,6 +4,14 @@ Creator Studio is OpenPet's hybrid extension for drafting, generating, reviewing
 
 The current character/action contract, one-image Provider rule, Codex Pet atlas layout, directional mirror policy, quality-governance profiles, repair scopes, QA gates, and claim boundaries are defined only in [`docs/pet-character-generation.md`](../../../docs/pet-character-generation.md).
 
+## Hatch Pet Agent Phase 1
+
+Phase 1 adds host-owned Hatch Pet Agent settings and text-only shadow decisions beside Creator Studio. It is disabled by default and runtime execution is fixed to `shadow`: suggestions may be persisted under `runs/<runId>/agent/` and shown as sanitized diagnostics, but they are never passed into Creator Studio commands. A shadow failure does not block the fixed workflow.
+
+The agent can follow the saved chat Provider/model or use a dedicated model and host-owned secret. Follow-chat does not reuse ordinary pet-chat conversations, memory, behavior state, or prompts. The same resolved model is intended for later planning and evaluation roles, but Phase 1 performs planning only, sends no images, and does not evaluate art.
+
+Phase 1 does not change image Provider selection, prompts, retries, QA, approval, import, activation, or Provider art-readiness rules. Its budget and identity-checkpoint settings are future bounded-execution inputs, not Phase 1 execution controls. The implementation remains **implemented but unverified** pending [`docs/superpowers/plans/2026-07-15-hatch-pet-agent-phase1-test-handoff.md`](../../../docs/superpowers/plans/2026-07-15-hatch-pet-agent-phase1-test-handoff.md); it adds no Provider approval or `production-art-ready` claim.
+
 ## Backends
 
 - `fixture` creates deterministic local output for development and UI regression tests.

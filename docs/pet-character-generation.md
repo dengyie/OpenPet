@@ -1,6 +1,6 @@
 # Pet Character And Action Generation
 
-> Updated: 2026-07-14
+> Updated: 2026-07-15
 > Owner: `codex/dev8`
 > Status: implemented on the development branch; independent verification pending
 > Scope: generate a Codex-compatible pet character and its basic actions from one user reference image, with visual quality taking priority over generation cost.
@@ -50,6 +50,16 @@ The landed deterministic official row package can compose and validate complete 
 Real-provider smoke success proves that the host bridge and provider path can complete. It does not prove production art quality. Production approval still requires human visual review.
 
 The current generation implementation on `codex/dev8` is developed but intentionally unverified. This branch does not run automated tests, real Provider smoke, browser checks, or visual acceptance. The latest reliability follow-up must be verified through the isolated testing task described in `docs/superpowers/plans/2026-07-14-provider-generation-reliability-test-handoff.md`.
+
+### Hatch Pet Agent Phase 1 boundary
+
+Phase 1 adds a disabled-by-default Hatch Pet Agent configuration surface and a text-only shadow planner beside the fixed Creator Studio workflow. Users may follow the saved chat Provider/model configuration or save a dedicated hatch-pet Provider/model and host-owned secret. Follow-chat inherits only Provider configuration and its secret reference: hatch-pet never reads or writes ordinary pet-chat conversation history, memory, behavior state, or prompts.
+
+The product design uses the same resolved hatch-pet model for later planning and visual evaluation, with separate stateless roles. Phase 1 implements only structured text planning: it sends no image attachment, performs no model visual evaluation, and executes no model decision. Runtime execution is fixed to `shadow`; recorded suggestions and failures are additive diagnostics only.
+
+Control Center exposes the shadow enable flag, follow-chat/dedicated configuration, bounded budget settings, the future identity-review checkpoint, capability status, and sanitized run diagnostics. Budgets and the identity checkpoint are recorded for the future bounded workflow but do not change the fixed generator in Phase 1. Durable artifacts stay under `runs/<runId>/agent/` and contain bounded snapshots, state, budgets, prompt metadata, and decision records. API keys remain host-owned and must not appear in renderer responses, logs, snapshots, diagnostics, or agent artifacts.
+
+Shadow planning never changes image Provider selection, generation prompts, retry behavior, deterministic QA, human approval, import, activation, or any Creator Studio command payload. Disabled mode performs no hatch-pet model or store work, and enabled-mode configuration, model, validation, or persistence failures must not block the fixed workflow. This Phase 1 implementation is **implemented but unverified** until the isolated assignment in `docs/superpowers/plans/2026-07-15-hatch-pet-agent-phase1-test-handoff.md` passes. It supplies no Provider approval, human visual acceptance, or `production-art-ready` evidence.
 
 ## 2. User Experience
 
