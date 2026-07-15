@@ -94,7 +94,7 @@ test('action sprite row prompt defines keyframed provider sprite sheet contract'
   assert.match(result.prompt, /complete transparent-background OpenPet sprite sheet/i)
   assert.match(result.prompt, /single local conditioning board/i)
   assert.match(result.prompt, /The conditioning board is guidance only, not deliverable output/i)
-  assert.match(result.prompt, /user source main view.*highest identity authority/is)
+  assert.match(result.prompt, /original user source image.*highest identity authority/is)
   assert.match(result.prompt, /normalized start keyframe/is)
   assert.match(result.prompt, /normalized peak keyframe/is)
   assert.match(result.prompt, /fixed template.*clear whitespace.*safe padding.*shared lower-center root/is)

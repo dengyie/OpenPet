@@ -172,7 +172,6 @@ test('registerPetRuntimeIpc wires pet movement and focus handlers', () => {
 test('registerAiIpc wires AI config, behavior, and chat-adjacent handlers', async () => {
   const ipcMain = createIpcMainStub()
   const dryRunCalls = []
-  const behaviorAdapterCalls = []
   const hatchCalls = []
 
   registerAiIpc({

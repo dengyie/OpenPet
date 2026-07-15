@@ -928,16 +928,15 @@ test('image generation model service writes reference-conditioned outputs under 
   assert.equal(result.outputs.length, 1)
   assert.match(result.outputs[0].dataRelativePath, /^runs\/2026-06-19-sprout-cat\/frames\/base\/0001\.png$/)
   assert.equal(fs.existsSync(path.join(dataDir, result.outputs[0].dataRelativePath)), true)
-  assert.equal(requests[0].url, 'http://127.0.0.1:8317/v1/images/edits')
-  assert.equal(Buffer.isBuffer(requests[0].options.body), true)
-  const requestBody = requests[0].options.body.toString('utf8')
-  assert.match(requestBody, /name="image"; filename="canonical-reference\.png"/)
-  assert.match(requestBody, /name="model"\r\n\r\ngpt-image-1\r\n/)
-  assert.match(requestBody, /name="prompt"\r\n\r\nsmall mint helper cat, transparent background\r\n/)
-  assert.match(requestBody, /name="size"\r\n\r\n1024x1024\r\n/)
-  assert.match(requestBody, /name="n"\r\n\r\n1\r\n/)
-  assert.match(requestBody, /name="background"\r\n\r\ntransparent\r\n/)
-  assert.match(requestBody, /name="response_format"\r\n\r\nb64_json\r\n/)
+  assert.equal(requests[0].url, 'http://127.0.0.1:8317/v1/images/generations')
+  assert.deepEqual(JSON.parse(requests[0].options.body), {
+    model: 'gpt-image-1',
+    prompt: 'small mint helper cat, transparent background',
+    size: '1024x1024',
+    n: 1,
+    background: 'transparent',
+    response_format: 'b64_json'
+  })
   assert.deepEqual(logs.map((entry) => entry.event), [
     'imageGeneration.request.started',
     'imageGeneration.provider.request.started',

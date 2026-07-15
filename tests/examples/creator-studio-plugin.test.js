@@ -531,6 +531,7 @@ test('creator studio prompt builder creates an OpenPet full-pet prompt with runt
     'Animation Contract',
     'Root And Anchor Rules',
     'Style And Quality Contract',
+    'Human-Reviewed Quality Guidance',
     'Negative Contract',
     'User Creative Brief'
   ])
@@ -693,7 +694,7 @@ test('creator studio prompt builder emits a generic OpenPet action asset protoco
     model: 'gpt-image-2'
   })
 
-  assert.equal(built.promptBuilderVersion, 2)
+  assert.equal(built.promptBuilderVersion, 3)
   assert.match(built.providerPrompt, /Create a transparent-background animation sprite sheet for OpenPet/)
   assert.match(built.providerPrompt, /game-ready character animation asset that will be sliced programmatically/)
   assert.match(built.providerPrompt, /REFERENCE CHARACTER LOCK:/)
@@ -1885,7 +1886,7 @@ test('creator studio run-step command uses host bridge for provider generation w
       baseUrlHost: '127.0.0.1:7860'
     })
     assert.deepEqual(run.artifacts.generatedImage.modelSnapshot, run.modelSnapshot)
-    assert.equal(run.artifacts.generatedImage.promptBuilder.version, 2)
+    assert.equal(run.artifacts.generatedImage.promptBuilder.version, 3)
     assert.equal(run.artifacts.generatedImage.promptBuilder.mode, 'single-action')
     assert.equal(run.artifacts.generatedImage.promptBuilder.promptPreview.truncated, false)
     assert.match(run.artifacts.generatedImage.promptBuilder.promptPreview.text, /Create one OpenPet action sheet of the current character doing this action: 原地打滚\./)
@@ -5085,7 +5086,7 @@ test('creator studio service exposes sanitized host prompt provenance for dashbo
     assert.equal(detail.run.status, 'ready_for_review')
     assert.equal(detail.run.developerPrompt.available, true)
     assert.equal(detail.run.developerPrompt.source, 'host-model-bridge')
-    assert.equal(detail.run.developerPrompt.promptBuilder.version, 2)
+    assert.equal(detail.run.developerPrompt.promptBuilder.version, 3)
     assert.equal(detail.run.developerPrompt.promptBuilder.mode, 'single-action')
     assert.equal(detail.run.developerPrompt.promptBuilder.actionId, detail.run.generationTask.actions[0].actionId)
     assert.equal(detail.run.developerPrompt.promptBuilder.warnings.includes('creative_brief_sanitized'), true)

@@ -318,3 +318,55 @@ test('action sprite conditioning board uses a fixed three-panel template instead
     y: peakPanel.top + Math.floor(peakPanel.height / 2)
   }), { r: 52, g: 172, b: 88, alpha: 255 })
 })
+
+test('action sprite conditioning board accepts a full-pet action identity board with start and peak keyframes', async () => {
+  const dataDir = makeDataDir()
+  const identityPath = path.join(dataDir, 'inputs/source/full-pet-identity.png')
+  const startPath = path.join(dataDir, 'inputs/source/start.png')
+  const peakPath = path.join(dataDir, 'inputs/source/peak.png')
+  await writeSourceImage(identityPath)
+  await writeSourceImage(startPath)
+  await writeSourceImage(peakPath)
+
+  const result = await buildActionSpriteReferenceBoard({
+    dataDir,
+    runId: 'run-full-pet-conditioning-board',
+    sourceReferences: [
+      { path: identityPath, relativePath: 'inputs/source/full-pet-identity.png', role: 'full-pet-action-identity-board' },
+      { path: startPath, relativePath: 'inputs/source/start.png', role: 'action-start-keyframe' },
+      { path: peakPath, relativePath: 'inputs/source/peak.png', role: 'action-peak-keyframe' }
+    ],
+    action: { actionId: 'waving', frameCount: 6 },
+    characterBrief: 'Preserve the full-pet identity board.'
+  })
+
+  assert.equal(result.role, 'keyframe-action-reference-board')
+  const metadata = JSON.parse(fs.readFileSync(result.metadataPath, 'utf8'))
+  assert.deepEqual(metadata.panels.map((panel) => panel.sourceRole), [
+    'full-pet-action-identity-board',
+    'action-start-keyframe',
+    'action-peak-keyframe'
+  ])
+})
+
+test('action sprite conditioning board still rejects an unknown identity role', async () => {
+  const dataDir = makeDataDir()
+  const identityPath = path.join(dataDir, 'inputs/source/unknown.png')
+  const startPath = path.join(dataDir, 'inputs/source/start.png')
+  const peakPath = path.join(dataDir, 'inputs/source/peak.png')
+  await writeSourceImage(identityPath)
+  await writeSourceImage(startPath)
+  await writeSourceImage(peakPath)
+
+  await assert.rejects(() => buildActionSpriteReferenceBoard({
+    dataDir,
+    runId: 'run-unknown-conditioning-board',
+    sourceReferences: [
+      { path: identityPath, relativePath: 'inputs/source/unknown.png', role: 'unknown-identity-board' },
+      { path: startPath, relativePath: 'inputs/source/start.png', role: 'action-start-keyframe' },
+      { path: peakPath, relativePath: 'inputs/source/peak.png', role: 'action-peak-keyframe' }
+    ],
+    action: { actionId: 'waving', frameCount: 6 },
+    characterBrief: 'Unknown identity role must fail.'
+  }), /requires canonical-reference, action-start-keyframe, and action-peak-keyframe sources/)
+})
