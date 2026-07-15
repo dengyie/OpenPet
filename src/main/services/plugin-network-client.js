@@ -165,6 +165,37 @@ const requestPluginNetwork = async ({
     clearTimeout(timeoutId)
     signal?.removeEventListener?.('abort', abortFromCaller)
   }
+  const createAbortError = () => {
+    if (timedOut) return new Error('Plugin network request timed out')
+    if (controller.signal.reason instanceof Error) return controller.signal.reason
+    const error = new Error('Plugin network request aborted')
+    error.name = 'AbortError'
+    if (controller.signal.reason !== undefined) error.cause = controller.signal.reason
+    return error
+  }
+  const waitForStage = async (operation, { onLateResolve } = {}) => {
+    if (controller.signal.aborted) throw createAbortError()
+    let abandoned = false
+    let abortHandler
+    const operationPromise = Promise.resolve().then(operation)
+    if (onLateResolve) {
+      operationPromise.then((value) => {
+        if (abandoned) Promise.resolve(onLateResolve(value)).catch(() => {})
+      }, () => {})
+    }
+    const aborted = new Promise((_, reject) => {
+      abortHandler = () => reject(createAbortError())
+      controller.signal.addEventListener('abort', abortHandler, { once: true })
+    })
+    try {
+      return await Promise.race([operationPromise, aborted])
+    } catch (error) {
+      if (controller.signal.aborted) abandoned = true
+      throw error
+    } finally {
+      controller.signal.removeEventListener('abort', abortHandler)
+    }
+  }
 
   let currentUrl = new URL(url)
   let currentRequest = { ...request, headers: { ...(request.headers || {}) } }
@@ -173,9 +204,10 @@ const requestPluginNetwork = async ({
       if (currentUrl.protocol !== 'https:' || !manifest.network.allowlist.includes(currentUrl.host.toLowerCase())) {
         throw new Error(`Plugin ${manifest.id} cannot access network host: ${currentUrl.host}`)
       }
-      const addresses = await assertResolvedAddressesSafe(currentUrl.hostname, resolveAddress)
+      const addresses = await waitForStage(() => assertResolvedAddressesSafe(currentUrl.hostname, resolveAddress))
+      if (controller.signal.aborted) throw createAbortError()
       const selected = addresses[0]
-      const response = await connect({
+      const response = await waitForStage(() => connect({
         url: currentUrl.toString(),
         request: currentRequest,
         address: selected.address,
@@ -184,7 +216,11 @@ const requestPluginNetwork = async ({
         hostHeader: currentUrl.host,
         port: Number(currentUrl.port) || 443,
         signal: controller.signal
-      })
+      }), { onLateResolve: cancelResponseBody })
+      if (controller.signal.aborted) {
+        Promise.resolve(cancelResponseBody(response)).catch(() => {})
+        throw createAbortError()
+      }
       const location = response.headers?.get?.('location') || ''
       if (!isRedirectStatus(response.status) || !location) {
         Object.defineProperty(response, RESPONSE_CONTEXT, {
@@ -193,7 +229,7 @@ const requestPluginNetwork = async ({
         })
         return response
       }
-      await cancelResponseBody(response)
+      await waitForStage(() => cancelResponseBody(response))
       if (redirectCount === maxRedirects) throw new Error('Plugin network request exceeded redirect limit')
       currentUrl = new URL(location, currentUrl)
       if ([301, 302, 303].includes(response.status) && currentRequest.method === 'POST') {
@@ -260,7 +296,7 @@ const readLimitedResponseText = async (response) => {
   try {
     const contentLength = Number(response.headers?.get?.('content-length') || 0)
     if (Number.isFinite(contentLength) && contentLength > MAX_PLUGIN_NETWORK_RESPONSE_BYTES) {
-      await cancelResponseBody(response)
+      Promise.resolve(cancelResponseBody(response)).catch(() => {})
       throw new Error(`Plugin network response exceeds ${MAX_PLUGIN_NETWORK_RESPONSE_BYTES} bytes`)
     }
     if (!response.body?.getReader) {
@@ -281,7 +317,7 @@ const readLimitedResponseText = async (response) => {
         if (done) break
         byteLength += value.byteLength
         if (byteLength > MAX_PLUGIN_NETWORK_RESPONSE_BYTES) {
-          await reader.cancel().catch(() => {})
+          Promise.resolve(reader.cancel()).catch(() => {})
           throw new Error(`Plugin network response exceeds ${MAX_PLUGIN_NETWORK_RESPONSE_BYTES} bytes`)
         }
         text += decoder.decode(value, { stream: true })
@@ -289,7 +325,7 @@ const readLimitedResponseText = async (response) => {
       text += decoder.decode()
       return text
     } catch (error) {
-      await reader.cancel().catch(() => {})
+      Promise.resolve(reader.cancel()).catch(() => {})
       throw error
     }
   } finally {

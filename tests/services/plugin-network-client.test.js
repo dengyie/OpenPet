@@ -102,6 +102,7 @@ test('plugin network request revalidates redirects and blocks private redirect d
 })
 
 test('plugin network request aborts a stalled pinned connection on timeout', async () => {
+  let aborted = false
   await assert.rejects(
     () => requestPluginNetwork({
       manifest,
@@ -109,12 +110,66 @@ test('plugin network request aborts a stalled pinned connection on timeout', asy
       request: { method: 'GET', headers: {} },
       resolveAddress: async () => ['203.0.113.10'],
       timeoutMs: 5,
-      connect: ({ signal }) => new Promise((resolve, reject) => {
-        signal.addEventListener('abort', () => reject(new Error('connection aborted')), { once: true })
+      connect: ({ signal }) => new Promise(() => {
+        signal.addEventListener('abort', () => { aborted = true }, { once: true })
       })
     }),
     /timed out/i
   )
+  assert.equal(aborted, true)
+})
+
+test('plugin network request rejects when DNS resolution never settles before timeout', async () => {
+  await assert.rejects(
+    () => requestPluginNetwork({
+      manifest,
+      url: 'https://api.example.com/dns-timeout',
+      request: { method: 'GET', headers: {} },
+      resolveAddress: () => new Promise(() => {}),
+      timeoutMs: 10,
+      connect: async () => createResponse()
+    }),
+    /Plugin network request timed out/
+  )
+})
+
+test('plugin network request preserves caller abort during DNS resolution', async () => {
+  const controller = new AbortController()
+  const abortError = Object.assign(new Error('caller canceled during DNS'), { name: 'AbortError' })
+  const pending = requestPluginNetwork({
+    manifest,
+    url: 'https://api.example.com/dns-cancel',
+    request: { method: 'GET', headers: {} },
+    resolveAddress: () => new Promise(() => {}),
+    signal: controller.signal,
+    connect: async () => createResponse()
+  })
+
+  controller.abort(abortError)
+
+  await assert.rejects(() => pending, (error) => error === abortError)
+})
+
+test('plugin network request never connects when DNS resolves after timeout', async () => {
+  let resolveDns
+  let connectCalls = 0
+  const pending = requestPluginNetwork({
+    manifest,
+    url: 'https://api.example.com/late-dns',
+    request: { method: 'GET', headers: {} },
+    resolveAddress: () => new Promise((resolve) => { resolveDns = resolve }),
+    timeoutMs: 10,
+    connect: async () => {
+      connectCalls += 1
+      return createResponse()
+    }
+  })
+
+  await assert.rejects(() => pending, /Plugin network request timed out/)
+  resolveDns(['203.0.113.10'])
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.equal(connectCalls, 0)
 })
 
 test('plugin network request forwards caller cancellation to the pinned connection', async () => {
