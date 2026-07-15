@@ -2788,7 +2788,7 @@ export interface HatchPetAgentBudgetsView {
 
 export interface HatchPetAgentConfigView {
   enabled: boolean
-  executionMode: 'shadow' | 'bounded'
+  executionMode: 'shadow'
   configMode: 'follow-chat' | 'override'
   provider: string
   baseUrl: string
