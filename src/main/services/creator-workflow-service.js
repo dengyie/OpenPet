@@ -370,9 +370,7 @@ const createFullPetTask = ({ characterName, stylePrompt = '' }) => ({
   actions: CODEX_ROWS.map((row) => ({
     actionId: row.id,
     name: row.label,
-    motionPrompt: row.id === 'running'
-      ? 'Active processing, scanning, and focus motion with a stable body root.'
-      : `${row.label} motion`,
+    motionPrompt: `${row.label} motion`,
     loop: Boolean(row.loop),
     frameCount: row.durations.length,
     transparentBackground: true,
@@ -405,7 +403,7 @@ const createExistingActionTask = ({ actionName, motionPrompt }) => {
   mode: 'single-action',
   targetPet: 'current',
   styleSource: 'referenceImage',
-  characterBrief: `Keep the current editable OpenPet character identity and style consistent while adding the ${normalizeText(actionName)} action.`,
+  characterBrief: `Preserve the selected character identity and visual style while adding the ${normalizeText(actionName)} action.`,
   actions: [{
     ...action,
     animationType: inferAnimationType(action),

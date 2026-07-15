@@ -404,6 +404,12 @@ const resolveRunReferenceImages = ({ dataDir, run, stage = 'final', actionId = '
   return resolved ? [resolved] : []
 }
 
+const resolveRequiredRunReferenceImages = ({ dataDir, run, stage = 'final', actionId = '' }) => {
+  const references = resolveRunReferenceImages({ dataDir, run, stage, actionId })
+  assertExactlyOneProviderReferenceImage(references)
+  return references
+}
+
 const readHostModelSettings = async () => {
   try {
     const response = await callBridge('/creator/model-settings')
@@ -2889,7 +2895,7 @@ const generateActionKeyframe = async ({
   const normalizedKeyframeRole = String(keyframeRole || 'start').trim().toLowerCase() === 'start'
     ? 'start'
     : 'peak'
-  if (!Array.isArray(referenceImages) || referenceImages.length === 0) return null
+  assertExactlyOneProviderReferenceImage(referenceImages)
   const actionId = createSafeFileSegment(action?.actionId, 'action')
   const stageName = normalizedKeyframeRole === 'start'
     ? 'action-start-keyframe'
@@ -3085,7 +3091,7 @@ const generateKeyframeActionSpriteRow = async ({
   qualityGuidance = null,
   generateWithFallbackImpl = generateWithModelFallback
 }) => {
-  if (originalReferenceImages.length === 0) return null
+  assertExactlyOneProviderReferenceImage(originalReferenceImages)
   const actionId = createSafeFileSegment(action?.actionId, 'action')
   const normalizedOriginalReferenceImages = originalReferenceImages.map((reference) => ({
     ...reference,
@@ -3114,7 +3120,12 @@ const generateKeyframeActionSpriteRow = async ({
     qualityGuidance,
     generateWithFallbackImpl
   })
-  if (!startKeyframeResult) return null
+  if (!startKeyframeResult) {
+    throw createProviderReferenceContractError(
+      'reference_image_required',
+      'Action keyframe generation requires exactly one reference image'
+    )
+  }
   if (!startKeyframeResult.ok) {
     return {
       ok: false,
@@ -3124,7 +3135,7 @@ const generateKeyframeActionSpriteRow = async ({
       modelAttempts: startKeyframeResult.modelAttempts || [],
       promptRelativePath: startKeyframeResult.promptRelativePath,
       keyframes: [startKeyframeResult.keyframe].filter(Boolean),
-      referenceImages: [],
+      referenceImages: normalizedOriginalReferenceImages,
       stages: [startKeyframeResult.stage].filter(Boolean),
       error: String(startKeyframeResult.error || `Creator Studio start keyframe generation failed for ${actionId}`).slice(0, 240)
     }
@@ -3540,14 +3551,12 @@ const generateAnchorReferences = async ({
   generateWithFallbackImpl = generateWithModelFallback
 }) => {
   const references = Array.isArray(originalReferenceImages) ? originalReferenceImages.filter(Boolean) : []
-  if (!dataDir || !run?.runId || references.length === 0) {
-    return {
-      anchorReferences: null,
-      anchorGeneration: {
-        skipped: true,
-        reason: 'missing-reference'
-      }
-    }
+  if (!dataDir || !run?.runId) throw new Error('Creator Studio anchor generation context is invalid')
+  if (references.length === 0) {
+    throw createProviderReferenceContractError(
+      'reference_image_required',
+      'Creator Studio anchor generation requires a local reference image'
+    )
   }
 
   const characterBrief = resolveAnchorCharacterBrief(run)
@@ -4191,9 +4200,7 @@ const regenerateFullPetActionsViaHostModelBridge = async ({ dataDir, run, action
     qualityProfile: governance.qualityProfile,
     qualityGuidance: governance.qualityGuidance
   })
-  if (actionIdentityContext.referenceImages.length === 0) {
-    throw new Error('Creator Studio scoped action repair requires a usable identity reference')
-  }
+  assertExactlyOneProviderReferenceImage(actionIdentityContext.referenceImages)
   const repaired = await generateFullPetBasicActionSources({
     dataDir,
     run,
@@ -4275,14 +4282,13 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
   const originalReferenceImages = isUsableLocalReferenceImage({ dataDir, referenceImage: originalReferenceImage })
     ? [originalReferenceImage]
     : []
-  const expectsReferenceImage = Boolean(
-    run?.input?.referenceImage ||
-    run?.generationTask?.styleSource === 'referenceImage' ||
-    run?.input?.generationTask?.styleSource === 'referenceImage'
-  )
-  if (expectsReferenceImage && originalReferenceImages.length === 0) {
-    throw new Error('Creator Studio reference image is missing or unusable; reference-image generation must fail closed.')
+  if (originalReferenceImages.length === 0) {
+    throw createProviderReferenceContractError(
+      'reference_image_required',
+      'Creator Studio generation requires one usable local reference image'
+    )
   }
+  assertExactlyOneProviderReferenceImage(originalReferenceImages)
   const firstActionForReference = Array.isArray(run?.generationTask?.actions)
     ? run.generationTask.actions[0]
     : Array.isArray(run?.input?.generationTask?.actions)
@@ -4421,7 +4427,7 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
     : null
   const referenceImages = keyframeSpriteRow?.ok
     ? keyframeSpriteRow.referenceImages
-    : resolveRunReferenceImages({
+    : resolveRequiredRunReferenceImages({
         dataDir,
         run: runForGeneration,
         stage: 'final',
@@ -4679,9 +4685,7 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
     qualityProfile,
     qualityGuidance
   })
-  if (actionIdentityContext.referenceImages.length === 0) {
-    throw new Error('Creator Studio full-pet action generation requires a usable canonical identity reference')
-  }
+  assertExactlyOneProviderReferenceImage(actionIdentityContext.referenceImages)
   let fullPetBasicActionSources
   try {
     fullPetBasicActionSources = await generateFullPetBasicActionSources({
@@ -4782,6 +4786,7 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
 module.exports = {
   __testInternals: {
     buildModelCandidateList,
+    assertExactlyOneProviderReferenceImage,
     createFullPetActionIdentityContext,
     generateActionKeyframe,
     generateWithModelFallback,
@@ -4797,5 +4802,6 @@ module.exports = {
   generateAnchorReferences,
   generateViaHostModelBridge,
   regenerateFullPetActionsViaHostModelBridge,
+  resolveRequiredRunReferenceImages,
   resolveRunReferenceImages
 }
