@@ -109,8 +109,10 @@ const writeTransparentActionSheetPng = async (targetPath, {
 const getRequestedActionSheetLayout = (prompt = '') => {
   const promptText = String(prompt || '')
   const match = promptText.match(/Arrange the frames in exactly (\d+) columns x (\d+) rows/i) ||
-    promptText.match(/Arrange exactly \d+ sequential poses in a (\d+) column by (\d+) row grid/i)
-  const frameCountMatch = promptText.match(/Generate exactly (\d+) animation frames/i)
+    promptText.match(/Arrange exactly \d+ sequential poses in a (\d+) column by (\d+) row grid/i) ||
+    promptText.match(/Arrange exactly \d+ full-body frames in (\d+) columns and (\d+) rows/i)
+  const frameCountMatch = promptText.match(/Generate exactly (\d+) animation frames/i) ||
+    promptText.match(/Arrange exactly (\d+) full-body frames/i)
   if (!match) return { columns: 4, rows: 3, frameCount: Number(frameCountMatch?.[1]) || 12 }
   return {
     columns: Number(match[1]) || 4,

@@ -8,29 +8,48 @@ const {
   buildCharacterAnchorPrompt
 } = require('../../examples/plugins/creator-studio/lib/anchor-prompt-builder')
 
-test('character anchor prompt makes source image identity authoritative', () => {
+const assertProviderNeutral = (prompt) => {
+  assert.doesNotMatch(prompt, /\bOpenPet\b/i)
+  assert.doesNotMatch(prompt, /\bProvider\b/i)
+  assert.doesNotMatch(prompt, /\bbackend\b/i)
+  assert.doesNotMatch(prompt, /\b(?:run|action)[-_ ]?id\b/i)
+  assert.doesNotMatch(prompt, /\breference[-_ ]?role\b/i)
+  assert.doesNotMatch(prompt, /\bcheckpoint\b/i)
+  assert.doesNotMatch(prompt, /\bmultipart\b/i)
+  assert.doesNotMatch(prompt, /(?:\/Users|\/var|\/tmp|\/private|\/Volumes)\//i)
+}
+
+test('character anchor prompt is self-contained and reference authoritative', () => {
   const result = buildCharacterAnchorPrompt({
     characterBrief: 'Make the pet cheerful, but keep the real golden cat identity.',
     referenceRole: 'composite-reference-board'
   })
 
   assert.equal(result.role, 'character-anchor')
-  assert.match(result.prompt, /source image is the highest identity authority/i)
-  assert.match(result.prompt, /If the written description conflicts with the reference image, follow the reference image/i)
-  assert.match(result.prompt, /do not copy.*board layout/i)
-  assert.match(result.prompt, /Preserve.*eyes.*markings.*proportions.*silhouette/is)
-  assert.match(result.prompt, /same species/i)
-  assert.match(result.prompt, /never output a dog, corgi, fox, mascot, or different animal/i)
-  assert.match(result.prompt, /Do not add.*collar.*scarf.*bell/is)
-  assert.match(result.prompt, /one full-body centered pet source image/i)
-  assert.match(result.prompt, /neutral front-facing identity pose/i)
-  assert.match(result.prompt, /Do not choose action pose panels.*paw up.*waving.*running.*stretching/is)
-  assert.match(result.prompt, /front.*sitting.*identity.*authority/is)
+  assert.equal(result.version, 5)
+  assert.equal(result.promptCompilerVersion, 1)
+  assert.deepEqual(result.promptCompiler, {
+    promptCompilerVersion: 1,
+    taskType: 'character-image',
+    stage: 'identity',
+    width: 1024,
+    height: 1024,
+    aspectRatio: '1:1',
+    referenceImageCount: 1,
+    requestedOutputCount: 1,
+    promptSafety: 'provider-neutral'
+  })
+  assert.match(result.prompt, /^Create exactly one 1024 x 1024 image with a 1:1 aspect ratio\./)
+  assert.match(result.prompt, /main identity view and the supporting identity views/i)
+  assert.match(result.prompt, /If written appearance details conflict with the image, follow the image/i)
+  assert.match(result.prompt, /same face and eye design.*markings.*accessories.*body proportions.*rendering style/is)
+  assert.match(result.prompt, /lower center of the canvas/i)
+  assert.match(result.prompt, /transparent background/i)
+  assertProviderNeutral(result.prompt)
 })
 
-test('action anchor prompt locks identity while guiding provider sprite-row generation', () => {
+test('action anchor prompt keeps identity while describing only visible motion', () => {
   const result = buildActionAnchorPrompt({
-    characterBrief: 'Golden British Shorthair with green eyes.',
     referenceRole: 'source-action-reference-board',
     action: {
       actionId: 'waving',
@@ -43,23 +62,17 @@ test('action anchor prompt locks identity while guiding provider sprite-row gene
   })
 
   assert.equal(result.role, 'action-anchor')
-  assert.match(result.prompt, /Action ID: waving/)
-  assert.match(result.prompt, /Raise the viewer-right front paw and wave gently/)
-  assert.match(result.prompt, /original user source image is the highest identity authority/i)
-  assert.match(result.prompt, /stitched board.*source identity panels.*action or pose panels/is)
-  assert.match(result.prompt, /same character identity/i)
-  assert.match(result.prompt, /Do not average, simplify, recolor, or reinterpret/i)
-  assert.match(result.prompt, /do not add.*collar.*scarf.*bell/is)
-  assert.match(result.prompt, /stable lower-center root/i)
-  assert.match(result.prompt, /provider sprite-row generation/i)
-  assert.match(result.prompt, /body, head, feet\/base, and face remain locked/i)
-  assert.match(result.prompt, /only the target limb changes/i)
-  assert.match(result.prompt, /waving or paw-up action.*single raised front paw/is)
+  assert.equal(result.actionId, 'waving')
+  assert.match(result.prompt, /performing Waving/i)
+  assert.match(result.prompt, /waving front paw/i)
+  assert.match(result.prompt, /head, torso, feet\/base/i)
+  assert.match(result.prompt, /clearest motion extreme/i)
+  assert.match(result.prompt, /complete full-body character/i)
+  assertProviderNeutral(result.prompt)
 })
 
-test('canonical prompts preserve source accessories instead of forbidding them outright', () => {
+test('canonical prompts preserve visible source accessories', () => {
   const result = buildActionSpriteRowPrompt({
-    characterBrief: 'The exact black cat wearing its distinctive red collar.',
     action: {
       actionId: 'waving',
       name: 'Waving',
@@ -68,14 +81,13 @@ test('canonical prompts preserve source accessories instead of forbidding them o
     }
   })
 
-  assert.match(result.prompt, /same.*accessories.*as the original user source image/is)
-  assert.match(result.prompt, /new, extra, changed, or missing (?:collar|accessories)/i)
-  assert.doesNotMatch(result.prompt, /Negative prompt:[^\n]*(?:^|, )collar(?:,|$)/i)
+  assert.match(result.prompt, /same accessories and clothing when visible/i)
+  assert.match(result.prompt, /same accessories and clothing when visible/i)
+  assertProviderNeutral(result.prompt)
 })
 
-test('action sprite row prompt defines keyframed provider sprite sheet contract', () => {
+test('action sprite row prompt defines an exact reference-conditioned frame sheet', () => {
   const result = buildActionSpriteRowPrompt({
-    characterBrief: 'Use the exact golden shaded cat from the source image.',
     referenceRole: 'keyframe-action-reference-board',
     action: {
       actionId: 'waving',
@@ -89,70 +101,40 @@ test('action sprite row prompt defines keyframed provider sprite sheet contract'
   })
 
   assert.equal(result.role, 'action-sprite-row')
-  assert.equal(result.actionId, 'waving')
   assert.equal(result.frameCount, 6)
-  assert.match(result.prompt, /complete transparent-background OpenPet sprite sheet/i)
-  assert.match(result.prompt, /single local conditioning board/i)
-  assert.match(result.prompt, /The conditioning board is guidance only, not deliverable output/i)
-  assert.match(result.prompt, /original user source image.*highest identity authority/is)
-  assert.match(result.prompt, /normalized start keyframe/is)
-  assert.match(result.prompt, /normalized peak keyframe/is)
-  assert.match(result.prompt, /fixed template.*clear whitespace.*safe padding.*shared lower-center root/is)
-  assert.match(result.prompt, /6 animation frames/i)
-  assert.match(result.prompt, /3 columns x 2 rows/i)
-  assert.match(result.prompt, /equal-sized cells/i)
-  assert.match(result.prompt, /one full-body pet per cell/i)
-  assert.match(result.prompt, /unused grid cells.*empty.*transparent/i)
-  assert.match(result.prompt, /single conditioning board/i)
-  assert.match(result.prompt, /Generate the missing in-between frames/i)
-  assert.match(result.prompt, /do not copy keyframes as repeated static cells/i)
-  assert.match(result.prompt, /Frame 1.*start.*neutral/is)
-  assert.match(result.prompt, /Frame 3.*peak.*fully raised/is)
-  assert.match(result.prompt, /Frame 6.*return.*starting pose/is)
-  assert.match(result.prompt, /original user source image is the highest identity authority/i)
-  assert.match(result.prompt, /provider-generated start keyframe and peak\/end keyframe/i)
-  assert.match(result.prompt, /Keep the body, head, torso, feet\/base, and lower-center root anchored/i)
-  assert.match(result.prompt, /Only the viewer-right front paw should move noticeably/i)
-  assert.match(result.prompt, /Do not copy.*reference labels.*presentation panels/is)
-  assert.match(result.prompt, /Negative prompt:.*copied pseudo sprite sheet.*sprite sheet grid labels/is)
+  assert.match(result.prompt, /^Create exactly one 1536 x 1024 image with a 3:2 aspect ratio\./)
+  assert.match(result.prompt, /one identity view followed by ordered pose examples/i)
+  assert.match(result.prompt, /exactly 6 full-body frames in 3 columns and 2 rows/i)
+  assert.match(result.prompt, /left to right and then top to bottom/i)
+  assert.match(result.prompt, /Frame 1: start pose.*neutral/is)
+  assert.match(result.prompt, /Frame 3: peak pose.*fully raised/is)
+  assert.match(result.prompt, /Frame 6: return pose.*starting pose/is)
+  assert.match(result.prompt, /same lower-center root, viewpoint, scale, identity, lighting/i)
+  assert.match(result.prompt, /unused cell completely empty and transparent/i)
+  assertProviderNeutral(result.prompt)
 })
 
-test('action keyframe prompt creates separate provider start and peak frames', () => {
-  const start = buildActionKeyframePrompt({
-    characterBrief: 'Exact golden cat identity.',
-    referenceRole: 'source-identity-reference',
-    keyframeRole: 'start',
-    action: {
-      actionId: 'waving',
-      motionPrompt: 'Wave with one front paw.',
-      frameCount: 6
-    }
-  })
-  const peak = buildActionKeyframePrompt({
-    characterBrief: 'Exact golden cat identity.',
-    referenceRole: 'source-identity-reference',
-    keyframeRole: 'peak',
-    action: {
-      actionId: 'waving',
-      motionPrompt: 'Wave with one front paw.',
-      frameCount: 6
-    }
-  })
+test('action keyframe prompts create separate start and peak images', () => {
+  const action = {
+    actionId: 'waving',
+    name: 'Waving',
+    motionPrompt: 'Wave with one front paw.',
+    frameCount: 6
+  }
+  const start = buildActionKeyframePrompt({ keyframeRole: 'start', action })
+  const peak = buildActionKeyframePrompt({ keyframeRole: 'peak', action })
 
-  assert.equal(start.role, 'action-keyframe')
   assert.equal(start.keyframeRole, 'start')
-  assert.match(start.prompt, /START FRAME/i)
-  assert.match(start.prompt, /both front paws\/limbs down/i)
-  assert.match(start.prompt, /no grid, no sprite sheet/i)
-
   assert.equal(peak.keyframeRole, 'peak')
-  assert.match(peak.prompt, /PEAK\/END FRAME/i)
-  assert.match(peak.prompt, /waving front paw.*clearly changed from neutral/is)
-  assert.match(peak.prompt, /lower-center root remain stable/i)
-  assert.match(peak.prompt, /no grid, no sprite sheet/i)
+  assert.match(start.prompt, /starting pose before the main motion/i)
+  assert.match(peak.prompt, /waving front paw clearly changed from neutral and fully raised beside the face/i)
+  assert.match(start.prompt, /one clean isolated full-body character on a transparent background/i)
+  assert.match(peak.prompt, /one clean isolated full-body character on a transparent background/i)
+  assertProviderNeutral(start.prompt)
+  assertProviderNeutral(peak.prompt)
 })
 
-test('action sprite row prompt infers wave moving part when action metadata is sparse', () => {
+test('sparse wave metadata still produces a complete moving-part contract', () => {
   const result = buildActionSpriteRowPrompt({
     action: {
       actionId: 'dev8-provider-row-wave',
@@ -161,9 +143,10 @@ test('action sprite row prompt infers wave moving part when action metadata is s
     }
   })
 
-  assert.match(result.prompt, /Only the waving front paw should move noticeably/i)
-  assert.doesNotMatch(result.prompt, /Only the the requested moving part/i)
-  assert.match(result.prompt, /Animated parts:\n- waving front paw/i)
+  assert.match(result.prompt, /Animate these parts clearly: waving front paw/i)
+  assert.match(result.prompt, /seamless stationary loop with a stable body root/i)
+  assert.doesNotMatch(result.prompt, /the requested moving part/i)
+  assertProviderNeutral(result.prompt)
 })
 
 test('four-frame wave plans close the loop by returning to the start pose', () => {
@@ -181,7 +164,7 @@ test('four-frame wave plans close the loop by returning to the start pose', () =
   assert.doesNotMatch(result.prompt, /Frame 4:.*tilts slightly outward/is)
 })
 
-test('action sprite row prompt infers a complete locomotion contract for sparse running actions', () => {
+test('sparse running metadata produces a complete locomotion cycle', () => {
   const result = buildActionSpriteRowPrompt({
     action: {
       actionId: 'running',
@@ -191,32 +174,17 @@ test('action sprite row prompt infers a complete locomotion contract for sparse 
     }
   })
 
-  assert.match(result.prompt, /Animation type: locomotion_loop/i)
-  assert.match(result.prompt, /4 columns x 2 rows/i)
+  assert.match(result.prompt, /^Create exactly one 1536 x 1024 image with a 3:2 aspect ratio\./)
+  assert.match(result.prompt, /seamless in-place locomotion cycle/i)
+  assert.match(result.prompt, /exactly 8 full-body frames in 4 columns and 2 rows/i)
   assert.match(result.prompt, /contact pose/i)
   assert.match(result.prompt, /passing pose/i)
   assert.match(result.prompt, /opposite contact pose/i)
-  assert.match(result.prompt, /legs.*locomotion parts/i)
-  assert.doesNotMatch(result.prompt, /Only the the requested moving part/i)
+  assert.match(result.prompt, /legs, arms, wings, tail, and locomotion parts/i)
+  assertProviderNeutral(result.prompt)
 })
 
-test('action keyframe prompt infers airborne peak semantics for sparse jumping actions', () => {
-  const result = buildActionKeyframePrompt({
-    keyframeRole: 'peak',
-    action: {
-      actionId: 'jumping',
-      name: 'Jumping',
-      motionPrompt: 'Jump upward and land back on the same baseline.',
-      frameCount: 5
-    }
-  })
-
-  assert.match(result.prompt, /Animation type: vertical_bounce/i)
-  assert.match(result.prompt, /airborne peak/i)
-  assert.match(result.prompt, /return.*baseline/i)
-})
-
-test('action identity takes precedence over incidental motion words in the description', () => {
+test('action identity takes precedence over incidental motion words', () => {
   const waving = buildActionSpriteRowPrompt({
     action: {
       actionId: 'waving',
@@ -235,8 +203,10 @@ test('action identity takes precedence over incidental motion words in the descr
     }
   })
 
-  assert.match(waving.prompt, /Animation type: stationary_loop/i)
+  assert.match(waving.prompt, /seamless stationary loop with a stable body root/i)
   assert.match(waving.prompt, /waving front paw/i)
-  assert.match(jumping.prompt, /Animation type: vertical_bounce/i)
   assert.match(jumping.prompt, /airborne peak/i)
+  assert.match(jumping.prompt, /return to the same baseline/i)
+  assertProviderNeutral(waving.prompt)
+  assertProviderNeutral(jumping.prompt)
 })

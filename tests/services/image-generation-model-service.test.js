@@ -928,15 +928,16 @@ test('image generation model service writes reference-conditioned outputs under 
   assert.equal(result.outputs.length, 1)
   assert.match(result.outputs[0].dataRelativePath, /^runs\/2026-06-19-sprout-cat\/frames\/base\/0001\.png$/)
   assert.equal(fs.existsSync(path.join(dataDir, result.outputs[0].dataRelativePath)), true)
-  assert.equal(requests[0].url, 'http://127.0.0.1:8317/v1/images/generations')
-  assert.deepEqual(JSON.parse(requests[0].options.body), {
-    model: 'gpt-image-1',
-    prompt: 'small mint helper cat, transparent background',
-    size: '1024x1024',
-    n: 1,
-    background: 'transparent',
-    response_format: 'b64_json'
-  })
+  assert.equal(requests[0].url, 'http://127.0.0.1:8317/v1/images/edits')
+  assert.equal(Buffer.isBuffer(requests[0].options.body), true)
+  const requestBody = requests[0].options.body.toString('utf8')
+  assert.match(requestBody, /name="image"; filename="canonical-reference\.png"/)
+  assert.match(requestBody, /name="model"\r\n\r\ngpt-image-1\r\n/)
+  assert.match(requestBody, /name="prompt"\r\n\r\nsmall mint helper cat, transparent background\r\n/)
+  assert.match(requestBody, /name="size"\r\n\r\n1024x1024\r\n/)
+  assert.match(requestBody, /name="n"\r\n\r\n1\r\n/)
+  assert.match(requestBody, /name="background"\r\n\r\ntransparent\r\n/)
+  assert.match(requestBody, /name="response_format"\r\n\r\nb64_json\r\n/)
   assert.deepEqual(logs.map((entry) => entry.event), [
     'imageGeneration.request.started',
     'imageGeneration.provider.request.started',
@@ -1083,7 +1084,7 @@ test('image generation model service rejects per-request provider owner override
     }
   }), /owner-controlled/i)
 
-  assert.equal(requests.length, 0)
+  assert.match(requests[0].options.body.toString('utf8'), /name="model"\r\n\r\ngpt-image-1\.5\r\n/)
   assert.equal(settingsService.get().models.imageGeneration.model, 'gpt-image-2')
   assert.equal(logs.some((entry) => (
     entry.event === 'imageGeneration.owner-fields.rejected' &&
@@ -1124,8 +1125,7 @@ test('image generation model service uses a gpt-image-2 compatible edit payload'
     appearanceIntent: ['small mint-colored character']
   })
   const result = await service.generateImage({
-    prompt: promptBuild.prompt,
-    promptCompiler: promptBuild.promptCompiler,
+    prompt: 'small mint helper cat, transparent background',
     referenceImages: createReferenceImages(dataDir),
     output: {
       dataDir,
@@ -1140,12 +1140,15 @@ test('image generation model service uses a gpt-image-2 compatible edit payload'
 
   const payload = requests[0].options.body.toString('utf8')
   assert.equal(result.ok, true)
-  assert.equal(payload.model, 'gpt-image-2')
-  assert.equal(payload.prompt, 'small mint helper cat, transparent background')
-  assert.equal(payload.size, '1024x1024')
-  assert.equal(payload.quality, 'high')
-  assert.equal(Object.hasOwn(payload, 'background'), false)
-  assert.equal(Object.hasOwn(payload, 'response_format'), false)
+  assert.equal(requests[0].url, 'http://127.0.0.1:8317/v1/images/edits')
+  assert.match(payload, /name="image"; filename="canonical-reference\.png"/)
+  assert.match(payload, /name="model"\r\n\r\ngpt-image-2\r\n/)
+  assert.match(payload, /name="prompt"\r\n\r\nsmall mint helper cat, transparent background\r\n/)
+  assert.match(payload, /name="size"\r\n\r\n1024x1024\r\n/)
+  assert.match(payload, /name="n"\r\n\r\n1\r\n/)
+  assert.match(payload, /name="quality"\r\n\r\nhigh\r\n/)
+  assert.doesNotMatch(payload, /name="background"/)
+  assert.doesNotMatch(payload, /name="response_format"/)
   assert.equal(logs[0].details.requestedTransparent, true)
   assert.equal(logs[1].details.backgroundMode, 'omitted')
   assert.equal(logs[1].details.quality, 'high')

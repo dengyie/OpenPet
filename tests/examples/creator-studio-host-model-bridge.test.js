@@ -415,7 +415,11 @@ test('host model bridge does not upload a canonical reference symlink that escap
           }]
         }
       }
-    }), /reference image is missing or unusable/i)
+    }), (error) => {
+      assert.equal(error.code, 'reference_image_required')
+      assert.match(error.message, /requires one usable local reference image/i)
+      return true
+    })
 
     assert.equal(requests.length, 0)
   } finally {
@@ -481,7 +485,11 @@ test('host model bridge fails closed when a full-pet reference record is no long
           }))
         }
       }
-    }), /reference image.*unusable|reference image.*missing|reference.*validation/i)
+    }), (error) => {
+      assert.equal(error.code, 'reference_image_required')
+      assert.match(error.message, /requires one usable local reference image/i)
+      return true
+    })
 
     assert.equal(requests.length, 0)
   } finally {
@@ -494,8 +502,10 @@ test('host model bridge fails closed when a full-pet reference record is no long
   }
 })
 
-test('host model bridge generates text-only full-pet rows through per-action conditioning boards', async () => {
+test('host model bridge generates reference-conditioned full-pet rows through per-action conditioning boards', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-host-model-bridge-'))
+  const sourceRelativePath = 'runs/run-bridge-concurrency/inputs/references/cat.png'
+  await writeMockBaseProviderPng(path.join(dataDir, sourceRelativePath))
   const requests = []
   const server = http.createServer((request, response) => {
     let body = ''
@@ -597,7 +607,9 @@ test('host model bridge generates text-only full-pet rows through per-action con
     assert.equal(finalRequests.length, GENERATED_FULL_PET_ACTION_IDS.length)
     assert.equal(requests.some((entry) => entry.dataRelativeDir.includes('running-left')), false)
     assert.equal(requests.some((entry) => /\/official-rows\//.test(entry.dataRelativeDir)), false)
-    assert.equal(startRequests.every((entry) => entry.referenceRoles[0] === 'canonical-generated-identity'), true)
+    assert.equal(startRequests.every((entry) => (
+      entry.referenceRoles.length === 1 && entry.referenceRoles[0] === 'full-pet-action-identity-board'
+    )), true)
     assert.equal(peakRequests.every((entry) => entry.referenceRoles[0] === 'action-peak-conditioning-board'), true)
     assert.equal(finalRequests.every((entry) => entry.referenceRoles[0] === 'keyframe-action-reference-board'), true)
     assert.equal(startRequests.every((entry) => entry.timeoutMs === 480000), true)

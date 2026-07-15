@@ -549,7 +549,11 @@ test('canonical direct-source action anchors select the best provider candidate 
     'runs/run-candidates/anchors/actions/waving-anchor-candidates/02-clean-cutout-motion-readable',
     'runs/run-candidates/anchors/actions/waving-anchor-candidates/03-identity-locked-desktop-sprite'
   ])
-  assert.equal(calls.every((call) => call.prompt.includes('Candidate guidance:')), true)
+  assert.deepEqual(calls.map((call) => call.prompt.includes({
+    'source-faithful-key-pose': 'preserve every visible face, eye, color, and marking detail',
+    'clean-cutout-motion-readable': 'use a clean full-body silhouette with a strong readable action pose',
+    'identity-locked-desktop-sprite': 'keep the full body centered with a stable lower-center root'
+  }[call.candidateId])), [true, true, true])
 
   const actionAnchor = result.anchorReferences.actionAnchors[0]
   assert.equal(actionAnchor.role, 'action-anchor')
@@ -928,18 +932,21 @@ test('host model bridge routes every single action through a keyframe-conditione
     assert.deepEqual(result.anchorReferences.actionAnchors, [])
     assert.deepEqual(result.anchorReferences.finalActionBoards, [])
     assert.equal(result.conditioning.referenceImageCount, 1)
-    assert.equal(result.conditioning.mode, 'provider-keyframe-sprite-row')
+    assert.equal(result.conditioning.mode, 'image-edit')
+    assert.equal(result.conditioning.endpoint, '/images/edits')
+    assert.equal(result.conditioning.multipartImageField, 'image')
+    assert.equal(result.conditioning.requestedOutputCount, 1)
     assert.deepEqual(result.conditioning.references.map((reference) => reference.role), [
       'keyframe-action-reference-board'
     ])
     assert.equal(result.outputs[0].dataRelativePath, 'runs/run-anchor-flow/frames/base/waving-keyframe-row/0001.png')
-    assert.match(requests[0].prompt, /START FRAME/i)
-    assert.match(requests[1].prompt, /PEAK\/END FRAME/i)
-    assert.match(requests[1].prompt, /single conditioning board/i)
-    assert.match(requests[1].prompt, /start keyframe/i)
-    assert.match(requests[2].prompt, /complete transparent-background OpenPet sprite sheet/i)
-    assert.match(requests[2].prompt, /single local conditioning board/i)
-    assert.match(requests[2].prompt, /Frame 3.*peak.*fully raised/is)
+    assert.match(requests[0].prompt, /starting pose before the main motion/i)
+    assert.match(requests[1].prompt, /clearest motion extreme/i)
+    assert.match(requests[1].prompt, /one identity view followed by ordered pose examples/i)
+    assert.match(requests[1].prompt, /starting pose, motion direction, and motion extreme/i)
+    assert.match(requests[2].prompt, /complete animation frame sheet for Waving/i)
+    assert.match(requests[2].prompt, /one identity view followed by ordered pose examples/i)
+    assert.match(requests[2].prompt, /Frame 3: peak pose.*fully raised beside the face/is)
     assert.deepEqual(result.generationStages.map((stage) => ({
       stage: stage.stage,
       ok: stage.ok,
@@ -1161,6 +1168,8 @@ test('host model bridge rejects canonical actions when keyframe sprite row gener
 
 test('host model bridge rejects canonical actions before final generation when keyframe row cannot be prepared', async () => {
   const dataDir = makeDataDir()
+  const sourceRelativePath = 'runs/run-no-row/inputs/references/cat.png'
+  await writeSourceImage(path.join(dataDir, sourceRelativePath))
   const imageRequests = []
   const server = http.createServer((request, response) => {
     let body = ''
@@ -1205,7 +1214,14 @@ test('host model bridge rejects canonical actions before final generation when k
           runId: 'run-no-row',
           petId: 'anchor-cat',
           input: {
-            originalPrompt: 'Golden cat with green eyes.'
+            originalPrompt: 'Golden cat with green eyes.',
+            referenceImage: {
+              fileName: 'cat.png',
+              relativePath: sourceRelativePath,
+              contentHash: 'source-hash',
+              width: 256,
+              height: 256
+            }
           },
           generationTask: {
             mode: 'single-action',
@@ -1225,7 +1241,8 @@ test('host model bridge rejects canonical actions before final generation when k
       }),
       /keyframe sprite row.*could not be prepared/i
     )
-    assert.equal(imageRequests.length, 0)
+    assert.equal(imageRequests.length, 1)
+    assert.equal(imageRequests.some((payload) => /-keyframe-row$/.test(payload.output?.dataRelativeDir || '')), false)
   } finally {
     if (previousBridgeUrl == null) delete process.env.OPENPET_BRIDGE_URL
     else process.env.OPENPET_BRIDGE_URL = previousBridgeUrl
