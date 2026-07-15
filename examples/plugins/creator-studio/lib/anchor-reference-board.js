@@ -299,7 +299,7 @@ const findConditioningSourceByRole = (sources, pattern) => (
 )
 
 const assertConditioningBoardSources = (sources = []) => {
-  const identitySource = findConditioningSourceByRole(sources, /^(canonical-reference|source-identity-reference|source-identity)$/i) ||
+  const identitySource = findConditioningSourceByRole(sources, /^(canonical-reference|source-identity-reference|source-identity|full-pet-action-identity-board)$/i) ||
     findConditioningSourceByRole(sources, /canonical|source-identity/i)
   const startSource = findConditioningSourceByRole(sources, /action-start-keyframe/i)
   const peakSource = findConditioningSourceByRole(sources, /action-peak-keyframe/i)
