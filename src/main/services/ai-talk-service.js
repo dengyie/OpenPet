@@ -623,6 +623,7 @@ const createAiTalkService = ({
   const conversationQueues = new Map()
   const streamingRequests = new Map()
   const streamCoalescers = new Map()
+  let disposed = false
 
   const enqueueConversation = (conversationKey, task) => {
     if (!conversationKey) return task()
@@ -745,6 +746,21 @@ const createAiTalkService = ({
     })
     return { canceled: true, requestId: key, reason: request.cancelReason }
   }
+
+  const createDisposedError = () => {
+    const error = new Error('AI talk service is disposed')
+    error.code = 'ai_talk_disposed'
+    return error
+  }
+
+  const createCanceledStreamResult = ({ requestId, conversationId = '', partialReply = '', providerLatencyMs = 0 } = {}) => ({
+    canceled: true,
+    conversationId,
+    reply: '',
+    partialReply,
+    requestId,
+    providerLatencyMs
+  })
 
   const resolvePersona = (manifest, petPackId) => {
     const override = typeof aiTalkStore.getPersonaOverride === 'function'
@@ -1554,8 +1570,52 @@ const createAiTalkService = ({
     }
 
     try {
+      if (disposed) {
+        emitStreamState({
+          requestId: safeRequestId,
+          entrypoint,
+          status: 'canceled',
+          partialReply,
+          chunkCount
+        }, onState)
+        return createCanceledStreamResult({ requestId: safeRequestId, partialReply, providerLatencyMs })
+      }
       const turnContext = resolveTurnContext({ request: turnRequest, requireStreaming: true })
+      if (disposed) {
+        emitStreamState({
+          requestId: safeRequestId,
+          conversationId: turnContext.conversationPublicId,
+          petPackId: turnContext.petPackId,
+          entrypoint,
+          status: 'canceled',
+          partialReply,
+          chunkCount
+        }, onState)
+        return createCanceledStreamResult({
+          requestId: safeRequestId,
+          conversationId: turnContext.conversationPublicId,
+          partialReply,
+          providerLatencyMs
+        })
+      }
       return await enqueueConversation(turnContext.conversationPublicId, async () => {
+        if (disposed) {
+          emitStreamState({
+            requestId: safeRequestId,
+            conversationId: turnContext.conversationPublicId,
+            petPackId: turnContext.petPackId,
+            entrypoint,
+            status: 'canceled',
+            partialReply,
+            chunkCount
+          }, onState)
+          return createCanceledStreamResult({
+            requestId: safeRequestId,
+            conversationId: turnContext.conversationPublicId,
+            partialReply,
+            providerLatencyMs
+          })
+        }
         const turn = prepareTurn(turnContext)
         const {
           config,
@@ -1794,6 +1854,7 @@ const createAiTalkService = ({
   }
 
   const dispose = () => {
+    disposed = true
     for (const coalescer of streamCoalescers.values()) coalescer.dispose()
     streamCoalescers.clear()
     for (const request of streamingRequests.values()) {
@@ -1811,6 +1872,7 @@ const createAiTalkService = ({
   )
 
   const chat = async ({ message, messageBatch = null, entrypoint = 'control-center', requestId } = {}) => {
+    if (disposed) throw createDisposedError()
     const startedAt = Date.now()
     const turnRequest = createTurnRequest({ message, messageBatch, entrypoint, requestId })
     const userContents = turnRequest.userContents
@@ -1824,7 +1886,9 @@ const createAiTalkService = ({
         activePackDiagnostics = null
       }
       const turnContext = resolveTurnContext({ request: turnRequest, activePack: activePackDiagnostics })
+      if (disposed) throw createDisposedError()
       return await enqueueConversation(turnContext.conversationPublicId, async () => {
+        if (disposed) throw createDisposedError()
         const turn = prepareTurn(turnContext)
         const {
           config,

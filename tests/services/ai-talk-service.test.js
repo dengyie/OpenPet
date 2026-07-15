@@ -1789,6 +1789,49 @@ test('ai talk service disposal clears pending stream timers and aborts active re
   assert.equal(timers.pendingCount(), 0)
 })
 
+test('ai talk service dispose cancels queued stream requests before provider or message writes', async () => {
+  const store = createStore()
+  let starts = 0
+  let firstStartedResolve = null
+  const firstStarted = new Promise((resolve) => {
+    firstStartedResolve = resolve
+  })
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({ enabled: true, behavior: { enabled: false }, memory: { enabled: false } }),
+      streamComplete: ({ signal }) => {
+        starts += 1
+        if (starts === 1) firstStartedResolve()
+        if (starts === 2) return Promise.resolve({ reply: 'second reply', elapsedMs: 1, chunkCount: 0, finishReason: 'stop' })
+        return new Promise((resolve, reject) => {
+          signal.addEventListener('abort', () => {
+            const error = new Error('aborted')
+            error.name = 'AbortError'
+            reject(error)
+          }, { once: true })
+        })
+      }
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({ id: 'mochi-cat', persona: null })
+  })
+
+  const first = service.streamChat({ message: 'first', requestId: 'stream-dispose-active' })
+  await firstStarted
+  const second = service.streamChat({ message: 'second', requestId: 'stream-dispose-queued' })
+  service.dispose()
+
+  const [firstResult, secondResult] = await Promise.all([first, second])
+  const contents = store.getMessages('control-center:mochi-cat', 'main').map((message) => message.content)
+
+  assert.equal(firstResult.canceled, true)
+  assert.equal(secondResult.canceled, true)
+  assert.equal(starts, 1)
+  assert.deepEqual(contents, ['first'])
+  assert.equal(contents.includes('second'), false)
+  assert.equal(contents.includes('second reply'), false)
+})
+
 test('ai talk service delegates pending memory job interruption and keeps disposal idempotent', () => {
   const interruptionCalls = []
   const store = createStore()
