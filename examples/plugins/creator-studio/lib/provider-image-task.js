@@ -143,6 +143,14 @@ const resolveReferenceInterpretation = (referenceRole = '') => {
       ignorePresentationLayout: true
     })
   }
+  if (/composite-reference-board|source-action-reference-board/.test(role)) {
+    return deepFreeze({
+      type: 'identity-comparison',
+      primaryRegion: 'the main identity view',
+      secondaryRegion: 'the supporting identity views',
+      ignorePresentationLayout: true
+    })
+  }
   if (/keyframe-action-reference-board|action-peak-conditioning-board/.test(role)) {
     return deepFreeze({
       type: 'identity-and-motion',

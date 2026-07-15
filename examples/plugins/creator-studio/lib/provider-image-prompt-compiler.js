@@ -37,10 +37,12 @@ const assertProviderNeutralPrompt = (value) => {
 
 const createReferenceParagraph = (reference) => {
   if (reference.type === 'identity-comparison') {
+    const primaryRegion = reference.primaryRegion || 'the main character view'
+    const secondaryRegion = reference.secondaryRegion || 'the supporting detail view'
     return [
       'Use the attached image as the complete visual reference.',
-      'It contains a larger primary character view and a smaller source-detail view.',
-      'Match the pose scale and framing of the larger view while preserving the visible face, eyes, markings, colors, accessories, material or fur texture, body proportions, silhouette, lighting, and rendering style shown across the reference.',
+      `It contains ${primaryRegion} and ${secondaryRegion}.`,
+      `Match the pose scale and framing of ${primaryRegion} while preserving the visible face, eyes, markings, colors, accessories, material or fur texture, body proportions, silhouette, lighting, and rendering style shown across the reference.`,
       'If written appearance details conflict with the image, follow the image.',
       'Do not reproduce the reference layout, repeated views, presentation spacing, labels, borders, or panel background.'
     ].join(' ')

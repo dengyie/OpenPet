@@ -2,6 +2,14 @@ const { normalizeGenerationTask } = require('./generation-task')
 const { getActionSheetLayout: resolveActionSheetLayout } = require('./action-sheet-layout')
 const { createQualityGuidanceLines } = require('./pet-generation-human-examples')
 const {
+  DEFAULT_FULL_BODY_SUBJECT,
+  createProviderImageTask
+} = require('./provider-image-task')
+const {
+  PROMPT_COMPILER_VERSION,
+  compileProviderImagePrompt
+} = require('./provider-image-prompt-compiler')
+const {
   buildActionFramePlan,
   inferAnimationType,
   isEmoteAction,
@@ -12,7 +20,7 @@ const {
   isWavingAction
 } = require('./action-semantics')
 
-const PROMPT_BUILDER_VERSION = 3
+const PROMPT_BUILDER_VERSION = 5
 
 const SECTION_ORDER = [
   'Asset Goal',
@@ -607,7 +615,11 @@ const buildOpenPetImagePrompt = ({
   backend = '',
   model = '',
   currentPetContext = '',
-  qualityGuidance = null
+  qualityGuidance = null,
+  constraints = { width: 1024, height: 1024 },
+  referenceRole = 'single-character-reference',
+  strategyId = '',
+  requestedChanges = []
 } = {}) => {
   const task = resolveTask({ run, generationTask })
   const action = firstAction(task)
@@ -627,12 +639,42 @@ const buildOpenPetImagePrompt = ({
     currentPetContext,
     qualityGuidance
   })
-  const providerPrompt = buildCompactProviderPrompt({
-    task,
-    action,
-    creativeBrief,
-    currentPetContext,
-    qualityGuidance
+  const actionSheet = getActionSheetLayout(action)
+  const imageTask = createProviderImageTask({
+    taskType: task.mode === 'single-action' ? 'action-frame-sheet' : 'character-image',
+    stage: task.mode === 'single-action' ? 'final' : 'identity',
+    ...(task.mode === 'single-action' ? {} : { canvas: constraints }),
+    ...(task.mode === 'single-action'
+      ? {
+          sheet: {
+            frameCount: actionSheet.frameCount,
+            columns: actionSheet.columns,
+            rows: actionSheet.rows,
+            readingOrder: 'left-to-right-top-to-bottom'
+          },
+          action: {
+            name: action?.name || action?.motionPrompt || 'the requested action',
+            moment: action?.motionPrompt || action?.name || 'the requested action',
+            movingParts: getActionSpec({ action, frameCount: actionSheet.frameCount }).animatedParts,
+            lockedParts: getActionSpec({ action, frameCount: actionSheet.frameCount }).lockedParts,
+            loopIntent: action?.loop
+              ? 'a seamless loop that returns to the starting pose'
+              : 'a readable action with a clear ending pose',
+            framePlan: buildActionFramePlan({ action, frameCount: actionSheet.frameCount })
+          }
+        }
+      : {}),
+    referenceRole,
+    subject: DEFAULT_FULL_BODY_SUBJECT,
+    strategyId,
+    requestedChanges
+  })
+  const compiled = compileProviderImagePrompt({
+    task: imageTask,
+    qualityGuidance: createQualityGuidanceLines({
+      qualityGuidance,
+      actionId: action?.actionId || ''
+    })
   })
 
   return {
