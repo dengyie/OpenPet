@@ -702,8 +702,8 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
       const draftRun = getCreatorStudioRun(drafted)
       runId = getCreatorStudioRunId(draftRun)
       if (!runId) throw new Error('Creator Studio did not return a run id')
-      try {
-        hatchPetAgentShadow = await hatchPetAgentService?.createShadowDecision?.({
+      void Promise.resolve()
+        .then(() => hatchPetAgentService?.createShadowDecision?.({
           runId,
           mode,
           userIntent: normalizeText(payload.originalPrompt || payload.prompt || task?.characterBrief || task?.actions?.[0]?.description),
@@ -715,28 +715,31 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
               health
             })
           }
-        }) || null
-      } catch (error) {
-        hatchPetAgentShadow = {
-          status: 'shadow-failed',
-          code: 'hatch_pet_shadow_failed',
-          decision: null,
-          decisionId: ''
-        }
-        recordLog({
-          level: 'warn',
-          event: 'creator.workflow.shadow-planning-failed',
-          message: 'Hatch-pet shadow planning failed before fixed workflow continuation',
-          details: {
-            requestId,
-            mode,
-            runId,
-            errorName: normalizeText(error?.name),
-            errorCode: normalizeText(error?.code),
-            errorMessage: sanitizeLogText(error?.message || '', { maxChars: 240 })
-          }
+        }))
+        .then((result) => {
+          hatchPetAgentShadow = result || null
         })
-      }
+        .catch((error) => {
+          hatchPetAgentShadow = {
+            status: 'shadow-failed',
+            code: 'hatch_pet_shadow_failed',
+            decision: null,
+            decisionId: ''
+          }
+          recordLog({
+            level: 'warn',
+            event: 'creator.workflow.shadow-planning-failed',
+            message: 'Hatch-pet shadow planning failed without delaying the fixed workflow',
+            details: {
+              requestId,
+              mode,
+              runId,
+              errorName: normalizeText(error?.name),
+              errorCode: normalizeText(error?.code),
+              errorMessage: sanitizeLogText(error?.message || '', { maxChars: 240 })
+            }
+          })
+        })
       recordStage({ stage: 'draft', result: drafted, run: draftRun })
       updateWorkflowProgress({
         runId,
