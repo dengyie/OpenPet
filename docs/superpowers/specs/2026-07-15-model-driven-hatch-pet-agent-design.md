@@ -16,7 +16,7 @@ The hatch-pet model should handle work that benefits from visual understanding a
 
 - plan the character and action-generation strategy;
 - choose among available image-generation models;
-- write and revise prompts;
+- select registered prompt strategies and propose bounded visual changes;
 - inspect generated character and action evidence;
 - identify visual defects;
 - choose the smallest repair scope;
@@ -37,6 +37,13 @@ Code remains authoritative for work that is deterministic, security-sensitive, o
 The governing principle is:
 
 > The model plans, creates, evaluates, and proposes repairs. Code executes, measures, constrains, and enforces gates. Humans approve the final product.
+
+All image-generation execution also follows `docs/superpowers/specs/2026-07-15-provider-neutral-reference-conditioned-image-generation-design.md`:
+
+- every real image request carries exactly one validated reference image and requests exactly one output;
+- zero-reference or text-only image generation is illegal;
+- code compiles the final upstream visual brief with exact dimensions and aspect ratio;
+- the image model never receives product names, internal roles, run/action IDs, paths, transport details, or unrestricted Hatch Pet prompt text.
 
 ## 2. Confirmed Product Decisions
 
@@ -493,19 +500,20 @@ The next call reads summaries, not the original model response. This makes resta
 
 ## 12. Prompt And Strategy Governance
 
-The hatch-pet model may write bounded creative guidance but does not receive unrestricted prompt ownership.
+The hatch-pet model may select a registered strategy and propose bounded visual changes but does not receive unrestricted prompt ownership.
 
-Code composes the final Provider prompt from:
+Code creates a typed image task and compiles the final project-neutral visual brief from:
 
-1. fixed output and safety contract;
-2. fixed action and atlas contract;
-3. canonical identity and reference-board authority;
-4. active quality-profile guidance;
-5. selected versioned strategy template;
-6. model-proposed bounded requested changes;
-7. sanitized user creative brief.
+1. exact output dimensions and aspect ratio;
+2. fixed single-image or action-frame-sheet contract;
+3. a natural-language description of the one attached reference image;
+4. canonical identity, framing, and motion requirements;
+5. active quality-profile guidance;
+6. selected versioned strategy directives;
+7. model-proposed bounded visual changes;
+8. fixed transparency, padding, count, and exclusion rules.
 
-The model cannot remove or contradict fixed sections. Requested changes are length-limited and sanitized before composition.
+The model cannot send raw image prompts, append arbitrary text, remove fixed sections, request a second reference, or switch to text-only generation. Requested changes are length-limited, visual-only, sanitized, and recompiled inside the fixed contract.
 
 Versioned strategy IDs make behavior inspectable and testable. Initial strategy families should include:
 
@@ -730,6 +738,8 @@ The workflow must never silently fall back to fixture art, transform-only motion
 - fixed Creator Studio fallback when agent is disabled or unavailable;
 - final human-review stop with no auto-approval/import/activation;
 - exact provenance for every successful generation model.
+- exact-one-reference rejection before Provider work and preservation through retry/fallback/repair;
+- provider-neutral prompt snapshots with exact dimensions/aspect ratio and no project/internal terminology;
 
 ### Control Center coverage
 

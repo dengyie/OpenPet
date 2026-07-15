@@ -19,7 +19,8 @@
 - Bounded execution remains opt-in and must preserve an explicit fixed Creator Studio fallback.
 - The model cannot override code QA, change budgets, approve, import, activate, access secrets, add endpoints, or write arbitrary files.
 - Each evaluation call receives at most one locally composed review-board image.
-- Generation requests retain the existing zero/one-reference and exact-output-count contracts.
+- Every generation request must carry exactly one validated local reference image, use the image-conditioned edit path, and request exactly one output.
+- All upstream image prompts must be compiled through `provider-image-prompt-compiler.js`; Hatch Pet cannot send or append raw prompt text.
 - Default limits remain one identity regeneration, three attempts per action, and two evaluation attempts per artifact.
 - Required identity failure blocks; single-action failure remains reviewable/failed and never auto-imports.
 - Every task ends in a focused commit. Do not push.
@@ -31,6 +32,8 @@
 | File | Responsibility |
 | --- | --- |
 | `src/main/services/hatch-pet-agent-strategies.js` | Versioned prompt/reference strategy registry and bounded model-requested change composition |
+| `examples/plugins/creator-studio/lib/provider-image-task.js` | Typed dimensions, sheet geometry, reference interpretation, and visual directives |
+| `examples/plugins/creator-studio/lib/provider-image-prompt-compiler.js` | Project-neutral upstream prompt ownership |
 | `src/main/services/hatch-pet-agent-review-board.js` | One-image identity/action evaluator board generation |
 | `src/main/services/hatch-pet-agent-evaluation.js` | Evaluation schema, tool definition, verdict validation, combined gate |
 | `src/main/services/hatch-pet-agent-model-candidates.js` | Safe image-model candidate list derived from host configuration/catalog |
@@ -204,31 +207,31 @@ Create immutable entries:
 const STRATEGIES = Object.freeze({
   'canonical-identity-v1': {
     scopes: ['identity'],
-    prompt: 'Preserve source identity, produce one complete transparent full-body canonical character, and keep a stable lower-center root.'
+    directives: ['preserve every visible identity feature', 'use one complete full-body pose', 'keep a stable lower-center root']
   },
   'preserve-canonical-pose-v1': {
     scopes: ['idle', 'action'],
-    prompt: 'Preserve canonical viewpoint, framing, scale, silhouette, markings, accessories, and lower-center root.'
+    directives: ['preserve viewpoint, framing, scale, silhouette, markings, accessories, and lower-center root']
   },
   'idle-minimal-motion-v1': {
     scopes: ['idle'],
-    prompt: 'Limit motion to subtle breathing, blink, ear, or tail-tip movement; do not move the body root or redesign the character.'
+    directives: ['limit motion to subtle breathing, blink, ear, or tail-tip movement', 'keep the body root fixed']
   },
   'strengthen-action-semantics-v1': {
     scopes: ['action'],
-    prompt: 'Make the assigned action readable through its key pose while preserving canonical identity and stationary/directional root rules.'
+    directives: ['make the assigned action readable through its clearest pose', 'preserve identity and root alignment']
   },
   'repair-identity-drift-v1': {
     scopes: ['identity', 'idle', 'action'],
-    prompt: 'Restore canonical face, silhouette, palette, markings, materials, and accessories without copying presentation-board layout.'
+    directives: ['restore the reference face, silhouette, palette, markings, materials, and accessories', 'do not copy the reference layout']
   },
   'repair-scale-baseline-v1': {
     scopes: ['idle', 'action'],
-    prompt: 'Keep scale, lower-center root, baseline, and safe padding consistent across all frames.'
+    directives: ['keep scale, lower-center root, baseline, and safe padding consistent across all frames']
   },
   'alternative-model-retry-v1': {
     scopes: ['identity', 'idle', 'action'],
-    prompt: 'Retry with the selected eligible model while preserving every fixed OpenPet output and identity contract.'
+    directives: ['preserve every fixed output, identity, framing, transparency, and motion requirement']
   }
 })
 ```
@@ -241,20 +244,24 @@ const STRATEGIES = Object.freeze({
 - allow at most eight requested changes;
 - sanitize each through existing creative-brief sanitization;
 - truncate each to 240 characters;
-- prefix the fixed strategy text before model-proposed changes;
-- return structured `{ strategyId, fixedGuidance, requestedChanges, combinedGuidance }`.
+- return structured `{ strategyId, fixedDirectives, requestedChanges }` without creating a raw prompt string.
 
 - [ ] **Step 3: Add optional validated strategy guidance to prompt builders**
 
-Add an optional `agentStrategy` object to identity/action prompt inputs. Insert it after fixed identity/action contracts and before the user creative brief:
+Pass the validated strategy to the typed image task and let the provider-neutral compiler place it inside fixed contracts:
 
 ```js
-agentStrategy?.combinedGuidance
-  ? `Bounded hatch-pet repair guidance: ${agentStrategy.combinedGuidance}`
-  : ''
+createProviderImageTask({
+  ...baseTask,
+  strategyId: agentStrategy.strategyId,
+  requestedChanges: [
+    ...agentStrategy.fixedDirectives,
+    ...agentStrategy.requestedChanges
+  ]
+})
 ```
 
-The agent strategy cannot replace negative contracts, output dimensions, reference rules, action semantics, or quality-profile guidance.
+The compiler re-applies output dimensions, exact-one-reference interpretation, identity, transparency, framing, negative, action, and quality-profile rules after strategy composition.
 
 - [ ] **Step 4: Inspect and commit Task 1**
 
@@ -302,7 +309,10 @@ Eligibility requires:
 - Provider equals the host image Provider;
 - current health is healthy or a bounded cached health snapshot is accepted;
 - requested stage capabilities are present;
+- `edit` or equivalent image-conditioned generation capability is present; generation-only models are ineligible;
 - local policy has not disabled the model.
+
+When no image-conditioned model is available, stop with `no_image_conditioned_model`. Never fall back to a text-only image endpoint.
 
 Sort candidates by verified, recent successful stage, then model ID. Limit to 20.
 
@@ -575,7 +585,7 @@ agent: {
   imageModel: { provider, model },
   strategy: {
     strategyId,
-    fixedGuidance,
+    fixedDirectives,
     requestedChanges
   }
 }

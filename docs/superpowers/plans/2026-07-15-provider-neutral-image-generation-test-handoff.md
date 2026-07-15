@@ -14,7 +14,6 @@ This handoff never authorizes Provider approval, import, activation, fabricated 
 - Test branch: `codex/dev8-hatch-pet-phase1-test`
 - Existing Phase 1 test HEAD before this handoff: `662d7c9e3b0abbbff661c35cfd6be06e258a1e9e`
 - Development branch: `codex/dev8`; read-only from the testing task.
-- Final integrated implementation HEAD: `ca144d57` (`fix harden creator remediation boundaries`).
 - Review-blocker branch: `codex/dev8-review-blockers`; do not modify, switch, merge, or inspect beyond information explicitly supplied by the source task.
 - Do not modify the protected main worktree or any other worktree/branch.
 - Do not push, merge, rebase, reset, or clean.
@@ -35,28 +34,16 @@ Continue only when the test branch is correct and the worktree is clean.
 
 ## Development Commits
 
-Start from the clean Phase 1 test HEAD `662d7c9e`. Cherry-pick these approved production/remediation commits in order, recording the source SHA, resulting test-branch SHA, and stable patch-id for each:
+Cherry-pick these production commits in order:
 
 1. `6bd905dc` — typed Provider image tasks;
 2. `6258cbb0` — Provider-neutral prompt compiler;
 3. `f9cf758f` — prompt-path migration and exact canvas propagation;
 4. `64581baf` — exact-one-reference host gates and edit-only transport;
 5. `f725bada` — removal of zero-reference generation paths;
-6. `136a483d` — safe prompt/conditioning provenance and bridge error codes;
-7. `7046dd57` — stale generating-run recovery and deadline ownership;
-8. `a154a60b` — non-blocking Hatch Pet shadow planning;
-9. `da565c4f` — final exact-reference contract integration;
-10. `5d41f607` — explicit human approval evidence and separated import/activation;
-11. `b77675ad` — default/demo workflow stop at human review plus partial-package coverage;
-12. `544ed359` — bounded appearance intent, prompt compiler v2, and path/injection rejection;
-13. `0cf1ef10` — atomic run persistence and last-valid recovery;
-14. `1c1286a3` — truthful UI/evidence projections, contracts, and current documentation;
-15. `fc42ab81` — review fixes for raw appearance validation, prompt-control precision, missing-run recovery, and removal of import-command sentinels;
-16. `ca144d57` — deep-review hardening for secrets/internal terms, stale approval/import evidence, directional-pair loading, run-directory confinement, and evidence contract precedence.
+6. `136a483d` — safe prompt/conditioning provenance and bridge error codes.
 
-Documentation-only handoff commits are not part of the production patch-equivalence list. Read the latest version of this file from the final `codex/dev8` documentation HEAD supplied by the source task; `ca144d57` remains the final production implementation HEAD.
-
-Do not cherry-pick `3f8b8d04`; the testing branch already contains the independently accepted Phase 1 baseline refresh in `662d7c9e`. The remediation design and implementation plan are `a5a8a161` and `52cb1b64`; inspect them read-only from `codex/dev8` when evaluating scope. Do not merge `codex/dev8`.
+The source task will separately provide the documentation/handoff commit created after this file. Cherry-pick only the exact commits named by the source task. Do not merge `codex/dev8`.
 
 If any cherry-pick conflicts, stop and report the exact files and conflict markers. Do not resolve by discarding existing Phase 1 tests.
 
@@ -82,9 +69,6 @@ Create focused Node tests for `provider-image-task.js` covering:
 - `columns * rows >= frameCount` and fixed reading order;
 - one full-body subject, 60–90% occupancy, 5–20% padding, and lower-center root;
 - visual directive length/count bounds;
-- `appearanceIntent` is array-only, capped at six entries and 240 characters per entry;
-- safe appearance intent reaches the compiled character, anchor, keyframe, and row prompts;
-- appearance intent rejects secrets, URLs, file URIs, traversal, POSIX/Windows/UNC/project paths, internal terms, and prompt-control instructions before transport;
 - token, URL, absolute path, product, transport, run/action ID, checkpoint, multipart, and reference-role removal;
 - exact internal-role mapping:
   - `full-pet-action-identity-board` -> visible identity comparison;
@@ -114,8 +98,6 @@ Every compiled prompt must prove:
 - transparent background and no-crop rules are explicit;
 - action sheets state exact frame count, columns, rows, reading order, invisible cells, stable root/scale, and unused-cell behavior;
 - fixed requirements appear after bounded requested changes;
-- bounded appearance intent appears after reference/identity locks and before action/framing contracts;
-- reference-image identity authority wins over conflicting appearance intent;
 - the prompt remains complete without repository documentation.
 
 Reject compiled prompts containing any of:
@@ -144,7 +126,7 @@ Reference role: full-pet-action-identity-board.
 Update existing prompt-builder tests to expect:
 
 - compatibility wrapper version `5`;
-- prompt compiler version `2` and Provider image-task schema version `2`;
+- prompt compiler version `1`;
 - `prompt`/`providerPrompt` supplied by the compiler;
 - 1024x1024 keyframes and character images;
 - 1536x1024 for a 3x2 or 4x2 action sheet;
@@ -204,17 +186,6 @@ Verify:
 - contract failures consume zero Provider-call budget;
 - public diagnostics contain count/field/output metadata but no reference file names, relative paths, absolute paths, bytes, or raw multipart.
 
-Also verify the human-review and quality-first workflow:
-
-- both fixed Host workflow and PluginsPane default/demo flow stop at `ready_for_review` and return `review-required`;
-- no automatic path calls `approve-run`, either import command, activation, or trigger mutation;
-- approval rejects missing, false, unsupported-source, model-created, or malformed evidence and accepts only bounded Host-created evidence;
-- approval, import, and activation remain separate operations; pet import defaults `activate=false`;
-- `requiredActionIds=['idle']` is authoritative for partial packages;
-- `idle` plus any subset of valid optional actions remains reviewable/importable after human approval;
-- missing `idle` blocks;
-- an inconsistent `running-right`/`running-left` pair is treated as one omitted optional pair, not a whole-package failure.
-
 ### 8. Safe public provenance
 
 Cover Creator Studio detail, recovery, prompt provenance, and Creator Workflow diagnostics:
@@ -227,20 +198,6 @@ Cover Creator Studio detail, recovery, prompt provenance, and Creator Workflow d
 - no reference file names/paths;
 - no secrets, authorization content, raw image bytes, raw model response, or hidden reasoning.
 
-When compiler or conditioning evidence is absent, assert that public service responses and both UIs show `not recorded` or empty recorded fields. They must not invent `text-to-image`, `/images/generations`, `referenceImageCount=1`, `requestedOutputCount=1`, or `promptSafety=provider-neutral`.
-
-### 9. Atomic run persistence and recovery
-
-Add focused run-store coverage proving:
-
-- active `run.json`, initial config/task JSON, heartbeat, repair, approval, and import state writes use same-directory temporary files and atomic rename;
-- the previous valid run is retained as `run.last-valid.json`;
-- an interrupted/torn current file is preserved under a bounded `run.corrupt-<timestamp>.json` name;
-- missing run directories and symlinked/escaped run directories fail closed without creating or mutating a run;
-- a valid backup recovers to a visible failed run with `generation-command-state-recovered`, removes the active generation lease, and preserves completed artifacts/checkpoints;
-- a run directory with no readable current or backup still appears in `listRuns` as a deterministic failed recovery record;
-- no recovery fabricates approval, import, activation, successful checkpoints, or Provider output.
-
 ## Required Automated Commands
 
 Run focused suites first. Include at least:
@@ -250,7 +207,6 @@ node --test \
   tests/examples/creator-studio-anchor-prompt-builder.test.js \
   tests/examples/creator-studio-host-model-bridge.test.js \
   tests/examples/creator-studio-plugin.test.js \
-  tests/examples/creator-studio-run-store.test.js \
   tests/services/image-generation-model-service.test.js \
   tests/services/plugin-service.test.js \
   tests/services/creator-workflow-service.test.js
@@ -279,7 +235,6 @@ PASS requires:
 - `test:core:all` exit 0;
 - independent `test:control-center` exit 0;
 - no newly discovered production defect;
-- the final integrated `ca144d57` remediation patch set is present with recorded patch equivalence;
 - clean test worktree after the report/test commit.
 
 If automated verification fails, do not start real Provider/image work.

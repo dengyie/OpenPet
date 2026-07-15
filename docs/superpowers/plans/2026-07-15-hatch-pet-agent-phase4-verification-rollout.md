@@ -365,6 +365,8 @@ Generation subagent report must include:
 }
 ```
 
+For every successful or attempted real image request, `referenceCounts` must contain only `1`; a `0` or value greater than `1` is an immediate verification failure.
+
 - [ ] **Step 2: Reverify Provider reliability P0**
 
 Use a fresh generation subagent to run a long full-pet path. Prove:
@@ -374,7 +376,9 @@ Use a fresh generation subagent to run a long full-pet path. Prove:
 - heartbeat refreshes;
 - simulated/killed command recovers stale generating run after the stale threshold;
 - completed checkpoints survive recovery;
-- `n=1`, zero/one reference, same-model retry, deadline accounting, and multi-output fail-closed still hold.
+- `n=1`, exactly one reference, `/images/edits`, multipart field `image`, same-model retry, deadline accounting, and multi-output fail-closed still hold.
+- zero/two reference requests fail before queue, output-path creation, request logging, or fetch;
+- every compiled image prompt includes exact dimensions/aspect ratio and contains no product name, Provider/transport term, run/action ID, reference role, path, or checkpoint term;
 - runtime evidence records multipart field `image`, logical stage, requested count, actual count, and count mismatch without leaking multipart content.
 
 - [ ] **Step 3: Run bounded identity and single-action operations**

@@ -14,6 +14,9 @@
 - The command-timeout/lease prerequisite from Provider reliability report commit `4ac47213` must be verified before any full-pet Agent run.
 - Work only in the assigned isolated development worktree; preserve commits and do not push or merge.
 - Do not run tests, builds, Provider calls, browser checks, image generation, or visual acceptance on the development branch.
+- Every identity, keyframe, action-row, retry, fallback, and repair image request must carry exactly one validated local reference image and request exactly one output.
+- Every upstream image prompt must be compiled through the provider-neutral typed task compiler with explicit dimensions/aspect ratio; no raw Hatch Pet prompt text may reach the image service.
+- Models without image-conditioned/edit capability are ineligible, and no failure path may fall back to text-only generation.
 - Real Provider and image evaluation belong to the Phase 4 isolated testing task using fresh one-shot image subagents.
 - Code QA and model evaluation must both pass; neither may weaken the other.
 - `idle` is required and blocks packaging when exhausted.
