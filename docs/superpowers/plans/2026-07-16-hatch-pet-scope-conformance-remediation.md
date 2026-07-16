@@ -394,3 +394,4 @@ Give a fresh reviewer the exact development commits, design/spec links, static f
 - [ ] **Step 5: Dispatch original independent test task after review approval**
 
 The test task must cherry-pick or branch from the exact approved final development HEAD and run all required automated checks. Real image work remains one-shot-subagent-only after automated PASS.
+
