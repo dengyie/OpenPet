@@ -32,6 +32,47 @@ test('checkDocsDrift passes for the current live docs baseline', () => {
   assert.equal(result.checks.every((check) => check.ok), true)
 })
 
+test('checkDocsDrift requires the development workflow', () => {
+  const docsRoot = createDocsFixture()
+  fs.rmSync(path.join(docsRoot, 'development-workflow.md'), { force: true })
+
+  const result = checkDocsDrift({ docsRoot })
+
+  assert.equal(result.ok, false)
+  assert.deepEqual(result.errors, ['Missing live doc: development-workflow.md'])
+})
+
+test('checkDocsDrift rejects temporary live branch metadata', () => {
+  const docsRoot = createDocsFixture()
+  const handoffPath = path.join(docsRoot, 'HANDOFF.md')
+  fs.writeFileSync(
+    handoffPath,
+    fs.readFileSync(handoffPath, 'utf-8').replace(
+      'Branch: \x60main\x60',
+      'Branch: \x60codex/docs-hardening\x60'
+    )
+  )
+
+  const result = checkDocsDrift({ docsRoot })
+
+  assert.equal(result.ok, false)
+  assert.match(result.errors.join('\n'), /canonical main branch metadata/i)
+})
+
+test('checkDocsDrift rejects a reopened production remediation step', () => {
+  const docsRoot = createDocsFixture()
+  const relativePath = 'superpowers/plans/2026-07-12-production-review-remediation.md'
+  const planPath = path.join(docsRoot, relativePath)
+  fs.mkdirSync(path.dirname(planPath), { recursive: true })
+  fs.copyFileSync(path.join(repoDocsRoot, relativePath), planPath)
+  fs.writeFileSync(planPath, fs.readFileSync(planPath, 'utf-8').replace('- [x]', '- [ ]'))
+
+  const result = checkDocsDrift({ docsRoot })
+
+  assert.equal(result.ok, false)
+  assert.match(result.errors.join('\n'), /production remediation.*complete/i)
+})
+
 test('checkDocsDrift fails when stale save-and-test wording returns', () => {
   const docsRoot = createDocsFixture()
   fs.appendFileSync(path.join(docsRoot, 'development-summary.md'), '\nlegacy save-and-test wording\n')
@@ -581,5 +622,5 @@ test('cli prints JSON and exits non-zero for drift failures', () => {
   assert.equal(result.status, 1)
   const output = JSON.parse(result.stdout)
   assert.equal(output.ok, false)
-  assert.match(output.errors.join('\n'), /codex\/dev/i)
+  assert.match(output.errors.join('\n'), /canonical main branch metadata/i)
 })

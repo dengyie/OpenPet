@@ -5,6 +5,7 @@ const LIVE_DOC_FILES = [
   'README.md',
   'HANDOFF.md',
   'TODO.md',
+  'development-workflow.md',
   'agent-awareness-development-design.md',
   'development-summary.md',
   'project-status-review.md',
@@ -12,7 +13,8 @@ const LIVE_DOC_FILES = [
   'release-checklist.md',
   'openpet-current-todo-architecture.md',
   'project-context.json',
-  'release-evidence/README.md'
+  'release-evidence/README.md',
+  'superpowers/plans/2026-07-12-production-review-remediation.md'
 ]
 
 const usage = () => [
@@ -57,6 +59,7 @@ const createChecks = (docsRoot) => {
   const readme = readDoc(docsRoot, 'README.md')
   const handoff = readDoc(docsRoot, 'HANDOFF.md')
   const todo = readDoc(docsRoot, 'TODO.md')
+  const developmentWorkflow = readDoc(docsRoot, 'development-workflow.md')
   const agentAwarenessDesign = readDoc(docsRoot, 'agent-awareness-development-design.md')
   const developmentSummary = readDoc(docsRoot, 'development-summary.md')
   const projectStatusReview = readDoc(docsRoot, 'project-status-review.md')
@@ -65,10 +68,16 @@ const createChecks = (docsRoot) => {
   const todoArchitecture = readDoc(docsRoot, 'openpet-current-todo-architecture.md')
   const projectContext = readDoc(docsRoot, 'project-context.json')
   const releaseEvidenceReadme = readDoc(docsRoot, 'release-evidence/README.md')
+  const productionRemediation = readDoc(
+    docsRoot,
+    'superpowers/plans/2026-07-12-production-review-remediation.md'
+  )
+  const context = JSON.parse(projectContext)
   const combined = [
     readme,
     handoff,
     todo,
+    developmentWorkflow,
     agentAwarenessDesign,
     developmentSummary,
     projectStatusReview,
@@ -93,10 +102,30 @@ const createChecks = (docsRoot) => {
       failure: 'Found stale fixture/provider generation selection wording in live docs.'
     },
     {
-      id: 'no-codex-dev-branch-metadata',
-      description: 'Live docs should not drift back to the older codex/dev branch metadata.',
-      run: () => !/Branch:\s*`codex\/dev`|"branch"\s*:\s*"codex\/dev"/i.test(combined),
-      failure: 'Found stale codex/dev branch metadata in live docs.'
+      id: 'live-docs-use-canonical-main-metadata',
+      description: 'Live docs should identify main and share one synchronized update date.',
+      run: () => {
+        const datedDocs = [handoff, todo, developmentSummary, projectStatusReview]
+        const branchDocs = [handoff, developmentSummary, projectStatusReview]
+        const expectedUpdatedHeader = '> Last updated: ' + context.updated
+        const unexpectedBranchPattern = /Branch:\s*\x60(?!main\x60)[^\x60]+\x60/i
+
+        return /^\d{4}-\d{2}-\d{2}$/.test(context.updated) &&
+          context.branch === 'main' &&
+          datedDocs.every((doc) => doc.split(/\r?\n/).includes(expectedUpdatedHeader)) &&
+          branchDocs.every((doc) => /^>\s*Branch:\s*\x60main\x60\s*$/m.test(doc)) &&
+          !branchDocs.some((doc) => unexpectedBranchPattern.test(doc))
+      },
+      failure: 'Live docs no longer agree on canonical main branch metadata and one update date.'
+    },
+    {
+      id: 'production-remediation-remains-complete',
+      description: 'The production remediation runbook should remain a closed execution record.',
+      run: () =>
+        /Status:\s*Complete/i.test(productionRemediation) &&
+        !/^\s*- \[ \]/m.test(productionRemediation) &&
+        /## Completion Evidence/.test(productionRemediation),
+      failure: 'The production remediation execution record is no longer complete.'
     },
     {
       id: 'agent-awareness-bundled-plugin-baseline',
@@ -350,7 +379,13 @@ const createChecks = (docsRoot) => {
 }
 
 const checkDocsDrift = ({ docsRoot }) => {
-  const missingFiles = LIVE_DOC_FILES.filter((relativePath) => !fs.existsSync(path.join(docsRoot, relativePath)))
+  const missingFiles = LIVE_DOC_FILES.filter((relativePath) => {
+    try {
+      return !fs.statSync(path.join(docsRoot, relativePath)).isFile()
+    } catch {
+      return true
+    }
+  })
   if (missingFiles.length > 0) {
     return {
       ok: false,
