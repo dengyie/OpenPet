@@ -119,12 +119,16 @@ A single exported or module-local list defines live documentation files. The val
 
 ### Layer 2: Stable Metadata
 
-Live human-readable summaries and `project-context.json` must agree on:
+Live human-readable summaries and `project-context.json` must follow these
+independent metadata rules:
 
-- `updated: 2026-07-16` for this synchronized baseline.
+- each live document owns its own valid ISO `YYYY-MM-DD` update date;
 - canonical branch `main`.
 
-Checks reject temporary `codex/*`, `dev*`, detached, or inconsistent branch metadata in Level 1 documents. Historical documents and test fixtures are excluded.
+Checks reject invalid dates, temporary `codex/*`, `dev*`, detached,
+or inconsistent branch metadata in Level 1 documents. A valid date change in
+one live document does not require touching unrelated live documents.
+Historical documents and test fixtures are excluded.
 
 ### Layer 3: Completion Integrity
 
@@ -175,7 +179,8 @@ A new maintainer following `README.md` to `docs/README.md` must be able to:
 ## Acceptance Criteria
 
 - Every Level 1 document linked from `docs/README.md` exists.
-- Live metadata identifies canonical `main` and the synchronized date consistently.
+- Live metadata identifies canonical `main`, and each live document carries
+  its own valid ISO update date.
 - The production-review remediation plan has Tasks 1-10 closed with an evidence ledger and no open execution checkbox.
 - External/manual TODO items remain open and retain their current evidence boundaries.
 - Documentation checks fail cleanly for a missing live file, stale branch metadata, or reopened remediation checkbox.

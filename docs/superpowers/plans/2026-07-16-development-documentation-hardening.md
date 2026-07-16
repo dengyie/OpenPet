@@ -2,6 +2,8 @@
 
 > Status: Complete
 > Completed: 2026-07-16
+> Post-review correction: live documents keep independent ISO update dates;
+> only canonical branch metadata is synchronized.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -133,7 +135,8 @@ Expected: tests and drift check pass before commit.
 - Modify: `docs/project-context.json`
 
 **Interfaces:**
-- Consumes: canonical integration branch `main`, synchronization date `2026-07-16`, and existing Level 1 facts.
+- Consumes: canonical integration branch `main`, independently maintained
+  ISO update dates, and existing Level 1 facts.
 - Produces: consistent metadata independent of the editing Agent's temporary branch.
 
 - [x] **Step 1: Change metadata tests to the stable contract**
@@ -141,7 +144,7 @@ Expected: tests and drift check pass before commit.
 Update `tests/docs/live-docs-project-context.test.js`:
 
 ```js
-assert.equal(context.updated, '2026-07-16')
+assert.match(context.updated, /^\d{4}-\d{2}-\d{2}$/)
 assert.equal(context.branch, 'main')
 ```
 

@@ -87,6 +87,40 @@ test('checkDocsDrift rejects temporary live branch metadata', () => {
   assert.match(result.errors.join('\n'), /canonical main branch metadata/i)
 })
 
+test('checkDocsDrift allows live docs to carry independent valid update dates', () => {
+  const docsRoot = createDocsFixture()
+  const todoPath = path.join(docsRoot, 'TODO.md')
+  fs.writeFileSync(
+    todoPath,
+    fs.readFileSync(todoPath, 'utf-8').replace(
+      '> Last updated: 2026-07-16',
+      '> Last updated: 2026-07-17'
+    )
+  )
+
+  const result = checkDocsDrift({ docsRoot })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.errors.length, 0)
+})
+
+test('checkDocsDrift identifies invalid update dates by document', () => {
+  const docsRoot = createDocsFixture()
+  const todoPath = path.join(docsRoot, 'TODO.md')
+  fs.writeFileSync(
+    todoPath,
+    fs.readFileSync(todoPath, 'utf-8').replace(
+      '> Last updated: 2026-07-16',
+      '> Last updated: 2026/07/17'
+    )
+  )
+
+  const result = checkDocsDrift({ docsRoot })
+
+  assert.equal(result.ok, false)
+  assert.match(result.errors.join('\n'), /TODO\.md.*valid ISO update date/i)
+})
+
 test('checkDocsDrift rejects a reopened production remediation step', () => {
   const docsRoot = createDocsFixture()
   const relativePath = 'superpowers/plans/2026-07-12-production-review-remediation.md'

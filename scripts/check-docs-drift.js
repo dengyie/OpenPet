@@ -20,7 +20,7 @@ const LIVE_DOC_FILES = [
 const usage = () => [
   'Usage: node scripts/check-docs-drift.js [--docs-root <dir>] [--json]',
   '',
-  'Checks live docs for known stale phrases and missing release-evidence index entries.'
+  'Checks required live docs, metadata, completion state, and known content drift.'
 ].join('\n')
 
 const parseArgs = (argv) => {
@@ -54,6 +54,17 @@ const parseArgs = (argv) => {
 }
 
 const readDoc = (docsRoot, relativePath) => fs.readFileSync(path.join(docsRoot, relativePath), 'utf-8')
+
+const isValidIsoDate = (value) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const parsed = new Date(`${value}T00:00:00.000Z`)
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
+}
+
+const hasValidUpdateDateHeader = (content) => {
+  const match = content.match(/^>\s*Last updated:\s*(\S+)\s*$/m)
+  return Boolean(match && isValidIsoDate(match[1]))
+}
 
 const readProjectContext = (docsRoot) => {
   const relativePath = 'project-context.json'
@@ -104,6 +115,17 @@ const createChecks = (docsRoot, { projectContext, context }) => {
     projectContext,
     releaseEvidenceReadme
   ].join('\n')
+  const updateDateChecks = [
+    ['HANDOFF.md', handoff],
+    ['TODO.md', todo],
+    ['development-summary.md', developmentSummary],
+    ['project-status-review.md', projectStatusReview]
+  ].map(([relativePath, content]) => ({
+    id: relativePath.replace(/[^a-z0-9]+/gi, '-').toLowerCase() + '-has-valid-update-date',
+    description: `${relativePath} should carry its own valid ISO update date.`,
+    run: () => hasValidUpdateDateHeader(content),
+    failure: `${relativePath} must carry a valid ISO update date.`
+  }))
 
   return [
     {
@@ -118,22 +140,25 @@ const createChecks = (docsRoot, { projectContext, context }) => {
       run: () => !/fixture\/provider generation selection/i.test(combined),
       failure: 'Found stale fixture/provider generation selection wording in live docs.'
     },
+    ...updateDateChecks,
+    {
+      id: 'project-context-has-valid-update-date',
+      description: 'project-context.json should carry its own valid ISO update date.',
+      run: () => isValidIsoDate(context.updated),
+      failure: 'project-context.json must carry a valid ISO update date.'
+    },
     {
       id: 'live-docs-use-canonical-main-metadata',
-      description: 'Live docs should identify main and share one synchronized update date.',
+      description: 'Live docs should identify main as the canonical integration branch.',
       run: () => {
-        const datedDocs = [handoff, todo, developmentSummary, projectStatusReview]
         const branchDocs = [handoff, developmentSummary, projectStatusReview]
-        const expectedUpdatedHeader = '> Last updated: ' + context.updated
         const unexpectedBranchPattern = /Branch:\s*\x60(?!main\x60)[^\x60]+\x60/i
 
-        return /^\d{4}-\d{2}-\d{2}$/.test(context.updated) &&
-          context.branch === 'main' &&
-          datedDocs.every((doc) => doc.split(/\r?\n/).includes(expectedUpdatedHeader)) &&
+        return context.branch === 'main' &&
           branchDocs.every((doc) => /^>\s*Branch:\s*\x60main\x60\s*$/m.test(doc)) &&
           !branchDocs.some((doc) => unexpectedBranchPattern.test(doc))
       },
-      failure: 'Live docs no longer agree on canonical main branch metadata and one update date.'
+      failure: 'Live docs no longer agree on canonical main branch metadata.'
     },
     {
       id: 'production-remediation-remains-complete',

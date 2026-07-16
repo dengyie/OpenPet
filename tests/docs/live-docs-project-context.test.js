@@ -85,7 +85,11 @@ test('project-context indexes the archived provider smoke evidence and current s
     )
   )
 
-  assert.equal(context.updated, '2026-07-05', 'project-context.json should carry the current live-doc update date')
+  assert.match(
+    context.updated,
+    /^\d{4}-\d{2}-\d{2}$/,
+    'project-context.json should carry its own ISO update date'
+  )
   assert.equal(
     context.branch,
     'main',
