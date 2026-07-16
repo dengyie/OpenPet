@@ -226,6 +226,37 @@ const createStubbornServiceProcess = ({ pid = 4321 } = {}) => {
   return child
 }
 
+const createImGatewayHealthResponse = ({
+  enabled = true,
+  status = '',
+  lastErrorCode = '',
+  lastDiagnosticCode = '',
+  lastAllowlistReason = '',
+  lastChatHash = '',
+  lastUserHash = ''
+} = {}) => ({
+  ok: true,
+  status: 200,
+  headers: {
+    get: (name) => String(name || '').toLowerCase() === 'content-type' ? 'application/json' : ''
+  },
+  text: async () => JSON.stringify({
+    ok: true,
+    service: 'openpet.im-gateway',
+    adapters: {
+      telegram: {
+        enabled,
+        status: status || (enabled ? (lastErrorCode ? 'failed' : 'connected') : 'disabled'),
+        lastErrorCode,
+        lastDiagnosticCode,
+        lastAllowlistReason,
+        lastChatHash,
+        lastUserHash
+      }
+    }
+  })
+})
+
 const createBridgeAwarePetService = () => {
   const calls = []
   return {
@@ -4025,6 +4056,63 @@ test('plugin service stores IM Gateway Telegram token without exposing its value
   assert.deepEqual(secretCalls[1], { id: 'im.telegram.botToken', deleted: true })
 })
 
+test('plugin service rejects Telegram credential and config mutations while IM Gateway is active', async () => {
+  let savedToken = 'original-token'
+  const secretCalls = []
+  const settingsService = createSettingsService({
+    plugins: {
+      enabled: { 'openpet.im-gateway': true },
+      config: {
+        'openpet.im-gateway': {
+          telegramEnabled: true,
+          allowedUsers: '1001',
+          allowedChats: '-2001'
+        }
+      }
+    }
+  })
+  const service = createPluginService({
+    settingsService,
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [path.resolve(__dirname, '../../examples/plugins')],
+    secretService: {
+      getSecretValue: (id) => id === 'im.telegram.botToken' ? savedToken : '',
+      setSecret: ({ value }) => {
+        secretCalls.push(['set', value])
+        savedToken = value
+      },
+      deleteSecret: (id) => {
+        secretCalls.push(['delete', id])
+        savedToken = ''
+      }
+    },
+    spawnServiceProcess: () => createSlowStoppingServiceProcess()
+  })
+
+  await service.startService('openpet.im-gateway', 'im-gateway')
+  const configBefore = settingsService.get().plugins.config['openpet.im-gateway']
+
+  assert.throws(
+    () => service.saveImGatewayTelegramBotToken('replacement-token'),
+    /Stop IM Gateway before changing Telegram credentials/
+  )
+  assert.throws(
+    () => service.clearImGatewayTelegramBotToken(),
+    /Stop IM Gateway before changing Telegram credentials/
+  )
+  assert.throws(
+    () => service.saveConfig('openpet.im-gateway', {
+      ...configBefore,
+      allowedUsers: '2002'
+    }),
+    /Stop IM Gateway before changing its configuration/
+  )
+  assert.equal(savedToken, 'original-token')
+  assert.deepEqual(secretCalls, [])
+  assert.deepEqual(settingsService.get().plugins.config['openpet.im-gateway'], configBefore)
+})
+
 test('plugin service injects Telegram secret and config only for IM Gateway service', async () => {
   const imGatewaySpawned = []
   const weatherSpawned = []
@@ -4222,8 +4310,9 @@ test('plugin service bridge lets service runtimes call ai chat through aiTalkSer
     method: 'POST',
     body: {
       message: 'hello from telegram',
-      conversationKey: 'telegram:private:1001:1001',
-      entrypoint: 'im-gateway',
+      conversationKey: 'telegram:private:abc123def456',
+      entrypoint: 'control-center',
+      skipUserAppend: true,
       sourceContext: {
         platform: 'telegram',
         chatType: 'private',
@@ -4238,18 +4327,46 @@ test('plugin service bridge lets service runtimes call ai chat through aiTalkSer
   assert.equal(response.body.result.reply, 'host reply')
   assert.deepEqual(aiCalls, [{
     message: 'hello from telegram',
-    conversationId: 'plugin:weather-declaration:service:companion:telegram:private:1001:1001',
-    entrypoint: 'im-gateway',
-    requestId: '',
-    skipUserAppend: false,
-    sourceContext: {
-      platform: 'telegram',
-      chatType: 'private',
-      chatId: '1001',
-      userId: '1001',
-      messageId: '42'
-    }
+    conversationId: 'plugin:weather-declaration:service:companion:telegram:private:abc123def456',
+    entrypoint: 'plugin-service',
+    requestId: ''
   }])
+})
+
+test('plugin service bridge rejects unsafe AI conversation keys', async () => {
+  const spawned = []
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: createBridgeAwarePetService(),
+    aiTalkService: {
+      chatFromEntrypoint: async () => {
+        throw new Error('host ai should not be reached')
+      }
+    },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir({ permissions: ['ai:chat'] })],
+    spawnServiceProcess: (file, args, options) => {
+      spawned.push({ file, args, options })
+      return createSlowStoppingServiceProcess()
+    }
+  })
+
+  await service.startService('weather-declaration', 'companion')
+  const request = (conversationKey) => requestBridge(`${spawned[0].options.env.OPENPET_SERVICE_BRIDGE_URL}/ai/chat`, {
+    token: spawned[0].options.env.OPENPET_SERVICE_BRIDGE_TOKEN,
+    method: 'POST',
+    body: { message: 'blocked', conversationKey }
+  })
+
+  const invalidCharacters = await request('telegram:private:peer value')
+  const oversized = await request(`telegram:private:${'a'.repeat(200)}`)
+
+  assert.equal(invalidCharacters.status, 400)
+  assert.match(invalidCharacters.body.error, /conversationKey is invalid/)
+  assert.equal(oversized.status, 400)
+  assert.match(oversized.body.error, /conversationKey is invalid/)
 })
 
 test('plugin service bridge ai chat enforces manifest permissions', async () => {
@@ -5105,34 +5222,20 @@ test('plugin service marks non-2xx service health responses unhealthy', async ()
 })
 
 test('plugin service summarizes IM Gateway health diagnostics without leaking raw identifiers', async () => {
+  const settingsService = createSettingsService({
+    plugins: { enabled: { 'openpet.im-gateway': true } }
+  })
   const service = createPluginService({
-    settingsService: createSettingsService({
-      plugins: { enabled: { 'openpet.im-gateway': true } }
-    }),
+    settingsService,
     petService: { say: async () => {} },
     officialPlugins: [],
     pluginDirs: [path.resolve(__dirname, '../../examples/plugins')],
-    fetchImpl: async () => ({
-      ok: true,
-      status: 200,
-      headers: {
-        get: (name) => String(name || '').toLowerCase() === 'content-type' ? 'application/json' : ''
-      },
-      text: async () => JSON.stringify({
-        ok: true,
-        service: 'openpet.im-gateway',
-        adapters: {
-          telegram: {
-            enabled: true,
-            status: 'failed',
-            lastErrorCode: 'telegram-polling-conflict',
-            lastDiagnosticCode: 'allowlist-miss',
-            lastAllowlistReason: 'group-chat-not-allowed',
-            lastChatHash: 'abc123',
-            lastUserHash: 'def456'
-          }
-        }
-      })
+    fetchImpl: async () => createImGatewayHealthResponse({
+      lastErrorCode: 'telegram-polling-conflict',
+      lastDiagnosticCode: 'allowlist-miss',
+      lastAllowlistReason: 'group-chat-not-allowed',
+      lastChatHash: 'abc123',
+      lastUserHash: 'def456'
     })
   })
 
@@ -5140,8 +5243,78 @@ test('plugin service summarizes IM Gateway health diagnostics without leaking ra
   const encoded = JSON.stringify(result)
 
   assert.equal(result.health.message, 'Telegram polling conflict')
+  assert.equal(result.health.status, 'unhealthy')
+  assert.equal(settingsService.get().plugins.logs[0].level, 'error')
+  assert.equal(settingsService.get().plugins.logs[0].message, 'Service health unhealthy: Telegram polling conflict')
   assert.equal(encoded.includes('1001'), false)
   assert.equal(encoded.includes('telegram-token'), false)
+  assert.equal(encoded.includes('abc123'), false)
+  assert.equal(encoded.includes('def456'), false)
+})
+
+test('plugin service maps IM Gateway health diagnostics to bounded operator summaries', async () => {
+  const cases = [
+    ['missing-token', '', '', 'Telegram token missing', 'unhealthy', 'error', 'Service health unhealthy: Telegram token missing'],
+    ['telegram-polling-failed', '', '', 'Telegram polling failed', 'unhealthy', 'error', 'Service health unhealthy: Telegram polling failed'],
+    ['telegram-handler-failed', '', 'connected', 'Telegram message handler failed', 'healthy', 'warn', 'IM Gateway diagnostic: Telegram message handler failed'],
+    ['', 'allowlist-miss', '', 'Recent Telegram message blocked by allowlist', 'healthy', 'warn', 'IM Gateway diagnostic: Recent Telegram message blocked by allowlist'],
+    ['', '', '', 'Telegram connected', 'healthy', 'info', 'Service health healthy: Telegram connected']
+  ]
+
+  for (const [lastErrorCode, lastDiagnosticCode, status, expectedMessage, expectedStatus, expectedLevel, expectedLogMessage] of cases) {
+    const settingsService = createSettingsService({
+      plugins: { enabled: { 'openpet.im-gateway': true } }
+    })
+    const service = createPluginService({
+      settingsService,
+      petService: { say: async () => {} },
+      officialPlugins: [],
+      pluginDirs: [path.resolve(__dirname, '../../examples/plugins')],
+      fetchImpl: async () => createImGatewayHealthResponse({
+        status,
+        lastErrorCode,
+        lastDiagnosticCode,
+        lastAllowlistReason: 'group-chat-not-allowed',
+        lastChatHash: 'safe-chat-hash',
+        lastUserHash: 'safe-user-hash'
+      })
+    })
+
+    const result = await service.checkServiceHealth('openpet.im-gateway', 'im-gateway')
+    const [log] = settingsService.get().plugins.logs
+
+    assert.equal(result.health.message, expectedMessage)
+    assert.equal(result.health.status, expectedStatus)
+    assert.equal(log.level, expectedLevel)
+    assert.equal(log.message, expectedLogMessage)
+    assert.equal(log.message.includes('safe-chat-hash'), false)
+    assert.equal(log.message.includes('safe-user-hash'), false)
+  }
+})
+
+test('plugin service rejects malformed IM Gateway health bodies even when HTTP is successful', async () => {
+  const settingsService = createSettingsService({
+    plugins: { enabled: { 'openpet.im-gateway': true } }
+  })
+  const service = createPluginService({
+    settingsService,
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [path.resolve(__dirname, '../../examples/plugins')],
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => 'application/json' },
+      text: async () => JSON.stringify({ ok: true, service: 'wrong-service' })
+    })
+  })
+
+  const result = await service.checkServiceHealth('openpet.im-gateway', 'im-gateway')
+  const [log] = settingsService.get().plugins.logs
+  assert.equal(result.health.status, 'unhealthy')
+  assert.equal(result.health.message, 'Telegram health response invalid')
+  assert.equal(log.level, 'error')
+  assert.equal(log.message, 'Service health unhealthy: Telegram health response invalid')
 })
 
 test('plugin service times out slow service health checks', async () => {

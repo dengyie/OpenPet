@@ -152,7 +152,6 @@ const createImGatewayPhase2DemoPlugin = () => ({
     properties: [
       { key: 'telegramEnabled', title: 'Telegram enabled', type: 'boolean' },
       { key: 'telegramMode', title: 'Telegram mode', type: 'string', enum: ['polling'] },
-      { key: 'privateChatPolicy', title: 'Private chats', type: 'string', enum: ['command-only', 'any-text'], hidden: true },
       { key: 'privateTextMode', title: 'Private text mode', type: 'string', enum: ['command-only', 'pet-say', 'ai-chat'] },
       { key: 'groupChatPolicy', title: 'Group chats', type: 'string', enum: ['mention-or-command', 'command-only'] },
       { key: 'groupAiRepliesEnabled', title: 'Enable group AI replies', type: 'boolean' },
@@ -168,7 +167,6 @@ const createImGatewayPhase2DemoPlugin = () => ({
   config: {
     telegramEnabled: true,
     telegramMode: 'polling',
-    privateChatPolicy: 'command-only',
     privateTextMode: 'command-only',
     groupChatPolicy: 'mention-or-command',
     groupAiRepliesEnabled: false,
@@ -347,7 +345,6 @@ test('demo API IM Gateway phase 2 AI reply config fields save and reload through
     allowedUsers: '1001,1002'
   })
 
-  assert.equal(configured.config.privateChatPolicy, 'command-only')
   assert.equal(configured.config.privateTextMode, 'ai-chat')
   assert.equal(configured.config.groupAiRepliesEnabled, true)
   assert.equal(configured.config.allowedUsers, '1001,1002')
@@ -356,7 +353,7 @@ test('demo API IM Gateway phase 2 AI reply config fields save and reload through
   assert.ok(refreshed)
   assert.equal(refreshed.config.privateTextMode, 'ai-chat')
   assert.equal(refreshed.config.groupAiRepliesEnabled, true)
-  assert.equal(refreshed.configSchema.properties.find((field) => field.key === 'privateChatPolicy')?.hidden, true)
+  assert.equal(refreshed.configSchema.properties.some((field) => field.key === 'privateChatPolicy'), false)
 })
 
 test('demo API preserves IM Gateway onboarding diagnostics fixtures', async () => {

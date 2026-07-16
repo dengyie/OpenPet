@@ -1,4 +1,5 @@
 const { isGroupChatType } = require('./allowlist')
+const { hashIdentifier } = require('../log-safety')
 
 const PRIVATE_INBOUND_LIMIT = 2000
 const GROUP_INBOUND_LIMIT = 500
@@ -15,12 +16,12 @@ const stripDirectMention = (message = {}) => {
   return normalizeWhitespace(text.replace(/@\S+/u, ' '))
 }
 
-const buildConversationKey = (message = {}) => [
-  String(message.platform || 'telegram').trim() || 'telegram',
-  isGroupChatType(message.chatType) ? 'group' : 'private',
-  String(message.chatId || '').trim(),
-  String(message.userId || '').trim()
-].join(':')
+const buildConversationKey = (message = {}) => {
+  const platform = String(message.platform || 'telegram').trim() || 'telegram'
+  const chatKind = isGroupChatType(message.chatType) ? 'group' : 'private'
+  const peerScope = [platform, chatKind, message.chatId, message.userId].map((value) => String(value || '').trim()).join(':')
+  return `${platform}:${chatKind}:${hashIdentifier(peerScope)}`
+}
 
 const resolveAiRoute = (message = {}, config = {}) => {
   const chatType = String(message.chatType || '').toLowerCase()

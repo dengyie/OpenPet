@@ -10,7 +10,9 @@ const { parseOpenPetCommand } = require('../../examples/plugins/im-gateway/servi
 const { createImGateway } = require('../../examples/plugins/im-gateway/service/core/gateway')
 const { createFakeAdapter } = require('../../examples/plugins/im-gateway/service/adapters/fake')
 const { createTelegramAdapter, createTelegramMessage } = require('../../examples/plugins/im-gateway/service/adapters/telegram')
+const { createBridgeClient } = require('../../examples/plugins/im-gateway/service/bridge-client')
 const { normalizeImGatewayConfig } = require('../../examples/plugins/im-gateway/service/config')
+const { createSlidingWindowRateLimiter } = require('../../examples/plugins/im-gateway/service/core/rate-limiter')
 
 const pluginRoot = path.resolve(__dirname, '../../examples/plugins/im-gateway')
 
@@ -30,7 +32,7 @@ test('im gateway manifest declares a bounded official runtime plugin without sec
   assert.equal(manifest.entries.services[0].health.url, 'http://127.0.0.1:8796/health')
   assert.equal(schema.properties.some((field) => /token|secret|password|credential/i.test(field.key)), false)
   assert.equal(schema.properties.find((field) => field.key === 'telegramEnabled')?.default, false)
-  assert.equal(schema.properties.find((field) => field.key === 'privateChatPolicy')?.hidden, true)
+  assert.equal(schema.properties.some((field) => field.key === 'privateChatPolicy'), false)
 })
 
 test('im gateway config normalizes safe defaults and comma separated allowlists', () => {
@@ -48,19 +50,9 @@ test('im gateway config normalizes safe defaults and comma separated allowlists'
   assert.deepEqual(config.allowedChats, ['-2001', '-2002'])
   assert.deepEqual(config.commandAliases, ['/openpet', '/op'])
   assert.equal(config.petSayTtlMs, 9000)
-  assert.equal(config.privateChatPolicy, 'command-only')
   assert.equal(config.privateTextMode, 'command-only')
   assert.equal(config.groupChatPolicy, 'mention-or-command')
   assert.equal(config.groupAiRepliesEnabled, false)
-})
-
-test('im gateway config migrates legacy private chat policy into phase 2 text mode', () => {
-  const config = normalizeImGatewayConfig({
-    privateChatPolicy: 'any-text'
-  })
-
-  assert.equal(config.privateChatPolicy, 'any-text')
-  assert.equal(config.privateTextMode, 'pet-say')
 })
 
 test('im gateway allowlist requires user approval for private chats and chat plus user approval for groups', () => {
@@ -202,7 +194,7 @@ test('im gateway routes allowed command and text triggers through the pet bridge
       telegramEnabled: true,
       allowedUsers: '1001',
       allowAllPrivateChats: false,
-      privateChatPolicy: 'any-text',
+      privateTextMode: 'pet-say',
       receiptMode: 'commands-only'
     }),
     now: () => '2026-07-08T00:00:00.000Z'
@@ -240,7 +232,7 @@ test('im gateway health redacts message content and peer identifiers', async () 
     config: normalizeImGatewayConfig({
       telegramEnabled: true,
       allowedUsers: '1001',
-      privateChatPolicy: 'any-text'
+      privateTextMode: 'pet-say'
     }),
     now: () => '2026-07-08T00:00:00.000Z'
   })
@@ -293,14 +285,9 @@ test('im gateway routes private ai-chat text through the host ai bridge', async 
   })
 
   assert.equal(aiCalls[0].message.length, 2000)
-  assert.equal(aiCalls[0].conversationKey, 'telegram:private:1001:1001')
-  assert.deepEqual(aiCalls[0].sourceContext, {
-    platform: 'telegram',
-    chatType: 'private',
-    chatId: '1001',
-    userId: '1001',
-    messageId: 'msg-ai-private'
-  })
+  assert.match(aiCalls[0].conversationKey, /^telegram:private:[a-f0-9]{12}$/)
+  assert.equal(aiCalls[0].conversationKey.includes('1001'), false)
+  assert.equal(Object.hasOwn(aiCalls[0], 'sourceContext'), false)
   assert.equal(adapter.receipts[0].text.length, 800)
 })
 
@@ -386,7 +373,9 @@ test('im gateway routes direct group mentions to ai only when the explicit toggl
   assert.equal(sayCalls.length, 0)
   assert.equal(aiCalls[0].message.length, 500)
   assert.equal(aiCalls[0].message.startsWith('@openpet_bot'), false)
-  assert.equal(aiCalls[0].conversationKey, 'telegram:group:-2001:1001')
+  assert.match(aiCalls[0].conversationKey, /^telegram:group:[a-f0-9]{12}$/)
+  assert.equal(aiCalls[0].conversationKey.includes('-2001'), false)
+  assert.equal(aiCalls[0].conversationKey.includes('1001'), false)
   assert.equal(replies[0].length, 160)
 })
 
@@ -610,8 +599,9 @@ test('telegram adapter is disabled without a token and lazily constructs a gramm
       this.handlers.push(handler)
     }
 
-    start() {
+    start(options = {}) {
       events.push(['start'])
+      options.onStart?.()
       return Promise.resolve()
     }
 
@@ -637,10 +627,12 @@ test('telegram adapter is disabled without a token and lazily constructs a gramm
   ])
 })
 
-test('telegram adapter reports connected without awaiting the long polling loop forever', async () => {
+test('telegram adapter reports connecting until grammY confirms long polling startup', async () => {
+  let onStart = null
   class NeverResolvingBot {
     on() {}
-    start() {
+    start(options = {}) {
+      onStart = options.onStart
       return new Promise(() => {})
     }
     stop() {}
@@ -658,6 +650,8 @@ test('telegram adapter reports connected without awaiting the long polling loop 
   ])
 
   assert.equal(result, 'started')
+  assert.equal(adapter.getStatus().status, 'connecting')
+  onStart()
   assert.equal(adapter.getStatus().status, 'connected')
   await adapter.stop()
 })
@@ -682,4 +676,202 @@ test('telegram adapter classifies polling conflicts for operator diagnostics', a
 
   assert.equal(adapter.getStatus().status, 'failed')
   assert.equal(adapter.getStatus().lastErrorCode, 'telegram-polling-conflict')
+})
+
+test('bridge client aborts stalled requests after the configured timeout', async () => {
+  let timeoutCallback = null
+  let clearCalls = 0
+  let requestSignal = null
+  const client = createBridgeClient({
+    baseUrl: 'http://127.0.0.1:8796',
+    token: 'bridge-token',
+    timeoutMs: 25,
+    setTimer: (callback) => {
+      timeoutCallback = callback
+      return { unref: () => {} }
+    },
+    clearTimer: () => {
+      clearCalls += 1
+    },
+    fetchImpl: async (_url, options = {}) => {
+      requestSignal = options.signal
+      return new Promise((_resolve, reject) => {
+        options.signal.addEventListener('abort', () => reject(new Error('aborted')))
+      })
+    }
+  })
+
+  const request = client.aiChat({ message: 'hello', conversationKey: 'telegram:private:abc123def456' })
+  assert.equal(typeof timeoutCallback, 'function')
+  timeoutCallback()
+
+  await assert.rejects(request, /Bridge request timed out/)
+  assert.equal(requestSignal.aborted, true)
+  assert.equal(clearCalls, 1)
+})
+
+test('telegram middleware does not block helper updates behind a hanging AI request', async () => {
+  let middleware = null
+  class ConcurrentBot {
+    on(_route, handler) {
+      middleware = handler
+    }
+    catch() {}
+    start(options = {}) {
+      options.onStart?.()
+      return new Promise(() => {})
+    }
+    stop() {}
+  }
+
+  const adapter = createTelegramAdapter({
+    token: 'telegram-token',
+    config: normalizeImGatewayConfig({ telegramEnabled: true }),
+    grammy: { Bot: ConcurrentBot }
+  })
+  const gateway = createImGateway({
+    adapters: [adapter],
+    config: normalizeImGatewayConfig({
+      telegramEnabled: true,
+      privateTextMode: 'ai-chat',
+      allowAllPrivateChats: true
+    }),
+    bridgeClient: {
+      aiChat: async () => new Promise(() => {})
+    }
+  })
+  await gateway.start()
+
+  const replies = []
+  const createContext = (text, messageId) => ({
+    message: { message_id: messageId, text },
+    chat: { id: 1001, type: 'private' },
+    from: { id: 1001, username: 'alice' },
+    me: { username: 'openpet_bot' },
+    reply: async (reply) => {
+      replies.push(reply)
+    }
+  })
+
+  const firstDispatch = await Promise.race([
+    middleware(createContext('please think forever', 1)).then(() => 'dispatched'),
+    new Promise((resolve) => setTimeout(() => resolve('blocked'), 20))
+  ])
+  assert.equal(firstDispatch, 'dispatched')
+
+  await middleware(createContext('/openpet whoami', 2))
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(replies.some((reply) => reply.includes('Telegram user id: 1001')), true)
+  await gateway.stop()
+})
+
+test('telegram adapter contains middleware failures and registers a polling error guard', async () => {
+  let middleware = null
+  let pollingErrorHandler = null
+  class GuardedBot {
+    on(_route, handler) {
+      middleware = handler
+    }
+    catch(handler) {
+      pollingErrorHandler = handler
+    }
+    start(options = {}) {
+      options.onStart?.()
+      return new Promise(() => {})
+    }
+    stop() {}
+  }
+
+  const adapter = createTelegramAdapter({
+    token: 'telegram-token',
+    config: normalizeImGatewayConfig({ telegramEnabled: true }),
+    grammy: { Bot: GuardedBot }
+  })
+  adapter.onMessage(async () => {
+    throw new Error('sensitive middleware failure')
+  })
+  await adapter.start()
+
+  await assert.doesNotReject(() => middleware({
+    message: { message_id: 1, text: 'hello' },
+    chat: { id: 1001, type: 'private' },
+    from: { id: 1001 }
+  }))
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(adapter.getStatus().lastErrorCode, 'telegram-handler-failed')
+  assert.equal(typeof pollingErrorHandler, 'function')
+
+  pollingErrorHandler(new Error('sensitive polling failure'))
+  assert.equal(adapter.getStatus().lastErrorCode, 'telegram-handler-failed')
+
+  adapter.onMessage(async () => {})
+  await middleware({
+    message: { message_id: 2, text: 'recovered' },
+    chat: { id: 1001, type: 'private' },
+    from: { id: 1001 }
+  })
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(adapter.getStatus().lastErrorCode, '')
+  await adapter.stop()
+})
+
+test('im gateway rate limiter bounds private and group AI ingress with bounded key tracking', () => {
+  let clock = 0
+  const limiter = createSlidingWindowRateLimiter({
+    nowMs: () => clock,
+    windowMs: 30000,
+    maxKeys: 2,
+    limits: { private: 6, group: 3 }
+  })
+
+  for (let index = 0; index < 6; index += 1) assert.equal(limiter.consume('private-a', 'private').allowed, true)
+  assert.equal(limiter.consume('private-a', 'private').allowed, false)
+  for (let index = 0; index < 3; index += 1) assert.equal(limiter.consume('group-a', 'group').allowed, true)
+  assert.equal(limiter.consume('group-a', 'group').allowed, false)
+
+  const thirdKey = limiter.consume('private-b', 'private')
+  assert.equal(thirdKey.allowed, true)
+  assert.equal(thirdKey.trackedKeyCount, 2)
+  assert.equal(limiter.consume('private-a', 'private').allowed, true)
+
+  clock = 30000
+  assert.equal(limiter.consume('group-a', 'group').allowed, true)
+  limiter.clear()
+  assert.equal(limiter.consume('fresh', 'private').trackedKeyCount, 1)
+})
+
+test('im gateway rate limits private AI replies and records bounded health diagnostics', async () => {
+  const adapter = createFakeAdapter()
+  const aiCalls = []
+  const gateway = createImGateway({
+    adapters: [adapter],
+    config: normalizeImGatewayConfig({
+      telegramEnabled: true,
+      privateTextMode: 'ai-chat',
+      allowAllPrivateChats: true
+    }),
+    bridgeClient: {
+      aiChat: async (payload) => {
+        aiCalls.push(payload)
+        return { reply: 'ok' }
+      }
+    }
+  })
+  await gateway.start()
+
+  for (let index = 0; index < 7; index += 1) {
+    await adapter.emitMessage({
+      chatType: 'private',
+      chatId: '1001',
+      userId: '1001',
+      messageId: `m-${index}`,
+      text: `hello ${index}`
+    })
+  }
+
+  const health = gateway.getHealth().adapters.telegram
+  assert.equal(aiCalls.length, 6)
+  assert.equal(adapter.receipts.at(-1).text, 'Too many requests. Please try again in a moment.')
+  assert.equal(health.aiRateLimitedCount, 1)
+  assert.equal(health.lastAiErrorCode, 'ai-rate-limited')
 })

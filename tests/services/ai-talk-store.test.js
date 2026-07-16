@@ -47,6 +47,39 @@ test('ai talk store persists and returns cloned messages by conversation scope',
   assert.deepEqual(reloaded.getMessages(sprout.sessionId, sprout.conversationId).map((message) => message.content), ['Hi sprout'])
 })
 
+test('ai talk store retains only the newest 500 external conversations and preserves main', () => {
+  let tick = 0
+  const storePath = createTempStorePath()
+  const store = createAiTalkStore({
+    storePath,
+    now: () => new Date(Date.UTC(2026, 6, 16, 0, 0, tick++)).toISOString()
+  })
+  const main = store.ensureMainConversation({ entrypoint: 'control-center', petPackId: 'legacy-cat' })
+  const oldest = store.ensureConversation({
+    entrypoint: 'im-gateway',
+    petPackId: 'legacy-cat',
+    conversationId: 'plugin:openpet.im-gateway:service:im-gateway:telegram:private:000000000000'
+  })
+  store.appendMessages(oldest.sessionId, oldest.conversationId, [{ role: 'user', content: 'oldest external message' }])
+
+  for (let index = 1; index <= 500; index += 1) {
+    store.ensureConversation({
+      entrypoint: 'im-gateway',
+      petPackId: 'legacy-cat',
+      conversationId: `plugin:openpet.im-gateway:service:im-gateway:telegram:private:${String(index).padStart(12, '0')}`
+    })
+  }
+
+  const state = store.getState()
+  const external = Object.values(state.conversations).filter((conversation) => conversation.id !== 'main')
+  const oldestKey = `${oldest.sessionId}:${oldest.conversationId}`
+  assert.equal(external.length, 500)
+  assert.ok(state.conversations[`${main.sessionId}:main`])
+  assert.equal(state.conversations[oldestKey], undefined)
+  assert.equal(state.messages[oldestKey], undefined)
+  assert.ok(state.conversations[`${oldest.sessionId}:plugin:openpet.im-gateway:service:im-gateway:telegram:private:000000000500`])
+})
+
 test('ai talk store imports legacy messages only when the target conversation is empty', () => {
   const store = createAiTalkStore({ storePath: createTempStorePath(), now: () => '2026-06-20T00:00:00.000Z' })
   const { sessionId, conversationId } = store.ensureMainConversation({

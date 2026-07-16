@@ -15,6 +15,7 @@ const MEMORY_STATUSES = new Set(['active', 'superseded', 'deleted'])
 const MAX_MEMORY_TEXT_CHARS = 500
 const MAX_MEMORY_TAGS = 12
 const MAX_MESSAGES_PER_CONVERSATION = 400
+const MAX_EXTERNAL_CONVERSATIONS = 500
 // Cap active memories so the store cannot grow without bound. Traces/utterances
 // already have caps; memories did not, which made every persist() write and
 // findActiveMemory() scan linearly slower over time. Pruning keeps the active
@@ -355,6 +356,41 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
     return removedCount
   }
 
+  const pruneExternalConversations = () => {
+    const external = Object.entries(state.conversations || {})
+      .map(([key, conversation], order) => ({ key, conversation, order }))
+      .filter(({ conversation }) => conversation?.id !== 'main')
+      .sort((left, right) => {
+        const leftTime = String(left.conversation?.updatedAt || left.conversation?.createdAt || '')
+        const rightTime = String(right.conversation?.updatedAt || right.conversation?.createdAt || '')
+        const timeOrder = leftTime.localeCompare(rightTime)
+        return timeOrder !== 0 ? timeOrder : left.order - right.order
+      })
+    const overflow = external.slice(0, Math.max(0, external.length - MAX_EXTERNAL_CONVERSATIONS))
+    if (!overflow.length) return 0
+
+    for (const { key } of overflow) {
+      delete state.conversations[key]
+      delete state.messages[key]
+    }
+    for (const [sessionId, session] of Object.entries(state.sessions || {})) {
+      const activeKey = `${sessionId}:${session?.activeConversationId || ''}`
+      if (state.conversations[activeKey]) continue
+      const candidates = Object.values(state.conversations)
+        .filter((conversation) => conversation?.sessionId === sessionId)
+        .sort((left, right) => {
+          if (left.id === 'main' && right.id !== 'main') return -1
+          if (right.id === 'main' && left.id !== 'main') return 1
+          return String(right.updatedAt || right.createdAt || '').localeCompare(String(left.updatedAt || left.createdAt || ''))
+        })
+      state.sessions[sessionId] = {
+        ...session,
+        activeConversationId: candidates[0]?.id || ''
+      }
+    }
+    return overflow.length
+  }
+
   const pruneMemoryJobs = () => {
     const entries = Object.entries(state.memoryJobs || {}).map(([id, job], order) => ({ id, job, order }))
     if (entries.length <= MAX_MEMORY_JOBS) return 0
@@ -373,6 +409,7 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
   }
 
   const prunedMessageCount = pruneConversationMessages()
+  const prunedExternalConversationCount = pruneExternalConversations()
   const prunedMemoryJobCount = pruneMemoryJobs()
 
   // Sync-write contract: persist() writes the full state to disk synchronously
@@ -413,7 +450,8 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
         updatedAt: timestamp
       }
     }
-    if (!state.conversations[conversationKey]) {
+    const created = !state.conversations[conversationKey]
+    if (created) {
       state.conversations[conversationKey] = {
         id: normalizedConversationId,
         sessionId,
@@ -441,6 +479,7 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
       activeConversationId: normalizedConversationId,
       updatedAt: timestamp
     }
+    if (created) pruneExternalConversations()
     persist()
     return {
       sessionId,
@@ -682,6 +721,7 @@ const createAiTalkStore = ({ storePath, now = () => new Date().toISOString() } =
   if (
     recoveredMemoryJobCount > 0 ||
     prunedMessageCount > 0 ||
+    prunedExternalConversationCount > 0 ||
     prunedMemoryJobCount > 0 ||
     prunedActiveMemoryCount > 0 ||
     prunedInactiveMemoryCount > 0

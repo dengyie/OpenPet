@@ -3,9 +3,8 @@
 `openpet.im-gateway` is the bundled official runtime plugin that connects IM
 messages to OpenPet pet behavior.
 
-Phase 1 supports Telegram through long polling. QQ and WeChat are represented
-by disabled adapter skeletons so the gateway shape can evolve without putting
-platform SDKs into the OpenPet main process.
+The current runtime supports Telegram through long polling. QQ, WeChat, WeCom,
+and OneBot are out of scope and have no adapter implementation in this plugin.
 
 ## Telegram Setup
 
@@ -35,9 +34,16 @@ bundled plugin runtime.
   direct `@bot` mention, allowlist pass, and `groupAiRepliesEnabled` enabled.
 - `/openpet` commands still take priority over free-text AI routing.
 - IM conversations are isolated per Telegram context so private chats and group
-  mentions do not share a transcript.
+  mentions do not share a transcript. Durable conversation ids use pseudonymous
+  hashes rather than raw Telegram peer identifiers.
 - The gateway keeps at most one in-flight AI request plus one queued follow-up
   per conversation. A third private message receives a short busy notice.
+- Private AI ingress is limited to 6 accepted requests per 30 seconds; group
+  ingress is limited to 3 per 30 seconds. Rate-limit tracking is bounded.
+- Host bridge calls time out after 45 seconds, and Telegram update dispatch does
+  not wait for a pending AI response before accepting another update.
+- The host retains at most 500 non-main AI conversations and removes evicted
+  conversation messages with them.
 - The plugin health view exposes only redacted counters, timestamps, error
   codes, and hashed peer identifiers. Raw transcript text and Telegram ids are
   not exposed there.
@@ -60,3 +66,13 @@ Control Center, plugin health, and plugin logs keep those identifiers redacted.
 The plugin does not persist raw IM text, attachments, transcripts, tokens, full
 platform payloads, or local file paths. Health and logs are limited to adapter
 state, timestamps, counts, short error codes, and hashed peer identifiers.
+
+Telegram credentials and routing configuration are immutable while the service
+is starting, running, or stopping. Stop the service before changing them.
+
+## Verification Boundary
+
+The automated suite covers simulated grammY polling, readiness, allowlists,
+commands, AI routing, bridge timeouts, rate limits, retention, and redaction.
+A real Telegram Bot Token smoke session remains a manual follow-up and is not
+part of the repository test suite.

@@ -1,7 +1,7 @@
 # IM Gateway Telegram Hardening Design
 
 > Date: 2026-07-16
-> Status: Approved for implementation on `dev9`
+> Status: Implemented and non-signing verified on `dev9`
 > Scope: Telegram code closure and simulated protocol verification only
 
 ## 1. Goal
@@ -249,3 +249,22 @@ The milestone is complete when:
    integration tests.
 6. The branch is rebased onto the latest `main` and passes the non-signing
    verification and deep-review gates.
+
+## 12. Implementation Record
+
+The implementation keeps the plugin Telegram-only and removes the unused
+OneBot, Weixin, legacy private-policy, and trigger-policy shells. It also adds:
+
+- host rejection and Control Center locking for runtime token/config changes;
+- pseudonymous Telegram conversation keys and host-owned bridge metadata;
+- grammY `onStart` readiness, structured host health interpretation, and
+  bounded operator log messages;
+- non-blocking tracked Telegram handler tasks, a grammY error guard, and
+  AbortController-backed 45-second bridge timeouts;
+- fixed 6/30s private and 3/30s group AI ingress limits with bounded key state;
+- a 500-entry non-main AI conversation cap with message cleanup and session
+  reference repair.
+
+No live Telegram credential, webhook, QQ, WeChat, signing, notarization, or
+release-packaging validation was added. A real-account Telegram smoke remains
+the explicit manual follow-up.

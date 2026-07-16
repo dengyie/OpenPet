@@ -2191,46 +2191,32 @@ test('ai talk service routes IM entrypoints through named conversations', async 
 
   const privateResult = await service.chatFromEntrypoint({
     entrypoint: 'im-gateway',
-    conversationId: 'plugin:openpet.im-gateway:service:im-gateway:telegram:private:1001:1001',
-    message: 'private hello',
-    sourceContext: {
-      platform: 'telegram',
-      chatType: 'private',
-      chatId: '1001',
-      userId: '1001',
-      messageId: '42'
-    }
+    conversationId: 'plugin:openpet.im-gateway:service:im-gateway:telegram:private:abc123def456',
+    message: 'private hello'
   })
   const groupResult = await service.chatFromEntrypoint({
     entrypoint: 'im-gateway',
-    conversationId: 'plugin:openpet.im-gateway:service:im-gateway:telegram:group:-2001:1001',
-    message: 'group hello',
-    sourceContext: {
-      platform: 'telegram',
-      chatType: 'group',
-      chatId: '-2001',
-      userId: '1001',
-      messageId: '43'
-    }
+    conversationId: 'plugin:openpet.im-gateway:service:im-gateway:telegram:group:def456abc123',
+    message: 'group hello'
   })
 
   assert.equal(
     privateResult.conversationId,
-    'im-gateway:legacy-cat:plugin:openpet.im-gateway:service:im-gateway:telegram:private:1001:1001'
+    'im-gateway:legacy-cat:plugin:openpet.im-gateway:service:im-gateway:telegram:private:abc123def456'
   )
   assert.equal(
     groupResult.conversationId,
-    'im-gateway:legacy-cat:plugin:openpet.im-gateway:service:im-gateway:telegram:group:-2001:1001'
+    'im-gateway:legacy-cat:plugin:openpet.im-gateway:service:im-gateway:telegram:group:def456abc123'
   )
   assert.deepEqual(
     store
-      .getMessages('im-gateway:legacy-cat', 'plugin:openpet.im-gateway:service:im-gateway:telegram:private:1001:1001')
+      .getMessages('im-gateway:legacy-cat', 'plugin:openpet.im-gateway:service:im-gateway:telegram:private:abc123def456')
       .map((message) => message.content),
     ['private hello', 'reply 1']
   )
   assert.deepEqual(
     store
-      .getMessages('im-gateway:legacy-cat', 'plugin:openpet.im-gateway:service:im-gateway:telegram:group:-2001:1001')
+      .getMessages('im-gateway:legacy-cat', 'plugin:openpet.im-gateway:service:im-gateway:telegram:group:def456abc123')
       .map((message) => message.content),
     ['group hello', 'reply 2']
   )

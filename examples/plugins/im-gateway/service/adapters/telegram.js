@@ -92,9 +92,24 @@ const createTelegramAdapter = ({
 } = {}) => {
   let handler = null
   let bot = null
-  let pollingPromise = null
   let status = 'stopped'
   let lastErrorCode = ''
+  const handlerTasks = new Set()
+
+  const scheduleHandler = (message) => {
+    const task = Promise.resolve().then(() => handler(message))
+    handlerTasks.add(task)
+    task.then(
+      () => {
+        handlerTasks.delete(task)
+        if (lastErrorCode === 'telegram-handler-failed') lastErrorCode = ''
+      },
+      () => {
+        handlerTasks.delete(task)
+        lastErrorCode = 'telegram-handler-failed'
+      }
+    )
+  }
 
   return {
     id: 'telegram',
@@ -114,26 +129,33 @@ const createTelegramAdapter = ({
       }
       const { Bot } = resolveGrammy(grammy)
       bot = new Bot(token)
+      const activeBot = bot
       bot.on('message:text', async (ctx) => {
         if (typeof handler !== 'function') return
-        await handler(createTelegramMessage(ctx, now))
+        scheduleHandler(createTelegramMessage(ctx, now))
+      })
+      bot.catch?.(() => {
+        lastErrorCode = 'telegram-handler-failed'
       })
       status = 'connecting'
-      pollingPromise = Promise.resolve(bot.start())
+      lastErrorCode = ''
+      Promise.resolve(bot.start({
+        onStart: () => {
+          if (bot === activeBot && status === 'connecting') status = 'connected'
+        }
+      }))
         .then(() => {
-          if (status === 'connected') status = 'stopped'
+          if (bot === activeBot && status === 'connected') status = 'stopped'
         })
         .catch((error) => {
+          if (bot !== activeBot) return
           status = 'failed'
           lastErrorCode = classifyTelegramStartError(error)
         })
-      status = 'connected'
-      lastErrorCode = ''
     },
     stop: async () => {
       if (bot?.stop) bot.stop()
       bot = null
-      pollingPromise = null
       status = status === 'disabled' ? 'disabled' : 'stopped'
     },
     sendReceipt: async (message, text) => {

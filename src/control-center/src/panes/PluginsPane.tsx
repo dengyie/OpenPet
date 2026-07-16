@@ -27,6 +27,7 @@ interface PluginConfigField {
 
 const IM_GATEWAY_PLUGIN_ID = 'openpet.im-gateway'
 const IM_GATEWAY_SERVICE_ID = 'im-gateway'
+const ACTIVE_SERVICE_STATUSES = new Set(['starting', 'running', 'stopping'])
 
 export interface PluginsPaneProps {
   plugins: PluginViewState[]
@@ -118,22 +119,31 @@ const getPluginService = (plugin: PluginViewState, serviceId: string) => (
   plugin.entries?.services?.find((service) => service.id === serviceId) || null
 )
 
+const isImGatewayRuntimeActive = (plugin: PluginViewState) => (
+  plugin.id === IM_GATEWAY_PLUGIN_ID && ACTIVE_SERVICE_STATUSES.has(
+    getPluginService(plugin, IM_GATEWAY_SERVICE_ID)?.runtime?.status || 'stopped'
+  )
+)
+
 const getImGatewayOnboardingNotes = (
   plugin: PluginViewState,
   imGatewaySecretState: ImGatewaySecretState
 ) => {
   const service = getPluginService(plugin, IM_GATEWAY_SERVICE_ID)
   const runtimeStatus = service?.runtime?.status || 'stopped'
+  const healthStatus = service?.runtime?.health?.status || 'unknown'
   const healthMessage = typeof service?.runtime?.health?.message === 'string'
     ? service.runtime.health.message.trim()
     : ''
   const notes = [
     imGatewaySecretState.hasTelegramBotToken
-      ? 'Telegram Bot Token 已保存，接下来可以直接验证机器人回包。'
+      ? 'Telegram Bot Token 已保存。'
       : '先保存 Telegram Bot Token，再启动 IM Gateway Service。',
     plugin.nativeExecutionApproved
       ? runtimeStatus === 'running'
-        ? 'IM Gateway Service 已运行，可以马上去 Telegram 验证 allowlist 和回包。'
+        ? healthStatus === 'healthy'
+          ? 'IM Gateway Service 与 Telegram 均已就绪，可以验证 allowlist 和回包。'
+          : '服务正在运行，但 Telegram 尚未就绪；请先查看最近诊断并修复后再验证。'
         : '打开“允许原生进程执行”后，启动 IM Gateway Service 让 Telegram polling 生效。'
       : '先打开“允许原生进程执行”，否则 Setup / Service 不会真正启动。'
   ]
@@ -658,6 +668,7 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
                     const onboardingNotes = getImGatewayOnboardingNotes(plugin, imGatewaySecretState)
                     const runtimeStatus = imGatewayService?.runtime?.status || 'stopped'
                     const healthStatus = imGatewayService?.runtime?.health?.status || 'unknown'
+                    const runtimeActive = isImGatewayRuntimeActive(plugin)
                     return (
                       <>
                   <div className="plugin-config-header">
@@ -667,19 +678,12 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
                     </span>
                   </div>
                   <div className="field-note">Service: {runtimeStatus} · Health: {healthStatus}</div>
-                  <div className="plugin-config-grid">
-                    <div className="plugin-config-field">
-                      <span>Telegram</span>
-                      <small>Telegram: {String(plugin.config?.telegramMode || 'polling')}</small>
-                    </div>
-                    <div className="plugin-config-field">
-                      <span>QQ</span>
-                      <small>QQ: disabled</small>
-                    </div>
-                    <div className="plugin-config-field">
-                      <span>WeChat</span>
-                      <small>WeChat: disabled</small>
-                    </div>
+                  {runtimeActive ? (
+                    <div className="field-note">Stop IM Gateway Service before changing Telegram credentials or routing policy.</div>
+                  ) : null}
+                  <div className="plugin-config-field">
+                    <span>Telegram</span>
+                    <small>Telegram: {String(plugin.config?.telegramMode || 'polling')}</small>
                   </div>
                   <div aria-label="IM Gateway onboarding">
                     <div className="plugin-config-header">
@@ -704,6 +708,7 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
                       autoComplete="off"
                       spellCheck={false}
                       value={imGatewayTelegramTokenDraft}
+                      disabled={runtimeActive}
                       onChange={(event) => onChangeImGatewayTelegramTokenDraft(event.target.value)}
                     />
                   </label>
@@ -711,7 +716,7 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
                     <button
                       type="button"
                       className="primary"
-                      disabled={!imGatewayTelegramTokenDraft.trim() || savingImGatewayTelegramToken}
+                      disabled={runtimeActive || !imGatewayTelegramTokenDraft.trim() || savingImGatewayTelegramToken}
                       onClick={onSaveImGatewayTelegramBotToken}
                     >
                       {savingImGatewayTelegramToken ? 'Saving Telegram Token' : 'Save Telegram Token'}
@@ -719,7 +724,7 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
                     <button
                       type="button"
                       className="ghost"
-                      disabled={!imGatewaySecretState.hasTelegramBotToken || clearingImGatewayTelegramToken}
+                      disabled={runtimeActive || !imGatewaySecretState.hasTelegramBotToken || clearingImGatewayTelegramToken}
                       onClick={onClearImGatewayTelegramBotToken}
                     >
                       {clearingImGatewayTelegramToken ? 'Clearing Telegram Token' : 'Clear Telegram Token'}
@@ -752,7 +757,7 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
                     <button
                       type="button"
                       className="ghost"
-                      disabled={savingConfig === plugin.id}
+                      disabled={isImGatewayRuntimeActive(plugin) || savingConfig === plugin.id}
                       onClick={() => onSaveConfig(plugin.id)}
                     >
                       {savingConfig === plugin.id ? '保存中' : '保存配置'}
@@ -776,6 +781,7 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
                             <select
                               className="text-input"
                               value={selectedEnumIndex >= 0 ? selectedEnumIndex : ''}
+                              disabled={isImGatewayRuntimeActive(plugin)}
                               onChange={(event) => {
                                 const index = Number(event.target.value)
                                 if (field.enum && Number.isInteger(index) && index >= 0 && index < field.enum.length) {
@@ -788,12 +794,13 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
                               ))}
                             </select>
                           ) : field.type === 'boolean' ? (
-                            <Toggle ariaLabel={field.title || field.key} checked={Boolean(value)} onChange={(nextValue) => onChangeConfig(plugin.id, field.key, nextValue)} />
+                            <Toggle ariaLabel={field.title || field.key} checked={Boolean(value)} disabled={isImGatewayRuntimeActive(plugin)} onChange={(nextValue) => onChangeConfig(plugin.id, field.key, nextValue)} />
                           ) : (
                             <input
                               className="text-input"
                               type={field.type === 'number' ? 'number' : 'text'}
                               value={inputValue}
+                              disabled={isImGatewayRuntimeActive(plugin)}
                               onChange={(event) => onChangeConfig(plugin.id, field.key, event.target.value)}
                             />
                           )}

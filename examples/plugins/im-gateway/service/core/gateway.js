@@ -2,12 +2,14 @@ const { isMessageAllowed } = require('./allowlist')
 const { createAiQueue } = require('./ai-queue')
 const { parseOpenPetCommand } = require('./commands')
 const { resolveAiRoute, truncateAiReply } = require('./ai-routing')
+const { createSlidingWindowRateLimiter } = require('./rate-limiter')
 const { normalizeImGatewayConfig } = require('../config')
 const { createGatewayHealth } = require('../health')
 const { sanitizeReceiptText } = require('../log-safety')
 
 const PRIVATE_BUSY_NOTICE = 'Still thinking about your last message. Please send one more message in a moment.'
 const PRIVATE_FAILURE_NOTICE = 'I could not reply just now. Please try again in a moment.'
+const PRIVATE_RATE_LIMIT_NOTICE = 'Too many requests. Please try again in a moment.'
 const HELPER_COMMANDS = new Set(['whoami', 'chatid'])
 
 const createEmptyState = () => ({
@@ -19,6 +21,7 @@ const createEmptyState = () => ({
   lastUserId: '',
   lastAiReplyAt: '',
   aiReplyCount: 0,
+  aiRateLimitedCount: 0,
   lastAiErrorCode: '',
   lastAllowlistReason: '',
   lastDiagnosticCode: '',
@@ -29,7 +32,8 @@ const createImGateway = ({
   adapters = [],
   bridgeClient = {},
   config: rawConfig = {},
-  now = () => new Date().toISOString()
+  now = () => new Date().toISOString(),
+  aiRateLimiter = createSlidingWindowRateLimiter()
 } = {}) => {
   const config = normalizeImGatewayConfig(rawConfig)
   const adapterState = new Map()
@@ -88,6 +92,14 @@ const createImGateway = ({
   const markAiError = (adapter, message, code) => {
     const state = getState(adapter)
     state.lastAiErrorCode = String(code || 'ai-reply-failed')
+    state.lastChatId = message.chatId || ''
+    state.lastUserId = message.userId || ''
+  }
+
+  const markAiRateLimited = (adapter, message) => {
+    const state = getState(adapter)
+    state.lastAiErrorCode = 'ai-rate-limited'
+    state.aiRateLimitedCount += 1
     state.lastChatId = message.chatId || ''
     state.lastUserId = message.userId || ''
   }
@@ -179,20 +191,25 @@ const createImGateway = ({
       return
     }
 
+    const chatKind = String(message.chatType || '').toLowerCase() === 'private' ? 'private' : 'group'
+    const rateLimit = aiRateLimiter.consume(route.conversationKey, chatKind)
+    if (!rateLimit.allowed) {
+      markAiRateLimited(adapter, message)
+      if (chatKind === 'private') {
+        try {
+          await sendDirectReply(adapter, message, PRIVATE_RATE_LIMIT_NOTICE)
+        } catch (_) {}
+      }
+      return
+    }
+
     await aiQueue.push(route.conversationKey, {
       run: async () => {
         try {
           const result = await bridgeClient.aiChat?.({
             message: route.messageText,
             conversationKey: route.conversationKey,
-            entrypoint: 'im-gateway',
-            sourceContext: {
-              platform: message.platform,
-              chatType: message.chatType,
-              chatId: message.chatId,
-              userId: message.userId,
-              messageId: message.messageId
-            }
+            requestId: message.messageId ? `telegram-${String(message.messageId).slice(0, 96)}` : ''
           })
           const replyText = truncateAiReply(result?.result?.reply || result?.reply || '', message)
           if (!replyText) throw new Error('empty-ai-reply')
@@ -234,6 +251,7 @@ const createImGateway = ({
 
   const stop = async () => {
     for (const adapter of adapters) await adapter.stop?.()
+    aiRateLimiter.clear?.()
   }
 
   return {

@@ -81,7 +81,13 @@ const IM_GATEWAY_HEALTH_MESSAGES = new Map([
   ['missing-token', 'Telegram token missing'],
   ['telegram-polling-conflict', 'Telegram polling conflict'],
   ['telegram-polling-failed', 'Telegram polling failed'],
+  ['telegram-handler-failed', 'Telegram message handler failed'],
   ['allowlist-miss', 'Recent Telegram message blocked by allowlist']
+])
+const IM_GATEWAY_SAFE_HEALTH_LOG_MESSAGES = new Set([
+  ...IM_GATEWAY_HEALTH_MESSAGES.values(),
+  'OK',
+  'Health check timed out'
 ])
 const DEFAULT_AGENT_AWARENESS_AUTOSTART_INTERVAL_MS = 5000
 const DEFAULT_AGENT_AWARENESS_SIGNAL_WINDOW_MS = 15 * 60 * 1000
@@ -250,11 +256,59 @@ const createAgentAwarenessHealthDetails = (body) => {
 }
 
 const summarizeImGatewayHealthBody = (body) => {
-  if (!isImGatewayHealthBody(body)) return ''
+  if (!isImGatewayHealthBody(body)) return null
   const telegram = isRecord(body.adapters?.telegram) ? body.adapters.telegram : null
-  if (!telegram) return ''
-  const code = String(telegram.lastErrorCode || telegram.lastDiagnosticCode || '').trim()
-  return IM_GATEWAY_HEALTH_MESSAGES.get(code) || ''
+  if (!telegram) return null
+
+  const enabled = telegram.enabled === true
+  const status = String(telegram.status || '').trim()
+  const errorCode = String(telegram.lastErrorCode || '').trim()
+  const diagnosticCode = String(telegram.lastDiagnosticCode || '').trim()
+
+  if (!enabled || status === 'disabled') {
+    return { healthy: true, logLevel: 'info', message: 'Telegram disabled' }
+  }
+  if (errorCode === 'telegram-handler-failed' && (status === 'connected' || status === 'running')) {
+    return {
+      healthy: true,
+      logLevel: 'warn',
+      message: IM_GATEWAY_HEALTH_MESSAGES.get(errorCode)
+    }
+  }
+  if (errorCode || ['missing-token', 'failed', 'stopped'].includes(status)) {
+    return {
+      healthy: false,
+      logLevel: 'error',
+      message: IM_GATEWAY_HEALTH_MESSAGES.get(errorCode) || 'Telegram unavailable'
+    }
+  }
+  if (diagnosticCode === 'allowlist-miss') {
+    return {
+      healthy: true,
+      logLevel: 'warn',
+      message: IM_GATEWAY_HEALTH_MESSAGES.get(diagnosticCode)
+    }
+  }
+  if (status === 'connected' || status === 'running') {
+    return { healthy: true, logLevel: 'info', message: 'Telegram connected' }
+  }
+  return { healthy: false, logLevel: 'error', message: 'Telegram unavailable' }
+}
+
+const formatServiceHealthLogMessage = ({
+  pluginId = '',
+  serviceId = '',
+  status = '',
+  message = ''
+} = {}) => {
+  const baseMessage = status === 'healthy' ? 'Service health healthy' : 'Service health unhealthy'
+  if (!isImGatewayHealthTarget({ pluginId, serviceId })) return baseMessage
+  let detail = String(message || '').trim()
+  if (!detail) return baseMessage
+  if (!IM_GATEWAY_SAFE_HEALTH_LOG_MESSAGES.has(detail) && !/^HTTP \d+$/.test(detail)) {
+    detail = sanitizePluginCommandText(detail).trim()
+  }
+  return detail && detail !== 'OK' ? `${baseMessage}: ${detail}` : baseMessage
 }
 
 const resolveCodexSignalHome = ({
@@ -326,8 +380,11 @@ const defaultProbeAgentAwarenessActivity = ({
 
 const readServiceHealthResponse = async (response, { pluginId = '', serviceId = '' } = {}) => {
   const fallbackMessage = response?.ok ? 'OK' : `HTTP ${Number.isFinite(Number(response?.status)) ? Number(response.status) : 'error'}`
+  const invalidImGatewayResponse = isImGatewayHealthTarget({ pluginId, serviceId })
+    ? { healthy: false, logLevel: 'error', message: 'Telegram health response invalid' }
+    : null
   const contentType = String(response?.headers?.get?.('content-type') || '').toLowerCase()
-  if (!contentType.includes('application/json')) return { message: fallbackMessage }
+  if (!contentType.includes('application/json')) return invalidImGatewayResponse || { message: fallbackMessage }
   try {
     const text = await readLimitedResponseText(response)
     const body = JSON.parse(text)
@@ -338,13 +395,11 @@ const readServiceHealthResponse = async (response, { pluginId = '', serviceId = 
       }
     }
     if (isImGatewayHealthTarget({ pluginId, serviceId })) {
-      return {
-        message: summarizeImGatewayHealthBody(body) || fallbackMessage
-      }
+      return summarizeImGatewayHealthBody(body) || invalidImGatewayResponse
     }
     return { message: fallbackMessage }
   } catch (_) {
-    return { message: fallbackMessage }
+    return invalidImGatewayResponse || { message: fallbackMessage }
   }
 }
 
@@ -892,16 +947,17 @@ const createPluginService = ({ settingsService, petService, actionService, actio
         const conversationKey = typeof payload?.conversationKey === 'string' ? payload.conversationKey.trim() : ''
         if (!message) throw new Error('AI chat message is empty')
         if (!conversationKey) throw new Error('AI chat conversationKey is required')
+        if (conversationKey.length > 160 || !/^[A-Za-z0-9:_-]+$/.test(conversationKey)) {
+          throw new Error('AI chat conversationKey is invalid')
+        }
         appendLog({ pluginId: plugin.manifest.id, commandId: `service:${serviceId}`, level: 'info', message: 'Bridge ai.chat invoked' })
         return {
           ok: true,
           result: await aiTalkService.chatFromEntrypoint({
             message,
             conversationId: `plugin:${plugin.manifest.id}:service:${serviceId}:${conversationKey}`,
-            entrypoint: typeof payload?.entrypoint === 'string' && payload.entrypoint.trim() ? payload.entrypoint.trim() : 'im-gateway',
-            requestId: typeof payload?.requestId === 'string' ? payload.requestId : '',
-            skipUserAppend: payload?.skipUserAppend === true,
-            sourceContext: isRecord(payload?.sourceContext) ? payload.sourceContext : {}
+            entrypoint: plugin.manifest.id === IM_GATEWAY_PLUGIN_ID ? 'im-gateway' : 'plugin-service',
+            requestId: typeof payload?.requestId === 'string' ? payload.requestId.trim().slice(0, 120) : ''
           })
         }
       }
@@ -995,12 +1051,18 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     hasTelegramBotToken: Boolean(secretService?.getSecretValue?.(IM_GATEWAY_TELEGRAM_BOT_TOKEN_SECRET_ID))
   })
 
+  const assertImGatewayRuntimeMutationAllowed = (message) => {
+    const runtime = getPluginServiceRuntime(IM_GATEWAY_PLUGIN_ID, IM_GATEWAY_SERVICE_ID)
+    if (ACTIVE_SERVICE_STATUSES.has(runtime?.status)) throw new Error(message)
+  }
+
   const assertImGatewaySecretService = () => {
     if (!secretService) throw new Error('Secret service is not available')
   }
 
   const saveImGatewayTelegramBotToken = (token) => {
     assertImGatewaySecretService()
+    assertImGatewayRuntimeMutationAllowed('Stop IM Gateway before changing Telegram credentials')
     const value = String(token || '').trim()
     if (!value) throw new Error('Telegram bot token is required')
     secretService.setSecret({
@@ -1014,6 +1076,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
 
   const clearImGatewayTelegramBotToken = () => {
     assertImGatewaySecretService()
+    assertImGatewayRuntimeMutationAllowed('Stop IM Gateway before changing Telegram credentials')
     secretService.deleteSecret?.(IM_GATEWAY_TELEGRAM_BOT_TOKEN_SECRET_ID)
     appendLog({ pluginId: IM_GATEWAY_PLUGIN_ID, level: 'info', message: 'IM Gateway Telegram token cleared' })
     return getImGatewaySecretState()
@@ -1398,6 +1461,9 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     const plugin = getPlugins().find((candidate) => candidate.manifest.id === pluginId)
     if (!plugin) throw new Error(`Plugin not found: ${pluginId}`)
     if (!plugin.configSchema) throw new Error('Plugin does not declare a config schema')
+    if (pluginId === IM_GATEWAY_PLUGIN_ID) {
+      assertImGatewayRuntimeMutationAllowed('Stop IM Gateway before changing its configuration')
+    }
     const normalizedConfig = normalizePluginConfig(plugin.configSchema, config)
     const settings = settingsService.get()
     settingsService.save({
@@ -2121,6 +2187,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
         checkedAt: new Date().toISOString(),
         message: ''
       }
+      let healthLogLevel = 'info'
 
       try {
         const response = await fetchImpl(healthUrl, {
@@ -2129,8 +2196,10 @@ const createPluginService = ({ settingsService, petService, actionService, actio
         })
         const statusCode = Number(response?.status)
         const hasStatusCode = Number.isFinite(statusCode)
-        const healthy = hasStatusCode ? statusCode >= 200 && statusCode < 300 : Boolean(response?.ok)
+        const httpHealthy = hasStatusCode ? statusCode >= 200 && statusCode < 300 : Boolean(response?.ok)
         const healthResponse = await readServiceHealthResponse(response, { pluginId, serviceId })
+        const healthy = httpHealthy && healthResponse.healthy !== false
+        healthLogLevel = healthResponse.logLevel || (healthy ? 'info' : 'error')
         runtime.health = {
           status: healthy ? 'healthy' : 'unhealthy',
           checkedAt: new Date().toISOString(),
@@ -2142,6 +2211,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
           runtime.health.details = healthResponse.details
         }
       } catch (error) {
+        healthLogLevel = 'error'
         runtime.health = {
           status: 'unhealthy',
           checkedAt: new Date().toISOString(),
@@ -2156,8 +2226,15 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       appendLog({
         pluginId,
         commandId,
-        level: runtime.health.status === 'healthy' ? 'info' : 'error',
-        message: runtime.health.status === 'healthy' ? 'Service health healthy' : 'Service health unhealthy'
+        level: runtime.health.status === 'healthy' && healthLogLevel === 'warn' ? 'warn' : (runtime.health.status === 'healthy' ? 'info' : 'error'),
+        message: runtime.health.status === 'healthy' && healthLogLevel === 'warn'
+          ? `IM Gateway diagnostic: ${runtime.health.message}`
+          : formatServiceHealthLogMessage({
+              pluginId,
+              serviceId,
+              status: runtime.health.status,
+              message: runtime.health.message
+            })
       })
 
       if (reschedule) scheduleServiceHealthCheck(pluginId, serviceId, runtime, serviceEntry)

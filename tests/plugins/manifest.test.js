@@ -545,10 +545,10 @@ test('preserves plugin config field visibility metadata for renderer-only filter
     title: 'IM Gateway Settings',
     type: 'object',
     properties: {
-      privateChatPolicy: {
+      internalMode: {
         type: 'string',
-        title: 'Private chats',
-        enum: ['command-only', 'any-text'],
+        title: 'Internal mode',
+        enum: ['a', 'b'],
         hidden: true
       },
       privateTextMode: {
@@ -559,6 +559,6 @@ test('preserves plugin config field visibility metadata for renderer-only filter
     }
   })
 
-  assert.equal(schema.properties.find((field) => field.key === 'privateChatPolicy')?.hidden, true)
+  assert.equal(schema.properties.find((field) => field.key === 'internalMode')?.hidden, true)
   assert.equal(schema.properties.find((field) => field.key === 'privateTextMode')?.hidden, false)
 })

@@ -2346,7 +2346,6 @@ test.describe('Control Center smoke', () => {
               properties: [
                 { key: 'telegramEnabled', title: 'Telegram enabled', type: 'boolean' },
                 { key: 'telegramMode', title: 'Telegram mode', type: 'string', enum: ['polling'] },
-                { key: 'privateChatPolicy', title: 'Private chats', type: 'string', enum: ['command-only', 'any-text'], hidden: true },
                 { key: 'privateTextMode', title: 'Private text mode', type: 'string', enum: ['command-only', 'pet-say', 'ai-chat'] },
                 { key: 'groupChatPolicy', title: 'Group chats', type: 'string', enum: ['mention-or-command', 'command-only'] },
                 { key: 'groupAiRepliesEnabled', title: 'Enable group AI replies', type: 'boolean' },
@@ -2362,7 +2361,6 @@ test.describe('Control Center smoke', () => {
             config: {
               telegramEnabled: false,
               telegramMode: 'polling',
-              privateChatPolicy: 'command-only',
               privateTextMode: 'command-only',
               groupChatPolicy: 'mention-or-command',
               groupAiRepliesEnabled: false,
@@ -2404,8 +2402,6 @@ test.describe('Control Center smoke', () => {
     const configCard = pluginRow.locator('.plugin-config-panel').filter({ hasText: 'IM Gateway Settings' })
     await expect(imCard).toContainText('Telegram token: not saved')
     await expect(imCard).toContainText('Telegram: polling')
-    await expect(imCard).toContainText('QQ: disabled')
-    await expect(imCard).toContainText('WeChat: disabled')
     await expect(configCard.getByText('Private chats', { exact: true })).toHaveCount(0)
     await expect(configCard.getByText('Private text mode')).toBeVisible()
     await expect(configCard.getByText('Enable group AI replies')).toBeVisible()
@@ -2470,11 +2466,11 @@ test.describe('Control Center smoke', () => {
                 status: 'running',
                 pid: 4321,
                 health: {
-                  status: 'healthy',
+                  status: 'unhealthy',
                   checkedAt: '2026-07-09T02:00:00.000Z',
                   url: 'http://127.0.0.1:8796/health',
                   statusCode: 200,
-                  message: 'Recent Telegram message blocked by allowlist'
+                  message: 'Telegram polling conflict'
                 }
               },
               healthPolicy: {
@@ -2487,10 +2483,16 @@ test.describe('Control Center smoke', () => {
           configSchema: {
             title: 'IM Gateway Settings',
             description: 'Public IM trigger policy. Tokens are stored by the host.',
-            properties: []
+            properties: [{
+              key: 'privateTextMode',
+              title: 'Private text mode',
+              type: 'string',
+              enum: ['disabled', 'command-only', 'ai-chat']
+            }]
           },
           config: {
-            telegramMode: 'polling'
+            telegramMode: 'polling',
+            privateTextMode: 'ai-chat'
           },
           storage: { keyCount: 0, byteSize: 2, valid: true },
           signatureStatus: {
@@ -2518,7 +2520,15 @@ test.describe('Control Center smoke', () => {
 
     await expect(imCard).toContainText('/openpet whoami')
     await expect(imCard).toContainText('/openpet chatid')
-    await expect(imCard).toContainText('Recent Telegram message blocked by allowlist')
+    await expect(imCard).toContainText('Telegram polling conflict')
+    await expect(imCard).toContainText('服务正在运行，但 Telegram 尚未就绪')
+    await expect(imCard).toContainText('Stop IM Gateway Service before changing Telegram credentials or routing policy.')
+    await expect(imCard.getByLabel('Telegram Bot Token')).toBeDisabled()
+    await expect(imCard.getByRole('button', { name: 'Save Telegram Token' })).toBeDisabled()
+    await expect(imCard.getByRole('button', { name: 'Clear Telegram Token' })).toBeDisabled()
+    const configCard = pluginRow.locator('.plugin-config-panel').filter({ hasText: 'IM Gateway Settings' })
+    await expect(configCard.getByRole('button', { name: '保存配置' })).toBeDisabled()
+    await expect(configCard.getByLabel('Private text mode')).toBeDisabled()
     await expect(imCard).not.toContainText('1001')
   })
 

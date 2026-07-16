@@ -1,10 +1,5 @@
 const { hashIdentifier } = require('./log-safety')
 
-const DISABLED_ADAPTER_HEALTH = {
-  enabled: false,
-  status: 'disabled'
-}
-
 const createAdapterHealth = (adapter = {}, state = {}) => {
   const adapterStatus = adapter.getStatus?.() || {}
   return {
@@ -17,6 +12,7 @@ const createAdapterHealth = (adapter = {}, state = {}) => {
     lastErrorCode: adapterStatus.lastErrorCode || state.lastErrorCode || '',
     lastAiReplyAt: state.lastAiReplyAt || '',
     aiReplyCount: state.aiReplyCount || 0,
+    aiRateLimitedCount: state.aiRateLimitedCount || 0,
     lastAiErrorCode: state.lastAiErrorCode || '',
     lastAllowlistReason: state.lastAllowlistReason || '',
     lastDiagnosticCode: state.lastDiagnosticCode || '',
@@ -31,9 +27,7 @@ const createGatewayHealth = ({ adapters = [], adapterState = new Map() } = {}) =
     ok: true,
     service: 'openpet.im-gateway',
     adapters: {
-      telegram: { ...DISABLED_ADAPTER_HEALTH },
-      qq: { ...DISABLED_ADAPTER_HEALTH },
-      weixin: { ...DISABLED_ADAPTER_HEALTH }
+      telegram: { enabled: false, status: 'disabled' }
     }
   }
 

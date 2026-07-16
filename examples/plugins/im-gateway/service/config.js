@@ -1,7 +1,6 @@
 const DEFAULT_CONFIG = {
   telegramEnabled: false,
   telegramMode: 'polling',
-  privateChatPolicy: 'command-only',
   privateTextMode: 'command-only',
   groupChatPolicy: 'mention-or-command',
   groupAiRepliesEnabled: false,
@@ -39,19 +38,10 @@ const normalizeBoolean = (value, fallback = false) => (
   value === true || value === 'true' ? true : fallback
 )
 
-const derivePrivateTextMode = (input = {}) => {
-  const explicit = normalizeEnum(input.privateTextMode, ['command-only', 'pet-say', 'ai-chat'], '')
-  if (explicit) return explicit
-  return normalizeEnum(input.privateChatPolicy, ['command-only', 'any-text'], DEFAULT_CONFIG.privateChatPolicy) === 'any-text'
-    ? 'pet-say'
-    : 'command-only'
-}
-
 const normalizeImGatewayConfig = (input = {}) => ({
   telegramEnabled: normalizeBoolean(input.telegramEnabled),
   telegramMode: normalizeEnum(input.telegramMode, ['polling'], DEFAULT_CONFIG.telegramMode),
-  privateChatPolicy: normalizeEnum(input.privateChatPolicy, ['command-only', 'any-text'], DEFAULT_CONFIG.privateChatPolicy),
-  privateTextMode: derivePrivateTextMode(input),
+  privateTextMode: normalizeEnum(input.privateTextMode, ['command-only', 'pet-say', 'ai-chat'], DEFAULT_CONFIG.privateTextMode),
   groupChatPolicy: normalizeEnum(input.groupChatPolicy, ['mention-or-command', 'command-only'], DEFAULT_CONFIG.groupChatPolicy),
   groupAiRepliesEnabled: normalizeBoolean(input.groupAiRepliesEnabled),
   allowedUsers: splitCommaList(input.allowedUsers),
