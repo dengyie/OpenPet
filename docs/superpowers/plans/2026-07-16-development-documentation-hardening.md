@@ -485,3 +485,13 @@ Expected: feature worktree remains clean on `codex/production-review-remediation
 - [x] **Step 6: Report completion**
 
 Report commit hashes, changed files, documentation levels, validation grades, completion evidence, exact test results, intentionally open external tasks, and confirmation that no runtime source or protected primary worktree was modified.
+
+## Post-Review Remediation Evidence
+
+> Completed: 2026-07-17
+
+| Review finding | Resolution | Evidence commit |
+| --- | --- | --- |
+| Documented Node.js floor was below the Electron/Vite engine requirement | Added a root Node engine contract and synchronized the English, Chinese, and maintainer entrypoints | d1e98508 |
+| Invalid project-context JSON escaped the structured drift result | Added structured API and CLI JSON failures with regression coverage | 30712f97 |
+| Live document update dates were globally coupled | Split per-document ISO date validation from canonical branch validation | 14b1abd3 |
