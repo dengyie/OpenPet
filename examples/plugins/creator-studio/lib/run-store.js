@@ -34,23 +34,6 @@ const getRunBackupPath = ({ dataDir, runId }) => path.join(getRunDir({ dataDir, 
 
 const getRunLogPath = ({ dataDir, runId }) => path.join(getRunDir({ dataDir, runId }), 'logs', 'events.jsonl')
 
-const assertExistingRunDirectory = ({ dataDir, runId }) => {
-  const runsDir = getRunsDir(dataDir)
-  const runDir = getRunDir({ dataDir, runId })
-  if (!fs.existsSync(runDir)) throw new Error(`Creator Studio run not found: ${runId}`)
-  const runStat = fs.lstatSync(runDir)
-  if (runStat.isSymbolicLink() || !runStat.isDirectory()) {
-    throw new Error(`Creator Studio run directory is invalid: ${runId}`)
-  }
-  const realRunsDir = fs.realpathSync.native(runsDir)
-  const realRunDir = fs.realpathSync.native(runDir)
-  const relative = path.relative(realRunsDir, realRunDir)
-  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
-    throw new Error(`Creator Studio run directory escaped the data boundary: ${runId}`)
-  }
-  return runDir
-}
-
 const writeJsonAtomic = (filePath, value) => {
   ensureDirectory(path.dirname(filePath))
   const serialized = `${JSON.stringify(value, null, 2)}\n`
@@ -227,7 +210,6 @@ const createRun = ({ dataDir, input = {}, now = () => new Date().toISOString() }
 }
 
 const readRun = ({ dataDir, runId, now = () => new Date().toISOString() }) => {
-  assertExistingRunDirectory({ dataDir, runId })
   const runPath = getRunPath({ dataDir, runId })
   const current = readValidRunFile({ filePath: runPath, runId })
   if (current) return current
@@ -260,77 +242,6 @@ const readRun = ({ dataDir, runId, now = () => new Date().toISOString() }) => {
     now: () => recoveredAt
   })
   return recoveredRun
-}
-
-const toTimestampMs = (value) => {
-  const timestamp = Date.parse(String(value || ''))
-  return Number.isFinite(timestamp) ? timestamp : 0
-}
-
-const createGenerationLease = ({ commandId, startedAt, leaseId }) => ({
-  commandId: String(commandId || 'run-step'),
-  leaseId: String(leaseId || `${process.pid}-${startedAt}`),
-  startedAt,
-  heartbeatAt: startedAt
-})
-
-const createGenerationLeaseHeartbeat = ({ dataDir, runId, leaseId, now = () => new Date().toISOString() }) => {
-  const interval = setInterval(() => {
-    const current = readRun({ dataDir, runId })
-    if (current.status !== 'generating' || current.generationLease?.leaseId !== leaseId) return
-    writeRun({
-      dataDir,
-      run: {
-        ...current,
-        generationLease: {
-          ...current.generationLease,
-          heartbeatAt: now()
-        }
-      }
-    })
-  }, GENERATION_LEASE_HEARTBEAT_INTERVAL_MS)
-  interval.unref?.()
-  return () => clearInterval(interval)
-}
-
-const recoverStaleGeneratingRuns = ({ dataDir, now = () => new Date().toISOString() }) => {
-  const recoveredRunIds = []
-  const recoveredAt = now()
-  const recoveredAtMs = toTimestampMs(recoveredAt)
-  for (const run of listRuns({ dataDir })) {
-    if (run.status !== 'generating') continue
-    const lease = run.generationLease
-    const referenceAt = lease?.heartbeatAt || run.updatedAt || run.createdAt
-    const staleAfterMs = lease ? GENERATION_LEASE_STALE_AFTER_MS : FULL_PET_COMMAND_TIMEOUT_MS
-    if (!recoveredAtMs || recoveredAtMs - toTimestampMs(referenceAt) < staleAfterMs) continue
-    const { generationLease: _generationLease, ...runWithoutLease } = run
-    const recoveredRun = {
-      ...runWithoutLease,
-      status: 'failed',
-      currentStep: 'generate',
-      updatedAt: recoveredAt,
-      backendStatus: {
-        ...(run.backendStatus || {}),
-        backend: run.backendStatus?.backend || run.backend || run.input?.backend || '',
-        state: 'failed',
-        message: GENERATION_COMMAND_TERMINATED_REASON,
-        updatedAt: recoveredAt
-      },
-      error: GENERATION_COMMAND_TERMINATED_REASON
-    }
-    writeRun({ dataDir, run: recoveredRun })
-    appendRunLog({
-      dataDir,
-      runId: run.runId,
-      level: 'error',
-      event: 'generate.recovered-stale-command',
-      message: GENERATION_COMMAND_TERMINATED_REASON,
-      data: { commandId: String(lease?.commandId || ''), leaseId: String(lease?.leaseId || '') },
-      now: () => recoveredAt
-    })
-    recoveredRunIds.push(run.runId)
-  }
-  return recoveredRunIds
 }
 
 const toTimestampMs = (value) => {
@@ -461,7 +372,6 @@ const readRunLogs = ({ dataDir, runId }) => {
 
 const writeRun = ({ dataDir, run }) => {
   if (!isRunRecord(run, run?.runId)) throw new Error('Creator Studio run is invalid')
-  assertExistingRunDirectory({ dataDir, runId: run.runId })
   const runPath = getRunPath({ dataDir, runId: run.runId })
   const backupPath = getRunBackupPath({ dataDir, runId: run.runId })
   const current = readValidRunFile({ filePath: runPath, runId: run.runId })
