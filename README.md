@@ -35,7 +35,7 @@ The current release track is macOS-first. Windows build and validation tooling e
 
 Requirements:
 
-- Node.js 18 or newer
+- Node.js 22.12.0 or newer
 - npm 9 or newer
 - macOS for the currently validated packaged app path
 

@@ -9,7 +9,7 @@ This is the canonical contributor workflow for OpenPet. Use
 
 Required local tools:
 
-- Node.js 18 or newer;
+- Node.js 22.12.0 or newer;
 - npm 9 or newer;
 - macOS for the currently validated packaged desktop and native system-cursor
   paths.

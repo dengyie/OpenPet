@@ -18,3 +18,17 @@ test('development workflow provides the canonical maintainer path', () => {
   assert.match(workflow, /git diff --check/)
   assert.match(workflow, /external evidence|manual-required/i)
 })
+
+test('documented Node.js floor matches the package engine contract', () => {
+  const packageJson = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf-8'))
+  const packageLock = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package-lock.json'), 'utf-8'))
+  const workflow = fs.readFileSync(workflowPath, 'utf-8')
+  const readme = fs.readFileSync(path.join(repoRoot, 'README.md'), 'utf-8')
+  const readmeZh = fs.readFileSync(path.join(repoRoot, 'README.zh-CN.md'), 'utf-8')
+
+  assert.equal(packageJson.engines?.node, '>=22.12.0')
+  assert.equal(packageLock.packages[''].engines?.node, packageJson.engines.node)
+  assert.match(workflow, /Node\.js 22\.12\.0 or newer/)
+  assert.match(readme, /Node\.js 22\.12\.0 or newer/)
+  assert.match(readmeZh, /Node\.js 22\.12\.0 或更新版本/)
+})

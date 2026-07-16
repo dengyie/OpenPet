@@ -5,6 +5,9 @@
   "author": "OpenPet contributors",
   "license": "MIT",
   "main": "main.js",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "start": "node scripts/cleanup-dev-instances.js && npm run build:system-cursor && npm run build:control-center && electron .",
     "dev:control-center": "vite --config src/control-center/vite.config.js --host 127.0.0.1",
