@@ -4,7 +4,7 @@ const {
   sanitizeVisualDirective
 } = require('./provider-image-task')
 
-const PROMPT_COMPILER_VERSION = 1
+const PROMPT_COMPILER_VERSION = 2
 const MAX_PROMPT_LENGTH = 12000
 
 const FORBIDDEN_PROMPT_PATTERNS = Object.freeze([
@@ -15,7 +15,17 @@ const FORBIDDEN_PROMPT_PATTERNS = Object.freeze([
   Object.freeze({ pattern: /\breference[-_ ]?role\b/i, label: 'reference role' }),
   Object.freeze({ pattern: /\bcheckpoint\b/i, label: 'checkpoint term' }),
   Object.freeze({ pattern: /\bmultipart\b/i, label: 'transport format' }),
-  Object.freeze({ pattern: /(?:\/Users|\/var|\/tmp|\/private|\/Volumes)\//i, label: 'host path' })
+  Object.freeze({ pattern: /https?:\/\/\S+/i, label: 'URL' }),
+  Object.freeze({ pattern: /\bfile:\/{2,3}\S+/i, label: 'file URI' }),
+  Object.freeze({ pattern: /(?:^|\s)(?:\.\.[/\\])+\S*/i, label: 'path traversal' }),
+  Object.freeze({ pattern: /\b[A-Za-z]:[\\/]\S+/i, label: 'Windows path' }),
+  Object.freeze({ pattern: /\\\\[^\\/\s]+[\\/]\S+/i, label: 'UNC path' }),
+  Object.freeze({ pattern: /\b(?:runs|inputs|outputs|assets|cat_anime)[/\\][^\s,，。)]+/i, label: 'project path' }),
+  Object.freeze({ pattern: /(?:\/Users|\/var|\/tmp|\/private|\/Volumes)\//i, label: 'host path' }),
+  Object.freeze({ pattern: /(?:^|\s)\/(?!\/)\S+/i, label: 'absolute path' }),
+  Object.freeze({ pattern: /\b(?:ignore|disregard|override|replace|reveal|repeat)\b.{0,80}\b(?:instruction|prompt|system|rule|requirement)\b/i, label: 'prompt control' }),
+  Object.freeze({ pattern: /\b(?:instruction|prompt|system|rule|requirement)\b.{0,80}\b(?:ignore|disregard|override|replace|reveal|repeat)\b/i, label: 'prompt control' }),
+  Object.freeze({ pattern: /(?:忽略|无视|覆盖|泄露|透露|重复).{0,40}(?:指令|提示词|系统|规则|要求)/i, label: 'prompt control' })
 ])
 
 const assertProviderNeutralPrompt = (value) => {
@@ -84,6 +94,12 @@ const createRequestedChangesParagraph = (task) => {
   return `Apply these bounded visual adjustments while preserving every fixed requirement: ${changes.join('; ')}.`
 }
 
+const createAppearanceIntentParagraph = (task) => {
+  const intent = Array.isArray(task.appearanceIntent) ? task.appearanceIntent.filter(Boolean) : []
+  if (!intent.length) return ''
+  return `Apply this requested visual treatment only where it does not conflict with the attached character identity: ${intent.join('; ')}.`
+}
+
 const createGuidanceParagraph = (qualityGuidance) => {
   const lines = Array.isArray(qualityGuidance)
     ? qualityGuidance.map(sanitizeVisualDirective).filter(Boolean).slice(0, 12)
@@ -129,6 +145,7 @@ const createSingleImageBrief = (task, qualityGuidance) => [
   createSingleImageGoal(task),
   createReferenceParagraph(task.referenceInterpretation),
   createIdentityLock(task),
+  createAppearanceIntentParagraph(task),
   createRequestedChangesParagraph(task),
   createGuidanceParagraph(qualityGuidance),
   createFixedSingleImageContract(task)
@@ -166,6 +183,7 @@ const createFrameSheetBrief = (task, qualityGuidance) => [
   `Draw a complete animation frame sheet${task.action?.name ? ` for ${task.action.name}` : ''}.`,
   createReferenceParagraph(task.referenceInterpretation),
   createIdentityLock(task),
+  createAppearanceIntentParagraph(task),
   createMovingPartsParagraph(task),
   createFramePlanParagraph(task),
   createRequestedChangesParagraph(task),
@@ -182,6 +200,7 @@ const normalizeCompilerTask = (task = {}) => createProviderImageTask({
   subject: task.subject,
   action: task.action,
   styleLocks: task.styleLocks,
+  appearanceIntent: task.appearanceIntent,
   strategyId: task.strategyId,
   requestedChanges: task.requestedChanges
 })

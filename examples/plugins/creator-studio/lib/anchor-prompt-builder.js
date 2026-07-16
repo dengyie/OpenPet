@@ -73,6 +73,7 @@ const buildCharacterAnchorPrompt = ({
   referenceRole = 'single-character-reference',
   qualityGuidance = null,
   canvas,
+  appearanceIntent = [],
   strategyId = '',
   requestedChanges = []
 } = {}) => {
@@ -82,6 +83,7 @@ const buildCharacterAnchorPrompt = ({
     canvas,
     referenceRole,
     subject: DEFAULT_FULL_BODY_SUBJECT,
+    appearanceIntent,
     strategyId,
     requestedChanges
   })
@@ -98,6 +100,7 @@ const buildActionKeyframePrompt = ({
   keyframeRole = 'start',
   qualityGuidance = null,
   canvas,
+  appearanceIntent = [],
   strategyId = '',
   requestedChanges = []
 } = {}) => {
@@ -112,6 +115,7 @@ const buildActionKeyframePrompt = ({
     referenceRole,
     subject: DEFAULT_FULL_BODY_SUBJECT,
     action: createVisualAction({ action, keyframeRole: normalizedKeyframeRole }),
+    appearanceIntent,
     strategyId,
     requestedChanges
   })
@@ -132,6 +136,7 @@ const buildActionAnchorPrompt = ({
   action = {},
   qualityGuidance = null,
   canvas,
+  appearanceIntent = [],
   strategyId = '',
   requestedChanges = []
 } = {}) => {
@@ -143,6 +148,7 @@ const buildActionAnchorPrompt = ({
     referenceRole,
     subject: DEFAULT_FULL_BODY_SUBJECT,
     action: createVisualAction({ action, keyframeRole: 'peak' }),
+    appearanceIntent,
     strategyId,
     requestedChanges
   })
@@ -158,6 +164,7 @@ const buildActionSpriteRowPrompt = ({
   action = {},
   qualityGuidance = null,
   canvas,
+  appearanceIntent = [],
   strategyId = '',
   requestedChanges = []
 } = {}) => {
@@ -177,6 +184,7 @@ const buildActionSpriteRowPrompt = ({
     referenceRole,
     subject: DEFAULT_FULL_BODY_SUBJECT,
     action: createVisualAction({ action, frameCount }),
+    appearanceIntent,
     strategyId,
     requestedChanges
   })

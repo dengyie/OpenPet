@@ -2772,7 +2772,7 @@ const resolveAnchorCharacterBrief = (run = {}) => sanitizeCreativeBrief(
   run?.input?.originalPrompt ||
   run?.input?.prompt ||
   run?.petId ||
-  'OpenPet desktop pet'
+  'reusable full-body desktop character'
 )
 
 const getRunActions = (run = {}) => {
@@ -2906,7 +2906,7 @@ const generateActionKeyframe = async ({
     ? 'action-start-keyframe'
     : 'action-peak-keyframe'
   const promptBuild = buildActionKeyframePrompt({
-    characterBrief: resolveAnchorCharacterBrief(run),
+    appearanceIntent: [resolveAnchorCharacterBrief(run)],
     referenceRole: listReferenceRoles(referenceImages).join(', ') || 'canonical-reference',
     action,
     keyframeRole: normalizedKeyframeRole,
@@ -3232,7 +3232,7 @@ const generateKeyframeActionSpriteRow = async ({
     role: 'keyframe-action-reference-board'
   }
   const promptBuild = buildActionSpriteRowPrompt({
-    characterBrief: resolveAnchorCharacterBrief(run),
+    appearanceIntent: [resolveAnchorCharacterBrief(run)],
     referenceRole: 'keyframe-action-reference-board',
     action,
     qualityGuidance
@@ -3424,6 +3424,7 @@ const generateDirectSourceActionAnchorCandidateSet = async ({
       action,
       qualityGuidance,
       canvas: DEFAULT_CONSTRAINTS,
+      appearanceIntent: [resolveAnchorCharacterBrief(run)],
       strategyId: candidateVariant.id,
       requestedChanges: candidateVariant.requestedChanges
     })
@@ -3603,7 +3604,7 @@ const generateAnchorReferences = async ({
   let characterAnchor = null
   if (!shouldSkipCharacterAnchorForActions(run)) {
     const characterPromptBuild = buildCharacterAnchorPrompt({
-      characterBrief,
+      appearanceIntent: [characterBrief],
       referenceRole: 'composite-reference-board',
       qualityGuidance,
       canvas: DEFAULT_CONSTRAINTS
@@ -3672,7 +3673,7 @@ const generateAnchorReferences = async ({
         : characterReferenceImage
       const actionReferenceRole = actionReferenceImage.role
       const actionPromptBuild = buildActionAnchorPrompt({
-        characterBrief,
+        appearanceIntent: [characterBrief],
         referenceRole: actionReferenceRole,
         action,
         qualityGuidance,

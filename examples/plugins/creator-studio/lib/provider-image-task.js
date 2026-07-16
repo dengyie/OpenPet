@@ -3,6 +3,7 @@ const STAGES = new Set(['identity', 'start', 'peak', 'final', 'repair'])
 const REFERENCE_TYPES = new Set(['single-character', 'identity-comparison', 'identity-and-motion'])
 const MAX_VISUAL_DIRECTIVE_LENGTH = 240
 const MAX_VISUAL_DIRECTIVES = 12
+const MAX_APPEARANCE_INTENT_DIRECTIVES = 6
 const MIN_CANVAS_EDGE = 64
 const MAX_CANVAS_EDGE = 4096
 
@@ -33,6 +34,27 @@ const INTERNAL_VISUAL_TEXT = /\b(?:openpet|provider|backend|run[-_ ]?id|action[-
 const SECRET_LIKE_TEXT = /\b(?:sk-[A-Za-z0-9_-]+|bearer\s+[A-Za-z0-9._~-]+|[A-Za-z0-9_-]*token[A-Za-z0-9_-]*\s*[:=]\s*\S+)\b/gi
 const HOST_PATH_TEXT = /(?:\/Users|\/var|\/tmp|\/private|\/Volumes)\/[^\s,，。)]+/g
 const URL_TEXT = /https?:\/\/\S+/gi
+const FILE_URI_TEXT = /\bfile:\/{2,3}\S+/gi
+const TRAVERSAL_TEXT = /(?:^|\s)(?:\.\.[/\\])+\S*/g
+const WINDOWS_PATH_TEXT = /\b[A-Za-z]:[\\/]\S+/g
+const UNC_PATH_TEXT = /\\\\[^\\/\s]+[\\/]\S+/g
+const PROJECT_RELATIVE_PATH_TEXT = /\b(?:runs|inputs|outputs|assets|cat_anime)[/\\][^\s,，。)]+/gi
+const POSIX_ABSOLUTE_PATH_TEXT = /(?:^|\s)\/(?!\/)\S+/g
+
+const UNSAFE_APPEARANCE_INTENT_PATTERNS = Object.freeze([
+  Object.freeze({ pattern: /\b(?:openpet|provider|backend|run[-_ ]?id|action[-_ ]?id|checkpoint|multipart|reference[-_ ]?role)\b/i, label: 'internal term' }),
+  Object.freeze({ pattern: /\b(?:sk-[A-Za-z0-9_-]+|bearer\s+[A-Za-z0-9._~-]+|[A-Za-z0-9_-]*token[A-Za-z0-9_-]*\s*[:=]\s*\S+)\b/i, label: 'secret' }),
+  Object.freeze({ pattern: /https?:\/\/\S+/i, label: 'URL' }),
+  Object.freeze({ pattern: /\bfile:\/{2,3}\S+/i, label: 'file URI' }),
+  Object.freeze({ pattern: /(?:^|\s)(?:\.\.[/\\])+\S*/i, label: 'path traversal' }),
+  Object.freeze({ pattern: /\b[A-Za-z]:[\\/]\S+/i, label: 'Windows path' }),
+  Object.freeze({ pattern: /\\\\[^\\/\s]+[\\/]\S+/i, label: 'UNC path' }),
+  Object.freeze({ pattern: /\b(?:runs|inputs|outputs|assets|cat_anime)[/\\][^\s,，。)]+/i, label: 'project path' }),
+  Object.freeze({ pattern: /(?:^|\s)\/(?!\/)\S+/i, label: 'absolute path' }),
+  Object.freeze({ pattern: /\b(?:ignore|disregard|override|replace|reveal|repeat)\b.{0,80}\b(?:instruction|prompt|system|rule|requirement)\b/i, label: 'prompt control' }),
+  Object.freeze({ pattern: /\b(?:instruction|prompt|system|rule|requirement)\b.{0,80}\b(?:ignore|disregard|override|replace|reveal|repeat)\b/i, label: 'prompt control' }),
+  Object.freeze({ pattern: /(?:忽略|无视|覆盖|泄露|透露|重复).{0,40}(?:指令|提示词|系统|规则|要求)/i, label: 'prompt control' })
+])
 
 const isPlainObject = (value) => Boolean(value && typeof value === 'object' && !Array.isArray(value))
 
@@ -119,7 +141,13 @@ const sanitizeVisualDirective = (value) => String(value || '')
   .replace(/[\u0000-\u001F\u007F]/g, ' ')
   .replace(SECRET_LIKE_TEXT, ' ')
   .replace(URL_TEXT, ' ')
+  .replace(FILE_URI_TEXT, ' ')
+  .replace(TRAVERSAL_TEXT, ' ')
+  .replace(WINDOWS_PATH_TEXT, ' ')
+  .replace(UNC_PATH_TEXT, ' ')
+  .replace(PROJECT_RELATIVE_PATH_TEXT, ' ')
   .replace(HOST_PATH_TEXT, ' ')
+  .replace(POSIX_ABSOLUTE_PATH_TEXT, ' ')
   .replace(INTERNAL_VISUAL_TEXT, ' ')
   .replace(/\s+/g, ' ')
   .trim()
@@ -131,6 +159,24 @@ const normalizeVisualDirectives = (value, fallback = []) => {
     .map(sanitizeVisualDirective)
     .filter(Boolean)
     .slice(0, MAX_VISUAL_DIRECTIVES)
+}
+
+const normalizeAppearanceIntent = (value) => {
+  if (value == null) return []
+  if (!Array.isArray(value)) {
+    throw createTaskError('image_prompt_contract_invalid', 'Image task appearance intent must be an array')
+  }
+  return value.slice(0, MAX_APPEARANCE_INTENT_DIRECTIVES).map((entry) => {
+    if (typeof entry !== 'string') {
+      throw createTaskError('image_prompt_contract_invalid', 'Image task appearance intent must contain text')
+    }
+    const raw = entry.trim()
+    const unsafe = UNSAFE_APPEARANCE_INTENT_PATTERNS.find(({ pattern }) => pattern.test(raw))
+    if (unsafe) {
+      throw createTaskError('image_prompt_contract_invalid', `Image task appearance intent contains forbidden ${unsafe.label}`)
+    }
+    return sanitizeVisualDirective(raw)
+  }).filter(Boolean)
 }
 
 const resolveReferenceInterpretation = (referenceRole = '') => {
@@ -274,6 +320,7 @@ const createProviderImageTask = (input = {}) => {
       'subject',
       'action',
       'styleLocks',
+      'appearanceIntent',
       'strategyId',
       'requestedChanges'
     ]),
@@ -308,7 +355,7 @@ const createProviderImageTask = (input = {}) => {
     throw createTaskError('image_prompt_contract_invalid', 'Image task strategy is invalid')
   }
   return deepFreeze({
-    version: 1,
+    version: 2,
     taskType,
     stage,
     canvas,
@@ -320,6 +367,7 @@ const createProviderImageTask = (input = {}) => {
     subject: normalizeSubject(input.subject || DEFAULT_FULL_BODY_SUBJECT),
     action,
     styleLocks: normalizeVisualDirectives(input.styleLocks, DEFAULT_STYLE_LOCKS),
+    appearanceIntent: normalizeAppearanceIntent(input.appearanceIntent),
     strategyId,
     requestedChanges: normalizeVisualDirectives(input.requestedChanges)
   })
@@ -329,6 +377,7 @@ module.exports = {
   DEFAULT_FULL_BODY_SUBJECT,
   DEFAULT_STYLE_LOCKS,
   PROVIDER_CANVASES,
+  UNSAFE_APPEARANCE_INTENT_PATTERNS,
   createCanvas,
   createProviderImageTask,
   createTaskError,
