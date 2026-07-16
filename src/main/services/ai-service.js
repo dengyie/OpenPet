@@ -347,6 +347,8 @@ const getProviderResponseContentType = (response) => (
   String(response?.headers?.get?.('content-type') || '').trim().toLowerCase()
 )
 
+const PROVIDER_RESPONSE_SNIFF_CHAR_LIMIT = 8192
+
 const hasReadableStreamBody = (body) => Boolean(
   body && (
     typeof body.getReader === 'function' ||
@@ -354,11 +356,11 @@ const hasReadableStreamBody = (body) => Boolean(
   )
 )
 
-const isNonStreamJsonResponse = (response) => {
-  if (!response?.ok || typeof response.json !== 'function') return false
+const classifyProviderResponse = (response) => {
   const contentType = getProviderResponseContentType(response)
-  if (contentType.includes('text/event-stream')) return false
-  return contentType.includes('json') || !hasReadableStreamBody(response.body)
+  if (contentType.includes('text/event-stream')) return 'sse'
+  if (contentType || !hasReadableStreamBody(response?.body)) return 'json'
+  return 'sniff'
 }
 
 const createLinkedAbortSignal = (externalSignal, timeoutMs) => {
@@ -504,6 +506,83 @@ const readJsonBody = async (response, linkedSignal = null) => {
   } catch (error) {
     if (error?.name === 'AbortError' || error?.name === 'TimeoutError') throw error
     return { ok: false, body: {} }
+  }
+}
+
+const createProviderResponseParseError = () => {
+  const error = new Error('AI provider response body could not be parsed')
+  error.name = 'ProviderResponseParseError'
+  error.providerCode = 'response_parse_failed'
+  return error
+}
+
+const sniffProviderResponseBody = async (body, linkedSignal) => {
+  const iterator = readStreamTextChunks(body, linkedSignal)[Symbol.asyncIterator]()
+  const prefetchedChunks = []
+  let prefix = ''
+  let reachedEnd = false
+
+  while (prefix.length < PROVIDER_RESPONSE_SNIFF_CHAR_LIMIT) {
+    const next = await iterator.next()
+    if (next.done) {
+      reachedEnd = true
+      break
+    }
+    const chunk = String(next.value || '')
+    prefetchedChunks.push(chunk)
+    prefix += chunk
+    const firstContent = prefix.replace(/^\uFEFF/, '').trimStart()
+    if (firstContent) {
+      return {
+        mode: firstContent.startsWith('{') || firstContent.startsWith('[') ? 'json' : 'sse',
+        prefetchedChunks,
+        iterator,
+        reachedEnd
+      }
+    }
+  }
+
+  return { mode: 'sse', prefetchedChunks, iterator, reachedEnd }
+}
+
+const readSniffedJsonBody = async ({ prefetchedChunks, iterator, reachedEnd }, linkedSignal) => {
+  let text = prefetchedChunks.join('')
+  try {
+    while (!reachedEnd) {
+      const next = await raceWithLinkedAbort(iterator.next(), linkedSignal)
+      if (next.done) {
+        reachedEnd = true
+        break
+      }
+      text += String(next.value || '')
+    }
+    return JSON.parse(text.replace(/^\uFEFF/, ''))
+  } catch (error) {
+    if (error?.name === 'AbortError' || error?.name === 'TimeoutError') throw error
+    throw createProviderResponseParseError()
+  }
+}
+
+const replayPrefetchedTextChunks = async function * ({ prefetchedChunks, iterator, reachedEnd }) {
+  let exhausted = reachedEnd
+  try {
+    for (const chunk of prefetchedChunks) yield chunk
+    while (!exhausted) {
+      const next = await iterator.next()
+      if (next.done) {
+        exhausted = true
+        break
+      }
+      yield next.value
+    }
+  } finally {
+    if (!exhausted) {
+      try {
+        await iterator.return?.()
+      } catch (_) {
+        // Preserve the original stream result or failure during cleanup.
+      }
+    }
   }
 }
 
@@ -1308,8 +1387,22 @@ const createAiService = ({
         throw providerError
       }
 
-      if (isNonStreamJsonResponse(response)) {
-        const { body: data } = await readJsonBody(response, linkedSignal)
+      let responseMode = classifyProviderResponse(response)
+      let sniffedResponse = null
+      if (responseMode === 'sniff') {
+        sniffedResponse = await sniffProviderResponseBody(response.body, linkedSignal)
+        responseMode = sniffedResponse.mode
+      }
+
+      if (responseMode === 'json') {
+        let data
+        if (sniffedResponse) {
+          data = await readSniffedJsonBody(sniffedResponse, linkedSignal)
+        } else {
+          const parsed = await readJsonBody(response, linkedSignal)
+          if (!parsed.ok) throw createProviderResponseParseError()
+          data = parsed.body
+        }
         const result = parseChatResult(data)
         const nonStreamFinishReason = typeof data?.choices?.[0]?.finish_reason === 'string'
           ? data.choices[0].finish_reason
@@ -1355,7 +1448,10 @@ const createAiService = ({
         if (typeof onDelta === 'function') onDelta(event.delta)
         return false
       }
-      for await (const textChunk of readStreamTextChunks(response.body, linkedSignal)) {
+      const streamChunks = sniffedResponse
+        ? replayPrefetchedTextChunks(sniffedResponse)
+        : readStreamTextChunks(response.body, linkedSignal)
+      for await (const textChunk of streamChunks) {
         if (linkedSignal.signal.aborted) {
           if (linkedSignal.isTimeout()) throw createTimeoutError()
           const abortError = new Error('AI provider stream aborted')

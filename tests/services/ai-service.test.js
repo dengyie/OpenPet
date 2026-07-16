@@ -2151,6 +2151,227 @@ test('ai service streamComplete parses a successful non-stream JSON response wit
   assert.equal(streamTerminalLogs[0].details.fallbackReason, 'non-stream-response')
 })
 
+test('ai service streamComplete parses a real JSON response with a non-json content type', async () => {
+  let callCount = 0
+  const payload = JSON.stringify({
+    choices: [{ message: { content: 'Text response reply' }, finish_reason: 'stop' }]
+  })
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://stream.example.test/v1',
+        model: 'stream-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    fetchImpl: async () => {
+      callCount += 1
+      return new Response(payload, {
+        status: 200,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+      })
+    }
+  })
+
+  const result = await service.streamComplete({
+    requestId: 'stream-text-json-1',
+    messages: [{ role: 'user', content: 'Say hello' }]
+  })
+
+  assert.equal(callCount, 1)
+  assert.equal(result.reply, 'Text response reply')
+  assert.equal(result.streaming, false)
+  assert.equal(result.fallback, true)
+  assert.equal(result.fallbackReason, 'non-stream-response')
+})
+
+test('ai service streamComplete detects JSON from a real response without content type', async () => {
+  let callCount = 0
+  const payload = Buffer.from(JSON.stringify({
+    choices: [{ message: { content: 'Sniffed JSON reply' }, finish_reason: 'stop' }]
+  }))
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://stream.example.test/v1',
+        model: 'stream-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    fetchImpl: async () => {
+      callCount += 1
+      return new Response(payload, { status: 200 })
+    }
+  })
+
+  const result = await service.streamComplete({
+    requestId: 'stream-sniffed-json-1',
+    messages: [{ role: 'user', content: 'Say hello' }]
+  })
+
+  assert.equal(callCount, 1)
+  assert.equal(result.reply, 'Sniffed JSON reply')
+  assert.equal(result.streaming, false)
+  assert.equal(result.fallbackReason, 'non-stream-response')
+})
+
+test('ai service streamComplete preserves SSE streaming when content type is missing', async () => {
+  const payload = Buffer.from([
+    'data: {"choices":[{"delta":{"content":"Still "}}]}',
+    '',
+    'data: {"choices":[{"delta":{"content":"streaming"},"finish_reason":"stop"}]}',
+    '',
+    'data: [DONE]',
+    ''
+  ].join('\n'))
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://stream.example.test/v1',
+        model: 'stream-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    fetchImpl: async () => new Response(payload, { status: 200 })
+  })
+  const deltas = []
+
+  const result = await service.streamComplete({
+    requestId: 'stream-sniffed-sse-1',
+    messages: [{ role: 'user', content: 'Say hello' }],
+    onDelta: (delta) => deltas.push(delta)
+  })
+
+  assert.deepEqual(deltas, ['Still ', 'streaming'])
+  assert.equal(result.reply, 'Still streaming')
+  assert.equal(result.streaming, true)
+  assert.equal(result.fallback, false)
+})
+
+test('ai service streamComplete reports JSON body read failures without misclassifying them as empty replies', async () => {
+  const logs = []
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://stream.example.test/v1',
+        model: 'stream-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    appLogService: { record: (entry) => logs.push(entry) },
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => 'application/json' },
+      body: null,
+      json: async () => {
+        throw new TypeError('terminated while reading secret-provider-body')
+      }
+    })
+  })
+
+  await assert.rejects(
+    () => service.streamComplete({
+      requestId: 'stream-json-read-failed-1',
+      messages: [{ role: 'user', content: 'Say hello' }]
+    }),
+    (error) => error?.message === 'AI provider response body could not be parsed'
+  )
+
+  const streamTerminalLogs = logs.filter((entry) => (
+    ['ai.provider.stream.completed', 'ai.provider.stream.failed'].includes(entry.event)
+  ))
+  assert.equal(streamTerminalLogs.length, 1)
+  assert.equal(streamTerminalLogs[0].event, 'ai.provider.stream.failed')
+  assert.equal(streamTerminalLogs[0].details.requestId, 'stream-json-read-failed-1')
+  assert.equal(streamTerminalLogs[0].details.providerCode, 'response_parse_failed')
+  assert.equal(streamTerminalLogs[0].details.errorName, 'ProviderResponseParseError')
+  assert.equal(streamTerminalLogs[0].details.errorMessage, 'AI provider response body could not be parsed')
+  assert.doesNotMatch(JSON.stringify(streamTerminalLogs[0]), /secret-provider-body/)
+})
+
+test('ai service streamComplete times out and releases a sniffed JSON response body', async () => {
+  let readCount = 0
+  let canceled = false
+  let released = false
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://stream.example.test/v1',
+        model: 'stream-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    requestTimeoutMs: 5,
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => '' },
+      body: {
+        getReader: () => ({
+          read: async () => {
+            readCount += 1
+            if (readCount === 1) {
+              return { done: false, value: new TextEncoder().encode('{') }
+            }
+            return new Promise(() => {})
+          },
+          cancel: () => { canceled = true },
+          releaseLock: () => { released = true }
+        })
+      },
+      json: async () => ({})
+    })
+  })
+
+  await assert.rejects(
+    () => service.streamComplete({
+      requestId: 'stream-sniffed-json-timeout-1',
+      messages: [{ role: 'user', content: 'Long reply' }]
+    }),
+    (error) => error?.name === 'TimeoutError'
+  )
+
+  assert.equal(readCount, 2)
+  assert.equal(canceled, true)
+  assert.equal(released, true)
+})
+
 test('ai service streamComplete keeps timeout and caller cancellation active for non-stream JSON bodies', async () => {
   const createService = () => {
     const logs = []
