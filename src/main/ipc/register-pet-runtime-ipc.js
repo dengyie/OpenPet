@@ -14,9 +14,10 @@ const registerPetRuntimeIpc = ({
   petMovementPolicy,
   petChatWindowService,
   petBubbleChatWindowService,
-  choosePetContextMenuPoint,
-  estimatePetContextMenuSize,
-  filterManualPetActions,
+  buildPetContextMenuItems,
+  constrainPetContextMenuSize,
+  layoutPetContextMenu,
+  measurePetContextMenu,
   showContextMenuWindow,
   createPetRendererSettings,
   recordAppLog,
@@ -145,7 +146,6 @@ const registerPetRuntimeIpc = ({
     const win = browserWindowService.fromWebContents(event.sender)
     if (!win || win.isDestroyed()) return null
     const actions = petService.getAnimations()?.actions || []
-    const manualActions = filterManualPetActions(actions)
     const bounds = win.getBounds()
     const { workArea } = screenService.getDisplayMatching(bounds)
     const settings = petService.getSettings?.() || {}
@@ -154,58 +154,40 @@ const registerPetRuntimeIpc = ({
       y: Number(point.y)
     }
     const sendMenuCommand = (payload) => sendToPetWindow(() => win, IPC.PET_MENU_COMMAND, payload)
-    const template = []
-    if (manualActions.length > 0) {
-      template.push({
-        type: 'submenu',
-        label: '动作',
-        submenu: [
-          {
-            type: 'action',
-            label: '散步',
-            onSelect: () => sendMenuCommand({ command: 'walk' })
-          },
-          ...manualActions.map((action) => ({
-            type: 'action',
-            label: action.label || action.id,
-            onSelect: () => sendMenuCommand({ command: 'action', actionId: action.id })
-          }))
-        ]
-      })
-    }
-    if (petBubbleChatWindowService || petChatWindowService) {
-      template.push({
-        type: 'action',
-        label: '和宠物聊天',
-        onSelect: () => {
-          if (petBubbleChatWindowService?.open) {
-            const bubbleState = petBubbleChatWindowService.open({ source: 'pet-context-menu', focus: true })
-            if (bubbleState?.visible || bubbleState?.hasWindow) return
-          }
-          petChatWindowService?.open?.()
+    const template = buildPetContextMenuItems({
+      actions,
+      canChat: Boolean(petBubbleChatWindowService || petChatWindowService),
+      onWalk: () => sendMenuCommand({ command: 'walk' }),
+      onAction: (actionId) => sendMenuCommand({ command: 'action', actionId }),
+      onChat: () => {
+        if (petBubbleChatWindowService?.open) {
+          const bubbleState = petBubbleChatWindowService.open({ source: 'pet-context-menu', focus: true })
+          if (bubbleState?.visible || bubbleState?.hasWindow) return
         }
-      })
-    }
-    if (template.length > 0) template.push({ type: 'separator' })
-    template.push({
-      type: 'action',
-      label: '设置',
-      onSelect: () => createSettingsWindow(win)
+        petChatWindowService?.open?.()
+      },
+      onSettings: () => createSettingsWindow(win),
+      onQuit: () => requestAppQuit('pet-context-menu')
     })
-    template.push({ type: 'separator' })
-    template.push({
-      type: 'action',
-      label: '退出',
-      onSelect: () => requestAppQuit('pet-context-menu')
-    })
-    const menuSize = estimatePetContextMenuSize(template)
-    const placement = choosePetContextMenuPoint({
+    const contentSize = measurePetContextMenu(template)
+    const menuSize = constrainPetContextMenuSize({ contentSize, workArea })
+    const layout = layoutPetContextMenu({
       petBounds: bounds,
       workArea,
-      menuSize,
+      size: menuSize,
       menuPosition: settings.menuPosition,
       preferredPoint: requestedPoint
     })
+    const placement = {
+      placement: layout.placement,
+      screenPoint: layout.point,
+      windowPoint: {
+        x: layout.point.x - bounds.x,
+        y: layout.point.y - bounds.y
+      },
+      reason: layout.reason,
+      size: layout.size
+    }
     recordAppLog({
       scope: 'pet-menu',
       level: 'info',
@@ -221,11 +203,18 @@ const registerPetRuntimeIpc = ({
         workAreaY: workArea.y,
         workAreaWidth: workArea.width,
         workAreaHeight: workArea.height,
+        contentWidth: contentSize.width,
+        contentHeight: contentSize.height,
         menuWidth: menuSize.width,
         menuHeight: menuSize.height,
+        windowWidth: menuSize.width,
+        windowHeight: menuSize.height,
+        scrollable: menuSize.scrollable,
         requestedX: requestedPoint.x,
         requestedY: requestedPoint.y,
         placement: placement.placement,
+        reason: layout.reason,
+        petOverlapArea: layout.petOverlapArea,
         menuX: placement.screenPoint.x,
         menuY: placement.screenPoint.y,
         popupX: placement.windowPoint.x,
@@ -236,8 +225,7 @@ const registerPetRuntimeIpc = ({
       BrowserWindow: browserWindowService,
       parentWindow: win,
       items: template,
-      point: placement.screenPoint,
-      size: menuSize,
+      layout,
       onSubmenuOpen: (details = {}) => {
         recordAppLog({
           scope: 'pet-menu',
@@ -248,6 +236,7 @@ const registerPetRuntimeIpc = ({
           details: {
             label: String(details.label || ''),
             placement: String(details.placement || ''),
+            reason: String(details.reason || ''),
             parentMenuX: Number(details.parentMenuBounds?.x || 0),
             parentMenuY: Number(details.parentMenuBounds?.y || 0),
             parentMenuWidth: Number(details.parentMenuBounds?.width || 0),
@@ -264,13 +253,26 @@ const registerPetRuntimeIpc = ({
             submenuY: Number(details.submenuBounds?.y || 0),
             submenuWidth: Number(details.submenuBounds?.width || 0),
             submenuHeight: Number(details.submenuBounds?.height || 0),
+            contentWidth: Number(details.contentSize?.width || 0),
+            contentHeight: Number(details.contentSize?.height || 0),
+            scrollable: Boolean(details.scrollable),
+            parentOverlapArea: Number(details.parentOverlapArea || 0),
+            petOverlapArea: Number(details.petOverlapArea || 0),
             rightFits: Boolean(details.rightCandidate?.fitsHorizontally),
             rightX: Number(details.rightCandidate?.screenPoint?.x || 0),
             rightY: Number(details.rightCandidate?.screenPoint?.y || 0),
+            rightIdealX: Number(details.rightCandidate?.idealPoint?.x || 0),
+            rightIdealY: Number(details.rightCandidate?.idealPoint?.y || 0),
+            rightOverflowArea: Number(details.rightCandidate?.overflowArea || 0),
+            rightParentOverlapArea: Number(details.rightCandidate?.parentOverlapArea || 0),
             rightOverlapArea: Number(details.rightCandidate?.overlapArea || 0),
             leftFits: Boolean(details.leftCandidate?.fitsHorizontally),
             leftX: Number(details.leftCandidate?.screenPoint?.x || 0),
             leftY: Number(details.leftCandidate?.screenPoint?.y || 0),
+            leftIdealX: Number(details.leftCandidate?.idealPoint?.x || 0),
+            leftIdealY: Number(details.leftCandidate?.idealPoint?.y || 0),
+            leftOverflowArea: Number(details.leftCandidate?.overflowArea || 0),
+            leftParentOverlapArea: Number(details.leftCandidate?.parentOverlapArea || 0),
             leftOverlapArea: Number(details.leftCandidate?.overlapArea || 0)
           }
         })

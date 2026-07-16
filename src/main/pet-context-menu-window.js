@@ -1,12 +1,10 @@
 const electron = require('electron')
 const {
-  choosePetContextSubmenuPoint,
-  estimatePetContextMenuSize
-} = require('./pet-context-menu')
-
-const MENU_INNER_PADDING = 6
-const MENU_ROW_HEIGHT = 30
-const MENU_DIVIDER_HEIGHT = 15
+  MENU_METRICS,
+  constrainPetContextMenuSize,
+  layoutPetContextSubmenu,
+  measurePetContextMenu
+} = require('./pet-context-menu-layout')
 
 const escapeHtml = (value) => String(value ?? '')
   .replaceAll('&', '&amp;')
@@ -15,12 +13,12 @@ const escapeHtml = (value) => String(value ?? '')
   .replaceAll('"', '&quot;')
   .replaceAll("'", '&#39;')
 
-const createMenuHtml = (items) => {
+const createMenuHtml = (items, { scrollable = false } = {}) => {
   const body = items.map((item, index) => {
     if (item.type === 'separator') return '<div class="separator" role="separator"></div>'
     return [
       `<button type="button" data-index="${index}" data-item-type="${escapeHtml(item.type || 'action')}" role="menuitem">`,
-      `<span>${escapeHtml(item.label)}</span>`,
+      `<span class="label">${escapeHtml(item.label)}</span>`,
       item.type === 'submenu' ? '<span class="submenu-arrow" aria-hidden="true">›</span>' : '',
       '</button>'
     ].join('')
@@ -34,30 +32,32 @@ const createMenuHtml = (items) => {
     * { box-sizing: border-box; }
     html, body {
       width: 100%;
-      min-height: 100%;
+      height: 100%;
       margin: 0;
       overflow: hidden;
       background: transparent;
       font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
     }
     .menu {
-      min-width: 112px;
-      max-width: 220px;
+      width: 100%;
+      height: 100%;
       margin: 0;
-      padding: 6px;
+      padding: ${MENU_METRICS.padding}px;
+      overflow-x: hidden;
+      overflow-y: ${scrollable ? 'auto' : 'hidden'};
       border-radius: 12px;
-      background: rgba(255, 255, 255, 0.96);
-      box-shadow:
-        inset 0 0 0 1px rgba(15, 23, 42, 0.13),
-        0 18px 44px rgba(15, 23, 42, 0.2);
+      background: rgba(255, 255, 255, 0.97);
+      box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.13);
       color: #172033;
+      scrollbar-width: thin;
     }
     button {
       display: flex;
       align-items: center;
       justify-content: space-between;
       width: 100%;
-      min-height: 30px;
+      height: ${MENU_METRICS.rowHeight}px;
+      min-height: ${MENU_METRICS.rowHeight}px;
       padding: 0 12px;
       border: 0;
       border-radius: 8px;
@@ -69,7 +69,13 @@ const createMenuHtml = (items) => {
       cursor: default;
       white-space: nowrap;
     }
+    .label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
     .submenu-arrow {
+      flex: none;
       margin-left: 12px;
       color: rgba(15, 23, 42, 0.48);
       font-size: 12px;
@@ -80,8 +86,8 @@ const createMenuHtml = (items) => {
       color: #123d91;
     }
     .separator {
-      height: 1px;
-      margin: 3px 4px;
+      height: ${MENU_METRICS.separatorHeight}px;
+      margin: ${MENU_METRICS.separatorMargin}px 4px;
       background: rgba(15, 23, 42, 0.12);
     }
   </style>
@@ -91,7 +97,10 @@ const createMenuHtml = (items) => {
   <script>
     document.addEventListener('click', (event) => {
       const button = event.target.closest('button[data-index]')
-      if (!button) return
+      if (!button) {
+        location.href = 'openpet-menu://close'
+        return
+      }
       location.href = 'openpet-menu://select/' + encodeURIComponent(button.dataset.index)
     })
     document.addEventListener('keydown', (event) => {
@@ -103,9 +112,11 @@ const createMenuHtml = (items) => {
 }
 
 const getMenuItemOffsetTop = (items, index) => {
-  let offset = MENU_INNER_PADDING
+  let offset = MENU_METRICS.padding
   for (let cursor = 0; cursor < index; cursor += 1) {
-    offset += items[cursor]?.type === 'separator' ? MENU_DIVIDER_HEIGHT : MENU_ROW_HEIGHT
+    offset += items[cursor]?.type === 'separator'
+      ? MENU_METRICS.separatorBlockHeight
+      : MENU_METRICS.rowHeight
   }
   return offset
 }
@@ -120,79 +131,128 @@ const getWindowBounds = (menuWindow) => {
   }
 }
 
-const clearSessionReferences = (session) => {
-  const hostWindow = session.hostWindow
-  if (!hostWindow) return
-  if (!session.rootMenuWindow && hostWindow.contextMenuWindow) hostWindow.contextMenuWindow = null
-  if (!session.rootMenuWindow && !session.submenuWindow && hostWindow.contextMenuSession === session) {
-    hostWindow.contextMenuSession = null
-  }
-}
+const isLiveWindow = (menuWindow) => Boolean(menuWindow && !menuWindow.isDestroyed?.())
 
 const closeMenuWindow = (menuWindow) => {
-  if (!menuWindow || menuWindow.isDestroyed?.()) return
-  menuWindow.close()
+  if (isLiveWindow(menuWindow)) menuWindow.close()
 }
 
-const createMenuSession = ({ BrowserWindow, hostWindow, onSelect, onSubmenuOpen = null }) => {
+const createMenuSession = ({
+  BrowserWindow,
+  hostWindow,
+  onSelect,
+  onSubmenuOpen,
+  screenService,
+  scheduleTask,
+  cancelTask
+}) => {
+  const closeFromHost = () => session.closeAll()
   const session = {
     BrowserWindow,
     hostWindow,
     onSelect,
     onSubmenuOpen,
+    screenService,
+    scheduleTask,
+    cancelTask,
     rootMenuWindow: null,
     submenuWindow: null,
-    suppressBlurWindow: null,
-    closeAll() {
-      const rootMenuWindow = session.rootMenuWindow
-      const submenuWindow = session.submenuWindow
-      session.rootMenuWindow = null
-      session.submenuWindow = null
-      session.suppressBlurWindow = null
-      clearSessionReferences(session)
-      closeMenuWindow(submenuWindow)
-      closeMenuWindow(rootMenuWindow)
+    submenuKey: null,
+    dismissTask: null,
+    closing: false,
+    cancelPendingDismiss() {
+      if (session.dismissTask == null) return
+      session.cancelTask(session.dismissTask)
+      session.dismissTask = null
+    },
+    isMenuFocused() {
+      return [session.rootMenuWindow, session.submenuWindow]
+        .some((menuWindow) => isLiveWindow(menuWindow) && menuWindow.isFocused?.())
+    },
+    scheduleDismissIfUnfocused() {
+      session.cancelPendingDismiss()
+      session.dismissTask = session.scheduleTask(() => {
+        session.dismissTask = null
+        if (!session.isMenuFocused()) session.closeAll()
+      })
+    },
+    clearHostReferences() {
+      if (!hostWindow) return
+      if (hostWindow.contextMenuWindow && !session.rootMenuWindow) hostWindow.contextMenuWindow = null
+      if (hostWindow.contextMenuSession === session && !session.rootMenuWindow && !session.submenuWindow) {
+        hostWindow.contextMenuSession = null
+      }
+    },
+    detachHostListeners() {
+      hostWindow?.removeListener?.('move', closeFromHost)
+      hostWindow?.removeListener?.('closed', closeFromHost)
+    },
+    handleWindowClosed(menuWindow) {
+      if (session.closing) return
+      if (session.submenuWindow === menuWindow) {
+        session.submenuWindow = null
+        session.submenuKey = null
+      }
+      if (session.rootMenuWindow === menuWindow) {
+        session.rootMenuWindow = null
+        session.closeSubmenu()
+        session.detachHostListeners()
+      }
+      session.clearHostReferences()
     },
     closeSubmenu() {
       const submenuWindow = session.submenuWindow
       session.submenuWindow = null
+      session.submenuKey = null
       closeMenuWindow(submenuWindow)
-      clearSessionReferences(session)
+      session.clearHostReferences()
+    },
+    closeAll() {
+      if (session.closing) return
+      session.closing = true
+      session.cancelPendingDismiss()
+      const rootMenuWindow = session.rootMenuWindow
+      const submenuWindow = session.submenuWindow
+      session.rootMenuWindow = null
+      session.submenuWindow = null
+      session.submenuKey = null
+      session.detachHostListeners()
+      session.clearHostReferences()
+      closeMenuWindow(submenuWindow)
+      closeMenuWindow(rootMenuWindow)
+      session.closing = false
     }
   }
+
+  hostWindow?.once?.('move', closeFromHost)
+  hostWindow?.once?.('closed', closeFromHost)
   if (hostWindow) hostWindow.contextMenuSession = session
   return session
 }
 
-const openMenuWindow = ({
-  BrowserWindow,
-  session,
-  parentWindow,
-  parentMenuWindow = null,
-  items,
-  point,
-  size
-}) => {
-  let closed = false
-  let menuWindow = null
-  const removeParentListeners = () => {
-    parentWindow?.removeListener?.('move', closeMenu)
-    parentWindow?.removeListener?.('closed', closeMenu)
-  }
-  const closeMenu = () => {
-    if (closed) return
-    closed = true
-    removeParentListeners()
-    if (session.submenuWindow === menuWindow) session.submenuWindow = null
-    if (session.rootMenuWindow === menuWindow) session.rootMenuWindow = null
-    clearSessionReferences(session)
-    if (!menuWindow.isDestroyed()) menuWindow.close()
-  }
-  menuWindow = new BrowserWindow({
-    x: Math.round(point.x),
-    y: Math.round(point.y),
-    width: Math.round(size.width),
-    height: Math.round(size.height),
+const createSubmenuCandidateDiagnostics = (candidate, workArea, size) => ({
+  placement: candidate.placement,
+  screenPoint: candidate.point,
+  idealPoint: candidate.idealPoint,
+  overlapArea: candidate.petOverlapArea,
+  petOverlapArea: candidate.petOverlapArea,
+  parentOverlapArea: candidate.parentOverlapArea,
+  overflowArea: candidate.overflowArea,
+  idealOverflowArea: candidate.idealOverflowArea,
+  fitsIdeal: candidate.fitsIdeal,
+  fitsHorizontally: (
+    candidate.idealPoint.x >= workArea.x + MENU_METRICS.screenMargin
+    && candidate.idealPoint.x + size.width <= workArea.x + workArea.width - MENU_METRICS.screenMargin
+  )
+})
+
+const openMenuWindow = ({ session, items, layout, submenuKey = null }) => {
+  const parentWindow = session.hostWindow
+  const menuWindow = new session.BrowserWindow({
+    x: Math.round(layout.point.x),
+    y: Math.round(layout.point.y),
+    width: Math.round(layout.size.width),
+    height: Math.round(layout.size.height),
     frame: false,
     transparent: true,
     resizable: false,
@@ -200,7 +260,7 @@ const openMenuWindow = ({
     show: false,
     alwaysOnTop: true,
     skipTaskbar: true,
-    hasShadow: false,
+    hasShadow: true,
     backgroundColor: '#00000000',
     parent: parentWindow,
     webPreferences: {
@@ -209,8 +269,10 @@ const openMenuWindow = ({
       sandbox: true
     }
   })
-  if (parentMenuWindow) {
+
+  if (submenuKey) {
     session.submenuWindow = menuWindow
+    session.submenuKey = submenuKey
   } else {
     session.rootMenuWindow = menuWindow
     if (parentWindow) parentWindow.contextMenuWindow = menuWindow
@@ -219,80 +281,88 @@ const openMenuWindow = ({
   menuWindow.webContents.on('will-navigate', (event, url) => {
     event.preventDefault()
     if (!url.startsWith('openpet-menu://')) return
-    if (url.startsWith('openpet-menu://select/')) {
-      const rawIndex = decodeURIComponent(url.slice('openpet-menu://select/'.length))
-      const item = items[Number(rawIndex)]
-      if (item?.type === 'submenu' && Array.isArray(item.submenu) && item.submenu.length > 0) {
-        session.closeSubmenu()
-        session.suppressBlurWindow = menuWindow
-        const parentMenuBounds = getWindowBounds(menuWindow)
-        const submenuSize = estimatePetContextMenuSize(item.submenu)
-        const { workArea } = electron.screen?.getDisplayMatching?.(parentMenuBounds) || {
-          workArea: {
-            x: 0,
-            y: 0,
-            width: parentMenuBounds.x + parentMenuBounds.width + submenuSize.width + 64,
-            height: Math.max(parentMenuBounds.y + parentMenuBounds.height, submenuSize.height) + 64
-          }
-        }
-        const petBounds = getWindowBounds(parentWindow)
-        const submenuPlacement = choosePetContextSubmenuPoint({
-          parentMenuBounds,
-          workArea,
-          submenuSize,
-          petBounds,
-          anchorOffsetTop: getMenuItemOffsetTop(items, Number(rawIndex)),
-          anchorHeight: MENU_ROW_HEIGHT
-        })
-        session.onSubmenuOpen?.({
-          label: item.label || '',
-          placement: submenuPlacement.placement,
-          parentMenuBounds,
-          petBounds,
-          workArea,
-          submenuBounds: {
-            x: submenuPlacement.screenPoint.x,
-            y: submenuPlacement.screenPoint.y,
-            width: submenuSize.width,
-            height: submenuSize.height
-          },
-          rightCandidate: submenuPlacement.rightCandidate,
-          leftCandidate: submenuPlacement.leftCandidate
-        })
-        openMenuWindow({
-          BrowserWindow,
-          session,
-          parentWindow,
-          parentMenuWindow: menuWindow,
-          items: item.submenu,
-          point: submenuPlacement.screenPoint,
-          size: submenuSize
-        })
+    if (!url.startsWith('openpet-menu://select/')) {
+      session.closeAll()
+      return
+    }
+
+    const rawIndex = decodeURIComponent(url.slice('openpet-menu://select/'.length))
+    const itemIndex = Number(rawIndex)
+    const item = items[itemIndex]
+    if (item?.type === 'submenu' && Array.isArray(item.submenu) && item.submenu.length > 0) {
+      const nextSubmenuKey = item.id || `submenu:${itemIndex}`
+      if (isLiveWindow(session.submenuWindow) && session.submenuKey === nextSubmenuKey) {
+        session.cancelPendingDismiss()
+        session.submenuWindow.focus?.()
         return
       }
-      session.closeAll()
-      if (item) session.onSelect?.(item)
+
+      session.closeSubmenu()
+      session.cancelPendingDismiss()
+      const parentMenuBounds = getWindowBounds(menuWindow)
+      const contentSize = measurePetContextMenu(item.submenu)
+      const { workArea } = session.screenService?.getDisplayMatching?.(parentMenuBounds) || {
+        workArea: {
+          x: 0,
+          y: 0,
+          width: parentMenuBounds.x + parentMenuBounds.width + contentSize.width + 64,
+          height: Math.max(parentMenuBounds.y + parentMenuBounds.height, contentSize.height) + 64
+        }
+      }
+      const size = constrainPetContextMenuSize({ contentSize, workArea })
+      const petBounds = getWindowBounds(parentWindow)
+      const submenuLayout = layoutPetContextSubmenu({
+        parentMenuBounds,
+        workArea,
+        size,
+        petBounds,
+        anchorOffsetTop: getMenuItemOffsetTop(items, itemIndex),
+        anchorHeight: MENU_METRICS.rowHeight
+      })
+      const rightCandidate = submenuLayout.candidates.find((candidate) => candidate.placement === 'right')
+      const leftCandidate = submenuLayout.candidates.find((candidate) => candidate.placement === 'left')
+
+      session.onSubmenuOpen?.({
+        label: item.label || '',
+        placement: submenuLayout.placement,
+        reason: submenuLayout.reason,
+        parentMenuBounds,
+        petBounds,
+        workArea,
+        contentSize,
+        scrollable: size.scrollable,
+        submenuBounds: {
+          x: submenuLayout.point.x,
+          y: submenuLayout.point.y,
+          width: size.width,
+          height: size.height
+        },
+        parentOverlapArea: submenuLayout.parentOverlapArea,
+        petOverlapArea: submenuLayout.petOverlapArea,
+        rightCandidate: createSubmenuCandidateDiagnostics(rightCandidate, workArea, size),
+        leftCandidate: createSubmenuCandidateDiagnostics(leftCandidate, workArea, size)
+      })
+      openMenuWindow({
+        session,
+        items: item.submenu,
+        layout: submenuLayout,
+        submenuKey: nextSubmenuKey
+      })
       return
     }
+
     session.closeAll()
+    if (item) session.onSelect?.(item)
   })
-  menuWindow.on('blur', () => {
-    if (session.suppressBlurWindow === menuWindow) {
-      session.suppressBlurWindow = null
-      return
-    }
-    session.closeAll()
-  })
-  menuWindow.once('closed', closeMenu)
-  parentWindow?.once?.('move', closeMenu)
-  parentWindow?.once?.('closed', closeMenu)
+  menuWindow.on('blur', () => session.scheduleDismissIfUnfocused())
+  menuWindow.once('closed', () => session.handleWindowClosed(menuWindow))
   menuWindow.once('ready-to-show', () => {
     if (!menuWindow.isDestroyed()) {
       menuWindow.show()
       menuWindow.focus()
     }
   })
-  menuWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(createMenuHtml(items))}`)
+  menuWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(createMenuHtml(items, layout.size))}`)
 
   return menuWindow
 }
@@ -301,20 +371,35 @@ const showPetContextMenuWindow = ({
   BrowserWindow,
   parentWindow,
   items,
+  layout = null,
   point,
   size,
   onSelect,
-  onSubmenuOpen = null
+  onSubmenuOpen = null,
+  screenService = electron.screen,
+  scheduleTask = setImmediate,
+  cancelTask = clearImmediate
 }) => {
-  const session = createMenuSession({ BrowserWindow, hostWindow: parentWindow, onSelect, onSubmenuOpen })
-  return openMenuWindow({
-    BrowserWindow,
-    session,
-    parentWindow,
-    items,
+  parentWindow?.contextMenuSession?.closeAll?.()
+  const rootLayout = layout || {
     point,
-    size
+    size: {
+      width: size.width,
+      height: size.height,
+      contentHeight: size.contentHeight ?? size.height,
+      scrollable: Boolean(size.scrollable)
+    }
+  }
+  const session = createMenuSession({
+    BrowserWindow,
+    hostWindow: parentWindow,
+    onSelect,
+    onSubmenuOpen,
+    screenService,
+    scheduleTask,
+    cancelTask
   })
+  return openMenuWindow({ session, items, layout: rootLayout })
 }
 
 module.exports = {

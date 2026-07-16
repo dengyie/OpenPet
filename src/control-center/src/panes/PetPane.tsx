@@ -165,7 +165,7 @@ export function PetPane({
           />
         </div>
         <SegmentedControl
-          label="菜单位置"
+          label="一级菜单位置"
           value={settings.menuPosition}
           options={menuPositionOptions}
           onChange={(menuPosition) => onChange({ menuPosition: menuPosition as ControlCenterSettings['menuPosition'] })}

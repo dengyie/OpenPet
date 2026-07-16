@@ -322,7 +322,7 @@ test.describe('Control Center smoke', () => {
     await expect(page.getByRole('group', { name: '散步速度' }).getByRole('button', { name: '快' })).toHaveClass(/active/)
 
     await page.getByRole('button', { name: '上方' }).click()
-    await expect(page.getByRole('group', { name: '菜单位置' }).getByRole('button', { name: '上方' })).toHaveClass(/active/)
+    await expect(page.getByRole('group', { name: '一级菜单位置' }).getByRole('button', { name: '上方' })).toHaveClass(/active/)
 
     await page.getByRole('button', { name: 'About' }).click()
     await page.getByRole('button', { name: '检查更新' }).click()
@@ -797,7 +797,7 @@ test.describe('Control Center smoke', () => {
     await page.getByRole('button', { name: '还原' }).click()
     await expect(scale).toHaveValue('135')
     await expect(page.getByRole('group', { name: '散步速度' }).getByRole('button', { name: '快' })).toHaveClass(/active/)
-    await expect(page.getByRole('group', { name: '菜单位置' }).getByRole('button', { name: '左侧' })).toHaveClass(/active/)
+    await expect(page.getByRole('group', { name: '一级菜单位置' }).getByRole('button', { name: '左侧' })).toHaveClass(/active/)
     await expect(page.getByRole('switch', { name: 'Enable pet bubble chat popup' })).toHaveAttribute('aria-checked', 'false')
   })
 

@@ -146,6 +146,7 @@ const createRequiredServices = (overrides = {}) => ({
 test('pet context menu opens a positioned menu window and sends action commands back', async () => {
   const ipcMain = createIpcMainStub()
   const sentMessages = []
+  const logs = []
   const petWindow = {
     isDestroyed: () => false,
     getBounds: () => ({ x: 720, y: 300, width: 150, height: 150 }),
@@ -179,6 +180,7 @@ test('pet context menu opens a positioned menu window and sends action commands 
     ...createRequiredServices(),
     getPetWindow: () => petWindow,
     ipcMainService: ipcMain,
+    appLogService: { record: (entry) => logs.push(entry) },
     showContextMenuWindow: (request) => {
       menuWindowRequest = request
     }
@@ -191,16 +193,29 @@ test('pet context menu opens a positioned menu window and sends action commands 
   assert.equal(placement.placement, 'above')
   assert.equal(popupOptions, null)
   const template = menuWindowRequest.items
+  assert.equal(template[0].id, 'actions')
   assert.equal(template[0].type, 'submenu')
   assert.equal(template[0].label, '动作')
   assert.equal(template.some((item) => item.label === '待机'), false)
   assert.equal(template.some((item) => item.label === '挥手'), false)
   assert.equal(template.some((item) => item.label === '散步'), false)
   assert.deepEqual(template[0].submenu.map((item) => item.label), ['散步', '挥手'])
-  assert.deepEqual(menuWindowRequest.point, placement.screenPoint)
-  assert.deepEqual(menuWindowRequest.size, { width: 112, height: 146 })
+  assert.deepEqual(menuWindowRequest.layout.point, placement.screenPoint)
+  assert.deepEqual(menuWindowRequest.layout.size, {
+    width: 112,
+    height: 116,
+    contentHeight: 116,
+    scrollable: false
+  })
   assert.equal(menuWindowRequest.parentWindow, petWindow)
   assert.equal(menuWindowRequest.BrowserWindow, browserWindowService)
+
+  const popupLog = logs.find((entry) => entry.event === 'pet.menu.popup')
+  assert.equal(popupLog.details.contentHeight, 116)
+  assert.equal(popupLog.details.windowHeight, 116)
+  assert.equal(popupLog.details.scrollable, false)
+  assert.equal(popupLog.details.reason, 'preferred-placement')
+  assert.equal(popupLog.details.petOverlapArea, 0)
 
   menuWindowRequest.onSelect(template[0].submenu[1])
 
@@ -314,7 +329,7 @@ test('pet context menu keeps only the primary chat entry when bubble chat is ava
   assert.equal(menuWindowRequest.items.some((item) => item.label === '打开扩展聊天面板'), false)
   assert.ok(actionItem)
   assert.deepEqual(actionItem.submenu.map((item) => item.label), ['散步', '挥手'])
-  assert.equal(menuWindowRequest.size.height, 176)
+  assert.equal(menuWindowRequest.layout.size.height, 146)
 
   menuWindowRequest.onSelect(chatItem)
 
@@ -504,20 +519,33 @@ test('pet context menu records submenu placement diagnostics when the menu windo
   menuWindowRequest.onSubmenuOpen({
     label: '动作',
     placement: 'left',
+    reason: 'avoids-pet',
     parentMenuBounds: { x: 568, y: 68, width: 112, height: 176 },
     petBounds: { x: 720, y: 300, width: 150, height: 150 },
     workArea: { x: 0, y: 0, width: 900, height: 700 },
+    contentSize: { width: 112, height: 72 },
+    scrollable: false,
     submenuBounds: { x: 456, y: 74, width: 112, height: 56 },
+    parentOverlapArea: 0,
+    petOverlapArea: 0,
     rightCandidate: {
       placement: 'right',
       screenPoint: { x: 680, y: 74 },
+      idealPoint: { x: 680, y: 74 },
       overlapArea: 1800,
+      petOverlapArea: 1800,
+      parentOverlapArea: 0,
+      overflowArea: 0,
       fitsHorizontally: true
     },
     leftCandidate: {
       placement: 'left',
       screenPoint: { x: 456, y: 74 },
+      idealPoint: { x: 456, y: 74 },
       overlapArea: 0,
+      petOverlapArea: 0,
+      parentOverlapArea: 0,
+      overflowArea: 0,
       fitsHorizontally: true
     }
   })
@@ -531,6 +559,7 @@ test('pet context menu records submenu placement diagnostics when the menu windo
     details: {
       label: '动作',
       placement: 'left',
+      reason: 'avoids-pet',
       parentMenuX: 568,
       parentMenuY: 68,
       parentMenuWidth: 112,
@@ -547,13 +576,26 @@ test('pet context menu records submenu placement diagnostics when the menu windo
       submenuY: 74,
       submenuWidth: 112,
       submenuHeight: 56,
+      contentWidth: 112,
+      contentHeight: 72,
+      scrollable: false,
+      parentOverlapArea: 0,
+      petOverlapArea: 0,
       rightFits: true,
       rightX: 680,
       rightY: 74,
+      rightIdealX: 680,
+      rightIdealY: 74,
+      rightOverflowArea: 0,
+      rightParentOverlapArea: 0,
       rightOverlapArea: 1800,
       leftFits: true,
       leftX: 456,
       leftY: 74,
+      leftIdealX: 456,
+      leftIdealY: 74,
+      leftOverflowArea: 0,
+      leftParentOverlapArea: 0,
       leftOverlapArea: 0
     }
   })

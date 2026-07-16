@@ -2,7 +2,10 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { EventEmitter } = require('node:events')
 
-const { showPetContextMenuWindow } = require('../../src/main/pet-context-menu-window')
+const {
+  createMenuHtml,
+  showPetContextMenuWindow
+} = require('../../src/main/pet-context-menu-window')
 
 class FakeMenuWindow extends EventEmitter {
   constructor(options) {
@@ -46,11 +49,22 @@ class FakeMenuWindow extends EventEmitter {
   focus() {
     this.focused = true
   }
+
+  blur() {
+    this.focused = false
+    this.emit('blur')
+  }
+
+  isFocused() {
+    return this.focused
+  }
 }
 
 FakeMenuWindow.instances = []
 
-test('pet context menu window removes parent listeners when closed by blur', () => {
+const flushFocusDismissal = () => new Promise((resolve) => setImmediate(resolve))
+
+test('pet context menu window removes parent listeners when closed by blur', async () => {
   const parentWindow = new EventEmitter()
   const menuWindow = showPetContextMenuWindow({
     BrowserWindow: FakeMenuWindow,
@@ -64,7 +78,8 @@ test('pet context menu window removes parent listeners when closed by blur', () 
   assert.equal(parentWindow.listenerCount('move'), 1)
   assert.equal(parentWindow.listenerCount('closed'), 1)
 
-  menuWindow.emit('blur')
+  menuWindow.blur()
+  await flushFocusDismissal()
 
   assert.equal(menuWindow.isDestroyed(), true)
   assert.equal(parentWindow.listenerCount('move'), 0)
@@ -111,7 +126,7 @@ test('pet context menu window prevents unexpected navigation without closing', (
   assert.equal(menuWindow.isDestroyed(), false)
 })
 
-test('pet context menu window opens a submenu without closing the root menu session', () => {
+test('pet context menu window opens a submenu without closing the root menu session', async () => {
   FakeMenuWindow.instances = []
   const parentWindow = new EventEmitter()
   const menuWindow = showPetContextMenuWindow({
@@ -138,7 +153,9 @@ test('pet context menu window opens a submenu without closing the root menu sess
   assert.equal(menuWindow.isDestroyed(), false)
   assert.equal(submenuWindow.isDestroyed(), false)
 
-  menuWindow.emit('blur')
+  submenuWindow.focus()
+  menuWindow.blur()
+  await flushFocusDismissal()
 
   assert.equal(menuWindow.isDestroyed(), false)
   assert.equal(parentWindow.contextMenuWindow, menuWindow)
@@ -180,7 +197,7 @@ test('pet context menu window closes both root and submenu after selecting a sub
   assert.equal(parentWindow.contextMenuSession, null)
 })
 
-test('pet context menu window closes the full menu session when the submenu blurs', () => {
+test('pet context menu window closes the full menu session when the submenu blurs', async () => {
   FakeMenuWindow.instances = []
   const parentWindow = new EventEmitter()
   const menuWindow = showPetContextMenuWindow({
@@ -201,7 +218,8 @@ test('pet context menu window closes the full menu session when the submenu blur
   }, 'openpet-menu://select/0')
   const submenuWindow = parentWindow.contextMenuSession?.submenuWindow
 
-  submenuWindow.emit('blur')
+  submenuWindow.blur()
+  await flushFocusDismissal()
 
   assert.equal(menuWindow.isDestroyed(), true)
   assert.equal(submenuWindow.isDestroyed(), true)
@@ -268,10 +286,161 @@ test('pet context menu window reuses a single submenu window when the parent sub
 
   assert.ok(firstSubmenuWindow)
   assert.ok(secondSubmenuWindow)
-  assert.notEqual(firstSubmenuWindow, secondSubmenuWindow)
-  assert.equal(firstSubmenuWindow.isDestroyed(), true)
+  assert.equal(firstSubmenuWindow, secondSubmenuWindow)
+  assert.equal(firstSubmenuWindow.isDestroyed(), false)
   assert.equal(secondSubmenuWindow.isDestroyed(), false)
   assert.equal(FakeMenuWindow.instances.filter((window) => !window.isDestroyed()).length, 2)
+})
+
+test('pet context menu window keeps the session open when focus returns from submenu to root', async () => {
+  FakeMenuWindow.instances = []
+  const parentWindow = new EventEmitter()
+  const menuWindow = showPetContextMenuWindow({
+    BrowserWindow: FakeMenuWindow,
+    parentWindow,
+    items: [{
+      id: 'actions',
+      type: 'submenu',
+      label: '动作',
+      submenu: [{ id: 'walk', type: 'action', label: '散步', onSelect: () => {} }]
+    }],
+    point: { x: 20, y: 30 },
+    size: { width: 112, height: 42 },
+    onSelect: () => {}
+  })
+
+  menuWindow.webContents.emit('will-navigate', {
+    preventDefault: () => {}
+  }, 'openpet-menu://select/0')
+  const submenuWindow = parentWindow.contextMenuSession?.submenuWindow
+
+  submenuWindow.focus()
+  menuWindow.focus()
+  submenuWindow.blur()
+  await flushFocusDismissal()
+
+  assert.equal(menuWindow.isDestroyed(), false)
+  assert.equal(submenuWindow.isDestroyed(), false)
+})
+
+test('opening a new root menu closes the previous menu session', () => {
+  FakeMenuWindow.instances = []
+  const parentWindow = new EventEmitter()
+  const firstWindow = showPetContextMenuWindow({
+    BrowserWindow: FakeMenuWindow,
+    parentWindow,
+    items: [{ type: 'action', label: '设置' }],
+    point: { x: 20, y: 30 },
+    size: { width: 112, height: 42 },
+    onSelect: () => {}
+  })
+
+  const secondWindow = showPetContextMenuWindow({
+    BrowserWindow: FakeMenuWindow,
+    parentWindow,
+    items: [{ type: 'action', label: '退出' }],
+    point: { x: 40, y: 50 },
+    size: { width: 112, height: 42 },
+    onSelect: () => {}
+  })
+
+  assert.equal(firstWindow.isDestroyed(), true)
+  assert.equal(secondWindow.isDestroyed(), false)
+  assert.equal(parentWindow.contextMenuWindow, secondWindow)
+})
+
+test('clicking a first-level action after opening the submenu still selects it', async () => {
+  FakeMenuWindow.instances = []
+  const parentWindow = new EventEmitter()
+  const selected = []
+  const menuWindow = showPetContextMenuWindow({
+    BrowserWindow: FakeMenuWindow,
+    parentWindow,
+    items: [
+      {
+        id: 'actions',
+        type: 'submenu',
+        label: '动作',
+        submenu: [{ id: 'walk', type: 'action', label: '散步' }]
+      },
+      { id: 'settings', type: 'action', label: '设置' }
+    ],
+    point: { x: 20, y: 30 },
+    size: { width: 112, height: 72 },
+    onSelect: (item) => selected.push(item.id)
+  })
+
+  menuWindow.webContents.emit('will-navigate', {
+    preventDefault: () => {}
+  }, 'openpet-menu://select/0')
+  const submenuWindow = parentWindow.contextMenuSession?.submenuWindow
+  menuWindow.focus()
+  submenuWindow.blur()
+  menuWindow.webContents.emit('will-navigate', {
+    preventDefault: () => {}
+  }, 'openpet-menu://select/1')
+  await flushFocusDismissal()
+
+  assert.deepEqual(selected, ['settings'])
+  assert.equal(menuWindow.isDestroyed(), true)
+  assert.equal(submenuWindow.isDestroyed(), true)
+})
+
+test('long action submenus use a work-area constrained scrolling window', () => {
+  FakeMenuWindow.instances = []
+  const parentWindow = new EventEmitter()
+  parentWindow.getBounds = () => ({ x: 240, y: 120, width: 120, height: 120 })
+  const submenuDetails = []
+  const menuWindow = showPetContextMenuWindow({
+    BrowserWindow: FakeMenuWindow,
+    parentWindow,
+    screenService: {
+      getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 300 } })
+    },
+    items: [{
+      id: 'actions',
+      type: 'submenu',
+      label: '动作',
+      submenu: Array.from({ length: 30 }, (_, index) => ({
+        id: `action:${index}`,
+        type: 'action',
+        label: `动作 ${index + 1}`
+      }))
+    }],
+    point: { x: 380, y: 120 },
+    size: { width: 112, height: 42 },
+    onSelect: () => {},
+    onSubmenuOpen: (details) => submenuDetails.push(details)
+  })
+
+  menuWindow.webContents.emit('will-navigate', {
+    preventDefault: () => {}
+  }, 'openpet-menu://select/0')
+
+  const submenuWindow = parentWindow.contextMenuSession?.submenuWindow
+  assert.equal(submenuWindow.options.height, 284)
+  assert.equal(submenuDetails[0].scrollable, true)
+  assert.equal(decodeURIComponent(submenuWindow.loadedUrl).includes('overflow-y: auto'), true)
+})
+
+test('menu html uses a constrained scrolling viewport for long action lists', () => {
+  const html = createMenuHtml(
+    [{ type: 'action', label: '动作' }],
+    { scrollable: true }
+  )
+
+  assert.match(html, /overflow-y: auto/)
+  assert.match(html, /padding: 6px/)
+  assert.match(html, /min-height: 30px/)
+  assert.match(html, /height: 1px/)
+  assert.match(html, /margin: 3px 4px/)
+})
+
+test('menu html closes the session when non-item window space is clicked', () => {
+  const html = createMenuHtml([{ type: 'action', label: '设置' }], { scrollable: false })
+
+  assert.match(html, /openpet-menu:\/\/close/)
+  assert.match(html, /if \(!button\)/)
 })
 
 test('pet context menu window reports submenu placement diagnostics when a submenu opens', () => {
@@ -298,24 +467,17 @@ test('pet context menu window reports submenu placement diagnostics when a subme
   }, 'openpet-menu://select/0')
 
   assert.equal(submenuOpens.length, 1)
-  assert.deepEqual(submenuOpens[0], {
-    label: '动作',
-    placement: 'right',
-    parentMenuBounds: { x: 20, y: 30, width: 112, height: 116 },
-    petBounds: { x: 260, y: 30, width: 80, height: 80 },
-    workArea: { x: 0, y: 0, width: 308, height: 210 },
-    submenuBounds: { x: 132, y: 30, width: 112, height: 56 },
-    rightCandidate: {
-      placement: 'right',
-      screenPoint: { x: 132, y: 30 },
-      overlapArea: 0,
-      fitsHorizontally: true
-    },
-    leftCandidate: {
-      placement: 'left',
-      screenPoint: { x: 8, y: 30 },
-      overlapArea: 0,
-      fitsHorizontally: false
-    }
-  })
+  const details = submenuOpens[0]
+  assert.equal(details.label, '动作')
+  assert.equal(details.placement, 'right')
+  assert.equal(details.reason, 'right-preferred')
+  assert.equal(details.scrollable, false)
+  assert.deepEqual(details.contentSize, { width: 112, height: 42 })
+  assert.deepEqual(details.submenuBounds, { x: 132, y: 30, width: 112, height: 42 })
+  assert.equal(details.parentOverlapArea, 0)
+  assert.equal(details.petOverlapArea, 0)
+  assert.equal(details.rightCandidate.fitsHorizontally, true)
+  assert.equal(details.rightCandidate.parentOverlapArea, 0)
+  assert.equal(details.leftCandidate.fitsHorizontally, false)
+  assert.equal(details.leftCandidate.parentOverlapArea > 0, true)
 })
