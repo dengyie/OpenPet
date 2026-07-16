@@ -360,7 +360,7 @@ const classifyProviderResponse = (response) => {
   const contentType = getProviderResponseContentType(response)
   if (contentType.includes('text/event-stream')) return 'sse'
   if (contentType || !hasReadableStreamBody(response?.body)) return 'json'
-  return 'sniff'
+  return 'sse'
 }
 
 const createLinkedAbortSignal = (externalSignal, timeoutMs) => {
@@ -516,7 +516,7 @@ const createProviderResponseParseError = () => {
   return error
 }
 
-const sniffProviderResponseBody = async (body, linkedSignal) => {
+const sniffProviderResponseBody = async (body, linkedSignal, fallbackMode) => {
   const iterator = readStreamTextChunks(body, linkedSignal)[Symbol.asyncIterator]()
   const prefetchedChunks = []
   let prefix = ''
@@ -533,8 +533,11 @@ const sniffProviderResponseBody = async (body, linkedSignal) => {
     prefix += chunk
     const firstContent = prefix.replace(/^\uFEFF/, '').trimStart()
     if (firstContent) {
+      let mode = fallbackMode
+      if (firstContent.startsWith('{') || firstContent.startsWith('[')) mode = 'json'
+      else if (/^(?::|(?:data|event|id|retry)\s*:)/i.test(firstContent)) mode = 'sse'
       return {
-        mode: firstContent.startsWith('{') || firstContent.startsWith('[') ? 'json' : 'sse',
+        mode,
         prefetchedChunks,
         iterator,
         reachedEnd
@@ -542,7 +545,7 @@ const sniffProviderResponseBody = async (body, linkedSignal) => {
     }
   }
 
-  return { mode: 'sse', prefetchedChunks, iterator, reachedEnd }
+  return { mode: fallbackMode, prefetchedChunks, iterator, reachedEnd }
 }
 
 const readSniffedJsonBody = async ({ prefetchedChunks, iterator, reachedEnd }, linkedSignal) => {
@@ -1389,8 +1392,8 @@ const createAiService = ({
 
       let responseMode = classifyProviderResponse(response)
       let sniffedResponse = null
-      if (responseMode === 'sniff') {
-        sniffedResponse = await sniffProviderResponseBody(response.body, linkedSignal)
+      if (hasReadableStreamBody(response.body)) {
+        sniffedResponse = await sniffProviderResponseBody(response.body, linkedSignal, responseMode)
         responseMode = sniffedResponse.mode
       }
 

@@ -2192,6 +2192,112 @@ test('ai service streamComplete parses a real JSON response with a non-json cont
   assert.equal(result.fallbackReason, 'non-stream-response')
 })
 
+test('ai service streamComplete trusts a JSON body over an event-stream content type', async () => {
+  let callCount = 0
+  const logs = []
+  const payload = JSON.stringify({
+    choices: [{ message: { content: 'Header mismatch reply' }, finish_reason: 'stop' }]
+  })
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://stream.example.test/v1',
+        model: 'stream-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    appLogService: { record: (entry) => logs.push(entry) },
+    fetchImpl: async () => {
+      callCount += 1
+      return new Response(payload, {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' }
+      })
+    }
+  })
+
+  const result = await service.streamComplete({
+    requestId: 'stream-event-header-json-1',
+    messages: [{ role: 'user', content: 'Say hello' }],
+    onDelta: () => assert.fail('ordinary JSON must not emit SSE deltas')
+  })
+
+  assert.equal(callCount, 1)
+  assert.equal(result.reply, 'Header mismatch reply')
+  assert.equal(result.streaming, false)
+  assert.equal(result.fallback, true)
+  assert.equal(result.fallbackReason, 'non-stream-response')
+  const terminalLogs = logs.filter((entry) => (
+    ['ai.provider.stream.completed', 'ai.provider.stream.failed'].includes(entry.event)
+  ))
+  assert.equal(terminalLogs.length, 1)
+  assert.equal(terminalLogs[0].event, 'ai.provider.stream.completed')
+  assert.equal(terminalLogs[0].details.requestId, 'stream-event-header-json-1')
+})
+
+test('ai service streamComplete trusts an SSE body over a text content type', async () => {
+  let callCount = 0
+  const logs = []
+  const payload = [
+    'data: {"choices":[{"delta":{"content":"Header "}}]}',
+    '',
+    'data: {"choices":[{"delta":{"content":"mismatch stream"},"finish_reason":"stop"}]}',
+    '',
+    'data: [DONE]',
+    ''
+  ].join('\n')
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://stream.example.test/v1',
+        model: 'stream-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    appLogService: { record: (entry) => logs.push(entry) },
+    fetchImpl: async () => {
+      callCount += 1
+      return new Response(payload, {
+        status: 200,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+      })
+    }
+  })
+  const deltas = []
+
+  const result = await service.streamComplete({
+    requestId: 'stream-text-header-sse-1',
+    messages: [{ role: 'user', content: 'Say hello' }],
+    onDelta: (delta) => deltas.push(delta)
+  })
+
+  assert.equal(callCount, 1)
+  assert.deepEqual(deltas, ['Header ', 'mismatch stream'])
+  assert.equal(result.reply, 'Header mismatch stream')
+  assert.equal(result.streaming, true)
+  assert.equal(result.fallback, false)
+  const terminalLogs = logs.filter((entry) => (
+    ['ai.provider.stream.completed', 'ai.provider.stream.failed'].includes(entry.event)
+  ))
+  assert.equal(terminalLogs.length, 1)
+  assert.equal(terminalLogs[0].event, 'ai.provider.stream.completed')
+  assert.equal(terminalLogs[0].details.requestId, 'stream-text-header-sse-1')
+})
+
 test('ai service streamComplete detects JSON from a real response without content type', async () => {
   let callCount = 0
   const payload = Buffer.from(JSON.stringify({
@@ -2225,6 +2331,48 @@ test('ai service streamComplete detects JSON from a real response without conten
 
   assert.equal(callCount, 1)
   assert.equal(result.reply, 'Sniffed JSON reply')
+  assert.equal(result.streaming, false)
+  assert.equal(result.fallbackReason, 'non-stream-response')
+})
+
+test('ai service streamComplete parses JSON-only response objects without content type or body stream', async () => {
+  let callCount = 0
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://stream.example.test/v1',
+        model: 'stream-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    fetchImpl: async () => {
+      callCount += 1
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => '' },
+        body: null,
+        json: async () => ({
+          choices: [{ message: { content: 'JSON-only reply' }, finish_reason: 'stop' }]
+        })
+      }
+    }
+  })
+
+  const result = await service.streamComplete({
+    requestId: 'stream-json-only-response-1',
+    messages: [{ role: 'user', content: 'Say hello' }]
+  })
+
+  assert.equal(callCount, 1)
+  assert.equal(result.reply, 'JSON-only reply')
   assert.equal(result.streaming, false)
   assert.equal(result.fallbackReason, 'non-stream-response')
 })
