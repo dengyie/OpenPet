@@ -17,24 +17,15 @@ const normalizeHumanApproval = (value) => {
   const source = String(value.source || '').trim()
   const approvedAt = String(value.approvedAt || '').trim()
   const evidenceVersion = Number(value.evidenceVersion)
-  const hasIsoTimestamp = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(approvedAt)
-  const approvedAtMs = approvedAt.length <= 40 && hasIsoTimestamp ? Date.parse(approvedAt) : Number.NaN
   if (
     !approved ||
     !HUMAN_APPROVAL_SOURCES.has(source) ||
     evidenceVersion !== 1 ||
-    approvedAt.length > 40 ||
-    !Number.isFinite(approvedAtMs) ||
-    new Date(approvedAtMs).toISOString() !== approvedAt
+    !Number.isFinite(Date.parse(approvedAt))
   ) {
     throw createHumanApprovalError()
   }
-  return Object.freeze({
-    approved,
-    source,
-    approvedAt: new Date(approvedAtMs).toISOString(),
-    evidenceVersion
-  })
+  return Object.freeze({ approved, source, approvedAt, evidenceVersion })
 }
 
 module.exports = {

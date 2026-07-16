@@ -14,7 +14,6 @@ const CREATOR_STUDIO_CONFIRM_COMMAND_ID = 'confirm-task'
 const CREATOR_STUDIO_GENERATE_COMMAND_ID = 'run-step'
 const CREATOR_STUDIO_RETRY_ACTION_COMMAND_ID = 'retry-action'
 const CREATOR_STUDIO_RETRY_IDENTITY_COMMAND_ID = 'retry-identity'
-const CREATOR_STUDIO_APPROVE_COMMAND_ID = 'approve-run'
 const CREATOR_STUDIO_IMPORT_ACTION_COMMAND_ID = 'import-approved-action'
 const CREATOR_STUDIO_IMPORT_PET_COMMAND_ID = 'import-approved-pet'
 
@@ -789,50 +788,6 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
         normalizeText(run?.status) === 'ready_for_review' &&
         missingOfficialActionIds.length > 0
       ) {
-        const result = createWorkflowResult({
-          state: 'preview-ready',
-          code: 'preview_ready',
-          message: `角色预览已生成，但缺少官方动作行，不能自动批准或导入。请到 Creator Studio 继续处理 run ${runId}`,
-          run: createRunView({
-            state: 'preview-ready',
-            mode,
-            runId,
-            commandId: generated?.commandId || CREATOR_STUDIO_GENERATE_COMMAND_ID,
-            message: getCommandMessage(generated, 'Preview output requires official action rows before import')
-          }),
-          reference: creatorReferenceService.getReference(referenceTarget),
-          basicActions: generatedBasicActions,
-          diagnostics: getWorkflowDiagnostics()
-        })
-        recordLog({
-          level: 'info',
-          event: 'creator.workflow.preview-ready',
-          message: 'Creator workflow produced preview-only full-pet output',
-          details: {
-            requestId,
-            mode,
-            runId,
-            missingOfficialActionIds,
-            elapsedMs: Date.now() - startedAt
-          }
-        })
-        setLastRun(result.run)
-        return result
-      }
-
-      if (normalizeText(run?.status) === 'ready_for_review') {
-        const approved = await pluginService.runCommand(CREATOR_STUDIO_PLUGIN_ID, CREATOR_STUDIO_APPROVE_COMMAND_ID, { runId })
-        lastCommandResult = approved
-        run = getCreatorStudioRun(approved)
-        recordStage({ stage: 'approve', result: approved, run })
-        updateWorkflowProgress({
-          runId,
-          commandId: approved?.commandId || CREATOR_STUDIO_APPROVE_COMMAND_ID,
-          message: getCommandMessage(approved, 'Run 已批准')
-        })
-      }
-
-      if (normalizeText(run?.status) !== 'approved') {
         const result = createWorkflowResult({
           state: 'preview-ready',
           code: 'preview_ready',
