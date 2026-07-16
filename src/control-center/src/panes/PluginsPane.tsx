@@ -108,6 +108,45 @@ const formatDiff = (diff?: PermissionDiffState) => {
   return [added, removed, unchanged].filter(Boolean).join(' · ') || '无变化'
 }
 
+const getPluginManagementSummary = (plugin: PluginViewState) => {
+  const commandCount = plugin.commands?.length || plugin.entries?.commands?.length || 0
+  const setupCount = plugin.entries?.setup?.length || 0
+  const serviceCount = plugin.entries?.services?.length || 0
+  const dashboardCount = plugin.entries?.dashboards?.length || 0
+  const configCount = toConfigFields(plugin).length
+  const parts = [
+    `${(plugin.permissions || []).length} 项权限`,
+    commandCount ? `${commandCount} 个命令` : '',
+    setupCount ? `${setupCount} 个 Setup` : '',
+    serviceCount ? `${serviceCount} 个服务` : '',
+    dashboardCount ? `${dashboardCount} 个面板` : '',
+    configCount ? `${configCount} 项配置` : ''
+  ]
+  return parts.filter(Boolean)
+}
+
+const getPluginRuntimeSummary = (plugin: PluginViewState) => {
+  const services = plugin.entries?.services || []
+  if (!plugin.enabled && services.length) return `${services.length} 个服务已停止`
+  const failedCount = services.filter((service) => service.runtime?.status === 'failed').length
+  const runningCount = services.filter((service) => service.runtime?.status === 'running').length
+  const unhealthyCount = services.filter((service) => (
+    service.runtime?.status === 'running' && service.runtime?.health?.status === 'unhealthy'
+  )).length
+  if (failedCount) return `${failedCount} 个服务运行失败`
+  if (unhealthyCount) return `${unhealthyCount} 个服务异常`
+  if (runningCount) return `${runningCount} 个服务运行中`
+  if (services.length) return `${services.length} 个服务已停止`
+  return plugin.runnable ? '可运行' : '仅展示'
+}
+
+const hasPluginServiceAttention = (plugin: PluginViewState) => (
+  plugin.entries?.services?.some((service) => (
+    service.runtime?.status === 'failed' ||
+    (service.runtime?.status === 'running' && service.runtime?.health?.status === 'unhealthy')
+  )) || false
+)
+
 function PluginReviewPanel({
   review,
   installingPlugin,
@@ -168,12 +207,21 @@ function PluginReviewPanel({
 }
 
 export function PluginsPane({ plugins, logs, logsPage, filters, status, runningCommand, creatorStudioPromptDraft, runningCreatorStudioDefaultFlow, lastCommandResult, commandPayloadDrafts, runningSetup, openingDashboard, changingService, checkingServiceHealth, savingServiceHealthPolicy, savingConfig, clearingStorage, pluginReview, inspectingPlugin, githubRepositoryUrl, inspectingGithubPlugin, installingPlugin, uninstallingPlugin, onToggle, onSetNativeExecutionApproved, onInspectPluginPackage, onInspectGithubPluginRepository, onClearPluginReview, onInstallReviewedPlugin, onUninstallPlugin, onChangeConfig, onChangeCommandPayload, onChangeCreatorStudioPromptDraft, onChangeGithubRepositoryUrl, onSaveConfig, onRun, onRunCreatorStudioDefaultFlow, onRunSetup, onOpenDashboard, onStartService, onStopService, onCheckServiceHealth, onSaveServiceHealthPolicy, onChangeFilters, onPrevLogsPage, onNextLogsPage, onExportLogs, onClearLogs, onClearStorage }: PluginsPaneProps) {
+  const enabledPluginCount = plugins.filter((plugin) => plugin.enabled).length
+  const attentionPluginCount = plugins.filter((plugin) => (
+    Boolean(plugin.blockStatus?.blocked) ||
+    (plugin.enabled && (
+      (plugin.requiresNativeExecution && !plugin.nativeExecutionApproved) ||
+      hasPluginServiceAttention(plugin)
+    ))
+  )).length
+
   return (
     <section className="pane">
       <header className="pane-header">
         <div>
           <h1>Plugins</h1>
-          <p>插件安装审查、权限与官方命令</p>
+          <p>查看状态、打开常用入口，需要时再展开高级管理</p>
         </div>
         <div className="header-actions">
           <button type="button" className="primary" disabled={inspectingPlugin} onClick={onInspectPluginPackage}>
@@ -182,8 +230,29 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
         </div>
       </header>
 
-      <div className="card-stack">
-        <div className="field-row">
+      <div className="plugins-overview" aria-label="插件概览">
+        <div>
+          <strong>{plugins.length}</strong>
+          <span>已安装</span>
+        </div>
+        <div>
+          <strong>{enabledPluginCount}</strong>
+          <span>已启用</span>
+        </div>
+        <div className={attentionPluginCount ? 'attention' : ''}>
+          <strong>{attentionPluginCount}</strong>
+          <span>需要处理</span>
+        </div>
+      </div>
+
+      <details className="plugin-install-disclosure">
+        <summary>
+          <span className="plugin-disclosure-summary-copy">
+            <strong>从 GitHub 导入</strong>
+            <span>适合仓库根目录包含 plugin.json 的插件</span>
+          </span>
+        </summary>
+        <div className="plugin-install-disclosure-body">
           <label className="field-label" htmlFor="plugin-github-repository-url">GitHub repository URL</label>
           <div className="inline-form">
             <input
@@ -203,9 +272,8 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
               {inspectingGithubPlugin ? '读取中' : 'Import from GitHub'}
             </button>
           </div>
-          <p className="field-help">Only repositories with plugin.json at the repository root are supported.</p>
         </div>
-      </div>
+      </details>
 
       <PluginReviewPanel
         review={pluginReview}
@@ -217,22 +285,38 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
       <div className="plugin-list">
         {plugins.length === 0 ? (
           <div className="empty-chat">暂无插件</div>
-        ) : plugins.map((plugin) => (
-          <div className="plugin-row" key={plugin.id}>
+        ) : plugins.map((plugin) => {
+          const managementSummary = getPluginManagementSummary(plugin)
+          const blocked = Boolean(plugin.blockStatus?.blocked)
+          const needsApproval = plugin.enabled && !blocked && plugin.requiresNativeExecution && !plugin.nativeExecutionApproved
+          return (
+          <article className={blocked ? 'plugin-row blocked' : 'plugin-row'} key={plugin.id}>
+            <div className="plugin-card-header">
+              <div className="plugin-title-block">
+                <div className="plugin-title">
+                  <strong>{plugin.name}</strong>
+                  <span className="plugin-source-badge">{plugin.source}</span>
+                </div>
+                <div className="plugin-meta">
+                  <span>{plugin.id}</span>
+                  <span>v{plugin.version}</span>
+                  <span>{plugin.signatureStatus?.label || 'Signature unknown'}</span>
+                </div>
+              </div>
+              <div className="plugin-enable-control">
+                <span>{plugin.enabled ? '已启用' : '已停用'}</span>
+                <Toggle ariaLabel={`Enable ${plugin.name}`} checked={plugin.enabled} onChange={(enabled) => onToggle(plugin.id, enabled)} />
+              </div>
+            </div>
+
+            <div className="plugin-summary-strip" aria-label={`${plugin.name} 状态摘要`}>
+              <span className={plugin.enabled ? 'plugin-status-pill success' : 'plugin-status-pill'}>{plugin.enabled ? '插件已启用' : '当前停用'}</span>
+              <span className={blocked ? 'plugin-status-pill danger' : 'plugin-status-pill'}>{blocked ? '已被策略阻止' : getPluginRuntimeSummary(plugin)}</span>
+              {needsApproval ? <span className="plugin-status-pill warning">需要原生执行授权</span> : null}
+              {managementSummary.map((item) => <span className="plugin-summary-item" key={item}>{item}</span>)}
+            </div>
+
             <div className="plugin-main">
-              <div className="plugin-title">
-                <strong>{plugin.name}</strong>
-                <span>{plugin.source}</span>
-              </div>
-              <div className="plugin-meta">
-                <span>{plugin.id}</span>
-                <span>{plugin.version}</span>
-                <span>{plugin.runnable ? '可运行' : '仅展示'}</span>
-                <span>{plugin.signatureStatus?.label || 'Signature unknown'}</span>
-              </div>
-              <div className="permission-line">
-                {(plugin.permissions || []).length === 0 ? '无权限' : plugin.permissions.join(' · ')}
-              </div>
               {plugin.requiresNativeExecution ? (
                 <div className="plugin-native-execution" role="group" aria-label={`Native execution approval for ${plugin.name}`}>
                   <label className="plugin-health-policy-toggle">
@@ -247,6 +331,69 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
                   <small className="field-note">声明式插件通过 entries 在你的权限下启动系统进程，无沙箱隔离。仅在你信任该插件来源时开启。</small>
                 </div>
               ) : null}
+              {plugin.id === 'openpet.creator-studio' ? (
+                <div className="plugin-config-panel plugin-primary-workflow" aria-label="Creator Studio 默认流">
+                  <div className="plugin-config-header">
+                    <strong>生成并导入</strong>
+                    <button
+                      type="button"
+                      className="ghost"
+                      disabled={!plugin.enabled || plugin.blockStatus?.blocked || openingDashboard === `${plugin.id}:main`}
+                      onClick={() => onOpenDashboard(plugin.id, 'main')}
+                    >
+                      查看任务详情
+                    </button>
+                  </div>
+                  <label className="plugin-config-field" htmlFor="creator-studio-default-prompt">
+                    <span>Creator Studio 请求</span>
+                    <textarea
+                      id="creator-studio-default-prompt"
+                      className="text-input"
+                      value={creatorStudioPromptDraft}
+                      placeholder="描述你想新增或生成的动作 / 宠物效果"
+                      onChange={(event) => onChangeCreatorStudioPromptDraft(event.target.value)}
+                    />
+                  </label>
+                  <div className="plugin-commands">
+                    <button
+                      type="button"
+                      className="primary"
+                      disabled={!plugin.enabled || Boolean(plugin.blockStatus?.blocked) || runningCreatorStudioDefaultFlow}
+                      onClick={() => onRunCreatorStudioDefaultFlow()}
+                    >
+                      {runningCreatorStudioDefaultFlow ? '处理中' : '生成并导入'}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              {plugin.id === 'openpet.agent-awareness' ? (
+                <div className="plugin-quick-entry" aria-label="Agent Awareness 详情入口">
+                  <div>
+                    <strong>Codex Awareness</strong>
+                    <span>查看当前 Codex 会话和使用情况</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="ghost"
+                    disabled={!plugin.enabled || Boolean(plugin.blockStatus?.blocked) || openingDashboard === `${plugin.id}:main`}
+                    onClick={() => onOpenDashboard(plugin.id, 'main', { query: { view: 'details' } })}
+                  >
+                    查看 Codex 详情
+                  </button>
+                </div>
+              ) : null}
+              <details className="plugin-management-disclosure">
+                <summary>
+                  <span className="plugin-disclosure-summary-copy">
+                    <strong>管理与诊断</strong>
+                    <span>{managementSummary.join(' · ') || '查看插件详细信息'}</span>
+                  </span>
+                </summary>
+                <div className="plugin-management-body">
+                  <div className="permission-line">
+                    <strong>权限</strong>
+                    <span>{(plugin.permissions || []).length === 0 ? '无权限' : plugin.permissions.join(' · ')}</span>
+                  </div>
               <div className="plugin-storage-line">
                 <span>{plugin.storage?.valid === false ? '存储数据无效' : `存储 ${plugin.storage?.keyCount || 0} 项 / ${formatBytes(plugin.storage?.byteSize || 2)}`}</span>
                 <button
@@ -460,63 +607,6 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
                   })}
                 </div>
               ) : null}
-              {plugin.id === 'openpet.creator-studio' ? (
-                <div className="plugin-config-panel" aria-label="Creator Studio 默认流">
-                  <div className="plugin-config-header">
-                    <strong>生成并导入</strong>
-                    <button
-                      type="button"
-                      className="ghost"
-                      disabled={!plugin.enabled || plugin.blockStatus?.blocked || openingDashboard === `${plugin.id}:main`}
-                      onClick={() => onOpenDashboard(plugin.id, 'main')}
-                    >
-                      查看任务详情
-                    </button>
-                  </div>
-                  <div className="field-note">
-                    宿主默认路径会优先走已保存的图片 Provider。高级入口保留任务详情、QA、日志和手动逐步执行。
-                  </div>
-                  <label className="plugin-config-field" htmlFor="creator-studio-default-prompt">
-                    <span>Creator Studio 请求</span>
-                    <textarea
-                      id="creator-studio-default-prompt"
-                      className="text-input"
-                      value={creatorStudioPromptDraft}
-                      placeholder="描述你想新增或生成的动作 / 宠物效果"
-                      onChange={(event) => onChangeCreatorStudioPromptDraft(event.target.value)}
-                    />
-                  </label>
-                  <div className="plugin-commands">
-                    <button
-                      type="button"
-                      className="primary"
-                      disabled={!plugin.enabled || Boolean(plugin.blockStatus?.blocked) || runningCreatorStudioDefaultFlow}
-                      onClick={() => onRunCreatorStudioDefaultFlow()}
-                    >
-                      {runningCreatorStudioDefaultFlow ? '处理中' : '生成并导入'}
-                    </button>
-                  </div>
-                  <div className="field-note">高级入口：查看任务详情 / 手动逐步执行</div>
-                </div>
-              ) : null}
-              {plugin.id === 'openpet.agent-awareness' ? (
-                <div className="plugin-config-panel" aria-label="Agent Awareness 详情入口">
-                  <div className="plugin-config-header">
-                    <strong>Codex Awareness</strong>
-                    <button
-                      type="button"
-                      className="ghost"
-                      disabled={!plugin.enabled || Boolean(plugin.blockStatus?.blocked) || openingDashboard === `${plugin.id}:main`}
-                      onClick={() => onOpenDashboard(plugin.id, 'main', { query: { view: 'details' } })}
-                    >
-                      查看 Codex 详情
-                    </button>
-                  </div>
-                  <div className="field-note">
-                    快速入口会复用 Agent Awareness dashboard，并直接打开当前 Codex 详情视图。
-                  </div>
-                </div>
-              ) : null}
               {plugin.id === 'openpet.creator-studio' && plugin.entries?.dashboards?.length ? (
                 <div className="field-note">Creator Studio Dashboard 依赖 Creator Studio Service；请先启动服务，再打开面板。</div>
               ) : null}
@@ -591,65 +681,72 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
                   </div>
                 </div>
               ) : null}
+                </div>
+              </details>
             </div>
-            <Toggle ariaLabel={`Enable ${plugin.name}`} checked={plugin.enabled} onChange={(enabled) => onToggle(plugin.id, enabled)} />
-          </div>
-        ))}
+          </article>
+          )
+        })}
       </div>
 
       {status ? <div className="status-line">{status}</div> : null}
 
-      <div className="plugin-log-panel">
-        <div className="plugin-log-header">
-          <div>
-            <h2>运行日志</h2>
+      <details className="plugin-log-disclosure">
+        <summary>
+          <span className="plugin-disclosure-summary-copy">
+            <strong>运行日志</strong>
             <span>第 {logsPage.page} / {logsPage.totalPages} 页 · 共 {logsPage.total} 条</span>
-          </div>
-          <div className="plugin-log-actions">
-            <button type="button" className="ghost" onClick={() => onExportLogs('json')} disabled={logs.length === 0}>JSON</button>
-            <button type="button" className="ghost" onClick={() => onExportLogs('csv')} disabled={logs.length === 0}>CSV</button>
-            <button type="button" className="ghost" onClick={onClearLogs} disabled={logs.length === 0}>清空</button>
-          </div>
-        </div>
-        <div className="plugin-log-filters">
-          <select className="text-input" value={filters.pluginId} onChange={(event) => onChangeFilters({ ...filters, pluginId: event.target.value })}>
-            <option value="">全部插件</option>
-            {plugins.map((plugin) => <option value={plugin.id} key={plugin.id}>{plugin.name}</option>)}
-          </select>
-          <select className="text-input" value={filters.level} onChange={(event) => onChangeFilters({ ...filters, level: event.target.value })}>
-            <option value="">全部级别</option>
-            <option value="info">Info</option>
-            <option value="warn">Warning</option>
-            <option value="error">Error</option>
-          </select>
-          <input
-            className="text-input"
-            value={filters.query}
-            placeholder="搜索日志"
-            onChange={(event) => onChangeFilters({ ...filters, query: event.target.value })}
-          />
-        </div>
-        <div className="plugin-log-list">
-          {logs.length === 0 ? (
-            <div className="empty-chat">暂无日志</div>
-          ) : logs.map((log) => (
-            <div className={`plugin-log-row ${getPluginLogLevelClass(log.level)}`} key={log.id}>
-              <span>{formatPluginLogTime(log.timestamp)}</span>
-              <strong>{formatPluginLogLevel(log.level)}</strong>
-              <div>
-                <span>{log.pluginId || 'plugin'}</span>
-                {log.commandId ? <span>/{log.commandId}</span> : null}
-              </div>
-              <p>{log.message}</p>
+          </span>
+        </summary>
+        <div className="plugin-log-panel">
+          <div className="plugin-log-header">
+            <span>按插件、级别或关键词筛选日志</span>
+            <div className="plugin-log-actions">
+              <button type="button" className="ghost" onClick={() => onExportLogs('json')} disabled={logs.length === 0}>JSON</button>
+              <button type="button" className="ghost" onClick={() => onExportLogs('csv')} disabled={logs.length === 0}>CSV</button>
+              <button type="button" className="ghost" onClick={onClearLogs} disabled={logs.length === 0}>清空</button>
             </div>
-          ))}
+          </div>
+          <div className="plugin-log-filters">
+            <select className="text-input" value={filters.pluginId} onChange={(event) => onChangeFilters({ ...filters, pluginId: event.target.value })}>
+              <option value="">全部插件</option>
+              {plugins.map((plugin) => <option value={plugin.id} key={plugin.id}>{plugin.name}</option>)}
+            </select>
+            <select className="text-input" value={filters.level} onChange={(event) => onChangeFilters({ ...filters, level: event.target.value })}>
+              <option value="">全部级别</option>
+              <option value="info">Info</option>
+              <option value="warn">Warning</option>
+              <option value="error">Error</option>
+            </select>
+            <input
+              className="text-input"
+              value={filters.query}
+              placeholder="搜索日志"
+              onChange={(event) => onChangeFilters({ ...filters, query: event.target.value })}
+            />
+          </div>
+          <div className="plugin-log-list">
+            {logs.length === 0 ? (
+              <div className="empty-chat">暂无日志</div>
+            ) : logs.map((log) => (
+              <div className={`plugin-log-row ${getPluginLogLevelClass(log.level)}`} key={log.id}>
+                <span>{formatPluginLogTime(log.timestamp)}</span>
+                <strong>{formatPluginLogLevel(log.level)}</strong>
+                <div>
+                  <span>{log.pluginId || 'plugin'}</span>
+                  {log.commandId ? <span>/{log.commandId}</span> : null}
+                </div>
+                <p>{log.message}</p>
+              </div>
+            ))}
+          </div>
+          <div className="log-pagination">
+            <button type="button" className="ghost" onClick={onPrevLogsPage} disabled={!onPrevLogsPage}>上一页</button>
+            <span>当前 {logs.length} 条 / 每页 {logsPage.pageSize} 条</span>
+            <button type="button" className="ghost" onClick={onNextLogsPage} disabled={!onNextLogsPage}>下一页</button>
+          </div>
         </div>
-        <div className="log-pagination">
-          <button type="button" className="ghost" onClick={onPrevLogsPage} disabled={!onPrevLogsPage}>上一页</button>
-          <span>当前 {logs.length} 条 / 每页 {logsPage.pageSize} 条</span>
-          <button type="button" className="ghost" onClick={onNextLogsPage} disabled={!onNextLogsPage}>下一页</button>
-        </div>
-      </div>
+      </details>
     </section>
   )
 }

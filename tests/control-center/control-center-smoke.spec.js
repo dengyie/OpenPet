@@ -85,6 +85,26 @@ const openProviderDisclosure = async (section, title) => {
   return disclosure
 }
 
+const openPluginManagement = async (pluginRow) => {
+  const disclosure = pluginRow.locator('details.plugin-management-disclosure')
+  await expect(disclosure).toHaveCount(1)
+  if (await disclosure.getAttribute('open') === null) {
+    await disclosure.locator('summary').click()
+  }
+  await expect(disclosure).toHaveAttribute('open', '')
+  return disclosure
+}
+
+const openPluginInstallDisclosure = async (page) => {
+  const disclosure = page.locator('details.plugin-install-disclosure')
+  await expect(disclosure).toHaveCount(1)
+  if (await disclosure.getAttribute('open') === null) {
+    await disclosure.locator('summary').click()
+  }
+  await expect(disclosure).toHaveAttribute('open', '')
+  return disclosure
+}
+
 test.describe('Control Center smoke', () => {
   test.beforeEach(async ({ page }) => {
     const pageErrors = []
@@ -1800,6 +1820,195 @@ test.describe('Control Center smoke', () => {
     await expect(page.locator('.catalog-item', { hasText: 'Demo Pixel Cat' })).toContainText('Installed 1.0.0')
   })
 
+  test('keeps plugin installation, management, and logs progressively disclosed', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
+        plugins: [
+          {
+            id: 'openpet.demo.focus',
+            name: 'Focus Helper',
+            version: '1.0.0',
+            source: 'local',
+            enabled: true,
+            runnable: true,
+            requiresNativeExecution: true,
+            nativeExecutionApproved: false,
+            permissions: ['pet:say'],
+            commands: [{ id: 'focus', title: 'Start focus' }],
+            entries: {
+              commands: [{ id: 'focus', title: 'Start focus', command: 'node focus.js', cwd: '.' }],
+              setup: [],
+              services: [],
+              dashboards: []
+            },
+            configSchema: { properties: [] },
+            config: {},
+            storage: { keyCount: 2, byteSize: 64, valid: true },
+            signatureStatus: {
+              status: 'unsigned',
+              label: 'Unsigned plugin',
+              signer: '',
+              algorithm: '',
+              verified: false,
+              errors: []
+            },
+            blockStatus: { blocked: true, reasons: ['Demo policy blocked'] }
+          },
+          {
+            id: 'openpet.demo.dormant',
+            name: 'Dormant Helper',
+            version: '1.0.0',
+            source: 'local',
+            enabled: false,
+            runnable: true,
+            requiresNativeExecution: true,
+            nativeExecutionApproved: false,
+            permissions: [],
+            commands: [],
+            entries: {
+              commands: [{ id: 'idle', title: 'Idle', command: 'node idle.js', cwd: '.' }],
+              setup: [],
+              services: [
+                {
+                  id: 'dormant-service',
+                  title: 'Dormant Service',
+                  command: 'node dormant.js',
+                  cwd: '.',
+                  health: { type: 'http', url: 'http://127.0.0.1:8795/health' },
+                  runtime: {
+                    status: 'stopped',
+                    health: {
+                      status: 'unhealthy',
+                      url: 'http://127.0.0.1:8795/health',
+                      message: 'Previous health check failed'
+                    }
+                  }
+                }
+              ],
+              dashboards: []
+            },
+            configSchema: { properties: [] },
+            config: {},
+            storage: { keyCount: 0, byteSize: 2, valid: true },
+            signatureStatus: {
+              status: 'unsigned',
+              label: 'Unsigned plugin',
+              signer: '',
+              algorithm: '',
+              verified: false,
+              errors: []
+            },
+            blockStatus: { blocked: false, reasons: [] }
+          },
+          {
+            id: 'openpet.demo.failed',
+            name: 'Failed Helper',
+            version: '1.0.0',
+            source: 'local',
+            enabled: true,
+            runnable: true,
+            requiresNativeExecution: true,
+            nativeExecutionApproved: true,
+            permissions: [],
+            commands: [],
+            entries: {
+              commands: [],
+              setup: [],
+              services: [
+                {
+                  id: 'failed-service',
+                  title: 'Failed Service',
+                  command: 'node failed.js',
+                  cwd: '.',
+                  health: { type: 'http', url: 'http://127.0.0.1:8796/health' },
+                  runtime: {
+                    status: 'failed',
+                    error: 'Service start failed',
+                    health: { status: 'unknown', url: 'http://127.0.0.1:8796/health' }
+                  }
+                }
+              ],
+              dashboards: []
+            },
+            configSchema: { properties: [] },
+            config: {},
+            storage: { keyCount: 0, byteSize: 2, valid: true },
+            signatureStatus: {
+              status: 'unsigned',
+              label: 'Unsigned plugin',
+              signer: '',
+              algorithm: '',
+              verified: false,
+              errors: []
+            },
+            blockStatus: { blocked: false, reasons: [] }
+          }
+        ],
+        pluginLogs: [
+          {
+            id: 'log-warning-1',
+            timestamp: '2026-07-16T08:00:00.000Z',
+            level: 'warn',
+            pluginId: 'openpet.demo.focus',
+            commandId: 'focus',
+            message: 'Runtime approval requires attention'
+          }
+        ]
+      }))
+    })
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Plugins' }).click()
+
+    const installDisclosure = page.locator('details.plugin-install-disclosure')
+    const pluginRow = page.locator('.plugin-row', { hasText: 'Focus Helper' })
+    const dormantPluginRow = page.locator('.plugin-row', { hasText: 'Dormant Helper' })
+    const failedPluginRow = page.locator('.plugin-row', { hasText: 'Failed Helper' })
+    const managementDisclosure = pluginRow.locator('details.plugin-management-disclosure')
+    const logsDisclosure = page.locator('details.plugin-log-disclosure')
+    const attentionOverview = page.locator('.plugins-overview > div', { hasText: '需要处理' })
+
+    await expect(installDisclosure).not.toHaveAttribute('open', '')
+    await expect(managementDisclosure).not.toHaveAttribute('open', '')
+    await expect(logsDisclosure).not.toHaveAttribute('open', '')
+    await expect(pluginRow.getByRole('switch', { name: 'Enable Focus Helper' })).toBeVisible()
+    await expect(pluginRow).toContainText('插件已启用')
+    await expect(pluginRow).not.toContainText('运行已允许')
+    await expect(pluginRow).toContainText('已被策略阻止')
+    await expect(pluginRow).not.toContainText('需要原生执行授权')
+    await expect(attentionOverview.locator('strong')).toHaveText('2')
+    await expect(dormantPluginRow).toContainText('当前停用')
+    await expect(dormantPluginRow).not.toContainText('需要原生执行授权')
+    await expect(dormantPluginRow).toContainText('1 个服务已停止')
+    await expect(dormantPluginRow).not.toContainText('服务异常')
+    await expect(failedPluginRow).toContainText('1 个服务运行失败')
+    await expect(pluginRow).toContainText('1 项权限')
+    await expect(pluginRow).toContainText('1 个命令')
+    await expect(pluginRow.getByRole('button', { name: 'Start focus' })).toBeHidden()
+    await expect(page.locator('.plugin-log-row', { hasText: 'Runtime approval requires attention' })).toBeHidden()
+
+    await managementDisclosure.locator('summary').click()
+    await expect(managementDisclosure).toHaveAttribute('open', '')
+    await expect(pluginRow.getByRole('button', { name: 'Start focus' })).toBeVisible()
+
+    await logsDisclosure.locator('summary').click()
+    await expect(logsDisclosure).toHaveAttribute('open', '')
+    const warningLog = page.locator('.plugin-log-row.warn', { hasText: 'Runtime approval requires attention' })
+    await expect(warningLog).toBeVisible()
+    await expect(warningLog).toContainText('Warning')
+    await expect(page.locator('.plugin-log-filters')).toBeVisible()
+    await expect(logsDisclosure.getByRole('button', { name: 'JSON' })).toBeVisible()
+
+    await page.setViewportSize({ width: 390, height: 844 })
+    const widths = await page.evaluate(() => ({
+      viewport: document.documentElement.clientWidth,
+      document: document.documentElement.scrollWidth,
+      body: document.body.scrollWidth
+    }))
+    expect(widths.document).toBeLessThanOrEqual(widths.viewport)
+    expect(widths.body).toBeLessThanOrEqual(widths.viewport)
+  })
+
   test('installs manual plugin packages from the Plugins review panel with the demo API', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'Plugins' }).click()
@@ -1849,6 +2058,7 @@ test.describe('Control Center smoke', () => {
     await expect(pluginRow).toContainText('Entry declarations')
     await expect(pluginRow).toContainText('Setup entries')
     await expect(pluginRow).toContainText('install-deps · npm install · not-run')
+    await openPluginManagement(pluginRow)
     await expect(pluginRow.getByRole('button', { name: 'Run Install Dependencies Setup' })).toBeDisabled()
     await expect(pluginRow).toContainText('Command entries')
     await expect(pluginRow).toContainText('hello')
@@ -1917,6 +2127,7 @@ test.describe('Control Center smoke', () => {
     await page.getByRole('button', { name: 'Plugins' }).click()
     const reloadedPluginRow = page.locator('.plugin-row', { hasText: 'Demo Manual Review' })
     await expect(reloadedPluginRow).toContainText('openpet.demo.manual-review')
+    await openPluginManagement(reloadedPluginRow)
     await expect(reloadedPluginRow.locator('.plugin-health-policy').getByRole('switch')).toHaveAttribute('aria-checked', 'true')
     await expect(reloadedPluginRow.locator('.plugin-health-policy').getByRole('combobox')).toHaveValue('60000')
     await expect(page.locator('.plugin-log-row', { hasText: 'Plugin installed' })).toContainText('openpet.demo.manual-review')
@@ -1926,6 +2137,7 @@ test.describe('Control Center smoke', () => {
     await page.goto('/')
     await page.getByRole('button', { name: 'Plugins' }).click()
 
+    await openPluginInstallDisclosure(page)
     const repositoryInput = page.getByRole('textbox', { name: 'GitHub repository URL' })
     await repositoryInput.fill('https://github.com/openpet/demo-plugin')
     await page.getByRole('button', { name: 'Import from GitHub' }).click()
@@ -2031,6 +2243,7 @@ test.describe('Control Center smoke', () => {
     await expect(pluginRow).toContainText('Peak Context')
     await expect(pluginRow).toContainText('0.8%')
 
+    await openPluginManagement(pluginRow)
     const approvalToggle = pluginRow.getByRole('switch', { name: 'Allow native process execution for Agent Awareness' })
     await expect(approvalToggle).toHaveAttribute('aria-checked', 'false')
     await expect(pluginRow.getByRole('button', { name: 'Check Agent Awareness Setup' })).toBeDisabled()
@@ -2196,7 +2409,7 @@ test.describe('Control Center smoke', () => {
     await expect(pluginRow).toContainText('Dashboard entries')
     await expect(pluginRow).toContainText('main')
 
-    await pluginRow.getByRole('button', { name: 'Creator Studio', exact: true }).click()
+    await pluginRow.getByRole('button', { name: '查看任务详情' }).click()
 
     await expect(page.locator('.status-line')).toContainText('Dashboard 已打开')
     await expect(page.locator('.plugin-log-row', { hasText: 'Dashboard opened' })).toContainText('dashboard:main')
@@ -2254,10 +2467,11 @@ test.describe('Control Center smoke', () => {
     await page.getByRole('button', { name: 'Plugins' }).click()
 
     const pluginRow = page.locator('.plugin-row', { hasText: 'Creator Studio' })
+    await openPluginManagement(pluginRow)
     const serviceControl = pluginRow.locator('.plugin-service-control', { hasText: 'Creator Studio Service' })
 
     await expect(serviceControl).toContainText('Service status: stopped')
-    await pluginRow.getByRole('button', { name: 'Creator Studio', exact: true }).click()
+    await pluginRow.getByRole('button', { name: '查看任务详情' }).click()
     await expect(page.locator('.status-line')).toContainText('请先启动 Creator Studio Service，再打开 Creator Studio Dashboard')
     await expect(page.locator('.plugin-log-row', { hasText: 'Dashboard opened' })).toHaveCount(0)
 
@@ -2265,7 +2479,7 @@ test.describe('Control Center smoke', () => {
     await expect(page.locator('.status-line')).toContainText('Service 已启动')
     await expect(serviceControl).toContainText('Service status: running')
 
-    await pluginRow.getByRole('button', { name: 'Creator Studio', exact: true }).click()
+    await pluginRow.getByRole('button', { name: '查看任务详情' }).click()
     await expect(page.locator('.status-line')).toContainText('Dashboard 已打开')
     await expect(page.locator('.plugin-log-row', { hasText: 'Dashboard opened' })).toContainText('dashboard:main')
   })
@@ -2319,6 +2533,7 @@ test.describe('Control Center smoke', () => {
     await page.getByRole('button', { name: 'Plugins' }).click()
 
     const pluginRow = page.locator('.plugin-row', { hasText: 'Remote Health Demo' })
+    await openPluginManagement(pluginRow)
     const serviceControl = pluginRow.locator('.plugin-service-control', { hasText: 'Remote Health Service' })
 
     await expect(serviceControl).toContainText('Health: unknown')
@@ -2366,6 +2581,7 @@ test.describe('Control Center smoke', () => {
     await page.getByRole('button', { name: 'Plugins' }).click()
 
     const pluginRow = page.locator('.plugin-row', { hasText: 'Creator Studio' })
+    await openPluginManagement(pluginRow)
     await pluginRow.getByLabel('可选命令 Payload JSON').fill('{"runId":"run-demo-creator-123"}')
     await pluginRow.getByRole('button', { name: 'Import Approved Pet' }).click()
 
@@ -2422,6 +2638,7 @@ test.describe('Control Center smoke', () => {
     await page.getByRole('button', { name: 'Plugins' }).click()
 
     const pluginRow = page.locator('.plugin-row', { hasText: 'Creator Studio' })
+    await openPluginManagement(pluginRow)
     await pluginRow.getByLabel('可选命令 Payload JSON').fill('{"runId":"run-demo-action-123"}')
     await pluginRow.getByRole('button', { name: 'Import Approved Action' }).click()
 
@@ -2506,7 +2723,7 @@ test.describe('Control Center smoke', () => {
     const pluginRow = page.locator('.plugin-row', { hasText: 'Creator Studio' })
     await expect(pluginRow.getByLabel('Creator Studio 请求')).toBeVisible()
     await expect(pluginRow.getByRole('button', { name: '生成并导入' })).toBeVisible()
-    await expect(pluginRow).toContainText('高级入口')
+    await expect(pluginRow).toContainText('管理与诊断')
     await expect(pluginRow).toContainText('查看任务详情')
   })
 
@@ -2944,6 +3161,7 @@ test.describe('Control Center smoke', () => {
     await page.getByRole('button', { name: 'Plugins' }).click()
 
     const pluginRow = page.locator('.plugin-row', { hasText: 'Creator Studio' })
+    await openPluginManagement(pluginRow)
     await pluginRow.getByLabel('可选命令 Payload JSON').fill('{"runId":"run-demo-action-456","triggerProposalFailure":true}')
     await pluginRow.getByRole('button', { name: 'Import Approved Action' }).click()
 
@@ -2995,6 +3213,7 @@ test.describe('Control Center smoke', () => {
     await page.getByRole('button', { name: 'Plugins' }).click()
 
     const pluginRow = page.locator('.plugin-row', { hasText: 'Creator Studio' })
+    await openPluginManagement(pluginRow)
     await pluginRow.getByLabel('可选命令 Payload JSON').fill('{"runId":"run-demo-action-789","triggerProposalMissingRecord":true}')
     await pluginRow.getByRole('button', { name: 'Import Approved Action' }).click()
 

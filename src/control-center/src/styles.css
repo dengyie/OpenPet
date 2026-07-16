@@ -2017,8 +2017,117 @@ button {
 
 .plugin-list {
   display: grid;
-  gap: 0;
-  border-top: 1px solid #dde2e8;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.plugins-overview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.plugins-overview > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid #e2e7ec;
+  border-radius: 12px;
+  background: linear-gradient(145deg, #ffffff, #f7f9fb);
+}
+
+.plugins-overview > div.attention {
+  border-color: #f2d6a2;
+  background: linear-gradient(145deg, #fffdf8, #fff7e8);
+}
+
+.plugins-overview strong {
+  color: #111827;
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.plugins-overview span {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.plugin-install-disclosure,
+.plugin-management-disclosure,
+.plugin-log-disclosure {
+  border: 1px solid #dde2e8;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.plugin-install-disclosure > summary,
+.plugin-management-disclosure > summary,
+.plugin-log-disclosure > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.plugin-install-disclosure > summary::-webkit-details-marker,
+.plugin-management-disclosure > summary::-webkit-details-marker,
+.plugin-log-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.plugin-install-disclosure > summary::after,
+.plugin-management-disclosure > summary::after,
+.plugin-log-disclosure > summary::after {
+  content: '›';
+  flex: 0 0 auto;
+  color: #7b8490;
+  font-size: 20px;
+  line-height: 1;
+  transform: rotate(90deg);
+  transition: transform 160ms ease;
+}
+
+.plugin-install-disclosure[open] > summary::after,
+.plugin-management-disclosure[open] > summary::after,
+.plugin-log-disclosure[open] > summary::after {
+  transform: rotate(-90deg);
+}
+
+.plugin-disclosure-summary-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.plugin-install-disclosure > summary strong,
+.plugin-management-disclosure > summary strong,
+.plugin-log-disclosure > summary strong {
+  color: #1f2937;
+  font-size: 13px;
+}
+
+.plugin-install-disclosure > summary span,
+.plugin-management-disclosure > summary span,
+.plugin-log-disclosure > summary span {
+  color: #6b7280;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.plugin-install-disclosure-body,
+.plugin-management-body {
+  display: grid;
+  gap: 12px;
+  padding: 0 14px 14px;
+}
+
+.plugin-install-disclosure-body {
+  padding-top: 2px;
 }
 
 .plugin-review-panel {
@@ -2078,16 +2187,89 @@ button {
 
 .plugin-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 18px;
-  align-items: start;
-  padding: 18px 0;
-  border-bottom: 1px solid #dde2e8;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #dde2e8;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(31, 41, 55, 0.04);
+}
+
+.plugin-row.blocked {
+  border-color: #efb7b7;
+  background: #fffafa;
+}
+
+.plugin-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.plugin-title-block {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.plugin-source-badge {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #eef2f6;
+  color: #596270;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.plugin-enable-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.plugin-enable-control > span {
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.plugin-summary-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.plugin-status-pill,
+.plugin-summary-item {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #f0f3f6;
+  color: #596270;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.plugin-status-pill.success {
+  background: #eaf6ef;
+  color: #257044;
+}
+
+.plugin-status-pill.warning {
+  background: #fff3d9;
+  color: #96620d;
+}
+
+.plugin-status-pill.danger {
+  background: #fdecec;
+  color: #a83838;
 }
 
 .plugin-main {
   display: grid;
-  gap: 8px;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -2116,7 +2298,59 @@ button {
 }
 
 .permission-line {
+  display: grid;
+  gap: 4px;
   overflow-wrap: anywhere;
+}
+
+.permission-line strong {
+  color: #374151;
+  font-size: 12px;
+}
+
+.plugin-native-execution {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid #f0d7a5;
+  border-radius: 10px;
+  background: #fffbf2;
+}
+
+.plugin-quick-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 12px;
+  border: 1px solid #dce5ed;
+  border-radius: 10px;
+  background: #f7fafc;
+}
+
+.plugin-quick-entry > div {
+  display: grid;
+  gap: 3px;
+}
+
+.plugin-quick-entry strong {
+  color: #1f2937;
+  font-size: 13px;
+}
+
+.plugin-quick-entry span {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.plugin-primary-workflow {
+  margin-top: 0;
+  border-color: #d4e2ec;
+  background: linear-gradient(145deg, #f8fbfd, #f1f6f9);
+}
+
+.plugin-management-disclosure {
+  background: #fafbfc;
 }
 
 .plugin-storage-line {
@@ -2328,9 +2562,12 @@ button {
 .plugin-log-panel {
   display: grid;
   gap: 12px;
+  padding: 0 14px 14px;
+}
+
+.plugin-log-disclosure {
   margin-top: 22px;
-  padding-top: 18px;
-  border-top: 1px solid #dde2e8;
+  background: #fafbfc;
 }
 
 .plugin-log-header {
@@ -2338,13 +2575,6 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-}
-
-.plugin-log-header h2 {
-  margin: 0;
-  color: #111827;
-  font-size: 16px;
-  font-weight: 700;
 }
 
 .plugin-log-header span {
@@ -2648,7 +2878,26 @@ button {
   }
 
   .plugin-row {
+    padding: 14px;
+  }
+
+  .plugins-overview {
     grid-template-columns: 1fr;
+  }
+
+  .plugin-card-header,
+  .plugin-quick-entry,
+  .plugin-log-header {
+    align-items: stretch;
+    display: grid;
+  }
+
+  .plugin-enable-control {
+    justify-content: space-between;
+  }
+
+  .plugin-install-disclosure .inline-form {
+    display: grid;
   }
 
   .plugin-log-row {
