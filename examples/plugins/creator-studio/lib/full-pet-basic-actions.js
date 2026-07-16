@@ -142,6 +142,7 @@ const createBasicActionCoverage = (rows, attempts = []) => {
   const omittedActionIds = OFFICIAL_FULL_PET_ACTION_IDS.filter((actionId) => !actionAvailability[actionId].available)
   return {
     baseIdentityCoverage: normalizedRows.some((row) => row.actionId === 'idle' && row.sourceRelativePath),
+    requiredActionIds: REQUIRED_REAL_FULL_PET_ACTION_IDS.slice(),
     requiredRealActionIds: REQUIRED_REAL_FULL_PET_ACTION_IDS.slice(),
     realActionIds,
     fallbackActionIds,

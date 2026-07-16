@@ -80,6 +80,23 @@ const createUniqueTextList = (values) => {
   return items
 }
 
+const isPlainObject = (value) => Boolean(value && typeof value === 'object' && !Array.isArray(value))
+
+const createActionAvailabilityView = (value) => {
+  if (!isPlainObject(value)) return {}
+  return Object.fromEntries(Object.entries(value)
+    .map(([actionId, evidence]) => {
+      const normalizedActionId = normalizeText(actionId)
+      if (!normalizedActionId || !isPlainObject(evidence)) return null
+      return [normalizedActionId, {
+        available: evidence.available === true,
+        quality: normalizeText(evidence.quality).slice(0, 80),
+        reason: normalizeText(evidence.reason).slice(0, 160)
+      }]
+    })
+    .filter(Boolean))
+}
+
 const findPluginById = (plugins = [], pluginId) => (
   Array.isArray(plugins)
     ? plugins.find((plugin) => plugin?.id === pluginId) || null
@@ -238,6 +255,9 @@ const createWorkflowResult = ({
   basicActions: basicActions && typeof basicActions === 'object'
     ? {
         baseIdentityCoverage: Boolean(basicActions.baseIdentityCoverage),
+        requiredActionIds: Array.isArray(basicActions.requiredActionIds)
+          ? basicActions.requiredActionIds.map(normalizeText).filter(Boolean)
+          : [],
         requiredRealActionIds: Array.isArray(basicActions.requiredRealActionIds)
           ? basicActions.requiredRealActionIds.map(normalizeText).filter(Boolean)
           : [],
@@ -259,6 +279,13 @@ const createWorkflowResult = ({
         missingRequiredOfficialActionIds: Array.isArray(basicActions.missingRequiredOfficialActionIds)
           ? basicActions.missingRequiredOfficialActionIds.map(normalizeText).filter(Boolean)
           : [],
+        availableActionIds: Array.isArray(basicActions.availableActionIds)
+          ? basicActions.availableActionIds.map(normalizeText).filter(Boolean)
+          : [],
+        omittedActionIds: Array.isArray(basicActions.omittedActionIds)
+          ? basicActions.omittedActionIds.map(normalizeText).filter(Boolean)
+          : [],
+        actionAvailability: createActionAvailabilityView(basicActions.actionAvailability),
         rows: Array.isArray(basicActions.rows)
           ? basicActions.rows.map((row) => ({
               actionId: normalizeText(row?.actionId),
@@ -293,22 +320,64 @@ const readBasicActionCoverage = ({ pluginDataDir, runId }) => {
 }
 
 const resolveOfficialActionCoverage = (basicActions) => {
-  const requiredOfficialActionIds = createUniqueTextList(CODEX_ROWS.map((row) => row.id))
-  if (!basicActions || typeof basicActions !== 'object' || Array.isArray(basicActions)) {
+  const defaultRequiredActionIds = ['idle']
+  if (!isPlainObject(basicActions)) {
     return {
       basicActions: null,
-      missingOfficialActionIds: requiredOfficialActionIds
+      missingOfficialActionIds: defaultRequiredActionIds
     }
   }
-  const realActionIds = new Set(createUniqueTextList(basicActions.realActionIds))
-  const reportedMissingActionIds = createUniqueTextList(basicActions.missingRequiredOfficialActionIds)
-  const computedMissingActionIds = requiredOfficialActionIds.filter((actionId) => !realActionIds.has(actionId))
+
+  const hasPartialCoverageEvidence = (
+    Array.isArray(basicActions.availableActionIds) ||
+    Array.isArray(basicActions.omittedActionIds) ||
+    isPlainObject(basicActions.actionAvailability)
+  )
+  const explicitRequiredActionIds = createUniqueTextList(basicActions.requiredActionIds)
+  const legacyRequiredActionIds = !hasPartialCoverageEvidence
+    ? createUniqueTextList(basicActions.requiredOfficialActionIds)
+    : []
+  const requiredActionIds = explicitRequiredActionIds.length > 0
+    ? explicitRequiredActionIds
+    : legacyRequiredActionIds.length > 0
+      ? legacyRequiredActionIds
+      : defaultRequiredActionIds
+
+  const availableActionIds = new Set(createUniqueTextList(
+    Array.isArray(basicActions.availableActionIds)
+      ? basicActions.availableActionIds
+      : basicActions.realActionIds
+  ))
+  const omittedActionIds = new Set(createUniqueTextList(basicActions.omittedActionIds))
+  const actionAvailability = createActionAvailabilityView(basicActions.actionAvailability)
+
+  for (const [sourceActionId, derivedActionId] of [['running-right', 'running-left']]) {
+    if (availableActionIds.has(sourceActionId) === availableActionIds.has(derivedActionId)) continue
+    availableActionIds.delete(sourceActionId)
+    availableActionIds.delete(derivedActionId)
+    omittedActionIds.add(sourceActionId)
+    omittedActionIds.add(derivedActionId)
+    actionAvailability[sourceActionId] = { available: false, quality: '', reason: 'directional-pair-incomplete' }
+    actionAvailability[derivedActionId] = { available: false, quality: '', reason: 'directional-pair-incomplete' }
+  }
+
+  const reportedMissingActionIds = createUniqueTextList(
+    explicitRequiredActionIds.length > 0
+      ? basicActions.missingRequiredActionIds
+      : legacyRequiredActionIds.length > 0
+        ? basicActions.missingRequiredOfficialActionIds
+        : []
+  )
+  const computedMissingActionIds = requiredActionIds.filter((actionId) => !availableActionIds.has(actionId))
   const missingOfficialActionIds = createUniqueTextList([...reportedMissingActionIds, ...computedMissingActionIds])
   return {
     basicActions: {
       ...basicActions,
-      requiredOfficialActionIds,
-      missingRequiredOfficialActionIds: missingOfficialActionIds
+      requiredActionIds,
+      availableActionIds: [...availableActionIds],
+      omittedActionIds: [...omittedActionIds].filter((actionId) => !availableActionIds.has(actionId)),
+      actionAvailability,
+      missingRequiredActionIds: missingOfficialActionIds
     },
     missingOfficialActionIds
   }
