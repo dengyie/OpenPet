@@ -1,8 +1,8 @@
 # OpenPet Handoff
 
-> Last updated: 2026-07-07
+> Last updated: 2026-07-17
 > Canonical active queue: [`TODO.md`](./TODO.md)
-> Branch: `codex/dev7`
+> Branch: `main`
 
 This file is the compact maintainer continuation note. Historical phase-level detail lives in `docs/phases/`, `docs/reviews/`, and older planning docs.
 
@@ -28,7 +28,7 @@ This file is the compact maintainer continuation note. Historical phase-level de
 - The AI Talk Bubble Chat smoke path records `bubbleAcceptance`, `providerLatencyMs`, and `manualAcceptanceTemplate`, and the archived `ai-talk-local-smoke/2026-06-28T15-35-59-210Z/` result does not by itself prove full desktop feel or later human desktop validation.
 - Agent-awareness tooling now also has a synthetic end-to-end rehearsal under `tests/scripts/mock-agent-awareness-flow.test.js` that drives mock Codex rollout data through local smoke generation, release-evidence archive creation, and manual-acceptance write-back; this proves tooling/data flow only and does not replace real Codex signal collection or human desktop acceptance.
 - Creator Studio full-pet review uses a landed real-atlas QA/import path backed by `source-image-validation.json` and `atlas-validation.json`.
-- Provider smoke and frame/atlas QA prove command/data flow and structural import readiness, not final visual fidelity proof; production-quality generated pets still require human review or a future explicit gate showing the output stays highly consistent with the user's original image.
+- Provider smoke and frame/atlas QA prove command/data flow and structural import readiness, not official-quality action rows or final visual fidelity; production-quality generated pets still require human review or a future explicit gate showing the output stays highly consistent with the user's original image.
 - Creator Studio's current character-generation contract is [`pet-character-generation.md`](./pet-character-generation.md): the user supplies one clean front-facing image, every Provider request carries exactly one image attachment, `idle` is the only required action, and `running-left` is derived from an approved `running-right` row through a QA-gated mirror.
 - `random`, `state`, and `event` trigger proposals now create active host-owned durable trigger rules, the Actions pane can minimally edit those saved host rules inline, and Creator Studio follow-up review still goes through the Trigger Proposal Inbox.
 - Archived Creator Workflow host-smoke evidence now lives at `docs/release-evidence/creator-workflow-host-smoke/2026-07-04T21-38-29-834Z-dev8-acceptance/` and `docs/release-evidence/creator-workflow-host-smoke/2026-07-04T21-56-30-104Z-main-acceptance/`: with `正面.png`, both `new-character` and `existing-action` completed through `/images/edits` using `gpt-image-2` on both `codex/dev8` and a clean `main` acceptance worktree.

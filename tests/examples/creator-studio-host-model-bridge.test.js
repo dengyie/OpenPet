@@ -160,9 +160,11 @@ test('full-pet generation reuses approved action checkpoints and calls Provider 
   assert.equal(result.officialRows.rows.some((row) => row.actionId === 'idle'), true)
 })
 
-test('host model bridge retries the same verified model once after a transient gateway HTTP failure', async () => {
+test('host model bridge delegates transient retry policy to the Host without resending the request', async () => {
   const requests = []
-  const response = await __testInternals.generateWithModelFallback({
+  let failure = null
+  try {
+    await __testInternals.generateWithModelFallback({
     prompt: 'wave',
     requestedTimeoutMs: 300000,
     referenceImages: [{ role: 'canonical-reference' }],
@@ -176,21 +178,20 @@ test('host model bridge retries the same verified model once after a transient g
       }
     },
     preferredModel: 'gpt-image-2',
-    retryDelayMs: 0,
     callHostImageGenerateImpl: async (request) => {
       requests.push(request)
-      if (requests.length === 1) {
-        throw new Error('Image Provider generation failed with HTTP 524')
-      }
-      return { ok: true, result: { outputs: [{ dataRelativePath: 'runs/output.png' }] } }
+      throw new Error('Image Provider generation failed with HTTP 524')
     }
-  })
+    })
+  } catch (error) {
+    failure = error
+  }
 
-  assert.equal(response.selectedModel, 'gpt-image-2')
-  assert.equal(requests.length, 2)
-  assert.deepEqual(response.attempts.map((attempt) => ({ model: attempt.model, ok: attempt.ok })), [
-    { model: 'gpt-image-2', ok: false },
-    { model: 'gpt-image-2', ok: true }
+  assert.match(String(failure?.message || ''), /HTTP 524/)
+  assert.equal(requests.length, 1)
+  assert.equal(Object.hasOwn(requests[0], 'model'), false)
+  assert.deepEqual(failure.modelAttempts.map((attempt) => ({ model: attempt.model, ok: attempt.ok })), [
+    { model: 'gpt-image-2', ok: false }
   ])
 })
 
@@ -842,7 +843,7 @@ test('host model bridge stops full-pet generation after the first official actio
   }
 })
 
-test('host model bridge falls back to a discovered working model for full-pet official row generation', async () => {
+test('host model bridge delegates full-pet model selection and retries to the Host', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-host-model-bridge-fallback-'))
   await writeMockBaseProviderPng(path.join(dataDir, 'runs/run-bridge-fallback/inputs/references/reference.png'))
   const requests = []
@@ -872,14 +873,9 @@ test('host model bridge falls back to a discovered working model for full-pet of
         return
       }
       requests.push({
-        model: payload.model,
+        hasModel: Object.hasOwn(payload, 'model'),
         dataRelativeDir: String(payload.output?.dataRelativeDir || '')
       })
-      if (payload.model === 'gpt-image-2') {
-        response.writeHead(200, { 'Content-Type': 'application/json' })
-        response.end(JSON.stringify({ ok: false, error: 'Failed to perform, curl: (97) cannot complete SOCKS5 connection' }))
-        return
-      }
       const dataRelativeDir = String(payload.output?.dataRelativeDir || '')
       const dataRelativePath = `${dataRelativeDir}/0001.png`
       const outputPath = path.join(dataDir, dataRelativePath)
@@ -889,7 +885,7 @@ test('host model bridge falls back to a discovered working model for full-pet of
         ok: true,
         result: {
           backend: 'provider',
-          model: payload.model,
+          model: 'gpt-image-2',
           outputs: [{ dataRelativePath, mimeType: 'image/png', sha256: dataRelativePath }]
         }
       }))
@@ -932,13 +928,13 @@ test('host model bridge falls back to a discovered working model for full-pet of
       }
     })
 
-    assert.equal(result.model, 'gpt-image-1.5')
-    assert.deepEqual(result.modelAttempts.map((entry) => entry.model), ['gpt-image-2', 'gpt-image-1.5'])
+    assert.equal(result.model, 'gpt-image-2')
+    assert.deepEqual(result.modelAttempts.map((entry) => entry.model), ['gpt-image-2'])
     assert.equal(result.basicActionGeneration.attempts.length, GENERATED_FULL_PET_ACTION_IDS.length)
     assert.deepEqual(result.basicActionGeneration.attemptedActionIds, GENERATED_FULL_PET_ACTION_IDS)
     assert.equal(result.officialRows.rows.length, OFFICIAL_FULL_PET_ACTION_IDS.length)
-    assert.equal(requests.some((entry) => entry.model === 'gpt-image-2'), true)
-    assert.equal(requests.some((entry) => entry.model === 'gpt-image-1.5'), true)
+    assert.equal(requests.length > 0, true)
+    assert.equal(requests.every((entry) => entry.hasModel === false), true)
   } finally {
     if (previousBridgeUrl == null) delete process.env.OPENPET_BRIDGE_URL
     else process.env.OPENPET_BRIDGE_URL = previousBridgeUrl
@@ -949,11 +945,7 @@ test('host model bridge falls back to a discovered working model for full-pet of
   }
 })
 
-test('host model bridge only retries openai-compatible image-edit fallbacks with supported models and extends retry timeout', async () => {
-  assert.deepEqual(__testInternals.buildModelCandidateList({
-    settings: { provider: 'openai-compatible', modelCatalog: { models: ['gemini-image', 'grok-imagine-image', 'gpt-image-1.5'] } },
-    preferredModel: 'gpt-image-2'
-  }), ['gpt-image-2', 'gpt-image-1.5', 'grok-imagine-image'])
+test('host model bridge does not forward discovered model candidates or rewrite Host timeouts', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-host-model-bridge-compatible-fallback-'))
   const referencePath = path.join(dataDir, 'runs/run-bridge-compatible-fallback/inputs/references/reference.png')
   await writeMockBaseProviderPng(referencePath)
@@ -1044,14 +1036,10 @@ test('host model bridge only retries openai-compatible image-edit fallbacks with
       }
     })
 
-    assert.equal(result.model, 'grok-imagine-image')
-    assert.deepEqual(requests.map((entry) => entry.model), Array(3).fill([
-      'gpt-image-2',
-      'gpt-image-1.5',
-      'grok-imagine-image'
-    ]).flat())
-    assert.equal(requests.some((entry) => entry.model === 'gemini-image'), false)
-    assert.deepEqual(requests.map((entry) => entry.timeoutMs), Array(3).fill([300000, 600000, 600000]).flat())
+    assert.equal(result.model, 'gpt-image-2')
+    assert.equal(requests.length > 0, true)
+    assert.equal(requests.every((entry) => entry.model === undefined), true)
+    assert.equal(requests.every((entry) => entry.timeoutMs === 300000), true)
   } finally {
     if (previousBridgeUrl == null) delete process.env.OPENPET_BRIDGE_URL
     else process.env.OPENPET_BRIDGE_URL = previousBridgeUrl
@@ -1062,11 +1050,7 @@ test('host model bridge only retries openai-compatible image-edit fallbacks with
   }
 })
 
-test('host model bridge prefers host-owned verified fallback policy over discovered model heuristics', async () => {
-  assert.deepEqual(__testInternals.buildModelCandidateList({
-    settings: { provider: 'openai-compatible', creatorWorkflowModelPolicy: { verifiedModels: ['gpt-image-2'], fallbackModels: [] } },
-    preferredModel: 'gpt-image-2'
-  }), ['gpt-image-2'])
+test('host model bridge leaves verified-model policy enforcement to the Host', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-host-model-bridge-policy-fallback-'))
   await writeMockBaseProviderPng(path.join(dataDir, 'runs/run-bridge-policy-fallback/inputs/references/reference.png'))
   const requests = []
@@ -1145,7 +1129,7 @@ test('host model bridge prefers host-owned verified fallback policy over discove
       }
     }), /timed out/i)
 
-    assert.deepEqual(requests, ['gpt-image-2'])
+    assert.deepEqual(requests, [undefined])
   } finally {
     if (previousBridgeUrl == null) delete process.env.OPENPET_BRIDGE_URL
     else process.env.OPENPET_BRIDGE_URL = previousBridgeUrl
@@ -1156,11 +1140,7 @@ test('host model bridge prefers host-owned verified fallback policy over discove
   }
 })
 
-test('host model bridge skips an unverified preferred model when host policy exposes the verified creator workflow candidates', async () => {
-  assert.deepEqual(__testInternals.buildModelCandidateList({
-    settings: { provider: 'openai-compatible', creatorWorkflowModelPolicy: { verifiedModels: ['gpt-image-2'], fallbackModels: [] } },
-    preferredModel: 'grok-imagine-image'
-  }), ['gpt-image-2'])
+test('host model bridge accepts the Host-selected model without plugin-side substitution', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-host-model-bridge-policy-preferred-'))
   await writeMockBaseProviderPng(path.join(dataDir, 'runs/run-bridge-policy-preferred/inputs/references/reference.png'))
   const requests = []
@@ -1207,7 +1187,7 @@ test('host model bridge skips an unverified preferred model when host policy exp
         ok: true,
         result: {
           backend: 'provider',
-          model: payload.model,
+          model: 'grok-imagine-image',
           outputs: [{ dataRelativePath, mimeType: 'image/png', sha256: dataRelativePath }]
         }
       }))
@@ -1250,8 +1230,9 @@ test('host model bridge skips an unverified preferred model when host policy exp
       }
     })
 
-    assert.equal(result.model, 'gpt-image-2')
-    assert.deepEqual(requests, ['gpt-image-2', 'gpt-image-2', 'gpt-image-2'])
+    assert.equal(result.model, 'grok-imagine-image')
+    assert.equal(requests.length > 0, true)
+    assert.equal(requests.every((model) => model === undefined), true)
   } finally {
     if (previousBridgeUrl == null) delete process.env.OPENPET_BRIDGE_URL
     else process.env.OPENPET_BRIDGE_URL = previousBridgeUrl
@@ -1262,13 +1243,10 @@ test('host model bridge skips an unverified preferred model when host policy exp
   }
 })
 
-test('host model bridge fails fast when the host policy exposes no verified creator workflow image model', async () => {
-  assert.deepEqual(__testInternals.buildModelCandidateList({
-    settings: { provider: 'openai-compatible', creatorWorkflowModelPolicy: { verifiedModels: [], fallbackModels: [] } },
-    preferredModel: 'grok-imagine-image'
-  }), [])
+test('host model bridge does not reinterpret an empty Host verified-model policy', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-host-model-bridge-policy-empty-'))
   await writeMockBaseProviderPng(path.join(dataDir, 'runs/run-bridge-policy-empty/inputs/references/reference.png'))
+  let generationRequestCount = 0
   const server = http.createServer((request, response) => {
     if (request.url === '/creator/model-settings') {
       response.writeHead(200, { 'Content-Type': 'application/json' })
@@ -1293,6 +1271,7 @@ test('host model bridge fails fast when the host policy exposes no verified crea
       }))
       return
     }
+    generationRequestCount += 1
     response.writeHead(500, { 'Content-Type': 'application/json' })
     response.end(JSON.stringify({ ok: false, error: 'should not call model generate without a verified model' }))
   })
@@ -1331,7 +1310,8 @@ test('host model bridge fails fast when the host policy exposes no verified crea
           }]
         }
       }
-    }), /no verified image model available/i)
+    }), /should not call model generate without a verified model/i)
+    assert.equal(generationRequestCount, 1)
   } finally {
     if (previousBridgeUrl == null) delete process.env.OPENPET_BRIDGE_URL
     else process.env.OPENPET_BRIDGE_URL = previousBridgeUrl

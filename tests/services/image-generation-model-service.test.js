@@ -1565,6 +1565,7 @@ test('image generation model service times out while reading a stalled generatio
   const result = await Promise.race([
     service.generateImage({
       prompt: 'private detailed custom pet prompt',
+      referenceImages: createReferenceImages(dataDir),
       output: {
         dataDir,
         dataRelativeDir: 'runs/provider-body-timeout/frames/base'

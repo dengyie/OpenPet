@@ -27,9 +27,9 @@ test('character anchor prompt is self-contained and reference authoritative', ()
 
   assert.equal(result.role, 'character-anchor')
   assert.equal(result.version, 5)
-  assert.equal(result.promptCompilerVersion, 1)
+  assert.equal(result.promptCompilerVersion, 2)
   assert.deepEqual(result.promptCompiler, {
-    promptCompilerVersion: 1,
+    promptCompilerVersion: 2,
     taskType: 'character-image',
     stage: 'identity',
     width: 1024,

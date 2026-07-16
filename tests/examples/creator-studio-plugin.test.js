@@ -22,6 +22,13 @@ const {
 
 const pluginRoot = path.resolve(__dirname, '../../examples/plugins/creator-studio')
 const OFFICIAL_FULL_PET_ROW_BY_ID = new Map(OFFICIAL_FULL_PET_ROWS.map((row) => [row.id, row]))
+const createHumanApprovalEvidence = (overrides = {}) => ({
+  approved: true,
+  source: 'control-center',
+  approvedAt: '2026-07-17T00:00:00.000Z',
+  evidenceVersion: 1,
+  ...overrides
+})
 const assertProviderNeutralImagePrompt = (prompt) => {
   assert.doesNotMatch(prompt, /\bOpenPet\b/i)
   assert.doesNotMatch(prompt, /\bProvider\b/i)
@@ -580,7 +587,7 @@ test('creator studio prompt builder creates an OpenPet full-pet prompt with runt
   assert.match(built.prompt, /一只软乎乎的橘猫桌宠/)
   assert.equal(built.prompt.includes('response_format'), false)
   assert.equal(built.promptBuilderVersion, 5)
-  assert.equal(built.promptCompiler.promptCompilerVersion, 1)
+  assert.equal(built.promptCompiler.promptCompilerVersion, 2)
   assert.match(built.providerPrompt, /^Create exactly one 1024 x 1024 image with a 1:1 aspect ratio\./)
   assert.match(built.providerPrompt, /one complete full-body character/i)
   assert.match(built.providerPrompt, /attached character as the exact identity and visual-style reference/i)
@@ -716,7 +723,7 @@ test('creator studio prompt builder emits a generic OpenPet action asset protoco
   })
 
   assert.equal(built.promptBuilderVersion, 5)
-  assert.equal(built.promptCompiler.promptCompilerVersion, 1)
+  assert.equal(built.promptCompiler.promptCompilerVersion, 2)
   assert.match(built.providerPrompt, /^Create exactly one 1536 x 1024 image with a 3:2 aspect ratio\./)
   assert.match(built.providerPrompt, /complete animation frame sheet for wave/i)
   assert.match(built.providerPrompt, /attached character as the exact identity and visual-style reference/i)
@@ -876,10 +883,10 @@ test('creator studio prompt builder keeps wave and reaction inference ahead of b
   assertProviderNeutralImagePrompt(reactionPrompt)
 })
 
-test('creator studio prompt builder filters secrets paths and bridge details from prompts', () => {
+test('creator studio prompt builder rejects secret-bearing creative intent before compilation', () => {
   const { buildOpenPetImagePrompt } = require('../../examples/plugins/creator-studio/lib/openpet-prompt-builder')
 
-  const built = buildOpenPetImagePrompt({
+  assert.throws(() => buildOpenPetImagePrompt({
     run: {
       petId: 'unsafe-cat',
       input: {
@@ -889,18 +896,7 @@ test('creator studio prompt builder filters secrets paths and bridge details fro
     },
     backend: 'provider',
     model: 'gpt-image-2'
-  })
-
-  assert.match(built.prompt, /OpenPet animation asset/)
-  assert.equal(built.prompt.includes('sk-test-secret'), false)
-  assert.equal(built.prompt.includes('/Users/mango/private/ref.png'), false)
-  assert.equal(built.prompt.includes('127.0.0.1:8317'), false)
-  assert.equal(built.prompt.includes('bridge-token'), false)
-  assert.equal(built.providerPrompt.includes('sk-test-secret'), false)
-  assert.equal(built.providerPrompt.includes('/Users/mango/private/ref.png'), false)
-  assert.equal(built.providerPrompt.includes('127.0.0.1:8317'), false)
-  assert.equal(built.providerPrompt.includes('bridge-token'), false)
-  assert.equal(built.warnings.includes('creative_brief_sanitized'), true)
+  }), /forbidden secret/i)
 })
 
 test('creator studio run store creates and advances durable run state', () => {
@@ -1639,7 +1635,7 @@ test('creator studio run-step command uses host bridge for provider generation w
     assert.deepEqual(run.modelSnapshot, {
       backend: 'provider',
       provider: 'openai-compatible',
-      model: 'local-pet-sprite',
+      model: 'local-custom-sprite-v2',
       baseUrlHost: '127.0.0.1:7860'
     })
     assert.deepEqual(run.artifacts.generatedImage.modelSnapshot, run.modelSnapshot)
@@ -1893,7 +1889,7 @@ test('creator studio preview-only host run cannot be exported as a pet bundle', 
     const approved = runCreatorCommand({
       command: 'approve-run',
       dataDir,
-      payload: { runId: created.json.run.runId }
+      payload: { runId: created.json.run.runId, humanApproval: createHumanApprovalEvidence() }
     })
     const exported = runCreatorCommand({
       command: 'export-bundle',
@@ -2046,7 +2042,7 @@ test('creator studio provider full-pet generation writes task qa without prompt 
   }
 })
 
-test('creator studio import command regenerates stale fixture output when approved atlas is transparent', async () => {
+test('creator studio import command rejects a stale transparent atlas without regenerating it', async () => {
   const { createRun, readRun, updateRunStatus } = require('../../examples/plugins/creator-studio/lib/run-store')
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-stale-fixture-'))
   const run = createRun({
@@ -2057,7 +2053,7 @@ test('creator studio import command regenerates stale fixture output when approv
   const generated = runCreatorCommand({
     command: 'run-step',
     dataDir,
-    payload: { runId: run.runId }
+    payload: { runId: run.runId, humanApproval: createHumanApprovalEvidence() }
   })
   assert.equal(generated.status, 0)
   const outputDir = generated.json.outputDir
@@ -2112,16 +2108,15 @@ test('creator studio import command regenerates stale fixture output when approv
       .raw()
       .stats()
 
-    assert.equal(imported.status, 0)
-    assert.equal(imported.json.ok, true)
-    assert.equal(imported.json.run.status, 'imported')
-    assert.equal(repaired.importedPackId, 'stale-fixture-cat')
-    assert.equal(repaired.activatedPackId, 'stale-fixture-cat')
-    assert.equal(atlasStats.channels[3].max > 0, true)
+    assert.equal(imported.status, 1)
+    assert.equal(imported.json.ok, false)
+    assert.match(imported.json.error, /visible pixels/i)
+    assert.equal(repaired.status, 'approved')
+    assert.equal(repaired.importedPackId || '', '')
+    assert.equal(repaired.activatedPackId || '', '')
+    assert.equal(atlasStats.channels[3].max, 0)
     assert.deepEqual(requests.map((entry) => entry.url), [
-      '/creator/pet-pack/inspect-output',
-      '/creator/pet-pack/inspect-output',
-      '/creator/pet-pack/import-output'
+      '/creator/pet-pack/inspect-output'
     ])
   } finally {
     server.closeAllConnections?.()
@@ -2775,7 +2770,7 @@ test('creator studio approve-run rejects action frames without visible pixel evi
   const approved = runCreatorCommand({
     command: 'approve-run',
     dataDir,
-    payload: { runId: run.runId }
+    payload: { runId: run.runId, humanApproval: createHumanApprovalEvidence() }
   })
   const stored = readRun({ dataDir, runId: run.runId })
 
@@ -2870,7 +2865,7 @@ test('creator studio approve-run rejects full-pet output without passing atlas q
   const approved = runCreatorCommand({
     command: 'approve-run',
     dataDir,
-    payload: { runId: run.runId }
+    payload: { runId: run.runId, humanApproval: createHumanApprovalEvidence() }
   })
   const stored = readRun({ dataDir, runId: run.runId })
 
@@ -2965,7 +2960,7 @@ test('creator studio approve-run accepts full-pet output with source and atlas q
   const approved = runCreatorCommand({
     command: 'approve-run',
     dataDir,
-    payload: { runId: run.runId }
+    payload: { runId: run.runId, humanApproval: createHumanApprovalEvidence() }
   })
 
   assert.equal(approved.status, 0)
@@ -3058,7 +3053,7 @@ test('creator studio approve-run rejects full-pet output when qa source path mis
   const approved = runCreatorCommand({
     command: 'approve-run',
     dataDir,
-    payload: { runId: run.runId }
+    payload: { runId: run.runId, humanApproval: createHumanApprovalEvidence() }
   })
   const stored = readRun({ dataDir, runId: run.runId })
 
@@ -3208,7 +3203,7 @@ test('creator studio commands create run generate output approve and export', ()
   const approved = runCreatorCommand({
     command: 'approve-run',
     dataDir,
-    payload: { runId: created.json.run.runId }
+    payload: { runId: created.json.run.runId, humanApproval: createHumanApprovalEvidence() }
   })
   const exported = runCreatorCommand({
     command: 'export-bundle',
@@ -3241,7 +3236,8 @@ test('creator studio commands infer latest run for generic plugin button flow', 
   })
   const approved = runCreatorCommand({
     command: 'approve-run',
-    dataDir
+    dataDir,
+    payload: { humanApproval: createHumanApprovalEvidence() }
   })
   const exported = runCreatorCommand({
     command: 'export-bundle',
@@ -3275,7 +3271,7 @@ test('creator studio export-bundle skips action-only runs when inferring latest 
   runCreatorCommand({
     command: 'approve-run',
     dataDir,
-    payload: { runId: petRun.json.run.runId }
+    payload: { runId: petRun.json.run.runId, humanApproval: createHumanApprovalEvidence() }
   })
   const actionRun = createRun({
     dataDir,
@@ -3343,7 +3339,7 @@ test('creator studio import-approved-pet skips action-only runs when inferring l
   runCreatorCommand({
     command: 'approve-run',
     dataDir,
-    payload: { runId: petRun.json.run.runId }
+    payload: { runId: petRun.json.run.runId, humanApproval: createHumanApprovalEvidence() }
   })
   const actionRun = createRun({
     dataDir,
@@ -4016,7 +4012,7 @@ test('creator studio service rejects full-pet approval when qa source path misma
     const response = await fetch(`http://127.0.0.1:${port}/api/runs/${run.runId}/approve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: '{}'
+      body: JSON.stringify({ humanApproval: createHumanApprovalEvidence() })
     })
     const body = await response.json()
     const stored = readRun({ dataDir, runId: run.runId })
@@ -4190,7 +4186,7 @@ test('creator studio service exposes run detail and logs for dashboard clients',
     const failedApprovalResponse = await fetch(`http://127.0.0.1:${port}/api/runs/${run.runId}/approve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: '{}'
+      body: JSON.stringify({ humanApproval: createHumanApprovalEvidence() })
     })
     const failedApproval = await failedApprovalResponse.json()
     for (let index = 2; index <= 8; index += 1) {
@@ -4203,7 +4199,7 @@ test('creator studio service exposes run detail and logs for dashboard clients',
     const actionApproved = await fetch(`http://127.0.0.1:${port}/api/runs/${run.runId}/approve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: '{}'
+      body: JSON.stringify({ humanApproval: createHumanApprovalEvidence() })
     }).then((response) => response.json())
     const logsAfterApprove = await fetch(`http://127.0.0.1:${port}/api/runs/${run.runId}/logs`).then((response) => response.json())
 
@@ -4409,7 +4405,9 @@ test('creator studio service exposes task review routes for dashboard clients', 
     })
     const confirmed = await postJson(`/api/runs/${draft.run.runId}/confirm`)
     const generated = await postJson(`/api/runs/${draft.run.runId}/generate-action`)
-    const approved = await postJson(`/api/runs/${draft.run.runId}/approve`)
+    const approved = await postJson(`/api/runs/${draft.run.runId}/approve`, {
+      humanApproval: createHumanApprovalEvidence()
+    })
     const logs = await fetch(`http://127.0.0.1:${port}/api/runs/${draft.run.runId}/logs`).then((response) => response.json())
 
     assert.equal(draft.ok, true)

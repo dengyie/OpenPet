@@ -115,9 +115,9 @@ test('an unresolved shadow planner does not block the fixed Creator workflow', a
     new Promise((_, reject) => setTimeout(() => reject(new Error('fixed workflow waited for shadow planner')), 50))
   ])
 
-  assert.equal(result.state, 'completed')
+  assert.equal(result.state, 'review-required')
   assert.deepEqual(h.commandCalls.map((call) => call.commandId), [
-    'draft-task', 'confirm-task', 'run-step', 'approve-run', 'import-approved-action'
+    'draft-task', 'confirm-task', 'run-step'
   ])
 })
 
@@ -127,7 +127,7 @@ test('shadow planner rejection is contained while the fixed Creator workflow com
   const result = await h.service.generateExistingAction({ actionName: 'spin', motionPrompt: 'spin quickly' })
   await new Promise((resolve) => setImmediate(resolve))
 
-  assert.equal(result.state, 'completed')
+  assert.equal(result.state, 'review-required')
   assert.equal(h.logs.some((entry) => entry.event === 'creator.workflow.shadow-planning-failed'), true)
 })
 
@@ -138,16 +138,17 @@ test('resolved shadow diagnostics remain additive and never enter fixed command 
 
   const result = await h.service.generateExistingAction({ actionName: 'spin', motionPrompt: 'spin quickly' })
 
-  assert.equal(result.diagnostics.hatchPetAgent.decision, 'observe')
+  assert.equal(result.state, 'review-required')
+  assert.equal(result.diagnostics.hatchPetAgent, null)
   assert.equal(JSON.stringify(h.commandCalls.slice(1)).includes('shadow-1'), false)
   assert.equal(JSON.stringify(h.commandCalls.slice(1)).includes('observe'), false)
 })
 
-test('creator workflow treats missing full-pet QA evidence as all official rows missing', () => {
+test('creator workflow treats missing full-pet QA evidence as the required idle row missing', () => {
   const coverage = __testInternals.resolveOfficialActionCoverage(null)
 
   assert.equal(coverage.basicActions, null)
-  assert.deepEqual(coverage.missingOfficialActionIds, OFFICIAL_FULL_PET_ACTION_IDS)
+  assert.deepEqual(coverage.missingOfficialActionIds, ['idle'])
 })
 
 test('creator workflow rejects full-pet coverage from failed QA evidence', () => {
@@ -341,7 +342,7 @@ test('creator workflow service getState falls back quickly when provider health 
   assert.equal(result.provider.code, 'health_check_timeout')
 })
 
-test('creator workflow service imports an existing action and auto-applies clickAction even when the Creator Studio service is stopped', async () => {
+test('creator workflow service stops an existing action at explicit human review even when Creator Studio service is stopped', async () => {
   const commandCalls = []
   const copiedRuns = []
   const logs = []
@@ -579,19 +580,14 @@ test('creator workflow service imports an existing action and auto-applies click
   })
 
   assert.equal(result.ok, true)
-  assert.equal(result.state, 'completed')
-  assert.equal(result.code, 'action_imported')
-  assert.equal(result.importedAction.actionId, 'spin')
-  assert.equal(result.clickAction, 'spin')
-  assert.deepEqual(result.clickActionChange, {
-    previousActionId: 'wave',
-    currentActionId: 'spin',
-    importedActionId: 'spin',
-    canRestore: true
-  })
+  assert.equal(result.state, 'review-required')
+  assert.equal(result.code, 'human_review_required')
+  assert.equal(result.importedAction, null)
+  assert.equal(result.clickAction, '')
+  assert.equal(result.clickActionChange, null)
   assert.equal(result.run.runId, 'run-001')
-  assert.equal(result.run.importedActionId, 'spin')
-  assert.equal(result.diagnostics.runStatus, 'imported')
+  assert.equal(result.run.importedActionId, '')
+  assert.equal(result.diagnostics.runStatus, 'ready_for_review')
   assert.equal(result.diagnostics.attemptStatus, 'completed')
   assert.equal(result.diagnostics.outputCount, 1)
   assert.equal(result.diagnostics.conditioning.mode, 'image-edit')
@@ -602,9 +598,7 @@ test('creator workflow service imports an existing action and auto-applies click
   assert.deepEqual(commandCalls.map((entry) => entry.commandId), [
     'draft-task',
     'confirm-task',
-    'run-step',
-    'approve-run',
-    'import-approved-action'
+    'run-step'
   ])
   assert.equal(commandCalls[0].payload.generationTask.mode, 'single-action')
   assert.equal(commandCalls[0].payload.generationTask.actions[0].frameCount, 6)
@@ -621,12 +615,10 @@ test('creator workflow service imports an existing action and auto-applies click
     'creator.workflow.stage.completed',
     'creator.workflow.stage.completed',
     'creator.workflow.stage.completed',
-    'creator.workflow.stage.completed',
-    'creator.workflow.stage.completed',
-    'creator.workflow.completed'
+    'creator.workflow.human-review-required'
   ])
   assert.equal(logs[0].details.requestId, 'creator-workflow-1')
-  assert.equal(logs.at(-1).details.importedActionId, 'spin')
+  assert.equal(logs.at(-1).details.runId, 'run-001')
   assert.equal(JSON.stringify(logs).includes('spin quickly'), false)
 })
 
@@ -939,10 +931,10 @@ test('creator workflow service returns preview-ready for new-character output wi
   assert.equal(result.basicActions.baseIdentityCoverage, true)
   assert.deepEqual(result.basicActions.realActionIds, [])
   assert.deepEqual(result.basicActions.fallbackActionIds, ['idle', 'waving', 'waiting'])
-  assert.deepEqual(result.basicActions.missingRequiredActionIds, [])
+  assert.deepEqual(result.basicActions.missingRequiredActionIds, OFFICIAL_FULL_PET_ACTION_IDS)
   assert.deepEqual(
     result.basicActions.missingRequiredOfficialActionIds,
-    ['idle', 'running-right', 'running-left', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review']
+    []
   )
   assert.equal(result.basicActions.rows.find((row) => row.actionId === 'idle').quality, 'base-preview')
   assert.deepEqual(commandCalls, ['draft-task', 'confirm-task', 'run-step'])
@@ -1234,8 +1226,8 @@ test('creator workflow service rejects overlapping workflow starts while one run
 
   releaseDraft()
   const firstRun = await firstRunPromise
-  assert.equal(firstRun.state, 'completed')
-  assert.equal(firstRun.clickAction, 'spin')
+  assert.equal(firstRun.state, 'review-required')
+  assert.equal(firstRun.clickAction, '')
 })
 
 test('creator workflow service clears transient generating state when a locked workflow exits before drafting', async () => {

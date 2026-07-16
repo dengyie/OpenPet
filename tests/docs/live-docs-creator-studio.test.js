@@ -334,7 +334,7 @@ test('live docs describe landed official row package support without claiming pr
 test('canonical pet generation docs enforce one reference image and mirrored directional rows', () => {
   const canonical = readText('docs/pet-character-generation.md')
   assert.match(canonical, /exactly one source image/i)
-  assert.match(canonical, /at most one image attachment/i)
+  assert.match(canonical, /exactly one (?:validated )?image attachment/i)
   assert.match(canonical, /compose[\s\S]*composite reference board/i)
   assert.match(canonical, /running-right[\s\S]*running-left[\s\S]*framewise horizontal mirror/i)
   assert.match(canonical, /does not (?:spend|make|issue) a separate provider request (?:on|for) `?running-left`?/i)

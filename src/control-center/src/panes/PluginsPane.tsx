@@ -334,7 +334,7 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
               {plugin.id === 'openpet.creator-studio' ? (
                 <div className="plugin-config-panel plugin-primary-workflow" aria-label="Creator Studio 默认流">
                   <div className="plugin-config-header">
-                    <strong>生成并导入</strong>
+                    <strong>生成并等待复查</strong>
                     <button
                       type="button"
                       className="ghost"
@@ -343,6 +343,9 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
                     >
                       查看任务详情
                     </button>
+                  </div>
+                  <div className="field-note">
+                    宿主默认路径会优先走已保存的图片 Provider，并在生成完成后停在人工复查。审批、导入和激活需要分别执行。
                   </div>
                   <label className="plugin-config-field" htmlFor="creator-studio-default-prompt">
                     <span>Creator Studio 请求</span>
@@ -361,9 +364,10 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
                       disabled={!plugin.enabled || Boolean(plugin.blockStatus?.blocked) || runningCreatorStudioDefaultFlow}
                       onClick={() => onRunCreatorStudioDefaultFlow()}
                     >
-                      {runningCreatorStudioDefaultFlow ? '处理中' : '生成并导入'}
+                      {runningCreatorStudioDefaultFlow ? '处理中' : '开始生成'}
                     </button>
                   </div>
+                  <div className="field-note">高级入口：查看任务详情 / 手动逐步执行</div>
                 </div>
               ) : null}
               {plugin.id === 'openpet.agent-awareness' ? (
@@ -605,45 +609,6 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
                       </button>
                     )
                   })}
-                </div>
-              ) : null}
-              {plugin.id === 'openpet.creator-studio' ? (
-                <div className="plugin-config-panel" aria-label="Creator Studio 默认流">
-                  <div className="plugin-config-header">
-                    <strong>生成并等待复查</strong>
-                    <button
-                      type="button"
-                      className="ghost"
-                      disabled={!plugin.enabled || plugin.blockStatus?.blocked || openingDashboard === `${plugin.id}:main`}
-                      onClick={() => onOpenDashboard(plugin.id, 'main')}
-                    >
-                      查看任务详情
-                    </button>
-                  </div>
-                  <div className="field-note">
-                    宿主默认路径会优先走已保存的图片 Provider，并在生成完成后停在人工复查。审批、导入和激活需要分别执行。
-                  </div>
-                  <label className="plugin-config-field" htmlFor="creator-studio-default-prompt">
-                    <span>Creator Studio 请求</span>
-                    <textarea
-                      id="creator-studio-default-prompt"
-                      className="text-input"
-                      value={creatorStudioPromptDraft}
-                      placeholder="描述你想新增或生成的动作 / 宠物效果"
-                      onChange={(event) => onChangeCreatorStudioPromptDraft(event.target.value)}
-                    />
-                  </label>
-                  <div className="plugin-commands">
-                    <button
-                      type="button"
-                      className="primary"
-                      disabled={!plugin.enabled || Boolean(plugin.blockStatus?.blocked) || runningCreatorStudioDefaultFlow}
-                      onClick={() => onRunCreatorStudioDefaultFlow()}
-                    >
-                      {runningCreatorStudioDefaultFlow ? '处理中' : '开始生成'}
-                    </button>
-                  </div>
-                  <div className="field-note">高级入口：查看任务详情 / 手动逐步执行</div>
                 </div>
               ) : null}
               {plugin.id === 'openpet.creator-studio' && plugin.entries?.dashboards?.length ? (

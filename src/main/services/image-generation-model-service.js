@@ -1416,6 +1416,7 @@ const createImageGenerationModelService = ({
 
   const generateImage = async (request = {}) => {
     const config = getStoredConfig()
+    const requestId = idFactory()
     const ownerFieldOverrides = findOwnerFieldOverrides(request, {
       topLevel: ['provider', 'baseUrl', 'apiKeyRef', 'model']
     })
@@ -1452,7 +1453,6 @@ const createImageGenerationModelService = ({
     })
     assertExactlyOneReferenceImage(normalizedReferenceImages)
     const normalizedPromptCompiler = normalizePromptCompilerEvidence(promptCompiler)
-    const requestId = idFactory()
     const startedMs = nowMs()
     const { relativeDir, targetDir } = ensureInsideDataDir({
       dataDir: output?.dataDir,

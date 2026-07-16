@@ -46,12 +46,12 @@ test('creator studio default flow blocks before generation when provider health 
 
   assert.equal(result.ok, true)
   assert.equal(result.state, 'blocked')
-  assert.match(result.message, /AI -> 模型 Provider -> 图片模型 配置/i)
+  assert.match(result.message, /AI -> 模型 Provider -> 图片模型\s*配置/i)
   assert.equal(result.runId, '')
   assert.equal(commands.length, 0)
 })
 
-test('creator studio default flow auto-answers trigger, confirms, generates, approves, and imports action runs without requiring the Creator Studio service to be running', async () => {
+test('creator studio default flow auto-answers trigger, confirms, generates, and stops for human review without requiring the Creator Studio service to be running', async () => {
   const commandCalls = []
   const logs = []
   const service = createCreatorStudioDefaultFlowService({
@@ -193,16 +193,14 @@ test('creator studio default flow auto-answers trigger, confirms, generates, app
   const result = await service.runDefaultFlow({ prompt: '新增一个害羞转圈动作' })
 
   assert.equal(result.ok, true)
-  assert.equal(result.state, 'completed')
+  assert.equal(result.state, 'review-required')
   assert.equal(result.runId, 'run-001')
-  assert.equal(result.lastCommandResult?.commandId, 'import-approved-action')
+  assert.equal(result.lastCommandResult?.commandId, 'run-step')
   assert.deepEqual(commandCalls.map((entry) => entry.commandId), [
     'draft-task',
     'answer-question',
     'confirm-task',
-    'run-step',
-    'approve-run',
-    'import-approved-action'
+    'run-step'
   ])
   assert.equal(commandCalls[0].payload.backend, 'provider')
   assert.equal(commandCalls[1].payload.answer, 'manual')
@@ -213,9 +211,7 @@ test('creator studio default flow auto-answers trigger, confirms, generates, app
     'creator.default-flow.stage.completed',
     'creator.default-flow.stage.completed',
     'creator.default-flow.stage.completed',
-    'creator.default-flow.stage.completed',
-    'creator.default-flow.stage.completed',
-    'creator.default-flow.completed'
+    'creator.default-flow.review-required'
   ])
   assert.equal(logs[0].details.requestId, 'creator-default-flow-1')
   assert.equal(logs.at(-1).details.runId, 'run-001')
@@ -258,7 +254,7 @@ test('creator studio default flow routes to details when unresolved questions ar
   assert.equal(result.lastCommandResult?.commandId, 'draft-task')
 })
 
-test('creator studio default flow routes action imports with failed trigger handoff to details', async () => {
+test('creator studio default flow does not attempt a failed trigger handoff before human review', async () => {
   const service = createCreatorStudioDefaultFlowService({
     imageGenerationModelService: {
       checkHealth: async () => ({ ok: true, code: 'provider_healthy', message: 'ok' })
@@ -357,13 +353,13 @@ test('creator studio default flow routes action imports with failed trigger hand
   const result = await service.runDefaultFlow({ prompt: '新增一个害羞转圈动作' })
 
   assert.equal(result.ok, true)
-  assert.equal(result.state, 'needs_details')
+  assert.equal(result.state, 'review-required')
   assert.equal(result.runId, 'run-trigger-fail')
-  assert.match(result.message, /触发建议交接失败/)
-  assert.equal(result.lastCommandResult?.commandId, 'import-approved-action')
+  assert.match(result.message, /等待人工复查/)
+  assert.equal(result.lastCommandResult?.commandId, 'run-step')
 })
 
-test('creator studio default flow routes action imports with missing trigger handoff records to details', async () => {
+test('creator studio default flow does not require trigger handoff records before human review', async () => {
   const service = createCreatorStudioDefaultFlowService({
     imageGenerationModelService: {
       checkHealth: async () => ({ ok: true, code: 'provider_healthy', message: 'ok' })
@@ -458,10 +454,10 @@ test('creator studio default flow routes action imports with missing trigger han
   const result = await service.runDefaultFlow({ prompt: '新增一个害羞转圈动作' })
 
   assert.equal(result.ok, true)
-  assert.equal(result.state, 'needs_details')
+  assert.equal(result.state, 'review-required')
   assert.equal(result.runId, 'run-trigger-missing')
-  assert.match(result.message, /缺少触发建议交接记录/)
-  assert.equal(result.lastCommandResult?.commandId, 'import-approved-action')
+  assert.match(result.message, /等待人工复查/)
+  assert.equal(result.lastCommandResult?.commandId, 'run-step')
 })
 
 test('creator studio default flow failure logs do not include raw prompt or file-path error text', async () => {

@@ -14,6 +14,13 @@ const { createActionImportService } = require('../../src/main/services/action-im
 const { createPetPackService } = require('../../src/main/services/pet-pack-service')
 const { createMinimalWebp } = require('../../examples/plugins/creator-studio/lib/fake-hatch-pet')
 
+const createHumanApprovalEvidence = () => ({
+  approved: true,
+  source: 'control-center',
+  approvedAt: '2026-07-17T00:00:00.000Z',
+  evidenceVersion: 1
+})
+
 const createSettingsService = (initialSettings = {}) => {
   // Native-execution approval defaults to ON in this test helper so the large
   // body of declaration-plugin functionality tests (bridges, permissions, path
@@ -1323,7 +1330,10 @@ test('creator studio example imports approved fixture pet through host bridge', 
   })
   const runId = createResult.result.run.runId
   await service.runCommand('openpet.creator-studio', 'run-step', { runId })
-  await service.runCommand('openpet.creator-studio', 'approve-run', { runId })
+  await service.runCommand('openpet.creator-studio', 'approve-run', {
+    runId,
+    humanApproval: createHumanApprovalEvidence()
+  })
   const importResult = await service.runCommand('openpet.creator-studio', 'import-approved-pet', { runId, activate: true })
 
   assert.equal(importResult.ok, true)
@@ -1436,7 +1446,10 @@ test('creator studio example rejects importing a preview-only host pet', async (
     }
   })
   await service.runCommand('openpet.creator-studio', 'run-step', { runId })
-  await service.runCommand('openpet.creator-studio', 'approve-run', { runId })
+  await service.runCommand('openpet.creator-studio', 'approve-run', {
+    runId,
+    humanApproval: createHumanApprovalEvidence()
+  })
   await assert.rejects(
     service.runCommand('openpet.creator-studio', 'import-approved-pet', { runId, activate: true }),
     /pet\.json|preview|official action/i

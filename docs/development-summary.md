@@ -1,7 +1,7 @@
 # OpenPet Development Summary
 
-> Last updated: 2026-07-07
-> Branch: `codex/dev7`
+> Last updated: 2026-07-17
+> Branch: `main`
 
 This is the compact engineering snapshot for the current repository state. Use [`TODO.md`](./TODO.md) for active work, and use `docs/phases/` plus `docs/reviews/` for detailed implementation history.
 

@@ -167,107 +167,6 @@ const getSuccessfulGenerationModels = ({ primaryModel = '', stages = [] } = {}) 
     .map((stage) => normalizeModelName(stage?.model))
 ].filter(Boolean))]
 
-const isLikelyImageModel = (value) => (
-  /(image|banana|imagine)/i.test(normalizeModelName(value))
-)
-
-const isSupportedOpenAiCompatibleEditModel = (value) => (
-  /^(gpt-image-(1\.5|2)|grok-imagine-image(?:-quality)?)$/i.test(normalizeModelName(value))
-)
-
-const isEligibleFallbackModel = ({ settings = {}, candidate = '' }) => {
-  const normalized = normalizeModelName(candidate)
-  if (!normalized) return false
-  const provider = normalizeModelName(settings?.provider).toLowerCase()
-  if (provider === 'openai-compatible' || provider === 'openai') {
-    return isSupportedOpenAiCompatibleEditModel(normalized)
-  }
-  return isLikelyImageModel(normalized)
-}
-
-const buildModelCandidateList = ({ settings = {}, preferredModel = '' }) => {
-  const candidates = []
-  const seen = new Set()
-  const addCandidate = (value) => {
-    const normalized = normalizeModelName(value)
-    if (!normalized || seen.has(normalized)) return
-    seen.add(normalized)
-    candidates.push(normalized)
-  }
-  const normalizedPreferredModel = normalizeModelName(preferredModel)
-  const hasHostWorkflowModelPolicy = Boolean(
-    settings?.creatorWorkflowModelPolicy &&
-    Array.isArray(settings.creatorWorkflowModelPolicy.verifiedModels)
-  )
-  const hostPolicyVerifiedModels = Array.isArray(settings?.creatorWorkflowModelPolicy?.verifiedModels)
-    ? settings.creatorWorkflowModelPolicy.verifiedModels
-    : []
-  const hostPolicyFallbackModels = Array.isArray(settings?.creatorWorkflowModelPolicy?.fallbackModels)
-    ? settings.creatorWorkflowModelPolicy.fallbackModels
-    : []
-  if (hasHostWorkflowModelPolicy) {
-    const preferredModelVerified = normalizedPreferredModel &&
-      hostPolicyVerifiedModels.some((candidate) => normalizeModelName(candidate) === normalizedPreferredModel)
-    if (preferredModelVerified) addCandidate(normalizedPreferredModel)
-    for (const candidate of hostPolicyVerifiedModels) addCandidate(candidate)
-    for (const candidate of hostPolicyFallbackModels) addCandidate(candidate)
-    return candidates
-  }
-  addCandidate(normalizedPreferredModel)
-  for (const candidate of KNOWN_FALLBACK_IMAGE_MODELS) {
-    if (isEligibleFallbackModel({ settings, candidate })) addCandidate(candidate)
-  }
-  const discoveredModels = Array.isArray(settings?.modelCatalog?.models) ? settings.modelCatalog.models : []
-  for (const candidate of discoveredModels) {
-    if (isEligibleFallbackModel({ settings, candidate })) addCandidate(candidate)
-  }
-  return candidates
-}
-
-const shouldRetryWithAnotherModel = (error) => {
-  const message = String(error?.message || error || '').trim().toLowerCase()
-  if (
-    message.includes('api key is missing') ||
-    message.includes('provider backend is not configured') ||
-    message.includes('openpet bridge is not available') ||
-    message.includes('allowed data directory')
-  ) {
-    return false
-  }
-  return (
-    message.includes('timed out') ||
-    message.includes('fetch failed') ||
-    message.includes('socks5') ||
-    message.includes('cannot complete') ||
-    message.includes('generation failed with http') ||
-    message.includes('returned no outputs') ||
-    ((message.includes('model') || message.includes('provider')) &&
-      (message.includes('unsupported') || message.includes('not found')))
-  )
-}
-
-const isTransientGatewayHttpFailure = (error) => {
-  const message = String(error?.message || error || '').trim()
-  const normalizedMessage = message.toLowerCase()
-  const causeCode = String(error?.cause?.code || error?.code || '').trim().toUpperCase()
-  if (
-    normalizedMessage.includes('fetch failed') ||
-    normalizedMessage.includes('connection reset') ||
-    normalizedMessage.includes('socket closed') ||
-    TRANSIENT_TRANSPORT_ERROR_CODES.has(causeCode)
-  ) return true
-  const statusMatch = message.match(/generation failed with HTTP\s+(\d{3})/i)
-  if (!statusMatch) return false
-  const status = Number(statusMatch[1])
-  return status === 408 || status === 425 || status === 429 || (
-    status >= 500 && status <= 504
-  ) || (
-    status >= 520 && status <= 524
-  )
-}
-
-const sleep = (delayMs) => new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(delayMs) || 0)))
-
 const createReferenceImageFromRecord = ({ dataDir, record = {}, fallbackFileName = 'reference.png', fallbackRole = 'reference-image' }) => {
   const relativePath = createSafeRelativePath(record?.relativePath)
   if (!dataDir || !relativePath) return null
@@ -2236,6 +2135,7 @@ const generateFullPetBasicActionSource = async ({
   actionId,
   dataDir,
   run,
+  settings = {},
   selectedModel,
   requestedTimeoutMs,
   referenceImages,
@@ -2334,6 +2234,7 @@ const generateFullPetBasicActionSource = async ({
 const generateFullPetBasicActionSources = async ({
   dataDir,
   run,
+  settings = {},
   selectedModel,
   requestedTimeoutMs,
   referenceImages,
@@ -2392,6 +2293,7 @@ const generateFullPetBasicActionSources = async ({
       actionId,
       dataDir,
       run,
+      settings,
       selectedModel,
       requestedTimeoutMs,
       referenceImages,
@@ -3138,7 +3040,6 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
 
 module.exports = {
   __testInternals: {
-    buildModelCandidateList,
     assertExactlyOneProviderReferenceImage,
     createFullPetActionIdentityContext,
     generateActionKeyframe,
@@ -3146,7 +3047,6 @@ module.exports = {
     evaluateActionKeyframeQuality,
     generateFullPetBasicActionSources,
     getSuccessfulGenerationModels,
-    isTransientGatewayHttpFailure,
     prepareGeneratedKeyframeOutput,
     resolveProviderArtReadinessForModels,
     resolveGenerationStageTimeout,

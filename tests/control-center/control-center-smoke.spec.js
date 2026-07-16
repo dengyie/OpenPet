@@ -2683,7 +2683,7 @@ test.describe('Control Center smoke', () => {
     await expect(pluginRow).toContainText('proposal:click:shy-spin:test')
   })
 
-  test('shows a host-owned Creator Studio generate-and-import entry in the Plugins pane', async ({ page }) => {
+  test('shows a host-owned Creator Studio generation and review entry in the Plugins pane', async ({ page }) => {
     await page.addInitScript(() => {
       window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
         imageGenerationConfig: {
@@ -2749,12 +2749,12 @@ test.describe('Control Center smoke', () => {
 
     const pluginRow = page.locator('.plugin-row', { hasText: 'Creator Studio' })
     await expect(pluginRow.getByLabel('Creator Studio 请求')).toBeVisible()
-    await expect(pluginRow.getByRole('button', { name: '生成并导入' })).toBeVisible()
+    await expect(pluginRow.getByRole('button', { name: '开始生成' })).toBeVisible()
     await expect(pluginRow).toContainText('管理与诊断')
     await expect(pluginRow).toContainText('查看任务详情')
   })
 
-  test('blocks host-owned Creator Studio generate-and-import when the saved image provider is not configured', async ({ page }) => {
+  test('blocks host-owned Creator Studio generation when the saved image provider is not configured', async ({ page }) => {
     await page.addInitScript(() => {
       window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
         imageGenerationConfig: {
@@ -2818,13 +2818,13 @@ test.describe('Control Center smoke', () => {
 
     const pluginRow = page.locator('.plugin-row', { hasText: 'Creator Studio' })
     await pluginRow.getByLabel('Creator Studio 请求').fill('给当前猫猫新增一个转圈动作')
-    await pluginRow.getByRole('button', { name: '生成并导入' }).click()
+    await pluginRow.getByRole('button', { name: '开始生成' }).click()
 
-    await expect(page.locator('.status-line')).toContainText('请先到 AI -> 模型 Provider -> 图片模型 配置并保存可用模型')
+    await expect(page.locator('.status-line')).toContainText('请先到 AI -> 模型 Provider -> 图片模型配置并保存可用模型')
     await expect(pluginRow).not.toContainText('最近命令结果')
   })
 
-  test('blocks host-owned Creator Studio generate-and-import when native execution is not approved', async ({ page }) => {
+  test('blocks host-owned Creator Studio generation when native execution is not approved', async ({ page }) => {
     await page.addInitScript(() => {
       window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
         imageGenerationConfig: {
@@ -2889,13 +2889,13 @@ test.describe('Control Center smoke', () => {
 
     const pluginRow = page.locator('.plugin-row', { hasText: 'Creator Studio' })
     await pluginRow.getByLabel('Creator Studio 请求').fill('给当前猫猫新增一个动作')
-    await pluginRow.getByRole('button', { name: '生成并导入' }).click()
+    await pluginRow.getByRole('button', { name: '开始生成' }).click()
 
     await expect(page.locator('.status-line')).toContainText('Plugin native execution is not approved')
     await expect(pluginRow).not.toContainText('最近命令结果')
   })
 
-  test('runs the host-owned Creator Studio generate-and-import flow to imported action in the demo API', async ({ page }) => {
+  test('runs the host-owned Creator Studio generation flow to explicit human review in the demo API', async ({ page }) => {
     await page.addInitScript(() => {
       window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
         imageGenerationConfig: {
@@ -2969,19 +2969,18 @@ test.describe('Control Center smoke', () => {
 
     const pluginRow = page.locator('.plugin-row', { hasText: 'Creator Studio' })
     await pluginRow.getByLabel('Creator Studio 请求').fill('给当前猫猫新增一个害羞转圈动作')
-    await pluginRow.getByRole('button', { name: '生成并导入' }).click()
+    await pluginRow.getByRole('button', { name: '开始生成' }).click()
 
-    await expect(page.locator('.status-line')).toContainText('Imported action shy-spin from run run-demo-action-123')
+    await expect(page.locator('.status-line')).toContainText('run run-demo-action-123 正在等待人工复查')
     await expect(pluginRow).toContainText('最近命令结果')
-    await expect(pluginRow).toContainText('import-approved-action · exit 0')
+    await expect(pluginRow).toContainText('run-step · exit 0')
     await expect(pluginRow).toContainText('run-demo-action-123')
-    await expect(pluginRow).toContainText('已导入动作')
-    await expect(pluginRow).toContainText('shy-spin')
-    await expect(pluginRow).toContainText('入队状态')
-    await expect(pluginRow).toContainText('已提交')
+    await expect(pluginRow).toContainText('ready_for_review')
+    await expect(pluginRow).not.toContainText('已导入动作')
+    await expect(pluginRow).not.toContainText('入队状态')
   })
 
-  test('routes failed host-owned Creator Studio generate-and-import runs to the advanced details path', async ({ page }) => {
+  test('routes failed host-owned Creator Studio generation runs to the advanced details path', async ({ page }) => {
     await page.addInitScript(() => {
       window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
         imageGenerationConfig: {
@@ -3055,7 +3054,7 @@ test.describe('Control Center smoke', () => {
 
     const pluginRow = page.locator('.plugin-row', { hasText: 'Creator Studio' })
     await pluginRow.getByLabel('Creator Studio 请求').fill('让这个动作失败并进入高级详情')
-    await pluginRow.getByRole('button', { name: '生成并导入' }).click()
+    await pluginRow.getByRole('button', { name: '开始生成' }).click()
 
     await expect(page.locator('.status-line')).toContainText('run-demo-action-fail')
     await expect(page.locator('.status-line')).toContainText('查看任务详情')
@@ -3065,7 +3064,7 @@ test.describe('Control Center smoke', () => {
     await expect(page.locator('.status-line')).toContainText('run-demo-action-fail')
   })
 
-  test('routes host-owned Creator Studio trigger handoff failures to the advanced details path', async ({ page }) => {
+  test('keeps Creator Studio trigger handoff out of the default flow until human review', async ({ page }) => {
     await page.addInitScript(() => {
       window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
         imageGenerationConfig: {
@@ -3139,12 +3138,13 @@ test.describe('Control Center smoke', () => {
 
     const pluginRow = page.locator('.plugin-row', { hasText: 'Creator Studio' })
     await pluginRow.getByLabel('Creator Studio 请求').fill('让这个动作触发交接失败并进入高级详情')
-    await pluginRow.getByRole('button', { name: '生成并导入' }).click()
+    await pluginRow.getByRole('button', { name: '开始生成' }).click()
 
     await expect(page.locator('.status-line')).toContainText('run-demo-action-trigger-handoff-fail')
-    await expect(page.locator('.status-line')).toContainText('查看任务详情')
-    await expect(pluginRow).toContainText('触发建议')
-    await expect(pluginRow).toContainText('failed')
+    await expect(page.locator('.status-line')).toContainText('等待人工复查')
+    await expect(pluginRow).toContainText('run-step · exit 0')
+    await expect(pluginRow).toContainText('ready_for_review')
+    await expect(pluginRow).not.toContainText('触发建议交接')
 
     await pluginRow.getByRole('button', { name: '查看任务详情' }).click()
     await expect(page.locator('.status-line')).toContainText('Dashboard 已打开')
