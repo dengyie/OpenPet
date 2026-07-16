@@ -67,6 +67,12 @@ Historical documents are intentionally retained. When facts conflict, prefer cur
 
 ## Maintenance Rules
 
+- Treat public entry docs, live maintainer truth, domain references, and
+  audit/evidence history as separate documentation levels. Update the narrowest
+  level that owns the changed fact.
+- Keep contributor procedure in
+  [development-workflow.md](./development-workflow.md) and test ownership in
+  [testing-strategy.md](./testing-strategy.md).
 - Keep README files short and user-facing.
 - Keep repository-root Markdown limited to public/project-standard entry files such as README, CHANGELOG, and AGENTS; put maintainer docs under `docs/`.
 - Keep `HANDOFF.md` focused on current state, guardrails, and high-signal commands.

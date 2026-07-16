@@ -3,6 +3,24 @@
 OpenPet keeps all automated tests available through `npm test`, but day-to-day
 runtime work should use the smaller core suites first.
 
+## Validation Grades
+
+Use the highest grade touched by a change:
+
+- **Grade A - security, persistence, lifecycle, and public runtime:** run
+  focused tests, npm run test:core:all, npm test, npm run check:syntax,
+  relevant manual acceptance, and git diff --check.
+- **Grade B - user-facing Control Center and runtime integration:** run focused
+  tests, npm run test:core, npm run test:control-center,
+  npm run check:syntax, and git diff --check.
+- **Grade C - tooling, contracts, and documentation:** run focused docs/tools
+  tests, npm run test:tools, npm run check:docs-drift, and
+  git diff --check. Broaden the matrix when a shared contract or tool is
+  consumed by runtime code.
+
+The canonical command flow and worktree rules live in
+[development-workflow.md](./development-workflow.md).
+
 ## Required Core Flow Tests
 
 Run `npm run test:core` for main-process, service, renderer, pet-pack, plugin
