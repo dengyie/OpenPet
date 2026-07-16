@@ -1289,10 +1289,10 @@ button {
 
 .cursor-size-panel {
   display: grid;
-  gap: 14px;
-  padding: 16px;
+  gap: 10px;
+  padding: 12px;
   border: 1px solid #e8edf5;
-  border-radius: 20px;
+  border-radius: 17px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(249, 251, 255, 0.96)),
     #ffffff;
@@ -1301,61 +1301,97 @@ button {
     inset 0 1px 0 rgba(255, 255, 255, 0.95);
 }
 
-.cursor-size-header {
-  display: flex;
-  align-items: start;
-  justify-content: space-between;
-  gap: 14px;
-}
-
-.cursor-size-header div:first-child,
-.cursor-size-panel > div:first-child {
-  display: grid;
-  gap: 5px;
-  min-width: 0;
-}
-
-.cursor-size-header h3,
-.cursor-size-panel > div:first-child h3 {
-  margin: 0;
-  color: #111827;
-  font-size: 16px;
-  font-weight: 800;
-  line-height: 1.25;
-}
-
-.cursor-size-header p,
-.cursor-size-panel > div:first-child p {
-  margin: 0;
-  color: #7a8599;
-  font-size: 13px;
-  line-height: 1.45;
-}
-
-.cursor-size-value {
-  flex: 0 0 auto;
-  min-width: 64px;
-  padding: 8px 12px;
-  border-radius: 999px;
-  background: #f6f2ff;
-  color: #6f5cff;
-  font-size: 14px;
-  font-weight: 800;
-  text-align: center;
-}
-
-.cursor-size-slider-row {
-  display: grid;
-}
-
-.cursor-size-meta {
+.cursor-size-summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  color: #6b7280;
+}
+
+.cursor-size-identity {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cursor-size-identity h3,
+.cursor-size-empty h3 {
+  margin: 0;
+  color: #111827;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.cursor-size-identity span {
+  color: #7a8599;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.cursor-size-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  flex: 0 0 auto;
+}
+
+.cursor-size-empty {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.cursor-size-empty p {
+  margin: 0;
+  color: #7a8599;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.cursor-size-value {
+  flex: 0 0 auto;
+  min-width: 54px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #f6f2ff;
+  color: #6f5cff;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.cursor-size-reset {
+  min-height: 30px;
+  padding: 5px 9px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.cursor-size-control {
+  display: grid;
+  gap: 4px;
+}
+
+.cursor-size-slider-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 38px;
+  align-items: center;
+  gap: 8px;
+}
+
+.cursor-size-range-labels > span {
+  color: #929bad;
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1;
+}
+
+.cursor-size-range-labels > span:last-child {
+  text-align: right;
 }
 
 .cursor-scope-row {
@@ -2859,8 +2895,19 @@ button {
     border-radius: 22px;
   }
 
-  .cursor-size-header {
-    display: grid;
+  .cursor-size-summary {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .cursor-size-actions {
+    justify-content: flex-start;
+  }
+
+  .cursor-size-empty {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
   }
 
   .cursor-scope-row {
@@ -2872,9 +2919,9 @@ button {
     justify-content: flex-start;
   }
 
-  .cursor-size-meta {
-    display: grid;
-    gap: 4px;
+  .cursor-size-slider-row {
+    grid-template-columns: 30px minmax(0, 1fr) 34px;
+    gap: 6px;
   }
 
   .plugin-row {

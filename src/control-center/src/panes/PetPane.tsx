@@ -57,6 +57,13 @@ const formatCursorSize = (cursor: Pick<CursorOption, 'width' | 'height'>) => {
   return width > 0 && height > 0 ? `${width}×${height}` : '尺寸未知'
 }
 
+const formatPendingCursorSize = (cursor: CursorOption, sizePercent: number) => {
+  const currentSizePercent = Math.max(1, Math.round(Number(cursor.sizePercent) || 100))
+  const width = Math.round((Number(cursor.width) || 0) * sizePercent / currentSizePercent)
+  const height = Math.round((Number(cursor.height) || 0) * sizePercent / currentSizePercent)
+  return width > 0 && height > 0 ? `${width}×${height}` : formatCursorSize(cursor)
+}
+
 export function PetPane({
   settings,
   originalSettings,
@@ -251,53 +258,55 @@ export function PetPane({
             <div className="cursor-size-panel">
               {selectedScalableCursor ? (
                 <>
-                  <div className="cursor-size-header">
-                    <div>
-                      <h3>当前指针大小</h3>
-                      <p>仅作用于当前选中的指针，并会按比例同步调整指针落点。</p>
+                  <div className="cursor-size-summary">
+                    <div className="cursor-size-identity">
+                      <h3>{selectedScalableCursor.name}</h3>
+                      <span>{formatPendingCursorSize(selectedScalableCursor, pendingCursorSizePercent)}</span>
                     </div>
-                    <div className="cursor-size-value">{pendingCursorSizePercent}%</div>
+                    <div className="cursor-size-actions">
+                      <div className="cursor-size-value">{pendingCursorSizePercent}%</div>
+                      {selectedScalableCursor.canResetSize === true ? (
+                        <button
+                          type="button"
+                          className="ghost accent cursor-size-reset"
+                          onClick={() => onResetCursorSize(selectedScalableCursor.id)}
+                          disabled={saving}
+                        >
+                          恢复默认大小
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
-                  <div className="cursor-size-slider-row">
-                    <input
-                      className="range"
-                      type="range"
-                      min={String(CUSTOM_CURSOR_MIN_SIZE_PERCENT)}
-                      max={String(CUSTOM_CURSOR_MAX_SIZE_PERCENT)}
-                      step={String(CUSTOM_CURSOR_SIZE_STEP_PERCENT)}
-                      value={pendingCursorSizePercent}
-                      aria-label="当前指针大小"
-                      onChange={(event) => setPendingCursorSizePercent(Number(event.target.value))}
-                      onMouseUp={commitCursorSizeChange}
-                      onTouchEnd={commitCursorSizeChange}
-                      onBlur={commitCursorSizeChange}
-                      onKeyUp={(event) => {
-                        if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) {
-                          commitCursorSizeChange()
-                        }
-                      }}
-                      disabled={saving}
-                    />
+                  <div className="cursor-size-control">
+                    <div className="cursor-size-slider-row cursor-size-range-labels">
+                      <span>{CUSTOM_CURSOR_MIN_SIZE_PERCENT}%</span>
+                      <input
+                        className="range"
+                        type="range"
+                        min={String(CUSTOM_CURSOR_MIN_SIZE_PERCENT)}
+                        max={String(CUSTOM_CURSOR_MAX_SIZE_PERCENT)}
+                        step={String(CUSTOM_CURSOR_SIZE_STEP_PERCENT)}
+                        value={pendingCursorSizePercent}
+                        aria-label="当前指针大小"
+                        onChange={(event) => setPendingCursorSizePercent(Number(event.target.value))}
+                        onMouseUp={commitCursorSizeChange}
+                        onTouchEnd={commitCursorSizeChange}
+                        onBlur={commitCursorSizeChange}
+                        onKeyUp={(event) => {
+                          if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) {
+                            commitCursorSizeChange()
+                          }
+                        }}
+                        disabled={saving}
+                      />
+                      <span>{CUSTOM_CURSOR_MAX_SIZE_PERCENT}%</span>
+                    </div>
                   </div>
-                  <div className="cursor-size-meta">
-                    <span>{selectedScalableCursor.name}</span>
-                    <span>{pendingCursorSizePercent === selectedCursorSizePercent ? formatCursorSize(selectedScalableCursor) : `${pendingCursorSizePercent}%`}</span>
-                  </div>
-                  {selectedScalableCursor.canResetSize === true ? (
-                    <button
-                      type="button"
-                      className="ghost accent"
-                      onClick={() => onResetCursorSize(selectedScalableCursor.id)}
-                      disabled={saving}
-                    >
-                      恢复默认大小
-                    </button>
-                  ) : null}
                 </>
               ) : (
-                <div>
+                <div className="cursor-size-empty">
                   <h3>当前指针大小</h3>
-                  <p>先在上方选择一个指针，再调节它的显示大小。系统默认不参与缩放。</p>
+                  <p>先在上方选择一个指针，再调节显示大小。</p>
                 </div>
               )}
             </div>
