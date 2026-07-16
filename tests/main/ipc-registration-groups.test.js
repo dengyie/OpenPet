@@ -140,8 +140,17 @@ test('registerPetRuntimeIpc wires pet movement and focus handlers', () => {
       getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 800, height: 600 } })
     },
     createSettingsWindow: () => {},
-    choosePetContextMenuPoint: () => ({ placement: 'bottom', screenPoint: { x: 0, y: 0 }, windowPoint: { x: 0, y: 0 } }),
-    estimatePetContextMenuSize: () => ({ width: 100, height: 100 }),
+    buildPetContextMenuItems: () => [{ id: 'settings', type: 'action', label: '设置' }],
+    measurePetContextMenu: () => ({ width: 100, height: 100 }),
+    constrainPetContextMenuSize: () => ({ width: 100, height: 100, contentHeight: 100, scrollable: false }),
+    layoutPetContextMenu: ({ size }) => ({
+      placement: 'below',
+      point: { x: 0, y: 0 },
+      size,
+      reason: 'preferred-placement',
+      petOverlapArea: 0,
+      candidates: []
+    }),
     showContextMenuWindow: () => {},
     sendToPetWindow: () => {},
     createPetRendererSettings: (settings) => settings,

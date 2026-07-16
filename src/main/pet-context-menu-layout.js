@@ -157,6 +157,9 @@ const layoutPetContextMenu = ({ petBounds, workArea, size, preferredPoint, menuP
     point: chosen.point,
     size,
     reason,
+    idealPoint: chosen.idealPoint,
+    idealOverflowArea: chosen.idealOverflowArea,
+    displacement: chosen.displacement,
     overflowArea: chosen.overflowArea,
     petOverlapArea: chosen.petOverlapArea,
     candidates

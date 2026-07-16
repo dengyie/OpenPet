@@ -178,8 +178,9 @@ const createMenuSession = ({
     },
     clearHostReferences() {
       if (!hostWindow) return
-      if (hostWindow.contextMenuWindow && !session.rootMenuWindow) hostWindow.contextMenuWindow = null
-      if (hostWindow.contextMenuSession === session && !session.rootMenuWindow && !session.submenuWindow) {
+      if (hostWindow.contextMenuSession !== session) return
+      if (!session.rootMenuWindow) hostWindow.contextMenuWindow = null
+      if (!session.rootMenuWindow && !session.submenuWindow) {
         hostWindow.contextMenuSession = null
       }
     },

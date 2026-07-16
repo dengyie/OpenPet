@@ -216,6 +216,9 @@ test('pet context menu opens a positioned menu window and sends action commands 
   assert.equal(popupLog.details.scrollable, false)
   assert.equal(popupLog.details.reason, 'preferred-placement')
   assert.equal(popupLog.details.petOverlapArea, 0)
+  assert.equal(Number.isFinite(popupLog.details.idealX), true)
+  assert.equal(Number.isFinite(popupLog.details.idealY), true)
+  assert.equal(popupLog.details.idealOverflowArea, 0)
 
   menuWindowRequest.onSelect(template[0].submenu[1])
 
@@ -536,6 +539,7 @@ test('pet context menu records submenu placement diagnostics when the menu windo
       petOverlapArea: 1800,
       parentOverlapArea: 0,
       overflowArea: 0,
+      idealOverflowArea: 256,
       fitsHorizontally: true
     },
     leftCandidate: {
@@ -546,6 +550,7 @@ test('pet context menu records submenu placement diagnostics when the menu windo
       petOverlapArea: 0,
       parentOverlapArea: 0,
       overflowArea: 0,
+      idealOverflowArea: 0,
       fitsHorizontally: true
     }
   })
@@ -587,6 +592,7 @@ test('pet context menu records submenu placement diagnostics when the menu windo
       rightIdealX: 680,
       rightIdealY: 74,
       rightOverflowArea: 0,
+      rightIdealOverflowArea: 256,
       rightParentOverlapArea: 0,
       rightOverlapArea: 1800,
       leftFits: true,
@@ -595,6 +601,7 @@ test('pet context menu records submenu placement diagnostics when the menu windo
       leftIdealX: 456,
       leftIdealY: 74,
       leftOverflowArea: 0,
+      leftIdealOverflowArea: 0,
       leftParentOverlapArea: 0,
       leftOverlapArea: 0
     }

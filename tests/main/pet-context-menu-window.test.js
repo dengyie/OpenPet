@@ -26,6 +26,10 @@ class FakeMenuWindow extends EventEmitter {
   close() {
     if (this.closed) return
     this.closed = true
+    if (FakeMenuWindow.deferCloseEvents) {
+      FakeMenuWindow.pendingCloseEvents.push(() => this.emit('closed'))
+      return
+    }
     this.emit('closed')
   }
 
@@ -61,6 +65,13 @@ class FakeMenuWindow extends EventEmitter {
 }
 
 FakeMenuWindow.instances = []
+FakeMenuWindow.deferCloseEvents = false
+FakeMenuWindow.pendingCloseEvents = []
+
+const flushCloseEvents = () => {
+  const pending = FakeMenuWindow.pendingCloseEvents.splice(0)
+  for (const closeEvent of pending) closeEvent()
+}
 
 const flushFocusDismissal = () => new Promise((resolve) => setImmediate(resolve))
 
@@ -347,6 +358,40 @@ test('opening a new root menu closes the previous menu session', () => {
   assert.equal(firstWindow.isDestroyed(), true)
   assert.equal(secondWindow.isDestroyed(), false)
   assert.equal(parentWindow.contextMenuWindow, secondWindow)
+})
+
+test('a delayed close event from an old session cannot clear the new root menu reference', () => {
+  FakeMenuWindow.instances = []
+  FakeMenuWindow.pendingCloseEvents = []
+  FakeMenuWindow.deferCloseEvents = true
+  const parentWindow = new EventEmitter()
+
+  try {
+    showPetContextMenuWindow({
+      BrowserWindow: FakeMenuWindow,
+      parentWindow,
+      items: [{ type: 'action', label: '设置' }],
+      point: { x: 20, y: 30 },
+      size: { width: 112, height: 42 },
+      onSelect: () => {}
+    })
+    const secondWindow = showPetContextMenuWindow({
+      BrowserWindow: FakeMenuWindow,
+      parentWindow,
+      items: [{ type: 'action', label: '退出' }],
+      point: { x: 40, y: 50 },
+      size: { width: 112, height: 42 },
+      onSelect: () => {}
+    })
+
+    flushCloseEvents()
+
+    assert.equal(parentWindow.contextMenuWindow, secondWindow)
+    assert.equal(parentWindow.contextMenuSession?.rootMenuWindow, secondWindow)
+  } finally {
+    FakeMenuWindow.deferCloseEvents = false
+    flushCloseEvents()
+  }
 })
 
 test('clicking a first-level action after opening the submenu still selects it', async () => {

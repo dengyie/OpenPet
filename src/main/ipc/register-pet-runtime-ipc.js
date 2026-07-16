@@ -214,6 +214,10 @@ const registerPetRuntimeIpc = ({
         requestedY: requestedPoint.y,
         placement: placement.placement,
         reason: layout.reason,
+        idealX: layout.idealPoint.x,
+        idealY: layout.idealPoint.y,
+        idealOverflowArea: layout.idealOverflowArea,
+        displacement: layout.displacement,
         petOverlapArea: layout.petOverlapArea,
         menuX: placement.screenPoint.x,
         menuY: placement.screenPoint.y,
@@ -264,6 +268,7 @@ const registerPetRuntimeIpc = ({
             rightIdealX: Number(details.rightCandidate?.idealPoint?.x || 0),
             rightIdealY: Number(details.rightCandidate?.idealPoint?.y || 0),
             rightOverflowArea: Number(details.rightCandidate?.overflowArea || 0),
+            rightIdealOverflowArea: Number(details.rightCandidate?.idealOverflowArea || 0),
             rightParentOverlapArea: Number(details.rightCandidate?.parentOverlapArea || 0),
             rightOverlapArea: Number(details.rightCandidate?.overlapArea || 0),
             leftFits: Boolean(details.leftCandidate?.fitsHorizontally),
@@ -272,6 +277,7 @@ const registerPetRuntimeIpc = ({
             leftIdealX: Number(details.leftCandidate?.idealPoint?.x || 0),
             leftIdealY: Number(details.leftCandidate?.idealPoint?.y || 0),
             leftOverflowArea: Number(details.leftCandidate?.overflowArea || 0),
+            leftIdealOverflowArea: Number(details.leftCandidate?.idealOverflowArea || 0),
             leftParentOverlapArea: Number(details.leftCandidate?.parentOverlapArea || 0),
             leftOverlapArea: Number(details.leftCandidate?.overlapArea || 0)
           }

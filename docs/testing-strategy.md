@@ -10,7 +10,8 @@ runtime, examples, shared contracts, and lightweight Control Center unit tests.
 This suite protects the desktop pet's core flows:
 
 - app lifecycle, single-instance handling, user data paths, and window sizing;
-- pet movement, context menu placement, cursor hitboxes, renderer scaling, and action playback;
+- pet movement, context menu model/layout metrics, work-area constrained submenu scrolling,
+  cross-window focus-group dismissal, cursor hitboxes, renderer scaling, and action playback;
 - settings, action import, pet pack loading/import/export, AI config, local HTTP, catalog, and plugin runtime services;
 - plugin manifest/install/runtime permission boundaries and example plugin smoke paths;
 - shared IPC/channel/cursor/hitbox contracts used across Electron boundaries.
