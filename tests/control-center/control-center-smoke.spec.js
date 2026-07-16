@@ -159,13 +159,14 @@ test.describe('Control Center smoke', () => {
     const sectionHeadings = await page.locator('details.ai-section summary h2').allTextContents()
     expect(sectionHeadings).toEqual([
       '模型 Provider',
+      'Hatch Pet Agent',
       '长期记忆',
       'Pet Persona Override',
       'Behavior',
       '聊天'
     ])
 
-    const coreSections = ['模型 Provider']
+    const coreSections = ['模型 Provider', 'Hatch Pet Agent']
     const secondarySections = ['长期记忆', 'Pet Persona Override', 'Behavior', '聊天']
 
     for (const sectionName of coreSections) {
@@ -326,6 +327,32 @@ test.describe('Control Center smoke', () => {
     await page.getByRole('button', { name: 'About' }).click()
     await page.getByRole('button', { name: '检查更新' }).click()
     await expect(page.locator('.readonly-row', { hasText: '更新状态' })).toContainText('Update feed is not configured.')
+  })
+
+  test('explains internal anchor preparation in the Create pane', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Create' }).click()
+
+    await expect(page.getByRole('heading', { name: 'Create' })).toBeVisible()
+    await expect(page.locator('.creator-pane')).toContainText('OpenPet 会在内部准备角色锚定视图和动作锚定视图')
+    await expect(page.locator('.creator-pane')).toContainText('上传的图片仍是身份最高优先级')
+  })
+
+  test('blocks multi-view reference material in the demo Create flow with explicit guidance', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
+        creatorReferencePickerPath: '/demo/creator/全面.png'
+      }))
+    })
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Create' }).click()
+    await page.getByLabel('Character name').fill('Front Gate Cat')
+    await page.getByTestId('creator-new-reference-input').click()
+    await page.getByTestId('creator-generate-new-character').click()
+
+    await expect(page.getByTestId('creator-status-line')).toContainText('单张干净正面图')
+    await expect(page.getByTestId('creator-status-line')).toContainText('不要使用拼图、三视图或多视图合成图')
   })
 
   test('refreshes AI persona and memory sections when the active pet pack changes', async ({ page }) => {

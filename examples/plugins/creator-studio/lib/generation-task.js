@@ -2,12 +2,15 @@ const crypto = require('crypto')
 
 const VALID_MODES = new Set(['single-action', 'full-pet'])
 const VALID_TARGET_PETS = new Set(['current', 'new'])
-const VALID_STYLE_SOURCES = new Set(['currentPet', 'referenceImage', 'textOnly'])
+const VALID_STYLE_SOURCES = new Set(['currentPet', 'referenceImage'])
 const VALID_TRIGGER_TYPES = new Set(['manual', 'click', 'random', 'state', 'event', 'unbound'])
 const HOST_RULE_TRIGGER_TYPES = new Set(['random', 'state', 'event'])
+const VALID_ANIMATION_TYPES = new Set(['stationary_loop', 'locomotion_loop', 'vertical_bounce', 'pose_transition', 'reaction', 'emote'])
+const VALID_SYNTHESIS_MODES = new Set(['canonical-frame'])
 const SAFE_ACTION_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/
 const MAX_ACTION_FRAME_COUNT = 32
 const MAX_TRIGGER_SPEC_TEXT_LENGTH = 240
+const MAX_ACTION_SPEC_TEXT_LENGTH = 240
 
 const hashActionId = (value) => `action-${crypto.createHash('sha1').update(String(value || 'action')).digest('hex').slice(0, 8)}`
 
@@ -20,6 +23,7 @@ const clampFrameCount = (value, fallback) => {
 const sanitizeTriggerSpecText = (value, fallback = '') => String(typeof value === 'string' ? value : fallback)
   .replace(/\bsk-[A-Za-z0-9_-]+\b/g, '[redacted-secret]')
   .replace(/\b[A-Za-z0-9_-]*token[A-Za-z0-9_-]*\b/gi, '[redacted-token]')
+  .replace(/\[redacted-token\]\s*[:=]\s*[^\s,，。)]+/gi, '[redacted-token]=[redacted-secret]')
   .replace(/https?:\/\/(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?(?:\/[^\s]*)?/gi, '[redacted-local-url]')
   .replace(/(?:\/Users|\/var|\/tmp|\/private|\/Volumes)\/[^\s,，。)]+/g, '[redacted-path]')
   .slice(0, MAX_TRIGGER_SPEC_TEXT_LENGTH)
@@ -88,11 +92,27 @@ const normalizeTriggerProposal = (proposal = {}) => {
   }
 }
 
+const sanitizeActionSpecText = (value = '') => sanitizeTriggerSpecText(value, '').slice(0, MAX_ACTION_SPEC_TEXT_LENGTH)
+
+const normalizeSpecList = (value) => (
+  Array.isArray(value)
+    ? value.map(sanitizeActionSpecText).filter(Boolean).slice(0, 12)
+    : []
+)
+
 const normalizeAction = (action = {}, index = 0) => {
   const name = String(action.name || `Action ${index + 1}`).trim() || `Action ${index + 1}`
   const actionId = String(action.actionId || hashActionId(name)).trim()
   if (!SAFE_ACTION_ID_PATTERN.test(actionId)) throw new Error(`Creator Studio actionId is invalid: ${actionId}`)
   const loop = Boolean(action.loop)
+  const animationType = String(action.animationType || '').trim()
+  if (animationType && !VALID_ANIMATION_TYPES.has(animationType)) {
+    throw new Error(`Creator Studio animationType is invalid: ${animationType}`)
+  }
+  const synthesisMode = String(action.synthesisMode || '').trim()
+  if (synthesisMode && !VALID_SYNTHESIS_MODES.has(synthesisMode)) {
+    throw new Error(`Creator Studio synthesisMode is invalid: ${synthesisMode}`)
+  }
   return {
     actionId,
     name,
@@ -100,6 +120,15 @@ const normalizeAction = (action = {}, index = 0) => {
     loop,
     frameCount: clampFrameCount(action.frameCount, loop ? 12 : 16),
     transparentBackground: action.transparentBackground !== false,
+    ...(animationType ? { animationType } : {}),
+    ...(synthesisMode ? { synthesisMode } : {}),
+    ...(action.viewDirection ? { viewDirection: sanitizeActionSpecText(action.viewDirection) } : {}),
+    ...(action.loopType ? { loopType: sanitizeActionSpecText(action.loopType) } : {}),
+    ...(normalizeSpecList(action.animatedParts).length > 0 ? { animatedParts: normalizeSpecList(action.animatedParts) } : {}),
+    ...(normalizeSpecList(action.lockedParts).length > 0 ? { lockedParts: normalizeSpecList(action.lockedParts) } : {}),
+    ...(normalizeSpecList(action.secondaryMotion).length > 0 ? { secondaryMotion: normalizeSpecList(action.secondaryMotion) } : {}),
+    ...(normalizeSpecList(action.forbiddenMotion).length > 0 ? { forbiddenMotion: normalizeSpecList(action.forbiddenMotion) } : {}),
+    ...(normalizeSpecList(action.framePlan).length > 0 ? { framePlan: normalizeSpecList(action.framePlan) } : {}),
     triggerProposal: normalizeTriggerProposal(action.triggerProposal)
   }
 }
@@ -115,9 +144,15 @@ const normalizeGenerationTask = (task = {}) => {
   if (!VALID_MODES.has(mode)) throw new Error(`Creator Studio generation mode is invalid: ${mode}`)
   const targetPet = String(task.targetPet || (mode === 'single-action' ? 'current' : 'new'))
   if (!VALID_TARGET_PETS.has(targetPet)) throw new Error(`Creator Studio targetPet is invalid: ${targetPet}`)
-  const styleSource = String(task.styleSource || (mode === 'single-action' ? 'currentPet' : 'textOnly'))
+  const styleSource = String(task.styleSource || (mode === 'single-action' ? 'currentPet' : 'referenceImage'))
   if (!VALID_STYLE_SOURCES.has(styleSource)) throw new Error(`Creator Studio styleSource is invalid: ${styleSource}`)
-  const actions = Array.isArray(task.actions) ? task.actions.map(normalizeAction) : []
+  const actions = Array.isArray(task.actions)
+      ? task.actions.map(normalizeAction).map((action) => (
+          mode === 'single-action'
+            ? { ...action, synthesisMode: 'canonical-frame' }
+            : action
+        ))
+      : []
   if (actions.length === 0) throw new Error('Creator Studio generation task requires at least one action')
   return {
     mode,

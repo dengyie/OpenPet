@@ -3,6 +3,7 @@ const fs = require('fs')
 const path = require('path')
 const { CODEX_ROWS } = require('../pet-pack/codex-pet')
 const { sanitizeLogText } = require('./log-safety')
+const { inferAnimationType } = require('../../../examples/plugins/creator-studio/lib/action-semantics')
 
 const CREATOR_STUDIO_PLUGIN_ID = 'openpet.creator-studio'
 const CREATOR_STUDIO_SERVICE_ID = 'studio'
@@ -11,9 +12,8 @@ const DEFAULT_CREATOR_STUDIO_COMMAND_ID = 'draft-task'
 const LEGACY_CREATOR_STUDIO_COMMAND_ID = 'create-run'
 const CREATOR_STUDIO_CONFIRM_COMMAND_ID = 'confirm-task'
 const CREATOR_STUDIO_GENERATE_COMMAND_ID = 'run-step'
-const CREATOR_STUDIO_APPROVE_COMMAND_ID = 'approve-run'
-const CREATOR_STUDIO_IMPORT_ACTION_COMMAND_ID = 'import-approved-action'
-const CREATOR_STUDIO_IMPORT_PET_COMMAND_ID = 'import-approved-pet'
+const CREATOR_STUDIO_RETRY_ACTION_COMMAND_ID = 'retry-action'
+const CREATOR_STUDIO_RETRY_IDENTITY_COMMAND_ID = 'retry-identity'
 
 const EDITABLE_TARGET_TYPE = 'editable-action-host'
 const EDITABLE_TARGET_ID = 'legacy-editable-host'
@@ -22,6 +22,20 @@ const SAFE_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9:_-]*$/
 const DEFAULT_PROVIDER_HEALTH_TIMEOUT_MS = 3000
 
 const normalizeText = (value) => String(value || '').trim()
+
+const normalizeSafeRelativePath = (value) => {
+  const normalized = normalizeText(value).replace(/\\/g, '/')
+  if (
+    !normalized ||
+    normalized.startsWith('/') ||
+    /^[a-zA-Z]:\//.test(normalized) ||
+    normalized.includes('\0') ||
+    normalized.split('/').includes('..')
+  ) {
+    return ''
+  }
+  return normalized
+}
 
 const withTimeout = async (promise, timeoutMs, message) => {
   const effectiveTimeoutMs = Math.max(1, Number(timeoutMs) || DEFAULT_PROVIDER_HEALTH_TIMEOUT_MS)
@@ -52,6 +66,35 @@ const normalizeActionId = (value, fallback = 'custom-action') => {
   return SAFE_ID_PATTERN.test(slug) ? slug : fallback
 }
 
+const createUniqueTextList = (values) => {
+  const seen = new Set()
+  const items = []
+  for (const value of Array.isArray(values) ? values : []) {
+    const item = normalizeText(value)
+    if (!item || seen.has(item)) continue
+    seen.add(item)
+    items.push(item)
+  }
+  return items
+}
+
+const isPlainObject = (value) => Boolean(value && typeof value === 'object' && !Array.isArray(value))
+
+const createActionAvailabilityView = (value) => {
+  if (!isPlainObject(value)) return {}
+  return Object.fromEntries(Object.entries(value)
+    .map(([actionId, evidence]) => {
+      const normalizedActionId = normalizeText(actionId)
+      if (!normalizedActionId || !isPlainObject(evidence)) return null
+      return [normalizedActionId, {
+        available: evidence.available === true,
+        quality: normalizeText(evidence.quality).slice(0, 80),
+        reason: normalizeText(evidence.reason).slice(0, 160)
+      }]
+    })
+    .filter(Boolean))
+}
+
 const findPluginById = (plugins = [], pluginId) => (
   Array.isArray(plugins)
     ? plugins.find((plugin) => plugin?.id === pluginId) || null
@@ -76,18 +119,6 @@ const getCommandMessage = (result, fallback) => {
     ? result.result.message
     : ''
   return normalizeText(message || fallback)
-}
-
-const getTriggerProposalSubmission = (result) => {
-  const candidate = result?.result
-  return candidate &&
-    typeof candidate === 'object' &&
-    !Array.isArray(candidate) &&
-    candidate.triggerProposalSubmission &&
-    typeof candidate.triggerProposalSubmission === 'object' &&
-    !Array.isArray(candidate.triggerProposalSubmission)
-    ? candidate.triggerProposalSubmission
-    : null
 }
 
 const createDashboardView = (plugin) => {
@@ -116,13 +147,45 @@ const createEditableTargetView = (actionsConfig = {}) => ({
   actionCount: Array.isArray(actionsConfig.actions) ? actionsConfig.actions.length : 0
 })
 
-const createProviderView = ({ config = {}, health = {} }) => ({
-  ready: health?.ok === true,
-  code: normalizeText(health?.code),
-  message: normalizeText(health?.message),
-  provider: normalizeText(config.provider),
-  model: normalizeText(config.model)
-})
+const createProviderView = ({ config = {}, health = {} }) => {
+  const readiness = createCreatorProviderReadiness({ config, health })
+  return {
+    ready: readiness.ok === true,
+    code: normalizeText(readiness.code),
+    message: normalizeText(readiness.message),
+    provider: normalizeText(config.provider),
+    model: normalizeText(config.model)
+  }
+}
+
+const getCreatorVerifiedModels = (config = {}) => {
+  const policy = config?.creatorWorkflowModelPolicy
+  if (!policy || !Array.isArray(policy.verifiedModels)) return null
+  return policy.verifiedModels.map(normalizeText).filter(Boolean)
+}
+
+const createCreatorProviderReadiness = ({ config = {}, health = {} }) => {
+  if (health?.ok !== true) {
+    return {
+      ok: false,
+      code: normalizeText(health?.code) || 'provider_not_ready',
+      message: normalizeText(health?.message) || 'Image Provider is not ready'
+    }
+  }
+  const verifiedModels = getCreatorVerifiedModels(config)
+  if (verifiedModels && verifiedModels.length === 0) {
+    return {
+      ok: false,
+      code: 'no_verified_creator_image_model',
+      message: '图片 Provider 可达，但 Create 一键默认链路没有已确认可用模型。请到 AI -> 模型 Provider -> 图片模型选择并保存 gpt-image-2，或完成模型发现后再生成。'
+    }
+  }
+  return {
+    ok: true,
+    code: normalizeText(health?.code) || 'provider_healthy',
+    message: normalizeText(health?.message) || 'Image Provider is reachable'
+  }
+}
 
 const createRunView = ({
   state,
@@ -157,17 +220,6 @@ const createGeneratingRunView = ({
   message: normalizeText(message) || '生成任务进行中'
 })
 
-const getImportedActionId = (run = {}, result = {}) => normalizeText(
-  run?.importedActionId ||
-  result?.importedAction?.id ||
-  result?.imported?.action?.id
-)
-
-const getImportedPackId = (run = {}, result = {}) => normalizeText(
-  run?.importedPackId ||
-  result?.imported?.pack?.id
-)
-
 const createWorkflowResult = ({
   state,
   code,
@@ -200,6 +252,10 @@ const createWorkflowResult = ({
     : null,
   basicActions: basicActions && typeof basicActions === 'object'
     ? {
+        baseIdentityCoverage: Boolean(basicActions.baseIdentityCoverage),
+        requiredActionIds: Array.isArray(basicActions.requiredActionIds)
+          ? basicActions.requiredActionIds.map(normalizeText).filter(Boolean)
+          : [],
         requiredRealActionIds: Array.isArray(basicActions.requiredRealActionIds)
           ? basicActions.requiredRealActionIds.map(normalizeText).filter(Boolean)
           : [],
@@ -212,12 +268,29 @@ const createWorkflowResult = ({
         missingRequiredActionIds: Array.isArray(basicActions.missingRequiredActionIds)
           ? basicActions.missingRequiredActionIds.map(normalizeText).filter(Boolean)
           : [],
+        requiredOfficialActionIds: Array.isArray(basicActions.requiredOfficialActionIds)
+          ? basicActions.requiredOfficialActionIds.map(normalizeText).filter(Boolean)
+          : [],
+        previewFallbackActionIds: Array.isArray(basicActions.previewFallbackActionIds)
+          ? basicActions.previewFallbackActionIds.map(normalizeText).filter(Boolean)
+          : [],
+        missingRequiredOfficialActionIds: Array.isArray(basicActions.missingRequiredOfficialActionIds)
+          ? basicActions.missingRequiredOfficialActionIds.map(normalizeText).filter(Boolean)
+          : [],
+        availableActionIds: Array.isArray(basicActions.availableActionIds)
+          ? basicActions.availableActionIds.map(normalizeText).filter(Boolean)
+          : [],
+        omittedActionIds: Array.isArray(basicActions.omittedActionIds)
+          ? basicActions.omittedActionIds.map(normalizeText).filter(Boolean)
+          : [],
+        actionAvailability: createActionAvailabilityView(basicActions.actionAvailability),
         rows: Array.isArray(basicActions.rows)
           ? basicActions.rows.map((row) => ({
               actionId: normalizeText(row?.actionId),
               sourceActionId: normalizeText(row?.sourceActionId),
-              sourceRelativePath: normalizeText(row?.sourceRelativePath),
-              fallback: Boolean(row?.fallback)
+              sourceRelativePath: normalizeSafeRelativePath(row?.sourceRelativePath),
+              fallback: Boolean(row?.fallback),
+              quality: normalizeText(row?.quality)
             })).filter((row) => row.actionId)
           : []
       }
@@ -234,12 +307,77 @@ const readBasicActionCoverage = ({ pluginDataDir, runId }) => {
   if (!fs.existsSync(qaPath)) return null
   try {
     const qa = JSON.parse(fs.readFileSync(qaPath, 'utf-8'))
+    if (qa?.ok !== true) return null
     const basicActions = qa?.basicActions
     return basicActions && typeof basicActions === 'object' && !Array.isArray(basicActions)
       ? basicActions
       : null
   } catch (_) {
     return null
+  }
+}
+
+const resolveOfficialActionCoverage = (basicActions) => {
+  const defaultRequiredActionIds = ['idle']
+  if (!isPlainObject(basicActions)) {
+    return {
+      basicActions: null,
+      missingOfficialActionIds: defaultRequiredActionIds
+    }
+  }
+
+  const hasPartialCoverageEvidence = (
+    Array.isArray(basicActions.availableActionIds) ||
+    Array.isArray(basicActions.omittedActionIds) ||
+    isPlainObject(basicActions.actionAvailability)
+  )
+  const explicitRequiredActionIds = createUniqueTextList(basicActions.requiredActionIds)
+  const legacyRequiredActionIds = !hasPartialCoverageEvidence
+    ? createUniqueTextList(basicActions.requiredOfficialActionIds)
+    : []
+  const requiredActionIds = explicitRequiredActionIds.length > 0
+    ? explicitRequiredActionIds
+    : legacyRequiredActionIds.length > 0
+      ? legacyRequiredActionIds
+      : defaultRequiredActionIds
+
+  const availableActionIds = new Set(createUniqueTextList(
+    Array.isArray(basicActions.availableActionIds)
+      ? basicActions.availableActionIds
+      : basicActions.realActionIds
+  ))
+  const omittedActionIds = new Set(createUniqueTextList(basicActions.omittedActionIds))
+  const actionAvailability = createActionAvailabilityView(basicActions.actionAvailability)
+
+  for (const [sourceActionId, derivedActionId] of [['running-right', 'running-left']]) {
+    if (availableActionIds.has(sourceActionId) === availableActionIds.has(derivedActionId)) continue
+    availableActionIds.delete(sourceActionId)
+    availableActionIds.delete(derivedActionId)
+    omittedActionIds.add(sourceActionId)
+    omittedActionIds.add(derivedActionId)
+    actionAvailability[sourceActionId] = { available: false, quality: '', reason: 'directional-pair-incomplete' }
+    actionAvailability[derivedActionId] = { available: false, quality: '', reason: 'directional-pair-incomplete' }
+  }
+
+  const reportedMissingActionIds = createUniqueTextList(
+    explicitRequiredActionIds.length > 0
+      ? basicActions.missingRequiredActionIds
+      : legacyRequiredActionIds.length > 0
+        ? basicActions.missingRequiredOfficialActionIds
+        : []
+  )
+  const computedMissingActionIds = requiredActionIds.filter((actionId) => !availableActionIds.has(actionId))
+  const missingOfficialActionIds = createUniqueTextList([...reportedMissingActionIds, ...computedMissingActionIds])
+  return {
+    basicActions: {
+      ...basicActions,
+      requiredActionIds,
+      availableActionIds: [...availableActionIds],
+      omittedActionIds: [...omittedActionIds].filter((actionId) => !availableActionIds.has(actionId)),
+      actionAvailability,
+      missingRequiredActionIds: missingOfficialActionIds
+    },
+    missingOfficialActionIds
   }
 }
 
@@ -254,7 +392,6 @@ const readWorkflowDiagnostics = ({ pluginDataDir, runId }) => {
     const conditioning = generatedImage?.conditioning && typeof generatedImage.conditioning === 'object'
       ? generatedImage.conditioning
       : null
-    const references = Array.isArray(conditioning?.references) ? conditioning.references : []
     const outputCount = Array.isArray(generatedImage?.outputs) ? generatedImage.outputs.length : 0
     return {
       runStatus: normalizeText(run?.status),
@@ -281,9 +418,8 @@ const readWorkflowDiagnostics = ({ pluginDataDir, runId }) => {
             mode: normalizeText(conditioning.mode),
             endpoint: normalizeText(conditioning.endpoint),
             referenceImageCount: Number(conditioning.referenceImageCount) || 0,
-            referenceFileNames: references.map((reference) => (
-              normalizeText(reference?.fileName || reference?.relativePath)
-            )).filter(Boolean)
+            multipartImageField: normalizeText(conditioning.multipartImageField),
+            requestedOutputCount: Number(conditioning.requestedOutputCount) || 0
           }
         : null
     }
@@ -296,11 +432,11 @@ const createFullPetTask = ({ characterName, stylePrompt = '' }) => ({
   mode: 'full-pet',
   targetPet: 'new',
   styleSource: 'referenceImage',
-  characterBrief: normalizeText(stylePrompt) || `Create a reusable OpenPet character named ${normalizeText(characterName)}.`,
+  characterBrief: normalizeText(stylePrompt) || 'Preserve the selected reference as one reusable full-body animated character.',
   actions: CODEX_ROWS.map((row) => ({
     actionId: row.id,
     name: row.label,
-    motionPrompt: `${row.label} motion for ${normalizeText(characterName)}`,
+    motionPrompt: `${row.label} motion`,
     loop: Boolean(row.loop),
     frameCount: row.durations.length,
     transparentBackground: true,
@@ -313,17 +449,23 @@ const createFullPetTask = ({ characterName, stylePrompt = '' }) => ({
   questions: []
 })
 
-const createExistingActionTask = ({ actionName, motionPrompt }) => ({
-  mode: 'single-action',
-  targetPet: 'current',
-  styleSource: 'referenceImage',
-  characterBrief: `Keep the current editable OpenPet character identity and style consistent while adding the ${normalizeText(actionName)} action.`,
-  actions: [{
+const createExistingActionTask = ({ actionName, motionPrompt }) => {
+  const action = {
     actionId: normalizeActionId(actionName, 'custom-action'),
     name: normalizeText(actionName),
     motionPrompt: normalizeText(motionPrompt) || normalizeText(actionName),
-    loop: false,
-    frameCount: 16,
+    loop: false
+  }
+  return {
+  mode: 'single-action',
+  targetPet: 'current',
+  styleSource: 'referenceImage',
+  characterBrief: `Preserve the selected character identity and visual style while adding the ${normalizeText(actionName)} action.`,
+  actions: [{
+    ...action,
+    animationType: inferAnimationType(action),
+    synthesisMode: 'canonical-frame',
+    frameCount: 6,
     transparentBackground: true,
     triggerProposal: {
       type: 'click',
@@ -332,13 +474,15 @@ const createExistingActionTask = ({ actionName, motionPrompt }) => ({
     }
   }],
   questions: []
-})
+  }
+}
 
 const createCreatorWorkflowService = ({
   pluginService,
   imageGenerationModelService,
   actionService,
   creatorReferenceService,
+  hatchPetAgentService = null,
   appLogService = null,
   providerHealthTimeoutMs = DEFAULT_PROVIDER_HEALTH_TIMEOUT_MS,
   idFactory = () => crypto.randomUUID()
@@ -394,10 +538,11 @@ const createCreatorWorkflowService = ({
   const getState = async () => {
     const plugin = getPluginState()
     const health = await getProviderHealth()
+    const config = imageGenerationModelService.getConfig()
     return {
       ok: true,
       provider: createProviderView({
-        config: imageGenerationModelService.getConfig(),
+        config,
         health
       }),
       editableTarget: createEditableTargetView(actionService.getConfig()),
@@ -475,12 +620,28 @@ const createCreatorWorkflowService = ({
     activeWorkflow = null
   }
 
-  const createWorkflowInProgressResult = () => createWorkflowResult({
+const createWorkflowInProgressResult = () => createWorkflowResult({
     state: 'generating',
     code: 'workflow_in_progress',
     message: '已有生成任务正在进行，请等待当前流程完成',
     run: lastRun || createGeneratingRunView(activeWorkflow || {})
   })
+
+  const createUnsupportedReferenceImageResult = (message) => createWorkflowResult({
+    state: 'missing-input',
+    code: 'unsupported_reference_image',
+    message: normalizeText(message) || '默认一键生成暂只支持单张干净正面图'
+  })
+
+  const inspectApprovedReferenceForDefaultPath = async (referenceToken) => {
+    if (!creatorReferenceService?.inspectApprovedSource) return null
+    return creatorReferenceService.inspectApprovedSource({ referenceToken })
+  }
+
+  const inspectBoundReferenceForDefaultPath = async ({ targetType, targetId }) => {
+    if (!creatorReferenceService?.inspectReference) return null
+    return creatorReferenceService.inspectReference({ targetType, targetId })
+  }
 
   const runExclusively = async ({ mode, message }, execute) => {
     if (activeWorkflow) {
@@ -503,12 +664,17 @@ const createCreatorWorkflowService = ({
     task,
     payload,
     referenceTarget,
-    importCommandId
+    isFullPet = false
   }) => {
     const requestId = idFactory()
     const startedAt = Date.now()
     const plugin = assertPluginReady()
     const health = await getProviderHealth()
+    const providerConfig = imageGenerationModelService.getConfig()
+    const providerReadiness = createCreatorProviderReadiness({
+      config: providerConfig,
+      health
+    })
     recordLog({
       level: 'info',
       event: 'creator.workflow.started',
@@ -516,12 +682,12 @@ const createCreatorWorkflowService = ({
       details: {
         requestId,
         mode,
-        importCommandId,
-        providerModel: normalizeText(imageGenerationModelService.getConfig()?.model),
+        isFullPet,
+        providerModel: normalizeText(providerConfig?.model),
         serviceStatus: getPluginServiceRuntimeStatus(plugin, CREATOR_STUDIO_SERVICE_ID)
       }
     })
-    if (!health?.ok) {
+    if (!providerReadiness.ok) {
       recordLog({
         level: 'error',
         event: 'creator.workflow.blocked',
@@ -529,14 +695,16 @@ const createCreatorWorkflowService = ({
         details: {
           requestId,
           mode,
-          providerCode: normalizeText(health?.code),
-          providerMessage: sanitizeLogText(health?.message || '', { maxChars: 240 })
+          providerCode: normalizeText(providerReadiness.code),
+          providerMessage: sanitizeLogText(providerReadiness.message || '', { maxChars: 240 })
         }
       })
       const result = createWorkflowResult({
         state: 'provider-not-ready',
-        code: normalizeText(health?.code) || 'provider_not_ready',
-        message: '请先到 AI -> 模型 Provider -> 图片模型 配置并保存可用模型，然后再使用生成流程'
+        code: normalizeText(providerReadiness.code) || 'provider_not_ready',
+        message: providerReadiness.code === 'no_verified_creator_image_model'
+          ? providerReadiness.message
+          : '请先到 AI -> 模型 Provider -> 图片模型 配置并保存可用模型，然后再使用生成流程'
       })
       setLastRun(result.run)
       return result
@@ -546,7 +714,24 @@ const createCreatorWorkflowService = ({
     const commandId = resolveCommandId(plugin)
     let runId = ''
     let lastCommandResult = null
-    const getWorkflowDiagnostics = () => readWorkflowDiagnostics({ pluginDataDir, runId })
+    let hatchPetAgentShadow = null
+    const createHatchPetAgentDiagnostics = () => hatchPetAgentShadow
+      ? {
+          mode: 'shadow',
+          status: normalizeText(hatchPetAgentShadow.status).slice(0, 80),
+          code: normalizeText(hatchPetAgentShadow.code).slice(0, 80),
+          decision: normalizeText(hatchPetAgentShadow.decision?.decision).slice(0, 80),
+          decisionId: normalizeText(hatchPetAgentShadow.decisionId).slice(0, 128)
+        }
+      : null
+    const getWorkflowDiagnostics = () => {
+      const diagnostics = readWorkflowDiagnostics({ pluginDataDir, runId })
+      if (!runId) return diagnostics
+      return {
+        ...(diagnostics || {}),
+        hatchPetAgent: createHatchPetAgentDiagnostics()
+      }
+    }
     const recordStage = ({ stage, result, run }) => {
       recordLog({
         level: 'info',
@@ -574,6 +759,44 @@ const createCreatorWorkflowService = ({
       const draftRun = getCreatorStudioRun(drafted)
       runId = getCreatorStudioRunId(draftRun)
       if (!runId) throw new Error('Creator Studio did not return a run id')
+      void Promise.resolve()
+        .then(() => hatchPetAgentService?.createShadowDecision?.({
+          runId,
+          mode,
+          userIntent: normalizeText(payload.originalPrompt || payload.prompt || task?.characterBrief || task?.actions?.[0]?.description),
+          stage: 'planning',
+          scope: {},
+          workflowEvidence: {
+            provider: createProviderView({
+              config: imageGenerationModelService.getConfig(),
+              health
+            })
+          }
+        }))
+        .then((result) => {
+          hatchPetAgentShadow = result || null
+        })
+        .catch((error) => {
+          hatchPetAgentShadow = {
+            status: 'shadow-failed',
+            code: 'hatch_pet_shadow_failed',
+            decision: null,
+            decisionId: ''
+          }
+          recordLog({
+            level: 'warn',
+            event: 'creator.workflow.shadow-planning-failed',
+            message: 'Hatch-pet shadow planning failed without delaying the fixed workflow',
+            details: {
+              requestId,
+              mode,
+              runId,
+              errorName: normalizeText(error?.name),
+              errorCode: normalizeText(error?.code),
+              errorMessage: sanitizeLogText(error?.message || '', { maxChars: 240 })
+            }
+          })
+        })
       recordStage({ stage: 'draft', result: drafted, run: draftRun })
       updateWorkflowProgress({
         runId,
@@ -611,42 +834,42 @@ const createCreatorWorkflowService = ({
         message: getCommandMessage(generated, '生成步骤已完成')
       })
 
-      if (normalizeText(run?.status) === 'ready_for_review') {
-        const approved = await pluginService.runCommand(CREATOR_STUDIO_PLUGIN_ID, CREATOR_STUDIO_APPROVE_COMMAND_ID, { runId })
-        lastCommandResult = approved
-        run = getCreatorStudioRun(approved)
-        recordStage({ stage: 'approve', result: approved, run })
-        updateWorkflowProgress({
-          runId,
-          commandId: approved?.commandId || CREATOR_STUDIO_APPROVE_COMMAND_ID,
-          message: getCommandMessage(approved, 'Run 已批准')
-        })
-      }
-
-      if (normalizeText(run?.status) !== 'approved') {
+      const generatedCoverage = isFullPet
+        ? readBasicActionCoverage({ pluginDataDir, runId })
+        : null
+      const {
+        basicActions: generatedBasicActions,
+        missingOfficialActionIds
+      } = resolveOfficialActionCoverage(generatedCoverage)
+      if (
+        isFullPet &&
+        normalizeText(run?.status) === 'ready_for_review' &&
+        missingOfficialActionIds.length > 0
+      ) {
         const result = createWorkflowResult({
-          state: 'review-required',
-          code: 'run_not_approved',
-          message: `生成流程未进入 approved 状态，请到 Creator Studio 继续处理 run ${runId}`,
+          state: 'preview-ready',
+          code: 'preview_ready',
+          message: `角色预览已生成，但缺少官方动作行，不能自动批准或导入。请到 Creator Studio 继续处理 run ${runId}`,
           run: createRunView({
-            state: 'review-required',
+            state: 'preview-ready',
             mode,
             runId,
-            commandId: lastCommandResult?.commandId,
-            message: getCommandMessage(lastCommandResult, 'Run requires review')
+            commandId: generated?.commandId || CREATOR_STUDIO_GENERATE_COMMAND_ID,
+            message: getCommandMessage(generated, 'Preview output requires official action rows before import')
           }),
           reference: creatorReferenceService.getReference(referenceTarget),
+          basicActions: generatedBasicActions,
           diagnostics: getWorkflowDiagnostics()
         })
         recordLog({
           level: 'info',
-          event: 'creator.workflow.review-required',
-          message: 'Creator workflow requires manual review',
+          event: 'creator.workflow.preview-ready',
+          message: 'Creator workflow produced preview-only full-pet output',
           details: {
             requestId,
             mode,
             runId,
-            lastCommandId: normalizeText(lastCommandResult?.commandId),
+            missingOfficialActionIds,
             elapsedMs: Date.now() - startedAt
           }
         })
@@ -654,153 +877,30 @@ const createCreatorWorkflowService = ({
         return result
       }
 
-      const imported = await pluginService.runCommand(CREATOR_STUDIO_PLUGIN_ID, importCommandId, {
-        runId,
-        activate: true
-      })
-      lastCommandResult = imported
-      recordStage({ stage: 'import', result: imported, run: getCreatorStudioRun(imported) || run })
-      updateWorkflowProgress({
-        runId,
-        commandId: imported?.commandId || importCommandId,
-        message: getCommandMessage(imported, '导入步骤已完成')
-      })
-      const importRun = getCreatorStudioRun(imported) || run
-      const importResult = imported?.result && typeof imported.result === 'object' && !Array.isArray(imported.result)
-        ? imported.result
-        : {}
-
-      if (importCommandId === CREATOR_STUDIO_IMPORT_ACTION_COMMAND_ID) {
-        const submission = getTriggerProposalSubmission(imported)
-        const importedActionId = getImportedActionId(importRun, importResult)
-        if (!submission?.ok || !submission?.proposal?.id) {
-          const result = createWorkflowResult({
-            state: 'import-failed',
-            code: submission?.ok === false ? 'trigger_proposal_submit_failed' : 'trigger_proposal_missing',
-          message: `动作已导入，但默认 clickAction 绑定未完成。请到 Creator Studio 或 Actions 面板继续处理 run ${runId}`,
-            run: createRunView({
-              state: 'import-failed',
-              mode,
-              runId,
-              commandId: imported.commandId,
-              message: getCommandMessage(imported, 'Imported action requires trigger follow-up'),
-              importedActionId
-            }),
-            reference: creatorReferenceService.getReference(referenceTarget),
-            importedAction: {
-              actionId: importedActionId,
-              label: normalizeText(task.actions?.[0]?.name)
-            },
-            diagnostics: getWorkflowDiagnostics()
-          })
-          recordLog({
-            level: 'error',
-            event: 'creator.workflow.import-follow-up-required',
-            message: 'Creator workflow imported an action but trigger follow-up is still required',
-            details: {
-              requestId,
-              mode,
-              runId,
-              importedActionId,
-              elapsedMs: Date.now() - startedAt
-            }
-          })
-          setLastRun(result.run)
-          return result
-        }
-
-        const previousClickAction = normalizeText(actionService.getConfig?.()?.clickAction)
-        const accepted = actionService.acceptTriggerProposalItem(submission.proposal.id)
-        const clickAction = normalizeText(accepted?.animations?.clickAction) || importedActionId
-        const clickActionChange = {
-          previousActionId: previousClickAction,
-          currentActionId: clickAction,
-          importedActionId,
-          canRestore: Boolean(previousClickAction && previousClickAction !== clickAction)
-        }
-        const runView = createRunView({
-          state: 'completed',
+      const result = createWorkflowResult({
+        state: 'review-required',
+        code: 'human_review_required',
+        message: `生成已完成，请在 Creator Studio 人工复查 run ${runId}；批准、导入和激活必须分别明确执行。`,
+        run: createRunView({
+          state: 'review-required',
           mode,
           runId,
-          commandId: imported.commandId,
-          message: getCommandMessage(imported, '动作已生成并导入'),
-          importedActionId
-        })
-        const result = createWorkflowResult({
-          state: 'completed',
-          code: 'action_imported',
-          message: `动作 ${runView.importedActionId || task.actions?.[0]?.actionId || ''} 已生成、导入并绑定到 clickAction`,
-          run: runView,
-          reference: creatorReferenceService.getReference(referenceTarget),
-          importedAction: {
-            actionId: runView.importedActionId,
-            label: normalizeText(task.actions?.[0]?.name)
-          },
-          clickAction: clickAction || runView.importedActionId,
-          clickActionChange,
-          diagnostics: getWorkflowDiagnostics()
-        })
-        recordLog({
-          level: 'info',
-          event: 'creator.workflow.completed',
-          message: 'Creator workflow completed with imported action',
-          details: {
-            requestId,
-            mode,
-            runId,
-            importedActionId: runView.importedActionId,
-            clickAction,
-            elapsedMs: Date.now() - startedAt
-          }
-        })
-        setLastRun(result.run)
-        return result
-      }
-
-      const activePackId = normalizeText(importResult?.activated?.activePackId || importRun?.activatedPackId)
-      const pack = importResult?.activated?.pack || importResult?.imported?.pack || null
-      const basicActions = readBasicActionCoverage({ pluginDataDir, runId })
-      const runView = createRunView({
-        state: 'completed',
-        mode,
-        runId,
-        commandId: imported.commandId,
-        message: getCommandMessage(imported, '角色已生成并导入'),
-        importedPackId: getImportedPackId(importRun, importResult),
-        activatedPackId: activePackId
-      })
-      const result = createWorkflowResult({
-        state: 'completed',
-        code: 'pet_imported',
-        message: `角色 ${activePackId || runView.importedPackId || payload.petId || ''} 已生成、导入并激活`,
-        run: runView,
+          commandId: generated?.commandId || CREATOR_STUDIO_GENERATE_COMMAND_ID,
+          message: getCommandMessage(generated, 'Generation completed and requires human review')
+        }),
         reference: creatorReferenceService.getReference(referenceTarget),
-        activePet: pack
-          ? {
-              id: normalizeText(pack.id),
-              displayName: normalizeText(pack.displayName),
-              version: normalizeText(pack.version),
-              source: normalizeText(pack.source),
-              rootPath: normalizeText(pack.rootPath),
-              active: true,
-              actionCount: Number(pack.actionCount) || 0,
-              defaultAction: normalizeText(pack.defaultAction),
-              clickAction: normalizeText(pack.clickAction)
-            }
-          : null,
-        basicActions,
+        basicActions: generatedBasicActions,
         diagnostics: getWorkflowDiagnostics()
       })
       recordLog({
         level: 'info',
-        event: 'creator.workflow.completed',
-        message: 'Creator workflow completed with imported pet',
+        event: 'creator.workflow.human-review-required',
+        message: 'Creator workflow stopped for explicit human review',
         details: {
           requestId,
           mode,
           runId,
-          importedPackId: runView.importedPackId,
-          activatedPackId: runView.activatedPackId,
+          lastCommandId: normalizeText(generated?.commandId || CREATOR_STUDIO_GENERATE_COMMAND_ID),
           elapsedMs: Date.now() - startedAt
         }
       })
@@ -822,18 +922,26 @@ const createCreatorWorkflowService = ({
           elapsedMs: Date.now() - startedAt
         }
       })
-      const failureState = lastCommandResult?.commandId === CREATOR_STUDIO_IMPORT_ACTION_COMMAND_ID || lastCommandResult?.commandId === CREATOR_STUDIO_IMPORT_PET_COMMAND_ID
-        ? 'import-failed'
-        : 'review-required'
+      const contractFailureCodes = new Set([
+        'reference_image_required',
+        'reference_image_count_invalid',
+        'reference_image_invalid',
+        'reference_image_unusable',
+        'image_prompt_contract_invalid',
+        'image_prompt_internal_term'
+      ])
+      const failureCode = contractFailureCodes.has(normalizeText(error?.code))
+        ? normalizeText(error.code)
+        : 'workflow_failed'
       const result = createWorkflowResult({
-        state: failureState,
-        code: failureState === 'import-failed' ? 'import_failed' : 'workflow_failed',
+        state: 'review-required',
+        code: failureCode,
         message: runId
           ? `生成流程在 run ${runId} 失败：${error.message || '未知错误'}。可到 Creator Studio 查看详情。`
           : (error.message || 'Creator workflow failed'),
         run: runId
           ? createRunView({
-              state: failureState,
+              state: 'review-required',
               mode,
               runId,
               commandId: lastCommandResult?.commandId,
@@ -871,6 +979,10 @@ const createCreatorWorkflowService = ({
       message: `正在生成角色 ${normalizedCharacterName}`
     }, async () => {
       try {
+        const inspection = await inspectApprovedReferenceForDefaultPath(normalizedReferenceImageToken)
+        if (inspection && inspection.defaultPathEligible === false) {
+          return createUnsupportedReferenceImageResult(inspection.message)
+        }
         await creatorReferenceService.bindReference({
           targetType: 'pet-pack',
           targetId: petId,
@@ -889,14 +1001,14 @@ const createCreatorWorkflowService = ({
         payload: {
           petName: normalizedCharacterName,
           petId,
-          prompt: normalizeText(stylePrompt) || `Create a new OpenPet character named ${normalizedCharacterName}.`,
-          originalPrompt: normalizeText(stylePrompt) || `Create a new OpenPet character named ${normalizedCharacterName}.`
+          prompt: normalizeText(stylePrompt) || 'Preserve the selected reference as one reusable full-body animated character.',
+          originalPrompt: normalizeText(stylePrompt) || 'Preserve the selected reference as one reusable full-body animated character.'
         },
         referenceTarget: {
           targetType: 'pet-pack',
           targetId: petId
         },
-        importCommandId: CREATOR_STUDIO_IMPORT_PET_COMMAND_ID
+        isFullPet: true
       })
     })
   }
@@ -927,6 +1039,10 @@ const createCreatorWorkflowService = ({
       let reference = null
       if (normalizedReferenceImageToken) {
         try {
+          const inspection = await inspectApprovedReferenceForDefaultPath(normalizedReferenceImageToken)
+          if (inspection && inspection.defaultPathEligible === false) {
+            return createUnsupportedReferenceImageResult(inspection.message)
+          }
           const bound = await creatorReferenceService.bindReference({
             targetType: EDITABLE_TARGET_TYPE,
             targetId: EDITABLE_TARGET_ID,
@@ -945,6 +1061,15 @@ const createCreatorWorkflowService = ({
           targetType: EDITABLE_TARGET_TYPE,
           targetId: EDITABLE_TARGET_ID
         })
+        if (reference) {
+          const inspection = await inspectBoundReferenceForDefaultPath({
+            targetType: EDITABLE_TARGET_TYPE,
+            targetId: EDITABLE_TARGET_ID
+          })
+          if (inspection && inspection.defaultPathEligible === false) {
+            return createUnsupportedReferenceImageResult(inspection.message)
+          }
+        }
       }
 
       if (!reference) {
@@ -968,10 +1093,75 @@ const createCreatorWorkflowService = ({
           targetType: EDITABLE_TARGET_TYPE,
           targetId: EDITABLE_TARGET_ID
         },
-        importCommandId: CREATOR_STUDIO_IMPORT_ACTION_COMMAND_ID
+        isFullPet: false
       })
     })
   }
+
+  const runRepairWorkflow = async ({ runId, actionId = '', commandId, label }) => {
+    const normalizedRunId = normalizeText(runId)
+    const normalizedActionId = normalizeText(actionId)
+    if (!normalizedRunId) {
+      return createWorkflowResult({
+        state: 'missing-input',
+        code: 'missing_run_id',
+        message: 'Creator repair requires a run id'
+      })
+    }
+    if (commandId === CREATOR_STUDIO_RETRY_ACTION_COMMAND_ID && !normalizedActionId) {
+      return createWorkflowResult({
+        state: 'missing-input',
+        code: 'missing_action_id',
+        message: 'Creator action repair requires an action id'
+      })
+    }
+    return runExclusively({
+      mode: 'full-pet',
+      message: label
+    }, async () => {
+      assertPluginReady()
+      const pluginDataDir = pluginService.getPluginCreatorDataDir(CREATOR_STUDIO_PLUGIN_ID)
+      const commandResult = await pluginService.runCommand(CREATOR_STUDIO_PLUGIN_ID, commandId, {
+        runId: normalizedRunId,
+        ...(normalizedActionId ? { actionId: normalizedActionId } : {})
+      })
+      const run = getCreatorStudioRun(commandResult)
+      if (!run?.runId) throw new Error('Creator Studio repair did not return a run')
+      const coverage = readBasicActionCoverage({ pluginDataDir, runId: run.runId })
+      const { basicActions } = resolveOfficialActionCoverage(coverage)
+      return createWorkflowResult({
+        state: 'review-required',
+        code: commandId === CREATOR_STUDIO_RETRY_ACTION_COMMAND_ID
+          ? 'action_repair_review_required'
+          : 'identity_repair_review_required',
+        message: commandId === CREATOR_STUDIO_RETRY_ACTION_COMMAND_ID
+          ? `动作 ${normalizedActionId} 已重新生成，请在 Creator Studio 复查 run ${run.runId}`
+          : `Canonical identity 已重新生成，请在 Creator Studio 复查全部动作 run ${run.runId}`,
+        run: createRunView({
+          state: 'review-required',
+          mode: 'full-pet',
+          runId: run.runId,
+          commandId,
+          message: getCommandMessage(commandResult, label)
+        }),
+        basicActions,
+        diagnostics: readWorkflowDiagnostics({ pluginDataDir, runId: run.runId })
+      })
+    })
+  }
+
+  const retryFullPetAction = ({ runId, actionId }) => runRepairWorkflow({
+    runId,
+    actionId,
+    commandId: CREATOR_STUDIO_RETRY_ACTION_COMMAND_ID,
+    label: `正在修复动作 ${normalizeText(actionId)}`
+  })
+
+  const retryFullPetIdentity = ({ runId }) => runRepairWorkflow({
+    runId,
+    commandId: CREATOR_STUDIO_RETRY_IDENTITY_COMMAND_ID,
+    label: '正在重新生成 canonical identity'
+  })
 
   return {
     approveReferenceSourcePath,
@@ -979,11 +1169,17 @@ const createCreatorWorkflowService = ({
     getLastRun,
     bindReference,
     generateNewCharacter,
-    generateExistingAction
+    generateExistingAction,
+    retryFullPetAction,
+    retryFullPetIdentity
   }
 }
 
 module.exports = {
+  __testInternals: {
+    readBasicActionCoverage,
+    resolveOfficialActionCoverage
+  },
   CREATOR_STUDIO_DASHBOARD_ID,
   CREATOR_STUDIO_PLUGIN_ID,
   EDITABLE_TARGET_ID,

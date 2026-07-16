@@ -73,6 +73,26 @@ test('ai service exposes config without secret values', () => {
       effectiveModel: 'gpt-4o-mini',
       effectiveHasApiKey: true
     },
+    hatchPet: {
+      enabled: false,
+      executionMode: 'shadow',
+      configMode: 'follow-chat',
+      provider: 'openai-compatible',
+      baseUrl: 'https://api.openai.com/v1',
+      model: 'gpt-4o-mini',
+      apiKeyRef: 'ai.hatch-pet',
+      systemPromptVersion: 1,
+      requireIdentityReviewBeforeActions: false,
+      budgets: {
+        maxIdentityRegenerations: 1,
+        maxActionAttemptsPerAction: 3,
+        maxEvaluationAttemptsPerArtifact: 2,
+        maxProviderCalls: 64,
+        maxElapsedMs: 3600000,
+        maxEstimatedCost: null
+      },
+      hasApiKey: true
+    },
     hasApiKey: true,
     modelCatalog: {
       cacheKey: '',
@@ -81,6 +101,29 @@ test('ai service exposes config without secret values', () => {
       source: 'none'
     }
   })
+})
+
+test('ai service structured completion forces one named tool without persisting conversations', async () => {
+  const requests = []
+  const settingsService = createSettingsService({ ai: { conversations: { keep: [{ role: 'user', content: 'unchanged' }] } } })
+  const service = createAiService({
+    settingsService,
+    secretService: { getSecretValue: () => 'sk-private', setSecret: () => {} },
+    fetchImpl: async (_url, options) => {
+      requests.push(JSON.parse(options.body))
+      return { ok: true, status: 200, json: async () => ({ choices: [{ message: { tool_calls: [{ function: { name: 'required_tool', arguments: '{"ok":true}' } }] } }] }) }
+    }
+  })
+  const result = await service.completeStructuredTool({
+    messages: [{ role: 'user', content: 'bounded request' }],
+    tool: { type: 'function', function: { name: 'required_tool', parameters: { type: 'object' } } },
+    timeoutMs: 999999
+  })
+  assert.deepEqual(result.arguments, { ok: true })
+  assert.equal(requests.length, 1)
+  assert.equal(requests[0].tools.length, 1)
+  assert.deepEqual(requests[0].tool_choice, { type: 'function', function: { name: 'required_tool' } })
+  assert.deepEqual(settingsService.get().ai.conversations, { keep: [{ role: 'user', content: 'unchanged' }] })
 })
 
 test('behavior tool definition exposes action candidates reason and display mode', () => {

@@ -60,7 +60,7 @@ const inferLoop = (prompt, triggerProposal) => {
 const draftGenerationTask = ({ prompt = '', context = {} } = {}) => {
   const originalPrompt = String(prompt || '').trim()
   const mode = inferMode(originalPrompt)
-  const styleSource = mode === 'single-action' ? 'currentPet' : 'textOnly'
+  const styleSource = mode === 'single-action' ? 'currentPet' : 'referenceImage'
   const triggerProposal = inferTriggerProposal(originalPrompt)
   const actionName = inferActionName(originalPrompt)
   const loop = inferLoop(originalPrompt, triggerProposal)

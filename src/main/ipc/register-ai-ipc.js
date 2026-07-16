@@ -4,6 +4,7 @@ const registerAiIpc = ({
   ipcMainService,
   aiService,
   aiTalkService = null,
+  hatchPetAgentService,
   imageGenerationModelService,
   behaviorOrchestratorService,
   petService,
@@ -67,6 +68,15 @@ const registerAiIpc = ({
     if (!aiTalkService?.exportTrace) throw new Error('AI talk trace export is not available')
     return aiTalkService.exportTrace(payload || {})
   })
+
+  ipcMainService.handle(IPC.HATCH_PET_AGENT_GET_CONFIG, () => hatchPetAgentService.getConfig())
+  ipcMainService.handle(IPC.HATCH_PET_AGENT_SAVE_CONFIG, (_event, config) => hatchPetAgentService.saveConfig(config || {}))
+  ipcMainService.handle(IPC.HATCH_PET_AGENT_SAVE_API_KEY, (_event, apiKey) => hatchPetAgentService.saveApiKey(apiKey))
+  ipcMainService.handle(IPC.HATCH_PET_AGENT_CLEAR_API_KEY, () => hatchPetAgentService.clearApiKey())
+  ipcMainService.handle(IPC.HATCH_PET_AGENT_CHECK_CAPABILITY, () => hatchPetAgentService.checkCapability())
+  ipcMainService.handle(IPC.HATCH_PET_AGENT_GET_RUN_STATUS, (_event, payload) => (
+    hatchPetAgentService.getRunStatus(payload?.runId || payload)
+  ))
 
   ipcMainService.handle(IPC.IMAGE_GENERATION_GET_CONFIG, () => createImageGenerationConfigView(imageGenerationModelService.getConfig()))
   ipcMainService.handle(IPC.IMAGE_GENERATION_SAVE_CONFIG, (_event, config) => createImageGenerationConfigView(imageGenerationModelService.saveConfig(config)))

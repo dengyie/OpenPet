@@ -224,6 +224,36 @@ export function useCreatorPane(active: boolean) {
     }
   }
 
+  const onRetryFullPetAction = async (actionId: string) => {
+    const runId = String(result?.run?.runId || creatorState.lastRun?.runId || '').trim()
+    if (!runId || !actionId || running) return
+    setRunning(true)
+    setStatus('')
+    try {
+      const nextResult = await api.retryCreatorAction({ runId, actionId })
+      await syncAfterWorkflow(nextResult)
+    } catch (error) {
+      setStatus(messageFromError(error, `动作 ${actionId} 修复失败`))
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  const onRetryFullPetIdentity = async () => {
+    const runId = String(result?.run?.runId || creatorState.lastRun?.runId || '').trim()
+    if (!runId || running) return
+    setRunning(true)
+    setStatus('')
+    try {
+      const nextResult = await api.retryCreatorIdentity({ runId })
+      await syncAfterWorkflow(nextResult)
+    } catch (error) {
+      setStatus(messageFromError(error, 'Canonical identity 修复失败'))
+    } finally {
+      setRunning(false)
+    }
+  }
+
   const hasStoredEditableReference = Boolean(creatorState.editableReference)
   const creatorStudioPluginReady = creatorState.dashboard.available
   const creatorStudioReady = creatorState.dashboard.available && creatorState.dashboard.serviceStatus === 'running'
@@ -300,6 +330,8 @@ export function useCreatorPane(active: boolean) {
     onGenerateExistingAction,
     onPreviewResult,
     onRestoreClickAction,
+    onRetryFullPetAction,
+    onRetryFullPetIdentity,
     onOpenCreatorStudioDetails
   } satisfies CreatorPaneProps
 

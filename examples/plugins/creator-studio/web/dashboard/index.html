@@ -416,6 +416,23 @@
         height: auto;
       }
 
+      .full-pet-preview-grid {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      }
+
+      .full-pet-preview-grid img {
+        width: 100%;
+        image-rendering: pixelated;
+        background: #f8fafc;
+      }
+
+      .full-pet-row-preview img {
+        aspect-ratio: 192 / 208;
+        object-fit: contain;
+      }
+
       .review-grid {
         display: grid;
         gap: 12px;
@@ -859,8 +876,34 @@
         if (!review?.spritesheetUrl) return 'Generated pet-pack review artifacts will appear here before import.'
         const sourceValidation = review?.sourceImageValidation || {}
         const atlasValidation = review?.atlasValidation || {}
+        const basicActions = atlasValidation?.basicActions || {}
+        const safeActionId = (value) => {
+          const actionId = String(value || '').trim()
+          return /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(actionId) ? actionId : ''
+        }
+        const safeFailureCondition = (value) => {
+          const condition = String(value || '').trim()
+          return /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(condition) ? condition : 'quality-gate-failed'
+        }
+        const availableActionIds = Array.isArray(basicActions.availableActionIds)
+          ? basicActions.availableActionIds.map(safeActionId).filter(Boolean)
+          : []
+        const omittedActionIds = Array.isArray(basicActions.omittedActionIds)
+          ? basicActions.omittedActionIds.map(safeActionId).filter(Boolean)
+          : []
+        const actionAvailability = basicActions.actionAvailability && typeof basicActions.actionAvailability === 'object'
+          ? basicActions.actionAvailability
+          : {}
+        const artReadiness = review?.artReadiness || {}
         const reviewGate = review?.reviewGate || {}
+        const visualReview = review?.visualReview || null
+        const visualPreviews = Array.isArray(visualReview?.previews) ? visualReview.previews : []
+        const artApprovalIds = Array.isArray(artReadiness.approvalIds)
+          ? artReadiness.approvalIds.filter(Boolean)
+          : [artReadiness.approvalId].filter(Boolean)
+        const rowValidationRows = Array.isArray(review?.rowValidation?.rows) ? review.rowValidation.rows : []
         const showsMismatch = run?.status === 'ready_for_review' && review?.sourceImageMatchesCurrent === false
+        const canRepair = ['failed', 'ready_for_review'].includes(String(run?.status || ''))
         return [
           renderImportedReviewNotice(run),
           showsMismatch
@@ -887,7 +930,33 @@
           review.sourceImageQa ? `<p>Source QA: ${escapeHtml(review.sourceImageQa)}</p>` : '',
           `<p>Atlas QA: ${escapeHtml(review.qa || 'not available')}</p>`,
           review.actionTaskQa ? `<p>Task QA: ${escapeHtml(review.actionTaskQa)}</p>` : '',
+          artReadiness.approved
+            ? `<p>Provider art status: production-art-ready (human approval record${artApprovalIds.length === 1 ? '' : 's'} ${escapeHtml(artApprovalIds.join(', ') || 'approved')})</p>`
+            : '<p>Provider art status: technical-chain-ready; no matching human art approval.</p>',
           '</div>',
+          availableActionIds.length || omittedActionIds.length
+            ? [
+                '<div class="review-card review-summary">',
+                '<strong>Action availability</strong>',
+                `<span>Available actions: ${escapeHtml(availableActionIds.join(', ') || 'none')}</span>`,
+                `<span>Omitted actions: ${escapeHtml(omittedActionIds.join(', ') || 'none')}</span>`,
+                ...omittedActionIds.map((actionId) => (
+                  [
+                    '<span>',
+                    `${escapeHtml(actionId)}: ${escapeHtml(safeFailureCondition(actionAvailability[actionId]?.reason))}`,
+                    canRepair && actionId !== 'running-left'
+                      ? ` <button data-retry-pet-action="${escapeHtml(actionId)}">Retry action</button>`
+                      : ' (derived from running-right)',
+                    '</span>'
+                  ].join('')
+                )),
+                '<span>Automated QA is technical evidence; human visual approval is still required.</span>',
+                canRepair
+                  ? '<span><button data-retry-pet-identity="true">Regenerate canonical identity</button></span>'
+                  : '',
+                '</div>'
+              ].join('')
+            : '',
           '<div class="review-grid two-up">',
           '<div class="review-card">',
           '<strong>Source image preview</strong>',
@@ -900,6 +969,51 @@
           `<img alt="Full pet spritesheet preview" src="${escapeHtml(assetSrc(review.spritesheetUrl))}">`,
           '</div>',
           '</div>',
+          visualReview
+            ? [
+                '<div class="review-card">',
+                '<strong>Visual review</strong>',
+                visualReview.contactSheetUrl
+                  ? [
+                      `<p>Contact sheet: ${escapeHtml(visualReview.contactSheet || 'full-pet-contact-sheet.png')}</p>`,
+                      '<div class="contact-sheet-preview">',
+                      `<img alt="Full pet visual review contact sheet" src="${escapeHtml(assetSrc(visualReview.contactSheetUrl))}">`,
+                      '</div>'
+                    ].join('')
+                  : '<p>No full-pet contact sheet available.</p>',
+                visualPreviews.length
+                  ? [
+                      '<div class="full-pet-preview-grid">',
+                      ...visualPreviews.map((preview) => [
+                        '<div class="full-pet-row-preview">',
+                        `<strong>${escapeHtml(preview.actionId || 'row')}</strong>`,
+                        `<p>${escapeHtml(preview.path || '')}</p>`,
+                        preview.previewUrl
+                          ? `<img alt="Full pet visual review ${escapeHtml(preview.actionId || 'row')} preview" src="${escapeHtml(assetSrc(preview.previewUrl))}">`
+                          : '<p>No preview GIF available.</p>',
+                        '</div>'
+                      ].join('')),
+                      '</div>'
+                    ].join('')
+                  : '<p>No row GIF previews available.</p>',
+                '</div>'
+              ].join('')
+            : '',
+          rowValidationRows.length
+            ? [
+                '<div class="review-card review-summary">',
+                '<strong>Row stability</strong>',
+                ...rowValidationRows.map((row) => {
+                  const stabilizationMethod = row?.stabilization?.method || 'none'
+                  return [
+                    `<span>${escapeHtml(row.actionId || 'row')}: ${escapeHtml(row.quality || 'unknown')}</span>`,
+                    `<span>Centroid drift: ${escapeHtml(row.centroidDrift || 0)} / Baseline drift: ${escapeHtml(row.baselineDrift || 0)}</span>`,
+                    `<span>Stabilization: ${escapeHtml(stabilizationMethod)}</span>`
+                  ].join('')
+                }),
+                '</div>'
+              ].join('')
+            : '',
           '<div class="review-grid two-up">',
           '<div class="review-card review-summary">',
           '<strong>Source QA summary:</strong>',
@@ -1060,7 +1174,7 @@
             `<span>Guidance: ${escapeHtml(recovery.guidance || 'Review the failure details, then retry generation on this same run.')}</span>`,
             `<span>QA focus: ${escapeHtml(recovery.qaFocus || 'No QA artifacts were produced before the generation failure.')}</span>`,
             `<span>Attempted outputs: ${escapeHtml(recovery.outputCount || 0)}</span>`,
-            `<span>Conditioning: ${escapeHtml(conditioning.mode || 'not recorded')} via ${escapeHtml(conditioning.endpoint || '/images/generations')} · references=${escapeHtml(conditioning.referenceImageCount || 0)}</span>`,
+            `<span>Conditioning: ${escapeHtml(conditioning.mode || 'not recorded')} via ${escapeHtml(conditioning.endpoint || 'not recorded')} · references=${escapeHtml(Number.isFinite(Number(conditioning.referenceImageCount)) ? Number(conditioning.referenceImageCount) : 'not recorded')} · outputs=${escapeHtml(Number.isFinite(Number(conditioning.requestedOutputCount)) ? Number(conditioning.requestedOutputCount) : 'not recorded')} · field=${escapeHtml(conditioning.multipartImageField || 'not recorded')}</span>`,
             `<span>Reference inputs: ${escapeHtml(referenceInputs)}</span>`,
             recovery.generatedAt ? `<span>Generated at: ${escapeHtml(recovery.generatedAt)}</span>` : '',
             recovery.attemptFailedAt ? `<span>Failed at: ${escapeHtml(recovery.attemptFailedAt)}</span>` : '',
@@ -1084,9 +1198,9 @@
             '<div class="notice">',
             '<strong>Host model prompt-builder provenance</strong>',
             '<div class="meta-list">',
-            `<span>Backend: ${escapeHtml(dashboardPrompt.backend || 'provider')}</span>`,
-            `<span>Provider: ${escapeHtml(dashboardPrompt.provider || 'unknown')}${dashboardPrompt.baseUrlHost ? ` / ${escapeHtml(dashboardPrompt.baseUrlHost)}` : ''}</span>`,
-            `<span>Model: ${escapeHtml(dashboardPrompt.model || 'unknown-model')}</span>`,
+            `<span>Backend: ${escapeHtml(dashboardPrompt.backend || 'not recorded')}</span>`,
+            `<span>Provider: ${escapeHtml(dashboardPrompt.provider || 'not recorded')}${dashboardPrompt.baseUrlHost ? ` / ${escapeHtml(dashboardPrompt.baseUrlHost)}` : ''}</span>`,
+            `<span>Model: ${escapeHtml(dashboardPrompt.model || 'not recorded')}</span>`,
             `<span>Mode: ${escapeHtml(dashboardPrompt.mode || 'unknown')} / Action: ${escapeHtml(dashboardPrompt.actionId || 'n/a')}</span>`,
             `<span>Sections: ${escapeHtml((dashboardPrompt.sections || []).join(', ') || 'none')}</span>`,
             `<span>Warnings: ${escapeHtml((dashboardPrompt.warnings || []).join(', ') || 'none')}</span>`,
@@ -1119,7 +1233,7 @@
           `<span>Source: ${escapeHtml(developerPrompt.source || 'host-model-bridge')}</span>`,
           `<span>Builder: v${escapeHtml(builder.version || 0)} / ${escapeHtml(builder.mode || 'unknown')} / ${escapeHtml(builder.actionId || 'n/a')}</span>`,
           `<span>Model: ${escapeHtml(snapshot.model || 'unknown')} via ${escapeHtml(snapshot.provider || 'unknown')} (${escapeHtml(snapshot.backend || 'unknown')})</span>`,
-          `<span>Conditioning: ${escapeHtml(conditioning.mode || 'text-to-image')} via ${escapeHtml(conditioning.endpoint || '/images/generations')} · references=${escapeHtml(conditioning.referenceImageCount || 0)}</span>`,
+          `<span>Conditioning: ${escapeHtml(conditioning.mode || 'not recorded')} via ${escapeHtml(conditioning.endpoint || 'not recorded')} · references=${escapeHtml(Number.isFinite(Number(conditioning.referenceImageCount)) ? Number(conditioning.referenceImageCount) : 'not recorded')} · outputs=${escapeHtml(Number.isFinite(Number(conditioning.requestedOutputCount)) ? Number(conditioning.requestedOutputCount) : 'not recorded')} · field=${escapeHtml(conditioning.multipartImageField || 'not recorded')}</span>`,
           `<span>Reference inputs: ${escapeHtml(conditioningReferences)}</span>`,
           `<span>Sections: ${escapeHtml(sections || 'none')}</span>`,
           `<span>Warnings: ${escapeHtml(warnings)}</span>`,
@@ -1692,6 +1806,44 @@
         }
       })
 
+      $('full-pet-review-panel').addEventListener('click', async (event) => {
+        if (!state.run?.runId || state.generationInFlight) return
+        const actionId = event.target?.dataset?.retryPetAction
+        const retryIdentity = event.target?.dataset?.retryPetIdentity === 'true'
+        if (!actionId && !retryIdentity) return
+        state.generationInFlight = true
+        renderRun()
+        try {
+          const endpoint = retryIdentity
+            ? `/api/runs/${encodeURIComponent(state.run.runId)}/identity/retry`
+            : `/api/runs/${encodeURIComponent(state.run.runId)}/actions/${encodeURIComponent(actionId)}/retry`
+          const payload = await postJson(endpoint)
+          state.run = payload.run
+          state.actionReview = payload.actionReview || null
+          state.fullPetReview = payload.fullPetReview || null
+          renderRun()
+          await refreshSecondaryRunData()
+          setStatus(
+            retryIdentity
+              ? 'Canonical identity regenerated. Review every action again.'
+              : `Action ${actionId} regenerated. Review the rebuilt pet output.`,
+            'ok'
+          )
+        } catch (error) {
+          if (error.payload?.run) {
+            state.run = error.payload.run
+            state.actionReview = error.payload.actionReview || null
+            state.fullPetReview = error.payload.fullPetReview || null
+          }
+          renderRun()
+          await refreshSecondaryRunData()
+          setStatus(error.message, 'error')
+        } finally {
+          state.generationInFlight = false
+          renderRun()
+        }
+      })
+
       $('playback-panel').addEventListener('click', (event) => {
         if (event.target?.id !== 'replay-playback-button') return
         if (!state.actionReview) return
@@ -1781,7 +1933,14 @@
       $('approve-button').addEventListener('click', async () => {
         if (!state.run?.runId) return
         try {
-          const payload = await postJson(`/api/runs/${encodeURIComponent(state.run.runId)}/approve`)
+          const payload = await postJson(`/api/runs/${encodeURIComponent(state.run.runId)}/approve`, {
+            humanApproval: {
+              approved: true,
+              source: 'creator-studio-dashboard',
+              approvedAt: new Date().toISOString(),
+              evidenceVersion: 1
+            }
+          })
           state.run = payload.run
           state.actionReview = payload.actionReview || null
           state.fullPetReview = payload.fullPetReview || null

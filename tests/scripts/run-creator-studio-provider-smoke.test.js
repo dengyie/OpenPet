@@ -147,7 +147,7 @@ test('runCreatorStudioProviderSmoke writes a sanitized success report using inje
           }
         },
         generateImage: async ({ prompt, output, constraints }) => {
-          assert.match(prompt, /Action Requirements/)
+          assert.match(prompt, /Animation Contract/)
           assert.equal(output.dataRelativeDir, path.join('frames', 'base'))
           assert.equal(constraints.transparent, true)
           assert.equal(constraints.width, 768)

@@ -49,25 +49,43 @@ const writeTransparentActionSheetPng = async (targetPath, {
   columns = 4,
   rows = 3,
   cellWidth = 96,
-  cellHeight = 112
+  cellHeight = 112,
+  frameCount = columns * rows,
+  actionId = ''
 } = {}) => {
   fs.mkdirSync(path.dirname(targetPath), { recursive: true })
   const width = columns * cellWidth
   const height = rows * cellHeight
   const poses = []
-  for (let row = 0; row < rows; row += 1) {
-    for (let column = 0; column < columns; column += 1) {
+  for (let frameIndex = 0; frameIndex < Math.min(frameCount, columns * rows); frameIndex += 1) {
+      const row = Math.floor(frameIndex / columns)
+      const column = frameIndex % columns
       const left = column * cellWidth
       const top = row * cellHeight
-      const sway = ((row * columns) + column) % 3 - 1
+      const sway = frameIndex % 3 - 1
+      const pawLift = [0, 7, 15, 11, 4, 10][frameIndex % 6]
+      const pawAngle = [-8, -18, -28, 18, 28, 10][frameIndex % 6]
+      const eyeOpen = frameIndex % 6 === 3 ? 0.45 : 1
+      const jumpOffsetY = actionId === 'jumping'
+        ? [0, -0.08, -0.16, -0.09, 0, 0][frameIndex % 6] * cellHeight
+        : 0
+      const stride = /^running(?:-|$)/.test(actionId)
+        ? [-0.12, 0, 0.12, 0, -0.08, 0.08][frameIndex % 6] * cellWidth
+        : 0
       const cx = left + (cellWidth / 2) + sway
+      const poseTop = top + jumpOffsetY
       poses.push(`
-        <ellipse cx="${cx}" cy="${top + (cellHeight * 0.58)}" rx="${cellWidth * 0.24}" ry="${cellHeight * 0.29}" fill="#ffaa5a"/>
-        <circle cx="${cx}" cy="${top + (cellHeight * 0.28)}" r="${cellWidth * 0.18}" fill="#ffd0a3"/>
-        <circle cx="${cx - (cellWidth * 0.06)}" cy="${top + (cellHeight * 0.25)}" r="${cellWidth * 0.022}" fill="#273f43"/>
-        <circle cx="${cx + (cellWidth * 0.06)}" cy="${top + (cellHeight * 0.25)}" r="${cellWidth * 0.022}" fill="#273f43"/>
+        <ellipse cx="${cx}" cy="${poseTop + (cellHeight * 0.58)}" rx="${cellWidth * (0.24 + ((frameIndex % 3) * 0.012))}" ry="${cellHeight * 0.29}" fill="#ffaa5a"/>
+        <circle cx="${cx}" cy="${poseTop + (cellHeight * 0.28)}" r="${cellWidth * 0.18}" fill="#ffd0a3"/>
+        <ellipse cx="${cx - (cellWidth * 0.06)}" cy="${poseTop + (cellHeight * 0.25)}" rx="${cellWidth * 0.022}" ry="${cellWidth * 0.022 * eyeOpen}" fill="#273f43"/>
+        <ellipse cx="${cx + (cellWidth * 0.06)}" cy="${poseTop + (cellHeight * 0.25)}" rx="${cellWidth * 0.022}" ry="${cellWidth * 0.022 * eyeOpen}" fill="#273f43"/>
+        <g transform="rotate(${pawAngle} ${cx + (cellWidth * 0.19)} ${poseTop + (cellHeight * 0.54) - pawLift})">
+          <ellipse cx="${cx + (cellWidth * 0.19)}" cy="${poseTop + (cellHeight * 0.54) - pawLift}" rx="${cellWidth * 0.055}" ry="${cellHeight * 0.18}" fill="#f19042"/>
+          <circle cx="${cx + (cellWidth * 0.19)}" cy="${poseTop + (cellHeight * 0.39) - pawLift}" r="${cellWidth * 0.055}" fill="#ffaa5a"/>
+        </g>
+        <ellipse cx="${cx - (cellWidth * 0.12) - stride}" cy="${poseTop + (cellHeight * 0.87)}" rx="${cellWidth * 0.08}" ry="${cellHeight * 0.045}" fill="#f19042"/>
+        <ellipse cx="${cx + (cellWidth * 0.12) + stride}" cy="${poseTop + (cellHeight * 0.87)}" rx="${cellWidth * 0.08}" ry="${cellHeight * 0.045}" fill="#f19042"/>
       `)
-    }
   }
   const svg = Buffer.from(`
     <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
@@ -86,6 +104,47 @@ const writeTransparentActionSheetPng = async (targetPath, {
     .composite([{ input: svg, left: 0, top: 0 }])
     .png()
     .toFile(targetPath)
+}
+
+const getRequestedActionSheetLayout = (prompt = '') => {
+  const promptText = String(prompt || '')
+  const match = promptText.match(/Arrange the frames in exactly (\d+) columns x (\d+) rows/i) ||
+    promptText.match(/Arrange exactly \d+ sequential poses in a (\d+) column by (\d+) row grid/i) ||
+    promptText.match(/Arrange exactly \d+ full-body frames in (\d+) columns and (\d+) rows/i)
+  const frameCountMatch = promptText.match(/Generate exactly (\d+) animation frames/i) ||
+    promptText.match(/Arrange exactly (\d+) full-body frames/i)
+  if (!match) return { columns: 4, rows: 3, frameCount: Number(frameCountMatch?.[1]) || 12 }
+  return {
+    columns: Number(match[1]) || 4,
+    rows: Number(match[2]) || 3,
+    frameCount: Number(frameCountMatch?.[1]) || (Number(match[1]) * Number(match[2])) || 12
+  }
+}
+
+const attachCanonicalReferenceToRun = async ({ dataDir, runId }) => {
+  const relativePath = `runs/${runId}/inputs/references/canonical-reference.png`
+  await writeTransparentActionSheetPng(path.join(dataDir, relativePath), {
+    columns: 1,
+    rows: 1,
+    cellWidth: 256,
+    cellHeight: 256
+  })
+  const run = readRun({ dataDir, runId })
+  writeRun({
+    dataDir,
+    run: {
+      ...run,
+      input: {
+        ...run.input,
+        referenceImage: {
+          fileName: 'canonical-reference.png',
+          relativePath,
+          metadataRelativePath: `runs/${runId}/inputs/references/reference.json`,
+          contentHash: 'test-reference'
+        }
+      }
+    }
+  })
 }
 
 const seedImportedActionRun = async (dataDir) => {
@@ -401,7 +460,7 @@ const seedImportedFullPetRun = async (dataDir) => {
       generationTask: {
         mode: 'full-pet',
         targetPet: 'new',
-        styleSource: 'textOnly',
+        styleSource: 'referenceImage',
         characterBrief: '一只已经导入完成、等待最终复核的桌宠。',
         actions: [{
           actionId: 'idle',
@@ -426,6 +485,20 @@ const seedImportedFullPetRun = async (dataDir) => {
   })
   fs.mkdirSync(outputDir, { recursive: true })
   fs.mkdirSync(qaDir, { recursive: true })
+  await writeSolidPng(path.join(qaDir, 'full-pet-contact-sheet.png'), {
+    width: 1536,
+    height: 1872,
+    background: { r: 255, g: 222, b: 172, alpha: 1 }
+  })
+  fs.mkdirSync(path.join(qaDir, 'previews'), { recursive: true })
+  await sharp({
+    create: {
+      width: 192,
+      height: 208,
+      channels: 4,
+      background: { r: 244, g: 160, b: 90, alpha: 1 }
+    }
+  }).gif().toFile(path.join(qaDir, 'previews', 'idle.gif'))
   fs.writeFileSync(path.join(outputDir, 'spritesheet.webp'), createMinimalWebp())
   fs.writeFileSync(path.join(outputDir, 'pet.json'), `${JSON.stringify({
     id: 'imported-review-cat',
@@ -437,7 +510,25 @@ const seedImportedFullPetRun = async (dataDir) => {
     width: 1536,
     height: 1872,
     visiblePixels: 8200,
-    warnings: []
+    warnings: [],
+    basicActions: {
+      requiredRealActionIds: ['idle'],
+      availableActionIds: ['idle'],
+      omittedActionIds: ['waving'],
+      actionAvailability: {
+        idle: { available: true, quality: 'row-real' },
+        waving: { available: false, reason: 'identity-descriptor-distance-high' }
+      }
+    },
+    visualReview: {
+      contactSheet: `runs/${run.runId}/qa/full-pet-contact-sheet.png`,
+      previews: [{
+        actionId: 'idle',
+        path: `runs/${run.runId}/qa/previews/idle.gif`,
+        frameCount: 6,
+        durations: [280, 110, 110, 140, 140, 320]
+      }]
+    }
   }, null, 2)}\n`)
   fs.writeFileSync(path.join(qaDir, 'source-image-validation.json'), `${JSON.stringify({
     ok: true,
@@ -446,6 +537,30 @@ const seedImportedFullPetRun = async (dataDir) => {
     height: 1024,
     visiblePixels: 6400,
     warnings: []
+  }, null, 2)}\n`)
+  fs.writeFileSync(path.join(qaDir, 'full-pet-row-validation.json'), `${JSON.stringify({
+    ok: true,
+    rows: [{
+      actionId: 'idle',
+      quality: 'row-real',
+      frameCount: 6,
+      expectedFrameCount: 6,
+      uniqueFrameCount: 6,
+      centroidDrift: 4.5,
+      baselineDrift: 2,
+      sizeDrift: 0.04,
+      errors: [],
+      warnings: [],
+      stabilization: { method: 'stable-slots' },
+      preStabilization: {
+        quality: 'failed',
+        errors: ['row_centroid_drift', 'row_baseline_drift'],
+        centroidDrift: 55,
+        baselineDrift: 42,
+        sizeDrift: 0.08
+      },
+      frames: []
+    }]
   }, null, 2)}\n`)
   updateRunStatus({
     dataDir,
@@ -533,7 +648,7 @@ const seedLegacyReadyForReviewFullPetRunWithoutTask = async (dataDir, { mismatch
       generationTask: {
         mode: 'full-pet',
         targetPet: 'new',
-        styleSource: 'textOnly',
+        styleSource: 'referenceImage',
         characterBrief: mismatchSourceImage
           ? '一只需要显示 legacy mismatch 提示的桌宠。'
           : '一只已经生成完成、等待审批的 legacy 桌宠。',
@@ -806,7 +921,7 @@ const seedLegacyFailedFullPetRunWithoutTask = (dataDir) => {
       generationTask: {
         mode: 'full-pet',
         targetPet: 'new',
-        styleSource: 'textOnly',
+        styleSource: 'referenceImage',
         characterBrief: '一只 provider 失败后需要继续重试的 legacy 桌宠。',
         actions: [{
           actionId: 'idle',
@@ -1367,8 +1482,33 @@ test('creator studio dashboard shows imported full-pet review completion details
     assert.match(reviewText, /Follow-up: Review imported result/i)
     assert.match(reviewText, /Review the imported result inside OpenPet/i)
     assert.match(reviewText, /Continue in OpenPet\./i)
+    assert.match(reviewText, /Visual review/i)
+    assert.match(reviewText, /full-pet-contact-sheet\.png/i)
+    assert.match(reviewText, /idle\.gif/i)
+    assert.match(reviewText, /Row stability/i)
+    assert.match(reviewText, /idle: row-real/i)
+    assert.match(reviewText, /Centroid drift: 4\.5/i)
+    assert.match(reviewText, /Baseline drift: 2/i)
+    assert.match(reviewText, /stable-slots/i)
+    assert.match(reviewText, /Available actions:\s*idle/i)
+    assert.match(reviewText, /Omitted actions:\s*waving/i)
+    assert.match(reviewText, /identity-descriptor-distance-high/i)
     assert.doesNotMatch(reviewText, /QA blocked/i)
     assert.doesNotMatch(reviewText, /Retry generation on this same run before approval or import/i)
+
+    const visualImages = page.locator('#full-pet-review-panel img[alt*="visual review" i]')
+    const visualImageCount = await visualImages.count()
+    assert.equal(visualImageCount, 2)
+    for (let index = 0; index < visualImageCount; index += 1) {
+      await visualImages.nth(index).evaluate((img) => new Promise((resolve, reject) => {
+        if (img.complete && img.naturalWidth > 0) {
+          resolve()
+          return
+        }
+        img.onload = () => resolve()
+        img.onerror = () => reject(new Error('visual review image failed to load'))
+      }))
+    }
 
     const nextStepText = await page.locator('#next-step-panel').textContent()
     assert.match(nextStepText, /Review imported result/i)
@@ -1502,7 +1642,7 @@ test('creator studio dashboard surfaces full-pet qa source mismatch before appro
       generationTask: {
         mode: 'full-pet',
         targetPet: 'new',
-        styleSource: 'textOnly',
+        styleSource: 'referenceImage',
         characterBrief: '一只需要显示 mismatch 提示的桌宠。',
         actions: [{
           actionId: 'idle',
@@ -2133,9 +2273,13 @@ test('creator studio dashboard shows sanitized prompt provenance and can replay 
         return
       }
       if (request.url.endsWith('/creator/model-image-generate')) {
-        const dataRelativePath = `runs/${payload.output.dataRelativeDir.split('/')[1]}/frames/base/0001.png`
+        const outputDir = String(payload.output?.dataRelativeDir || '')
+        const isActionRow = /-keyframe-row$/.test(outputDir)
+        const dataRelativePath = `${outputDir}/0001.png`
         const generatedPath = path.join(dataDir, dataRelativePath)
-        writeTransparentActionSheetPng(generatedPath)
+        writeTransparentActionSheetPng(generatedPath, isActionRow
+          ? { ...getRequestedActionSheetLayout(payload.prompt), cellWidth: 256, cellHeight: 256 }
+          : { columns: 1, rows: 1, cellWidth: 256, cellHeight: 256 })
           .then(() => {
             response.end(JSON.stringify({
               ok: true,
@@ -2175,12 +2319,15 @@ test('creator studio dashboard shows sanitized prompt provenance and can replay 
     await page.locator('#prompt-input').fill('新增一个自定义动作：害羞转圈，手动触发，风格保持一致。API key sk-test-secret at /Users/mango/private/ref.png via http://127.0.0.1:8317/v1 and bridge-token.')
     await page.locator('#draft-button').click()
     await page.waitForFunction(() => !document.querySelector('#confirm-button').disabled)
+    await page.waitForFunction(() => Boolean(document.querySelector('#run-select')?.value))
+    await attachCanonicalReferenceToRun({ dataDir, runId: await page.locator('#run-select').inputValue() })
 
     await page.locator('#confirm-button').click()
     await page.waitForFunction(() => !document.querySelector('#generate-button').disabled)
 
     await page.locator('#generate-button').click()
-    await page.waitForFunction(() => !document.querySelector('#approve-button').disabled)
+    await page.waitForFunction(() => !document.querySelector('#approve-button').disabled || /failed|error|could not|requires/i.test(document.querySelector('#status-line')?.textContent || ''))
+    assert.equal(await page.locator('#approve-button').isDisabled(), false, await page.locator('#status-line').textContent())
     await page.waitForFunction(() => /Host model prompt-builder provenance/.test(document.querySelector('#prompt-provenance-panel')?.textContent || ''))
     await page.waitForFunction(() => document.querySelectorAll('#playback-panel .timeline-row').length > 1)
 
@@ -2192,7 +2339,7 @@ test('creator studio dashboard shows sanitized prompt provenance and can replay 
     assert.match(provenanceText, /openai-compatible/i)
     assert.match(provenanceText, /127\.0\.0\.1:7860/i)
     assert.match(provenanceText, /creative_brief_sanitized/i)
-    assert.match(provenanceText, /OpenPet Runtime Contract/i)
+    assert.match(provenanceText, /Character Identity Contract/i)
     assert.doesNotMatch(provenanceText, /sk-test-secret/i)
     assert.doesNotMatch(provenanceText, /\/Users\/mango\/private\/ref\.png/i)
     assert.doesNotMatch(provenanceText, /127\.0\.0\.1:8317/i)
@@ -2242,6 +2389,7 @@ test('creator studio dashboard shows sanitized prompt provenance and can replay 
 test('creator studio dashboard shows failed generation recovery and retries the same run', { concurrency: false }, async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-retry-'))
   let generationAttempts = 0
+  let actionRowAttempts = 0
   const bridgeServer = http.createServer((request, response) => {
     let body = ''
     request.on('data', (chunk) => { body += chunk })
@@ -2261,14 +2409,19 @@ test('creator studio dashboard shows failed generation recovery and retries the 
       }
       if (request.url.endsWith('/creator/model-image-generate')) {
         generationAttempts += 1
-        if (generationAttempts === 1) {
+        const outputDir = String(payload.output?.dataRelativeDir || '')
+        const isActionRow = /-keyframe-row$/.test(outputDir)
+        if (isActionRow) actionRowAttempts += 1
+        if (isActionRow && actionRowAttempts === 1) {
           response.statusCode = 503
           response.end(JSON.stringify({ ok: false, error: 'Provider queue overloaded' }))
           return
         }
-        const dataRelativePath = `runs/${payload.output.dataRelativeDir.split('/')[1]}/frames/base/0001.png`
+        const dataRelativePath = `${outputDir}/0001.png`
         const generatedPath = path.join(dataDir, dataRelativePath)
-        writeTransparentActionSheetPng(generatedPath)
+        writeTransparentActionSheetPng(generatedPath, isActionRow
+          ? { ...getRequestedActionSheetLayout(payload.prompt), cellWidth: 256, cellHeight: 256 }
+          : { columns: 1, rows: 1, cellWidth: 256, cellHeight: 256 })
           .then(() => {
             response.end(JSON.stringify({
               ok: true,
@@ -2308,11 +2461,14 @@ test('creator studio dashboard shows failed generation recovery and retries the 
     await page.locator('#prompt-input').fill('新增一个自定义动作：害羞转圈，点击后轻轻转一圈。')
     await page.locator('#draft-button').click()
     await page.waitForFunction(() => !document.querySelector('#confirm-button').disabled)
+    await page.waitForFunction(() => Boolean(document.querySelector('#run-select')?.value))
+    await attachCanonicalReferenceToRun({ dataDir, runId: await page.locator('#run-select').inputValue() })
 
     await page.locator('#confirm-button').click()
     await page.waitForFunction(() => !document.querySelector('#generate-button').disabled)
     await page.locator('#generate-button').click()
-    await page.waitForFunction(() => /Provider queue overloaded/.test(document.querySelector('#status-line').textContent))
+    await page.waitForFunction(() => /failed|overloaded|error/i.test(document.querySelector('#status-line')?.textContent || ''))
+    assert.match(await page.locator('#status-line').textContent(), /Provider queue overloaded/)
 
     assert.match(await page.locator('#recovery-panel').textContent(), /Generation failed/i)
     assert.match(await page.locator('#recovery-panel').textContent(), /Provider queue overloaded/i)
@@ -2324,7 +2480,7 @@ test('creator studio dashboard shows failed generation recovery and retries the 
 
     const runIdAfterRetry = await page.locator('#run-select').inputValue()
     assert.equal(runIdAfterRetry, runIdBeforeRetry)
-    assert.equal(generationAttempts, 2)
+    assert.equal(generationAttempts, 6)
     assert.match(await page.locator('#status-line').textContent(), /Generated action output/i)
     assert.match(await page.locator('#action-review-panel').textContent(), /Review status/i)
   } finally {
@@ -2342,6 +2498,8 @@ test('creator studio dashboard shows failed generation recovery and retries the 
 test('creator studio dashboard shows full-pet validation recovery and retries the same run', { concurrency: false }, async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-full-pet-retry-'))
   let baseGenerationAttempts = 0
+  let keyframeGenerationAttempts = 0
+  let actionRowGenerationAttempts = 0
   let totalGenerationAttempts = 0
   const bridgeServer = http.createServer((request, response) => {
     let body = ''
@@ -2363,24 +2521,36 @@ test('creator studio dashboard shows full-pet validation recovery and retries th
       if (request.url.endsWith('/creator/model-image-generate')) {
         totalGenerationAttempts += 1
         const outputDir = String(payload.output?.dataRelativeDir || '')
-        const isActionRow = /\/frames\/base\/[^/]+$/.test(outputDir)
-        if (!isActionRow) baseGenerationAttempts += 1
+        const actionRowMatch = outputDir.match(/\/frames\/base\/([^/]+)-keyframe-row$/)
+        const isActionRow = Boolean(actionRowMatch)
+        const isActionKeyframe = /\/keyframes\/actions\/[^/]+-(?:start|peak)-keyframe$/.test(outputDir)
+        const isBaseImage = /\/frames\/base$/.test(outputDir)
+        if (isBaseImage) baseGenerationAttempts += 1
+        else if (isActionKeyframe) keyframeGenerationAttempts += 1
+        else if (isActionRow) actionRowGenerationAttempts += 1
         const dataRelativePath = `${outputDir}/0001.png`
         const generatedPath = path.join(dataDir, dataRelativePath)
         fs.mkdirSync(path.dirname(generatedPath), { recursive: true })
-        const background = !isActionRow && baseGenerationAttempts === 1
-          ? { r: 0, g: 0, b: 0, alpha: 0 }
-          : { r: 255, g: 196, b: 120, alpha: 1 }
-        sharp({
-          create: {
-            width: 96,
-            height: 112,
-            channels: 4,
-            background
-          }
-        })
-          .png()
-          .toFile(generatedPath)
+        const writeOutput = isBaseImage && baseGenerationAttempts === 1
+          ? writeSolidPng(generatedPath, {
+              width: 96,
+              height: 112,
+              background: { r: 0, g: 0, b: 0, alpha: 0 }
+            })
+          : isActionRow
+            ? writeTransparentActionSheetPng(generatedPath, {
+                ...getRequestedActionSheetLayout(payload.prompt),
+                cellWidth: 256,
+                cellHeight: 256,
+                actionId: actionRowMatch[1]
+              })
+            : writeTransparentActionSheetPng(generatedPath, {
+                columns: 1,
+                rows: 1,
+                cellWidth: isBaseImage ? 512 : 256,
+                cellHeight: isBaseImage ? 512 : 256
+              })
+        writeOutput
           .then(() => {
             response.end(JSON.stringify({
               ok: true,
@@ -2420,6 +2590,8 @@ test('creator studio dashboard shows full-pet validation recovery and retries th
     await page.locator('#prompt-input').fill('生成一只完整的新桌宠，平时懒懒的，被点击会害羞转圈，偶尔会打哈欠。')
     await page.locator('#draft-button').click()
     await page.waitForFunction(() => !document.querySelector('#confirm-button').disabled)
+    await page.waitForFunction(() => Boolean(document.querySelector('#run-select')?.value))
+    await attachCanonicalReferenceToRun({ dataDir, runId: await page.locator('#run-select').inputValue() })
 
     await page.locator('#confirm-button').click()
     await page.waitForFunction(() => !document.querySelector('#generate-button').disabled)
@@ -2439,7 +2611,9 @@ test('creator studio dashboard shows full-pet validation recovery and retries th
     const runIdAfterRetry = await page.locator('#run-select').inputValue()
     assert.equal(runIdAfterRetry, runIdBeforeRetry)
     assert.equal(baseGenerationAttempts, 2)
-    assert.equal(totalGenerationAttempts, 4)
+    assert.equal(keyframeGenerationAttempts, 16)
+    assert.equal(actionRowGenerationAttempts, 8)
+    assert.equal(totalGenerationAttempts, 26)
     assert.match(await page.locator('#status-line').textContent(), /Generated pet-pack output/i)
     assert.match(await page.locator('#full-pet-review-panel').textContent(), /Atlas QA/i)
   } finally {

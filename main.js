@@ -34,6 +34,7 @@ const { createCreatorReferenceService } = require('./src/main/services/creator-r
 const { createBehaviorOrchestratorService } = require('./src/main/services/behavior-orchestrator-service')
 const { createCreatorStudioDefaultFlowService } = require('./src/main/services/creator-studio-default-flow-service')
 const { createCreatorWorkflowService } = require('./src/main/services/creator-workflow-service')
+const { createHatchPetAgentService } = require('./src/main/services/hatch-pet-agent-service')
 const { createPluginService } = require('./src/main/services/plugin-service')
 const { createPluginInstallService } = require('./src/main/services/plugin-install-service')
 const { syncBundledPlugins } = require('./src/main/services/bundled-plugin-sync-service')
@@ -120,6 +121,7 @@ const bootstrapOpenPet = () => {
       createBehaviorOrchestratorService,
       createCreatorStudioDefaultFlowService,
       createCreatorWorkflowService,
+      createHatchPetAgentService,
       createPluginService,
       createPluginInstallService,
       syncBundledPlugins,

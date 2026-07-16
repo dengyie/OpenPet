@@ -164,6 +164,7 @@ test('registerAiIpc wires AI config, behavior, and chat-adjacent handlers', asyn
   const ipcMain = createIpcMainStub()
   const dryRunCalls = []
   const behaviorAdapterCalls = []
+  const hatchCalls = []
 
   registerAiIpc({
     ipcMainService: ipcMain,
@@ -172,6 +173,14 @@ test('registerAiIpc wires AI config, behavior, and chat-adjacent handlers', asyn
       saveConfig: (config) => ({ enabled: true, ...config }),
       saveApiKey: (apiKey) => ({ ok: true, apiKey }),
       testConnection: () => ({ ok: true })
+    },
+    hatchPetAgentService: {
+      getConfig: () => ({ enabled: false }),
+      saveConfig: (value) => { hatchCalls.push(['save', value]); return value },
+      saveApiKey: (value) => { hatchCalls.push(['key', value]); return { hasApiKey: true } },
+      clearApiKey: () => { hatchCalls.push(['clear']); return { hasApiKey: false } },
+      checkCapability: () => ({ ok: true }),
+      getRunStatus: (runId) => { hatchCalls.push(['status', runId]); return { ok: true, runId } }
     },
     aiTalkService: {
       getPersonaProfile: async () => ({ petPackId: 'legacy-cat' }),
@@ -253,6 +262,13 @@ test('registerAiIpc wires AI config, behavior, and chat-adjacent handlers', asyn
   assert.deepEqual(dryRunCalls, [{ reply: 'wave', actions: [{ id: 'wave' }] }])
   assert.ok(ipcMain.handlers.has(IPC.AI_GET_PERSONA_PROFILE))
   assert.ok(ipcMain.handlers.has(IPC.IMAGE_GENERATION_CHECK_HEALTH))
+  assert.deepEqual(await ipcMain.handlers.get(IPC.HATCH_PET_AGENT_GET_CONFIG)(), { enabled: false })
+  await ipcMain.handlers.get(IPC.HATCH_PET_AGENT_SAVE_CONFIG)(null, { enabled: true })
+  await ipcMain.handlers.get(IPC.HATCH_PET_AGENT_SAVE_API_KEY)(null, 'host-only')
+  await ipcMain.handlers.get(IPC.HATCH_PET_AGENT_CLEAR_API_KEY)()
+  assert.deepEqual(await ipcMain.handlers.get(IPC.HATCH_PET_AGENT_CHECK_CAPABILITY)(), { ok: true })
+  assert.deepEqual(await ipcMain.handlers.get(IPC.HATCH_PET_AGENT_GET_RUN_STATUS)(null, { runId: 'run-1' }), { ok: true, runId: 'run-1' })
+  assert.deepEqual(hatchCalls, [['save', { enabled: true }], ['key', 'host-only'], ['clear'], ['status', 'run-1']])
 })
 
 test('registerPluginIpc wires plugin lifecycle and package inspection handlers', async () => {

@@ -41,6 +41,8 @@ import type {
   CreatorBindReferenceResult,
   CreatorGenerateExistingActionRequest,
   CreatorGenerateNewCharacterRequest,
+  CreatorRetryActionRequest,
+  CreatorRetryIdentityRequest,
   CreatorLastRunResult,
   CreatorLastRunViewState,
   CreatorReferencePickerResult,
@@ -50,6 +52,8 @@ import type {
   CreatorWorkflowResult,
   CreatorStudioDefaultFlowResult,
   CustomCursorRecord,
+  HatchPetAgentConfigSaveRequest,
+  HatchPetAgentConfigView,
   ImageGenerationConfigViewState,
   JsonObject,
   PetChatBubbleViewState,
@@ -81,6 +85,8 @@ interface DemoState {
   settings: ControlCenterSettings
   actionsConfig: ActionsConfigViewState
   aiConfig: AiConfigViewState
+  hatchPetAgentConfig: HatchPetAgentConfigView
+  hatchPetAgentHasDedicatedApiKey: boolean
   aiPersonaOverrides: Record<string, AiPersonaOverride>
   aiMemories: AiMemoryItemViewState[]
   aiMemoryJobs: AiMemoryJobViewState[]
@@ -114,6 +120,7 @@ interface DemoState {
     commandId: string
     message: string
   }>
+  creatorReferencePickerPath: string
 }
 
 let demoApi: ControlCenterApi
@@ -135,6 +142,31 @@ const normalizeDemoProviderBaseUrl = (value: string) => {
       .replace(/[?#].*$/, '')
       .replace(/\/+$/, '')
   }
+}
+
+const defaultDemoHatchPetAgentConfig: HatchPetAgentConfigView = {
+  enabled: false,
+  executionMode: 'shadow',
+  configMode: 'follow-chat',
+  provider: 'openai-compatible',
+  baseUrl: 'https://api.openai.com/v1',
+  model: 'gpt-4o-mini',
+  apiKeyRef: 'ai.hatch-pet',
+  systemPromptVersion: 1,
+  requireIdentityReviewBeforeActions: false,
+  budgets: {
+    maxIdentityRegenerations: 1,
+    maxActionAttemptsPerAction: 3,
+    maxEvaluationAttemptsPerArtifact: 2,
+    maxProviderCalls: 64,
+    maxElapsedMs: 3600000,
+    maxEstimatedCost: null
+  },
+  hasApiKey: false,
+  configSource: 'chat-fallback',
+  effectiveProvider: 'openai-compatible',
+  effectiveBaseUrl: 'https://api.openai.com/v1',
+  effectiveModel: 'gpt-4o-mini'
 }
 
 const buildDemoProviderCacheKey = (capability: 'chat' | 'image' | 'vision', provider: string, baseUrl: string) => (
@@ -198,6 +230,7 @@ const createDemoImportedAction = (actionId = 'wave', label = actionId): ActionsC
 
 const demoStorageKey = 'openpet.controlCenter.demoState'
 const demoActivePetPackChangedEvent = 'openpet:active-pet-pack-changed'
+const defaultDemoCreatorReferencePickerPath = '/demo/creator/reference.png'
 
 const demoCatalogHash = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
 const demoLoopbackHealthHosts = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
@@ -1325,23 +1358,6 @@ const resolveDemoCreatorStudioAutoAnswer = (question: Record<string, unknown>) =
   String(question.id || '') === 'trigger' ? 'manual' : ''
 )
 
-const isDemoCreatorStudioActionRun = (run: Record<string, unknown> | null) => {
-  const artifacts = run?.artifacts
-  return Boolean(artifacts && typeof artifacts === 'object' && !Array.isArray(artifacts) && (artifacts as Record<string, unknown>).actionFrames)
-}
-
-const getDemoCreatorStudioTriggerProposalSubmission = (result: PluginCommandRunResultViewState | null | undefined) => {
-  const candidate = result?.result
-  return candidate &&
-    typeof candidate === 'object' &&
-    !Array.isArray(candidate) &&
-    candidate.triggerProposalSubmission &&
-    typeof candidate.triggerProposalSubmission === 'object' &&
-    !Array.isArray(candidate.triggerProposalSubmission)
-    ? candidate.triggerProposalSubmission as Record<string, unknown>
-    : null
-}
-
 const createDemoCreatorStudioDefaultFlowResult = async (prompt: string): Promise<CreatorStudioDefaultFlowResult> => {
   const normalizedPrompt = String(prompt || '').trim()
   if (!normalizedPrompt) throw new Error('请先输入 Creator Studio 请求')
@@ -1356,7 +1372,7 @@ const createDemoCreatorStudioDefaultFlowResult = async (prompt: string): Promise
   }
   const runtimeStatus = plugin.entries?.services?.find((service) => service.id === 'studio')?.runtime?.status || 'stopped'
   if (runtimeStatus !== 'running') {
-    throw new Error('请先启动 Creator Studio Service，再使用生成并导入')
+    throw new Error('请先启动 Creator Studio Service，再开始生成')
   }
 
   const health = await demoApi.checkImageGenerationHealth({})
@@ -1364,7 +1380,7 @@ const createDemoCreatorStudioDefaultFlowResult = async (prompt: string): Promise
     return {
       ok: true,
       state: 'blocked',
-      message: '请先到 AI -> 模型 Provider -> 图片模型 配置并保存可用模型，然后再使用生成并导入',
+      message: '请先到 AI -> 模型 Provider -> 图片模型配置并保存可用模型，然后再开始生成',
       runId: '',
       lastCommandResult: null
     }
@@ -1393,7 +1409,7 @@ const createDemoCreatorStudioDefaultFlowResult = async (prompt: string): Promise
         return {
           ok: true,
           state: 'needs_details',
-          message: `生成并导入已暂停：run ${runId} 还需要人工补充信息。请点击“查看任务详情”。`,
+          message: `生成已暂停：run ${runId} 还需要人工补充信息。请点击“查看任务详情”。`,
           runId,
           lastCommandResult
         }
@@ -1426,42 +1442,12 @@ const createDemoCreatorStudioDefaultFlowResult = async (prompt: string): Promise
     }
 
     if (runId && String(run?.status || '') === 'ready_for_review') {
-      result = await demoApi.runPluginCommand('openpet.creator-studio', 'approve-run', { runId })
-      run = getDemoCreatorStudioRun(result)
-      runId = getDemoCreatorStudioRunId(run)
-      lastCommandResult = result
-      lastRunId = runId
-    }
-
-    if (runId && String(run?.status || '') === 'approved') {
-      result = await demoApi.runPluginCommand(
-        'openpet.creator-studio',
-        isDemoCreatorStudioActionRun(run) ? 'import-approved-action' : 'import-approved-pet',
-        { runId, activate: true }
-      )
-      lastCommandResult = result
-      lastRunId = getDemoCreatorStudioRunId(getDemoCreatorStudioRun(result)) || runId
-    }
-
-    if (lastCommandResult?.commandId === 'import-approved-action') {
-      const triggerProposalSubmission = getDemoCreatorStudioTriggerProposalSubmission(lastCommandResult)
-      if (!triggerProposalSubmission) {
-        return {
-          ok: true,
-          state: 'needs_details',
-          message: `动作已导入，但 run ${lastRunId} 缺少触发建议交接记录。请点击“查看任务详情”。`,
-          runId: lastRunId,
-          lastCommandResult
-        }
-      }
-      if (triggerProposalSubmission.ok !== true) {
-        return {
-          ok: true,
-          state: 'needs_details',
-          message: `动作已导入，但 run ${lastRunId} 的触发建议交接失败。请点击“查看任务详情”。`,
-          runId: lastRunId,
-          lastCommandResult
-        }
+      return {
+        ok: true,
+        state: 'review-required',
+        message: `生成完成，run ${runId} 正在等待人工复查。审批、导入和激活需要分别执行。`,
+        runId,
+        lastCommandResult
       }
     }
 
@@ -1471,7 +1457,7 @@ const createDemoCreatorStudioDefaultFlowResult = async (prompt: string): Promise
     return {
       ok: true,
       state: 'completed',
-      message: String(resultRecord?.message || '生成并导入已完成'),
+      message: String(resultRecord?.message || '生成流程已完成'),
       runId: lastRunId,
       lastCommandResult
     }
@@ -1480,7 +1466,7 @@ const createDemoCreatorStudioDefaultFlowResult = async (prompt: string): Promise
       return {
         ok: true,
         state: 'needs_details',
-        message: `生成并导入在 run ${lastRunId} 失败：${error instanceof Error ? error.message : '未知错误'}。请点击“查看任务详情”。`,
+        message: `生成流程在 run ${lastRunId} 失败：${error instanceof Error ? error.message : '未知错误'}。请点击“查看任务详情”。`,
         runId: lastRunId,
         lastCommandResult
       }
@@ -1536,11 +1522,21 @@ const createDefaultDemoState = (): DemoState => {
             actionId: 'wave',
             intent: 'greeting',
             inputSummary: 'reply:12 chars · intent:greeting',
-            replay: { reply: 'hello there', behaviorIntent: { intent: 'greeting', actionId: 'wave', confidence: 0.9 } }
+            replay: {
+              reply: 'hello there',
+              behaviorIntent: {
+                intent: 'greeting',
+                actionId: 'wave',
+                confidence: 0.9,
+                reason: 'demo replay matched'
+              }
+            }
           }
         ]
       }
     }),
+    hatchPetAgentConfig: { ...defaultDemoHatchPetAgentConfig, budgets: { ...defaultDemoHatchPetAgentConfig.budgets } },
+    hatchPetAgentHasDedicatedApiKey: false,
     aiPersonaOverrides: {},
     aiMemories: [
       createDemoMemory({
@@ -1600,7 +1596,8 @@ const createDefaultDemoState = (): DemoState => {
     serviceStatus: createDemoServiceStatus(),
     catalog: createDemoCatalog(),
     plugins: [],
-    pluginLogs: []
+    pluginLogs: [],
+    creatorReferencePickerPath: defaultDemoCreatorReferencePickerPath
   }
 }
 
@@ -1629,6 +1626,17 @@ const readDemoState = (): DemoState => {
           : createDemoActionsConfig()
       ),
       aiConfig: cloneDemoAiConfig(state.aiConfig),
+      hatchPetAgentConfig: {
+        ...defaultDemoHatchPetAgentConfig,
+        ...(state.hatchPetAgentConfig || {}),
+        executionMode: 'shadow',
+        apiKeyRef: 'ai.hatch-pet',
+        budgets: {
+          ...defaultDemoHatchPetAgentConfig.budgets,
+          ...(state.hatchPetAgentConfig?.budgets || {})
+        }
+      },
+      hatchPetAgentHasDedicatedApiKey: Boolean(state.hatchPetAgentHasDedicatedApiKey),
       aiPersonaOverrides: cloneDemoPersonaOverrides(state.aiPersonaOverrides),
       aiMemories: Array.isArray(state.aiMemories) ? state.aiMemories.map(createDemoMemory) : createDefaultDemoState().aiMemories,
       aiMemoryJobs: Array.isArray(state.aiMemoryJobs) ? state.aiMemoryJobs : [],
@@ -1658,7 +1666,10 @@ const readDemoState = (): DemoState => {
       plugins: Array.isArray(state.plugins)
         ? state.plugins.map((plugin: Partial<PluginViewState>) => normalizeDemoPluginViewState(plugin))
         : [],
-      pluginLogs: Array.isArray(state.pluginLogs) ? state.pluginLogs : []
+      pluginLogs: Array.isArray(state.pluginLogs) ? state.pluginLogs : [],
+      creatorReferencePickerPath: typeof state.creatorReferencePickerPath === 'string' && state.creatorReferencePickerPath.trim()
+        ? state.creatorReferencePickerPath.trim()
+        : defaultDemoCreatorReferencePickerPath
     }
   } catch {
     return createDefaultDemoState()
@@ -1730,6 +1741,55 @@ const cloneDemoAiConfig = (config: Partial<AiConfigViewState> | AiConfigSaveRequ
   })
 }
 
+const clampDemoHatchPetInteger = (value: unknown, fallback: number, min: number, max: number) => {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? Math.min(max, Math.max(min, Math.trunc(parsed))) : fallback
+}
+
+const cloneDemoHatchPetAgentConfig = (
+  config: Partial<HatchPetAgentConfigView> | HatchPetAgentConfigSaveRequest | null | undefined,
+  hasDedicatedApiKey: boolean,
+  aiConfig: AiConfigViewState
+): HatchPetAgentConfigView => {
+  const source = config || {}
+  const sourceBudgets = source.budgets || {}
+  const configMode = source.configMode === 'override' ? 'override' : 'follow-chat'
+  const provider = String(source.provider || defaultDemoHatchPetAgentConfig.provider).trim() || defaultDemoHatchPetAgentConfig.provider
+  const baseUrl = normalizeDemoProviderBaseUrl(source.baseUrl || defaultDemoHatchPetAgentConfig.baseUrl) || defaultDemoHatchPetAgentConfig.baseUrl
+  const model = String(source.model || defaultDemoHatchPetAgentConfig.model).trim() || defaultDemoHatchPetAgentConfig.model
+  const rawEstimatedCost: unknown = sourceBudgets.maxEstimatedCost
+  const estimatedCost = rawEstimatedCost == null || rawEstimatedCost === ''
+    ? null
+    : Math.min(10000, Math.max(0.01, Number(rawEstimatedCost) || 0.01))
+  const effectiveProvider = configMode === 'override' ? provider : aiConfig.provider
+  const effectiveBaseUrl = configMode === 'override' ? baseUrl : aiConfig.baseUrl
+  const effectiveModel = configMode === 'override' ? model : aiConfig.model
+  return {
+    enabled: source.enabled === true,
+    executionMode: 'shadow',
+    configMode,
+    provider,
+    baseUrl,
+    model,
+    apiKeyRef: 'ai.hatch-pet',
+    systemPromptVersion: 1,
+    requireIdentityReviewBeforeActions: source.requireIdentityReviewBeforeActions === true,
+    budgets: {
+      maxIdentityRegenerations: clampDemoHatchPetInteger(sourceBudgets.maxIdentityRegenerations, 1, 0, 3),
+      maxActionAttemptsPerAction: clampDemoHatchPetInteger(sourceBudgets.maxActionAttemptsPerAction, 3, 1, 6),
+      maxEvaluationAttemptsPerArtifact: clampDemoHatchPetInteger(sourceBudgets.maxEvaluationAttemptsPerArtifact, 2, 1, 3),
+      maxProviderCalls: clampDemoHatchPetInteger(sourceBudgets.maxProviderCalls, 64, 1, 200),
+      maxElapsedMs: clampDemoHatchPetInteger(sourceBudgets.maxElapsedMs, 3600000, 60000, 14400000),
+      maxEstimatedCost: estimatedCost
+    },
+    hasApiKey: configMode === 'override' ? hasDedicatedApiKey : aiConfig.hasApiKey,
+    configSource: configMode === 'override' ? 'hatch-pet-override' : 'chat-fallback',
+    effectiveProvider,
+    effectiveBaseUrl,
+    effectiveModel
+  }
+}
+
 const emitDemoActivePetPackChanged = (payload: ActivePetPackChangedEvent) => {
   if (typeof window === 'undefined') return
   window.dispatchEvent(new CustomEvent(demoActivePetPackChangedEvent, { detail: payload }))
@@ -1749,8 +1809,87 @@ const demoCreatorReferenceSelections = new Map<string, string>()
 let demoCreatorLastRun: CreatorLastRunViewState | null = null
 let demoCreatorReferenceTokenSeq = 0
 
+const createDemoHatchPetAgentDiagnostics = (runId: string, decision: string) => {
+  const config = cloneDemoHatchPetAgentConfig(
+    demoState.hatchPetAgentConfig,
+    demoState.hatchPetAgentHasDedicatedApiKey,
+    demoState.aiConfig
+  )
+  return {
+    mode: 'shadow',
+    status: config.enabled ? 'shadow-recorded' : 'disabled',
+    code: config.enabled ? 'shadow_recorded' : 'hatch_pet_disabled',
+    decision: config.enabled ? decision : '',
+    decisionId: config.enabled ? `demo-shadow-${runId}` : ''
+  }
+}
+
+const createDemoCreatorDiagnostics = (runId: string, decision: string) => ({
+  runStatus: 'completed',
+  currentStep: 'complete',
+  reviewStatus: 'approved',
+  importStatus: 'completed',
+  backend: 'provider',
+  backendState: 'completed',
+  attemptStatus: 'completed',
+  outputCount: 1,
+  generatedAt: '2026-07-15T00:00:00.000Z',
+  failedAt: '',
+  failureReason: '',
+  conditioning: null,
+  hatchPetAgent: createDemoHatchPetAgentDiagnostics(runId, decision)
+})
+
 const getDemoCreatorReferenceKey = (targetType: CreatorReferenceTargetType, targetId: string) => `${targetType}:${targetId}`
 const createDemoCreatorReferenceToken = () => `demo-reference-token-${Date.now()}-${++demoCreatorReferenceTokenSeq}`
+const createDemoCreatorReferenceFromSourcePath = ({
+  targetType,
+  targetId,
+  sourcePath
+}: {
+  targetType: CreatorReferenceTargetType
+  targetId: string
+  sourcePath: string
+}) => {
+  const key = getDemoCreatorReferenceKey(targetType, targetId)
+  const previous = demoCreatorReferences.get(key) || null
+  const now = new Date().toISOString()
+  return cloneCreatorReference({
+    targetType,
+    targetId,
+    assetPath: sourcePath,
+    assetUrl: sourcePath,
+    fileName: sourcePath.split('/').pop() || 'reference.png',
+    width: 1024,
+    height: 1024,
+    contentHash: `demo-${targetType}-${targetId}`,
+    createdAt: previous?.createdAt || now,
+    updatedAt: now
+  })
+}
+
+const isUnsupportedDemoDefaultPathReference = (referencePath: string) => (
+  /(全面|多视图|三视图|拼图|multi-view|three-view|collage)/i.test(String(referencePath || '').trim())
+)
+
+const createUnsupportedDemoCreatorWorkflowResult = ({
+  reference = null
+}: {
+  reference?: CreatorReferenceViewState | null
+} = {}): CreatorWorkflowResult => ({
+  ok: true,
+  state: 'missing-input',
+  code: 'unsupported_reference_image',
+  message: '默认一键生成暂只支持单张干净正面图，请改用一张清晰的正面图，不要使用拼图、三视图或多视图合成图。',
+  run: null,
+  reference,
+  activePet: null,
+  importedAction: null,
+  clickAction: '',
+  clickActionChange: null,
+  basicActions: null,
+  diagnostics: null
+})
 
 const getDemoEditableCreatorTarget = () => {
   const activePack = demoState.petPacks.packs.find((pack) => pack.id === demoState.petPacks.activePackId) || demoState.petPacks.packs[0]
@@ -1819,19 +1958,7 @@ const bindDemoCreatorReference = ({
   const sourcePath = consumeDemoCreatorReferenceSourcePath(referenceToken)
   const key = getDemoCreatorReferenceKey(targetType, targetId)
   const previous = demoCreatorReferences.get(key) || null
-  const now = new Date().toISOString()
-  const reference = cloneCreatorReference({
-    targetType,
-    targetId,
-    assetPath: sourcePath,
-    assetUrl: sourcePath,
-    fileName: sourcePath.split('/').pop() || 'reference.png',
-    width: 1024,
-    height: 1024,
-    contentHash: `demo-${targetType}-${targetId}`,
-    createdAt: previous?.createdAt || now,
-    updatedAt: now
-  })
+  const reference = createDemoCreatorReferenceFromSourcePath({ targetType, targetId, sourcePath })
   demoCreatorReferences.set(key, reference)
   return {
     ok: true,
@@ -1879,6 +2006,7 @@ const syncDemoStateFromStorage = () => {
   demoState.catalog = nextState.catalog
   demoState.plugins = nextState.plugins
   demoState.pluginLogs = nextState.pluginLogs
+  demoState.creatorReferencePickerPath = nextState.creatorReferencePickerPath
 }
 const demoCatalogSelections = new Map<string, CatalogInstallSelection>()
 let demoManualPluginSelection: string | null = null
@@ -3663,6 +3791,125 @@ export const demoControlCenterAPI: ControlCenterApi = {
       }
     }, null, 2)
   },
+  getHatchPetAgentConfig: async () => cloneDemoHatchPetAgentConfig(
+    demoState.hatchPetAgentConfig,
+    demoState.hatchPetAgentHasDedicatedApiKey,
+    demoState.aiConfig
+  ),
+  saveHatchPetAgentConfig: async (config) => {
+    demoState.hatchPetAgentConfig = cloneDemoHatchPetAgentConfig({
+      ...demoState.hatchPetAgentConfig,
+      ...config,
+      budgets: {
+        ...demoState.hatchPetAgentConfig.budgets,
+        ...(config.budgets || {})
+      }
+    }, demoState.hatchPetAgentHasDedicatedApiKey, demoState.aiConfig)
+    writeDemoState()
+    return cloneDemoHatchPetAgentConfig(
+      demoState.hatchPetAgentConfig,
+      demoState.hatchPetAgentHasDedicatedApiKey,
+      demoState.aiConfig
+    )
+  },
+  saveHatchPetAgentApiKey: async (apiKey) => {
+    if (!String(apiKey || '').trim()) throw new Error('Hatch-pet API Key 不能为空')
+    demoState.hatchPetAgentHasDedicatedApiKey = true
+    demoState.hatchPetAgentConfig = cloneDemoHatchPetAgentConfig(
+      demoState.hatchPetAgentConfig,
+      true,
+      demoState.aiConfig
+    )
+    writeDemoState()
+    return {
+      apiKeyRef: 'ai.hatch-pet',
+      hasApiKey: true,
+      updatedAt: '2026-07-15T00:00:00.000Z'
+    }
+  },
+  clearHatchPetAgentApiKey: async () => {
+    demoState.hatchPetAgentHasDedicatedApiKey = false
+    demoState.hatchPetAgentConfig = cloneDemoHatchPetAgentConfig(
+      demoState.hatchPetAgentConfig,
+      false,
+      demoState.aiConfig
+    )
+    writeDemoState()
+    return {
+      apiKeyRef: 'ai.hatch-pet',
+      hasApiKey: false,
+      updatedAt: '2026-07-15T00:00:00.000Z'
+    }
+  },
+  checkHatchPetAgentCapability: async () => {
+    const config = cloneDemoHatchPetAgentConfig(
+      demoState.hatchPetAgentConfig,
+      demoState.hatchPetAgentHasDedicatedApiKey,
+      demoState.aiConfig
+    )
+    if (!config.hasApiKey) {
+      return {
+        ok: false,
+        code: 'capability_check_failed',
+        message: 'Hatch-pet API key is not configured',
+        provider: config.effectiveProvider,
+        model: config.effectiveModel,
+        elapsedMs: 12
+      }
+    }
+    const unsupported = /models-timeout|models-failed|models-unavailable|capability-unsupported|tool-unsupported/i.test(config.effectiveBaseUrl)
+    return {
+      ok: !unsupported,
+      code: unsupported ? 'structured_tool_not_supported' : 'ok',
+      message: unsupported
+        ? 'Configured model did not confirm structured tool capability'
+        : 'Hatch-pet structured tool capability is available',
+      provider: config.effectiveProvider,
+      model: config.effectiveModel,
+      elapsedMs: 12
+    }
+  },
+  getHatchPetAgentRunStatus: async (runId) => {
+    const normalizedRunId = String(runId || '').trim().slice(0, 128)
+    if (!normalizedRunId) {
+      return {
+        ok: false,
+        runId: '',
+        state: null,
+        decisions: [],
+        code: 'hatch_pet_run_status_unavailable',
+        message: 'Hatch-pet agent runId is invalid'
+      }
+    }
+    const config = cloneDemoHatchPetAgentConfig(
+      demoState.hatchPetAgentConfig,
+      demoState.hatchPetAgentHasDedicatedApiKey,
+      demoState.aiConfig
+    )
+    const decisionId = `demo-shadow-${normalizedRunId}`
+    return {
+      ok: true,
+      runId: normalizedRunId,
+      state: {
+        version: 1,
+        mode: 'shadow',
+        stage: 'planning',
+        status: config.enabled ? 'shadow-recorded' : 'disabled',
+        lastDecisionId: config.enabled ? decisionId : '',
+        updatedAt: '2026-07-15T00:00:00.000Z'
+      },
+      decisions: config.enabled
+        ? [{
+            decisionId,
+            mode: 'shadow',
+            stage: 'planning',
+            decision: { decision: 'generate-identity' },
+            resultCode: 'shadow-recorded',
+            recordedAt: '2026-07-15T00:00:00.000Z'
+          }]
+        : []
+    }
+  },
   dryRunAiBehavior: async (payload) => dryRunDemoBehavior(payload || {}),
   replayAiBehaviorDecision: async (decisionId) => {
     const decision = demoState.aiConfig.behavior.decisions.find((entry) => entry.id === Number(decisionId))
@@ -3756,15 +4003,20 @@ export const demoControlCenterAPI: ControlCenterApi = {
     return updatedPlugin
   },
   getCreatorState: async () => createDemoCreatorState(),
-  pickCreatorReferenceImage: async (): Promise<CreatorReferencePickerResult> => approveDemoCreatorReference('/demo/creator/reference.png'),
+  pickCreatorReferenceImage: async (): Promise<CreatorReferencePickerResult> => approveDemoCreatorReference(demoState.creatorReferencePickerPath || defaultDemoCreatorReferencePickerPath),
   bindCreatorReference: async ({ targetType, targetId, referenceToken }) => bindDemoCreatorReference({ targetType, targetId, referenceToken }),
   generateCreatorNewCharacter: async (payload: CreatorGenerateNewCharacterRequest): Promise<CreatorWorkflowResult> => {
     const targetId = `demo-pack:${String(payload.characterName || 'new-character').trim() || 'new-character'}`
-    const reference = bindDemoCreatorReference({
+    const sourcePath = consumeDemoCreatorReferenceSourcePath(payload.referenceImageToken)
+    const reference = createDemoCreatorReferenceFromSourcePath({
       targetType: 'pet-pack',
       targetId,
-      referenceToken: payload.referenceImageToken
-    }).reference
+      sourcePath
+    })
+    if (isUnsupportedDemoDefaultPathReference(sourcePath) || isUnsupportedDemoDefaultPathReference(reference.fileName)) {
+      return createUnsupportedDemoCreatorWorkflowResult({ reference })
+    }
+    demoCreatorReferences.set(getDemoCreatorReferenceKey('pet-pack', targetId), reference)
     const run = completeDemoCreatorRun({
       state: 'completed',
       mode: 'new-character',
@@ -3784,29 +4036,44 @@ export const demoControlCenterAPI: ControlCenterApi = {
       activePet: getDemoActivePetSummary(),
       clickActionChange: null,
       basicActions: {
-        requiredRealActionIds: ['idle', 'waving'],
-        realActionIds: ['idle', 'waving'],
-        fallbackActionIds: ['waiting', 'failed'],
+        baseIdentityCoverage: true,
+        requiredRealActionIds: [],
+        realActionIds: [],
+        fallbackActionIds: ['idle', 'waving', 'waiting', 'failed'],
         missingRequiredActionIds: [],
+        requiredOfficialActionIds: ['idle', 'running-right', 'running-left', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review'],
+        previewFallbackActionIds: ['idle', 'waving', 'waiting', 'failed'],
+        missingRequiredOfficialActionIds: ['idle', 'running-right', 'running-left', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review'],
         rows: [
-          { actionId: 'idle', sourceActionId: 'idle', sourceRelativePath: 'demo/idle.png', fallback: false },
-          { actionId: 'waving', sourceActionId: 'waving', sourceRelativePath: 'demo/waving.png', fallback: false },
-          { actionId: 'waiting', sourceActionId: 'base-pose', sourceRelativePath: 'demo/base.png', fallback: true },
-          { actionId: 'failed', sourceActionId: 'base-pose', sourceRelativePath: 'demo/base.png', fallback: true }
+          { actionId: 'idle', sourceActionId: 'base-pose', sourceRelativePath: 'demo/base.png', fallback: true, quality: 'base-preview' },
+          { actionId: 'waving', sourceActionId: 'base-pose', sourceRelativePath: 'demo/base.png', fallback: true, quality: 'synthesized-preview' },
+          { actionId: 'waiting', sourceActionId: 'base-pose', sourceRelativePath: 'demo/base.png', fallback: true, quality: 'synthesized-preview' },
+          { actionId: 'failed', sourceActionId: 'base-pose', sourceRelativePath: 'demo/base.png', fallback: true, quality: 'synthesized-preview' }
         ]
       },
-      diagnostics: null
+      diagnostics: createDemoCreatorDiagnostics(run.runId, 'generate-identity')
     }
   },
   generateCreatorExistingAction: async (payload: CreatorGenerateExistingActionRequest): Promise<CreatorWorkflowResult> => {
     const editableTarget = getDemoEditableCreatorTarget()
     const reference = payload.referenceImageToken
-      ? bindDemoCreatorReference({
-          targetType: editableTarget.targetType,
-          targetId: editableTarget.targetId,
-          referenceToken: payload.referenceImageToken
-        }).reference
+      ? (() => {
+          const sourcePath = consumeDemoCreatorReferenceSourcePath(payload.referenceImageToken)
+          const nextReference = createDemoCreatorReferenceFromSourcePath({
+            targetType: editableTarget.targetType,
+            targetId: editableTarget.targetId,
+            sourcePath
+          })
+          if (isUnsupportedDemoDefaultPathReference(sourcePath) || isUnsupportedDemoDefaultPathReference(nextReference.fileName)) {
+            return nextReference
+          }
+          demoCreatorReferences.set(getDemoCreatorReferenceKey(editableTarget.targetType, editableTarget.targetId), nextReference)
+          return nextReference
+        })()
       : demoCreatorReferences.get(getDemoCreatorReferenceKey(editableTarget.targetType, editableTarget.targetId)) || null
+    if (reference && isUnsupportedDemoDefaultPathReference(reference.fileName)) {
+      return createUnsupportedDemoCreatorWorkflowResult({ reference })
+    }
     const actionId = String(payload.actionName || 'custom-action').trim() || 'custom-action'
     const previousClickAction = demoState.actionsConfig.clickAction
     demoState.actionsConfig = cloneActionsConfig({
@@ -3841,7 +4108,43 @@ export const demoControlCenterAPI: ControlCenterApi = {
         canRestore: Boolean(previousClickAction && previousClickAction !== actionId)
       },
       basicActions: null,
-      diagnostics: null
+      diagnostics: createDemoCreatorDiagnostics(run.runId, 'generate-action')
+    }
+  },
+  retryCreatorAction: async (payload: CreatorRetryActionRequest): Promise<CreatorWorkflowResult> => {
+    const run = completeDemoCreatorRun({
+      state: 'review-required',
+      mode: 'full-pet',
+      runId: payload.runId,
+      commandId: 'retry-action',
+      message: `Repaired demo action ${payload.actionId}`
+    })
+    return {
+      ok: true,
+      state: 'review-required',
+      code: 'action_repair_review_required',
+      message: `动作 ${payload.actionId} 已重新生成，请复查`,
+      run,
+      basicActions: null,
+      diagnostics: createDemoCreatorDiagnostics(run.runId, 'retry-action')
+    }
+  },
+  retryCreatorIdentity: async (payload: CreatorRetryIdentityRequest): Promise<CreatorWorkflowResult> => {
+    const run = completeDemoCreatorRun({
+      state: 'review-required',
+      mode: 'full-pet',
+      runId: payload.runId,
+      commandId: 'retry-identity',
+      message: 'Regenerated demo canonical identity'
+    })
+    return {
+      ok: true,
+      state: 'review-required',
+      code: 'identity_repair_review_required',
+      message: 'Canonical identity 已重新生成，请复查全部动作',
+      run,
+      basicActions: null,
+      diagnostics: createDemoCreatorDiagnostics(run.runId, 'retry-identity')
     }
   },
   getCreatorLastRun: async (): Promise<CreatorLastRunResult> => ({

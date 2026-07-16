@@ -251,7 +251,7 @@ test('checkDocsDrift fails when release-evidence archive classes disappear from 
   const readme = fs.readFileSync(readmePath, 'utf-8')
   fs.writeFileSync(
     readmePath,
-    readme.replace(/, `agent-awareness-local-smoke\/`, and `creator-studio-provider-smoke\/`/, ', `creator-studio-provider-smoke/`'),
+    readme.replace(/, `creator-studio-provider-smoke\/`, and `creator-workflow-host-smoke\/`,/, ', `creator-studio-provider-smoke/`,'),
     'utf-8'
   )
 

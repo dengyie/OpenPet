@@ -65,6 +65,20 @@ const waitForRequestCount = async (requests, expectedCount) => {
   assert.fail(`Timed out waiting for ${expectedCount} provider request(s); saw ${requests.length}`)
 }
 
+const createReferenceImages = (dataDir, fileName = 'canonical-reference.png') => {
+  const relativePath = path.posix.join('inputs', 'references', fileName)
+  const referencePath = path.join(dataDir, ...relativePath.split('/'))
+  fs.mkdirSync(path.dirname(referencePath), { recursive: true })
+  fs.writeFileSync(referencePath, Buffer.from('reference-image-bytes'))
+  return [{
+    path: referencePath,
+    fileName,
+    relativePath,
+    metadataRelativePath: 'inputs/references/reference.json',
+    role: 'canonical-reference'
+  }]
+}
+
 test('image generation model service exposes a renderer-safe unified provider config view and migrates legacy cloud config', () => {
   const service = createImageGenerationModelService({
     settingsService: createSettingsService({
@@ -220,6 +234,43 @@ test('image generation model service does not persist renderer-only model catalo
   assert.deepEqual(service.getConfig().modelCatalog, savedCatalog)
 })
 
+test('image generation model service exposes a creator workflow model policy with host-owned verified fallback truth', () => {
+  const settingsService = createSettingsService({
+    models: {
+      imageGeneration: {
+        provider: 'openai-compatible',
+        baseUrl: 'http://127.0.0.1:8317/v1',
+        model: 'gpt-image-2',
+        apiKeyRef: 'secret:model.image.openai.apiKey',
+        timeoutMs: 120000,
+        maxConcurrentJobs: 1,
+        modelCatalog: createSavedProviderModelCatalog({
+          capability: 'image',
+          provider: 'openai-compatible',
+          baseUrl: 'http://127.0.0.1:8317/v1',
+          models: ['gpt-image-2', 'gpt-image-1.5', 'grok-imagine-image'],
+          fetchedAt: '2026-07-05T09:00:00.000Z'
+        })
+      }
+    }
+  })
+  const service = createImageGenerationModelService({
+    settingsService,
+    secretService: createSecretService()
+  })
+
+  const config = service.getConfig()
+
+  assert.deepEqual(config.creatorWorkflowModelPolicy, {
+    evidenceScope: 'creator-one-click-default',
+    preferredModel: 'gpt-image-2',
+    verifiedModels: ['gpt-image-2'],
+    fallbackModels: [],
+    discoveredModels: ['gpt-image-1.5', 'gpt-image-2', 'grok-imagine-image'],
+    preferredModelVerified: true
+  })
+})
+
 test('image generation model service rejects config attempts to retarget the provider api key ref', () => {
   const settingsService = createSettingsService()
   const logs = []
@@ -285,6 +336,7 @@ test('image generation model service rejects non-owner secret refs from persiste
   await assert.rejects(
     () => service.generateImage({
       prompt: 'private detailed custom pet prompt',
+      referenceImages: createReferenceImages(dataDir),
       output: {
         dataDir,
         dataRelativeDir: 'runs/rejected-secret-ref/frames/base'
@@ -810,7 +862,7 @@ test('image generation model service prefers legacy local settings when flat def
   assert.equal(config.maxConcurrentJobs, 2)
 })
 
-test('image generation model service writes generated provider outputs under the allowed data directory', async () => {
+test('image generation model service writes reference-conditioned outputs under the allowed data directory', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-'))
   const requests = []
   const logs = []
@@ -838,6 +890,7 @@ test('image generation model service writes generated provider outputs under the
 
   const result = await service.generateImage({
     prompt: 'small mint helper cat, transparent background',
+    referenceImages: createReferenceImages(dataDir),
     output: {
       dataDir,
       dataRelativeDir: 'runs/2026-06-19-sprout-cat/frames/base'
@@ -855,14 +908,16 @@ test('image generation model service writes generated provider outputs under the
   assert.equal(result.outputs.length, 1)
   assert.match(result.outputs[0].dataRelativePath, /^runs\/2026-06-19-sprout-cat\/frames\/base\/0001\.png$/)
   assert.equal(fs.existsSync(path.join(dataDir, result.outputs[0].dataRelativePath)), true)
-  assert.equal(requests[0].url, 'http://127.0.0.1:8317/v1/images/generations')
-  assert.deepEqual(JSON.parse(requests[0].options.body), {
-    model: 'gpt-image-1',
-    prompt: 'small mint helper cat, transparent background',
-    size: '1024x1024',
-    background: 'transparent',
-    response_format: 'b64_json'
-  })
+  assert.equal(requests[0].url, 'http://127.0.0.1:8317/v1/images/edits')
+  assert.equal(Buffer.isBuffer(requests[0].options.body), true)
+  const requestBody = requests[0].options.body.toString('utf8')
+  assert.match(requestBody, /name="image"; filename="canonical-reference\.png"/)
+  assert.match(requestBody, /name="model"\r\n\r\ngpt-image-1\r\n/)
+  assert.match(requestBody, /name="prompt"\r\n\r\nsmall mint helper cat, transparent background\r\n/)
+  assert.match(requestBody, /name="size"\r\n\r\n1024x1024\r\n/)
+  assert.match(requestBody, /name="n"\r\n\r\n1\r\n/)
+  assert.match(requestBody, /name="background"\r\n\r\ntransparent\r\n/)
+  assert.match(requestBody, /name="response_format"\r\n\r\nb64_json\r\n/)
   assert.deepEqual(logs.map((entry) => entry.event), [
     'imageGeneration.request.started',
     'imageGeneration.provider.request.started',
@@ -909,6 +964,7 @@ test('image generation model service honors per-request timeout overrides', asyn
 
   await service.generateImage({
     prompt: 'small mint helper cat, transparent background',
+    referenceImages: createReferenceImages(dataDir),
     timeoutMs: 300000,
     output: {
       dataDir,
@@ -954,6 +1010,7 @@ test('image generation model service rejects per-request provider owner override
     baseUrl: 'https://attacker.example.test/v1',
     apiKeyRef: 'ai.default',
     prompt: 'small mint helper cat, transparent background',
+    referenceImages: createReferenceImages(dataDir),
     output: {
       dataDir,
       dataRelativeDir: 'runs/model-override/frames/base'
@@ -976,7 +1033,7 @@ test('image generation model service rejects per-request provider owner override
   assert.equal(JSON.stringify(logs).includes('attacker.example.test'), false)
 })
 
-test('image generation model service uses a gpt-image-2 compatible generation payload', async () => {
+test('image generation model service uses a gpt-image-2 compatible edit payload', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-'))
   const requests = []
   const logs = []
@@ -1003,6 +1060,7 @@ test('image generation model service uses a gpt-image-2 compatible generation pa
 
   const result = await service.generateImage({
     prompt: 'small mint helper cat, transparent background',
+    referenceImages: createReferenceImages(dataDir),
     output: {
       dataDir,
       dataRelativeDir: 'runs/2026-06-19-gpt-image-2/frames/base'
@@ -1014,15 +1072,20 @@ test('image generation model service uses a gpt-image-2 compatible generation pa
     }
   })
 
-  const payload = JSON.parse(requests[0].options.body)
+  const payload = requests[0].options.body.toString('utf8')
   assert.equal(result.ok, true)
-  assert.equal(payload.model, 'gpt-image-2')
-  assert.equal(payload.prompt, 'small mint helper cat, transparent background')
-  assert.equal(payload.size, '1024x1024')
-  assert.equal(Object.hasOwn(payload, 'background'), false)
-  assert.equal(Object.hasOwn(payload, 'response_format'), false)
+  assert.equal(requests[0].url, 'http://127.0.0.1:8317/v1/images/edits')
+  assert.match(payload, /name="image"; filename="canonical-reference\.png"/)
+  assert.match(payload, /name="model"\r\n\r\ngpt-image-2\r\n/)
+  assert.match(payload, /name="prompt"\r\n\r\nsmall mint helper cat, transparent background\r\n/)
+  assert.match(payload, /name="size"\r\n\r\n1024x1024\r\n/)
+  assert.match(payload, /name="n"\r\n\r\n1\r\n/)
+  assert.match(payload, /name="quality"\r\n\r\nhigh\r\n/)
+  assert.doesNotMatch(payload, /name="background"/)
+  assert.doesNotMatch(payload, /name="response_format"/)
   assert.equal(logs[0].details.requestedTransparent, true)
   assert.equal(logs[1].details.backgroundMode, 'omitted')
+  assert.equal(logs[1].details.quality, 'high')
   assert.equal(logs[1].details.requestedTransparent, true)
 })
 
@@ -1083,8 +1146,10 @@ test('image generation model service uses image edits when reference conditionin
   assert.match(serialized, /name="model"\r\n\r\ngpt-image-2\r\n/)
   assert.match(serialized, /name="prompt"\r\n\r\nkeep the same orange cat identity and create a waving action sheet\r\n/)
   assert.match(serialized, /name="size"\r\n\r\n1024x1024\r\n/)
+  assert.match(serialized, /name="quality"\r\n\r\nhigh\r\n/)
   assert.equal(result.conditioning.mode, 'image-edit')
   assert.equal(result.conditioning.endpoint, '/images/edits')
+  assert.equal(result.conditioning.quality, 'high')
   assert.equal(result.conditioning.referenceImageCount, 1)
   assert.equal(result.conditioning.references[0].fileName, 'canonical-reference.png')
   assert.equal(result.conditioning.references[0].relativePath, 'runs/reference-conditioned/inputs/references/canonical-reference.png')
@@ -1129,6 +1194,7 @@ test('image generation model service enforces provider maxConcurrentJobs by queu
 
   const first = service.generateImage({
     prompt: 'first queued custom pet prompt',
+    referenceImages: createReferenceImages(dataDir, 'first-reference.png'),
     output: {
       dataDir,
       dataRelativeDir: 'runs/concurrency/first/frames/base'
@@ -1143,6 +1209,7 @@ test('image generation model service enforces provider maxConcurrentJobs by queu
 
   const second = service.generateImage({
     prompt: 'second queued custom pet prompt',
+    referenceImages: createReferenceImages(dataDir, 'second-reference.png'),
     output: {
       dataDir,
       dataRelativeDir: 'runs/concurrency/second/frames/base'
@@ -1180,6 +1247,7 @@ test('image generation model service rejects output paths outside the allowed da
   await assert.rejects(
     () => service.generateImage({
       prompt: 'no-op',
+      referenceImages: createReferenceImages(dataDir),
       output: {
         dataDir,
         dataRelativeDir: '../escape'
@@ -1213,6 +1281,7 @@ test('image generation model service rejects output directory symlinks escaping 
   await assert.rejects(
     () => service.generateImage({
       prompt: 'no-op',
+      referenceImages: createReferenceImages(dataDir),
       output: {
         dataDir,
         dataRelativeDir: 'runs/symlink-output'
@@ -1251,6 +1320,7 @@ test('image generation model service records failed provider calls without leaki
   await assert.rejects(
     () => service.generateImage({
       prompt: 'private detailed custom pet prompt',
+      referenceImages: createReferenceImages(dataDir),
       output: {
         dataDir,
         dataRelativeDir: 'runs/failure-case/frames/base'
@@ -1299,6 +1369,7 @@ test('image generation model service sanitizes thrown provider request errors be
   await assert.rejects(
     () => service.generateImage({
       prompt: 'private detailed custom pet prompt',
+      referenceImages: createReferenceImages(dataDir),
       output: {
         dataDir,
         dataRelativeDir: 'runs/thrown-error/frames/base'
@@ -1350,6 +1421,7 @@ test('image generation model service redacts provider business errors from HTTP 
   await assert.rejects(
     () => service.generateImage({
       prompt: 'private detailed custom pet prompt',
+      referenceImages: createReferenceImages(dataDir),
       output: {
         dataDir,
         dataRelativeDir: 'runs/business-error/frames/base'
@@ -1394,6 +1466,7 @@ test('image generation model service rejects provider outputs with missing image
   await assert.rejects(
     () => service.generateImage({
       prompt: 'private detailed custom pet prompt',
+      referenceImages: createReferenceImages(dataDir),
       output: {
         dataDir,
         dataRelativeDir: 'runs/missing-bytes/frames/base'
@@ -1447,6 +1520,7 @@ test('image generation model service times out provider generation requests and 
   await assert.rejects(
     () => service.generateImage({
       prompt: 'private detailed custom pet prompt',
+      referenceImages: createReferenceImages(dataDir),
       output: {
         dataDir,
         dataRelativeDir: 'runs/provider-timeout/frames/base'
@@ -1526,6 +1600,7 @@ test('image generation model service uses the saved provider timeout for generat
   await assert.rejects(
     () => service.generateImage({
       prompt: 'private detailed custom pet prompt',
+      referenceImages: createReferenceImages(dataDir),
       output: {
         dataDir,
         dataRelativeDir: 'runs/provider-config-timeout/frames/base'
@@ -1562,6 +1637,7 @@ test('image generation model service keeps the production provider timeout by de
   await assert.rejects(
     () => service.generateImage({
       prompt: 'private detailed custom pet prompt',
+      referenceImages: createReferenceImages(dataDir),
       output: {
         dataDir,
         dataRelativeDir: 'runs/provider-default-timeout/frames/base'

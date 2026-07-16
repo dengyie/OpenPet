@@ -295,7 +295,7 @@ export function usePluginsPane() {
     }
     const runtimeStatus = getPluginServiceRuntimeStatus(plugin, CREATOR_STUDIO_SERVICE_ID)
     if (runtimeStatus !== 'running') {
-      setStatus('请先启动 Creator Studio Service，再使用生成并导入')
+      setStatus('请先启动 Creator Studio Service，再开始生成')
       return
     }
     const prompt = String(creatorStudioPromptDraft || '').trim()
@@ -311,11 +311,11 @@ export function usePluginsPane() {
       setCreatorStudioLastRunId(String(result.runId || '').trim())
       setLastCommandResult(result.lastCommandResult ? toCommandResultPreview(result.lastCommandResult) : null)
       await refreshLogs()
-      setStatus(result.message || '生成并导入已完成')
-      if (result.state === 'completed') setCreatorStudioPromptDraft('')
+      setStatus(result.message || '生成流程已完成')
+      if (['completed', 'review-required'].includes(result.state)) setCreatorStudioPromptDraft('')
     } catch (error) {
       setLastCommandResult(null)
-      setStatus(messageFromError(error, '生成并导入启动失败'))
+      setStatus(messageFromError(error, '生成流程启动失败'))
       await refreshLogs()
     } finally {
       setRunningCreatorStudioDefaultFlow(false)

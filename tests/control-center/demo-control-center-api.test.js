@@ -120,6 +120,15 @@ const ensureDemoCreatorStudioInstalled = async () => {
   })
 }
 
+const setDemoCreatorReferencePickerPath = async (pickerPath) => {
+  const rawState = global.window.sessionStorage.getItem(demoStorageKey)
+  assert.ok(rawState)
+  const nextState = JSON.parse(rawState)
+  nextState.creatorReferencePickerPath = pickerPath
+  global.window.sessionStorage.setItem(demoStorageKey, JSON.stringify(nextState))
+  await demoControlCenterAPI.getPetChatState()
+}
+
 test('control center API entrypoint lazy-loads demo fallback without installing it globally', async () => {
   delete global.window.controlCenterAPI
   const { controlCenterAPI } = await import('../../src/control-center/src/api/control-center-api.ts')
@@ -312,6 +321,41 @@ test('demo API creator picker returns an opaque reference token', async () => {
   assert.equal(typeof picked.referenceToken, 'string')
   assert.ok(picked.referenceToken.length > 10)
   assert.equal('sourcePath' in picked, false)
+})
+
+test('demo API creator picker follows synced demo storage and blocks unsupported multi-view input', async () => {
+  await setDemoCreatorReferencePickerPath('/demo/creator/全面.png')
+
+  const picked = await demoControlCenterAPI.pickCreatorReferenceImage()
+  assert.equal(picked.fileName, '全面.png')
+
+  const result = await demoControlCenterAPI.generateCreatorNewCharacter({
+    characterName: 'Blocked Multi View Cat',
+    referenceImageToken: picked.referenceToken
+  })
+
+  assert.equal(result.state, 'missing-input')
+  assert.equal(result.code, 'unsupported_reference_image')
+  assert.match(result.message, /单张干净正面图/)
+  assert.match(result.message, /不要使用拼图、三视图或多视图合成图/)
+  assert.equal(result.reference?.fileName, '全面.png')
+})
+
+test('demo API existing-action flow blocks unsupported multi-view references from the picker', async () => {
+  await setDemoCreatorReferencePickerPath('/demo/creator/全面.png')
+
+  const picked = await demoControlCenterAPI.pickCreatorReferenceImage()
+  assert.equal(picked.fileName, '全面.png')
+
+  const result = await demoControlCenterAPI.generateCreatorExistingAction({
+    actionName: 'wave',
+    referenceImageToken: picked.referenceToken
+  })
+
+  assert.equal(result.state, 'missing-input')
+  assert.equal(result.code, 'unsupported_reference_image')
+  assert.match(result.message, /单张干净正面图/)
+  assert.equal(result.reference?.fileName, '全面.png')
 })
 
 test('demo API plugin mutations return full plugin snapshots for renderer state replacement', async () => {
@@ -1379,4 +1423,21 @@ test('demo API pet-pack export returns completed shared contract fields', async 
   assert.equal(exported.outputPath, '/demo/exports/legacy-cat.openpet-pet.zip')
   assert.equal(typeof exported.sha256, 'string')
   assert.ok(exported.byteSize > 0)
+})
+
+test('demo hatch-pet config, capability, and run status stay deterministic and renderer-safe', async () => {
+  const defaults = await demoControlCenterAPI.getHatchPetAgentConfig()
+  assert.equal(defaults.executionMode, 'shadow')
+  assert.equal(defaults.apiKeyRef, 'ai.hatch-pet')
+  const saved = await demoControlCenterAPI.saveHatchPetAgentConfig({ enabled: true, configMode: 'override', provider: 'openai-compatible', baseUrl: 'https://u:p@example.test/v1?token=x#frag', model: 'demo-model', budgets: { maxProviderCalls: 999 } })
+  assert.equal(saved.baseUrl, 'https://example.test/v1')
+  assert.equal(saved.budgets.maxProviderCalls, 200)
+  const unsupported = await demoControlCenterAPI.checkHatchPetAgentCapability()
+  assert.equal(unsupported.ok, false)
+  await demoControlCenterAPI.saveHatchPetAgentApiKey('demo-host-only-key')
+  const supported = await demoControlCenterAPI.checkHatchPetAgentCapability()
+  assert.equal(supported.ok, true)
+  assert.equal(JSON.stringify(supported).includes('demo-host-only-key'), false)
+  const status = await demoControlCenterAPI.getHatchPetAgentRunStatus('demo-run')
+  assert.equal(JSON.stringify(status).includes('/Users/'), false)
 })

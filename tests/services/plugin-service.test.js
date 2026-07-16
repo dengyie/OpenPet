@@ -1333,7 +1333,7 @@ test('creator studio example imports approved fixture pet through host bridge', 
   assert.equal(fs.existsSync(path.join(userPacksDir, 'sprout-cat', 'pet.json')), true)
 })
 
-test('creator studio example imports approved host-bridged local pet through host bridge', async () => {
+test('creator studio example rejects importing a preview-only host pet', async () => {
   const settingsService = createSettingsService({
     plugins: { enabled: { 'openpet.creator-studio': true } },
     petPacks: { activePackId: 'legacy-cat', installed: {} }
@@ -1404,19 +1404,44 @@ test('creator studio example imports approved host-bridged local pet through hos
     backend: 'local'
   })
   const runId = createResult.result.run.runId
+  const dataDir = service.getPluginCreatorDataDir('openpet.creator-studio')
+  const referenceRelativePath = `runs/${runId}/inputs/references/canonical-reference.png`
+  const metadataRelativePath = `runs/${runId}/inputs/references/reference.json`
+  const referencePath = path.join(dataDir, referenceRelativePath)
+  fs.mkdirSync(path.dirname(referencePath), { recursive: true })
+  await sharp({
+    create: {
+      width: 96,
+      height: 112,
+      channels: 4,
+      background: { r: 20, g: 170, b: 120, alpha: 1 }
+    }
+  }).png().toFile(referencePath)
+  fs.writeFileSync(path.join(dataDir, metadataRelativePath), JSON.stringify({ source: 'test-reference' }))
+  const { readRun, writeRun } = require('../../examples/plugins/creator-studio/lib/run-store')
+  const storedRun = readRun({ dataDir, runId })
+  writeRun({
+    dataDir,
+    run: {
+      ...storedRun,
+      input: {
+        ...storedRun.input,
+        referenceImage: {
+          fileName: 'canonical-reference.png',
+          relativePath: referenceRelativePath,
+          metadataRelativePath,
+          contentHash: crypto.createHash('sha256').update(fs.readFileSync(referencePath)).digest('hex')
+        }
+      }
+    }
+  })
   await service.runCommand('openpet.creator-studio', 'run-step', { runId })
   await service.runCommand('openpet.creator-studio', 'approve-run', { runId })
-  const importResult = await service.runCommand('openpet.creator-studio', 'import-approved-pet', { runId, activate: true })
-
-  assert.equal(importResult.ok, true)
-  assert.equal(importResult.result.ok, true)
-  assert.equal(importResult.result.run.importStatus, 'imported')
-  assert.equal(settingsService.get().petPacks.activePackId, 'local-sprout-cat')
-  assert.equal(fs.existsSync(path.join(userPacksDir, 'local-sprout-cat', 'pet.json')), true)
-  assert.notEqual(
-    crypto.createHash('sha256').update(fs.readFileSync(path.join(userPacksDir, 'local-sprout-cat', 'spritesheet.webp'))).digest('hex'),
-    crypto.createHash('sha256').update(createMinimalWebp()).digest('hex')
+  await assert.rejects(
+    service.runCommand('openpet.creator-studio', 'import-approved-pet', { runId, activate: true }),
+    /pet\.json|preview|official action/i
   )
+  assert.equal(settingsService.get().petPacks.activePackId, 'legacy-cat')
 })
 
 test('declaration-only creator asset inspection bridge rejects missing permissions', async () => {

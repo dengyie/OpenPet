@@ -1,31 +1,12 @@
 const path = require('path')
 const { runCommand } = require('../lib/command-io')
 const { callBridge } = require('../lib/bridge-client')
-const { runGenerationStep } = require('../lib/backend-runner')
 const { assertRunFullPetQaPassed } = require('../lib/full-pet-qa')
 const { readRun, resolveRunId, updateRunStatus } = require('../lib/run-store')
-
-const STALE_FIXTURE_ATLAS_ERROR = /Codex pet atlas must contain visible pixels/
 
 const inspectOutput = async ({ outputDir }) => {
   const dataRelativePath = path.relative(process.env.OPENPET_DATA_DIR, outputDir).replace(/\\/g, '/')
   return callBridge('/creator/pet-pack/inspect-output', { dataRelativePath })
-}
-
-const regenerateApprovedFixtureOutput = async ({ current, runId }) => {
-  const backend = current.backend || current.input?.backend || 'fixture'
-  if (backend !== 'fixture') return null
-  const regenerated = await runGenerationStep({
-    dataDir: process.env.OPENPET_DATA_DIR,
-    runId
-  })
-  updateRunStatus({
-    dataDir: process.env.OPENPET_DATA_DIR,
-    runId,
-    status: 'approved',
-    patch: { reviewStatus: 'approved', currentStep: 'approved' }
-  })
-  return regenerated
 }
 
 runCommand(async (context) => {
@@ -45,19 +26,11 @@ runCommand(async (context) => {
     run: current,
     operation: 'import'
   })
-  let inspection
-  try {
-    inspection = await inspectOutput({ outputDir })
-  } catch (error) {
-    if (!STALE_FIXTURE_ATLAS_ERROR.test(String(error.message || ''))) throw error
-    const regenerated = await regenerateApprovedFixtureOutput({ current, runId })
-    if (!regenerated) throw error
-    inspection = await inspectOutput({ outputDir: regenerated.outputDir || outputDir })
-  }
+  const inspection = await inspectOutput({ outputDir })
   if (!inspection.inspection?.valid) throw new Error((inspection.inspection?.errors || []).join('; ') || 'Pet pack inspection failed')
   const imported = await callBridge('/creator/pet-pack/import-output', {
     selectionId: inspection.inspection.selectionId,
-    activate: context.payload?.activate ?? context.config?.autoActivateAfterImport ?? true
+    activate: context.payload?.activate === true
   })
   const run = updateRunStatus({
     dataDir: process.env.OPENPET_DATA_DIR,

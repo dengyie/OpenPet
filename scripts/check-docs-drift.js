@@ -194,7 +194,7 @@ const createChecks = (docsRoot) => {
     {
       id: 'release-evidence-indexes-provider-and-release-truth',
       description: 'docs/README.md should index provider smoke and release-truth evidence classes.',
-      run: () => /release-evidence\/.*ai-provider-smoke\/.*ai-talk-local-smoke\/.*agent-awareness-local-smoke\/.*creator-studio-provider-smoke\/.*release-public-assets\/.*packaged-runtime\/.*signed-release-closure\//is.test(readme),
+      run: () => /release-evidence\/.*ai-provider-smoke\/.*ai-talk-local-smoke\/.*agent-awareness-local-smoke\/.*creator-studio-provider-smoke\/.*creator-workflow-host-smoke\/.*release-public-assets\/.*packaged-runtime\/.*signed-release-closure\//is.test(readme),
       failure: 'docs/README.md is missing one or more maintained release-evidence archive classes.'
     },
     {

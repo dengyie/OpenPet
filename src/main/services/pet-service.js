@@ -73,8 +73,12 @@ const createPetService = ({ eventBus, settingsService, actionService, appLogServ
   const onSay = (listener) => eventBus?.on(PET_SAY, listener)
 
   const playAction = ({ actionId, source } = {}) => {
-    if (!actionService.getAction(actionId)) throw new Error(`Unknown action: ${actionId}`)
-    const payload = { actionId, source }
+    const requestedAction = actionService.getAction(actionId)
+    const fallbackAction = requestedAction ? null : actionService.getAction('idle')
+    if (!requestedAction && !fallbackAction) throw new Error(`Unknown action: ${actionId}`)
+    const payload = requestedAction
+      ? { actionId, source }
+      : { actionId: 'idle', requestedActionId: actionId, fallback: true, source }
     eventBus?.emit(PET_ACTION, payload)
     return payload
   }

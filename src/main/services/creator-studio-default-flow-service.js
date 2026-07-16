@@ -8,9 +8,6 @@ const LEGACY_CREATOR_STUDIO_COMMAND_ID = 'create-run'
 const CREATOR_STUDIO_ANSWER_COMMAND_ID = 'answer-question'
 const CREATOR_STUDIO_CONFIRM_COMMAND_ID = 'confirm-task'
 const CREATOR_STUDIO_GENERATE_COMMAND_ID = 'run-step'
-const CREATOR_STUDIO_APPROVE_COMMAND_ID = 'approve-run'
-const CREATOR_STUDIO_IMPORT_ACTION_COMMAND_ID = 'import-approved-action'
-const CREATOR_STUDIO_IMPORT_PET_COMMAND_ID = 'import-approved-pet'
 
 const findPluginById = (plugins = [], pluginId) => (
   Array.isArray(plugins)
@@ -44,28 +41,11 @@ const resolveCreatorStudioAutoAnswer = (question) => {
   return ''
 }
 
-const isCreatorStudioActionRun = (run) => {
-  const artifacts = run?.artifacts
-  return Boolean(artifacts && typeof artifacts === 'object' && !Array.isArray(artifacts) && artifacts.actionFrames)
-}
-
 const getCommandMessage = (result, fallback) => {
   const message = result?.result && typeof result.result === 'object' && !Array.isArray(result.result)
     ? result.result.message
     : ''
   return String(message || fallback || '').trim()
-}
-
-const getCreatorStudioTriggerProposalSubmission = (result) => {
-  const candidate = result?.result
-  return candidate &&
-    typeof candidate === 'object' &&
-    !Array.isArray(candidate) &&
-    candidate.triggerProposalSubmission &&
-    typeof candidate.triggerProposalSubmission === 'object' &&
-    !Array.isArray(candidate.triggerProposalSubmission)
-    ? candidate.triggerProposalSubmission
-    : null
 }
 
 const createStructuredResult = ({ state, message, runId = '', lastCommandResult = null }) => ({
@@ -137,7 +117,7 @@ const createCreatorStudioDefaultFlowService = ({
         })
       return createStructuredResult({
         state: 'blocked',
-        message: '请先到 AI -> 模型 Provider -> 图片模型 配置并保存可用模型，然后再使用生成并导入'
+        message: '请先到 AI -> 模型 Provider -> 图片模型配置并保存可用模型，然后再开始生成'
       })
     }
 
@@ -197,7 +177,7 @@ const createCreatorStudioDefaultFlowService = ({
             state: 'needs_details',
             runId,
             lastCommandResult,
-            message: `生成并导入已暂停：run ${runId} 还需要人工补充信息。请点击“查看任务详情”。`
+            message: `生成已暂停：run ${runId} 还需要人工补充信息。请点击“查看任务详情”。`
           })
         }
         recordLog({
@@ -242,69 +222,23 @@ const createCreatorStudioDefaultFlowService = ({
       }
 
       if (runId && String(run?.status || '') === 'ready_for_review') {
-        result = await pluginService.runCommand(CREATOR_STUDIO_PLUGIN_ID, CREATOR_STUDIO_APPROVE_COMMAND_ID, { runId })
-        lastCommandResult = result
-        run = getCreatorStudioRun(result)
-        runId = getCreatorStudioRunId(run)
-        lastRunId = runId
-        recordStage({ stage: 'approve', result, run })
-      }
-
-      if (runId && String(run?.status || '') === 'approved') {
-        const importCommandId = isCreatorStudioActionRun(run)
-          ? CREATOR_STUDIO_IMPORT_ACTION_COMMAND_ID
-          : CREATOR_STUDIO_IMPORT_PET_COMMAND_ID
-        result = await pluginService.runCommand(CREATOR_STUDIO_PLUGIN_ID, importCommandId, {
-          runId,
-          activate: true
+        recordLog({
+          level: 'info',
+          event: 'creator.default-flow.review-required',
+          message: 'Creator Studio default flow stopped for human review',
+          details: {
+            requestId,
+            runId,
+            lastCommandId: String(lastCommandResult?.commandId || '').trim(),
+            elapsedMs: Date.now() - startedAt
+          }
         })
-        lastCommandResult = result
-        run = getCreatorStudioRun(result)
-        runId = getCreatorStudioRunId(run) || runId
-        lastRunId = runId
-        recordStage({ stage: 'import', result, run })
-      }
-
-      if (lastCommandResult?.commandId === CREATOR_STUDIO_IMPORT_ACTION_COMMAND_ID) {
-        const triggerProposalSubmission = getCreatorStudioTriggerProposalSubmission(lastCommandResult)
-        if (!triggerProposalSubmission) {
-          recordLog({
-            level: 'error',
-            event: 'creator.default-flow.needs-details',
-            message: 'Creator Studio default flow is missing trigger handoff evidence',
-            details: {
-              requestId,
-              runId: lastRunId,
-              lastCommandId: String(lastCommandResult?.commandId || '').trim(),
-              elapsedMs: Date.now() - startedAt
-            }
-          })
-          return createStructuredResult({
-            state: 'needs_details',
-            runId: lastRunId,
-            lastCommandResult,
-            message: `动作已导入，但 run ${lastRunId} 缺少触发建议交接记录。请点击“查看任务详情”。`
-          })
-        }
-        if (triggerProposalSubmission.ok !== true) {
-          recordLog({
-            level: 'error',
-            event: 'creator.default-flow.needs-details',
-            message: 'Creator Studio default flow trigger handoff failed',
-            details: {
-              requestId,
-              runId: lastRunId,
-              lastCommandId: String(lastCommandResult?.commandId || '').trim(),
-              elapsedMs: Date.now() - startedAt
-            }
-          })
-          return createStructuredResult({
-            state: 'needs_details',
-            runId: lastRunId,
-            lastCommandResult,
-            message: `动作已导入，但 run ${lastRunId} 的触发建议交接失败。请点击“查看任务详情”。`
-          })
-        }
+        return createStructuredResult({
+          state: 'review-required',
+          runId,
+          lastCommandResult,
+          message: `生成完成，run ${runId} 正在等待人工复查。审批、导入和激活需要分别执行。`
+        })
       }
 
       recordLog({
@@ -322,7 +256,7 @@ const createCreatorStudioDefaultFlowService = ({
         state: 'completed',
         runId: lastRunId,
         lastCommandResult,
-        message: getCommandMessage(lastCommandResult, '生成并导入已完成')
+        message: getCommandMessage(lastCommandResult, '生成流程已完成')
       })
     } catch (error) {
       recordLog({
@@ -344,7 +278,7 @@ const createCreatorStudioDefaultFlowService = ({
           state: 'needs_details',
           runId: lastRunId,
           lastCommandResult,
-          message: `生成并导入在 run ${lastRunId} 失败：${error.message || '未知错误'}。请点击“查看任务详情”。`
+          message: `生成流程在 run ${lastRunId} 失败：${error.message || '未知错误'}。请点击“查看任务详情”。`
         })
       }
       throw error

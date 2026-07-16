@@ -1857,7 +1857,7 @@ export interface PluginCommandRunResultViewState extends OkResponse {
   result?: JsonValue
 }
 
-export type CreatorStudioDefaultFlowState = 'blocked' | 'needs_details' | 'completed'
+export type CreatorStudioDefaultFlowState = 'blocked' | 'needs_details' | 'review-required' | 'completed'
 
 export interface CreatorStudioDefaultFlowResult extends OkResponse {
   state: CreatorStudioDefaultFlowState
@@ -1911,6 +1911,7 @@ export type CreatorWorkflowState =
   | 'provider-not-ready'
   | 'generating'
   | 'review-required'
+  | 'preview-ready'
   | 'import-failed'
   | 'completed'
 
@@ -1942,13 +1943,26 @@ export interface CreatorBasicActionRowViewState {
   sourceActionId: string
   sourceRelativePath: string
   fallback: boolean
+  quality?: string
 }
 
 export interface CreatorBasicActionCoverageViewState {
+  baseIdentityCoverage?: boolean
+  requiredActionIds?: string[]
   requiredRealActionIds: string[]
   realActionIds: string[]
   fallbackActionIds: string[]
   missingRequiredActionIds: string[]
+  requiredOfficialActionIds?: string[]
+  previewFallbackActionIds?: string[]
+  missingRequiredOfficialActionIds?: string[]
+  availableActionIds?: string[]
+  omittedActionIds?: string[]
+  actionAvailability?: Record<string, {
+    available: boolean
+    quality: string
+    reason: string
+  }>
   rows: CreatorBasicActionRowViewState[]
 }
 
@@ -1989,11 +2003,22 @@ export interface CreatorGenerateExistingActionRequest {
   referenceImageToken?: string
 }
 
+export interface CreatorRetryActionRequest {
+  runId: string
+  actionId: string
+}
+
+export interface CreatorRetryIdentityRequest {
+  runId: string
+}
+
 export interface CreatorWorkflowConditioningSummaryViewState {
   mode: string
   endpoint: string
   referenceImageCount: number
-  referenceFileNames: string[]
+  multipartImageField: string
+  requestedOutputCount: number
+  referenceFileNames?: string[]
 }
 
 export interface CreatorWorkflowDiagnosticsViewState {
@@ -2009,6 +2034,13 @@ export interface CreatorWorkflowDiagnosticsViewState {
   failedAt: string
   failureReason: string
   conditioning: CreatorWorkflowConditioningSummaryViewState | null
+  hatchPetAgent?: {
+    mode: string
+    status: string
+    code: string
+    decision: string
+    decisionId: string
+  } | null
 }
 
 export interface CreatorWorkflowResult extends OkResponse {
@@ -2748,6 +2780,76 @@ export interface AiSaveApiKeyResult {
   updatedAt?: string
 }
 
+export interface HatchPetAgentBudgetsView {
+  maxIdentityRegenerations: number
+  maxActionAttemptsPerAction: number
+  maxEvaluationAttemptsPerArtifact: number
+  maxProviderCalls: number
+  maxElapsedMs: number
+  maxEstimatedCost: number | null
+}
+
+export interface HatchPetAgentConfigView {
+  enabled: boolean
+  executionMode: 'shadow'
+  configMode: 'follow-chat' | 'override'
+  provider: string
+  baseUrl: string
+  model: string
+  apiKeyRef: string
+  systemPromptVersion: number
+  requireIdentityReviewBeforeActions: boolean
+  budgets: HatchPetAgentBudgetsView
+  hasApiKey: boolean
+  configSource: 'chat-fallback' | 'hatch-pet-override'
+  effectiveProvider: string
+  effectiveBaseUrl: string
+  effectiveModel: string
+}
+
+export interface HatchPetAgentConfigSaveRequest {
+  enabled?: boolean
+  configMode?: HatchPetAgentConfigView['configMode']
+  provider?: string
+  baseUrl?: string
+  model?: string
+  requireIdentityReviewBeforeActions?: boolean
+  budgets?: Partial<HatchPetAgentBudgetsView>
+}
+
+export interface HatchPetAgentCapabilityResult {
+  ok: boolean
+  code: string
+  message: string
+  provider: string
+  model: string
+  elapsedMs: number
+}
+
+export interface HatchPetAgentRunStatus {
+  ok: boolean
+  runId: string
+  state: {
+    version?: number
+    mode?: string
+    stage?: string
+    status?: string
+    failureCode?: string
+    lastDecisionId?: string
+    updatedAt?: string
+  } | null
+  decisions: Array<{
+    decisionId?: string
+    mode?: string
+    stage?: string
+    decision?: { decision?: string } | null
+    resultCode?: string
+    recordedAt?: string
+  }>
+  code?: string
+  message?: string
+}
+
 export interface AiConnectionTestResult {
   ok: boolean
   provider: string
@@ -3372,6 +3474,12 @@ export interface ControlCenterApi {
   clearAiPetPackMemories: () => Promise<AiMemoryProfileViewState>
   getAiTalkTraceSummary: (payload?: AiTalkTraceExportRequest) => Promise<AiTalkTraceSummaryViewState>
   exportAiTalkTrace: (payload?: AiTalkTraceExportRequest) => Promise<string>
+  getHatchPetAgentConfig: () => Promise<HatchPetAgentConfigView>
+  saveHatchPetAgentConfig: (config: HatchPetAgentConfigSaveRequest) => Promise<HatchPetAgentConfigView>
+  saveHatchPetAgentApiKey: (apiKey: string) => Promise<AiSaveApiKeyResult>
+  clearHatchPetAgentApiKey: () => Promise<AiSaveApiKeyResult>
+  checkHatchPetAgentCapability: () => Promise<HatchPetAgentCapabilityResult>
+  getHatchPetAgentRunStatus: (runId: string) => Promise<HatchPetAgentRunStatus>
   getImageGenerationConfig: () => Promise<ImageGenerationConfigViewState>
   saveImageGenerationConfig: (config: ImageGenerationConfigSaveRequest) => Promise<ImageGenerationConfigViewState>
   saveImageGenerationApiKey: (apiKey: string) => Promise<ImageGenerationSaveApiKeyResult>
@@ -3401,6 +3509,8 @@ export interface ControlCenterApi {
   bindCreatorReference: (payload: CreatorBindReferenceRequest) => Promise<CreatorBindReferenceResult>
   generateCreatorNewCharacter: (payload: CreatorGenerateNewCharacterRequest) => Promise<CreatorWorkflowResult>
   generateCreatorExistingAction: (payload: CreatorGenerateExistingActionRequest) => Promise<CreatorWorkflowResult>
+  retryCreatorAction: (payload: CreatorRetryActionRequest) => Promise<CreatorWorkflowResult>
+  retryCreatorIdentity: (payload: CreatorRetryIdentityRequest) => Promise<CreatorWorkflowResult>
   getCreatorLastRun: () => Promise<CreatorLastRunResult>
   playPetAction: (actionId: string) => Promise<PetActionPlaybackResult>
   runCreatorStudioDefaultFlow: (prompt: string) => Promise<CreatorStudioDefaultFlowResult>

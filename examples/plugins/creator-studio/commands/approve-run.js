@@ -1,6 +1,7 @@
 const { runCommand } = require('../lib/command-io')
 const { assertRunActionFrameQaPassed } = require('../lib/action-frame-qa')
 const { assertRunFullPetQaPassed } = require('../lib/full-pet-qa')
+const { normalizeHumanApproval } = require('../lib/human-approval')
 const { readRun, resolveRunId, updateRunStatus } = require('../lib/run-store')
 
 runCommand(async (context) => {
@@ -12,6 +13,7 @@ runCommand(async (context) => {
   })
   const current = readRun({ dataDir: process.env.OPENPET_DATA_DIR, runId })
   if (current.status !== 'ready_for_review') throw new Error(`Run must be ready_for_review before approval: ${current.status}`)
+  const humanApproval = normalizeHumanApproval(context.payload?.humanApproval)
   assertRunActionFrameQaPassed({
     dataDir: process.env.OPENPET_DATA_DIR,
     run: current,
@@ -26,7 +28,7 @@ runCommand(async (context) => {
     dataDir: process.env.OPENPET_DATA_DIR,
     runId,
     status: 'approved',
-    patch: { reviewStatus: 'approved', currentStep: 'approved' }
+    patch: { reviewStatus: 'approved', currentStep: 'approved', humanApproval }
   })
   return { message: `Approved run ${runId}`, run }
 })

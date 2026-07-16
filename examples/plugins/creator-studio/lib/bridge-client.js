@@ -12,7 +12,10 @@ const callBridge = async (route, payload = {}) => {
   })
   const body = await response.json()
   if (!response.ok || body.ok === false) {
-    throw new Error(body.error || `OpenPet bridge request failed: ${response.status}`)
+    const error = new Error(body.error || `OpenPet bridge request failed: ${response.status}`)
+    const errorCode = String(body.errorCode || '').trim()
+    if (/^[a-z0-9][a-z0-9_]{0,79}$/.test(errorCode)) error.code = errorCode
+    throw error
   }
   return body
 }

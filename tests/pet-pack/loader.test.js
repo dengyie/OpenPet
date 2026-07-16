@@ -112,6 +112,43 @@ test('loads a Codex-compatible pet manifest from a directory', async () => {
   })
 })
 
+test('loads only available actions from a partial Codex pet manifest', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-partial-codex-pet-'))
+  fs.writeFileSync(path.join(root, 'spritesheet.webp'), createFixtureWebp())
+  fs.writeFileSync(path.join(root, 'pet.json'), JSON.stringify({
+    id: 'partial-codex-cat',
+    displayName: 'Partial Codex Cat',
+    spritesheetPath: 'spritesheet.webp',
+    requiredActionIds: ['idle'],
+    availableActionIds: ['idle'],
+    omittedActionIds: ['waving'],
+    actionAvailability: {
+      idle: { available: true, quality: 'row-real' },
+      waving: { available: false, reason: 'identity-descriptor-distance-high' }
+    }
+  }))
+
+  const pack = loadPetPackFromDirectory(root)
+
+  assert.deepEqual(pack.manifest.actions.map((action) => action.id), ['idle'])
+  assert.equal(pack.manifest.defaultAction, 'idle')
+  assert.equal(pack.manifest.clickAction, 'idle')
+  assert.deepEqual(pack.manifest.availableActionIds, ['idle'])
+  assert.deepEqual(pack.manifest.omittedActionIds, ['waving'])
+})
+
+test('rejects a partial Codex pet manifest that omits idle', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-partial-codex-pet-no-idle-'))
+  fs.writeFileSync(path.join(root, 'spritesheet.webp'), createFixtureWebp())
+  fs.writeFileSync(path.join(root, 'pet.json'), JSON.stringify({
+    id: 'partial-codex-cat',
+    spritesheetPath: 'spritesheet.webp',
+    availableActionIds: ['waving']
+  }))
+
+  assert.throws(() => loadPetPackFromDirectory(root), /idle.*available/i)
+})
+
 test('rejects Codex pet atlases without decodable visible pixels', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-codex-pet-empty-atlas-'))
   fs.writeFileSync(path.join(root, 'spritesheet.webp'), TRANSPARENT_FIXTURE_ATLAS_WEBP)

@@ -64,6 +64,7 @@ const createOpenPetRuntime = ({
       petPackService,
       petService,
       petUtteranceLogService,
+      secretService,
       triggerRuleRuntimeService,
       settingsService
     },
@@ -155,6 +156,13 @@ const createOpenPetRuntime = ({
   })
   pluginService = pluginServices.pluginService
   setCatalogService(pluginServices.catalogService)
+  const hatchPetAgentService = factories.createHatchPetAgentService({
+    aiService,
+    settingsService,
+    secretService,
+    pluginService,
+    appLogService
+  })
   const creatorStudioDefaultFlowService = factories.createCreatorStudioDefaultFlowService({
     pluginService,
     imageGenerationModelService
@@ -164,6 +172,7 @@ const createOpenPetRuntime = ({
     imageGenerationModelService,
     actionService,
     creatorReferenceService,
+    hatchPetAgentService,
     appLogService
   })
 
@@ -192,6 +201,7 @@ const createOpenPetRuntime = ({
     triggerRuleRuntimeService,
     creatorStudioDefaultFlowService,
     creatorWorkflowService,
+    hatchPetAgentService,
     pluginService,
     pluginInstallService: pluginServices.pluginInstallService,
     pluginGithubImportService: pluginServices.pluginGithubImportService,

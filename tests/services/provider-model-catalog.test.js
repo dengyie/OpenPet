@@ -3,7 +3,8 @@ const assert = require('node:assert/strict')
 
 const {
   buildProviderCacheKey,
-  getScopedProviderModelCatalog
+  getScopedProviderModelCatalog,
+  uniqueModelIds
 } = require('../../src/main/services/provider-model-catalog')
 
 const MAX_MODEL_CATALOG_MODELS = 200
@@ -67,4 +68,11 @@ test('getScopedProviderModelCatalog sanitizes persisted model ids with the activ
   assert.equal(catalog.models.some((model) => model.includes(apiKey)), false)
   assert.equal(catalog.models.some((model) => model.includes(shortApiKey)), false)
   assert.equal(catalog.models.some((model) => model.length > MAX_PROVIDER_MODEL_ID_CHARS), false)
+})
+
+test('uniqueModelIds strips control characters before deduping provider model ids', () => {
+  assert.deepEqual(
+    uniqueModelIds(['gpt-image-2\0', 'gpt-image-2', ' gemini-image\t', '\n']),
+    ['gemini-image', 'gpt-image-2']
+  )
 })

@@ -2,16 +2,23 @@ const http = require('http')
 const fs = require('fs')
 const path = require('path')
 const { appendRunLog, listRuns, readRun, readRunLogs, updateRunStatus } = require('../lib/run-store')
-const { runGenerationStep } = require('../lib/backend-runner')
+const {
+  runFullPetActionRepair,
+  runFullPetIdentityRepair,
+  runGenerationStep
+} = require('../lib/backend-runner')
 const { repairActionFrameFromGeneratedImage } = require('../lib/action-frame-builder')
 const { assertRunActionFrameQaPassed } = require('../lib/action-frame-qa')
 const { assertRunFullPetQaPassed } = require('../lib/full-pet-qa')
+const { normalizeHumanApproval } = require('../lib/human-approval')
 const { sanitizeCreativeBrief } = require('../lib/openpet-prompt-builder')
 const { answerTaskQuestion, confirmTaskRun, draftTaskRun, updateTaskDraft } = require('../lib/task-workflow')
 const { FIXTURE_BACKEND, normalizeCreatorBackend, usesHostProviderBackend } = require('../lib/backend-mode')
 const { createPlaybackDiagnostics } = require('../lib/action-frame-playback')
+const { OFFICIAL_FULL_PET_ACTION_IDS } = require('../lib/full-pet-row-contract')
 
 const SAFE_FRAME_FILE_PATTERN = /^\d{4}\.png$/
+const OFFICIAL_FULL_PET_ACTION_ID_SET = new Set(OFFICIAL_FULL_PET_ACTION_IDS)
 
 const sendJson = (response, statusCode, body) => {
   response.writeHead(statusCode, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
@@ -25,6 +32,11 @@ const sendPng = (response, filePath) => {
 
 const sendWebp = (response, filePath) => {
   response.writeHead(200, { 'Content-Type': 'image/webp', 'Cache-Control': 'no-store' })
+  fs.createReadStream(filePath).pipe(response)
+}
+
+const sendGif = (response, filePath) => {
+  response.writeHead(200, { 'Content-Type': 'image/gif', 'Cache-Control': 'no-store' })
   fs.createReadStream(filePath).pipe(response)
 }
 
@@ -134,6 +146,24 @@ const normalizeRelativeArtifactPath = (value) => {
   return value.trim().replace(/\\/g, '/')
 }
 
+const resolveDataRelativeArtifactPath = ({ dataDir, relativePath, label, expectedExtension = '' }) => {
+  const normalizedPath = normalizeRelativeArtifactPath(relativePath)
+  if (
+    !normalizedPath ||
+    path.isAbsolute(normalizedPath) ||
+    normalizedPath.split('/').includes('..')
+  ) {
+    throw new Error(`${label} must be a data-relative path`)
+  }
+  if (expectedExtension && path.extname(normalizedPath).toLowerCase() !== expectedExtension) {
+    throw new Error(`${label} must use ${expectedExtension} output`)
+  }
+  const targetPath = path.join(dataDir, ...normalizedPath.split('/'))
+  const absolutePath = assertPathInsideDataDir({ dataDir, targetPath, label })
+  if (!fs.existsSync(absolutePath)) throw new Error(`${label} is missing`)
+  return absolutePath
+}
+
 const normalizeEstimatedCostUsd = (value) => {
   const numeric = Number(value)
   if (!Number.isFinite(numeric) || numeric < 0) return null
@@ -155,6 +185,21 @@ const createPublicPromptPreview = ({ dataDir, promptPreview = {} }) => {
   }
 }
 
+const createPublicPromptCompiler = ({ dataDir, promptCompiler = {} }) => {
+  if (!promptCompiler || typeof promptCompiler !== 'object' || Object.keys(promptCompiler).length === 0) return undefined
+  return {
+    version: Number(promptCompiler.promptCompilerVersion || promptCompiler.version || 0),
+    taskType: createPublicText({ dataDir, value: promptCompiler.taskType || '' }),
+    stage: createPublicText({ dataDir, value: promptCompiler.stage || '' }),
+    width: Math.max(0, Number(promptCompiler.width) || 0),
+    height: Math.max(0, Number(promptCompiler.height) || 0),
+    aspectRatio: createPublicText({ dataDir, value: promptCompiler.aspectRatio || '' }),
+    referenceImageCount: Math.max(0, Number(promptCompiler.referenceImageCount) || 0),
+    requestedOutputCount: Math.max(0, Number(promptCompiler.requestedOutputCount) || 0),
+    promptSafety: createPublicText({ dataDir, value: promptCompiler.promptSafety || '' })
+  }
+}
+
 const createPublicPromptBuilder = ({ dataDir, promptBuilder = {} }) => {
   const sections = Array.isArray(promptBuilder.sections)
     ? promptBuilder.sections.map((section) => createPublicText({ dataDir, value: section }))
@@ -168,6 +213,9 @@ const createPublicPromptBuilder = ({ dataDir, promptBuilder = {} }) => {
     actionId: createPublicText({ dataDir, value: promptBuilder.actionId || '' }),
     sections,
     warnings,
+    ...(promptBuilder.promptCompiler
+      ? { promptCompiler: createPublicPromptCompiler({ dataDir, promptCompiler: promptBuilder.promptCompiler }) }
+      : {}),
     promptPreview: createPublicPromptPreview({ dataDir, promptPreview: promptBuilder.promptPreview })
   }
 }
@@ -178,8 +226,21 @@ const createPublicModelSnapshot = ({ dataDir, modelSnapshot = {} }) => {
 }
 
 const createPublicConditioning = ({ dataDir, conditioning = {} }) => {
-  if (!conditioning || typeof conditioning !== 'object') return undefined
-  return createPublicLogValue({ dataDir, value: conditioning })
+  if (!conditioning || typeof conditioning !== 'object' || Object.keys(conditioning).length === 0) return undefined
+  return {
+    mode: createPublicText({ dataDir, value: conditioning.mode || '' }),
+    endpoint: createPublicText({ dataDir, value: conditioning.endpoint || '' }),
+    referenceImageCount: Number(conditioning.referenceImageCount) || 0,
+    multipartImageField: createPublicText({ dataDir, value: conditioning.multipartImageField || '' }),
+    requestedOutputCount: Number(conditioning.requestedOutputCount) || 0,
+    requestedTransparent: Boolean(conditioning.requestedTransparent),
+    size: createPublicText({ dataDir, value: conditioning.size || '' }),
+    quality: createPublicText({ dataDir, value: conditioning.quality || '' }),
+    model: createPublicText({ dataDir, value: conditioning.model || '' }),
+    ...(conditioning.promptCompiler
+      ? { promptCompiler: createPublicPromptCompiler({ dataDir, promptCompiler: conditioning.promptCompiler }) }
+      : {})
+  }
 }
 
 const createDeveloperPrompt = ({ dataDir, run }) => {
@@ -230,10 +291,7 @@ const createPublicRecovery = ({ dataDir, run }) => {
   const generatedImage = run.artifacts?.generatedImage || {}
   const conditioning = generatedImage?.conditioning && typeof generatedImage.conditioning === 'object'
     ? generatedImage.conditioning
-    : {}
-  const references = Array.isArray(conditioning.references)
-    ? conditioning.references.map((reference) => String(reference?.fileName || reference?.relativePath || '')).filter(Boolean)
-    : []
+    : null
   const outputCount = Array.isArray(generatedImage.outputs) ? generatedImage.outputs.length : 0
   const canRetryGeneration = run.status === 'failed' && run.taskStatus === 'confirmed' && run.currentStep === 'generate'
   const isFullPet = run.generationTask?.mode === 'full-pet'
@@ -250,12 +308,15 @@ const createPublicRecovery = ({ dataDir, run }) => {
     attemptFailedAt: createPublicText({ dataDir, value: generatedImage.failedAt || '' }),
     generatedAt: createPublicText({ dataDir, value: generatedImage.generatedAt || '' }),
     outputCount: Number(outputCount) || 0,
-    conditioning: {
-      mode: createPublicText({ dataDir, value: conditioning.mode || '' }),
-      endpoint: createPublicText({ dataDir, value: conditioning.endpoint || '' }),
-      referenceImageCount: Number(conditioning.referenceImageCount) || 0,
-      referenceInputs: createPublicTextList({ dataDir, values: references })
-    }
+    conditioning: conditioning
+      ? {
+          mode: createPublicText({ dataDir, value: conditioning.mode || '' }),
+          endpoint: createPublicText({ dataDir, value: conditioning.endpoint || '' }),
+          referenceImageCount: Math.max(0, Number(conditioning.referenceImageCount) || 0),
+          multipartImageField: createPublicText({ dataDir, value: conditioning.multipartImageField || '' }),
+          requestedOutputCount: Math.max(0, Number(conditioning.requestedOutputCount) || 0)
+        }
+      : null
   }
 }
 
@@ -1244,7 +1305,22 @@ const createPromptProvenance = ({ run, developerMode = false }) => {
     mode: String(promptBuilder?.mode || ''),
     actionId: String(promptBuilder?.actionId || ''),
     sections: Array.isArray(promptBuilder?.sections) ? promptBuilder.sections.map((section) => String(section || '')).filter(Boolean) : [],
-    warnings: Array.isArray(promptBuilder?.warnings) ? promptBuilder.warnings.map((warning) => String(warning || '')).filter(Boolean) : []
+    warnings: Array.isArray(promptBuilder?.warnings) ? promptBuilder.warnings.map((warning) => String(warning || '')).filter(Boolean) : [],
+    ...(promptBuilder?.promptCompiler
+      ? {
+          promptCompiler: {
+            version: Number(promptBuilder.promptCompiler.promptCompilerVersion || promptBuilder.promptCompiler.version || 0),
+            taskType: String(promptBuilder.promptCompiler.taskType || ''),
+            stage: String(promptBuilder.promptCompiler.stage || ''),
+            width: Number(promptBuilder.promptCompiler.width) || 0,
+            height: Number(promptBuilder.promptCompiler.height) || 0,
+            aspectRatio: String(promptBuilder.promptCompiler.aspectRatio || ''),
+            referenceImageCount: Math.max(0, Number(promptBuilder.promptCompiler.referenceImageCount) || 0),
+            requestedOutputCount: Math.max(0, Number(promptBuilder.promptCompiler.requestedOutputCount) || 0),
+            promptSafety: String(promptBuilder.promptCompiler.promptSafety || '')
+          }
+        }
+      : {})
   }
   if (developerMode && promptPreviewText) {
     promptProvenance.promptPreview = promptPreviewText.slice(0, 6000)
@@ -1527,6 +1603,112 @@ const getFullPetSourceImagePath = ({ dataDir, run }) => {
   return absolutePath
 }
 
+const readFullPetAtlasValidation = ({ dataDir, run }) => readJsonArtifact({
+  dataDir,
+  targetPath: run.artifacts?.qa,
+  label: 'Full-pet atlas QA'
+})
+
+const readFullPetRowValidation = ({ dataDir, run }) => {
+  const atlasQaPath = run.artifacts?.qa
+  if (!atlasQaPath) return null
+  try {
+    const safeAtlasQaPath = assertPathInsideDataDir({
+      dataDir,
+      targetPath: atlasQaPath,
+      label: 'Full-pet atlas QA'
+    })
+    return readJsonArtifact({
+      dataDir,
+      targetPath: path.join(path.dirname(safeAtlasQaPath), 'full-pet-row-validation.json'),
+      label: 'Full-pet row QA'
+    })
+  } catch (_) {
+    return null
+  }
+}
+
+const createFullPetVisualReview = ({ dataDir, run, atlasValidation }) => {
+  const visualReview = atlasValidation?.visualReview
+  if (!visualReview || typeof visualReview !== 'object') return null
+  const contactSheet = normalizeRelativeArtifactPath(visualReview.contactSheet)
+  if (!contactSheet) return null
+
+  try {
+    resolveDataRelativeArtifactPath({
+      dataDir,
+      relativePath: contactSheet,
+      label: 'Full-pet visual review contact sheet',
+      expectedExtension: '.png'
+    })
+  } catch (_) {
+    return null
+  }
+
+  const previews = Array.isArray(visualReview.previews)
+    ? visualReview.previews.flatMap((preview) => {
+      const actionId = String(preview?.actionId || '').trim()
+      const previewPath = normalizeRelativeArtifactPath(preview?.path)
+      if (!OFFICIAL_FULL_PET_ACTION_ID_SET.has(actionId) || !previewPath) return []
+      try {
+        resolveDataRelativeArtifactPath({
+          dataDir,
+          relativePath: previewPath,
+          label: 'Full-pet visual review preview',
+          expectedExtension: '.gif'
+        })
+      } catch (_) {
+        return []
+      }
+      return [{
+        actionId,
+        path: previewPath,
+        previewUrl: `/api/runs/${encodeURIComponent(run.runId)}/full-pet/previews/${encodeURIComponent(actionId)}.gif`,
+        frameCount: Number.isFinite(Number(preview?.frameCount)) ? Number(preview.frameCount) : 0,
+        durations: Array.isArray(preview?.durations)
+          ? preview.durations.map((duration) => Number(duration)).filter((duration) => Number.isFinite(duration) && duration > 0)
+          : []
+      }]
+    })
+    : []
+
+  return {
+    contactSheet,
+    contactSheetUrl: `/api/runs/${encodeURIComponent(run.runId)}/full-pet/contact-sheet.png`,
+    previews
+  }
+}
+
+const getFullPetVisualReviewContactSheetPath = ({ dataDir, run }) => {
+  const atlasValidation = readFullPetAtlasValidation({ dataDir, run })
+  const visualReview = atlasValidation?.visualReview
+  if (!visualReview?.contactSheet) throw new Error('Full-pet visual review contact sheet is not available')
+  return resolveDataRelativeArtifactPath({
+    dataDir,
+    relativePath: visualReview.contactSheet,
+    label: 'Full-pet visual review contact sheet',
+    expectedExtension: '.png'
+  })
+}
+
+const getFullPetVisualReviewPreviewPath = ({ dataDir, run, actionId }) => {
+  const safeActionId = String(actionId || '').trim()
+  if (!OFFICIAL_FULL_PET_ACTION_ID_SET.has(safeActionId)) {
+    throw new Error('Full-pet visual review action id is invalid')
+  }
+  const atlasValidation = readFullPetAtlasValidation({ dataDir, run })
+  const preview = Array.isArray(atlasValidation?.visualReview?.previews)
+    ? atlasValidation.visualReview.previews.find((entry) => String(entry?.actionId || '').trim() === safeActionId)
+    : null
+  if (!preview?.path) throw new Error('Full-pet visual review preview is not available')
+  return resolveDataRelativeArtifactPath({
+    dataDir,
+    relativePath: preview.path,
+    label: 'Full-pet visual review preview',
+    expectedExtension: '.gif'
+  })
+}
+
 const readActionFrameQa = ({ dataDir, actionFrames }) => {
   if (!actionFrames?.qa) return null
   try {
@@ -1600,11 +1782,9 @@ const createFullPetReview = ({ dataDir, run }) => {
   const artifacts = run.artifacts || {}
   const reviewState = createFullPetReviewGate({ dataDir, run })
   const importedPhase = run.status === 'imported'
-  const atlasValidation = readJsonArtifact({
-    dataDir,
-    targetPath: artifacts.qa,
-    label: 'Full-pet atlas QA'
-  })
+  const atlasValidation = readFullPetAtlasValidation({ dataDir, run })
+  const rowValidation = readFullPetRowValidation({ dataDir, run })
+  const visualReview = createFullPetVisualReview({ dataDir, run, atlasValidation })
   const publicSourceImageValidation = importedPhase && reviewState.sourceImageValidation
     ? {
         ...reviewState.sourceImageValidation,
@@ -1645,6 +1825,16 @@ const createFullPetReview = ({ dataDir, run }) => {
     reviewGate: publicReviewState.reviewGate,
     sourceImageValidation: createPublicLogValue({ dataDir, value: publicSourceImageValidation }),
     atlasValidation: createPublicLogValue({ dataDir, value: atlasValidation }),
+    rowValidation: createPublicLogValue({ dataDir, value: rowValidation }),
+    artReadiness: createPublicLogValue({
+      dataDir,
+      value: run.artifacts?.generatedImage?.artReadiness || {
+        level: 'technical-chain-ready',
+        approved: false,
+        reason: 'no-matching-human-art-approval'
+      }
+    }),
+    visualReview,
     spritesheetUrl: artifacts.spritesheet
       ? `/api/runs/${encodeURIComponent(run.runId)}/spritesheet.webp`
       : '',
@@ -1729,6 +1919,41 @@ const handlePost = async ({ request, response, dataDir, url }) => {
       return true
     }
 
+    const retryActionMatch = url.pathname.match(/^\/api\/runs\/([^/]+)\/actions\/([^/]+)\/retry$/)
+    if (retryActionMatch) {
+      const output = await runFullPetActionRepair({
+        dataDir,
+        runId: decodeURIComponent(retryActionMatch[1]),
+        actionId: decodeURIComponent(retryActionMatch[2])
+      })
+      sendJson(response, 200, {
+        ok: true,
+        run: createPublicRun({ dataDir, run: output.run }),
+        actionReview: createActionReview({ dataDir, run: output.run }),
+        fullPetReview: createFullPetReview({ dataDir, run: output.run }),
+        repair: output.repair,
+        outputDir: toDataRelativePath({ dataDir, targetPath: output.outputDir })
+      })
+      return true
+    }
+
+    const retryIdentityMatch = url.pathname.match(/^\/api\/runs\/([^/]+)\/identity\/retry$/)
+    if (retryIdentityMatch) {
+      const output = await runFullPetIdentityRepair({
+        dataDir,
+        runId: decodeURIComponent(retryIdentityMatch[1])
+      })
+      sendJson(response, 200, {
+        ok: true,
+        run: createPublicRun({ dataDir, run: output.run }),
+        actionReview: createActionReview({ dataDir, run: output.run }),
+        fullPetReview: createFullPetReview({ dataDir, run: output.run }),
+        repair: output.repair,
+        outputDir: toDataRelativePath({ dataDir, targetPath: output.outputDir })
+      })
+      return true
+    }
+
     const approveMatch = url.pathname.match(/^\/api\/runs\/([^/]+)\/approve$/)
     if (approveMatch) {
       const runId = decodeURIComponent(approveMatch[1])
@@ -1736,6 +1961,7 @@ const handlePost = async ({ request, response, dataDir, url }) => {
       if (current.status !== 'ready_for_review') {
         throw new Error(`Run must be ready_for_review before approval: ${current.status}`)
       }
+      const humanApproval = normalizeHumanApproval(body.humanApproval)
       try {
         assertRunActionFrameQaPassed({ dataDir, run: current, operation: 'approval' })
         if (usesHostProviderBackend(current.backend || current.input?.backend)) {
@@ -1749,7 +1975,7 @@ const handlePost = async ({ request, response, dataDir, url }) => {
         dataDir,
         runId,
         status: 'approved',
-        patch: { reviewStatus: 'approved', currentStep: 'approved' }
+        patch: { reviewStatus: 'approved', currentStep: 'approved', humanApproval }
       })
       appendRunLog({
         dataDir,
@@ -1757,7 +1983,12 @@ const handlePost = async ({ request, response, dataDir, url }) => {
         level: 'info',
         event: 'run.approved',
         message: `Approved run ${runId}`,
-        data: { runId }
+        data: {
+          runId,
+          approvalSource: humanApproval.source,
+          approvedAt: humanApproval.approvedAt,
+          evidenceVersion: humanApproval.evidenceVersion
+        }
       })
       sendJson(response, 200, {
         ok: true,
@@ -1918,6 +2149,36 @@ const createCreatorStudioServer = ({ dataDir, dashboardPath }) => http.createSer
       return
     } catch (error) {
       sendJson(response, 404, { ok: false, error: error.message || 'Action frame preview not found' })
+      return
+    }
+  }
+
+  const fullPetContactSheetMatch = url.pathname.match(/^\/api\/runs\/([^/]+)\/full-pet\/contact-sheet\.png$/)
+  if (fullPetContactSheetMatch) {
+    try {
+      const run = readRun({ dataDir, runId: decodeURIComponent(fullPetContactSheetMatch[1]) })
+      const contactSheetPath = getFullPetVisualReviewContactSheetPath({ dataDir, run })
+      sendPng(response, contactSheetPath)
+      return
+    } catch (error) {
+      sendJson(response, 404, { ok: false, error: error.message || 'Full-pet visual review contact sheet not found' })
+      return
+    }
+  }
+
+  const fullPetPreviewMatch = url.pathname.match(/^\/api\/runs\/([^/]+)\/full-pet\/previews\/([^/]+)\.gif$/)
+  if (fullPetPreviewMatch) {
+    try {
+      const run = readRun({ dataDir, runId: decodeURIComponent(fullPetPreviewMatch[1]) })
+      const previewPath = getFullPetVisualReviewPreviewPath({
+        dataDir,
+        run,
+        actionId: decodeURIComponent(fullPetPreviewMatch[2])
+      })
+      sendGif(response, previewPath)
+      return
+    } catch (error) {
+      sendJson(response, 404, { ok: false, error: error.message || 'Full-pet visual review preview not found' })
       return
     }
   }

@@ -155,6 +155,7 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
       './src/main/services/pet-pack-service': { createPetPackService: () => ({ listPacks: () => [], getActivePetPack: () => ({ manifest: { id: 'legacy-cat', persona: null, actions: [] } }) }) },
       './src/main/services/secret-service': { createSecretService: () => ({}) },
       './src/main/services/ai-service': { createAiService: () => ({ id: 'ai-service' }) },
+      './src/main/services/hatch-pet-agent-service': { createHatchPetAgentService: () => ({ id: 'hatch-pet-agent-service' }) },
       './src/main/services/ai-talk-store': {
         createAiTalkStore: ({ storePath }) => {
           createdAiTalkStorePath = storePath
@@ -414,6 +415,7 @@ test('main still stops plugin services when lifecycle logging fails during quit'
       './src/main/services/pet-pack-service': { createPetPackService: () => ({ listPacks: () => [], getActivePetPack: () => ({ manifest: { id: 'legacy-cat', persona: null, actions: [] } }) }) },
       './src/main/services/secret-service': { createSecretService: () => ({}) },
       './src/main/services/ai-service': { createAiService: () => ({}) },
+      './src/main/services/hatch-pet-agent-service': { createHatchPetAgentService: () => ({}) },
       './src/main/services/ai-talk-store': { createAiTalkStore: () => ({}) },
       './src/main/services/ai-talk-service': { createAiTalkService: () => ({}) },
       './src/main/services/behavior-orchestrator-service': { createBehaviorOrchestratorService: () => ({ getConfig: () => ({ enabled: false }) }) },
@@ -626,6 +628,7 @@ test('main persists repaired cursor metadata and collection entry when repair re
       './src/main/services/pet-pack-service': { createPetPackService: () => ({ listPacks: () => [] }) },
       './src/main/services/secret-service': { createSecretService: () => ({}) },
       './src/main/services/ai-service': { createAiService: () => ({}) },
+      './src/main/services/hatch-pet-agent-service': { createHatchPetAgentService: () => ({}) },
       './src/main/services/image-generation-model-service': { createImageGenerationModelService: () => ({}) },
       './src/main/services/behavior-orchestrator-service': { createBehaviorOrchestratorService: () => ({ getConfig: () => ({ enabled: false }) }) },
       './src/main/services/creator-reference-service': {

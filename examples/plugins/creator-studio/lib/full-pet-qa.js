@@ -1,6 +1,9 @@
 const fs = require('fs')
 const path = require('path')
-const { getMissingRequiredRealActionIds } = require('./full-pet-basic-actions')
+const crypto = require('crypto')
+const {
+  getMissingRequiredRealActionIds
+} = require('./full-pet-basic-actions')
 
 const assertExistingPathInsideDataDir = ({ dataDir, targetPath, label }) => {
   if (!targetPath) throw new Error(`${label} must stay inside the Creator Studio data directory`)
@@ -28,6 +31,11 @@ const readQaJson = (qaPath, operation) => {
   }
 }
 
+const sha256File = (filePath) => crypto
+  .createHash('sha256')
+  .update(fs.readFileSync(filePath))
+  .digest('hex')
+
 const assertPositiveInteger = ({ value, label, operation }) => {
   if (!Number.isInteger(Number(value)) || Number(value) < 1) {
     throw new Error(`Full-pet QA ${label} must be valid before ${operation}`)
@@ -41,8 +49,72 @@ const normalizeQaRelativePath = (value) => {
 
 const getMissingRequiredBasicActions = (basicActions) => {
   if (!basicActions || typeof basicActions !== 'object' || Array.isArray(basicActions)) return []
-  return getMissingRequiredRealActionIds(basicActions)
+  return getMissingRequiredRealActionIds(basicActions, { defaultRequiredActionIds: ['idle'] })
 }
+
+const createUniqueActionIdList = (values) => {
+  const seen = new Set()
+  const actionIds = []
+  for (const value of Array.isArray(values) ? values : []) {
+    const actionId = String(value || '').trim()
+    if (!actionId || seen.has(actionId)) continue
+    seen.add(actionId)
+    actionIds.push(actionId)
+  }
+  return actionIds
+}
+
+const hasOfficialActionPolicy = (basicActions) => Boolean(
+  basicActions &&
+  typeof basicActions === 'object' &&
+  !Array.isArray(basicActions) &&
+  (
+    Array.isArray(basicActions.requiredActionIds) ||
+    Array.isArray(basicActions.availableActionIds) ||
+    Array.isArray(basicActions.omittedActionIds) ||
+    Array.isArray(basicActions.requiredOfficialActionIds) ||
+    Array.isArray(basicActions.missingRequiredOfficialActionIds) ||
+    Array.isArray(basicActions.previewFallbackActionIds)
+  )
+)
+
+const getMissingRequiredOfficialActionIds = (basicActions) => {
+  if (!hasOfficialActionPolicy(basicActions)) return []
+  const hasPartialCoverageEvidence = (
+    Array.isArray(basicActions.availableActionIds) ||
+    Array.isArray(basicActions.omittedActionIds) ||
+    (basicActions.actionAvailability && typeof basicActions.actionAvailability === 'object' && !Array.isArray(basicActions.actionAvailability))
+  )
+  const explicitRequiredActionIds = createUniqueActionIdList(basicActions.requiredActionIds)
+  const legacyRequiredActionIds = !hasPartialCoverageEvidence
+    ? createUniqueActionIdList(basicActions.requiredOfficialActionIds)
+    : []
+  const requiredOfficialActionIds = createUniqueActionIdList(
+    explicitRequiredActionIds.length > 0
+      ? explicitRequiredActionIds
+      : legacyRequiredActionIds.length > 0
+        ? legacyRequiredActionIds
+        : ['idle']
+  )
+  const realActionIds = new Set(createUniqueActionIdList(
+    Array.isArray(basicActions.availableActionIds)
+      ? basicActions.availableActionIds
+      : basicActions.realActionIds
+  ))
+  const reportedMissingActionIds = createUniqueActionIdList(
+    explicitRequiredActionIds.length > 0
+      ? basicActions.missingRequiredActionIds
+      : legacyRequiredActionIds.length > 0
+        ? basicActions.missingRequiredOfficialActionIds
+        : []
+  )
+  const computedMissingActionIds = requiredOfficialActionIds.filter((actionId) => !realActionIds.has(actionId))
+  return createUniqueActionIdList([...reportedMissingActionIds, ...computedMissingActionIds])
+}
+
+const isFullPetOfficialActionReady = (atlasQa) => (
+  getMissingRequiredOfficialActionIds(atlasQa?.basicActions).length === 0
+)
 
 const assertFullPetQaPassed = ({ dataDir, artifacts, operation = 'approval/import' }) => {
   if (!artifacts?.qa || !artifacts?.sourceImageQa) {
@@ -62,7 +134,7 @@ const assertFullPetQaPassed = ({ dataDir, artifacts, operation = 'approval/impor
     targetPath: artifacts.sourceImageQa,
     label: 'Full-pet source image QA'
   })
-  assertExistingPathInsideDataDir({
+  const spritesheetPath = assertExistingPathInsideDataDir({
     dataDir,
     targetPath: artifacts.spritesheet,
     label: 'Full-pet spritesheet'
@@ -88,9 +160,30 @@ const assertFullPetQaPassed = ({ dataDir, artifacts, operation = 'approval/impor
   if (typeof sourceQa.sourceRelativePath !== 'string' || !sourceQa.sourceRelativePath.trim()) {
     throw new Error(`Full-pet QA source path must be valid before ${operation}`)
   }
+  if (typeof atlasQa.atlasSha256 === 'string' && atlasQa.atlasSha256.trim()) {
+    const actualAtlasHash = sha256File(spritesheetPath)
+    if (actualAtlasHash !== atlasQa.atlasSha256) {
+      throw new Error(`Full-pet spritesheet hash must match QA before ${operation}`)
+    }
+  }
+  if (typeof sourceQa.sourceSha256 === 'string' && sourceQa.sourceSha256.trim()) {
+    const sourceImagePath = assertExistingPathInsideDataDir({
+      dataDir,
+      targetPath: path.join(dataDir, sourceQa.sourceRelativePath),
+      label: 'Full-pet source image'
+    })
+    const actualSourceHash = sha256File(sourceImagePath)
+    if (actualSourceHash !== sourceQa.sourceSha256) {
+      throw new Error(`Full-pet source image hash must match QA before ${operation}`)
+    }
+  }
   const missingRequiredBasicActions = getMissingRequiredBasicActions(atlasQa.basicActions)
   if (missingRequiredBasicActions.length > 0) {
     throw new Error(`Full-pet QA missing required real basic actions before ${operation}: ${missingRequiredBasicActions.join(', ')}`)
+  }
+  const missingRequiredOfficialActionIds = getMissingRequiredOfficialActionIds(atlasQa.basicActions)
+  if (missingRequiredOfficialActionIds.length > 0) {
+    throw new Error(`Full-pet QA missing required official action rows before ${operation}: ${missingRequiredOfficialActionIds.join(', ')}`)
   }
 
   return { atlasQa, sourceQa }
@@ -110,6 +203,8 @@ const assertRunFullPetQaPassed = ({ dataDir, run, operation = 'approval/import' 
 }
 
 module.exports = {
+  getMissingRequiredOfficialActionIds,
+  isFullPetOfficialActionReady,
   assertFullPetQaPassed,
   assertRunFullPetQaPassed
 }

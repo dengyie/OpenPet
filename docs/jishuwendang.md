@@ -1,6 +1,6 @@
 # OpenPet 开发文档
 
-> 最后更新：2026-06-28
+> 最后更新：2026-07-05
 > 当前版本：`v1.0.1-rc.3`
 > 角色：OpenPet 的中文主开发文档，负责解释代码结构、开发流程、测试策略和当前工程边界。
 
@@ -188,18 +188,8 @@ docs/
 ### 6.3 Creator Studio
 
 - Creator Studio 不是宿主内建页面，而是当前插件体系上的一条能力链。
-- 插件负责任务编排、提示词构造、QA 和导入决策。
-- 宿主负责：
-  - Provider 密钥
-  - 图像生成请求
-  - 输出写盘
-  - action / pet-pack 导入
-  - trigger proposal 入队和最终审核
-- 当前 full-pet 一键链路的真实门槛是：
-  - `idle` / `waving` 必须通过真实动作覆盖门禁
-  - 宿主额外补生成只做 `waving`
-  - 其余行允许从 base pose 回退
-- 当前最稳定的真实素材路径是单张干净正面图；多视图拼图输入不是当前默认成功路径。
+- 插件负责任务、提示词、素材、QA 和 review；宿主负责 Provider 密钥、模型调用、输出写盘、导入、激活和 trigger proposal 持久化。
+- 当前英文权威规范是 [`pet-character-generation.md`](./pet-character-generation.md)，其中统一维护单参考图、每次 Provider 最多一张附件、内部复合参考板、Codex Pet 九行动作、`running-left` 镜像策略和质量门禁；本中文架构文档不再重复这些生成协议。
 
 ### 6.4 插件系统
 
@@ -240,8 +230,9 @@ docs/
 
 1. `random` / `state` / `event` 触发规则还没有宿主持久化 schema 与编辑器。
 2. Windows 仍未达到真实签名与真实 smoke evidence 意义上的 release-ready。
-3. Creator Studio 的用户流仍偏命令驱动，Dashboard-first 体验还需要继续收敛。
-4. 气泡聊天与桌面聊天的最终主次关系还需要继续产品化收口。
+3. Creator Studio 的生成现状和剩余质量工作统一维护在 [`pet-character-generation.md`](./pet-character-generation.md)。
+4. Creator Studio 的用户流仍偏命令驱动，Dashboard-first 体验还需要继续收敛。
+5. 气泡聊天与桌面聊天的最终主次关系还需要继续产品化收口。
 
 这份文档不维护长期愿景列表；更完整的待办请看 `docs/openpet-current-todo-architecture.md`。
 

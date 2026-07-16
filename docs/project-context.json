@@ -1,8 +1,8 @@
 {
   "project": "OpenPet",
   "releaseTrack": "1.0.1-rc.3",
-  "updated": "2026-07-07",
-  "branch": "codex/dev7",
+  "updated": "2026-07-16",
+  "branch": "main",
   "scope": {
     "platform": [
       "macOS",
@@ -23,6 +23,7 @@
     "Common provider presets such as OpenRouter and Together remain endpoint templates rather than verified integrations; only the OpenPet 8317 gateway preset is tied to archived smoke evidence",
     "Chat provider settings separate active saved config from renderer drafts, support separate save and test connection actions, and avoid the older coupled connection-check workflow",
     "Image generation settings use one OpenAI-compatible image Provider contract with unified OpenAI-compatible provider settings rather than the older split fixture-versus-provider selector model",
+    "Creator Studio Pet character generation is governed by docs/pet-character-generation.md: one clean user source, at most one image attachment per Provider request, local composite reference boards, and a required running-right to running-left approved-mirror correction; current orchestration still requests both directional rows independently",
     "Creator Studio real generated atlas QA is landed through source-image-validation.json and atlas-validation.json artifacts before full-pet import approval",
     "Trigger Proposal Inbox is the host review path for Creator Studio trigger proposals and imported follow-up review",
     "Real-provider smoke entrypoints exist for AI provider verification, Bubble Chat acceptance, and Creator Studio provider-path validation",
@@ -31,6 +32,7 @@
     "AI Talk Bubble Chat smoke evidence is archived under docs/release-evidence/ai-talk-local-smoke/2026-06-28T15-35-59-210Z/ and the run-ai-talk-local-smoke entrypoint records bubbleAcceptance requestId, providerLatencyMs, bubbleDispatch.petSayReceived, bubbleDispatch.bubbleStateVisible, and a manualAcceptanceTemplate placeholder",
     "The archived AI Talk Bubble Chat smoke proves providerLatencyMs was 2141, bubbleDispatch.petSayReceived was true, and bubbleDispatch.bubbleStateVisible was true, but it does not by itself prove transparent popup placement or full human acceptance",
     "Bundled agent-awareness ships as openpet.agent-awareness, stays enabled by default, supports explicit user start, exposes explicit install-codex-hooks/uninstall-codex-hooks commands, and can also start through trusted Codex-signal auto-start after native execution approval plus explicit opt-in",
+    "Creator Workflow host smoke evidence is archived under docs/release-evidence/creator-workflow-host-smoke/2026-07-04T21-38-29-834Z-dev8-acceptance/ and docs/release-evidence/creator-workflow-host-smoke/2026-07-04T21-56-30-104Z-main-acceptance/ where the narrowed one-click new-pet and existing-action chain both completed through /images/edits with one redacted front-image reference on codex/dev8 and on a clean main acceptance worktree",
     "The reserved agent-awareness health-note summary contract is X active · Y sessions · Z events",
     "Agent-awareness real-session smoke keeps run-agent-awareness-local-smoke and its manualAcceptanceTemplate boundary tied to docs/release-evidence/agent-awareness-local-smoke/2026-07-03T16-04-08-824Z/ where unknownRecordCount 0 and unsupportedLifecycleRecordCount 0 were preserved for later human review",
     "Agent-awareness archived telemetry hashes session ids, reduces project paths to basename plus short hash, reconciles hook plus polling signals into one bounded runtime session model, and keeps the bundled operator command surface centered on doctor/codex-hook-plan/install-codex-hooks/uninstall-codex-hooks for auditable local workflows",
@@ -85,6 +87,7 @@
       "npm run check:syntax",
       "npm run smoke:ai-provider -- --base-url <url> --api-key-env <env> --chat-model <model>",
       "npm run smoke:creator-studio-provider -- --prompt <text>",
+      "npm run smoke:creator-workflow-host -- --reference-image <file>",
       "npm run run-ai-talk-local-smoke -- --message <text>",
       "npm run update-ai-talk-local-smoke-report -- <report.json> ...",
       "npm run run-agent-awareness-local-smoke -- --codex-home <dir>",

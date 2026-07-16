@@ -16,7 +16,7 @@ const readPngDimensions = (relativePath) => {
   }
 }
 
-test('live docs describe real-atlas full-pet packaging as landed Creator Studio behavior', () => {
+test('live docs describe technical full-pet atlas packaging without overclaiming official action quality', () => {
   const todoArchitecture = readText('docs/openpet-current-todo-architecture.md')
   const developmentSummary = readText('docs/development-summary.md')
   const handoff = readText('docs/HANDOFF.md')
@@ -24,8 +24,8 @@ test('live docs describe real-atlas full-pet packaging as landed Creator Studio 
 
   assert.match(
     todoArchitecture,
-    /provider-backed full-pet runs now package a real generated atlas/i,
-    'openpet-current-todo-architecture.md should list real-atlas full-pet packaging as a landed fact'
+    /pet-character-generation\.md[\s\S]*technical atlas/i,
+    'openpet-current-todo-architecture.md should link the canonical contract and retain the technical atlas boundary'
   )
   assert.doesNotMatch(
     todoArchitecture,
@@ -33,22 +33,35 @@ test('live docs describe real-atlas full-pet packaging as landed Creator Studio 
     'openpet-current-todo-architecture.md should not keep real-atlas packaging as the next recommended milestone once it has landed'
   )
 
-  const currentRealAtlasPattern = /real generated atlas|real-atlas packaging|source-image-validation\.json|atlas-validation\.json/i
+  const currentRealAtlasPattern = /technical (?:full-pet )?atlas|source-image-validation\.json|atlas-validation\.json/i
   assert.match(
     developmentSummary,
     currentRealAtlasPattern,
-    'development-summary.md should mention the landed real-atlas QA/import path'
+    'development-summary.md should mention the landed technical atlas QA/import path'
   )
   assert.match(
     handoff,
     currentRealAtlasPattern,
-    'HANDOFF.md should preserve the landed real-atlas QA/import path'
+    'HANDOFF.md should preserve the landed technical atlas QA/import path'
   )
   assert.match(
     projectStatusReview,
     currentRealAtlasPattern,
-    'project-status-review.md should mention the landed real-atlas packaging and QA evidence path'
+    'project-status-review.md should mention the landed technical atlas packaging and QA evidence path'
   )
+
+  for (const [name, content] of [
+    ['openpet-current-todo-architecture.md', todoArchitecture],
+    ['development-summary.md', developmentSummary],
+    ['HANDOFF.md', handoff],
+    ['project-status-review.md', projectStatusReview]
+  ]) {
+    assert.match(
+      content,
+      /not (?:yet )?proof of official-quality|not yet satisfy the official hatch-pet\/Codex|not official(?: hatch-pet)? action quality|not official-quality action rows|official-quality full-pet output (?:still )?requires/i,
+      `${name} should keep the technical atlas claim separate from official-quality generated action rows`
+    )
+  }
 })
 
 test('live docs mention the AI provider smoke CLI as the current verification entrypoint', () => {
@@ -204,6 +217,166 @@ test('live docs keep generated pet image quality tied to original-image fidelity
     releaseEvidenceReadme,
     /generated pets still require human review or a future explicit visual-fidelity gate against the user's original image/i,
     'release evidence index should keep the manual or future visual-fidelity gate visible'
+  )
+})
+
+test('live docs mention archived Creator Workflow host smoke evidence and its branch-level claim boundary', () => {
+  const evidenceDir = 'docs/release-evidence/creator-workflow-host-smoke/2026-07-04T21-38-29-834Z-dev8-acceptance'
+  const mainEvidenceDir = 'docs/release-evidence/creator-workflow-host-smoke/2026-07-04T21-56-30-104Z-main-acceptance'
+  const petGenerationDoc = readText('docs/pet-character-generation.md')
+  const developmentSummary = readText('docs/development-summary.md')
+  const handoff = readText('docs/HANDOFF.md')
+  const projectStatusReview = readText('docs/project-status-review.md')
+  const projectContext = readText('docs/project-context.json')
+  const evidenceReadme = readText(`${evidenceDir}/README.md`)
+  const evidenceReportRaw = readText(`${evidenceDir}/creator-workflow-host-smoke-result.json`)
+  const evidenceReport = readJson(`${evidenceDir}/creator-workflow-host-smoke-result.json`)
+  const mainEvidenceReadme = readText(`${mainEvidenceDir}/README.md`)
+  const mainEvidenceReportRaw = readText(`${mainEvidenceDir}/creator-workflow-host-smoke-result.json`)
+  const mainEvidenceReport = readJson(`${mainEvidenceDir}/creator-workflow-host-smoke-result.json`)
+
+  const archivePathPattern = /docs\/release-evidence\/creator-workflow-host-smoke\/2026-07-04T21-38-29-834Z-dev8-acceptance\//i
+  const mainArchivePathPattern = /docs\/release-evidence\/creator-workflow-host-smoke\/2026-07-04T21-56-30-104Z-main-acceptance\//i
+  const claimBoundaryPattern = /main-branch acceptance remains required|does not by itself prove production art quality/i
+  const sensitiveEvidencePattern = /sk-[A-Za-z0-9_-]+|Authorization|Bearer|\/Users\/mango|\.codex\/worktrees/i
+
+  for (const [name, content] of [
+    ['pet-character-generation.md', petGenerationDoc],
+    ['development-summary.md', developmentSummary],
+    ['HANDOFF.md', handoff],
+    ['project-status-review.md', projectStatusReview],
+    ['project-context.json', projectContext]
+  ]) {
+    assert.match(
+      content,
+      archivePathPattern,
+      `${name} should mention the archived Creator Workflow host smoke evidence path`
+    )
+    assert.match(
+      content,
+      mainArchivePathPattern,
+      `${name} should mention the archived main Creator Workflow host smoke evidence path`
+    )
+  }
+
+  assert.match(evidenceReadme, /host-side one-click Creator Workflow smoke run/i, 'evidence README should explain the host smoke scope')
+  assert.match(evidenceReadme, claimBoundaryPattern, 'evidence README should keep the branch-only claim boundary explicit')
+  assert.match(mainEvidenceReadme, /supported one-click path on `main`/i, 'main evidence README should explain the main acceptance scope')
+  assert.doesNotMatch(mainEvidenceReadme, /main-branch acceptance remains required/i, 'main evidence README should not keep the old branch-only blocker wording')
+  assert.doesNotMatch(
+    [evidenceReadme, evidenceReportRaw, mainEvidenceReadme, mainEvidenceReportRaw].join('\n'),
+    sensitiveEvidencePattern,
+    'host smoke evidence should not archive raw secrets or local worktree paths'
+  )
+  assert.equal(evidenceReport.ok, true, 'host smoke evidence report should record a successful smoke run')
+  assert.equal(evidenceReport.scenarios.length, 2, 'host smoke evidence should record both default-path scenarios')
+  assert.equal(evidenceReport.scenarios.every((scenario) => scenario.ok === true), true, 'both archived host smoke scenarios should succeed')
+  assert.equal(evidenceReport.scenarios[0].conditioning.endpoint, '/images/edits', 'host smoke evidence should preserve /images/edits conditioning evidence')
+  assert.equal(mainEvidenceReport.ok, true, 'main host smoke evidence report should record a successful smoke run')
+  assert.equal(mainEvidenceReport.acceptanceScope, 'main', 'main host smoke evidence should mark main acceptance explicitly')
+  assert.equal(mainEvidenceReport.scenarios.every((scenario) => scenario.ok === true), true, 'both archived main host smoke scenarios should succeed')
+  assert.doesNotMatch(
+    mainEvidenceReport.warnings.join('\n'),
+    /branch acceptance run is sufficient/i,
+    'main host smoke evidence warnings should not keep the branch-only acceptance wording'
+  )
+  assert.equal(fileExists(`${evidenceDir}/README.md`), true, 'host smoke evidence README should be archived')
+  assert.equal(fileExists(`${evidenceDir}/creator-workflow-host-smoke-result.json`), true, 'host smoke evidence report should be archived')
+  assert.equal(fileExists(`${mainEvidenceDir}/README.md`), true, 'main host smoke evidence README should be archived')
+  assert.equal(fileExists(`${mainEvidenceDir}/creator-workflow-host-smoke-result.json`), true, 'main host smoke evidence report should be archived')
+})
+
+test('creator studio live docs keep the official hatch-pet full-action policy truthful', () => {
+  const creatorReadme = readText('examples/plugins/creator-studio/README.md')
+  const petGenerationDoc = readText('docs/pet-character-generation.md')
+
+  assert.match(petGenerationDoc, /official-quality[\s\S]*canonical character[\s\S]*action-specific/i, 'canonical docs should describe official-quality output as identity plus action-specific generation')
+  assert.match(petGenerationDoc, /idle[\s\S]*running-right[\s\S]*running-left[\s\S]*waving[\s\S]*jumping[\s\S]*failed[\s\S]*waiting[\s\S]*running[\s\S]*review/i, 'canonical docs should list all nine official Codex rows')
+  assert.match(petGenerationDoc, /running-right[\s\S]*running-left[\s\S]*framewise horizontal mirror/i, 'canonical docs should define running-left as the mirrored directional pair')
+  assert.match(petGenerationDoc, /base-image transforms|transform-only frames/i, 'canonical docs should reject local transform rows as real action generation')
+  assert.doesNotMatch(petGenerationDoc, /required real:[\s\S]*idle/i, 'canonical docs should not describe base-only idle coverage as an official real action')
+  assert.match(creatorReadme, /pet-character-generation\.md/i, 'Creator Studio README should link to the canonical generation authority')
+  assert.match(creatorReadme, /not (?:official-quality|production art)|preview|fallback/i, 'Creator Studio README should keep the preview and production-art claim boundary')
+})
+
+test('live docs describe landed official row package support without claiming provider art approval', () => {
+  const todoArchitecture = readText('docs/openpet-current-todo-architecture.md')
+  const petGenerationDoc = readText('docs/pet-character-generation.md')
+
+  assert.match(
+    todoArchitecture,
+    /pet-character-generation\.md/i,
+    'openpet-current-todo-architecture.md should delegate generation policy to the canonical document'
+  )
+  assert.match(
+    petGenerationDoc,
+    /official (?:full-pet )?row package|deterministic official row/i,
+    'canonical docs should mention landed official row package support'
+  )
+
+  for (const [name, content] of [
+    ['docs/openpet-current-todo-architecture.md', todoArchitecture],
+    ['docs/pet-character-generation.md', petGenerationDoc]
+  ]) {
+    assert.match(
+      content,
+      /row-real[\s\S]*approved-mirror|approved-mirror[\s\S]*row-real/i,
+      `${name} should name the only qualities that count as official real row coverage`
+    )
+    assert.match(
+      content,
+      /provider row generation|real provider|human (?:visual )?review|Manual-required/i,
+      `${name} should keep provider generation or human art approval outside the landed deterministic claim`
+    )
+  }
+})
+
+test('canonical pet generation docs enforce one reference image and mirrored directional rows', () => {
+  const canonical = readText('docs/pet-character-generation.md')
+  assert.match(canonical, /exactly one source image/i)
+  assert.match(canonical, /at most one image attachment/i)
+  assert.match(canonical, /compose[\s\S]*composite reference board/i)
+  assert.match(canonical, /running-right[\s\S]*running-left[\s\S]*framewise horizontal mirror/i)
+  assert.match(canonical, /does not (?:spend|make|issue) a separate provider request (?:on|for) `?running-left`?/i)
+  assert.match(canonical, /1536x1872/i)
+  assert.match(canonical, /192x208/i)
+  assert.match(canonical, /human[\s\S]*visual[\s\S]*review/i)
+})
+
+test('canonical pet generation docs define the quality-first partial action contract', () => {
+  const canonical = readText('docs/pet-character-generation.md')
+  assert.match(canonical, /`idle` is the only required action/i)
+  assert.match(canonical, /optional action[\s\S]*omitted/i)
+  assert.match(canonical, /running-right[\s\S]*running-left[\s\S]*atomic pair/i)
+  assert.match(canonical, /missing optional action[\s\S]*acceptable[\s\S]*low-quality action[\s\S]*(?:must not|never)/i)
+  assert.match(canonical, /availableActionIds/i)
+  assert.match(canonical, /omittedActionIds/i)
+  assert.match(canonical, /durable[\s\S]*checkpoint/i)
+  assert.doesNotMatch(canonical, /current implementation still has one important divergence/i)
+})
+
+test('current live docs link to the canonical pet generation authority', () => {
+  const linkedDocs = [
+    'docs/README.md',
+    'docs/HANDOFF.md',
+    'docs/development-summary.md',
+    'docs/project-status-review.md',
+    'docs/openpet-current-todo-architecture.md',
+    'examples/plugins/creator-studio/README.md'
+  ]
+
+  for (const relativePath of linkedDocs) {
+    assert.match(
+      readText(relativePath),
+      /pet-character-generation\.md/i,
+      `${relativePath} should link to the canonical pet generation authority`
+    )
+  }
+
+  assert.doesNotMatch(
+    readText('docs/README.md'),
+    /one-click-action-generation-complete-chain\.md/i,
+    'docs/README.md should not index the superseded one-click generation document'
   )
 })
 test('live docs describe Creator Studio imported follow-up routing by outcome', () => {

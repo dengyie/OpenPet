@@ -118,6 +118,7 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
       createCreatorWorkflowService: () => ({ id: 'creator-workflow' }),
       createEventBus: () => ({ on: () => {}, emit: () => {} }),
       createImageGenerationModelService: () => ({ id: 'image-service' }),
+      createHatchPetAgentService: (dependencies) => ({ id: 'hatch-pet-agent', dependencies }),
       createTriggerRuleRuntimeService: () => ({
         id: 'trigger-rule-runtime',
         start: () => {},
@@ -170,6 +171,8 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
   assert.equal(typeof appHandlers.get('activate'), 'function')
 
   const ipcDependencies = registeredIpcDependencies[0]
+  assert.equal(ipcDependencies.hatchPetAgentService.id, 'hatch-pet-agent')
+  assert.equal(ipcDependencies.creatorWorkflowService.id, 'creator-workflow')
   assert.deepEqual(ipcDependencies.pluginInstallService.readBlockStatus('blocked-plugin'), { blocked: true, reasons: ['policy'] })
   assert.deepEqual(ipcDependencies.pluginService.readBlockStatus('allowed-plugin'), { blocked: false, reasons: [] })
   assert.deepEqual(await ipcDependencies.pluginService.pickFrames(), { canceled: false, sourceDir: '/tmp/frames' })
@@ -248,6 +251,7 @@ test('bootstrap runtime waits for plugin shutdown before allowing app quit', asy
       createActionImportService: () => ({ id: 'action-import' }),
       createActionService: () => ({ id: 'action-service' }),
       createAiService: () => ({ id: 'ai-service' }),
+      createHatchPetAgentService: () => ({ id: 'hatch-pet-agent' }),
       createAiTalkService: () => ({ id: 'ai-talk-service' }),
       createAiTalkStore: () => ({ id: 'ai-talk-store' }),
       createAppLogService: () => ({ record: () => {}, logPath: '/tmp/app-log.jsonl' }),

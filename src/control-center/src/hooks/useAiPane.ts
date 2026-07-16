@@ -47,6 +47,9 @@ import type {
   AiPersonaProfileViewState,
   AiTalkTraceSummaryViewState,
   ChatMessage,
+  HatchPetAgentCapabilityResult,
+  HatchPetAgentConfigSaveRequest,
+  HatchPetAgentConfigView,
   ImageGenerationHealthCheckResult,
   ImageGenerationConfigViewState,
   ProviderModelDiscoveryResult,
@@ -259,6 +262,46 @@ const getImageTransparencyCompatibilityHint = (model: string) => {
   return `${normalizedModel} 会由 OpenPet host 显式传 background=transparent 或 white，并请求 b64_json 输出。`
 }
 
+const defaultHatchPetAgentConfig: HatchPetAgentConfigView = {
+  enabled: false,
+  executionMode: 'shadow',
+  configMode: 'follow-chat',
+  provider: 'openai-compatible',
+  baseUrl: 'https://api.openai.com/v1',
+  model: 'gpt-4o-mini',
+  apiKeyRef: 'ai.hatch-pet',
+  systemPromptVersion: 1,
+  requireIdentityReviewBeforeActions: false,
+  budgets: {
+    maxIdentityRegenerations: 1,
+    maxActionAttemptsPerAction: 3,
+    maxEvaluationAttemptsPerArtifact: 2,
+    maxProviderCalls: 64,
+    maxElapsedMs: 3600000,
+    maxEstimatedCost: null
+  },
+  hasApiKey: false,
+  configSource: 'chat-fallback',
+  effectiveProvider: 'openai-compatible',
+  effectiveBaseUrl: 'https://api.openai.com/v1',
+  effectiveModel: 'gpt-4o-mini'
+}
+
+const cloneHatchPetAgentConfig = (config: HatchPetAgentConfigView): HatchPetAgentConfigView => ({
+  ...config,
+  budgets: { ...config.budgets }
+})
+
+const buildHatchPetAgentConfigSaveRequest = (config: HatchPetAgentConfigView): HatchPetAgentConfigSaveRequest => ({
+  enabled: config.enabled,
+  configMode: config.configMode,
+  provider: config.provider,
+  baseUrl: config.baseUrl,
+  model: config.model,
+  requireIdentityReviewBeforeActions: config.requireIdentityReviewBeforeActions,
+  budgets: { ...config.budgets }
+})
+
 export function useAiPane(activeTab = 'ai') {
   const [loading, setLoading] = useState(true)
   const [saving, setSavingState] = useState(false)
@@ -276,9 +319,12 @@ export function useAiPane(activeTab = 'ai') {
   const [generatedPersonaDraft, setGeneratedPersonaDraft] = useState<AiPersonaDraftViewState | null>(null)
   const [imageGenerationConfig, setImageGenerationConfig] = useState<ImageGenerationConfigViewState>(defaultImageGenerationConfig)
   const [activeImageGenerationConfig, setActiveImageGenerationConfig] = useState<ImageGenerationConfigViewState>(defaultImageGenerationConfig)
+  const [hatchPetAgentConfig, setHatchPetAgentConfig] = useState<HatchPetAgentConfigView>(defaultHatchPetAgentConfig)
+  const [activeHatchPetAgentConfig, setActiveHatchPetAgentConfig] = useState<HatchPetAgentConfigView>(defaultHatchPetAgentConfig)
   const [apiKeyDraft, setApiKeyDraft] = useState('')
   const [visionApiKeyDraft, setVisionApiKeyDraft] = useState('')
   const [imageApiKeyDraft, setImageApiKeyDraft] = useState('')
+  const [hatchPetAgentApiKeyDraft, setHatchPetAgentApiKeyDraft] = useState('')
   const [status, setStatus] = useState('')
   const [connectionStatus, setConnectionStatus] = useState('')
   const [visionStatus, setVisionStatus] = useState('')
@@ -286,6 +332,8 @@ export function useAiPane(activeTab = 'ai') {
   const [imageStatus, setImageStatus] = useState('')
   const [imageHealthStatus, setImageHealthStatus] = useState('')
   const [imageHealthResult, setImageHealthResult] = useState<ImageGenerationHealthCheckResult | null>(null)
+  const [hatchPetAgentStatus, setHatchPetAgentStatus] = useState('')
+  const [hatchPetAgentCapabilityResult, setHatchPetAgentCapabilityResult] = useState<HatchPetAgentCapabilityResult | null>(null)
   const [chatStatus, setChatStatus] = useState('')
   const [chatModelDiscovery, setChatModelDiscovery] = useState<ProviderModelDiscoveryResult | null>(null)
   const [chatModelDiscoveryStatus, setChatModelDiscoveryStatus] = useState('')
@@ -340,6 +388,13 @@ export function useAiPane(activeTab = 'ai') {
       preserveDraft
     }).config)
     setActiveConfig(nextConfig)
+    return nextConfig
+  }
+
+  const loadHatchPetAgentConfig = async ({ preserveDraft = false } = {}) => {
+    const nextConfig = cloneHatchPetAgentConfig(await api.getHatchPetAgentConfig())
+    setHatchPetAgentConfig((current) => preserveDraft ? current : nextConfig)
+    setActiveHatchPetAgentConfig(nextConfig)
     return nextConfig
   }
 
@@ -432,9 +487,10 @@ export function useAiPane(activeTab = 'ai') {
       api.getAiPersonaProfile(),
       api.getAiMemoryProfile(),
       api.getImageGenerationConfig(),
+      api.getHatchPetAgentConfig(),
       api.getPetChatState(),
       api.getAiBehavior()
-    ]).then(([loadedConfig, loadedPersonaProfile, loadedMemoryProfile, loadedImageGenerationConfig, loadedPetChatState, loadedBehavior]) => {
+    ]).then(([loadedConfig, loadedPersonaProfile, loadedMemoryProfile, loadedImageGenerationConfig, loadedHatchPetAgentConfig, loadedPetChatState, loadedBehavior]) => {
       if (!mounted) return
       const nextConfig = cloneAiConfig(loadedConfig)
       setConfig(nextConfig)
@@ -446,6 +502,9 @@ export function useAiPane(activeTab = 'ai') {
       const nextImageGenerationConfig = cloneImageGenerationConfig(loadedImageGenerationConfig)
       setImageGenerationConfig(nextImageGenerationConfig)
       setActiveImageGenerationConfig(nextImageGenerationConfig)
+      const nextHatchPetAgentConfig = cloneHatchPetAgentConfig(loadedHatchPetAgentConfig)
+      setHatchPetAgentConfig(nextHatchPetAgentConfig)
+      setActiveHatchPetAgentConfig(nextHatchPetAgentConfig)
       const nextPetChatState = applyPetChatState(loadedPetChatState)
       const nextBehavior = cloneAiBehavior(loadedBehavior || loadedConfig?.behavior)
       setBehavior(nextBehavior)
@@ -543,6 +602,8 @@ export function useAiPane(activeTab = 'ai') {
   const hasUnsavedVisionApiKeyDraft = Boolean(visionApiKeyDraft.trim())
   const hasUnsavedImageGenerationChanges = hasImageGenerationConfigChanges(imageGenerationConfig, activeImageGenerationConfig)
   const hasUnsavedImageApiKeyDraft = Boolean(imageApiKeyDraft.trim())
+  const hatchPetAgentConfigDirty = JSON.stringify(buildHatchPetAgentConfigSaveRequest(hatchPetAgentConfig)) !==
+    JSON.stringify(buildHatchPetAgentConfigSaveRequest(activeHatchPetAgentConfig))
 
   const onSave = async () => {
     setSaving(true)
@@ -560,6 +621,95 @@ export function useAiPane(activeTab = 'ai') {
       setConnectionStatus(changedFields.length ? `AI 配置已保存：${changedFields.join(' / ')}` : 'AI 配置已保存')
     } catch (error) {
       setConnectionStatus(messageFromError(error, '保存失败'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const onSaveHatchPetAgentConfig = async () => {
+    setSaving(true)
+    setHatchPetAgentStatus('保存 Hatch Pet Agent 配置中')
+    try {
+      if (hatchPetAgentConfig.configMode === 'override') {
+        if (!hatchPetAgentConfig.provider.trim()) throw new Error('Hatch Pet Agent Provider 不能为空')
+        if (!hatchPetAgentConfig.model.trim()) throw new Error('Hatch Pet Agent Model 不能为空')
+        const parsedBaseUrl = new URL(hatchPetAgentConfig.baseUrl)
+        if (!['http:', 'https:'].includes(parsedBaseUrl.protocol)) {
+          throw new Error('Hatch Pet Agent Base URL 必须使用 HTTP 或 HTTPS')
+        }
+      }
+      const saved = cloneHatchPetAgentConfig(await api.saveHatchPetAgentConfig(
+        buildHatchPetAgentConfigSaveRequest(hatchPetAgentConfig)
+      ))
+      setHatchPetAgentConfig(saved)
+      setActiveHatchPetAgentConfig(saved)
+      setHatchPetAgentCapabilityResult(null)
+      setHatchPetAgentStatus('Hatch Pet Agent 配置已保存')
+    } catch (error) {
+      setHatchPetAgentStatus(messageFromError(error, 'Hatch Pet Agent 配置保存失败'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const onSaveHatchPetAgentApiKey = async () => {
+    const apiKey = hatchPetAgentApiKeyDraft.trim()
+    if (!apiKey) {
+      setHatchPetAgentStatus('Hatch Pet Agent API Key 不能为空')
+      return
+    }
+    setSaving(true)
+    setHatchPetAgentStatus('保存 Hatch Pet Agent API Key 中')
+    try {
+      const result = await api.saveHatchPetAgentApiKey(apiKey)
+      setHatchPetAgentApiKeyDraft('')
+      await loadHatchPetAgentConfig({ preserveDraft: true })
+      setHatchPetAgentConfig((current) => current.configMode === 'override'
+        ? cloneHatchPetAgentConfig({ ...current, hasApiKey: result.hasApiKey })
+        : current)
+      setHatchPetAgentCapabilityResult(null)
+      setHatchPetAgentStatus('Hatch Pet Agent API Key 已保存')
+    } catch (error) {
+      setHatchPetAgentStatus(messageFromError(error, 'Hatch Pet Agent API Key 保存失败'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const onClearHatchPetAgentApiKey = async () => {
+    setSaving(true)
+    setHatchPetAgentStatus('清除 Hatch Pet Agent API Key 中')
+    try {
+      const result = await api.clearHatchPetAgentApiKey()
+      setHatchPetAgentApiKeyDraft('')
+      await loadHatchPetAgentConfig({ preserveDraft: true })
+      setHatchPetAgentConfig((current) => current.configMode === 'override'
+        ? cloneHatchPetAgentConfig({ ...current, hasApiKey: result.hasApiKey })
+        : current)
+      setHatchPetAgentCapabilityResult(null)
+      setHatchPetAgentStatus('Hatch Pet Agent API Key 已清除')
+    } catch (error) {
+      setHatchPetAgentStatus(messageFromError(error, 'Hatch Pet Agent API Key 清除失败'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const onCheckHatchPetAgentCapability = async () => {
+    if (hatchPetAgentConfigDirty || hatchPetAgentApiKeyDraft.trim()) {
+      setHatchPetAgentCapabilityResult(null)
+      setHatchPetAgentStatus('请先保存 Hatch Pet Agent 配置和密钥草稿，再检查 capability。')
+      return
+    }
+    setSaving(true)
+    setHatchPetAgentStatus('检查 Hatch Pet Agent capability 中')
+    setHatchPetAgentCapabilityResult(null)
+    try {
+      const result = await api.checkHatchPetAgentCapability()
+      setHatchPetAgentCapabilityResult(result)
+      setHatchPetAgentStatus(result.message || (result.ok ? 'Capability supported' : 'Capability unsupported'))
+    } catch (error) {
+      setHatchPetAgentStatus(messageFromError(error, 'Hatch Pet Agent capability 检查失败'))
     } finally {
       setSaving(false)
     }
@@ -1146,6 +1296,12 @@ export function useAiPane(activeTab = 'ai') {
     activeConfig,
     imageGenerationConfig,
     activeImageGenerationConfig,
+    hatchPetAgentConfig,
+    activeHatchPetAgentConfig,
+    hatchPetAgentConfigDirty,
+    hatchPetAgentApiKeyDraft,
+    hatchPetAgentStatus,
+    hatchPetAgentCapabilityResult,
     personaProfile,
     memoryProfile,
     personaDraft,
@@ -1180,6 +1336,7 @@ export function useAiPane(activeTab = 'ai') {
     setVisionApiKeyDraft,
     imageApiKeyDraft,
     setImageApiKeyDraft,
+    setHatchPetAgentApiKeyDraft,
     onChangePersonaDraft,
     personaGenerationInstruction,
     setPersonaGenerationInstruction,
@@ -1225,7 +1382,22 @@ export function useAiPane(activeTab = 'ai') {
       ...current,
       ...partial
     })),
+    onChangeHatchPetAgent: (partial: Partial<HatchPetAgentConfigView>) => setHatchPetAgentConfig((current) => cloneHatchPetAgentConfig({
+      ...current,
+      ...partial,
+      ...(partial.configMode === 'override' && current.configMode !== 'override'
+        ? { hasApiKey: activeHatchPetAgentConfig.configMode === 'override' && activeHatchPetAgentConfig.hasApiKey }
+        : {}),
+      budgets: {
+        ...current.budgets,
+        ...(partial.budgets || {})
+      }
+    })),
     onSave,
+    onSaveHatchPetAgentConfig,
+    onSaveHatchPetAgentApiKey,
+    onClearHatchPetAgentApiKey,
+    onCheckHatchPetAgentCapability,
     onSaveImageGeneration,
     onSavePersonaOverride,
     onResetPersonaOverride,

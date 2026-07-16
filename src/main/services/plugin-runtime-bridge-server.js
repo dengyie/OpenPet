@@ -124,7 +124,12 @@ const createPluginRuntimeBridgeServer = ({
       sendJson(response, 404, { ok: false, error: 'Not found' })
     } catch (error) {
       const statusCode = /does not have/.test(String(error.message || '')) ? 403 : 400
-      sendJson(response, statusCode, { ok: false, error: error.message || 'Bridge request failed' })
+      const errorCode = String(error?.code || '').trim()
+      sendJson(response, statusCode, {
+        ok: false,
+        error: error.message || 'Bridge request failed',
+        ...(/^[a-z0-9][a-z0-9_]{0,79}$/.test(errorCode) ? { errorCode } : {})
+      })
     }
   }
 

@@ -15,7 +15,10 @@ const {
   prepareSeedSettings,
   resolveReferenceImagePath,
   resolveImportedPetRoot,
+  verifyConditioningEvidence,
   verifyNewCharacterScenario,
+  verifyScenarioResult,
+  summarizeGenerationStages,
   approveScenarioReferenceImage,
   runScenarioWorkflow,
   runCreatorWorkflowHostSmoke
@@ -37,6 +40,11 @@ test('parseArgs accepts creator workflow host smoke options', () => {
     '--reference-image', '/tmp/reference.png',
     '--output-dir', '/tmp/output',
     '--scenario', 'existing-action',
+    '--new-character-name', 'Golden Cartoon Cat',
+    '--new-character-style-prompt', 'Cartoon golden shaded cat pet.',
+    '--existing-action-name', 'golden-wave',
+    '--existing-action-prompt', 'Cartoon golden cat waving.',
+    '--provider-timeout-ms', '600000',
     '--json'
   ])
 
@@ -44,6 +52,11 @@ test('parseArgs accepts creator workflow host smoke options', () => {
   assert.equal(options.referenceImagePath, path.resolve('/tmp/reference.png'))
   assert.equal(options.outputDir, path.resolve('/tmp/output'))
   assert.equal(options.scenario, 'existing-action')
+  assert.equal(options.newCharacterName, 'Golden Cartoon Cat')
+  assert.equal(options.newCharacterStylePrompt, 'Cartoon golden shaded cat pet.')
+  assert.equal(options.existingActionName, 'golden-wave')
+  assert.equal(options.existingActionPrompt, 'Cartoon golden cat waving.')
+  assert.equal(options.providerTimeoutMs, 600000)
   assert.equal(options.json, true)
 })
 
@@ -88,6 +101,24 @@ test('prepareSeedSettings enables the bundled creator plugin and resets the edit
   assert.equal(settings.petPacks.activePackId, 'legacy-cat')
   assert.deepEqual(settings.creator.references, {})
   assert.equal(settings.localHttp.enabled, false)
+})
+
+test('prepareSeedSettings can override provider timeout for isolated smoke runs', () => {
+  const settings = prepareSeedSettings({
+    models: {
+      imageGeneration: {
+        provider: 'openai-compatible',
+        baseUrl: 'http://127.0.0.1:8317/v1',
+        model: 'gpt-image-2',
+        timeoutMs: 300000
+      }
+    }
+  }, {
+    providerTimeoutMs: 600000
+  })
+
+  assert.equal(settings.models.imageGeneration.timeoutMs, 600000)
+  assert.equal(settings.models.imageGeneration.model, 'gpt-image-2')
 })
 
 test('resolveReferenceImagePath prefers explicit and stored references before repo fallback', () => {
@@ -165,6 +196,261 @@ test('verifyNewCharacterScenario resolves imported pack root from isolated userD
   assert.equal(verification.artifactPaths.petManifestPath, path.join(packRoot, 'pet.json'))
 })
 
+test('verifyScenarioResult rejects new-character preview-ready as incomplete official-row output', () => {
+  const verification = verifyScenarioResult({
+    scenario: 'new-character',
+    result: {
+      ok: true,
+      state: 'preview-ready',
+      code: 'preview_ready',
+      run: {
+        runId: 'run-preview',
+        mode: 'full-pet'
+      },
+      basicActions: {
+        missingRequiredOfficialActionIds: ['idle', 'waving'],
+        previewFallbackActionIds: ['idle', 'waving']
+      }
+    },
+    workspaceRoot: '/tmp/workspace',
+    userDataDir: '/tmp/user-data',
+    runRecord: {
+      runId: 'run-preview',
+      conditioning: {
+        mode: 'image-edit',
+        endpoint: '/images/edits',
+        referenceImageCount: 1,
+        references: [{
+          fileName: 'canonical-reference.png',
+          relativePath: 'runs/run-preview/inputs/references/canonical-reference.png'
+        }]
+      }
+    }
+  })
+
+  assert.equal(verification.ok, false)
+  assert.match(verification.message, /preview-ready.*official action rows/i)
+})
+
+test('verifyScenarioResult accepts an imported idle-only pet as technical completion without artistic approval', () => {
+  const userDataDir = createTempDir('openpet-creator-workflow-partial-pet-')
+  const packRoot = path.join(userDataDir, 'pet-packs', 'partial-quality-cat')
+  fs.mkdirSync(packRoot, { recursive: true })
+  fs.writeFileSync(path.join(packRoot, 'pet.json'), JSON.stringify({
+    id: 'partial-quality-cat',
+    requiredActionIds: ['idle'],
+    availableActionIds: ['idle']
+  }))
+  const omittedActionIds = [
+    'running-right',
+    'running-left',
+    'waving',
+    'jumping',
+    'failed',
+    'waiting',
+    'running',
+    'review'
+  ]
+
+  const verification = verifyScenarioResult({
+    scenario: 'new-character',
+    result: {
+      ok: true,
+      state: 'completed',
+      run: { activatedPackId: 'partial-quality-cat' },
+      basicActions: {
+        requiredRealActionIds: ['idle'],
+        availableActionIds: ['idle'],
+        omittedActionIds,
+        actionAvailability: {
+          idle: { available: true, quality: 'row-real' },
+          waving: { available: false, reason: 'identity-descriptor-distance-high' }
+        }
+      }
+    },
+    workspaceRoot: '/tmp/workspace',
+    userDataDir,
+    runRecord: {
+      conditioning: {
+        mode: 'image-edit',
+        endpoint: '/images/edits',
+        referenceImageCount: 1,
+        references: [{
+          fileName: 'canonical-reference.png',
+          relativePath: 'runs/run-partial/inputs/references/canonical-reference.png'
+        }]
+      },
+      generationStages: [
+        { actionId: 'idle', stage: 'action-start-keyframe', ok: true, referenceRoles: ['canonical-reference'] },
+        { actionId: 'idle', stage: 'action-peak-keyframe', ok: true, referenceRoles: ['action-peak-conditioning-board'] },
+        { actionId: 'idle', stage: 'final-image', ok: true, referenceRoles: ['keyframe-action-reference-board'], outputRelativePath: 'runs/run-partial/frames/base/idle-keyframe-row/0001.png' },
+        { actionId: 'waving', stage: 'action-start-keyframe', ok: false, referenceRoles: ['canonical-reference'] }
+      ]
+    }
+  })
+
+  assert.equal(verification.ok, true)
+  assert.equal(verification.technicalCompletion, true)
+  assert.equal(verification.artisticApproval, false)
+  assert.match(verification.claimBoundary, /human visual approval/i)
+  assert.match(verification.message, /Available actions: idle/i)
+  assert.match(verification.message, /Omitted actions:/i)
+})
+
+test('verifyConditioningEvidence rejects adopted provider action anchors as action completion evidence', () => {
+  const anchorPath = 'runs/run-existing/anchors/actions/wave-anchor/0001.png'
+  const verification = verifyConditioningEvidence({
+    runRecord: {
+      conditioning: {
+        mode: 'adopted-provider-anchor',
+        endpoint: 'local/provider-anchor-adoption',
+        referenceImageCount: 1,
+        references: [{
+          fileName: '0001.png',
+          relativePath: anchorPath,
+          role: 'action-anchor'
+        }]
+      },
+      anchorGenerationStages: [{
+        stage: 'action-anchor',
+        ok: true,
+        outputRelativePath: anchorPath
+      }],
+      generationStages: [{
+        stage: 'final-image',
+        ok: true,
+        adopted: true,
+        outputRelativePath: anchorPath
+      }]
+    }
+  })
+
+  assert.equal(verification.ok, false)
+  assert.match(verification.message, /not complete provider sprite-row evidence/)
+})
+
+test('verifyConditioningEvidence accepts provider keyframe sprite row conditioning', () => {
+  const boardPath = 'runs/run-existing/inputs/keyframes/actions/wave-row-reference-board.png'
+  const outputPath = 'runs/run-existing/frames/base/wave-keyframe-row/0001.png'
+  const verification = verifyConditioningEvidence({
+    runRecord: {
+      conditioning: {
+        mode: 'provider-keyframe-sprite-row',
+        endpoint: '/images/edits',
+        referenceImageCount: 1,
+        references: [
+          {
+            fileName: 'wave-row-reference-board.png',
+            relativePath: boardPath,
+            role: 'keyframe-action-reference-board'
+          }
+        ]
+      },
+      generationStages: [{
+        stage: 'final-image',
+        ok: true,
+        adopted: false,
+        referenceRoles: ['keyframe-action-reference-board'],
+        outputRelativePath: outputPath
+      }]
+    }
+  })
+
+  assert.equal(verification.ok, true)
+  assert.match(verification.message, /keyframe sprite row/)
+  assert.equal(verification.artifactPaths.referenceInput, boardPath)
+})
+
+test('verifyConditioningEvidence rejects provider keyframe rows with more than one final reference image', () => {
+  const boardPath = 'runs/run-existing/inputs/keyframes/actions/wave-row-reference-board.png'
+  const verification = verifyConditioningEvidence({
+    runRecord: {
+      conditioning: {
+        mode: 'provider-keyframe-sprite-row',
+        endpoint: '/images/edits',
+        referenceImageCount: 2,
+        references: [
+          {
+            fileName: 'wave-row-reference-board.png',
+            relativePath: boardPath,
+            role: 'keyframe-action-reference-board'
+          },
+          {
+            fileName: 'extra.png',
+            relativePath: 'runs/run-existing/inputs/references/extra.png',
+            role: 'canonical-reference'
+          }
+        ]
+      },
+      generationStages: [{
+        stage: 'final-image',
+        ok: true,
+        adopted: false,
+        referenceRoles: ['keyframe-action-reference-board', 'canonical-reference'],
+        outputRelativePath: 'runs/run-existing/frames/base/wave-keyframe-row/0001.png'
+      }]
+    }
+  })
+
+  assert.equal(verification.ok, false)
+  assert.match(verification.message, /single conditioning board reference/)
+})
+
+test('verifyConditioningEvidence rejects adopted anchors even with incomplete adoption evidence', () => {
+  const anchorPath = 'runs/run-existing/anchors/actions/wave-anchor/0001.png'
+  const verification = verifyConditioningEvidence({
+    runRecord: {
+      conditioning: {
+        mode: 'adopted-provider-anchor',
+        endpoint: 'local/provider-anchor-adoption',
+        referenceImageCount: 1,
+        references: [{
+          fileName: '0001.png',
+          relativePath: anchorPath,
+          role: 'action-anchor'
+        }]
+      },
+      anchorGenerationStages: [{
+        stage: 'action-anchor',
+        ok: true,
+        outputRelativePath: anchorPath
+      }],
+      generationStages: [{
+        stage: 'final-image',
+        ok: true,
+        outputRelativePath: anchorPath
+      }]
+    }
+  })
+
+  assert.equal(verification.ok, false)
+  assert.match(verification.message, /not complete provider sprite-row evidence/)
+})
+
+test('summarizeGenerationStages preserves direct-source action anchor candidate selection evidence', () => {
+  const summary = summarizeGenerationStages([{
+    stage: 'action-anchor',
+    ok: true,
+    referenceRoles: ['source-action-reference-board'],
+    outputRelativePath: 'runs/run-existing/anchors/actions/wave-anchor/0001.png',
+    candidateSelection: {
+      candidateCount: 3,
+      selectedCandidateId: 'clean-cutout-motion-readable',
+      selectedCandidateRelativePath: 'runs/run-existing/anchors/actions/wave-anchor-candidates/02-clean-cutout-motion-readable/0001.png',
+      selectedScore: 87.25,
+      acceptable: true
+    }
+  }])
+
+  assert.deepEqual(summary[0].candidateSelection, {
+    candidateCount: 3,
+    selectedCandidateId: 'clean-cutout-motion-readable',
+    selectedCandidateRelativePath: 'runs/run-existing/anchors/actions/wave-anchor-candidates/02-clean-cutout-motion-readable/0001.png',
+    selectedScore: 87.25,
+    acceptable: true
+  })
+})
+
 test('approveScenarioReferenceImage returns a workflow token for a reference path', () => {
   const calls = []
   const token = approveScenarioReferenceImage({
@@ -183,7 +469,7 @@ test('approveScenarioReferenceImage returns a workflow token for a reference pat
   assert.deepEqual(calls, ['/tmp/reference.png'])
 })
 
-test('runScenarioWorkflow approves the reference image before generating a new character', async () => {
+test('runScenarioWorkflow approves the reference image but rejects failed provider evidence', async () => {
   const repoRoot = createTempDir('openpet-creator-workflow-repo-')
   const sourceUserDataDir = createTempDir('openpet-creator-workflow-source-user-data-')
   const scenarioDir = createTempDir('openpet-creator-workflow-scenario-')
@@ -200,6 +486,8 @@ test('runScenarioWorkflow approves the reference image before generating a new c
     repoRoot,
     sourceUserDataDir,
     referenceImagePath,
+    newCharacterName: 'Golden Cartoon Cat',
+    newCharacterStylePrompt: 'Cartoon golden shaded cat pet.',
     createSmokeRuntimeImpl: ({ userDataDir }) => {
       const pluginDataDir = path.join(userDataDir, 'plugins', 'openpet.creator-studio', '.openpet', 'openpet.creator-studio', 'data')
       return {
@@ -221,6 +509,35 @@ test('runScenarioWorkflow approves the reference image before generating a new c
               status: 'completed',
               artifacts: {
                 generatedImage: {
+                  anchorGeneration: {
+                    stages: [
+                      {
+                        stage: 'composite-reference-board',
+                        referenceRole: 'canonical-reference',
+                        referenceRoles: ['canonical-reference'],
+                        outputRelativePath: 'runs/run-new-character/inputs/anchors/composite-reference-board.png'
+                      },
+                      {
+                        stage: 'character-anchor',
+                        ok: true,
+                        referenceRole: 'composite-reference-board',
+                        referenceRoles: ['composite-reference-board'],
+                        timeoutMs: 300000,
+                        durationMs: 91,
+                        model: 'gpt-image-2'
+                      }
+                    ]
+                  },
+                  generationStages: [{
+                    stage: 'final-image',
+                    ok: false,
+                    referenceRole: 'action-anchor',
+                    referenceRoles: ['action-anchor'],
+                    timeoutMs: 300000,
+                    durationMs: 300000,
+                    model: 'gpt-image-2',
+                    error: 'context canceled'
+                  }],
                   conditioning: {
                     mode: 'image-edit',
                     endpoint: '/images/edits',
@@ -257,11 +574,52 @@ test('runScenarioWorkflow approves the reference image before generating a new c
     }
   })
 
-  assert.equal(result.ok, true)
+  assert.equal(result.ok, false)
+  assert.match(result.verification.message, /missing required approved idle action/)
   assert.deepEqual(calls[0], ['approve', referenceImagePath])
   assert.equal(calls[1][0], 'generateNewCharacter')
+  assert.equal(calls[1][1].characterName, 'Golden Cartoon Cat')
+  assert.equal(calls[1][1].stylePrompt, 'Cartoon golden shaded cat pet.')
   assert.equal(calls[1][1].referenceImageToken, 'token-reference')
   assert.equal(calls[1][1].referenceImagePath, undefined)
+  assert.deepEqual(result.runRecord.anchorGenerationStages, [
+    {
+      stage: 'composite-reference-board',
+      ok: null,
+      referenceRole: 'canonical-reference',
+      referenceRoles: ['canonical-reference'],
+      timeoutMs: 0,
+      durationMs: 0,
+      model: '',
+      outputRelativePath: 'runs/run-new-character/inputs/anchors/composite-reference-board.png',
+      promptRelativePath: '',
+      error: ''
+    },
+    {
+      stage: 'character-anchor',
+      ok: true,
+      referenceRole: 'composite-reference-board',
+      referenceRoles: ['composite-reference-board'],
+      timeoutMs: 300000,
+      durationMs: 91,
+      model: 'gpt-image-2',
+      outputRelativePath: '',
+      promptRelativePath: '',
+      error: ''
+    }
+  ])
+  assert.deepEqual(result.runRecord.generationStages, [{
+    stage: 'final-image',
+    ok: false,
+    referenceRole: 'action-anchor',
+    referenceRoles: ['action-anchor'],
+    timeoutMs: 300000,
+    durationMs: 300000,
+    model: 'gpt-image-2',
+    outputRelativePath: '',
+    promptRelativePath: '',
+    error: 'context canceled'
+  }])
 })
 
 test('runCreatorWorkflowHostSmoke writes a structured report with injected scenario runner results', async () => {
@@ -373,7 +731,7 @@ test('runCreatorWorkflowHostSmoke writes a structured report with injected scena
   assert.equal(report.ok, true)
   assert.equal(report.schemaVersion, 1)
   assert.equal(report.evidenceType, 'creator-workflow-host-smoke')
-  assert.match(report.claimBoundary, /records evidence that the run-local canonical reference image was sent/i)
+  assert.match(report.claimBoundary, /requires complete provider-generated keyframe sprite-row evidence/i)
   assert.equal(report.scenarios.length, 2)
   assert.equal(report.scenarios[0].verification.ok, true)
   assert.equal(report.scenarios[1].verification.ok, true)

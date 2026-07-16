@@ -133,3 +133,47 @@ test('pet service emits action and event intents through the runtime event bus',
     ['pet:event', { type: 'status', message: 'working', ttlMs: 500, source: 'test' }]
   ])
 })
+
+test('pet service falls back unavailable action requests to approved idle', () => {
+  const events = []
+  const service = createPetService({
+    eventBus: {
+      emit: (eventName, payload) => events.push([eventName, payload])
+    },
+    settingsService: {
+      get: () => ({ scale: 1 })
+    },
+    actionService: {
+      getConfig: () => ({ defaultAction: 'idle', clickAction: 'idle', actions: [{ id: 'idle' }] }),
+      getAction: (id) => id === 'idle' ? { id: 'idle' } : null
+    }
+  })
+
+  assert.deepEqual(service.playAction({ actionId: 'waving', source: 'test' }), {
+    actionId: 'idle',
+    requestedActionId: 'waving',
+    fallback: true,
+    source: 'test'
+  })
+  assert.deepEqual(events, [[
+    'pet:action',
+    { actionId: 'idle', requestedActionId: 'waving', fallback: true, source: 'test' }
+  ]])
+})
+
+test('pet service rejects unavailable actions when approved idle is also absent', () => {
+  const service = createPetService({
+    settingsService: {
+      get: () => ({ scale: 1 })
+    },
+    actionService: {
+      getConfig: () => ({ defaultAction: '', clickAction: '', actions: [] }),
+      getAction: () => null
+    }
+  })
+
+  assert.throws(
+    () => service.playAction({ actionId: 'waving', source: 'test' }),
+    /Unknown action: waving/
+  )
+})

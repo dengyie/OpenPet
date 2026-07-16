@@ -7,6 +7,7 @@ const path = require('path')
 const { sanitizeLogText } = require('../src/main/services/log-safety')
 const { createBasicBehaviorPlugin } = require('../src/main/plugins/official/basic-behavior')
 const { getLegacyPetAnimations } = require('../src/main/pet-pack/loader')
+const { OFFICIAL_FULL_PET_ACTION_IDS } = require('../examples/plugins/creator-studio/lib/full-pet-row-contract')
 const { LEGACY_USER_DATA_DIR_NAME } = require('../src/main/user-data-path')
 const { syncBundledPlugins } = require('../src/main/services/bundled-plugin-sync-service')
 const { createActionImportService } = require('../src/main/services/action-import-service')
@@ -50,15 +51,35 @@ const usage = () => [
   '  --output-dir <dir>            Directory for smoke artifacts. Default: release/creator-workflow-host-smoke',
   '  --scenario <both|new-character|existing-action>',
   '                               Which real workflow scenarios to run. Default: both',
+  '  --new-character-name <text>   Character name for the new-character scenario.',
+  '  --new-character-style-prompt <text>',
+  '                               Style prompt for the new-character scenario.',
+  '  --existing-action-name <text> Action id/name for the existing-action scenario.',
+  '  --existing-action-prompt <text>',
+  '                               Motion prompt for the existing-action scenario.',
+  '  --provider-timeout-ms <ms>   Override image provider timeout only inside isolated smoke userData.',
   '  --json                        Print the final report as JSON.',
   '  --help',
   '',
   'Runs the real host-owned creatorWorkflowService in isolated userData/workspace sandboxes.',
-  'It validates provider generation plus import/apply handoff, but does not claim that the',
-  'uploaded reference image is already sent to the provider as a true multimodal condition.'
+  'It validates provider generation plus import/apply handoff. Canonical-frame actions',
+  'must record complete provider-generated keyframe sprite-row evidence; provider action',
+  'anchors alone are not acceptable deliverable action-completion evidence.'
 ].join('\n')
 
 const isObject = (value) => value && typeof value === 'object' && !Array.isArray(value)
+
+const parsePositiveInt = (value, label) => {
+  const number = Number(value)
+  if (!Number.isInteger(number) || number <= 0) throw new Error(`${label} must be a positive integer`)
+  return number
+}
+
+const normalizeOptionalPositiveInt = (value, label) => {
+  if (value == null || value === '') return 0
+  if (Number(value) === 0) return 0
+  return parsePositiveInt(value, label)
+}
 
 const defaultAppDataDir = ({ platform = process.platform, env = process.env, homedir = os.homedir } = {}) => {
   if (platform === 'darwin') return path.join(homedir(), 'Library', 'Application Support')
@@ -120,6 +141,11 @@ const parseArgs = (argv) => {
     referenceImagePath: '',
     outputDir: DEFAULT_OUTPUT_DIR,
     scenario: DEFAULT_SCENARIO,
+    newCharacterName: DEFAULT_NEW_CHARACTER_NAME,
+    newCharacterStylePrompt: DEFAULT_NEW_CHARACTER_STYLE_PROMPT,
+    existingActionName: DEFAULT_EXISTING_ACTION_NAME,
+    existingActionPrompt: DEFAULT_EXISTING_ACTION_PROMPT,
+    providerTimeoutMs: 0,
     json: false,
     help: false
   }
@@ -146,6 +172,21 @@ const parseArgs = (argv) => {
     } else if (arg === '--scenario') {
       options.scenario = readValue(index, arg)
       index += 1
+    } else if (arg === '--new-character-name') {
+      options.newCharacterName = readValue(index, arg)
+      index += 1
+    } else if (arg === '--new-character-style-prompt') {
+      options.newCharacterStylePrompt = readValue(index, arg)
+      index += 1
+    } else if (arg === '--existing-action-name') {
+      options.existingActionName = readValue(index, arg)
+      index += 1
+    } else if (arg === '--existing-action-prompt') {
+      options.existingActionPrompt = readValue(index, arg)
+      index += 1
+    } else if (arg === '--provider-timeout-ms') {
+      options.providerTimeoutMs = readValue(index, arg)
+      index += 1
     } else if (arg === '--json') {
       options.json = true
     } else {
@@ -160,42 +201,59 @@ const parseArgs = (argv) => {
     ? path.resolve(String(options.referenceImagePath || '').trim())
     : ''
   options.scenario = sanitizeScenarioName(options.scenario || DEFAULT_SCENARIO)
+  options.newCharacterName = String(options.newCharacterName || DEFAULT_NEW_CHARACTER_NAME).trim() || DEFAULT_NEW_CHARACTER_NAME
+  options.newCharacterStylePrompt = String(options.newCharacterStylePrompt || DEFAULT_NEW_CHARACTER_STYLE_PROMPT).trim() || DEFAULT_NEW_CHARACTER_STYLE_PROMPT
+  options.existingActionName = String(options.existingActionName || DEFAULT_EXISTING_ACTION_NAME).trim() || DEFAULT_EXISTING_ACTION_NAME
+  options.existingActionPrompt = String(options.existingActionPrompt || DEFAULT_EXISTING_ACTION_PROMPT).trim() || DEFAULT_EXISTING_ACTION_PROMPT
+  options.providerTimeoutMs = normalizeOptionalPositiveInt(options.providerTimeoutMs, 'Provider timeout MS')
   createScenarioList(options.scenario)
   return options
 }
 
-const prepareSeedSettings = (settings = {}) => ({
-  ...settings,
-  creator: {
-    ...(isObject(settings.creator) ? settings.creator : {}),
-    references: {}
-  },
-  petPacks: {
-    ...(isObject(settings.petPacks) ? settings.petPacks : {}),
-    activePackId: 'legacy-cat',
-    installed: isObject(settings.petPacks?.installed) ? settings.petPacks.installed : {}
-  },
-  plugins: {
-    ...(isObject(settings.plugins) ? settings.plugins : {}),
-    enabled: {
-      ...(isObject(settings.plugins?.enabled) ? settings.plugins.enabled : {}),
-      'official.basic-behavior': settings.plugins?.enabled?.['official.basic-behavior'] !== false,
-      [CREATOR_STUDIO_PLUGIN_ID]: true
+const prepareSeedSettings = (settings = {}, { providerTimeoutMs = 0 } = {}) => {
+  const normalizedProviderTimeoutMs = normalizeOptionalPositiveInt(providerTimeoutMs, 'Provider timeout MS')
+  return {
+    ...settings,
+    ...(normalizedProviderTimeoutMs ? {
+      models: {
+        ...(isObject(settings.models) ? settings.models : {}),
+        imageGeneration: {
+          ...(isObject(settings.models?.imageGeneration) ? settings.models.imageGeneration : {}),
+          timeoutMs: normalizedProviderTimeoutMs
+        }
+      }
+    } : {}),
+    creator: {
+      ...(isObject(settings.creator) ? settings.creator : {}),
+      references: {}
     },
-    nativeExecutionApproved: {
-      ...(isObject(settings.plugins?.nativeExecutionApproved) ? settings.plugins.nativeExecutionApproved : {}),
-      [CREATOR_STUDIO_PLUGIN_ID]: true
+    petPacks: {
+      ...(isObject(settings.petPacks) ? settings.petPacks : {}),
+      activePackId: 'legacy-cat',
+      installed: isObject(settings.petPacks?.installed) ? settings.petPacks.installed : {}
     },
-    config: isObject(settings.plugins?.config) ? settings.plugins.config : {},
-    storage: isObject(settings.plugins?.storage) ? settings.plugins.storage : {},
-    logs: []
-  },
-  localHttp: {
-    ...(isObject(settings.localHttp) ? settings.localHttp : {}),
-    enabled: false,
-    logs: []
+    plugins: {
+      ...(isObject(settings.plugins) ? settings.plugins : {}),
+      enabled: {
+        ...(isObject(settings.plugins?.enabled) ? settings.plugins.enabled : {}),
+        'official.basic-behavior': settings.plugins?.enabled?.['official.basic-behavior'] !== false,
+        [CREATOR_STUDIO_PLUGIN_ID]: true
+      },
+      nativeExecutionApproved: {
+        ...(isObject(settings.plugins?.nativeExecutionApproved) ? settings.plugins.nativeExecutionApproved : {}),
+        [CREATOR_STUDIO_PLUGIN_ID]: true
+      },
+      config: isObject(settings.plugins?.config) ? settings.plugins.config : {},
+      storage: isObject(settings.plugins?.storage) ? settings.plugins.storage : {},
+      logs: []
+    },
+    localHttp: {
+      ...(isObject(settings.localHttp) ? settings.localHttp : {}),
+      enabled: false,
+      logs: []
+    }
   }
-})
+}
 
 const resolveStoredReferenceImagePath = (settings = {}) => {
   const references = isObject(settings.creator?.references) ? settings.creator.references : {}
@@ -240,12 +298,13 @@ const resolveReferenceImagePath = ({
 
 const seedScenarioUserData = ({
   sourceUserDataDir,
-  targetUserDataDir
+  targetUserDataDir,
+  providerTimeoutMs = 0
 } = {}) => {
   ensureDir(targetUserDataDir)
   const sourceSettings = readJsonIfExists(path.join(sourceUserDataDir, 'settings.json'))
   const sourceSecrets = readJsonIfExists(path.join(sourceUserDataDir, 'secrets.json'))
-  const seededSettings = prepareSeedSettings(sourceSettings)
+  const seededSettings = prepareSeedSettings(sourceSettings, { providerTimeoutMs })
   const seededSecrets = isObject(sourceSecrets) ? sourceSecrets : { secrets: {} }
   writeJson(path.join(targetUserDataDir, 'settings.json'), seededSettings)
   writeJson(path.join(targetUserDataDir, 'secrets.json'), seededSecrets)
@@ -446,9 +505,19 @@ const readRunRecordSummary = ({ pluginDataDir, runId }) => {
   if (!pluginDataDir || !runId) return { runRecord: null, runRecordPath: '' }
   const runRecordPath = path.join(pluginDataDir, 'runs', runId, 'run.json')
   const runRecord = readJsonIfExists(runRecordPath)
-  const conditioning = isObject(runRecord?.artifacts?.generatedImage?.conditioning)
-    ? runRecord.artifacts.generatedImage.conditioning
+  const generatedImage = isObject(runRecord?.artifacts?.generatedImage)
+    ? runRecord.artifacts.generatedImage
+    : {}
+  const conditioning = isObject(generatedImage?.conditioning)
+    ? generatedImage.conditioning
     : null
+  const artReadiness = isObject(generatedImage?.artReadiness)
+    ? generatedImage.artReadiness
+    : {
+        level: 'technical-chain-ready',
+        approved: false,
+        reason: 'no-matching-human-art-approval'
+      }
   return {
     runRecordPath,
     runRecord: isObject(runRecord) ? {
@@ -460,6 +529,7 @@ const readRunRecordSummary = ({ pluginDataDir, runId }) => {
       reviewStatus: String(runRecord.reviewStatus || ''),
       error: sanitizeText(runRecord.error || '', 500),
       artifacts: isObject(runRecord.artifacts) ? Object.keys(runRecord.artifacts) : [],
+      artReadiness: sanitizeReportValue(artReadiness, { sessionDir: pluginDataDir }),
       conditioning: conditioning ? {
         mode: String(conditioning.mode || ''),
         endpoint: String(conditioning.endpoint || ''),
@@ -472,12 +542,14 @@ const readRunRecordSummary = ({ pluginDataDir, runId }) => {
               role: String(reference?.role || '')
             }))
           : []
-      } : null
+      } : null,
+      anchorGenerationStages: summarizeGenerationStages(generatedImage?.anchorGeneration?.stages),
+      generationStages: summarizeGenerationStages(generatedImage?.generationStages)
     } : null
   }
 }
 
-const verifyConditioningEvidence = ({ runRecord }) => {
+const verifyConditioningEvidence = ({ runRecord, allowedFailedActionIds = [] }) => {
   const conditioning = runRecord?.conditioning
   if (!conditioning) {
     return {
@@ -485,11 +557,14 @@ const verifyConditioningEvidence = ({ runRecord }) => {
       message: 'Run record is missing reference conditioning evidence'
     }
   }
-  if (conditioning.mode !== 'image-edit') {
-    return {
-      ok: false,
-      message: `Run conditioning mode is not image-edit: ${conditioning.mode || 'unknown'}`
-    }
+  const referencePaths = Array.isArray(conditioning.references)
+    ? conditioning.references.map((reference) => String(reference?.relativePath || '')).filter(Boolean)
+    : []
+  const allowedFailures = new Set((Array.isArray(allowedFailedActionIds) ? allowedFailedActionIds : []).map(String))
+  const failedStage = [...(runRecord?.anchorGenerationStages || []), ...(runRecord?.generationStages || [])]
+    .find((stage) => stage?.ok === false && !allowedFailures.has(String(stage?.actionId || '')))
+  if (failedStage) {
+    return { ok: false, message: `Provider generation stage failed: ${failedStage.stage || 'unknown'}` }
   }
   if ((Number(conditioning.referenceImageCount) || 0) <= 0) {
     return {
@@ -497,13 +572,66 @@ const verifyConditioningEvidence = ({ runRecord }) => {
       message: 'Run conditioning evidence did not record any reference images'
     }
   }
-  const referencePaths = Array.isArray(conditioning.references)
-    ? conditioning.references.map((reference) => String(reference?.relativePath || '')).filter(Boolean)
-    : []
   if (!referencePaths.length) {
     return {
       ok: false,
       message: 'Run conditioning evidence is missing reference relative paths'
+    }
+  }
+  if (conditioning.mode !== 'image-edit') {
+    if (conditioning.mode === 'provider-keyframe-sprite-row') {
+      const referenceRoles = Array.isArray(conditioning.references)
+        ? conditioning.references.map((reference) => String(reference?.role || '')).filter(Boolean)
+        : []
+      const finalKeyframeRowStage = Array.isArray(runRecord?.generationStages)
+        ? runRecord.generationStages.find((stage) => (
+          stage?.stage === 'final-image'
+          && stage?.ok === true
+          && Array.isArray(stage?.referenceRoles)
+          && stage.referenceRoles.includes('keyframe-action-reference-board')
+        ))
+        : null
+      if (!finalKeyframeRowStage) {
+        return {
+          ok: false,
+          message: 'Provider keyframe sprite row conditioning is missing a successful final-image stage'
+        }
+      }
+      if (!finalKeyframeRowStage.outputRelativePath) {
+        return { ok: false, message: 'Provider keyframe sprite row final stage is missing its output path' }
+      }
+      if (
+        Number(conditioning.referenceImageCount) !== 1 ||
+        referencePaths.length !== 1 ||
+        referenceRoles.length !== 1 ||
+        referenceRoles[0] !== 'keyframe-action-reference-board'
+      ) {
+        return {
+          ok: false,
+          message: 'Provider keyframe sprite row conditioning must record exactly one single conditioning board reference'
+        }
+      }
+      if (
+        !Array.isArray(finalKeyframeRowStage.referenceRoles) ||
+        finalKeyframeRowStage.referenceRoles.length !== 1 ||
+        finalKeyframeRowStage.referenceRoles[0] !== 'keyframe-action-reference-board'
+      ) {
+        return {
+          ok: false,
+          message: 'Provider keyframe sprite row final stage must use exactly one single conditioning board reference'
+        }
+      }
+      return {
+        ok: true,
+        message: `Provider keyframe sprite row recorded with a single conditioning board: ${referencePaths.join(', ')}`,
+        artifactPaths: {
+          referenceInput: referencePaths[0]
+        }
+      }
+    }
+    return {
+      ok: false,
+      message: `Run conditioning mode is not complete provider sprite-row evidence: ${conditioning.mode || 'unknown'}`
     }
   }
   return {
@@ -514,6 +642,45 @@ const verifyConditioningEvidence = ({ runRecord }) => {
     }
   }
 }
+
+const summarizeCandidateSelection = (candidateSelection = {}) => {
+  if (!isObject(candidateSelection)) return null
+  const candidateCount = Math.max(0, Number(candidateSelection.candidateCount) || 0)
+  const selectedCandidateId = sanitizeText(candidateSelection.selectedCandidateId || '', 160)
+  const selectedCandidateRelativePath = sanitizeText(candidateSelection.selectedCandidateRelativePath || '', 500)
+  if (candidateCount <= 0 && !selectedCandidateId && !selectedCandidateRelativePath) return null
+  return {
+    candidateCount,
+    selectedCandidateId,
+    selectedCandidateRelativePath,
+    selectedScore: Math.max(0, Number(candidateSelection.selectedScore) || 0),
+    acceptable: Boolean(candidateSelection.acceptable)
+  }
+}
+
+const summarizeGenerationStages = (stages = []) => (
+  Array.isArray(stages)
+    ? stages.map((stage) => ({
+      ...(stage?.actionId ? { actionId: String(stage.actionId) } : {}),
+      stage: String(stage?.stage || ''),
+      ok: Object.hasOwn(stage || {}, 'ok') ? Boolean(stage?.ok) : null,
+      referenceRole: String(stage?.referenceRole || ''),
+      referenceRoles: Array.isArray(stage?.referenceRoles)
+        ? stage.referenceRoles.map((role) => String(role || '')).filter(Boolean)
+        : [],
+      timeoutMs: Math.max(0, Number(stage?.timeoutMs) || 0),
+      durationMs: Math.max(0, Number(stage?.durationMs) || 0),
+      model: String(stage?.model || ''),
+      outputRelativePath: String(stage?.outputRelativePath || ''),
+      promptRelativePath: String(stage?.promptRelativePath || ''),
+      ...(stage?.adopted ? { adopted: true } : {}),
+      ...(summarizeCandidateSelection(stage?.candidateSelection)
+        ? { candidateSelection: summarizeCandidateSelection(stage.candidateSelection) }
+        : {}),
+      error: sanitizeText(stage?.error || '', 500)
+    }))
+    : []
+)
 
 const verifyExistingActionScenario = ({ result, workspaceRoot }) => {
   const actionId = String(result?.run?.importedActionId || result?.importedAction?.actionId || '').trim()
@@ -568,22 +735,103 @@ const verifyNewCharacterScenario = ({ result, userDataDir }) => {
   }
 }
 
+const verifyPreviewReadyNewCharacterScenario = ({ result }) => {
+  const missingOfficialActionIds = Array.isArray(result?.basicActions?.missingRequiredOfficialActionIds)
+    ? result.basicActions.missingRequiredOfficialActionIds.map((actionId) => String(actionId || '').trim()).filter(Boolean)
+    : []
+  if (result?.state !== 'preview-ready' || result?.code !== 'preview_ready') {
+    return {
+      ok: false,
+      message: `Workflow did not complete successfully: ${result?.state || 'unknown'}`
+    }
+  }
+  if (missingOfficialActionIds.length === 0) {
+    return {
+      ok: false,
+      message: 'Preview-ready full-pet output did not report missing official action rows'
+    }
+  }
+  return {
+    ok: true,
+    message: `Preview-only full-pet output is correctly gated until official rows are generated: ${missingOfficialActionIds.join(', ')}`,
+    artifactPaths: {}
+  }
+}
+
 const verifyScenarioResult = ({ scenario, result, workspaceRoot, userDataDir, runRecord }) => {
+  if (scenario === 'new-character' && result?.state === 'preview-ready') {
+    return {
+      ok: false,
+      message: 'New-character workflow stopped at preview-ready; complete provider-generated official action rows are required before this smoke can pass.'
+    }
+  }
   if (result?.state !== 'completed') {
     return {
       ok: false,
       message: `Workflow did not complete successfully: ${result?.state || 'unknown'}`
     }
   }
+  let availableActionIds = []
+  let omittedActionIds = []
+  if (scenario === 'new-character') {
+    availableActionIds = Array.isArray(result?.basicActions?.availableActionIds)
+      ? result.basicActions.availableActionIds.map(String).filter((actionId) => OFFICIAL_FULL_PET_ACTION_IDS.includes(actionId))
+      : (result?.basicActions?.realActionIds || []).map(String).filter((actionId) => OFFICIAL_FULL_PET_ACTION_IDS.includes(actionId))
+    omittedActionIds = OFFICIAL_FULL_PET_ACTION_IDS.filter((actionId) => !availableActionIds.includes(actionId))
+    if (!availableActionIds.includes('idle')) {
+      return { ok: false, message: 'Completed pet is missing required approved idle action' }
+    }
+    const generationStages = Array.isArray(runRecord?.generationStages) ? runRecord.generationStages : []
+    const oversizedReferenceStage = generationStages.find((stage) => (
+      Array.isArray(stage?.referenceRoles) && stage.referenceRoles.length > 1
+    ))
+    if (oversizedReferenceStage) {
+      return { ok: false, message: `Provider stage ${oversizedReferenceStage.stage || 'unknown'} used more than one reference image` }
+    }
+    if (generationStages.some((stage) => stage?.actionId === 'running-left')) {
+      return { ok: false, message: 'running-left must be derived by mirror and must not have a Provider stage' }
+    }
+    for (const actionId of availableActionIds.filter((candidate) => candidate !== 'running-left')) {
+      const stages = (runRecord?.generationStages || []).filter((stage) => stage.actionId === actionId)
+      for (const stageNames of [['action-start-keyframe', 'start-keyframe'], ['action-peak-keyframe', 'peak-keyframe'], ['final-image']]) {
+        const stage = stages.find((candidate) => stageNames.includes(candidate.stage) && candidate.ok === true)
+        const stageName = stageNames[0]
+        if (!stage) return { ok: false, message: `Official action ${actionId} is missing successful ${stageName} evidence` }
+        if (stageName === 'final-image' && !stage.outputRelativePath) {
+          return { ok: false, message: `Official action ${actionId} final-image evidence is missing its output path` }
+        }
+      }
+    }
+    if (availableActionIds.includes('running-left')) {
+      const mirrorQuality = result?.basicActions?.actionAvailability?.['running-left']?.quality ||
+        (result?.basicActions?.rows || []).find((row) => row?.actionId === 'running-left')?.quality
+      if (mirrorQuality !== 'approved-mirror') {
+        return { ok: false, message: 'Available running-left action is missing approved-mirror evidence' }
+      }
+    }
+  }
   const importVerification = scenario === 'existing-action'
     ? verifyExistingActionScenario({ result, workspaceRoot })
     : verifyNewCharacterScenario({ result, userDataDir })
   if (!importVerification.ok) return importVerification
-  const conditioningVerification = verifyConditioningEvidence({ runRecord })
+  const conditioningVerification = verifyConditioningEvidence({
+    runRecord,
+    allowedFailedActionIds: scenario === 'new-character' ? omittedActionIds : []
+  })
   if (!conditioningVerification.ok) return conditioningVerification
   return {
     ok: true,
-    message: `${importVerification.message}. ${conditioningVerification.message}.`,
+    technicalCompletion: true,
+    artisticApproval: false,
+    artReadiness: isObject(runRecord?.artReadiness)
+      ? runRecord.artReadiness
+      : {
+          level: 'technical-chain-ready',
+          approved: false,
+          reason: 'no-matching-human-art-approval'
+        },
+    claimBoundary: 'Technical completion and automated QA do not constitute human visual approval.',
+    message: `${importVerification.message}. ${conditioningVerification.message}.${scenario === 'new-character' ? ` Available actions: ${availableActionIds.join(', ')}. Omitted actions: ${omittedActionIds.join(', ') || 'none'}.` : ''}`,
     artifactPaths: {
       ...(isObject(importVerification.artifactPaths) ? importVerification.artifactPaths : {}),
       ...(isObject(conditioningVerification.artifactPaths) ? conditioningVerification.artifactPaths : {})
@@ -601,6 +849,16 @@ const summarizeVerification = (verification = {}, sessionDir) => {
   return {
     ok: Boolean(verification?.ok),
     message: sanitizeText(verification?.message || '', 500),
+    technicalCompletion: verification?.technicalCompletion === true,
+    artisticApproval: verification?.artisticApproval === true,
+    artReadiness: isObject(verification?.artReadiness)
+      ? sanitizeReportValue(verification.artReadiness, { sessionDir })
+      : {
+          level: 'technical-chain-ready',
+          approved: false,
+          reason: 'no-matching-human-art-approval'
+        },
+    claimBoundary: sanitizeText(verification?.claimBoundary || '', 240),
     artifactPaths
   }
 }
@@ -620,13 +878,18 @@ const runScenarioWorkflow = async ({
   repoRoot,
   sourceUserDataDir,
   referenceImagePath,
+  newCharacterName = DEFAULT_NEW_CHARACTER_NAME,
+  newCharacterStylePrompt = DEFAULT_NEW_CHARACTER_STYLE_PROMPT,
+  existingActionName = DEFAULT_EXISTING_ACTION_NAME,
+  existingActionPrompt = DEFAULT_EXISTING_ACTION_PROMPT,
+  providerTimeoutMs = 0,
   logLimit = DEFAULT_LOG_LIMIT,
   createSmokeRuntimeImpl = createSmokeRuntime
 } = {}) => {
   const userDataDir = path.join(scenarioDir, 'user-data')
   const workspaceRoot = path.join(scenarioDir, 'workspace')
   prepareScenarioWorkspace({ repoRoot, workspaceRoot })
-  const { seededSettings } = seedScenarioUserData({ sourceUserDataDir, targetUserDataDir: userDataDir })
+  const { seededSettings } = seedScenarioUserData({ sourceUserDataDir, targetUserDataDir: userDataDir, providerTimeoutMs })
   const runtime = createSmokeRuntimeImpl({ repoRoot, workspaceRoot, userDataDir })
   const seededProviderConfig = typeof runtime.imageGenerationModelService?.getConfig === 'function'
     ? runtime.imageGenerationModelService.getConfig()
@@ -638,20 +901,25 @@ const runScenarioWorkflow = async ({
     const referenceImageToken = approveScenarioReferenceImage({ runtime, referenceImagePath })
     const result = scenario === 'new-character'
       ? await runtime.creatorWorkflowService.generateNewCharacter({
-          characterName: DEFAULT_NEW_CHARACTER_NAME,
-          stylePrompt: DEFAULT_NEW_CHARACTER_STYLE_PROMPT,
+          characterName: newCharacterName,
+          stylePrompt: newCharacterStylePrompt,
           referenceImageToken
         })
       : await runtime.creatorWorkflowService.generateExistingAction({
-          actionName: DEFAULT_EXISTING_ACTION_NAME,
-          motionPrompt: DEFAULT_EXISTING_ACTION_PROMPT,
+          actionName: existingActionName,
+          motionPrompt: existingActionPrompt,
           referenceImageToken
         })
     const stateAfter = await runtime.creatorWorkflowService.getState()
     const pluginDataDir = runtime.pluginService.getPluginCreatorDataDir(CREATOR_STUDIO_PLUGIN_ID)
     const runId = String(result?.run?.runId || '').trim()
     const { runRecordPath, runRecord } = readRunRecordSummary({ pluginDataDir, runId })
-    const conditioningVerification = verifyConditioningEvidence({ runRecord })
+    const conditioningVerification = verifyConditioningEvidence({
+      runRecord,
+      allowedFailedActionIds: scenario === 'new-character'
+        ? (result?.basicActions?.omittedActionIds || [])
+        : []
+    })
     const verification = verifyScenarioResult({ scenario, result, workspaceRoot, userDataDir, runRecord })
     return {
       scenario,
@@ -730,6 +998,11 @@ const runCreatorWorkflowHostSmoke = async ({
   referenceImagePath = '',
   outputDir = DEFAULT_OUTPUT_DIR,
   scenario = DEFAULT_SCENARIO,
+  newCharacterName = DEFAULT_NEW_CHARACTER_NAME,
+  newCharacterStylePrompt = DEFAULT_NEW_CHARACTER_STYLE_PROMPT,
+  existingActionName = DEFAULT_EXISTING_ACTION_NAME,
+  existingActionPrompt = DEFAULT_EXISTING_ACTION_PROMPT,
+  providerTimeoutMs = 0,
   now = () => new Date(),
   runScenarioImpl = runScenarioWorkflow,
   repoRoot = path.join(__dirname, '..')
@@ -754,7 +1027,12 @@ const runCreatorWorkflowHostSmoke = async ({
         scenarioDir,
         repoRoot,
         sourceUserDataDir,
-        referenceImagePath: resolvedReferenceImagePath
+        referenceImagePath: resolvedReferenceImagePath,
+        newCharacterName,
+        newCharacterStylePrompt,
+        existingActionName,
+        existingActionPrompt,
+        providerTimeoutMs
       })
       scenarioResults.push(scenarioResult)
       if (!scenarioResult.ok) {
@@ -795,7 +1073,7 @@ const runCreatorWorkflowHostSmoke = async ({
     schemaVersion: 1,
     evidenceType: 'creator-workflow-host-smoke',
     generatedAt: now().toISOString(),
-    claimBoundary: 'Validates the real host-owned creator workflow through provider generation plus import/apply handoff, and records evidence that the run-local canonical reference image was sent into the provider request as an image-edit conditioning input. It does not guarantee the provider visually obeyed that conditioning.',
+    claimBoundary: 'Validates the real host-owned creator workflow through provider generation plus import/apply handoff, and requires complete provider-generated keyframe sprite-row evidence for canonical-frame action completion. Provider action anchors alone are not acceptable deliverable action-completion evidence; this smoke still does not guarantee the provider visually obeyed that conditioning.',
     sessionId: sessionPaths.sessionId,
     sessionDir: createSafeProjectPath(sessionPaths.sessionDir, `${DEFAULT_SESSION_DIR_LABEL}/${sessionPaths.sessionId}`),
     reportPath: createSafeSessionPath({
@@ -804,6 +1082,14 @@ const runCreatorWorkflowHostSmoke = async ({
       fallback: 'creator-workflow-host-smoke-report.json'
     }),
     sourceUserDataDir: DEFAULT_SOURCE_USER_DATA_LABEL,
+    request: sanitizeReportValue({
+      scenario,
+      newCharacterName,
+      newCharacterStylePrompt,
+      existingActionName,
+      existingActionPrompt,
+      providerTimeoutMs
+    }, { sessionDir: sessionPaths.sessionDir }),
     referenceImagePath: createSafeProjectPath(
       path.resolve(resolvedReferenceImagePath),
       path.basename(path.resolve(resolvedReferenceImagePath)) || DEFAULT_REFERENCE_IMAGE_LABEL
@@ -827,11 +1113,19 @@ const main = async () => {
     sourceUserDataDir: options.sourceUserDataDir,
     referenceImagePath: options.referenceImagePath,
     outputDir: options.outputDir,
-    scenario: options.scenario
+    scenario: options.scenario,
+    newCharacterName: options.newCharacterName,
+    newCharacterStylePrompt: options.newCharacterStylePrompt,
+    existingActionName: options.existingActionName,
+    existingActionPrompt: options.existingActionPrompt,
+    providerTimeoutMs: options.providerTimeoutMs
   })
 
   if (options.json) {
     console.log(JSON.stringify(report, null, 2))
+    if (report.errors.length) {
+      process.exitCode = 1
+    }
   } else {
     console.log(`creator workflow host smoke: ${report.ok ? 'ok' : 'failed'}`)
     console.log(`report: ${report.reportPath}`)
@@ -860,8 +1154,10 @@ module.exports = {
   prepareSeedSettings,
   resolveReferenceImagePath,
   resolveImportedPetRoot,
+  verifyConditioningEvidence,
   verifyNewCharacterScenario,
   verifyScenarioResult,
+  summarizeGenerationStages,
   approveScenarioReferenceImage,
   runScenarioWorkflow,
   runCreatorWorkflowHostSmoke

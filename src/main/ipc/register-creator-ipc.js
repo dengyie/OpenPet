@@ -48,6 +48,13 @@ const registerCreatorIpc = ({
     motionPrompt: payload?.motionPrompt,
     referenceImageToken: payload?.referenceImageToken
   }))
+  ipcMainService.handle(IPC.CREATOR_RETRY_ACTION, (_event, payload) => requireService().retryFullPetAction({
+    runId: payload?.runId,
+    actionId: payload?.actionId
+  }))
+  ipcMainService.handle(IPC.CREATOR_RETRY_IDENTITY, (_event, payload) => requireService().retryFullPetIdentity({
+    runId: payload?.runId
+  }))
   ipcMainService.handle(IPC.CREATOR_GET_LAST_RUN, () => requireService().getLastRun())
 }
 

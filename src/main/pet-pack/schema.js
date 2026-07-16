@@ -214,6 +214,20 @@ const normalizePetPackManifest = (manifest) => {
     clickAction,
     actions
   }
+  for (const field of ['requiredActionIds', 'availableActionIds', 'omittedActionIds']) {
+    if (Array.isArray(manifest[field])) {
+      normalized[field] = [...new Set(manifest[field].map((value) => optionalString(value)).filter(Boolean))]
+    }
+  }
+  if (manifest.actionAvailability && typeof manifest.actionAvailability === 'object' && !Array.isArray(manifest.actionAvailability)) {
+    normalized.actionAvailability = Object.fromEntries(Object.entries(manifest.actionAvailability)
+      .filter(([actionId, value]) => actionId && value && typeof value === 'object' && !Array.isArray(value))
+      .map(([actionId, value]) => [actionId, {
+        available: value.available === true,
+        ...(optionalString(value.quality) ? { quality: optionalString(value.quality) } : {}),
+        ...(optionalString(value.reason) ? { reason: optionalString(value.reason).slice(0, 160) } : {})
+      }]))
+  }
   if (Array.isArray(manifest.triggerProposalInbox)) {
     normalized.triggerProposalInbox = manifest.triggerProposalInbox.map((proposal) => ({ ...proposal }))
   }

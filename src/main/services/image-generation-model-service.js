@@ -29,6 +29,9 @@ const DEFAULT_CONFIG = {
 }
 
 const PROVIDER_GENERATION_TIMEOUT_MS = 120000
+const DEFAULT_GPT_IMAGE_2_QUALITY = 'high'
+const REQUESTED_PROVIDER_OUTPUT_COUNT = 1
+const VERIFIED_CREATOR_WORKFLOW_IMAGE_MODELS = Object.freeze(['gpt-image-2'])
 
 const isPlainObject = (value) => value && typeof value === 'object' && !Array.isArray(value)
 
@@ -183,9 +186,25 @@ const isAbortError = (error) => (
   error?.code === 'ABORT_ERR'
 )
 
+const getSafeTransportCauseCode = (error) => String(
+  error?.cause?.code || error?.code || ''
+).replace(/[^A-Za-z0-9._-]/g, '').slice(0, 80)
+
 const normalizeTimeoutMs = (value, fallback) => {
   const numeric = Number(value)
   return Number.isFinite(numeric) && numeric > 0 ? numeric : fallback
+}
+
+const normalizeProviderQuality = (value, fallback = '') => {
+  const normalized = String(value || '').trim().toLowerCase()
+  if (['low', 'medium', 'high', 'auto'].includes(normalized)) return normalized
+  return fallback
+}
+
+const getProviderImageQuality = ({ model, constraints = {} }) => {
+  const explicit = normalizeProviderQuality(constraints.quality)
+  if (explicit) return explicit
+  return model === 'gpt-image-2' ? DEFAULT_GPT_IMAGE_2_QUALITY : ''
 }
 
 const fetchWithTimeout = async ({
@@ -243,6 +262,37 @@ const getUrlHost = (value) => {
   }
 }
 
+const sanitizeModelId = (value) => String(value || '')
+  .replace(/[\u0000-\u001F\u007F]/g, '')
+  .trim()
+
+const isVerifiedCreatorWorkflowImageModel = (value) => VERIFIED_CREATOR_WORKFLOW_IMAGE_MODELS
+  .includes(sanitizeModelId(value))
+
+const createCreatorWorkflowModelPolicy = ({ config = {}, storedState = {} }) => {
+  const catalog = getScopedProviderModelCatalog({
+    capability: 'image',
+    provider: config.provider,
+    baseUrl: config.baseUrl,
+    catalog: storedState.modelCatalog
+  })
+  const discoveredModels = Array.isArray(catalog?.models)
+    ? uniqueModelIds(catalog.models.map(sanitizeModelId).filter(Boolean))
+    : []
+  const preferredModel = sanitizeModelId(config.model)
+  const verifiedModels = uniqueModelIds([
+    ...(isVerifiedCreatorWorkflowImageModel(preferredModel) ? [preferredModel] : []),
+    ...discoveredModels.filter(isVerifiedCreatorWorkflowImageModel)
+  ])
+  return {
+    evidenceScope: 'creator-one-click-default',
+    preferredModel,
+    verifiedModels,
+    fallbackModels: verifiedModels.filter((modelId) => modelId !== preferredModel),
+    discoveredModels,
+    preferredModelVerified: isVerifiedCreatorWorkflowImageModel(preferredModel)
+  }
+}
 const extractProviderBusinessError = (body) => {
   if (!isPlainObject(body)) return ''
   if (Array.isArray(body.data)) return ''
@@ -279,24 +329,92 @@ const createSafeReferenceRelativePath = (value) => {
   return normalized
 }
 
-const normalizeReferenceImages = (referenceImages = []) => {
-  if (!Array.isArray(referenceImages)) return []
+const createReferenceContractError = (code, message) => {
+  const error = new Error(message)
+  error.code = code
+  return error
+}
+
+const assertExactlyOneReferenceImage = (referenceImages) => {
+  if (!Array.isArray(referenceImages) || referenceImages.length === 0) {
+    throw createReferenceContractError(
+      'reference_image_required',
+      'Image generation requires exactly one reference image'
+    )
+  }
+  if (referenceImages.length !== 1) {
+    throw createReferenceContractError(
+      'reference_image_count_invalid',
+      'Image generation requires exactly one reference image; compose multiple sources into one local reference image'
+    )
+  }
+}
+
+const normalizeReferenceImages = (referenceImages = [], { dataDir } = {}) => {
+  assertExactlyOneReferenceImage(referenceImages)
+  const rawDataDir = String(dataDir || '').trim()
+  if (!rawDataDir) {
+    throw createReferenceContractError(
+      'reference_image_unusable',
+      'Reference image data directory is unavailable'
+    )
+  }
+  const root = path.resolve(rawDataDir)
+  if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
+    throw createReferenceContractError(
+      'reference_image_unusable',
+      'Reference image data directory is unavailable'
+    )
+  }
+  const realRoot = fs.realpathSync.native(root)
   return referenceImages
     .map((entry, index) => {
-      if (!entry || typeof entry !== 'object') return null
-      const sourcePath = path.resolve(String(entry.path || '').trim())
-      if (!sourcePath || !fs.existsSync(sourcePath)) {
-        throw new Error(`Reference image ${index + 1} does not exist`)
+      if (!entry || typeof entry !== 'object') {
+        throw createReferenceContractError(
+          'reference_image_invalid',
+          `Reference image ${index + 1} must be an object`
+        )
+      }
+      const rawSourcePath = String(entry.path || '').trim()
+      if (!rawSourcePath) {
+        throw createReferenceContractError(
+          'reference_image_invalid',
+          `Reference image ${index + 1} path is required`
+        )
+      }
+      const sourcePath = path.resolve(rawSourcePath)
+      if (!fs.existsSync(sourcePath)) {
+        throw createReferenceContractError(
+          'reference_image_unusable',
+          `Reference image ${index + 1} does not exist`
+        )
+      }
+      if (fs.lstatSync(sourcePath).isSymbolicLink()) {
+        throw createReferenceContractError(
+          'reference_image_unusable',
+          `Reference image ${index + 1} must not be a symbolic link`
+        )
       }
       const stat = fs.statSync(sourcePath)
       if (!stat.isFile()) {
-        throw new Error(`Reference image ${index + 1} must be a file`)
+        throw createReferenceContractError(
+          'reference_image_unusable',
+          `Reference image ${index + 1} must be a regular file`
+        )
+      }
+      const realSourcePath = fs.realpathSync.native(sourcePath)
+      const relativeToRoot = path.relative(realRoot, realSourcePath)
+      if (!relativeToRoot || relativeToRoot.startsWith('..') || path.isAbsolute(relativeToRoot)) {
+        throw createReferenceContractError(
+          'reference_image_unusable',
+          `Reference image ${index + 1} must stay inside the allowed data directory`
+        )
       }
       const fileName = String(entry.fileName || path.basename(sourcePath) || `reference-${index + 1}.png`).trim() || `reference-${index + 1}.png`
       const mimeType = String(entry.mimeType || getImageMimeType(sourcePath)).trim() || 'image/png'
       const bytes = fs.readFileSync(sourcePath)
       return {
-        path: sourcePath,
+        path: realSourcePath,
         fileName,
         mimeType,
         byteLength: bytes.length,
@@ -307,20 +425,6 @@ const normalizeReferenceImages = (referenceImages = []) => {
         bytes
       }
     })
-    .filter(Boolean)
-}
-
-const buildProviderGenerationPayload = ({ model, prompt, constraints }) => {
-  const payload = {
-    model,
-    prompt,
-    size: `${constraints.width}x${constraints.height}`
-  }
-  if (model !== 'gpt-image-2') {
-    payload.background = constraints.transparent ? 'transparent' : 'white'
-    payload.response_format = 'b64_json'
-  }
-  return payload
 }
 
 const createMultipartBoundary = () => `----OpenPetFormBoundary${crypto.randomBytes(12).toString('hex')}`
@@ -352,15 +456,16 @@ const appendMultipartFilePart = (buffers, boundary, name, referenceImage) => {
 }
 
 const buildProviderEditMultipartRequest = ({ model, prompt, constraints, referenceImages = [] }) => {
+  assertExactlyOneReferenceImage(referenceImages)
   const boundary = createMultipartBoundary()
   const buffers = []
-  const imageField = referenceImages.length > 1 ? 'image[]' : 'image'
-  for (const referenceImage of referenceImages) {
-    appendMultipartFilePart(buffers, boundary, imageField, referenceImage)
-  }
+  const quality = getProviderImageQuality({ model, constraints })
+  appendMultipartFilePart(buffers, boundary, 'image', referenceImages[0])
   appendMultipartTextPart(buffers, boundary, 'model', model)
   appendMultipartTextPart(buffers, boundary, 'prompt', prompt)
   appendMultipartTextPart(buffers, boundary, 'size', `${constraints.width}x${constraints.height}`)
+  appendMultipartTextPart(buffers, boundary, 'n', REQUESTED_PROVIDER_OUTPUT_COUNT)
+  if (quality) appendMultipartTextPart(buffers, boundary, 'quality', quality)
   if (model !== 'gpt-image-2') {
     appendMultipartTextPart(buffers, boundary, 'background', constraints.transparent ? 'transparent' : 'white')
     appendMultipartTextPart(buffers, boundary, 'response_format', 'b64_json')
@@ -381,17 +486,40 @@ const getProviderGenerationBackgroundMode = ({ model, constraints }) => {
   return constraints.transparent ? 'transparent' : 'white'
 }
 
+const normalizePromptCompilerEvidence = (value = {}) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const taskType = String(value.taskType || '').trim()
+  const stage = String(value.stage || '').trim()
+  const aspectRatio = String(value.aspectRatio || '').trim()
+  return {
+    promptCompilerVersion: Math.max(0, Number(value.promptCompilerVersion || value.version) || 0),
+    taskType: /^[a-z][a-z-]{0,79}$/.test(taskType) ? taskType : '',
+    stage: /^[a-z][a-z-]{0,79}$/.test(stage) ? stage : '',
+    width: Math.max(0, Number(value.width) || 0),
+    height: Math.max(0, Number(value.height) || 0),
+    aspectRatio: /^\d+:\d+$/.test(aspectRatio) ? aspectRatio : '',
+    referenceImageCount: Math.max(0, Number(value.referenceImageCount) || 0),
+    requestedOutputCount: Math.max(0, Number(value.requestedOutputCount) || 0),
+    promptSafety: String(value.promptSafety || '').trim()
+  }
+}
+
 const createConditioningSummary = ({
   endpoint,
   referenceImages = [],
   constraints,
-  model
+  model,
+  promptCompiler = null
 }) => ({
-  mode: referenceImages.length > 0 ? 'image-edit' : 'text-to-image',
+  mode: 'image-edit',
   endpoint,
   referenceImageCount: referenceImages.length,
+  multipartImageField: 'image',
+  requestedOutputCount: REQUESTED_PROVIDER_OUTPUT_COUNT,
   requestedTransparent: Boolean(constraints?.transparent),
   size: `${constraints?.width || 0}x${constraints?.height || 0}`,
+  quality: getProviderImageQuality({ model, constraints }),
+  ...(promptCompiler ? { promptCompiler } : {}),
   references: referenceImages.map((referenceImage) => ({
     fileName: referenceImage.fileName,
     mimeType: referenceImage.mimeType,
@@ -564,7 +692,8 @@ const createImageGenerationModelService = ({
       hasApiKey: Boolean(secretValue),
       apiKeyPreview: maskSecret(secretValue),
       apiKeyLabel: 'Image API Key',
-      modelCatalog: getModelCatalog(config, storedState)
+      modelCatalog: getModelCatalog(config, storedState),
+      creatorWorkflowModelPolicy: createCreatorWorkflowModelPolicy({ config, storedState })
     }
   }
 
@@ -988,7 +1117,8 @@ const createImageGenerationModelService = ({
     }
   }
 
-  const generateProviderImage = async ({ config, prompt, targetDir, relativeDir, constraints, requestId, timeoutMs: timeoutOverrideMs, referenceImages = [] }) => {
+  const generateProviderImage = async ({ config, prompt, promptCompiler = null, targetDir, relativeDir, constraints, requestId, timeoutMs: timeoutOverrideMs, referenceImages = [] }) => {
+    assertExactlyOneReferenceImage(referenceImages)
     const runtimeConfig = resolveImageRuntimeConfig(config)
     const apiKey = secretService.getSecretValue(runtimeConfig.apiKeyRef)
     if (!apiKey) throw new Error('Image generation API key is missing')
@@ -996,13 +1126,15 @@ const createImageGenerationModelService = ({
     const providerStartMs = nowMs()
     const timeoutMs = normalizeTimeoutMs(timeoutOverrideMs, getProviderTimeoutMs(runtimeConfig))
     const backgroundMode = getProviderGenerationBackgroundMode({ model: runtimeConfig.model, constraints })
-    const normalizedReferenceImages = normalizeReferenceImages(referenceImages)
-    const endpoint = normalizedReferenceImages.length > 0 ? '/images/edits' : '/images/generations'
+    const normalizedReferenceImages = referenceImages
+    const endpoint = '/images/edits'
+    const quality = getProviderImageQuality({ model: runtimeConfig.model, constraints })
     const conditioning = createConditioningSummary({
       endpoint,
       referenceImages: normalizedReferenceImages,
       constraints,
-      model: runtimeConfig.model
+      model: runtimeConfig.model,
+      promptCompiler
     })
     recordLog({
       level: 'info',
@@ -1017,6 +1149,7 @@ const createImageGenerationModelService = ({
           requestId,
           outcome: 'started'
         }),
+        ...(promptCompiler || {}),
         requestId,
         provider: runtimeConfig.provider,
         model: runtimeConfig.model,
@@ -1025,39 +1158,29 @@ const createImageGenerationModelService = ({
         height: constraints.height,
         requestedTransparent: Boolean(constraints.transparent),
         backgroundMode,
+        quality,
         endpoint,
         requestMode: conditioning.mode,
         referenceImageCount: normalizedReferenceImages.length,
+        multipartImageField: 'image',
+        requestedOutputCount: REQUESTED_PROVIDER_OUTPUT_COUNT,
         timeoutMs
       }
     })
     let response
     let responseBody = {}
     try {
-      const multipartRequest = normalizedReferenceImages.length > 0
-        ? buildProviderEditMultipartRequest({
-            model: runtimeConfig.model,
-            prompt,
-            constraints,
-            referenceImages: normalizedReferenceImages
-          })
-        : null
-      const requestBody = multipartRequest
-        ? multipartRequest.body
-        : JSON.stringify(buildProviderGenerationPayload({
-            model: runtimeConfig.model,
-            prompt,
-            constraints
-          }))
-      const headers = multipartRequest
-        ? {
-            Authorization: `Bearer ${apiKey}`,
-            ...multipartRequest.headers
-          }
-        : {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
-          }
+      const multipartRequest = buildProviderEditMultipartRequest({
+        model: runtimeConfig.model,
+        prompt,
+        constraints,
+        referenceImages: normalizedReferenceImages
+      })
+      const requestBody = multipartRequest.body
+      const headers = {
+        Authorization: `Bearer ${apiKey}`,
+        ...multipartRequest.headers
+      }
       const providerResponse = await fetchWithTimeout({
         fetchImpl,
         url: `${baseUrl}${endpoint}`,
@@ -1102,6 +1225,7 @@ const createImageGenerationModelService = ({
           referenceImageCount: normalizedReferenceImages.length,
           timeoutMs,
           errorCode: isTimeout ? 'provider_timeout' : 'provider_request_error',
+          errorCauseCode: getSafeTransportCauseCode(error),
           errorMessage: sanitizeLogText(error?.message || error, { maxChars: 240 })
         }
       })
@@ -1292,7 +1416,6 @@ const createImageGenerationModelService = ({
 
   const generateImage = async (request = {}) => {
     const config = getStoredConfig()
-    const requestId = idFactory()
     const ownerFieldOverrides = findOwnerFieldOverrides(request, {
       topLevel: ['provider', 'baseUrl', 'apiKeyRef', 'model']
     })
@@ -1317,11 +1440,19 @@ const createImageGenerationModelService = ({
     }
     const {
       prompt,
+      promptCompiler,
       output,
       constraints,
       timeoutMs,
       referenceImages = []
     } = request
+    assertExactlyOneReferenceImage(referenceImages)
+    const normalizedReferenceImages = normalizeReferenceImages(referenceImages, {
+      dataDir: output?.dataDir
+    })
+    assertExactlyOneReferenceImage(normalizedReferenceImages)
+    const normalizedPromptCompiler = normalizePromptCompilerEvidence(promptCompiler)
+    const requestId = idFactory()
     const startedMs = nowMs()
     const { relativeDir, targetDir } = ensureInsideDataDir({
       dataDir: output?.dataDir,
@@ -1341,13 +1472,16 @@ const createImageGenerationModelService = ({
           requestId,
           outcome: 'started'
         }),
+        ...(normalizedPromptCompiler || {}),
         requestId,
         provider: config.provider,
         model: config.model,
         width: constraints?.width,
         height: constraints?.height,
         requestedTransparent: Boolean(constraints?.transparent),
-        referenceImageCount: Array.isArray(referenceImages) ? referenceImages.length : 0
+        referenceImageCount: normalizedReferenceImages.length,
+        multipartImageField: 'image',
+        requestedOutputCount: REQUESTED_PROVIDER_OUTPUT_COUNT
       }
     })
 
@@ -1357,12 +1491,13 @@ const createImageGenerationModelService = ({
       const result = await generateProviderImage({
         config,
         prompt,
+        promptCompiler: normalizedPromptCompiler,
         targetDir,
         relativeDir,
         constraints,
         requestId,
         timeoutMs,
-        referenceImages
+        referenceImages: normalizedReferenceImages
       })
       recordLog({
         level: 'info',
@@ -1425,5 +1560,8 @@ const createImageGenerationModelService = ({
 
 module.exports = {
   DEFAULT_IMAGE_GENERATION_MODEL_CONFIG: DEFAULT_CONFIG,
+  VERIFIED_CREATOR_WORKFLOW_IMAGE_MODELS,
+  createCreatorWorkflowModelPolicy,
+  isVerifiedCreatorWorkflowImageModel,
   createImageGenerationModelService
 }

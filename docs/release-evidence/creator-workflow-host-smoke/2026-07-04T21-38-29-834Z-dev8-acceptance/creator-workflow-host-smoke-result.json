@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "generatedAt": "2026-07-04T21:48:46.512Z",
+  "evidenceType": "creator-workflow-host-smoke",
+  "source": "scripts/create-creator-workflow-host-smoke-archive.js",
+  "claimBoundary": "Validates the real host-owned creator workflow through provider generation plus import/apply handoff, and records evidence that the run-local canonical reference image was sent into the provider request as an image-edit conditioning input. It does not guarantee provider art quality or visual fidelity.",
+  "archive": {
+    "sessionId": "2026-07-04T21-38-29-834Z",
+    "archiveDir": "docs/release-evidence/creator-workflow-host-smoke/2026-07-04T21-38-29-834Z-dev8-acceptance",
+    "outputPath": "docs/release-evidence/creator-workflow-host-smoke/2026-07-04T21-38-29-834Z-dev8-acceptance/creator-workflow-host-smoke-result.json"
+  },
+  "sourceSummary": {
+    "sessionDir": "release/creator-workflow-host-smoke/2026-07-04T21-38-29-834Z",
+    "reportPath": "release/creator-workflow-host-smoke/2026-07-04T21-38-29-834Z/creator-workflow-host-smoke-report.json"
+  },
+  "referenceImage": {
+    "fileName": "正面.png",
+    "path": "[redacted-local-reference]/正面.png"
+  },
+  "scenarios": [
+    {
+      "scenario": "new-character",
+      "ok": true,
+      "durationMs": 114453,
+      "workflow": {
+        "state": "completed",
+        "code": "pet_imported",
+        "message": "角色 smoke-mango-cat 已生成、导入并激活",
+        "mode": "full-pet",
+        "runId": "2026-07-04-smoke-mango-cat",
+        "importedActionId": "",
+        "importedPackId": "smoke-mango-cat",
+        "activatedPackId": "smoke-mango-cat"
+      },
+      "provider": {
+        "ready": true,
+        "code": "provider_healthy",
+        "provider": "openai-compatible",
+        "model": "gpt-image-2"
+      },
+      "verification": {
+        "ok": true,
+        "message": "Imported pet pack smoke-mango-cat exists in isolated userData. Reference conditioning recorded 1 image input(s) through /images/edits."
+      },
+      "conditioning": {
+        "mode": "image-edit",
+        "endpoint": "/images/edits",
+        "referenceImageCount": 1,
+        "referenceFileNames": [
+          "canonical-reference.png"
+        ]
+      },
+      "basicActions": {
+        "requiredRealActionIds": [
+          "idle",
+          "waving"
+        ],
+        "realActionIds": [
+          "idle",
+          "waving"
+        ],
+        "fallbackActionIds": [
+          "running-right",
+          "running-left",
+          "jumping",
+          "failed",
+          "waiting",
+          "running",
+          "review"
+        ],
+        "missingRequiredActionIds": []
+      },
+      "clickActionChange": null
+    },
+    {
+      "scenario": "existing-action",
+      "ok": true,
+      "durationMs": 92198,
+      "workflow": {
+        "state": "completed",
+        "code": "action_imported",
+        "message": "动作 smoke-wave 已生成、导入并绑定到 clickAction",
+        "mode": "single-action",
+        "runId": "2026-07-04-legacy-editable-host",
+        "importedActionId": "smoke-wave",
+        "importedPackId": "",
+        "activatedPackId": ""
+      },
+      "provider": {
+        "ready": true,
+        "code": "provider_healthy",
+        "provider": "openai-compatible",
+        "model": "gpt-image-2"
+      },
+      "verification": {
+        "ok": true,
+        "message": "Imported action smoke-wave exists in isolated editable workspace. Reference conditioning recorded 1 image input(s) through /images/edits."
+      },
+      "conditioning": {
+        "mode": "image-edit",
+        "endpoint": "/images/edits",
+        "referenceImageCount": 1,
+        "referenceFileNames": [
+          "canonical-reference.png"
+        ]
+      },
+      "basicActions": null,
+      "clickActionChange": {
+        "previousActionId": "eat_no_bg",
+        "currentActionId": "smoke-wave",
+        "importedActionId": "smoke-wave",
+        "canRestore": true
+      }
+    }
+  ],
+  "warnings": [
+    "This archive proves the technical host-owned one-click chain and reference-conditioning evidence only.",
+    "Human review is still required for art quality and for deciding whether a branch acceptance run is sufficient to promote broader support claims."
+  ]
+}

@@ -43,6 +43,8 @@ export interface CreatorPaneProps {
   onGenerateExistingAction: () => void | Promise<void>
   onPreviewResult: () => void | Promise<void>
   onRestoreClickAction: () => void | Promise<void>
+  onRetryFullPetAction: (actionId: string) => void | Promise<void>
+  onRetryFullPetIdentity: () => void | Promise<void>
   onOpenCreatorStudioDetails: () => void | Promise<void>
 }
 
@@ -69,34 +71,46 @@ const formatAttemptStatus = (value: string) => {
 
 const ResultCard = ({
   result,
+  running,
   previewing,
   dashboardAvailable,
   openingDashboard,
   onPreviewResult,
   onRestoreClickAction,
+  onRetryFullPetAction,
+  onRetryFullPetIdentity,
   onOpenCreatorStudioDetails
 }: {
   result: CreatorWorkflowResult
+  running: boolean
   previewing: boolean
   dashboardAvailable: boolean
   openingDashboard: boolean
   onPreviewResult: () => void | Promise<void>
   onRestoreClickAction: () => void | Promise<void>
+  onRetryFullPetAction: (actionId: string) => void | Promise<void>
+  onRetryFullPetIdentity: () => void | Promise<void>
   onOpenCreatorStudioDetails: () => void | Promise<void>
 }) => {
-  const tone = result.state === 'completed'
+  const tone = ['completed', 'review-required'].includes(result.state)
     ? 'ok'
     : result.state === 'generating'
       ? ''
       : 'error'
   const showAdvanced = dashboardAvailable && Boolean(result.run?.runId)
   const diagnostics = result.diagnostics || null
+  const hatchPetAgent = diagnostics?.hatchPetAgent || null
   const clickActionChange = result.clickActionChange || null
   const basicActions = result.basicActions || null
   const conditioning = diagnostics?.conditioning || null
   const conditioningReferences = conditioning?.referenceFileNames?.length
     ? conditioning.referenceFileNames.join(', ')
     : 'none'
+  const canRepairFullPet = result.run?.mode === 'full-pet' &&
+    ['review-required', 'preview-ready'].includes(String(result.state))
+  const repairableActionIds = canRepairFullPet
+    ? (basicActions?.omittedActionIds || basicActions?.missingRequiredOfficialActionIds || []).filter((actionId) => actionId !== 'running-left')
+    : []
 
   return (
     <div className={`provider-feedback ${tone}`.trim()} data-testid="creator-result">
@@ -127,9 +141,12 @@ const ResultCard = ({
       ) : null}
       {basicActions ? (
         <div className="creator-result-grid">
-          <span><strong>真实基础动作</strong> {basicActions.realActionIds.length ? basicActions.realActionIds.join(', ') : 'none'}</span>
-          <span><strong>复用基础图动作</strong> {basicActions.fallbackActionIds.length ? basicActions.fallbackActionIds.join(', ') : 'none'}</span>
+          <span><strong>必需动作</strong> {basicActions.requiredActionIds?.length ? basicActions.requiredActionIds.join(', ') : 'idle'}</span>
+          <span><strong>可用动作</strong> {basicActions.availableActionIds?.length ? basicActions.availableActionIds.join(', ') : 'none'}</span>
+          <span><strong>可选省略</strong> {basicActions.omittedActionIds?.length ? basicActions.omittedActionIds.join(', ') : 'none'}</span>
+          <span><strong>预览复用动作</strong> {basicActions.previewFallbackActionIds?.length ? basicActions.previewFallbackActionIds.join(', ') : (basicActions.fallbackActionIds.length ? basicActions.fallbackActionIds.join(', ') : 'none')}</span>
           {basicActions.missingRequiredActionIds.length ? <span><strong>需要复查</strong> {basicActions.missingRequiredActionIds.join(', ')}</span> : null}
+          {basicActions.missingRequiredOfficialActionIds?.length ? <span><strong>官方质量缺口</strong> {basicActions.missingRequiredOfficialActionIds.join(', ')}</span> : null}
         </div>
       ) : null}
       {result.run ? (
@@ -144,13 +161,23 @@ const ResultCard = ({
           <span><strong>Run status</strong> {diagnostics.runStatus || '-'}</span>
           <span><strong>Attempt</strong> {formatAttemptStatus(diagnostics.attemptStatus)}</span>
           <span><strong>Backend</strong> {diagnostics.backend || '-'} / {diagnostics.backendState || '-'}</span>
-          <span><strong>Conditioning</strong> {conditioning ? `${conditioning.mode || 'text-to-image'} via ${conditioning.endpoint || '/images/generations'}` : 'not recorded'}</span>
-          <span><strong>References</strong> {conditioning ? conditioning.referenceImageCount : 0}</span>
+          <span><strong>Conditioning</strong> {conditioning ? `${conditioning.mode || 'not recorded'} via ${conditioning.endpoint || 'not recorded'}` : 'not recorded'}</span>
+          <span><strong>References</strong> {conditioning && Number.isFinite(Number(conditioning.referenceImageCount)) ? conditioning.referenceImageCount : 'not recorded'}</span>
+          <span><strong>Requested outputs</strong> {conditioning && Number.isFinite(Number(conditioning.requestedOutputCount)) ? conditioning.requestedOutputCount : 'not recorded'}</span>
+          <span><strong>Image field</strong> {conditioning?.multipartImageField || 'not recorded'}</span>
           <span><strong>Outputs</strong> {diagnostics.outputCount}</span>
           {diagnostics.generatedAt ? <span><strong>Generated</strong> {formatTimestamp(diagnostics.generatedAt)}</span> : null}
           {diagnostics.failedAt ? <span><strong>Failed</strong> {formatTimestamp(diagnostics.failedAt)}</span> : null}
           {conditioning ? <span><strong>Reference inputs</strong> {conditioningReferences}</span> : null}
           {diagnostics.failureReason ? <span><strong>Failure reason</strong> {diagnostics.failureReason}</span> : null}
+        </div>
+      ) : null}
+      {hatchPetAgent ? (
+        <div className="creator-result-grid" data-testid="creator-hatch-pet-agent-status">
+          <span><strong>Hatch Pet Agent mode</strong> {hatchPetAgent.mode || '-'}</span>
+          <span><strong>Hatch Pet Agent status</strong> {hatchPetAgent.status || '-'}</span>
+          <span><strong>Hatch Pet Agent decision</strong> {hatchPetAgent.decision || '-'}</span>
+          <span><strong>Hatch Pet Agent decision ID</strong> {hatchPetAgent.decisionId || '-'}</span>
         </div>
       ) : null}
       {showAdvanced ? (
@@ -166,6 +193,22 @@ const ResultCard = ({
           <button type="button" className="ghost" disabled={openingDashboard} onClick={onOpenCreatorStudioDetails}>
             {openingDashboard ? '打开中' : '打开 Creator Studio 详情'}
           </button>
+          {repairableActionIds.map((actionId) => (
+            <button
+              key={actionId}
+              type="button"
+              className="ghost"
+              disabled={previewing || running}
+              onClick={() => onRetryFullPetAction(actionId)}
+            >
+              重新生成 {actionId}
+            </button>
+          ))}
+          {canRepairFullPet ? (
+            <button type="button" className="ghost" disabled={previewing || running} onClick={onRetryFullPetIdentity}>
+              重新生成 canonical identity
+            </button>
+          ) : null}
         </div>
       ) : result.state === 'completed' ? (
         <div className="header-actions">
@@ -207,6 +250,8 @@ export function CreatorPane({
   onGenerateExistingAction,
   onPreviewResult,
   onRestoreClickAction,
+  onRetryFullPetAction,
+  onRetryFullPetIdentity,
   onOpenCreatorStudioDetails
 }: CreatorPaneProps) {
   const providerReady = creatorState.provider.ready
@@ -217,7 +262,7 @@ export function CreatorPane({
       <header className="pane-header">
         <div>
           <h1>Create</h1>
-          <p>普通用户默认主路径：给一张图，然后直接生成并导入。</p>
+          <p>普通用户默认主路径：上传一张清晰来源图并可补充描述；OpenPet 会在内部准备角色锚定视图和动作锚定视图，上传的图片仍是身份最高优先级。</p>
         </div>
         <div className="segmented" role="group" aria-label="创建模式">
           <button
@@ -289,8 +334,8 @@ export function CreatorPane({
               </button>
               <p className="field-note">
                 {newCharacterDraft.referenceFileName
-                  ? `Selected: ${newCharacterDraft.referenceFileName}`
-                  : '上传一张参考图作为这个角色的 canonical reference。'}
+                  ? `Selected: ${newCharacterDraft.referenceFileName} · 默认一键路径只支持单张清晰的正面图。`
+                  : '上传一张清晰来源图作为这个角色的 canonical reference；OpenPet 会在内部准备角色锚定视图和动作锚定视图。'}
               </p>
             </div>
           </div>
@@ -317,7 +362,7 @@ export function CreatorPane({
             >
               {running && mode === 'new-character' ? 'Generating' : 'Generate Character'}
             </button>
-            <span className="field-note">提交后 Host 会继续完成生成、批准、导入和激活。</span>
+            <span className="field-note">提交后 Host 会完成生成并停在人工复查；批准、导入和激活需要分别明确执行。</span>
           </div>
         </div>
       ) : (
@@ -362,11 +407,11 @@ export function CreatorPane({
               <p className="field-note">
                 {existingActionDraft.referenceFileName
                   ? hasEditableReference
-                    ? `Selected: ${existingActionDraft.referenceFileName} · 可随时改回已保存 reference。`
+                    ? `Selected: ${existingActionDraft.referenceFileName} · 可随时改回已保存 reference；OpenPet 会在内部准备角色锚定视图和动作锚定视图。`
                     : `Selected: ${existingActionDraft.referenceFileName}`
                   : hasEditableReference
-                    ? '留空会复用已保存 reference；选新图则会替换并继续生成。'
-                    : '首次生成动作必须选择一张参考图。'}
+                    ? '留空会复用已保存 reference；选新图则会替换并继续生成。上传的图片仍是身份最高优先级。'
+                    : '首次生成动作必须选择一张清晰来源图；OpenPet 会在内部准备角色锚定视图和动作锚定视图。'}
               </p>
             </div>
           </div>
@@ -415,11 +460,14 @@ export function CreatorPane({
       {result ? (
         <ResultCard
           result={result}
+          running={running}
           previewing={previewing}
           dashboardAvailable={creatorState.dashboard.available}
           openingDashboard={openingDashboard}
           onPreviewResult={onPreviewResult}
           onRestoreClickAction={onRestoreClickAction}
+          onRetryFullPetAction={onRetryFullPetAction}
+          onRetryFullPetIdentity={onRetryFullPetIdentity}
           onOpenCreatorStudioDetails={onOpenCreatorStudioDetails}
         />
       ) : creatorState.lastRun ? (
