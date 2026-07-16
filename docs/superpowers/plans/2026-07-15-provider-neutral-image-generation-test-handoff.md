@@ -14,7 +14,7 @@ This handoff never authorizes Provider approval, import, activation, fabricated 
 - Test branch: `codex/dev8-hatch-pet-phase1-test`
 - Existing Phase 1 test HEAD before this handoff: `662d7c9e3b0abbbff661c35cfd6be06e258a1e9e`
 - Development branch: `codex/dev8`; read-only from the testing task.
-- Final integrated implementation HEAD: `fc42ab81` (`fix close creator remediation review gaps`).
+- Final integrated implementation HEAD: `ca144d57` (`fix harden creator remediation boundaries`).
 - Review-blocker branch: `codex/dev8-review-blockers`; do not modify, switch, merge, or inspect beyond information explicitly supplied by the source task.
 - Do not modify the protected main worktree or any other worktree/branch.
 - Do not push, merge, rebase, reset, or clean.
@@ -51,7 +51,8 @@ Start from the clean Phase 1 test HEAD `662d7c9e`. Cherry-pick these approved pr
 12. `544ed359` — bounded appearance intent, prompt compiler v2, and path/injection rejection;
 13. `0cf1ef10` — atomic run persistence and last-valid recovery;
 14. `1c1286a3` — truthful UI/evidence projections, contracts, and current documentation;
-15. `fc42ab81` — final review fixes for raw appearance validation, prompt-control precision, missing-run recovery, and removal of import-command sentinels.
+15. `fc42ab81` — review fixes for raw appearance validation, prompt-control precision, missing-run recovery, and removal of import-command sentinels;
+16. `ca144d57` — deep-review hardening for secrets/internal terms, stale approval/import evidence, directional-pair loading, run-directory confinement, and evidence contract precedence.
 
 Do not cherry-pick `3f8b8d04`; the testing branch already contains the independently accepted Phase 1 baseline refresh in `662d7c9e`. The remediation design and implementation plan are `a5a8a161` and `52cb1b64`; inspect them read-only from `codex/dev8` when evaluating scope. Do not merge `codex/dev8`.
 
@@ -233,6 +234,7 @@ Add focused run-store coverage proving:
 - active `run.json`, initial config/task JSON, heartbeat, repair, approval, and import state writes use same-directory temporary files and atomic rename;
 - the previous valid run is retained as `run.last-valid.json`;
 - an interrupted/torn current file is preserved under a bounded `run.corrupt-<timestamp>.json` name;
+- missing run directories and symlinked/escaped run directories fail closed without creating or mutating a run;
 - a valid backup recovers to a visible failed run with `generation-command-state-recovered`, removes the active generation lease, and preserves completed artifacts/checkpoints;
 - a run directory with no readable current or backup still appears in `listRuns` as a deterministic failed recovery record;
 - no recovery fabricates approval, import, activation, successful checkpoints, or Provider output.
@@ -275,7 +277,7 @@ PASS requires:
 - `test:core:all` exit 0;
 - independent `test:control-center` exit 0;
 - no newly discovered production defect;
-- the final integrated `fc42ab81` remediation patch set is present with recorded patch equivalence;
+- the final integrated `ca144d57` remediation patch set is present with recorded patch equivalence;
 - clean test worktree after the report/test commit.
 
 If automated verification fails, do not start real Provider/image work.
