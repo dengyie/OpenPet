@@ -1,8 +1,8 @@
 # Pet Character And Action Generation
 
-> Updated: 2026-07-15
+> Updated: 2026-07-16
 > Owner: `codex/dev8`
-> Status: implemented on the development branch; independent verification pending
+> Status: Hatch Pet Phase 1 automated verification passed; final integrated generation remediation is implemented but independently unverified
 > Scope: generate a Codex-compatible pet character and its basic actions from one user reference image, with visual quality taking priority over generation cost.
 
 This is the sole current development document for OpenPet character and action generation. It replaces the branch's earlier one-click chain notes, row-pipeline specifications, anchor-reference specifications, action-quality plans, and duplicated live-doc summaries.
@@ -32,6 +32,7 @@ The branch already contains:
 - technical, identity, motion, and row QA;
 - contact-sheet and preview artifacts;
 - guarded approval, import, and activation flows;
+- automatic generation stops at `ready_for_review`; approval, import, and activation are separate explicit human actions;
 - deterministic support for `approved-mirror` row quality;
 - quality-first partial packaging with stable transparent atlas slots;
 - durable per-action checkpoints and scoped retry;
@@ -39,17 +40,19 @@ The branch already contains:
 - explicit single-output Provider requests with fail-closed deliverable output-count enforcement;
 - bounded same-model retry for transient Provider transport failures;
 - canonical full-pet action identity boards with separate canonical QA references;
-- idle-specific minimal-motion semantics and prompt schema v4;
+- idle-specific minimal-motion semantics, provider image-task schema v2, prompt compiler v2, and local prompt-builder v5;
 - versioned human-example registries and immutable quality profiles;
 - profile-bound prompts, reference-board metadata, keyframe QA, row QA, and atlas QA;
 - action-scoped and identity-scoped repair with archived prior evidence;
 - machine-readable Provider production-art claim gates.
+- bounded appearance intent compiled into Provider-neutral prompts without raw prompt passthrough;
+- atomic `run.json` replacement, last-valid backup, and visible failed-state recovery.
 
 The landed deterministic official row package can compose and validate complete or partial sets of `row-real` and `approved-mirror` inputs. That packaging support is not evidence that a real Provider has produced approved art for every available row.
 
 Real-provider smoke success proves that the host bridge and provider path can complete. It does not prove production art quality. Production approval still requires human visual review.
 
-The current generation implementation on `codex/dev8` is developed but intentionally unverified. This branch does not run automated tests, real Provider smoke, browser checks, or visual acceptance. The latest reliability follow-up must be verified through the isolated testing task described in `docs/superpowers/plans/2026-07-14-provider-generation-reliability-test-handoff.md`.
+The current integrated generation remediation on `codex/dev8` is developed but intentionally unverified. This branch does not run automated tests, real Provider smoke, browser checks, or visual acceptance. Fresh verification must use the final integrated HEAD and the isolated assignment in `docs/superpowers/plans/2026-07-15-provider-neutral-image-generation-test-handoff.md`.
 
 ### Hatch Pet Agent Phase 1 boundary
 
@@ -59,7 +62,7 @@ The product design uses the same resolved hatch-pet model for later planning and
 
 Control Center exposes the shadow enable flag, follow-chat/dedicated configuration, bounded budget settings, the future identity-review checkpoint, capability status, and sanitized run diagnostics. Budgets and the identity checkpoint are recorded for the future bounded workflow but do not change the fixed generator in Phase 1. Durable artifacts stay under `runs/<runId>/agent/` and contain bounded snapshots, state, budgets, prompt metadata, and decision records. API keys remain host-owned and must not appear in renderer responses, logs, snapshots, diagnostics, or agent artifacts.
 
-Shadow planning never changes image Provider selection, generation prompts, retry behavior, deterministic QA, human approval, import, activation, or any Creator Studio command payload. Disabled mode performs no hatch-pet model or store work, and enabled-mode configuration, model, validation, or persistence failures must not block the fixed workflow. This Phase 1 implementation is **implemented but unverified** until the isolated assignment in `docs/superpowers/plans/2026-07-15-hatch-pet-agent-phase1-test-handoff.md` passes. It supplies no Provider approval, human visual acceptance, or `production-art-ready` evidence.
+Shadow planning never changes image Provider selection, generation prompts, retry behavior, deterministic QA, human approval, import, activation, or any Creator Studio command payload. Disabled mode performs no hatch-pet model or store work, and enabled-mode configuration, model, validation, or persistence failures must not block the fixed workflow. Phase 1 automated verification passed on the isolated `codex/dev8-hatch-pet-phase1-test` task at `662d7c9e`; this proves only the text-only shadow-planning contracts. It supplies no Provider approval, human visual acceptance, or `production-art-ready` evidence.
 
 ## 2. User Experience
 
@@ -74,7 +77,9 @@ one clean user reference image
   -> deterministic QA
   -> contact-sheet and animated-preview review
   -> Codex Pet atlas and manifest packaging
-  -> import and activation
+  -> explicit human approval
+  -> explicit import
+  -> optional explicit activation
 ```
 
 The user does not prepare a collage, multi-view sheet, sprite sheet, contact sheet, model sheet, or action grid. OpenPet creates the required intermediate artifacts.
@@ -148,7 +153,7 @@ Preview fallbacks and base-image transforms never count as official real coverag
 
 ## 4. Single-Reference Provider Rule
 
-The user supplies exactly one source image for a normal run. Every image-generation Provider request may contain at most one image attachment.
+The user supplies exactly one source image for a normal run. Every real image-generation Provider request must contain exactly one validated image attachment.
 
 This rule applies to:
 
@@ -170,13 +175,16 @@ The source image, character anchor, action anchor, and keyframes must never be a
 
 Provider configuration, API keys, model discovery, and output writes stay in the main process. Creator Studio receives bounded host-bridge results and data-relative artifact paths, not credentials or arbitrary filesystem access.
 
-The plugin bridge rejects more than one reference before resolving paths. The public image-generation service rejects more than one reference before output-path work or Provider queue acquisition, and the normalized edit/multipart path repeats the invariant before request construction. Multipart edits use the single field name `image`, never `image[]`. All boundaries use the stable failure text:
+The plugin bridge rejects zero or multiple references before resolving paths. The public image-generation service repeats the same gate before output-path work or Provider queue acquisition, and the normalized edit/multipart path repeats the invariant before request construction. Multipart edits use the single field name `image`, never `image[]`. Stable public error codes are:
 
 ```text
-Image generation accepts at most one reference image; compose multiple sources into one local reference board
+reference_image_required
+reference_image_count_invalid
+reference_image_invalid
+reference_image_unusable
 ```
 
-Every JSON generation request and multipart edit request explicitly asks the Provider for one output with `n=1`. The host still materializes all outputs actually returned so downstream delivery gates can validate reality rather than silently truncate the response. A deliverable action sheet or final keyframe-conditioned sprite row must contain exactly one complete Provider output; zero or multiple outputs are explicit failures, and OpenPet never selects the first ambiguous deliverable output.
+Every real request uses `/images/edits`, one multipart `image` field, and `n=1`; no valid generation stage uses `/images/generations`. The host still materializes all outputs actually returned so downstream delivery gates can validate reality rather than silently truncate the response. A deliverable action sheet or final keyframe-conditioned sprite row must contain exactly one complete Provider output; zero or multiple outputs are explicit failures, and OpenPet never selects the first ambiguous deliverable output.
 
 ## 5. Identity Contract
 
@@ -246,6 +254,8 @@ The Provider receives that one board as its only reference attachment. Keyframe 
 
 Send the composite board as the only image attachment and request a complete action-specific sheet or row. The Provider must author the actual pose changes. OpenPet may specify layout, key poses, transparency, scale, and continuity, but it must not later fabricate missing semantics from the base pose.
 
+The upstream prompt is self-contained and Provider-neutral. It states the requested pixel dimensions and aspect ratio, explains how to interpret the attached image, fixes visible identity authority, applies at most six bounded appearance-intent directives, then restates the action, framing, transparency, and exclusion contracts. Raw Creator Studio prompts, project terminology, paths, URIs, secrets, transport terms, identifiers, and prompt-control instructions cannot pass through to the image model. If appearance text conflicts with the attached identity, the image wins.
+
 Transient transport failures such as `fetch failed`, connection reset, a closed socket, or a bounded timeout/connectivity code receive at most one same-model retry inside the existing two-attempt and total-time budgets. The retry does not change the selected model, quality thresholds, output-count contract, or request evidence. An exhausted retry remains an explicit failure with sanitized transport evidence.
 
 Independent per-frame Provider generation is not the preferred production method. Existing evidence showed large whole-character redraw and stable face/body-core drift between frames even when each request succeeded. A complete keyframe-conditioned sheet gives the Provider shared visual context for the sequence.
@@ -284,7 +294,7 @@ The default profile preserves the pre-governance thresholds. A configured non-de
 
 ### Stage 8: atlas composition and import
 
-Compose only approved `row-real` and `approved-mirror` rows into the official atlas. Validate the final atlas, bind QA evidence to its hash, create the manifest/package, then import and activate through the host-owned bridge.
+Compose only approved `row-real` and `approved-mirror` rows into the official atlas. Validate the final atlas, bind QA evidence to its hash, and create the manifest/package. Automatic orchestration stops at `ready_for_review`; a human must explicitly approve, then explicitly import, and may separately choose activation, which defaults to false.
 
 The pipeline writes a durable checkpoint after each bounded action attempt. A retry reuses a successful row only when all checkpointed frame paths remain inside the run data directory and their SHA-256 hashes still match. Failed quality output is preserved as evidence but is never reused as an approved row.
 
@@ -404,6 +414,7 @@ Supported rejection reasons are `identity-drift`, `semantic-mismatch`, `static-m
 | Static or transform-only row | Provider generation | Reject and regenerate; never accept local motion fabrication |
 | Mirrored accessory/text is invalid | Directional-pair review | Block the pair for human decision |
 | Artifact hash mismatch | Approval/import | Invalidate approval and rerun QA on current files |
+| Torn or unreadable `run.json` | Run store | Preserve the corrupt file, recover the last valid state when available, mark the run failed with `generation-command-state-recovered`, and retain completed artifacts/checkpoints |
 | Human visual rejection | Selected identity/action scope | Keep unapproved and repair the smallest rejected scope |
 
 Failures must remain explicit. The pipeline must not silently downgrade an official-quality request to preview fallback art. Failure of required `idle` blocks packaging; failure of an optional action records its bounded reason, omits that action, and continues. Runtime requests for an omitted action fall back to the approved `idle` action and report the originally requested action ID.
@@ -513,8 +524,8 @@ Never put raw secrets or local paths into committed smoke evidence.
 
 - The development branch contains no fabricated human-review examples and no Provider production-art approvals. Both registries intentionally remain empty.
 - No non-default profile is endorsed. Calibration must be derived from real approved/rejected examples and reviewed evidence on the isolated testing branch.
-- Explicit `n=1`, fail-closed deliverable output counts, bounded transient retry, canonical action identity boards, canonical keyframe QA references, idle minimal-motion semantics, and prompt schema v4 are implemented but have not been exercised on this branch.
-- Automated suites, real action and full-pet Provider smoke, successful full-pet generation, repair exercises, human labels, profile calibration, visual acceptance, and Provider approval remain assigned to `docs/superpowers/plans/2026-07-14-provider-generation-reliability-test-handoff.md`.
+- Phase 1 automated shadow-planning verification passed at `662d7c9e`; the final integrated human-review, partial-package, Provider-neutral prompt, exact-reference, timeout/recovery, and atomic-persistence remediation has not yet been independently exercised.
+- Real action and full-pet Provider smoke, successful full-pet generation, repair exercises, human labels, profile calibration, visual acceptance, and Provider approval remain assigned to the independent testing workflow and are not implied by Phase 1 PASS.
 - A Provider or model change invalidates the corresponding support claim until the exact provider/model/profile/dataset tuple receives new human approval evidence.
 
 ## 15. Evidence And Claim Boundaries

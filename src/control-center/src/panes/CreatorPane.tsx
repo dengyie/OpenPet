@@ -109,7 +109,7 @@ const ResultCard = ({
   const canRepairFullPet = result.run?.mode === 'full-pet' &&
     ['review-required', 'preview-ready'].includes(String(result.state))
   const repairableActionIds = canRepairFullPet
-    ? (basicActions?.missingRequiredOfficialActionIds || []).filter((actionId) => actionId !== 'running-left')
+    ? (basicActions?.omittedActionIds || basicActions?.missingRequiredOfficialActionIds || []).filter((actionId) => actionId !== 'running-left')
     : []
 
   return (
@@ -141,7 +141,9 @@ const ResultCard = ({
       ) : null}
       {basicActions ? (
         <div className="creator-result-grid">
-          <span><strong>官方动作覆盖</strong> {basicActions.realActionIds.length ? basicActions.realActionIds.join(', ') : 'none'}</span>
+          <span><strong>必需动作</strong> {basicActions.requiredActionIds?.length ? basicActions.requiredActionIds.join(', ') : 'idle'}</span>
+          <span><strong>可用动作</strong> {basicActions.availableActionIds?.length ? basicActions.availableActionIds.join(', ') : 'none'}</span>
+          <span><strong>可选省略</strong> {basicActions.omittedActionIds?.length ? basicActions.omittedActionIds.join(', ') : 'none'}</span>
           <span><strong>预览复用动作</strong> {basicActions.previewFallbackActionIds?.length ? basicActions.previewFallbackActionIds.join(', ') : (basicActions.fallbackActionIds.length ? basicActions.fallbackActionIds.join(', ') : 'none')}</span>
           {basicActions.missingRequiredActionIds.length ? <span><strong>需要复查</strong> {basicActions.missingRequiredActionIds.join(', ')}</span> : null}
           {basicActions.missingRequiredOfficialActionIds?.length ? <span><strong>官方质量缺口</strong> {basicActions.missingRequiredOfficialActionIds.join(', ')}</span> : null}
@@ -161,8 +163,6 @@ const ResultCard = ({
           <span><strong>Backend</strong> {diagnostics.backend || '-'} / {diagnostics.backendState || '-'}</span>
           <span><strong>Conditioning</strong> {conditioning ? `${conditioning.mode || 'not recorded'} via ${conditioning.endpoint || 'not recorded'}` : 'not recorded'}</span>
           <span><strong>References</strong> {conditioning && Number.isFinite(Number(conditioning.referenceImageCount)) ? conditioning.referenceImageCount : 'not recorded'}</span>
-          <span><strong>Requested outputs</strong> {conditioning && Number.isFinite(Number(conditioning.requestedOutputCount)) ? conditioning.requestedOutputCount : 'not recorded'}</span>
-          <span><strong>Image field</strong> {conditioning?.multipartImageField || 'not recorded'}</span>
           <span><strong>Outputs</strong> {diagnostics.outputCount}</span>
           {diagnostics.generatedAt ? <span><strong>Generated</strong> {formatTimestamp(diagnostics.generatedAt)}</span> : null}
           {diagnostics.failedAt ? <span><strong>Failed</strong> {formatTimestamp(diagnostics.failedAt)}</span> : null}
