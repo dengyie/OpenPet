@@ -1,5 +1,8 @@
 # Development Documentation Hardening Implementation Plan
 
+> Status: Complete
+> Completed: 2026-07-16
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Complete OpenPet's repository-internal documentation work, align live project facts with the latest `main` baseline, close the finished production-review runbook, and make future documentation drift fail automatically.
@@ -34,7 +37,7 @@
 - Consumes: current commands from `package.json`, architecture rules from `AGENTS.md`, routes from `docs/README.md`, and test ownership from `docs/testing-strategy.md`.
 - Produces: one stable maintainer workflow entrypoint with Grade A/B/C validation guidance.
 
-- [ ] **Step 1: Add the failing workflow test**
+- [x] **Step 1: Add the failing workflow test**
 
 Create `tests/docs/live-docs-development-workflow.test.js`:
 
@@ -61,7 +64,7 @@ test('development workflow provides the canonical maintainer path', () => {
 })
 ```
 
-- [ ] **Step 2: Verify the test fails**
+- [x] **Step 2: Verify the test fails**
 
 Run:
 
@@ -71,7 +74,7 @@ node --test tests/docs/live-docs-development-workflow.test.js
 
 Expected: FAIL with `docs/development-workflow.md must exist`.
 
-- [ ] **Step 3: Write the workflow guide**
+- [x] **Step 3: Write the workflow guide**
 
 Create `docs/development-workflow.md` with these exact sections:
 
@@ -94,7 +97,7 @@ Create `docs/development-workflow.md` with these exact sections:
 
 Document exact current commands from `package.json`; state that `PetService` owns pet state, Control Center owns user-facing configuration, credentials remain main-process-only, and synthetic evidence never replaces external/manual acceptance.
 
-- [ ] **Step 4: Align the documentation map and test guidance**
+- [x] **Step 4: Align the documentation map and test guidance**
 
 In `docs/README.md`, add the Level 0-3 ownership model to `Maintenance Rules` and state that `development-workflow.md` owns contributor procedure.
 
@@ -106,7 +109,7 @@ Grade B -> focused tests + test:core + test:control-center + check:syntax + diff
 Grade C -> focused docs/tools tests + test:tools + check:docs-drift + diff check
 ```
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 ```bash
 node --test tests/docs/live-docs-development-workflow.test.js
@@ -133,7 +136,7 @@ Expected: tests and drift check pass before commit.
 - Consumes: canonical integration branch `main`, synchronization date `2026-07-16`, and existing Level 1 facts.
 - Produces: consistent metadata independent of the editing Agent's temporary branch.
 
-- [ ] **Step 1: Change metadata tests to the stable contract**
+- [x] **Step 1: Change metadata tests to the stable contract**
 
 Update `tests/docs/live-docs-project-context.test.js`:
 
@@ -151,7 +154,7 @@ for (const [name, content] of liveDocs) {
 }
 ```
 
-- [ ] **Step 2: Verify stale metadata fails**
+- [x] **Step 2: Verify stale metadata fails**
 
 ```bash
 node --test tests/docs/live-docs-project-context.test.js
@@ -159,7 +162,7 @@ node --test tests/docs/live-docs-project-context.test.js
 
 Expected: FAIL because current docs still report `2026-07-07` and `codex/dev7`.
 
-- [ ] **Step 3: Update human and machine metadata**
+- [x] **Step 3: Update human and machine metadata**
 
 Set these headers in `docs/HANDOFF.md`, `docs/development-summary.md`, and `docs/project-status-review.md`:
 
@@ -181,7 +184,7 @@ Set in `docs/project-context.json`:
 
 Add `npm run check:docs-drift` and `git diff --check` to `validation.commands` if absent. Preserve all release paths and blocker facts.
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
 ```bash
 node --test tests/docs/live-docs-project-context.test.js
@@ -205,7 +208,7 @@ Expected: focused test and docs checks pass; JSON command prints `project-contex
 - Consumes: ten landed workstream commits and the DNS lifecycle follow-up.
 - Produces: a completed execution record with no open checkbox and a commit evidence ledger.
 
-- [ ] **Step 1: Verify commit reachability**
+- [x] **Step 1: Verify commit reachability**
 
 ```bash
 for commit in \
@@ -217,7 +220,7 @@ done
 
 Expected: exit code 0.
 
-- [ ] **Step 2: Add the failing completion test**
+- [x] **Step 2: Add the failing completion test**
 
 Create `tests/docs/production-review-remediation-status.test.js`:
 
@@ -246,7 +249,7 @@ test('production review remediation is a closed execution record', () => {
 })
 ```
 
-- [ ] **Step 3: Verify the stale runbook fails**
+- [x] **Step 3: Verify the stale runbook fails**
 
 ```bash
 node --test tests/docs/production-review-remediation-status.test.js
@@ -254,7 +257,7 @@ node --test tests/docs/production-review-remediation-status.test.js
 
 Expected: FAIL because status, ledger, and closed checkboxes are absent.
 
-- [ ] **Step 4: Close Tasks 1-10 and add evidence**
+- [x] **Step 4: Close Tasks 1-10 and add evidence**
 
 Add below the title:
 
@@ -284,7 +287,7 @@ Add before `Integration Order`:
 | 10. Dead IPC removal | `cb3992bb` |
 ```
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 ```bash
 node --test tests/docs/production-review-remediation-status.test.js
@@ -306,7 +309,7 @@ Expected: focused test passes.
 - Consumes: Level 1 documents and the active remediation record.
 - Produces: deterministic `checkDocsDrift({ docsRoot })` results for missing files, metadata drift, and reopened work.
 
-- [ ] **Step 1: Add failing validator tests**
+- [x] **Step 1: Add failing validator tests**
 
 Add to `tests/scripts/check-docs-drift.test.js`:
 
@@ -350,7 +353,7 @@ test('checkDocsDrift rejects a reopened production remediation step', () => {
 })
 ```
 
-- [ ] **Step 2: Verify protections are missing**
+- [x] **Step 2: Verify protections are missing**
 
 ```bash
 node --test tests/scripts/check-docs-drift.test.js
@@ -358,7 +361,7 @@ node --test tests/scripts/check-docs-drift.test.js
 
 Expected: FAIL because workflow/plan inventory and metadata/completion checks are absent.
 
-- [ ] **Step 3: Extend the inventory and inputs**
+- [x] **Step 3: Extend the inventory and inputs**
 
 Add to `LIVE_DOC_FILES`:
 
@@ -369,7 +372,7 @@ Add to `LIVE_DOC_FILES`:
 
 Read both files in `createChecks()`; include the workflow in combined live text and keep the plan separate for completion validation.
 
-- [ ] **Step 4: Add non-overlapping checks**
+- [x] **Step 4: Add non-overlapping checks**
 
 Parse `project-context.json` once:
 
@@ -406,7 +409,7 @@ Add:
 }
 ```
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 ```bash
 node --test tests/scripts/check-docs-drift.test.js tests/docs/*.test.js
@@ -428,7 +431,7 @@ Expected: all focused tests and drift checks pass.
 - Consumes: Tasks 1-4.
 - Produces: clean, reviewable, fully verified branch state.
 
-- [ ] **Step 1: Confirm scope**
+- [x] **Step 1: Confirm scope**
 
 ```bash
 git diff --name-only main...HEAD
@@ -437,7 +440,7 @@ git status --short --branch
 
 Expected: only documentation, `scripts/check-docs-drift.js`, and documentation test files are listed; worktree is clean after task commits.
 
-- [ ] **Step 2: Run docs and tooling verification**
+- [x] **Step 2: Run docs and tooling verification**
 
 ```bash
 npm run check:docs-drift
@@ -446,7 +449,7 @@ npm run test:tools
 
 Expected: all checks and tests pass.
 
-- [ ] **Step 3: Run full Node and Control Center regression**
+- [x] **Step 3: Run full Node and Control Center regression**
 
 ```bash
 npm test
@@ -455,7 +458,7 @@ npm run test:control-center
 
 Expected: all Node and Playwright tests pass.
 
-- [ ] **Step 4: Run syntax/build and whitespace verification**
+- [x] **Step 4: Run syntax/build and whitespace verification**
 
 ```bash
 npm run check:syntax
@@ -464,7 +467,7 @@ git diff --check main...HEAD
 
 Expected: syntax, TypeScript, native helper, Control Center build, and diff checks pass.
 
-- [ ] **Step 5: Verify isolation**
+- [x] **Step 5: Verify isolation**
 
 ```bash
 git branch --show-current
@@ -476,6 +479,6 @@ git -C /Users/mango/project/codex/OpenPet status --short --branch
 
 Expected: feature worktree remains clean on `codex/production-review-remediation-plan`; primary worktree remains on `main` and unmodified by this work.
 
-- [ ] **Step 6: Report completion**
+- [x] **Step 6: Report completion**
 
 Report commit hashes, changed files, documentation levels, validation grades, completion evidence, exact test results, intentionally open external tasks, and confirmation that no runtime source or protected primary worktree was modified.
