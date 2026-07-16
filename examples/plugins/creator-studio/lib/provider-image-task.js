@@ -52,7 +52,7 @@ const UNSAFE_APPEARANCE_INTENT_PATTERNS = Object.freeze([
   Object.freeze({ pattern: /\b(?:runs|inputs|outputs|assets|cat_anime)[/\\][^\s,，。)]+/i, label: 'project path' }),
   Object.freeze({ pattern: /(?:^|\s)\/(?!\/)\S+/i, label: 'absolute path' }),
   Object.freeze({ pattern: /\b(?:ignore|disregard|override|replace|reveal|repeat)\b.{0,80}\b(?:instruction|prompt|system|rule|requirement)\b/i, label: 'prompt control' }),
-  Object.freeze({ pattern: /\b(?:instruction|prompt|system|rule|requirement)\b.{0,80}\b(?:ignore|disregard|override|replace|reveal|repeat)\b/i, label: 'prompt control' }),
+  Object.freeze({ pattern: /\b(?:instruction|prompt|system)\b.{0,80}\b(?:ignore|disregard|override|replace|reveal|repeat)\b/i, label: 'prompt control' }),
   Object.freeze({ pattern: /(?:忽略|无视|覆盖|泄露|透露|重复).{0,40}(?:指令|提示词|系统|规则|要求)/i, label: 'prompt control' })
 ])
 

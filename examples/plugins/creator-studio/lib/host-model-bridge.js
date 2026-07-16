@@ -2775,6 +2775,15 @@ const resolveAnchorCharacterBrief = (run = {}) => sanitizeCreativeBrief(
   'reusable full-body desktop character'
 )
 
+const resolveProviderAppearanceIntent = (run = {}) => {
+  const characterBrief = String(
+    run?.generationTask?.characterBrief ||
+    run?.input?.generationTask?.characterBrief ||
+    ''
+  ).trim()
+  return characterBrief ? [characterBrief] : []
+}
+
 const getRunActions = (run = {}) => {
   if (Array.isArray(run?.generationTask?.actions)) return run.generationTask.actions
   if (Array.isArray(run?.input?.generationTask?.actions)) return run.input.generationTask.actions
@@ -2906,7 +2915,7 @@ const generateActionKeyframe = async ({
     ? 'action-start-keyframe'
     : 'action-peak-keyframe'
   const promptBuild = buildActionKeyframePrompt({
-    appearanceIntent: [resolveAnchorCharacterBrief(run)],
+    appearanceIntent: resolveProviderAppearanceIntent(run),
     referenceRole: listReferenceRoles(referenceImages).join(', ') || 'canonical-reference',
     action,
     keyframeRole: normalizedKeyframeRole,
@@ -3232,7 +3241,7 @@ const generateKeyframeActionSpriteRow = async ({
     role: 'keyframe-action-reference-board'
   }
   const promptBuild = buildActionSpriteRowPrompt({
-    appearanceIntent: [resolveAnchorCharacterBrief(run)],
+    appearanceIntent: resolveProviderAppearanceIntent(run),
     referenceRole: 'keyframe-action-reference-board',
     action,
     qualityGuidance
@@ -3424,7 +3433,7 @@ const generateDirectSourceActionAnchorCandidateSet = async ({
       action,
       qualityGuidance,
       canvas: DEFAULT_CONSTRAINTS,
-      appearanceIntent: [resolveAnchorCharacterBrief(run)],
+      appearanceIntent: resolveProviderAppearanceIntent(run),
       strategyId: candidateVariant.id,
       requestedChanges: candidateVariant.requestedChanges
     })
@@ -3604,7 +3613,7 @@ const generateAnchorReferences = async ({
   let characterAnchor = null
   if (!shouldSkipCharacterAnchorForActions(run)) {
     const characterPromptBuild = buildCharacterAnchorPrompt({
-      appearanceIntent: [characterBrief],
+      appearanceIntent: resolveProviderAppearanceIntent(run),
       referenceRole: 'composite-reference-board',
       qualityGuidance,
       canvas: DEFAULT_CONSTRAINTS
@@ -3673,7 +3682,7 @@ const generateAnchorReferences = async ({
         : characterReferenceImage
       const actionReferenceRole = actionReferenceImage.role
       const actionPromptBuild = buildActionAnchorPrompt({
-        appearanceIntent: [characterBrief],
+        appearanceIntent: resolveProviderAppearanceIntent(run),
         referenceRole: actionReferenceRole,
         action,
         qualityGuidance,

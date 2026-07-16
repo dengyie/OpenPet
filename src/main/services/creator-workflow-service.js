@@ -14,8 +14,6 @@ const CREATOR_STUDIO_CONFIRM_COMMAND_ID = 'confirm-task'
 const CREATOR_STUDIO_GENERATE_COMMAND_ID = 'run-step'
 const CREATOR_STUDIO_RETRY_ACTION_COMMAND_ID = 'retry-action'
 const CREATOR_STUDIO_RETRY_IDENTITY_COMMAND_ID = 'retry-identity'
-const CREATOR_STUDIO_IMPORT_ACTION_COMMAND_ID = 'import-approved-action'
-const CREATOR_STUDIO_IMPORT_PET_COMMAND_ID = 'import-approved-pet'
 
 const EDITABLE_TARGET_TYPE = 'editable-action-host'
 const EDITABLE_TARGET_ID = 'legacy-editable-host'
@@ -693,7 +691,7 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
       details: {
         requestId,
         mode,
-        importCommandId,
+        isFullPet,
         providerModel: normalizeText(providerConfig?.model),
         serviceStatus: getPluginServiceRuntimeStatus(plugin, CREATOR_STUDIO_SERVICE_ID)
       }
@@ -845,7 +843,7 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
         message: getCommandMessage(generated, '生成步骤已完成')
       })
 
-      const generatedCoverage = importCommandId === CREATOR_STUDIO_IMPORT_PET_COMMAND_ID
+      const generatedCoverage = isFullPet
         ? readBasicActionCoverage({ pluginDataDir, runId })
         : null
       const {
@@ -853,7 +851,7 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
         missingOfficialActionIds
       } = resolveOfficialActionCoverage(generatedCoverage)
       if (
-        importCommandId === CREATOR_STUDIO_IMPORT_PET_COMMAND_ID &&
+        isFullPet &&
         normalizeText(run?.status) === 'ready_for_review' &&
         missingOfficialActionIds.length > 0
       ) {
@@ -933,9 +931,6 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
           elapsedMs: Date.now() - startedAt
         }
       })
-      const failureState = lastCommandResult?.commandId === CREATOR_STUDIO_IMPORT_ACTION_COMMAND_ID || lastCommandResult?.commandId === CREATOR_STUDIO_IMPORT_PET_COMMAND_ID
-        ? 'import-failed'
-        : 'review-required'
       const contractFailureCodes = new Set([
         'reference_image_required',
         'reference_image_count_invalid',
@@ -946,11 +941,9 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
       ])
       const failureCode = contractFailureCodes.has(normalizeText(error?.code))
         ? normalizeText(error.code)
-        : failureState === 'import-failed'
-          ? 'import_failed'
-          : 'workflow_failed'
+        : 'workflow_failed'
       const result = createWorkflowResult({
-        state: failureState,
+        state: 'review-required',
         code: failureCode,
         message: runId
           ? `生成流程在 run ${runId} 失败：${error.message || '未知错误'}。可到 Creator Studio 查看详情。`

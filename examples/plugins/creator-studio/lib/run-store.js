@@ -210,6 +210,10 @@ const createRun = ({ dataDir, input = {}, now = () => new Date().toISOString() }
 }
 
 const readRun = ({ dataDir, runId, now = () => new Date().toISOString() }) => {
+  const runDir = getRunDir({ dataDir, runId })
+  if (!fs.existsSync(runDir) || !fs.statSync(runDir).isDirectory()) {
+    throw new Error(`Creator Studio run not found: ${runId}`)
+  }
   const runPath = getRunPath({ dataDir, runId })
   const current = readValidRunFile({ filePath: runPath, runId })
   if (current) return current
@@ -372,6 +376,10 @@ const readRunLogs = ({ dataDir, runId }) => {
 
 const writeRun = ({ dataDir, run }) => {
   if (!isRunRecord(run, run?.runId)) throw new Error('Creator Studio run is invalid')
+  const runDir = getRunDir({ dataDir, runId: run.runId })
+  if (!fs.existsSync(runDir) || !fs.statSync(runDir).isDirectory()) {
+    throw new Error(`Creator Studio run not found: ${run.runId}`)
+  }
   const runPath = getRunPath({ dataDir, runId: run.runId })
   const backupPath = getRunBackupPath({ dataDir, runId: run.runId })
   const current = readValidRunFile({ filePath: runPath, runId: run.runId })
