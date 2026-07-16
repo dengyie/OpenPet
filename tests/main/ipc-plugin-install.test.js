@@ -179,6 +179,7 @@ test('ai chat handler delegates to ai talk service when available', async () => 
   const sayCalls = []
   const talkCalls = []
   const appLogs = []
+  const requestId = 'chat-hi-request-id'
 
   registerIpcHandlers({
     ...createRequiredServices({
@@ -227,15 +228,15 @@ test('ai chat handler delegates to ai talk service when available', async () => 
     ipcMainService: ipcMain
   })
 
-  const result = await ipcMain.handlers.get(IPC.AI_CHAT)(null, { message: 'hi', conversationId: 'ignored' })
+  const result = await ipcMain.handlers.get(IPC.AI_CHAT)(null, { message: 'hi', conversationId: 'ignored', requestId })
   const history = await ipcMain.handlers.get(IPC.AI_GET_CONVERSATION)(null, 'control-center')
 
-  assert.deepEqual(talkCalls, [{ message: 'hi', conversationId: 'ignored' }])
+  assert.deepEqual(talkCalls, [{ message: 'hi', conversationId: 'ignored', requestId }])
   assert.equal(sayCalls.length, 1)
   assert.equal(sayCalls[0].text, 'talk reply')
   assert.equal(sayCalls[0].source, 'ai')
   assert.equal(sayCalls[0].sourceSurface, 'control-center')
-  assert.match(sayCalls[0].requestId, /^chat-/)
+  assert.equal(sayCalls[0].requestId, requestId)
   assert.equal(result.reply, 'talk reply')
   assert.equal(result.conversationId, 'control-center:legacy-cat:main')
   assert.equal(result.bubble.text, 'talk reply')
@@ -247,7 +248,12 @@ test('ai chat handler delegates to ai talk service when available', async () => 
     'ai-chat.bubble.dispatched',
     'ai-chat.ipc.completed'
   ])
-  assert.equal(appLogs.some((entry) => JSON.stringify(entry.details || {}).includes('hi')), false)
+  const rawTextDetailFields = ['message', 'text', 'prompt', 'content', 'reply']
+  for (const entry of appLogs) {
+    for (const field of rawTextDetailFields) {
+      assert.equal(Object.hasOwn(entry.details || {}, field), false, `${entry.event} must not log raw ${field}`)
+    }
+  }
   assert.equal(appLogs.at(-1).details.messageCount, 1)
 })
 
