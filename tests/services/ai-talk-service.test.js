@@ -1832,6 +1832,58 @@ test('ai talk service dispose cancels queued stream requests before provider or 
   assert.equal(contents.includes('second reply'), false)
 })
 
+test('ai talk service dispose rejects queued IM named-conversation chat before provider or message writes', async () => {
+  const store = createStore()
+  let providerCalls = 0
+  let releaseFirst = null
+  let markFirstStarted = null
+  const firstStarted = new Promise((resolve) => {
+    markFirstStarted = resolve
+  })
+  const firstGate = new Promise((resolve) => {
+    releaseFirst = resolve
+  })
+  const service = createAiTalkService({
+    aiService: {
+      getConfig: () => ({ enabled: true, behavior: { enabled: false }, memory: { enabled: false } }),
+      complete: async () => {
+        providerCalls += 1
+        if (providerCalls === 1) {
+          markFirstStarted()
+          await firstGate
+        }
+        return { reply: `reply ${providerCalls}` }
+      }
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({ id: 'mochi-cat', persona: null })
+  })
+  const conversationId = 'plugin:openpet.im-gateway:service:im-gateway:telegram:private:peer-a'
+
+  const first = service.chatFromEntrypoint({
+    message: 'first',
+    conversationId,
+    entrypoint: 'im-gateway'
+  })
+  await firstStarted
+  const second = service.chatFromEntrypoint({
+    message: 'second',
+    conversationId,
+    entrypoint: 'im-gateway'
+  })
+  service.dispose()
+  releaseFirst()
+
+  const [firstResult, secondResult] = await Promise.allSettled([first, second])
+  const contents = store.getMessages('im-gateway:mochi-cat', conversationId).map((message) => message.content)
+
+  assert.equal(firstResult.status, 'fulfilled')
+  assert.equal(secondResult.status, 'rejected')
+  assert.equal(secondResult.reason.code, 'ai_talk_disposed')
+  assert.equal(providerCalls, 1)
+  assert.deepEqual(contents, ['first', 'reply 1'])
+})
+
 test('ai talk service delegates pending memory job interruption and keeps disposal idempotent', () => {
   const interruptionCalls = []
   const store = createStore()
