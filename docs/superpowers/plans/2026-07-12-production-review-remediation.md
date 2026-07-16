@@ -1,5 +1,8 @@
 # Production Review Remediation Implementation Plan
 
+> Status: Complete
+> Completed: 2026-07-16
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Eliminate the confirmed production correctness, durability, security, lifecycle, and performance defects found in the review of `9f9ad6345581fc5ae665492eb9c7e4fe98490b5e` before the next release.
@@ -87,12 +90,12 @@ Agents C and D both touch AI Talk files and therefore must run sequentially. Age
 - `listSecretRefs()` must expose metadata only, never plaintext or ciphertext values.
 - Legacy plaintext entries may be read once and converted on the next successful write; do not retain mixed runtime representations.
 
-- [ ] Add a test that sets one encrypted secret and asserts immediate `getSecretValue(id) === plaintext`.
-- [ ] Add a restart test that loads key A, writes key B, restarts, and reads both plaintext values.
-- [ ] Add a write-failure test proving the previous file remains parseable and unchanged.
-- [ ] Implement separate runtime and disk models plus atomic temp-file rename.
-- [ ] Run `node --test tests/services/secret-service.test.js`; expect all tests to pass.
-- [ ] Commit only the service and its tests with `fix(secrets): separate runtime and encrypted storage state`.
+- [x] Add a test that sets one encrypted secret and asserts immediate `getSecretValue(id) === plaintext`.
+- [x] Add a restart test that loads key A, writes key B, restarts, and reads both plaintext values.
+- [x] Add a write-failure test proving the previous file remains parseable and unchanged.
+- [x] Implement separate runtime and disk models plus atomic temp-file rename.
+- [x] Run `node --test tests/services/secret-service.test.js`; expect all tests to pass.
+- [x] Commit only the service and its tests with `fix(secrets): separate runtime and encrypted storage state`.
 
 **Acceptance:** No API returns ciphertext as a secret value; repeated load/write cycles do not corrupt untouched keys; failed writes preserve the prior store; no secret appears in test output or logs.
 
@@ -117,11 +120,11 @@ Agents C and D both touch AI Talk files and therefore must run sequentially. Age
 - `save()` and `update()` must throw on persistence failure without emitting `settings:changed` or running side effects.
 - `preview()` remains non-persistent.
 
-- [ ] Add a service test asserting failed persistence leaves `get()`, side effects, and change events unchanged.
-- [ ] Add storage tests for atomic replacement, malformed-primary backup recovery, and both-files-invalid default fallback with an explicit warning/error record.
-- [ ] Implement atomic primary/backup rotation and post-commit memory publication.
-- [ ] Run `node --test tests/services/settings-service.test.js tests/main/settings-storage.test.js`; expect all tests to pass.
-- [ ] Commit with `fix(settings): commit durable state before publication`.
+- [x] Add a service test asserting failed persistence leaves `get()`, side effects, and change events unchanged.
+- [x] Add storage tests for atomic replacement, malformed-primary backup recovery, and both-files-invalid default fallback with an explicit warning/error record.
+- [x] Implement atomic primary/backup rotation and post-commit memory publication.
+- [x] Run `node --test tests/services/settings-service.test.js tests/main/settings-storage.test.js`; expect all tests to pass.
+- [x] Commit with `fix(settings): commit durable state before publication`.
 
 **Acceptance:** Disk and memory never disagree after a failed save; a valid backup survives a malformed primary; fallback is observable; save-time side effects occur once and only after commit.
 
@@ -145,12 +148,12 @@ Agents C and D both touch AI Talk files and therefore must run sequentially. Age
 - Preserve existing Bubble Chat IPC response shape, request IDs, queue state, and `aiTalkService.streamChat()` public contract.
 - Introduce one internal ownership point for appending the user turn; IPC and service layers must not both persist it.
 
-- [ ] Add a two-message streaming regression asserting stored order `user1, assistant1, user2, assistant2`.
-- [ ] Assert the second provider request ends with `user2` and includes `assistant1` before it.
-- [ ] Add cancellation and provider-failure tests proving pending messages are neither lost nor duplicated.
-- [ ] Move persistence to conversation-queue turn acquisition and remove the earlier append.
-- [ ] Run the focused AI Talk and Bubble Chat IPC tests; expect all tests to pass.
-- [ ] Commit with `fix(ai-talk): serialize queued conversation turns`.
+- [x] Add a two-message streaming regression asserting stored order `user1, assistant1, user2, assistant2`.
+- [x] Assert the second provider request ends with `user2` and includes `assistant1` before it.
+- [x] Add cancellation and provider-failure tests proving pending messages are neither lost nor duplicated.
+- [x] Move persistence to conversation-queue turn acquisition and remove the earlier append.
+- [x] Run the focused AI Talk and Bubble Chat IPC tests; expect all tests to pass.
+- [x] Commit with `fix(ai-talk): serialize queued conversation turns`.
 
 **Acceptance:** Stored history and every provider prompt preserve causal order under rapid sends, streaming, cancellation, and failure.
 
@@ -173,11 +176,11 @@ Agents C and D both touch AI Talk files and therefore must run sequentially. Age
 
 **Required design:** Keep token accumulation in memory. Coalesce renderer updates to a bounded cadence (target 30-60 ms, with an immediate final/error/cancel flush). Emit lifecycle logs for start, bounded progress summaries, completion, cancellation, and error; never log every token. Ensure pending timers are cleared on all terminal paths and service disposal.
 
-- [ ] Add a synthetic 1000-delta test with fake timers asserting bounded IPC broadcasts and bounded log records.
-- [ ] Add final-flush tests for normal completion, cancellation, provider error, and empty stream.
-- [ ] Implement one coalescer per active request and terminal cleanup.
-- [ ] Run focused stream and app-log tests; expect all tests to pass.
-- [ ] Commit with `perf(ai-talk): coalesce stream updates and logging`.
+- [x] Add a synthetic 1000-delta test with fake timers asserting bounded IPC broadcasts and bounded log records.
+- [x] Add final-flush tests for normal completion, cancellation, provider error, and empty stream.
+- [x] Implement one coalescer per active request and terminal cleanup.
+- [x] Run focused stream and app-log tests; expect all tests to pass.
+- [x] Commit with `perf(ai-talk): coalesce stream updates and logging`.
 
 **Acceptance:** Final rendered text is byte-for-byte complete; event count is bounded by elapsed time rather than token count; no timer or request state survives a terminal path.
 
@@ -195,11 +198,11 @@ Agents C and D both touch AI Talk files and therefore must run sequentially. Age
 
 **Required design:** Give each spawned child a generation/context containing its own waiters, readiness state, output reader, and shutdown promise. A message or exit may settle only its own context. Before spawning a replacement, await graceful/forced shutdown of the previous context.
 
-- [ ] Add the reproduced timeout/retry/late-exit test and assert the replacement reaches ready.
-- [ ] Add stale `updated` and stale exit tests proving they cannot affect the current generation.
-- [ ] Implement child-scoped contexts and awaited replacement shutdown.
-- [ ] Run `node --test tests/services/system-cursor-service.test.js`; expect all tests to pass.
-- [ ] Commit with `fix(cursor): isolate helper protocol generations`.
+- [x] Add the reproduced timeout/retry/late-exit test and assert the replacement reaches ready.
+- [x] Add stale `updated` and stale exit tests proving they cannot affect the current generation.
+- [x] Implement child-scoped contexts and awaited replacement shutdown.
+- [x] Run `node --test tests/services/system-cursor-service.test.js`; expect all tests to pass.
+- [x] Commit with `fix(cursor): isolate helper protocol generations`.
 
 **Acceptance:** Old helper output/exit cannot resolve or reject current operations; stop/dispose clears readers, timers, and waiters exactly once.
 
@@ -216,11 +219,11 @@ Agents C and D both touch AI Talk files and therefore must run sequentially. Age
 
 **Required design:** Inspect archive metadata before extraction. Reject unsafe paths and links plus configurable hard limits for entry count, total expanded bytes, largest file, and compression ratio. Extract asynchronously into a unique staging directory, validate manifest and content hash there, rename the current install to backup, atomically rename staging into place, persist settings, then remove backup. Roll back filesystem and settings on any failure. Uninstall first stages the directory as a backup, commits settings, then deletes the backup.
 
-- [ ] Add failure-injection tests at copy/extract, validation, rename, settings save, and cleanup boundaries.
-- [ ] Add ZIP tests for path traversal, too many entries, oversized total, oversized single file, suspicious compression ratio, timeout/abort, and staging cleanup.
-- [ ] Implement archive inspection, asynchronous bounded extraction, staged install/update, and rollback-capable uninstall.
-- [ ] Run `node --test tests/services/plugin-install-service.test.js tests/main/ipc-plugin-install.test.js`; expect all tests to pass.
-- [ ] Commit with `fix(plugins): transact package mutations and bound extraction`.
+- [x] Add failure-injection tests at copy/extract, validation, rename, settings save, and cleanup boundaries.
+- [x] Add ZIP tests for path traversal, too many entries, oversized total, oversized single file, suspicious compression ratio, timeout/abort, and staging cleanup.
+- [x] Implement archive inspection, asynchronous bounded extraction, staged install/update, and rollback-capable uninstall.
+- [x] Run `node --test tests/services/plugin-install-service.test.js tests/main/ipc-plugin-install.test.js`; expect all tests to pass.
+- [x] Commit with `fix(plugins): transact package mutations and bound extraction`.
 
 **Acceptance:** The old plugin remains usable after every failed update; failed uninstall leaves both files and settings installed; rejected archives never write outside staging; no staging/backup directories leak after success or handled failure.
 
@@ -239,11 +242,11 @@ Agents C and D both touch AI Talk files and therefore must run sequentially. Age
 
 **Required design:** Replace the fetch path with an HTTPS transport/dispatcher whose connect callback uses one address selected from the validated set. Preserve the original hostname for TLS SNI and certificate verification and preserve the original `Host` header. Revalidate every redirect target and pin each redirect connection separately. Retain request/response byte limits, timeout/cancellation, allowed methods, headers, and manifest host allowlist.
 
-- [ ] Add a deterministic resolver/connector test where validation returns a public IP and a later system lookup would return `127.0.0.1`; assert only the validated IP is dialed.
-- [ ] Add TLS hostname, IPv4/IPv6, multi-address, redirect-to-private, timeout, cancellation, and response-limit tests.
-- [ ] Implement pinned HTTPS connection handling and route plugin requests through it.
-- [ ] Run focused plugin network tests and `npm run test:core`; expect all tests to pass.
-- [ ] Commit with `fix(plugins): pin network connections to validated addresses`.
+- [x] Add a deterministic resolver/connector test where validation returns a public IP and a later system lookup would return `127.0.0.1`; assert only the validated IP is dialed.
+- [x] Add TLS hostname, IPv4/IPv6, multi-address, redirect-to-private, timeout, cancellation, and response-limit tests.
+- [x] Implement pinned HTTPS connection handling and route plugin requests through it.
+- [x] Run focused plugin network tests and `npm run test:core`; expect all tests to pass.
+- [x] Commit with `fix(plugins): pin network connections to validated addresses`.
 
 **Acceptance:** The connector receives only a previously validated address; certificate verification uses the requested hostname; redirects cannot escape policy.
 
@@ -262,11 +265,11 @@ Agents C and D both touch AI Talk files and therefore must run sequentially. Age
 
 **Required design:** Track the fields owned by each save operation and merge only those fields into the latest functional state. Preserve fields changed after dispatch using a request revision or per-field dirty revision. Related controls may be disabled only when the whole logical form is intentionally locked; partial disabling that still permits erased edits is not acceptable.
 
-- [ ] Add deferred-promise tests: start save A, edit field B, resolve A, and assert B remains the new draft.
-- [ ] Add overlapping save tests where stale response A resolves after response B and cannot overwrite B.
-- [ ] Replace whole-object response assignment and stale-closure reads with functional/revision-aware merging.
-- [ ] Run focused tests and `npm run test:control-center`; expect all tests to pass.
-- [ ] Commit with `fix(control-center): preserve drafts across async saves`.
+- [x] Add deferred-promise tests: start save A, edit field B, resolve A, and assert B remains the new draft.
+- [x] Add overlapping save tests where stale response A resolves after response B and cannot overwrite B.
+- [x] Replace whole-object response assignment and stale-closure reads with functional/revision-aware merging.
+- [x] Run focused tests and `npm run test:control-center`; expect all tests to pass.
+- [x] Commit with `fix(control-center): preserve drafts across async saves`.
 
 **Acceptance:** Save responses update persisted/owned fields and status without reverting newer user input; failure leaves the draft editable and intact.
 
@@ -282,12 +285,12 @@ Agents C and D both touch AI Talk files and therefore must run sequentially. Age
 
 **Required design:** Require or derive a stable event ID from sanitized source/session/turn/event metadata. Persist a bounded dedupe index with the event result. A repeated ID returns the original successful ingestion result without incrementing history/usage or repeating notification. Treat bridge delivery as a separate post-commit outcome: committed ingestion returns success even when notification fails, with a sanitized `notification.status` field and observable retry policy.
 
-- [ ] Add a bridge-failure test asserting the HTTP ingestion result is successful and history/usage contain one event.
-- [ ] Retry the same event ID and assert no duplicate mutation or notification.
-- [ ] Add bounded dedupe reload/expiry tests and distinct-ID tests.
-- [ ] Implement stable IDs, persisted bounded dedupe, and separate notification result handling.
-- [ ] Run `node --test tests/examples/agent-awareness-plugin.test.js`; expect all tests to pass.
-- [ ] Commit with `fix(agent-awareness): deduplicate committed events`.
+- [x] Add a bridge-failure test asserting the HTTP ingestion result is successful and history/usage contain one event.
+- [x] Retry the same event ID and assert no duplicate mutation or notification.
+- [x] Add bounded dedupe reload/expiry tests and distinct-ID tests.
+- [x] Implement stable IDs, persisted bounded dedupe, and separate notification result handling.
+- [x] Run `node --test tests/examples/agent-awareness-plugin.test.js`; expect all tests to pass.
+- [x] Commit with `fix(agent-awareness): deduplicate committed events`.
 
 **Acceptance:** At-least-once senders produce exactly-once local mutations per event ID; notification failure is visible but does not misreport ingestion failure; dedupe storage is bounded.
 
@@ -301,12 +304,32 @@ Agents C and D both touch AI Talk files and therefore must run sequentially. Age
 
 **Evidence:** There are no callers. `main.js` resolves `src/main/ipc.js`; the directory index is an unused duplicate entry surface.
 
-- [ ] Add a test or static assertion that the runtime imports the canonical `src/main/ipc.js` module and no source imports `src/main/ipc/index.js` or `src/main/ipc` ambiguously.
-- [ ] Delete `src/main/ipc/index.js` and remove any newly discovered references.
-- [ ] Run the focused main bootstrap tests and `npm run check:syntax`; expect all tests/checks to pass.
-- [ ] Commit with `chore(ipc): remove unused directory entry`.
+- [x] Add a test or static assertion that the runtime imports the canonical `src/main/ipc.js` module and no source imports `src/main/ipc/index.js` or `src/main/ipc` ambiguously.
+- [x] Delete `src/main/ipc/index.js` and remove any newly discovered references.
+- [x] Run the focused main bootstrap tests and `npm run check:syntax`; expect all tests/checks to pass.
+- [x] Commit with `chore(ipc): remove unused directory entry`.
 
 **Acceptance:** Runtime bootstrap still registers IPC handlers through the canonical file; no package/build reference expects the deleted wrapper.
+
+## Completion Evidence
+
+All workstream commits below are reachable from main. docs/TODO.md closed the
+P1 and P2 remediation items after these changes landed and passed their focused
+verification. Task 7 also includes the later full-lifecycle timeout and
+cancellation correction.
+
+| Task | Evidence commit |
+| --- | --- |
+| 1. Secret storage | 6d818b37 |
+| 2. Settings durability | 57c65f4a |
+| 3. AI Talk queue ordering | eccea6c6 |
+| 4. Streaming throughput | a2658943 |
+| 5. Cursor lifecycle | 066393ec |
+| 6. Plugin transactions | 69d72c13 |
+| 7. DNS pinning | 7b22aadd; lifecycle follow-up 0792de6c |
+| 8. Async draft protection | fc935ab2 |
+| 9. Agent Awareness idempotency | 871941d4 |
+| 10. Dead IPC removal | cb3992bb |
 
 ## Integration Order
 
