@@ -163,6 +163,8 @@ const ResultCard = ({
           <span><strong>Backend</strong> {diagnostics.backend || '-'} / {diagnostics.backendState || '-'}</span>
           <span><strong>Conditioning</strong> {conditioning ? `${conditioning.mode || 'not recorded'} via ${conditioning.endpoint || 'not recorded'}` : 'not recorded'}</span>
           <span><strong>References</strong> {conditioning && Number.isFinite(Number(conditioning.referenceImageCount)) ? conditioning.referenceImageCount : 'not recorded'}</span>
+          <span><strong>Requested outputs</strong> {conditioning && Number.isFinite(Number(conditioning.requestedOutputCount)) ? conditioning.requestedOutputCount : 'not recorded'}</span>
+          <span><strong>Image field</strong> {conditioning?.multipartImageField || 'not recorded'}</span>
           <span><strong>Outputs</strong> {diagnostics.outputCount}</span>
           {diagnostics.generatedAt ? <span><strong>Generated</strong> {formatTimestamp(diagnostics.generatedAt)}</span> : null}
           {diagnostics.failedAt ? <span><strong>Failed</strong> {formatTimestamp(diagnostics.failedAt)}</span> : null}

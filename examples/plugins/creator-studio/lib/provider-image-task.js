@@ -30,8 +30,8 @@ const DEFAULT_STYLE_LOCKS = Object.freeze([
   'same lighting and rendering style'
 ])
 
-const INTERNAL_VISUAL_TEXT = /\b(?:openpet|provider|backend|run[-_ ]?id|action[-_ ]?id|checkpoint|multipart|reference[-_ ]?role)\b/gi
-const SECRET_LIKE_TEXT = /\b(?:sk-[A-Za-z0-9_-]+|bearer\s+[A-Za-z0-9._~-]+|[A-Za-z0-9_-]*token[A-Za-z0-9_-]*\s*[:=]\s*\S+)\b/gi
+const INTERNAL_VISUAL_TEXT = /\b(?:openpet|creator[-_ ]?studio|codex[-_ ]?pet|hatch[-_ ]?pet|provider|backend|run[-_ ]?id|action[-_ ]?id|checkpoint|multipart|reference[-_ ]?role)\b/gi
+const SECRET_LIKE_TEXT = /\b(?:sk-[A-Za-z0-9_-]+|bearer\s+[A-Za-z0-9._~-]+|(?:[A-Za-z0-9_-]*token[A-Za-z0-9_-]*|api[-_ ]?key|secret|credential|password|authorization)\s*[:=]\s*(?:(?:bearer|basic)\s+)?\S+)\b/gi
 const HOST_PATH_TEXT = /(?:\/Users|\/var|\/tmp|\/private|\/Volumes)\/[^\s,，。)]+/g
 const URL_TEXT = /https?:\/\/\S+/gi
 const FILE_URI_TEXT = /\bfile:\/{2,3}\S+/gi
@@ -42,8 +42,8 @@ const PROJECT_RELATIVE_PATH_TEXT = /\b(?:runs|inputs|outputs|assets|cat_anime)[/
 const POSIX_ABSOLUTE_PATH_TEXT = /(?:^|\s)\/(?!\/)\S+/g
 
 const UNSAFE_APPEARANCE_INTENT_PATTERNS = Object.freeze([
-  Object.freeze({ pattern: /\b(?:openpet|provider|backend|run[-_ ]?id|action[-_ ]?id|checkpoint|multipart|reference[-_ ]?role)\b/i, label: 'internal term' }),
-  Object.freeze({ pattern: /\b(?:sk-[A-Za-z0-9_-]+|bearer\s+[A-Za-z0-9._~-]+|[A-Za-z0-9_-]*token[A-Za-z0-9_-]*\s*[:=]\s*\S+)\b/i, label: 'secret' }),
+  Object.freeze({ pattern: /\b(?:openpet|creator[-_ ]?studio|codex[-_ ]?pet|hatch[-_ ]?pet|provider|backend|run[-_ ]?id|action[-_ ]?id|checkpoint|multipart|reference[-_ ]?role)\b/i, label: 'internal term' }),
+  Object.freeze({ pattern: /\b(?:sk-[A-Za-z0-9_-]+|bearer\s+[A-Za-z0-9._~-]+|(?:[A-Za-z0-9_-]*token[A-Za-z0-9_-]*|api[-_ ]?key|secret|credential|password|authorization)\s*[:=]\s*(?:(?:bearer|basic)\s+)?\S+)\b/i, label: 'secret' }),
   Object.freeze({ pattern: /https?:\/\/\S+/i, label: 'URL' }),
   Object.freeze({ pattern: /\bfile:\/{2,3}\S+/i, label: 'file URI' }),
   Object.freeze({ pattern: /(?:^|\s)(?:\.\.[/\\])+\S*/i, label: 'path traversal' }),

@@ -277,7 +277,15 @@ const createRepairBaseRun = ({ run, preserveGeneratedImage }) => {
         ...(run.artifacts?.anchorReferences ? { anchorReferences: run.artifacts.anchorReferences } : {})
       }
     : {}
-  const { modelSnapshot: _discardedModelSnapshot, ...baseRun } = run
+  const {
+    activatedPackId: _discardedActivatedPackId,
+    humanApproval: _discardedHumanApproval,
+    importedActionId: _discardedImportedActionId,
+    importedPackId: _discardedImportedPackId,
+    modelSnapshot: _discardedModelSnapshot,
+    triggerProposalSubmission: _discardedTriggerProposalSubmission,
+    ...baseRun
+  } = run
   return {
     ...baseRun,
     status: 'failed',
@@ -584,6 +592,13 @@ const runGenerationStep = async ({ dataDir, runId, now = () => new Date().toISOS
       status: 'generating',
       currentStep: 'generate',
       updatedAt: startedAt,
+      humanApproval: undefined,
+      importedActionId: '',
+      importedPackId: '',
+      activatedPackId: '',
+      triggerProposalSubmission: undefined,
+      reviewStatus: 'pending',
+      importStatus: 'not-imported',
       generationLease,
       backendStatus: createBackendStatus({
         backend,

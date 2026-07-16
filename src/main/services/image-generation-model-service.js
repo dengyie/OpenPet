@@ -502,9 +502,9 @@ const normalizePromptCompilerEvidence = (value = {}) => {
     width: Math.max(0, Number(value.width) || 0),
     height: Math.max(0, Number(value.height) || 0),
     aspectRatio: /^\d+:\d+$/.test(aspectRatio) ? aspectRatio : '',
-    referenceImageCount: 1,
-    requestedOutputCount: REQUESTED_PROVIDER_OUTPUT_COUNT,
-    promptSafety: 'provider-neutral'
+    referenceImageCount: Math.max(0, Number(value.referenceImageCount) || 0),
+    requestedOutputCount: Math.max(0, Number(value.requestedOutputCount) || 0),
+    promptSafety: String(value.promptSafety || '').trim()
   }
 }
 
@@ -1144,14 +1144,6 @@ const createImageGenerationModelService = ({
       event: 'imageGeneration.provider.request.started',
       message: 'Image Provider request started',
       details: {
-        ...createProviderOperationDetails({
-          capability: 'image',
-          operation: 'provider-generate',
-          config: runtimeConfig,
-          configSource: 'image',
-          requestId,
-          outcome: 'started'
-        }),
         ...(promptCompiler || {}),
         requestId,
         provider: runtimeConfig.provider,
@@ -1167,7 +1159,6 @@ const createImageGenerationModelService = ({
         referenceImageCount: normalizedReferenceImages.length,
         multipartImageField: 'image',
         requestedOutputCount: REQUESTED_PROVIDER_OUTPUT_COUNT,
-        ...(promptCompiler || {}),
         timeoutMs
       }
     })
@@ -1570,14 +1561,6 @@ const createImageGenerationModelService = ({
       event: 'imageGeneration.request.started',
       message: 'Image generation request started',
       details: {
-        ...createProviderOperationDetails({
-          capability: 'image',
-          operation: 'generate',
-          config,
-          configSource: 'image',
-          requestId,
-          outcome: 'started'
-        }),
         ...(normalizedPromptCompiler || {}),
         requestId,
         provider: config.provider,
@@ -1587,8 +1570,7 @@ const createImageGenerationModelService = ({
         requestedTransparent: Boolean(constraints?.transparent),
         referenceImageCount: normalizedReferenceImages.length,
         multipartImageField: 'image',
-        requestedOutputCount: REQUESTED_PROVIDER_OUTPUT_COUNT,
-        ...(normalizedPromptCompiler || {})
+        requestedOutputCount: REQUESTED_PROVIDER_OUTPUT_COUNT
       }
     })
 

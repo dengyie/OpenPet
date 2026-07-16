@@ -9,12 +9,16 @@ const MAX_PROMPT_LENGTH = 12000
 
 const FORBIDDEN_PROMPT_PATTERNS = Object.freeze([
   Object.freeze({ pattern: /\bOpenPet\b/i, label: 'product name' }),
+  Object.freeze({ pattern: /\bCreator[-_ ]?Studio\b/i, label: 'product component' }),
+  Object.freeze({ pattern: /\bCodex[-_ ]?Pet\b/i, label: 'product asset format' }),
+  Object.freeze({ pattern: /\bHatch[-_ ]?Pet\b/i, label: 'product workflow' }),
   Object.freeze({ pattern: /\bProvider\b/i, label: 'transport owner' }),
   Object.freeze({ pattern: /\bbackend\b/i, label: 'backend name' }),
   Object.freeze({ pattern: /\b(?:run|action)[-_ ]?id\b/i, label: 'internal identifier' }),
   Object.freeze({ pattern: /\breference[-_ ]?role\b/i, label: 'reference role' }),
   Object.freeze({ pattern: /\bcheckpoint\b/i, label: 'checkpoint term' }),
   Object.freeze({ pattern: /\bmultipart\b/i, label: 'transport format' }),
+  Object.freeze({ pattern: /\b(?:sk-[A-Za-z0-9_-]+|bearer\s+[A-Za-z0-9._~-]+|(?:[A-Za-z0-9_-]*token[A-Za-z0-9_-]*|api[-_ ]?key|secret|credential|password|authorization)\s*[:=]\s*(?:(?:bearer|basic)\s+)?\S+)\b/i, label: 'secret' }),
   Object.freeze({ pattern: /https?:\/\/\S+/i, label: 'URL' }),
   Object.freeze({ pattern: /\bfile:\/{2,3}\S+/i, label: 'file URI' }),
   Object.freeze({ pattern: /(?:^|\s)(?:\.\.[/\\])+\S*/i, label: 'path traversal' }),

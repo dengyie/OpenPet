@@ -34,6 +34,23 @@ const getRunBackupPath = ({ dataDir, runId }) => path.join(getRunDir({ dataDir, 
 
 const getRunLogPath = ({ dataDir, runId }) => path.join(getRunDir({ dataDir, runId }), 'logs', 'events.jsonl')
 
+const assertExistingRunDirectory = ({ dataDir, runId }) => {
+  const runsDir = getRunsDir(dataDir)
+  const runDir = getRunDir({ dataDir, runId })
+  if (!fs.existsSync(runDir)) throw new Error(`Creator Studio run not found: ${runId}`)
+  const runStat = fs.lstatSync(runDir)
+  if (runStat.isSymbolicLink() || !runStat.isDirectory()) {
+    throw new Error(`Creator Studio run directory is invalid: ${runId}`)
+  }
+  const realRunsDir = fs.realpathSync.native(runsDir)
+  const realRunDir = fs.realpathSync.native(runDir)
+  const relative = path.relative(realRunsDir, realRunDir)
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error(`Creator Studio run directory escaped the data boundary: ${runId}`)
+  }
+  return runDir
+}
+
 const writeJsonAtomic = (filePath, value) => {
   ensureDirectory(path.dirname(filePath))
   const serialized = `${JSON.stringify(value, null, 2)}\n`
@@ -210,10 +227,7 @@ const createRun = ({ dataDir, input = {}, now = () => new Date().toISOString() }
 }
 
 const readRun = ({ dataDir, runId, now = () => new Date().toISOString() }) => {
-  const runDir = getRunDir({ dataDir, runId })
-  if (!fs.existsSync(runDir) || !fs.statSync(runDir).isDirectory()) {
-    throw new Error(`Creator Studio run not found: ${runId}`)
-  }
+  assertExistingRunDirectory({ dataDir, runId })
   const runPath = getRunPath({ dataDir, runId })
   const current = readValidRunFile({ filePath: runPath, runId })
   if (current) return current
@@ -376,10 +390,7 @@ const readRunLogs = ({ dataDir, runId }) => {
 
 const writeRun = ({ dataDir, run }) => {
   if (!isRunRecord(run, run?.runId)) throw new Error('Creator Studio run is invalid')
-  const runDir = getRunDir({ dataDir, runId: run.runId })
-  if (!fs.existsSync(runDir) || !fs.statSync(runDir).isDirectory()) {
-    throw new Error(`Creator Studio run not found: ${run.runId}`)
-  }
+  assertExistingRunDirectory({ dataDir, runId: run.runId })
   const runPath = getRunPath({ dataDir, runId: run.runId })
   const backupPath = getRunBackupPath({ dataDir, runId: run.runId })
   const current = readValidRunFile({ filePath: runPath, runId: run.runId })
