@@ -2083,6 +2083,255 @@ test('ai service streamComplete parses OpenAI-compatible SSE deltas', async () =
   assert.equal(result.finishReason, 'stop')
 })
 
+test('ai service streamComplete parses a successful non-stream JSON response without retrying', async () => {
+  let callCount = 0
+  const logs = []
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://stream.example.test/v1',
+        model: 'stream-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    appLogService: { record: (entry) => logs.push(entry) },
+    fetchImpl: async () => {
+      callCount += 1
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: (name) => String(name).toLowerCase() === 'content-type' ? 'application/json; charset=utf-8' : '' },
+        body: null,
+        json: async () => ({
+          choices: [{
+            message: {
+              content: 'Non-stream reply',
+              tool_calls: [{
+                function: {
+                  name: 'openpet_behavior',
+                  arguments: JSON.stringify({ intent: 'greet', confidence: 0.9, bubbleText: 'Hi' })
+                }
+              }]
+            },
+            finish_reason: 'stop'
+          }]
+        })
+      }
+    }
+  })
+
+  const result = await service.streamComplete({
+    requestId: 'stream-json-fallback-1',
+    messages: [{ role: 'user', content: 'Say hello' }],
+    onDelta: () => assert.fail('non-stream JSON fallback must not emit SSE deltas')
+  })
+
+  assert.equal(callCount, 1)
+  assert.equal(result.reply, 'Non-stream reply')
+  assert.equal(result.behaviorIntent.intent, 'greet')
+  assert.equal(result.streaming, false)
+  assert.equal(result.fallback, true)
+  assert.equal(result.fallbackReason, 'non-stream-response')
+  assert.equal(result.chunkCount, 0)
+  assert.equal(result.finishReason, 'stop')
+  const streamTerminalLogs = logs.filter((entry) => (
+    ['ai.provider.stream.completed', 'ai.provider.stream.failed'].includes(entry.event)
+  ))
+  assert.equal(streamTerminalLogs.length, 1)
+  assert.equal(streamTerminalLogs[0].event, 'ai.provider.stream.completed')
+  assert.equal(streamTerminalLogs[0].details.requestId, 'stream-json-fallback-1')
+  assert.equal(streamTerminalLogs[0].details.fallback, true)
+  assert.equal(streamTerminalLogs[0].details.fallbackReason, 'non-stream-response')
+})
+
+test('ai service streamComplete keeps timeout and caller cancellation active for non-stream JSON bodies', async () => {
+  const createService = () => {
+    const logs = []
+    return {
+      logs,
+      service: createAiService({
+        settingsService: createSettingsService({
+          ai: {
+            enabled: true,
+            provider: 'openai-compatible',
+            baseUrl: 'https://stream.example.test/v1',
+            model: 'stream-model',
+            apiKeyRef: 'ai.default',
+            systemPrompt: ''
+          }
+        }),
+        secretService: {
+          getSecretValue: () => 'sk-test',
+          setSecret: () => {}
+        },
+        appLogService: { record: (entry) => logs.push(entry) },
+        requestTimeoutMs: 5,
+        fetchImpl: async () => ({
+          ok: true,
+          status: 200,
+          headers: { get: () => 'application/json' },
+          body: null,
+          json: async () => new Promise(() => {})
+        })
+      })
+    }
+  }
+
+  const timeoutFixture = createService()
+  await assert.rejects(
+    () => timeoutFixture.service.streamComplete({
+      requestId: 'stream-json-timeout-1',
+      messages: [{ role: 'user', content: 'Long reply' }]
+    }),
+    (error) => error?.name === 'TimeoutError'
+  )
+  const timeoutTerminalLogs = timeoutFixture.logs.filter((entry) => (
+    ['ai.provider.stream.completed', 'ai.provider.stream.failed'].includes(entry.event)
+  ))
+  assert.equal(timeoutTerminalLogs.length, 1)
+  assert.equal(timeoutTerminalLogs[0].event, 'ai.provider.stream.failed')
+  assert.equal(timeoutTerminalLogs[0].details.requestId, 'stream-json-timeout-1')
+
+  const controller = new AbortController()
+  const cancelFixture = createService()
+  const pending = cancelFixture.service.streamComplete({
+    requestId: 'stream-json-cancel-1',
+    messages: [{ role: 'user', content: 'Long reply' }],
+    signal: controller.signal
+  })
+  setTimeout(() => controller.abort(), 1)
+  await assert.rejects(pending, (error) => error?.name === 'AbortError')
+  const cancelTerminalLogs = cancelFixture.logs.filter((entry) => (
+    ['ai.provider.stream.completed', 'ai.provider.stream.failed'].includes(entry.event)
+  ))
+  assert.equal(cancelTerminalLogs.length, 1)
+  assert.equal(cancelTerminalLogs[0].event, 'ai.provider.stream.failed')
+  assert.equal(cancelTerminalLogs[0].details.requestId, 'stream-json-cancel-1')
+})
+
+test('ai service streamComplete rejects a successful SSE response with no reply', async () => {
+  const logs = []
+  const body = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n'))
+      controller.close()
+    }
+  })
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://stream.example.test/v1',
+        model: 'stream-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    appLogService: { record: (entry) => logs.push(entry) },
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      headers: { get: () => 'text/event-stream; charset=utf-8' },
+      body
+    })
+  })
+
+  await assert.rejects(
+    () => service.streamComplete({
+      requestId: 'stream-empty-sse-1',
+      messages: [{ role: 'user', content: 'Say hello' }]
+    }),
+    /empty response/i
+  )
+
+  const streamTerminalLogs = logs.filter((entry) => (
+    ['ai.provider.stream.completed', 'ai.provider.stream.failed'].includes(entry.event)
+  ))
+  assert.equal(streamTerminalLogs.length, 1)
+  assert.equal(streamTerminalLogs[0].event, 'ai.provider.stream.failed')
+})
+
+test('ai service streamComplete does not retry after partial SSE output fails', async () => {
+  let callCount = 0
+  let readCount = 0
+  const deltas = []
+  const logs = []
+  const body = {
+    getReader: () => ({
+      read: async () => {
+        readCount += 1
+        if (readCount === 1) {
+          return {
+            done: false,
+            value: new TextEncoder().encode('data: {"choices":[{"delta":{"content":"Partial"}}]}\n\n')
+          }
+        }
+        throw new Error('stream disconnected')
+      },
+      cancel: () => {},
+      releaseLock: () => {}
+    })
+  }
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://stream.example.test/v1',
+        model: 'stream-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    appLogService: { record: (entry) => logs.push(entry) },
+    fetchImpl: async () => {
+      callCount += 1
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => 'text/event-stream' },
+        body
+      }
+    }
+  })
+
+  await assert.rejects(
+    () => service.streamComplete({
+      requestId: 'stream-partial-failure-1',
+      messages: [{ role: 'user', content: 'Say hello' }],
+      onDelta: (delta) => deltas.push(delta)
+    }),
+    /stream disconnected/i
+  )
+
+  assert.equal(callCount, 1)
+  assert.deepEqual(deltas, ['Partial'])
+  assert.equal(logs.filter((entry) => entry.event === 'ai.provider.request.started').length, 0)
+  const streamTerminalLogs = logs.filter((entry) => (
+    ['ai.provider.stream.completed', 'ai.provider.stream.failed'].includes(entry.event)
+  ))
+  assert.equal(streamTerminalLogs.length, 1)
+  assert.equal(streamTerminalLogs[0].event, 'ai.provider.stream.failed')
+  assert.equal(streamTerminalLogs[0].details.chunkCount, 1)
+  assert.equal(streamTerminalLogs[0].details.partialReplyChars, 7)
+})
+
 test('ai service streamComplete parses the final SSE event without a trailing newline', async () => {
   const body = new ReadableStream({
     start(controller) {

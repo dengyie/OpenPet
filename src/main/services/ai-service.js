@@ -343,6 +343,24 @@ const isStreamingUnsupportedProviderResponse = ({ code, message } = {}) => {
   return new RegExp(`(?:stream.{0,32}${unsupported}|${unsupported}.{0,32}stream)`).test(details)
 }
 
+const getProviderResponseContentType = (response) => (
+  String(response?.headers?.get?.('content-type') || '').trim().toLowerCase()
+)
+
+const hasReadableStreamBody = (body) => Boolean(
+  body && (
+    typeof body.getReader === 'function' ||
+    typeof body[Symbol.asyncIterator] === 'function'
+  )
+)
+
+const isNonStreamJsonResponse = (response) => {
+  if (!response?.ok || typeof response.json !== 'function') return false
+  const contentType = getProviderResponseContentType(response)
+  if (contentType.includes('text/event-stream')) return false
+  return contentType.includes('json') || !hasReadableStreamBody(response.body)
+}
+
 const createLinkedAbortSignal = (externalSignal, timeoutMs) => {
   const timeout = createTimeoutController(timeoutMs)
   const controller = new AbortController()
@@ -1290,6 +1308,40 @@ const createAiService = ({
         throw providerError
       }
 
+      if (isNonStreamJsonResponse(response)) {
+        const { body: data } = await readJsonBody(response, linkedSignal)
+        const result = parseChatResult(data)
+        const nonStreamFinishReason = typeof data?.choices?.[0]?.finish_reason === 'string'
+          ? data.choices[0].finish_reason
+          : ''
+        recordLog({
+          level: 'info',
+          event: 'ai.provider.stream.completed',
+          message: 'AI provider stream completed through the response JSON fallback',
+          details: {
+            ...baseDetails,
+            outcome: 'completed',
+            status: response.status,
+            durationMs: Date.now() - startedAt,
+            elapsedMs: Date.now() - startedAt,
+            chunkCount: 0,
+            replyChars: String(result.reply || '').length,
+            finishReason: nonStreamFinishReason,
+            fallback: true,
+            fallbackReason: 'non-stream-response'
+          }
+        })
+        return {
+          ...result,
+          elapsedMs: Date.now() - startedAt,
+          streaming: false,
+          fallback: true,
+          fallbackReason: 'non-stream-response',
+          chunkCount: 0,
+          finishReason: nonStreamFinishReason
+        }
+      }
+
       let buffer = ''
       let done = false
       const consumeLine = (line) => {
@@ -1322,6 +1374,7 @@ const createAiService = ({
         if (done) break
       }
       if (!done && buffer) consumeLine(buffer)
+      if (!reply.trim()) throw new Error('AI provider returned an empty response')
 
       recordLog({
         level: 'info',
