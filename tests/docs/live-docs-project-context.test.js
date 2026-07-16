@@ -89,7 +89,7 @@ test('project-context indexes the archived provider smoke evidence and current s
   assert.equal(
     context.branch,
     'main',
-    'project-context.json should describe the current live-doc branch context'
+    'project-context.json should describe the canonical integration branch'
   )
 
   assert.match(
@@ -308,7 +308,7 @@ test('live docs keep branch metadata aligned with project-context', () => {
   assert.equal(
     context.branch,
     'main',
-    'project-context.json should keep live-doc metadata on the current main baseline'
+    'project-context.json should keep live-doc metadata on canonical main'
   )
 
   for (const [name, content] of [
@@ -316,11 +316,8 @@ test('live docs keep branch metadata aligned with project-context', () => {
     ['HANDOFF.md', handoff],
     ['project-status-review.md', projectStatusReview]
   ]) {
-    assert.match(
-      content,
-      /Branch:\s*`main`/i,
-      `${name} should keep the same branch header as project-context.json`
-    )
+    assert.match(content, /Branch:\s*\x60main\x60/i, `${name} should identify canonical main`)
+    assert.doesNotMatch(content, /Branch:\s*\x60(?:codex\/|dev\d*\b)/i)
   }
 })
 

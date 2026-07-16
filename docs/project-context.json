@@ -85,6 +85,7 @@
       "npm run test:control-center",
       "npm test",
       "npm run check:syntax",
+      "npm run check:docs-drift",
       "npm run smoke:ai-provider -- --base-url <url> --api-key-env <env> --chat-model <model>",
       "npm run smoke:creator-studio-provider -- --prompt <text>",
       "npm run smoke:creator-workflow-host -- --reference-image <file>",
@@ -93,7 +94,8 @@
       "npm run run-agent-awareness-local-smoke -- --codex-home <dir>",
       "npm run create-agent-awareness-local-smoke-archive -- --session-dir <dir>",
       "npm run update-agent-awareness-local-smoke-report -- <report.json> ...",
-      "npm run pack"
+      "npm run pack",
+      "git diff --check"
     ]
   },
   "releaseNotes": {
