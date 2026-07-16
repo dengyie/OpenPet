@@ -42,6 +42,34 @@ test('checkDocsDrift requires the development workflow', () => {
   assert.deepEqual(result.errors, ['Missing live doc: development-workflow.md'])
 })
 
+test('checkDocsDrift returns a structured error for invalid project context JSON', () => {
+  const docsRoot = createDocsFixture()
+  fs.writeFileSync(path.join(docsRoot, 'project-context.json'), '{ invalid json')
+
+  const result = checkDocsDrift({ docsRoot })
+
+  assert.equal(result.ok, false)
+  assert.equal(result.checks.length, 0)
+  assert.match(result.errors.join('\n'), /Invalid live doc JSON: project-context\.json/i)
+})
+
+test('cli preserves JSON output when project context JSON is invalid', () => {
+  const docsRoot = createDocsFixture()
+  fs.writeFileSync(path.join(docsRoot, 'project-context.json'), '{ invalid json')
+  const scriptPath = path.resolve(__dirname, '../../scripts/check-docs-drift.js')
+
+  const result = spawnSync(
+    process.execPath,
+    [scriptPath, '--docs-root', docsRoot, '--json'],
+    { encoding: 'utf-8' }
+  )
+
+  assert.equal(result.status, 1)
+  const output = JSON.parse(result.stdout)
+  assert.equal(output.ok, false)
+  assert.match(output.errors.join('\n'), /Invalid live doc JSON: project-context\.json/i)
+})
+
 test('checkDocsDrift rejects temporary live branch metadata', () => {
   const docsRoot = createDocsFixture()
   const handoffPath = path.join(docsRoot, 'HANDOFF.md')

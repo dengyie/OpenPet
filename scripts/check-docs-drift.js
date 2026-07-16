@@ -55,7 +55,26 @@ const parseArgs = (argv) => {
 
 const readDoc = (docsRoot, relativePath) => fs.readFileSync(path.join(docsRoot, relativePath), 'utf-8')
 
-const createChecks = (docsRoot) => {
+const readProjectContext = (docsRoot) => {
+  const relativePath = 'project-context.json'
+  const source = readDoc(docsRoot, relativePath)
+
+  try {
+    return {
+      source,
+      value: JSON.parse(source),
+      error: null
+    }
+  } catch (error) {
+    return {
+      source,
+      value: null,
+      error: `Invalid live doc JSON: ${relativePath}: ${error.message || error}`
+    }
+  }
+}
+
+const createChecks = (docsRoot, { projectContext, context }) => {
   const readme = readDoc(docsRoot, 'README.md')
   const handoff = readDoc(docsRoot, 'HANDOFF.md')
   const todo = readDoc(docsRoot, 'TODO.md')
@@ -66,13 +85,11 @@ const createChecks = (docsRoot) => {
   const testingStrategy = readDoc(docsRoot, 'testing-strategy.md')
   const releaseChecklist = readDoc(docsRoot, 'release-checklist.md')
   const todoArchitecture = readDoc(docsRoot, 'openpet-current-todo-architecture.md')
-  const projectContext = readDoc(docsRoot, 'project-context.json')
   const releaseEvidenceReadme = readDoc(docsRoot, 'release-evidence/README.md')
   const productionRemediation = readDoc(
     docsRoot,
     'superpowers/plans/2026-07-12-production-review-remediation.md'
   )
-  const context = JSON.parse(projectContext)
   const combined = [
     readme,
     handoff,
@@ -395,7 +412,20 @@ const checkDocsDrift = ({ docsRoot }) => {
     }
   }
 
-  const checks = createChecks(docsRoot).map((check) => ({
+  const projectContext = readProjectContext(docsRoot)
+  if (projectContext.error) {
+    return {
+      ok: false,
+      docsRoot,
+      checks: [],
+      errors: [projectContext.error]
+    }
+  }
+
+  const checks = createChecks(docsRoot, {
+    projectContext: projectContext.source,
+    context: projectContext.value
+  }).map((check) => ({
     id: check.id,
     description: check.description,
     ok: check.run(),
