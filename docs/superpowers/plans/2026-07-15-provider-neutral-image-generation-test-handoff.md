@@ -54,6 +54,8 @@ Start from the clean Phase 1 test HEAD `662d7c9e`. Cherry-pick these approved pr
 15. `fc42ab81` — review fixes for raw appearance validation, prompt-control precision, missing-run recovery, and removal of import-command sentinels;
 16. `ca144d57` — deep-review hardening for secrets/internal terms, stale approval/import evidence, directional-pair loading, run-directory confinement, and evidence contract precedence.
 
+Documentation-only handoff commits are not part of the production patch-equivalence list. Read the latest version of this file from the final `codex/dev8` documentation HEAD supplied by the source task; `ca144d57` remains the final production implementation HEAD.
+
 Do not cherry-pick `3f8b8d04`; the testing branch already contains the independently accepted Phase 1 baseline refresh in `662d7c9e`. The remediation design and implementation plan are `a5a8a161` and `52cb1b64`; inspect them read-only from `codex/dev8` when evaluating scope. Do not merge `codex/dev8`.
 
 If any cherry-pick conflicts, stop and report the exact files and conflict markers. Do not resolve by discarding existing Phase 1 tests.
