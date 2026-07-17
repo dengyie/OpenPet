@@ -6,7 +6,6 @@ const { createVisualPlan } = require('./visual-plan')
 const { resolveImageModelCapabilities } = require('./image-model-capabilities')
 const { buildProviderImagePromptClauses } = require('./provider-image-prompt-clauses')
 const { renderGptImage2Prompt } = require('./gpt-image-2-prompt-renderer')
-const { renderGenericImagePrompt } = require('./generic-image-prompt-renderer')
 
 const PROMPT_COMPILER_VERSION = 3
 const MAX_PROMPT_LENGTH = 12000
@@ -75,11 +74,8 @@ const normalizeCompilerTask = (task = {}) => createProviderImageTask({
 })
 
 const renderPrompt = ({ task, clauses, capabilities }) => {
-  if (capabilities.promptRenderer === 'gpt-image-2-v1') {
+  if (capabilities.promptRenderer === 'gpt-image-2-v1' || capabilities.promptRenderer === 'structured-image-edit-v1') {
     return renderGptImage2Prompt({ task, clauses, capabilities })
-  }
-  if (capabilities.promptRenderer === 'generic-image-edit-v1') {
-    return renderGenericImagePrompt({ task, clauses, capabilities })
   }
   throw createTaskError(
     'image_prompt_capability_conflict',

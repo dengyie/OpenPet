@@ -11,6 +11,12 @@ const getActionIdentityText = (action = {}) => [
   action.name
 ].map(normalizeText).filter(Boolean).join(' ')
 
+const getActionId = (action = {}) => normalizeText(action?.actionId).toLowerCase()
+
+const isWorkStateAction = (value = '') => (
+  typeof value === 'object' && getActionId(value) === 'running'
+)
+
 const isIdleAction = (value = '') => /(^|\s)(idle|idling|resting-idle)(\s|$)|待机|空闲/i.test(
   typeof value === 'object' ? getActionText(value) : normalizeText(value)
 )
@@ -19,9 +25,15 @@ const isWavingAction = (value = '') => /wave|waving|挥手|招手|挥爪|paw\s*w
   typeof value === 'object' ? getActionText(value) : normalizeText(value)
 )
 
-const isLocomotionAction = (value = '') => /walk|run|running|crawl|fly|flying|走|跑|奔跑|爬行|飞/i.test(
-  typeof value === 'object' ? getActionText(value) : normalizeText(value)
-)
+const isLocomotionAction = (value = '') => {
+  if (typeof value === 'object') {
+    if (isWorkStateAction(value)) return false
+    if (['running-right', 'running-left'].includes(getActionId(value))) return true
+  }
+  return /walk|run|running|crawl|fly|flying|走|跑|奔跑|爬行|飞/i.test(
+    typeof value === 'object' ? getActionText(value) : normalizeText(value)
+  )
+}
 
 const isVerticalBounceAction = (value = '') => /jump|hop|bounce|cheer|蹦|跳|弹跳|欢呼/i.test(
   typeof value === 'object' ? getActionText(value) : normalizeText(value)
@@ -53,6 +65,7 @@ const inferAnimationTypeFromText = (value = '') => {
 }
 
 const inferAnimationType = (action = {}) => {
+  if (isWorkStateAction(action)) return 'stationary_loop'
   if (isIdleAction(action)) return 'stationary_loop'
   const explicit = normalizeText(action.animationType)
   if (explicit) return explicit
@@ -65,6 +78,7 @@ const inferAnimationType = (action = {}) => {
 }
 
 const resolvePrimaryAnimatedPart = (action = {}) => {
+  if (isWorkStateAction(action)) return 'visible attention features and one small identity-safe processing or scanning motion'
   if (isIdleAction(action)) return 'subtle breathing or another small identity-safe local motion only'
   const custom = Array.isArray(action.animatedParts)
     ? action.animatedParts.map(normalizeText).filter(Boolean)
@@ -94,6 +108,14 @@ const ACTION_PHASES = Object.freeze({
     'tilt the raised appendage outward at the wave peak',
     'tilt the raised appendage inward while beginning to lower it',
     'return close to the neutral anchored starting pose'
+  ]),
+  work_state: Object.freeze([
+    'neutral focused pose with the complete character anchored at the lower-center root',
+    'begin one small readable processing or scanning motion using visible attention features',
+    'reach the clearest focused work-state moment without changing viewpoint or body root',
+    'shift the small processing or scanning motion to its complementary position',
+    'return toward the neutral focused pose while preserving identity and scale',
+    'settle into the starting focused pose for a seamless stationary loop'
   ]),
   locomotion_loop: Object.freeze([
     'first in-place contact pose with opposing visible locomotion appendages clearly separated',
@@ -166,7 +188,9 @@ const buildActionFramePlan = ({ action = {}, frameCount = 6 } = {}) => {
   const animationType = inferAnimationType(action)
   const phases = custom.length >= 2
     ? custom
-    : isIdleAction(action)
+    : isWorkStateAction(action)
+      ? ACTION_PHASES.work_state
+      : isIdleAction(action)
       ? ACTION_PHASES.idle
       : isWavingAction(action)
         ? ACTION_PHASES.wave
@@ -179,6 +203,11 @@ const buildActionFramePlan = ({ action = {}, frameCount = 6 } = {}) => {
 const getKeyframePoseInstruction = ({ action = {}, keyframeRole = 'start' } = {}) => {
   const isStart = /start|first|neutral/i.test(normalizeText(keyframeRole))
   const animationType = inferAnimationType(action)
+  if (isWorkStateAction(action)) {
+    return isStart
+      ? 'Pose: neutral focused work-state pose with the full body anchored and the canonical viewpoint preserved.'
+      : 'Pose: clearest processing, focus, or scanning moment using only a small identity-safe local motion while the body root, scale, and viewpoint remain fixed.'
+  }
   if (isIdleAction(action)) {
     return isStart
       ? 'Pose: match the canonical reference pose and viewpoint as closely as possible; do not force a new front-facing view or change limb placement merely to neutralize the pose.'
@@ -207,5 +236,6 @@ module.exports = {
   isReactionAction,
   isVerticalBounceAction,
   isWavingAction,
+  isWorkStateAction,
   resolvePrimaryAnimatedPart
 }

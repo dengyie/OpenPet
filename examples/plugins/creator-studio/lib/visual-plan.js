@@ -14,6 +14,8 @@ const NON_VISUAL_PRODUCT_LANGUAGE = Object.freeze([
   /\bapplication\b/i
 ])
 
+const VISUAL_INTENT_BOUNDARY = /\b(?:with|featuring|wearing|showing|depicting|rendered(?:\s+in)?|drawn(?:\s+in)?|painted(?:\s+in)?|styled(?:\s+as)?|using)\b[\s\S]*/i
+
 const deepFreeze = (value) => {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value
   Object.freeze(value)
@@ -21,12 +23,26 @@ const deepFreeze = (value) => {
   return value
 }
 
+const stripNonVisualProductLanguage = (value) => {
+  const text = sanitizeVisualDirective(value)
+  if (!text) return ''
+  if (!NON_VISUAL_PRODUCT_LANGUAGE.some((pattern) => pattern.test(text))) return text
+  const visibleTail = text.match(VISUAL_INTENT_BOUNDARY)?.[0] || ''
+  if (!visibleTail) return ''
+  return NON_VISUAL_PRODUCT_LANGUAGE
+    .reduce((result, pattern) => result.replace(new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`), ' '), visibleTail)
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([,.;:])/g, '$1')
+    .trim()
+}
+
 const normalizeTextList = (value, { rejectProductLanguage = false } = {}) => {
   if (!Array.isArray(value)) return []
   return value
-    .map((entry) => sanitizeVisualDirective(entry))
+    .map((entry) => rejectProductLanguage
+      ? stripNonVisualProductLanguage(entry)
+      : sanitizeVisualDirective(entry))
     .filter(Boolean)
-    .filter((entry) => !rejectProductLanguage || !NON_VISUAL_PRODUCT_LANGUAGE.some((pattern) => pattern.test(entry)))
     .slice(0, MAX_PLAN_ITEMS)
 }
 
@@ -76,5 +92,6 @@ const createVisualPlan = (input = {}) => {
 
 module.exports = {
   NON_VISUAL_PRODUCT_LANGUAGE,
-  createVisualPlan
+  createVisualPlan,
+  stripNonVisualProductLanguage
 }

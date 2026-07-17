@@ -26,6 +26,18 @@ const TRANSPARENT_GPT_IMAGE_PROFILE = freezeProfile({
   requestedOutputCount: 1
 })
 
+const GENERIC_OPAQUE_IMAGE_PROFILE = freezeProfile({
+  id: 'generic-image-edit-v1',
+  model: '',
+  promptRenderer: 'structured-image-edit-v1',
+  imageConditioning: 'required',
+  adjustableInputFidelity: false,
+  supportsDirectTransparency: false,
+  cutoutStrategy: 'solid-background-then-local-removal',
+  supportsDedicatedNegativePrompt: false,
+  requestedOutputCount: 1
+})
+
 const normalizeModel = (value) => String(value || '').trim().toLowerCase()
 
 const resolveImageModelCapabilities = (model) => {
@@ -36,7 +48,7 @@ const resolveImageModelCapabilities = (model) => {
   }
   if (normalized) {
     return Object.freeze({
-      ...TRANSPARENT_GPT_IMAGE_PROFILE,
+      ...GENERIC_OPAQUE_IMAGE_PROFILE,
       id: `generic-image-edit-v1:${normalized.slice(0, 80)}`,
       model: normalized
     })
@@ -49,6 +61,7 @@ const resolveImageModelCapabilities = (model) => {
 
 module.exports = {
   GPT_IMAGE_2_PROFILE,
+  GENERIC_OPAQUE_IMAGE_PROFILE,
   TRANSPARENT_GPT_IMAGE_PROFILE,
   resolveImageModelCapabilities
 }

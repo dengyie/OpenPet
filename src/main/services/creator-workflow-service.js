@@ -436,10 +436,21 @@ const createFullPetTask = ({ characterName, stylePrompt = '' }) => ({
   actions: CODEX_ROWS.map((row) => ({
     actionId: row.id,
     name: row.label,
-    motionPrompt: `${row.label} motion`,
+    motionPrompt: row.id === 'running'
+      ? 'Active processing, scanning, and focus motion with a stable body root.'
+      : `${row.label} motion`,
     loop: Boolean(row.loop),
     frameCount: row.durations.length,
     transparentBackground: true,
+    ...(row.id === 'running'
+      ? {
+          animationType: 'stationary_loop',
+          viewDirection: 'preserve the canonical viewpoint',
+          animatedParts: ['visible attention features and one small identity-safe processing or scanning motion'],
+          lockedParts: ['body root', 'viewpoint', 'character scale', 'identity-bearing features'],
+          forbiddenMotion: ['foot-running gait', 'body translation across the canvas', 'camera or viewpoint change']
+        }
+      : {}),
     triggerProposal: row.id === 'waving'
       ? { type: 'click', binding: 'clickAction', notes: 'Default click action for the generated character.' }
       : row.id === 'idle'

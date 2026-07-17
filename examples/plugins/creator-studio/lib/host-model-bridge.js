@@ -515,7 +515,8 @@ const findGenerationAction = (run = {}, actionId) => {
 const resolveCompiledPromptConstraints = (promptBuild = {}) => ({
   width: Number(promptBuild?.promptCompiler?.width) || DEFAULT_CONSTRAINTS.width,
   height: Number(promptBuild?.promptCompiler?.height) || DEFAULT_CONSTRAINTS.height,
-  transparent: true
+  transparent: promptBuild?.promptCompiler?.backgroundStrategy === 'direct-transparent-output',
+  backgroundStrategy: String(promptBuild?.promptCompiler?.backgroundStrategy || '').trim()
 })
 
 const callHostImageGenerate = ({ prompt, promptCompiler, requestedTimeoutMs, referenceImages, runId, dataRelativeDir, constraints = DEFAULT_CONSTRAINTS }) => {

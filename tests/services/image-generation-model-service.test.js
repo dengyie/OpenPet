@@ -944,6 +944,48 @@ test('image generation model service writes reference-conditioned outputs under 
   assert.equal(JSON.stringify(logs).includes(dataDir), false)
 })
 
+test('image generation model service does not request transparency from unregistered models', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-'))
+  const requests = []
+  const logs = []
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings({ model: 'grok-imagine-image' })),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-1234', label: 'Image API Key' }
+    }),
+    appLogService: { record: (entry) => logs.push(entry) },
+    fetchImpl: async (url, options) => {
+      requests.push({ url, options })
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: [{ b64_json: Buffer.from('fake-image-bytes').toString('base64') }]
+        })
+      }
+    }
+  })
+
+  await service.generateImage({
+    prompt: 'one character on a uniform opaque background',
+    referenceImages: createReferenceImages(dataDir),
+    output: {
+      dataDir,
+      dataRelativeDir: 'runs/unknown-model/frames/base'
+    },
+    constraints: {
+      width: 1024,
+      height: 1024,
+      transparent: true
+    }
+  })
+
+  const requestBody = requests[0].options.body.toString('utf8')
+  assert.match(requestBody, /name="background"\r\n\r\nwhite\r\n/)
+  assert.doesNotMatch(requestBody, /name="background"\r\n\r\ntransparent\r\n/)
+  assert.equal(logs.find((entry) => entry.event === 'imageGeneration.provider.request.started').details.backgroundMode, 'white')
+})
+
 test('image generation model service honors per-request timeout overrides', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-'))
   const logs = []

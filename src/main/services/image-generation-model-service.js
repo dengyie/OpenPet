@@ -32,6 +32,7 @@ const PROVIDER_GENERATION_TIMEOUT_MS = 120000
 const DEFAULT_GPT_IMAGE_2_QUALITY = 'high'
 const REQUESTED_PROVIDER_OUTPUT_COUNT = 1
 const VERIFIED_CREATOR_WORKFLOW_IMAGE_MODELS = Object.freeze(['gpt-image-2'])
+const DIRECT_TRANSPARENT_IMAGE_MODELS = new Set(['gpt-image-1', 'gpt-image-1.5'])
 
 const isPlainObject = (value) => value && typeof value === 'object' && !Array.isArray(value)
 
@@ -503,6 +504,7 @@ const buildProviderEditMultipartRequest = ({ model, prompt, constraints, referen
   const boundary = createMultipartBoundary()
   const buffers = []
   const quality = getProviderImageQuality({ model, constraints })
+  const backgroundMode = getProviderGenerationBackgroundMode({ model, constraints })
   appendMultipartFilePart(buffers, boundary, 'image', referenceImages[0])
   appendMultipartTextPart(buffers, boundary, 'model', model)
   appendMultipartTextPart(buffers, boundary, 'prompt', prompt)
@@ -510,7 +512,7 @@ const buildProviderEditMultipartRequest = ({ model, prompt, constraints, referen
   appendMultipartTextPart(buffers, boundary, 'n', REQUESTED_PROVIDER_OUTPUT_COUNT)
   if (quality) appendMultipartTextPart(buffers, boundary, 'quality', quality)
   if (model !== 'gpt-image-2') {
-    appendMultipartTextPart(buffers, boundary, 'background', constraints.transparent ? 'transparent' : 'white')
+    appendMultipartTextPart(buffers, boundary, 'background', backgroundMode)
     appendMultipartTextPart(buffers, boundary, 'response_format', 'b64_json')
   }
   buffers.push(Buffer.from(`--${boundary}--\r\n`))
@@ -526,7 +528,9 @@ const buildProviderEditMultipartRequest = ({ model, prompt, constraints, referen
 
 const getProviderGenerationBackgroundMode = ({ model, constraints }) => {
   if (model === 'gpt-image-2') return 'omitted'
-  return constraints.transparent ? 'transparent' : 'white'
+  return DIRECT_TRANSPARENT_IMAGE_MODELS.has(String(model || '').trim().toLowerCase()) && constraints.transparent
+    ? 'transparent'
+    : 'white'
 }
 
 const normalizePromptCompilerEvidence = (value = {}) => {
