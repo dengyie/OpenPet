@@ -1157,6 +1157,140 @@ test('image generation model service uses image edits when reference conditionin
   assert.equal(result.conditioning.references[0].role, 'canonical-reference')
 })
 
+for (const transientFailure of ['http-524', 'fetch-failed']) {
+  test(`image generation model service retries one same-model request after ${transientFailure}`, async () => {
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-retry-'))
+    const requests = []
+    const service = createImageGenerationModelService({
+      settingsService: createSettingsService(providerSettings({ model: 'gpt-image-2' })),
+      secretService: createSecretService({
+        'secret:model.image.openai.apiKey': { value: 'sk-test-1234', label: 'Image API Key' }
+      }),
+      fetchImpl: async (url, options) => {
+        requests.push({ url, options })
+        if (requests.length === 1) {
+          if (transientFailure === 'http-524') {
+            return { ok: false, status: 524, json: async () => ({}) }
+          }
+          const error = new Error('fetch failed')
+          error.cause = { code: 'ECONNRESET' }
+          throw error
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [{ b64_json: Buffer.from('retried-image-bytes').toString('base64') }]
+          })
+        }
+      }
+    })
+
+    const result = await service.generateImage({
+      prompt: 'keep the same character identity',
+      referenceImages: createReferenceImages(dataDir),
+      output: {
+        dataDir,
+        dataRelativeDir: `runs/retry-${transientFailure}/frames/base`
+      },
+      constraints: {
+        width: 1024,
+        height: 1024,
+        transparent: true
+      }
+    })
+
+    assert.equal(result.ok, true)
+    assert.equal(result.model, 'gpt-image-2')
+    assert.equal(requests.length, 2)
+    for (const request of requests) {
+      const body = request.options.body.toString('utf8')
+      assert.equal(request.url, 'http://127.0.0.1:8317/v1/images/edits')
+      assert.equal(request.options.method, 'POST')
+      assert.match(body, /name="image"; filename="canonical-reference\.png"/)
+      assert.match(body, /name="model"\r\n\r\ngpt-image-2\r\n/)
+      assert.match(body, /name="prompt"\r\n\r\nkeep the same character identity\r\n/)
+      assert.match(body, /name="n"\r\n\r\n1\r\n/)
+    }
+  })
+}
+
+test('image generation model service does not retry non-transient provider HTTP failures', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-no-retry-'))
+  let calls = 0
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings({ model: 'gpt-image-2' })),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-1234', label: 'Image API Key' }
+    }),
+    fetchImpl: async () => {
+      calls += 1
+      return { ok: false, status: 400, json: async () => ({}) }
+    }
+  })
+
+  await assert.rejects(() => service.generateImage({
+    prompt: 'keep the same character identity',
+    referenceImages: createReferenceImages(dataDir),
+    output: {
+      dataDir,
+      dataRelativeDir: 'runs/non-transient-400/frames/base'
+    },
+    constraints: {
+      width: 1024,
+      height: 1024,
+      transparent: true
+    }
+  }), /HTTP 400/)
+
+  assert.equal(calls, 1)
+})
+
+test('image generation model service keeps a transient retry inside the original timeout budget', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-retry-budget-'))
+  let calls = 0
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings({ model: 'gpt-image-2' })),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-1234', label: 'Image API Key' }
+    }),
+    providerGenerationTimeoutMs: 100,
+    fetchImpl: async (_url, options) => {
+      calls += 1
+      if (calls === 1) {
+        await new Promise((resolve) => setTimeout(resolve, 60))
+        return { ok: false, status: 524, json: async () => ({}) }
+      }
+      return await new Promise((_resolve, reject) => {
+        options.signal.addEventListener('abort', () => {
+          const error = new Error('aborted')
+          error.name = 'AbortError'
+          reject(error)
+        }, { once: true })
+      })
+    }
+  })
+
+  const startedAt = Date.now()
+  await assert.rejects(() => service.generateImage({
+    prompt: 'keep the same character identity',
+    referenceImages: createReferenceImages(dataDir),
+    output: {
+      dataDir,
+      dataRelativeDir: 'runs/retry-budget/frames/base'
+    },
+    constraints: {
+      width: 1024,
+      height: 1024,
+      transparent: true
+    }
+  }), /timed out after 100ms/i)
+  const elapsedMs = Date.now() - startedAt
+
+  assert.equal(calls, 2)
+  assert.equal(elapsedMs < 170, true, `retry exceeded total timeout budget: ${elapsedMs}ms`)
+})
+
 test('image generation model service enforces provider maxConcurrentJobs by queueing requests', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-'))
   const requests = []

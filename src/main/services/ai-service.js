@@ -1629,15 +1629,16 @@ const createAiService = ({
       }
       if (typeof fetchImpl !== 'function') throw new Error('fetch is not available')
 
-      const timeout = createTimeoutController(effectiveTimeoutMs)
+      const linkedSignal = createLinkedAbortSignal(null, effectiveTimeoutMs)
+      let data = {}
       try {
-        response = await fetchImpl(`${config.baseUrl}/chat/completions`, {
+        response = await raceWithLinkedAbort(fetchImpl(`${config.baseUrl}/chat/completions`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${apiKey}`,
             'Content-Type': 'application/json'
           },
-          signal: timeout.signal,
+          signal: linkedSignal.signal,
           body: JSON.stringify({
             model: config.model,
             messages: normalizedMessages,
@@ -1647,19 +1648,18 @@ const createAiService = ({
               function: { name: toolName }
             }
           })
-        })
+        }), linkedSignal)
+        const parsed = await readJsonBody(response, linkedSignal)
+        data = parsed.body
       } catch (error) {
-        if (error?.name === 'AbortError') {
-          const timeoutError = new Error('AI provider request timed out')
-          timeoutError.name = 'AbortError'
-          throw timeoutError
+        if (error?.name === 'AbortError' && linkedSignal.isTimeout()) {
+          throw createTimeoutError()
         }
         throw error
       } finally {
-        timeout.clear()
+        linkedSignal.clear()
       }
 
-      const data = await response.json().catch(() => ({}))
       if (!response.ok) {
         throw createProviderError({
           message: data?.error?.message || `AI provider request failed with status ${response.status}`,
