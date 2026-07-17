@@ -61,56 +61,6 @@ private enum CursorHelperError: LocalizedError {
     }
 }
 
-private func downsampleImages(_ images: CFArray, from sourceCount: UInt, to targetCount: UInt) throws -> CFArray {
-    guard sourceCount > targetCount, targetCount > 1 else { return images }
-    let sampledImages = NSMutableArray(capacity: CFArrayGetCount(images))
-
-    for index in 0..<CFArrayGetCount(images) {
-        guard let rawImage = CFArrayGetValueAtIndex(images, index) else {
-            throw CursorHelperError.cursorDataUnavailable("cursor image representation \(index)")
-        }
-        let spriteSheet = Unmanaged<CGImage>.fromOpaque(rawImage).takeUnretainedValue()
-        let width = spriteSheet.width
-        let totalHeight = spriteSheet.height
-        let frameHeight = sourceCount > 0 ? totalHeight / Int(sourceCount) : 0
-        guard width > 0, frameHeight > 0 else {
-            throw CursorHelperError.cursorDataUnavailable("cursor image representation \(index)")
-        }
-
-        let colorSpace = spriteSheet.colorSpace ?? CGColorSpaceCreateDeviceRGB()
-        guard let context = CGContext(
-            data: nil,
-            width: width,
-            height: frameHeight * Int(targetCount),
-            bitsPerComponent: spriteSheet.bitsPerComponent,
-            bytesPerRow: 0,
-            space: colorSpace,
-            bitmapInfo: spriteSheet.bitmapInfo.rawValue
-        ) else {
-            throw CursorHelperError.cursorDataUnavailable("downsampled cursor image representation \(index)")
-        }
-
-        let step = Double(sourceCount - 1) / Double(targetCount - 1)
-        for frameIndex in 0..<Int(targetCount) {
-            let sourceIndex = min(Int(sourceCount) - 1, Int(round(Double(frameIndex) * step)))
-            let cropRect = CGRect(x: 0, y: sourceIndex * frameHeight, width: width, height: frameHeight)
-            guard let frame = spriteSheet.cropping(to: cropRect) else { continue }
-            let destinationRect = CGRect(x: 0, y: frameIndex * frameHeight, width: width, height: frameHeight)
-            context.draw(frame, in: destinationRect)
-        }
-
-        guard let result = context.makeImage() else {
-            throw CursorHelperError.cursorDataUnavailable("downsampled cursor image representation \(index)")
-        }
-        sampledImages.add(result)
-    }
-
-    guard sampledImages.count > 0 else {
-        throw CursorHelperError.cursorDataUnavailable("downsampled cursor image representations")
-    }
-    return sampledImages as CFArray
-}
-
 private func emitProtocolEvent(_ payload: [String: Any], to handle: FileHandle = .standardOutput) {
     guard JSONSerialization.isValidJSONObject(payload),
           let data = try? JSONSerialization.data(withJSONObject: payload),
@@ -148,18 +98,6 @@ private struct CursorSnapshot {
     let hotspot: CGPoint
     let frameCount: UInt
     let frameDuration: CGFloat
-
-    func registerable(maximumFrameCount: UInt = maximumCursorFrames) throws -> CursorSnapshot {
-        guard frameCount > maximumFrameCount else { return self }
-        let downsampledImages = try downsampleImages(images, from: frameCount, to: maximumFrameCount)
-        return CursorSnapshot(
-            images: downsampledImages,
-            size: size,
-            hotspot: hotspot,
-            frameCount: maximumFrameCount,
-            frameDuration: frameDuration * (CGFloat(frameCount) / CGFloat(maximumFrameCount))
-        )
-    }
 }
 
 private struct CursorReplacement {
@@ -385,14 +323,14 @@ private final class CursorPrivateAPI {
         guard snapshot.size.width.isFinite, snapshot.size.height.isFinite,
               snapshot.size.width > 0, snapshot.size.height > 0,
               snapshot.hotspot.x.isFinite, snapshot.hotspot.y.isFinite,
-              snapshot.frameCount > 0 else {
+              snapshot.frameCount > 0,
+              snapshot.frameCount <= maximumCursorFrames else {
             throw CursorHelperError.cursorDataUnavailable(identifier)
         }
         return snapshot
     }
 
     func register(_ snapshot: CursorSnapshot, as identifier: String, instantly: Bool) throws {
-        let registerableSnapshot = try snapshot.registerable()
         var seed: Int32 = 0
         let result = identifier.withCString { rawName in
             registerCursorFunction(
@@ -400,11 +338,11 @@ private final class CursorPrivateAPI {
                 UnsafeMutablePointer(mutating: rawName),
                 true,
                 instantly,
-                registerableSnapshot.size,
-                registerableSnapshot.hotspot,
-                registerableSnapshot.frameCount,
-                registerableSnapshot.frameDuration,
-                registerableSnapshot.images,
+                snapshot.size,
+                snapshot.hotspot,
+                snapshot.frameCount,
+                snapshot.frameDuration,
+                snapshot.images,
                 &seed
             )
         }

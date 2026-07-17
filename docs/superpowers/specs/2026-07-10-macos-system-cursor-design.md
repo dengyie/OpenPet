@@ -56,6 +56,7 @@ This milestone implements macOS only. On Windows and Linux the service reports u
 ## Failure And Recovery
 
 - The helper exits before `ready`: activation fails and settings remain unchanged.
+- A target cursor cannot be backed up without loss: activation fails and settings remain unchanged.
 - The helper exits after `ready`: the restore watchdog restores the previous cursor theme, while the service records the failure and persists a fallback to `openpet` through a host callback.
 - A replacement cursor fails to start: the current working helper remains active until the replacement is ready.
 - Electron quits: runtime lifecycle awaits `dispose()` before final quit.

@@ -35,7 +35,7 @@ The helper discovers named cursor identifiers through `CGSCursorNameForSystemCur
 
 ## Backup And Recovery
 
-Before applying a replacement, the helper copies each current cursor's images and metadata and registers them under OpenPet-owned backup identifiers. Animated backups with more frames than `CGSRegisterCursorWithImages` accepts are uniformly sampled down to the supported frame cap while preserving first and last frames. Existing OpenPet backups are treated as evidence of an unclean prior exit and are restored before a new backup is created.
+Before applying a replacement, the helper copies each current cursor's images and metadata and registers them under OpenPet-owned backup identifiers. If any cursor cannot be copied and re-registered without loss, activation fails before OpenPet reports `ready` or persists `system` scope. Existing OpenPet backups are treated as evidence of an unclean prior exit and are restored before a new backup is created.
 
 The helper starts a small restore watchdog after backups are ready and before replacement begins. The watchdog observes the helper PID:
 
