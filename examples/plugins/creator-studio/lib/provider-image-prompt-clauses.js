@@ -33,6 +33,14 @@ const isIdleTask = (task) => (
   )
 )
 
+const createRegionSubject = (value, fallback) => (
+  `The ${String(value || fallback).trim().replace(/^the\s+/i, '')}`
+)
+
+const createRegionObject = (value, fallback) => (
+  `the ${String(value || fallback).trim().replace(/^the\s+/i, '')}`
+)
+
 const createDeliverableClause = (task) => {
   if (task.taskType === 'action-frame-sheet') {
     return createClause({
@@ -68,7 +76,7 @@ const createReferenceClause = (task) => {
       id: 'reference.identity-comparison',
       category: 'reference',
       priority: 95,
-      text: `Use the attached board for character identity, visible proportions, colors, markings, materials, accessories, viewpoint, scale, lighting style, and rendering style. Its ${reference.primaryRegion || 'primary character view'} controls canonical continuity, and its ${reference.secondaryRegion || 'supporting detail view'} supplies visible identity details. ${poseRule} Do not copy the board layout, repeated views, spacing, labels, borders, or background.`
+      text: `Use the attached board for character identity, visible proportions, colors, markings, materials, accessories, viewpoint, scale, lighting style, and rendering style. ${createRegionSubject(reference.primaryRegion, 'primary character view')} controls canonical continuity, and ${createRegionObject(reference.secondaryRegion, 'supporting detail view')} supplies visible identity details. ${poseRule} Do not copy the board layout, repeated views, spacing, labels, borders, or background.`
     })
   }
   if (reference.type === 'identity-and-motion') {
