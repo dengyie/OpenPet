@@ -83,7 +83,7 @@ const createReferenceClause = (task) => {
     id: 'reference.single-character',
     category: 'reference',
     priority: 95,
-    text: 'Use the attached image as the identity and visual-style reference. Follow it for the visible face design, eye design, colors, markings, body proportions, silhouette, materials, accessories, subject lighting, and rendering medium. If written appearance details conflict with the image, follow the image.'
+    text: 'Use the attached image as the identity and visual-style reference. Follow it for every visible identity-bearing detail, color, marking, body proportion, silhouette, material, accessory, subject-lighting choice, and rendering medium. If written appearance details conflict with the image, follow the image.'
   })
 }
 

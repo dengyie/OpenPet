@@ -164,7 +164,7 @@ const buildActionFramePlan = ({ action = {}, frameCount = 6 } = {}) => {
     ? action.framePlan.map(stripFramePrefix).filter(Boolean)
     : []
   const animationType = inferAnimationType(action)
-  const phases = custom.length
+  const phases = custom.length >= 2
     ? custom
     : isIdleAction(action)
       ? ACTION_PHASES.idle

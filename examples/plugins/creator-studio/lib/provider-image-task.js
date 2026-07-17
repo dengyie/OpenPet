@@ -315,9 +315,14 @@ const normalizeFrameBeats = (value, sheet) => {
     if (!Number.isInteger(normalizedFrame) || normalizedFrame !== frame) {
       throw createTaskError('image_prompt_frame_plan_incomplete', 'Image task frame beats must be contiguous from frame 1')
     }
+    const expectedCell = createFrameCell({ frame, sheet })
+    const providedCell = sanitizeVisualDirective(entry.cell)
+    if (sheet && providedCell && providedCell !== expectedCell) {
+      throw createTaskError('image_prompt_frame_plan_incomplete', 'Image task frame beat cell does not match sheet geometry')
+    }
     return {
       frame,
-      cell: sanitizeVisualDirective(entry.cell) || createFrameCell({ frame, sheet }),
+      cell: expectedCell || providedCell,
       beat: sanitizeVisualDirective(entry.beat)
     }
   })

@@ -83,7 +83,7 @@ const resolveRepairChangeFromFailureConditions = (failureConditions = []) => {
     .find(Boolean) || ''
   if (!condition) return []
   if (/identity|descriptor|color-distance|face|marking/.test(condition)) {
-    return ['restore the exact visible identity, face design, markings, colors, proportions, materials, and accessories from the attached reference']
+    return ['restore every exact visible identity-bearing detail, marking, color, proportion, material, and accessory from the attached reference']
   }
   if (/edge|crop|touch|padding/.test(condition)) {
     return ['move and scale the complete character fully inside the required safe padding without changing the pose or identity']
