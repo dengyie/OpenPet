@@ -132,14 +132,16 @@ test('image model capability profiles are bounded and model-aware', () => {
     const profile = resolveImageModelCapabilities(model)
     assert.equal(profile.id, 'gpt-image-edit-transparent-v1')
     assert.equal(profile.model, model)
-    assert.equal(profile.promptRenderer, 'generic-image-edit-v1')
+    assert.equal(profile.promptRenderer, 'structured-image-edit-v1')
     assert.equal(profile.supportsDirectTransparency, true)
     assert.equal(profile.requestedOutputCount, 1)
   }
 
   const runtime = resolveImageModelCapabilities('eligible-runtime-image-model')
   assert.equal(runtime.id, 'generic-image-edit-v1:eligible-runtime-image-model')
-  assert.equal(runtime.promptRenderer, 'generic-image-edit-v1')
+  assert.equal(runtime.promptRenderer, 'structured-image-edit-v1')
+  assert.equal(runtime.supportsDirectTransparency, false)
+  assert.equal(runtime.cutoutStrategy, 'solid-background-then-local-removal')
   assert.equal(runtime.requestedOutputCount, 1)
 
   assert.throws(
@@ -403,9 +405,9 @@ test('a single custom phase cannot collapse a complete frame plan', () => {
   assert.match(beats[2], /wave peak/i)
 })
 
-test('generic transparent-capable models retain direct transparency without changing semantic sections', () => {
+test('registered transparent-capable models retain direct transparency without changing semantic sections', () => {
   const result = buildCharacterAnchorPrompt({
-    model: 'eligible-runtime-image-model'
+    model: 'gpt-image-1.5'
   })
   assertHeadingOrder(result.prompt, [
     'DELIVERABLE',
@@ -417,7 +419,8 @@ test('generic transparent-capable models retain direct transparency without chan
     'CONSTRAINTS'
   ])
   assert.match(result.prompt, /fully transparent background/i)
-  assert.equal(result.promptCompiler.promptRenderer, 'generic-image-edit-v1')
+  assert.equal(result.promptCompiler.promptRenderer, 'structured-image-edit-v1')
+  assert.equal(result.promptCompiler.modelCapabilityProfile, 'gpt-image-edit-transparent-v1')
   assert.equal(result.promptCompiler.backgroundStrategy, 'direct-transparent-output')
 })
 

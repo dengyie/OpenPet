@@ -17,7 +17,7 @@ const GPT_IMAGE_2_PROFILE = freezeProfile({
 const TRANSPARENT_GPT_IMAGE_PROFILE = freezeProfile({
   id: 'gpt-image-edit-transparent-v1',
   model: 'gpt-image-1.x',
-  promptRenderer: 'generic-image-edit-v1',
+  promptRenderer: 'structured-image-edit-v1',
   imageConditioning: 'required',
   adjustableInputFidelity: true,
   supportsDirectTransparency: true,

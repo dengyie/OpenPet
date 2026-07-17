@@ -173,24 +173,22 @@ test('four-frame wave plans close the loop by returning to the start pose', () =
   assert.doesNotMatch(result.prompt, /Cell 4 .*tilts slightly outward/is)
 })
 
-test('sparse running metadata produces a complete locomotion cycle', () => {
+test('official running metadata produces a complete stationary work-state cycle', () => {
   const result = buildActionSpriteRowPrompt({
     action: {
       actionId: 'running',
       name: 'Running',
-      motionPrompt: 'Run in place with a complete readable gait cycle.',
+      motionPrompt: 'Active processing and scanning motion.',
       frameCount: 8
     }
   })
 
   assert.match(result.prompt, /^DELIVERABLE\nCreate one 1536 x 1024 animation frame sheet with exactly 8 complete full-body character frames arranged in 4 columns and 2 rows\./)
-  assert.match(result.prompt, /seamless in-place locomotion cycle/i)
+  assert.match(result.prompt, /seamless stationary loop with a stable body root/i)
   assert.match(result.prompt, /exactly 8 complete full-body character frames arranged in 4 columns and 2 rows/i)
-  assert.match(result.prompt, /contact pose/i)
-  assert.match(result.prompt, /passing pose/i)
-  assert.match(result.prompt, /opposite contact pose/i)
-  assert.match(result.prompt, /visible locomotion appendages and supporting body motion/i)
-  assert.doesNotMatch(result.prompt, /\b(?:ears?|paws?|tails?|wings?|clothing)\b/i)
+  assert.match(result.prompt, /processing|scanning|focused work-state/i)
+  assert.match(result.prompt, /visible attention features/i)
+  assert.doesNotMatch(result.prompt, /locomotion|gait|contact pose|passing pose/i)
   assertProviderNeutral(result.prompt)
 })
 
