@@ -69,9 +69,11 @@ const createDeliverableClause = (task) => {
 const createReferenceClause = (task) => {
   const reference = task.referenceInterpretation
   if (reference.type === 'identity-comparison') {
-    const poseRule = isIdleTask(task)
-      ? 'For this quiet idle task, keep the canonical pose unless the action plan names one subtle local change.'
-      : 'Do not preserve the neutral reference pose; the ACTION PLAN or FRAME PLAN is the sole authority for the new pose.'
+    const poseRule = task.taskType === 'character-image'
+      ? 'Use the primary character view as pose and framing guidance for the calm identity pose.'
+      : isIdleTask(task)
+        ? 'For this quiet idle task, keep the canonical pose unless the action plan names one subtle local change.'
+        : 'Do not preserve the neutral reference pose; the ACTION PLAN or FRAME PLAN is the sole authority for the new pose.'
     return createClause({
       id: 'reference.identity-comparison',
       category: 'reference',
