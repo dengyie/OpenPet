@@ -1161,6 +1161,7 @@ for (const transientFailure of ['http-524', 'fetch-failed']) {
   test(`image generation model service retries one same-model request after ${transientFailure}`, async () => {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-retry-'))
     const requests = []
+    let transientResponseCancelCalls = 0
     const service = createImageGenerationModelService({
       settingsService: createSettingsService(providerSettings({ model: 'gpt-image-2' })),
       secretService: createSecretService({
@@ -1170,7 +1171,16 @@ for (const transientFailure of ['http-524', 'fetch-failed']) {
         requests.push({ url, options })
         if (requests.length === 1) {
           if (transientFailure === 'http-524') {
-            return { ok: false, status: 524, json: async () => ({}) }
+            return {
+              ok: false,
+              status: 524,
+              body: {
+                cancel: () => {
+                  transientResponseCancelCalls += 1
+                }
+              },
+              json: async () => ({})
+            }
           }
           const error = new Error('fetch failed')
           error.cause = { code: 'ECONNRESET' }
@@ -1203,6 +1213,7 @@ for (const transientFailure of ['http-524', 'fetch-failed']) {
     assert.equal(result.ok, true)
     assert.equal(result.model, 'gpt-image-2')
     assert.equal(requests.length, 2)
+    assert.equal(transientResponseCancelCalls, transientFailure === 'http-524' ? 1 : 0)
     for (const request of requests) {
       const body = request.options.body.toString('utf8')
       assert.equal(request.url, 'http://127.0.0.1:8317/v1/images/edits')

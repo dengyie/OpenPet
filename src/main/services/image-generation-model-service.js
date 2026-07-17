@@ -221,6 +221,14 @@ const isTransientProviderTransportError = (error) => {
   )
 }
 
+const cancelProviderResponseBody = (response) => {
+  try {
+    Promise.resolve(response?.body?.cancel?.()).catch(() => {})
+  } catch (_) {
+    // Releasing a failed Provider response must not replace the original retry outcome.
+  }
+}
+
 const getSafeTransportCauseCode = (error) => String(
   error?.cause?.code || error?.code || ''
 ).replace(/[^A-Za-z0-9._-]/g, '').slice(0, 80)
@@ -1307,6 +1315,7 @@ const createImageGenerationModelService = ({
           : 'Image Provider request failed')
       }
       if (!response?.ok && isTransientProviderHttpStatus(response?.status) && canRetryWithinBudget()) {
+        cancelProviderResponseBody(response)
         recordTransientRetry({ status: response.status })
         continue
       }
