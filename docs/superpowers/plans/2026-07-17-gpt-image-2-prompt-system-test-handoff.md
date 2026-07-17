@@ -3,7 +3,7 @@
 ## Assignment
 
 - Production branch: `codex/dev8-main-review-fix`
-- Production checkpoint: `efa8bf86` (`fix: keep character identity pose authority coherent`), including implementation ancestors `33504539`, `51ebbf22`, and `7da1d0cc`
+- Production checkpoint: `631e89bd` (`fix: remove token identifiers from image prompts`), including implementation and prompt-coherence ancestors from `33504539` through `efa8bf86`
 - Development status: implemented but independently unverified
 - Required test owner: an isolated test branch/worktree; do not modify, switch, merge, reset, rebase, or push the production branch
 - Image handling: real generation and visual evaluation must be delegated to fresh one-use visual agents; do not load generated images into the long-running development task
@@ -29,7 +29,7 @@ No automated or real Provider test was run on the production branch.
 
 ## Branch Preparation
 
-Use a clean isolated test worktree. Start from exactly production checkpoint `efa8bf86`. Record the production and test commit IDs and stable patch IDs if cherry-picking produces different hashes.
+Use a clean isolated test worktree. Start from exactly production checkpoint `631e89bd`. Record the production and test commit IDs and stable patch IDs if cherry-picking produces different hashes.
 
 Do not copy or commit the unrelated dirty files that remain in the production worktree:
 
