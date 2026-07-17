@@ -33,16 +33,24 @@ const HUMAN_METRIC_KEYS = new Set([
   'identityCoreMaxMotionRatio'
 ])
 const QUALITY_GUIDANCE_PHRASES = Object.freeze({
-  'identity-drift': 'Preserve the exact species, silhouette, proportions, markings, palette, material treatment, and accessories from the identity reference.',
+  'identity-drift': 'Preserve the exact visible identity, silhouette, proportions, markings, palette, material treatment, and accessories from the identity reference.',
   'semantic-mismatch': 'Make the requested action peak immediately readable and distinct from every other state.',
   'static-motion': 'Author genuine pose progression; do not repeat one pose.',
   'transform-only-motion': 'Do not simulate motion by only translating, scaling, rotating, or recoloring one base sprite.',
-  'edge-contact': 'Keep the complete body inside safe transparent padding.',
-  'background-contamination': 'Return one isolated character with no floor, shadow, scenery, labels, or border.',
+  'edge-contact': 'Keep the complete body inside the required safe padding.',
+  'background-contamination': 'Keep one isolated character against the required uniform background with no floor, shadow, scenery, labels, or border.',
   'baseline-instability': 'Keep a stable lower-center root except where vertical action semantics require movement.',
   'scale-instability': 'Keep character scale consistent across the sequence.',
   'direction-mismatch': 'Preserve the requested facing direction throughout the directional row.'
 })
+const GLOBAL_GUIDANCE_REASONS = new Set([
+  'identity-drift',
+  'edge-contact',
+  'background-contamination',
+  'scale-instability'
+])
+const SEQUENCE_GUIDANCE_REASONS = new Set(['static-motion', 'transform-only-motion'])
+const GROUNDED_GUIDANCE_REASONS = new Set(['baseline-instability'])
 const OFFICIAL_ACTION_IDS = new Set(OFFICIAL_FULL_PET_ACTION_IDS)
 
 const normalizeText = (value) => String(value || '').trim()
@@ -182,16 +190,25 @@ const createQualityGuidanceSummary = (registry) => {
   })
 }
 
-const resolveGuidanceReasonCodes = ({ qualityGuidance, actionId = '' } = {}) => {
+const resolveGuidanceReasonCodes = ({ qualityGuidance, actionId = '', animationType = '' } = {}) => {
   const globalCounts = qualityGuidance?.reasonCounts || {}
   const actionCounts = qualityGuidance?.byActionId?.[normalizeText(actionId)] || {}
-  return [...HUMAN_REASON_CODES].filter((reasonCode) => (
-    Number(globalCounts[reasonCode]) > 0 || Number(actionCounts[reasonCode]) > 0
-  ))
+  const normalizedAnimationType = normalizeText(animationType)
+  return [...HUMAN_REASON_CODES].filter((reasonCode) => {
+    if (Number(actionCounts[reasonCode]) > 0) return true
+    if (Number(globalCounts[reasonCode]) <= 0) return false
+    if (GLOBAL_GUIDANCE_REASONS.has(reasonCode)) return true
+    if (SEQUENCE_GUIDANCE_REASONS.has(reasonCode)) return Boolean(normalizedAnimationType)
+    if (GROUNDED_GUIDANCE_REASONS.has(reasonCode)) {
+      return ['stationary_loop', 'locomotion_loop', 'vertical_bounce'].includes(normalizedAnimationType)
+    }
+    if (reasonCode === 'direction-mismatch') return normalizedAnimationType === 'locomotion_loop'
+    return false
+  })
 }
 
-const createQualityGuidanceLines = ({ qualityGuidance, actionId = '' } = {}) => (
-  resolveGuidanceReasonCodes({ qualityGuidance, actionId })
+const createQualityGuidanceLines = ({ qualityGuidance, actionId = '', animationType = '' } = {}) => (
+  resolveGuidanceReasonCodes({ qualityGuidance, actionId, animationType })
     .map((reasonCode) => QUALITY_GUIDANCE_PHRASES[reasonCode])
     .filter(Boolean)
 )

@@ -22,12 +22,12 @@ const DEFAULT_FULL_BODY_SUBJECT = Object.freeze({
 })
 
 const DEFAULT_STYLE_LOCKS = Object.freeze([
-  'same face and eye design',
+  'same visible identity-bearing features',
   'same visible markings and colors',
-  'same material or fur rendering',
+  'same material, surface, or texture rendering',
   'same body proportions and silhouette',
-  'same accessories and clothing when visible',
-  'same lighting and rendering style'
+  'same visible accessories or garments when present',
+  'same subject lighting and rendering style'
 ])
 
 const INTERNAL_VISUAL_TEXT = /\b(?:openpet|creator[-_ ]?studio|codex[-_ ]?pet|hatch[-_ ]?pet|provider|backend|run[-_ ]?id|action[-_ ]?id|checkpoint|multipart|reference[-_ ]?role)\b/gi
@@ -290,20 +290,79 @@ const normalizeSubject = (value = DEFAULT_FULL_BODY_SUBJECT) => {
   })
 }
 
-const normalizeAction = (value) => {
+const createFrameCell = ({ frame, sheet }) => {
+  if (!sheet) return ''
+  const index = frame - 1
+  return `row ${Math.floor(index / sheet.columns) + 1} column ${(index % sheet.columns) + 1}`
+}
+
+const normalizeFrameBeats = (value, sheet) => {
+  if (value == null) return []
+  if (!Array.isArray(value)) {
+    throw createTaskError('image_prompt_contract_invalid', 'Image task action frame beats must be an array')
+  }
+  const normalized = value.map((entry, index) => {
+    const frame = index + 1
+    if (typeof entry === 'string') {
+      return {
+        frame,
+        cell: createFrameCell({ frame, sheet }),
+        beat: sanitizeVisualDirective(entry.replace(/^Frame\s+\d+\s*:\s*/i, ''))
+      }
+    }
+    assertAllowedKeys(entry, new Set(['frame', 'cell', 'beat']), `action.frameBeats[${index}]`)
+    const normalizedFrame = Number(entry.frame)
+    if (!Number.isInteger(normalizedFrame) || normalizedFrame !== frame) {
+      throw createTaskError('image_prompt_frame_plan_incomplete', 'Image task frame beats must be contiguous from frame 1')
+    }
+    return {
+      frame,
+      cell: sanitizeVisualDirective(entry.cell) || createFrameCell({ frame, sheet }),
+      beat: sanitizeVisualDirective(entry.beat)
+    }
+  })
+  if (sheet && normalized.length !== sheet.frameCount) {
+    throw createTaskError('image_prompt_frame_plan_incomplete', 'Image task frame beats must cover every required frame')
+  }
+  if (normalized.some((entry) => !entry.beat)) {
+    throw createTaskError('image_prompt_frame_plan_incomplete', 'Image task frame beat text is required')
+  }
+  return normalized
+}
+
+const normalizeAction = (value, sheet) => {
   if (value == null) return null
   assertAllowedKeys(
     value,
-    new Set(['name', 'moment', 'movingParts', 'lockedParts', 'loopIntent', 'framePlan']),
+    new Set([
+      'name',
+      'animationType',
+      'moment',
+      'viewDirection',
+      'loopType',
+      'movingParts',
+      'secondaryMotion',
+      'lockedParts',
+      'forbiddenMotion',
+      'loopIntent',
+      'framePlan',
+      'frameBeats'
+    ]),
     'action'
   )
+  const frameBeats = normalizeFrameBeats(value.frameBeats ?? value.framePlan, sheet)
   return deepFreeze({
     name: sanitizeVisualDirective(value.name),
+    animationType: sanitizeVisualDirective(value.animationType),
     moment: sanitizeVisualDirective(value.moment),
+    viewDirection: sanitizeVisualDirective(value.viewDirection),
+    loopType: sanitizeVisualDirective(value.loopType),
     movingParts: normalizeVisualDirectives(value.movingParts),
+    secondaryMotion: normalizeVisualDirectives(value.secondaryMotion),
     lockedParts: normalizeVisualDirectives(value.lockedParts),
+    forbiddenMotion: normalizeVisualDirectives(value.forbiddenMotion),
     loopIntent: sanitizeVisualDirective(value.loopIntent),
-    framePlan: normalizeVisualDirectives(value.framePlan)
+    frameBeats: deepFreeze(frameBeats)
   })
 }
 
@@ -346,7 +405,7 @@ const createProviderImageTask = (input = {}) => {
     : sheet
       ? resolveProviderCanvasForLayout(sheet)
       : createCanvas(PROVIDER_CANVASES.square)
-  const action = normalizeAction(input.action)
+  const action = normalizeAction(input.action, sheet)
   if (taskType !== 'character-image' && !action) {
     throw createTaskError('image_prompt_contract_invalid', 'Action image task requires a visual action')
   }
@@ -355,7 +414,7 @@ const createProviderImageTask = (input = {}) => {
     throw createTaskError('image_prompt_contract_invalid', 'Image task strategy is invalid')
   }
   return deepFreeze({
-    version: 2,
+    version: 3,
     taskType,
     stage,
     canvas,

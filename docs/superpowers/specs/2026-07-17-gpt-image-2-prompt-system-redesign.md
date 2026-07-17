@@ -4,7 +4,7 @@
 
 - Date: 2026-07-17
 - Target baseline: `main@8f735fb14c9d339d4e059b7ec53d478d8bab30c2`
-- Status: proposed design for user review
+- Status: approved design; implementation requires independent verification
 - Scope: every Creator Studio and Hatch Pet request that sends an image-generation or image-edit prompt to an upstream image model
 - Primary target renderer: `gpt-image-2`
 - Verification boundary: this document defines development work only; automated Provider tests and real visual acceptance remain independent testing tasks
@@ -730,7 +730,7 @@ Passing automated prompt tests does not establish visual quality or Provider app
 3. New requests use `ProviderImageTask v3`, prompt compiler v3, and prompt builder v6.
 4. Existing repair checkpoints may be resumed only if their reference artifacts remain valid; their next Provider request is recompiled using the new renderer rather than reusing old prompt text.
 5. A fallback model receives a newly rendered prompt from the same semantic task and that model's capability profile.
-6. If an eligible model has no registered capability profile, fail closed with `image_prompt_capability_conflict`; do not send the generic old prompt silently.
+6. `gpt-image-2`, `gpt-image-1`, and `gpt-image-1.5` use explicit profiles. Other non-empty models that have already passed the host image-model eligibility gate receive a bounded runtime `generic-image-edit-v1` profile; an empty model or a model that lacks image-conditioned edit eligibility fails closed with `image_prompt_capability_conflict`.
 7. Do not lower identity, motion, layout, or background-removal QA thresholds to accommodate migration failures.
 
 ## 21. Acceptance Criteria

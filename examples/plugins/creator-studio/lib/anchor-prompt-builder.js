@@ -9,6 +9,7 @@ const {
   PROMPT_COMPILER_VERSION,
   compileProviderImagePrompt
 } = require('./provider-image-prompt-compiler')
+const { createVisualPlan } = require('./visual-plan')
 const {
   buildActionFramePlan,
   getKeyframePoseInstruction,
@@ -16,7 +17,7 @@ const {
   resolvePrimaryAnimatedPart
 } = require('./action-semantics')
 
-const PROMPT_BUILDER_VERSION = 5
+const PROMPT_BUILDER_VERSION = 6
 
 const normalizeActionText = (value, fallback = '') => (
   sanitizeVisualDirective(value || fallback)
@@ -31,6 +32,13 @@ const resolveLoopIntent = (action = {}) => {
   return 'a readable action with a stable identity and clear recovery'
 }
 
+const resolveViewDirection = (action = {}) => {
+  const explicit = normalizeActionText(action.viewDirection)
+  if (explicit) return explicit
+  if (inferAnimationType(action) === 'locomotion_loop') return 'preserve the requested directional facing'
+  return 'preserve the canonical viewpoint'
+}
+
 const createVisualAction = ({ action = {}, keyframeRole = '', frameCount = 0 } = {}) => {
   const normalizedRole = String(keyframeRole || '').trim().toLowerCase()
   const name = normalizeActionText(action.name, action.motionPrompt || 'the requested action')
@@ -39,15 +47,20 @@ const createVisualAction = ({ action = {}, keyframeRole = '', frameCount = 0 } =
     : normalizeActionText(action.motionPrompt, name)
   return {
     name,
+    animationType: inferAnimationType(action),
     moment,
+    viewDirection: resolveViewDirection(action),
+    loopType: normalizeActionText(action.loopType, resolveLoopIntent(action)),
     movingParts: Array.isArray(action.animatedParts) && action.animatedParts.length
       ? action.animatedParts
       : [resolvePrimaryAnimatedPart(action)],
+    secondaryMotion: Array.isArray(action.secondaryMotion) ? action.secondaryMotion : [],
     lockedParts: Array.isArray(action.lockedParts) && action.lockedParts.length
       ? action.lockedParts
-      : ['face', 'eyes', 'identity markings', 'body proportions', 'character scale'],
+      : ['visible identity-bearing features', 'identity markings', 'body proportions', 'character scale'],
+    forbiddenMotion: Array.isArray(action.forbiddenMotion) ? action.forbiddenMotion : [],
     loopIntent: resolveLoopIntent(action),
-    framePlan: frameCount > 0 ? buildActionFramePlan({ action, frameCount }) : []
+    frameBeats: frameCount > 0 ? buildActionFramePlan({ action, frameCount }) : []
   }
 }
 
@@ -70,37 +83,48 @@ const createCompiledResult = ({
 })
 
 const buildCharacterAnchorPrompt = ({
+  model = 'gpt-image-2',
   referenceRole = 'single-character-reference',
   qualityGuidance = null,
   canvas,
   appearanceIntent = [],
+  visualPlan = null,
   strategyId = '',
   requestedChanges = []
 } = {}) => {
+  const resolvedVisualPlan = createVisualPlan(visualPlan || {
+    appearanceIntent,
+    requestedChanges,
+    subject: DEFAULT_FULL_BODY_SUBJECT
+  })
   const task = createProviderImageTask({
     taskType: 'character-image',
     stage: 'identity',
     canvas,
     referenceRole,
     subject: DEFAULT_FULL_BODY_SUBJECT,
-    appearanceIntent,
+    appearanceIntent: resolvedVisualPlan.subject.mediumAndStyle,
     strategyId,
-    requestedChanges
+    requestedChanges: resolvedVisualPlan.subject.requestedVisibleChanges
   })
   const compiled = compileProviderImagePrompt({
     task,
+    model,
+    visualPlan: resolvedVisualPlan,
     qualityGuidance: createQualityGuidanceLines({ qualityGuidance })
   })
   return createCompiledResult({ role: 'character-anchor', compiled })
 }
 
 const buildActionKeyframePrompt = ({
+  model = 'gpt-image-2',
   referenceRole = 'single-character-reference',
   action = {},
   keyframeRole = 'start',
   qualityGuidance = null,
   canvas,
   appearanceIntent = [],
+  visualPlan = null,
   strategyId = '',
   requestedChanges = []
 } = {}) => {
@@ -108,20 +132,33 @@ const buildActionKeyframePrompt = ({
   const normalizedKeyframeRole = String(keyframeRole || '').trim().toLowerCase() === 'start'
     ? 'start'
     : 'peak'
+  const visualAction = createVisualAction({ action, keyframeRole: normalizedKeyframeRole })
+  const resolvedVisualPlan = createVisualPlan(visualPlan || {
+    appearanceIntent,
+    requestedChanges,
+    action: visualAction,
+    subject: DEFAULT_FULL_BODY_SUBJECT
+  })
   const task = createProviderImageTask({
     taskType: 'action-keyframe',
     stage: normalizedKeyframeRole,
     canvas,
     referenceRole,
     subject: DEFAULT_FULL_BODY_SUBJECT,
-    action: createVisualAction({ action, keyframeRole: normalizedKeyframeRole }),
-    appearanceIntent,
+    action: visualAction,
+    appearanceIntent: resolvedVisualPlan.subject.mediumAndStyle,
     strategyId,
-    requestedChanges
+    requestedChanges: resolvedVisualPlan.subject.requestedVisibleChanges
   })
   const compiled = compileProviderImagePrompt({
     task,
-    qualityGuidance: createQualityGuidanceLines({ qualityGuidance, actionId: action.actionId })
+    model,
+    visualPlan: resolvedVisualPlan,
+    qualityGuidance: createQualityGuidanceLines({
+      qualityGuidance,
+      actionId: action.actionId,
+      animationType: inferAnimationType(action)
+    })
   })
   return createCompiledResult({
     role: 'action-keyframe',
@@ -132,45 +169,69 @@ const buildActionKeyframePrompt = ({
 }
 
 const buildActionAnchorPrompt = ({
+  model = 'gpt-image-2',
   referenceRole = 'single-character-reference',
   action = {},
   qualityGuidance = null,
   canvas,
   appearanceIntent = [],
+  visualPlan = null,
   strategyId = '',
   requestedChanges = []
 } = {}) => {
   const actionId = normalizeActionText(action.actionId, 'action')
+  const visualAction = createVisualAction({ action, keyframeRole: 'peak' })
+  const resolvedVisualPlan = createVisualPlan(visualPlan || {
+    appearanceIntent,
+    requestedChanges,
+    action: visualAction,
+    subject: DEFAULT_FULL_BODY_SUBJECT
+  })
   const task = createProviderImageTask({
     taskType: 'action-keyframe',
     stage: 'peak',
     canvas,
     referenceRole,
     subject: DEFAULT_FULL_BODY_SUBJECT,
-    action: createVisualAction({ action, keyframeRole: 'peak' }),
-    appearanceIntent,
+    action: visualAction,
+    appearanceIntent: resolvedVisualPlan.subject.mediumAndStyle,
     strategyId,
-    requestedChanges
+    requestedChanges: resolvedVisualPlan.subject.requestedVisibleChanges
   })
   const compiled = compileProviderImagePrompt({
     task,
-    qualityGuidance: createQualityGuidanceLines({ qualityGuidance, actionId: action.actionId })
+    model,
+    visualPlan: resolvedVisualPlan,
+    qualityGuidance: createQualityGuidanceLines({
+      qualityGuidance,
+      actionId: action.actionId,
+      animationType: inferAnimationType(action)
+    })
   })
   return createCompiledResult({ role: 'action-anchor', compiled, actionId })
 }
 
 const buildActionSpriteRowPrompt = ({
+  model = 'gpt-image-2',
   referenceRole = 'identity-and-motion-reference',
   action = {},
   qualityGuidance = null,
   canvas,
   appearanceIntent = [],
+  visualPlan = null,
   strategyId = '',
   requestedChanges = []
 } = {}) => {
   const actionId = normalizeActionText(action.actionId, 'action')
   const frameCount = normalizeFrameCount(action.frameCount || 6)
   const layout = getActionSheetLayout(frameCount)
+  const visualAction = createVisualAction({ action, frameCount })
+  const resolvedVisualPlan = createVisualPlan(visualPlan || {
+    appearanceIntent,
+    requestedChanges,
+    action: visualAction,
+    subject: DEFAULT_FULL_BODY_SUBJECT
+  })
   const task = createProviderImageTask({
     taskType: 'action-frame-sheet',
     stage: 'final',
@@ -183,14 +244,20 @@ const buildActionSpriteRowPrompt = ({
     },
     referenceRole,
     subject: DEFAULT_FULL_BODY_SUBJECT,
-    action: createVisualAction({ action, frameCount }),
-    appearanceIntent,
+    action: visualAction,
+    appearanceIntent: resolvedVisualPlan.subject.mediumAndStyle,
     strategyId,
-    requestedChanges
+    requestedChanges: resolvedVisualPlan.subject.requestedVisibleChanges
   })
   const compiled = compileProviderImagePrompt({
     task,
-    qualityGuidance: createQualityGuidanceLines({ qualityGuidance, actionId: action.actionId })
+    model,
+    visualPlan: resolvedVisualPlan,
+    qualityGuidance: createQualityGuidanceLines({
+      qualityGuidance,
+      actionId: action.actionId,
+      animationType: inferAnimationType(action)
+    })
   })
   return createCompiledResult({
     role: 'action-sprite-row',

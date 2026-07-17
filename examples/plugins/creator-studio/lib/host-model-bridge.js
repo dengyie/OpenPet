@@ -77,6 +77,42 @@ const ACTION_ANCHOR_CANDIDATE_VARIANTS = Object.freeze([
   }
 ])
 
+const resolveRepairChangeFromFailureConditions = (failureConditions = []) => {
+  const condition = (Array.isArray(failureConditions) ? failureConditions : [])
+    .map((value) => String(value || '').trim().toLowerCase())
+    .find(Boolean) || ''
+  if (!condition) return []
+  if (/identity|descriptor|color-distance|face|marking/.test(condition)) {
+    return ['restore the exact visible identity, face design, markings, colors, proportions, materials, and accessories from the attached reference']
+  }
+  if (/edge|crop|touch|padding/.test(condition)) {
+    return ['move and scale the complete character fully inside the required safe padding without changing the pose or identity']
+  }
+  if (/direction|facing/.test(condition)) {
+    return ['correct the facing direction to match the requested action while preserving the same pose phase and identity']
+  }
+  if (/baseline|root|centroid|drift/.test(condition)) {
+    return ['restore the stable lower-center root and requested baseline without changing identity or action meaning']
+  }
+  if (/static|motion|semantic|score/.test(condition)) {
+    return ['make the requested action moment and pose progression immediately readable without redesigning the character']
+  }
+  if (/background|halo|alpha/.test(condition)) {
+    return ['use a completely uniform separable background and clean character edges without changing the character']
+  }
+  return ['correct the failed visible action detail while preserving every already-correct identity, composition, and motion requirement']
+}
+
+const createActionRepairChanges = ({ previousGenerationResult, actionIds = [] }) => {
+  const attempts = Array.isArray(previousGenerationResult?.basicActionGeneration?.attempts)
+    ? previousGenerationResult.basicActionGeneration.attempts
+    : []
+  return Object.fromEntries((Array.isArray(actionIds) ? actionIds : []).map((actionId) => {
+    const attempt = attempts.find((entry) => entry?.actionId === actionId)
+    return [actionId, resolveRepairChangeFromFailureConditions(attempt?.failureConditions)]
+  }))
+}
+
 const safeUrlHost = (value) => {
   try {
     return new URL(String(value || '')).host
@@ -1198,6 +1234,7 @@ const generateActionKeyframe = async ({
   generationDeadlineMs = 0,
   qualityProfile = getDefaultQualityProfile(),
   qualityGuidance = null,
+  requestedChanges = [],
   generateWithFallbackImpl = generateWithModelFallback
 }) => {
   const normalizedKeyframeRole = String(keyframeRole || 'start').trim().toLowerCase() === 'start'
@@ -1209,12 +1246,14 @@ const generateActionKeyframe = async ({
     ? 'action-start-keyframe'
     : 'action-peak-keyframe'
   const promptBuild = buildActionKeyframePrompt({
+    model: selectedModel,
     appearanceIntent: resolveProviderAppearanceIntent(run),
     referenceRole: listReferenceRoles(referenceImages).join(', ') || 'canonical-reference',
     action,
     keyframeRole: normalizedKeyframeRole,
     qualityGuidance,
-    canvas: DEFAULT_CONSTRAINTS
+    canvas: DEFAULT_CONSTRAINTS,
+    requestedChanges
   })
   const promptFile = writeAnchorPromptFile({
     dataDir,
@@ -1400,6 +1439,7 @@ const generateKeyframeActionSpriteRow = async ({
   generationDeadlineMs = 0,
   qualityProfile = getDefaultQualityProfile(),
   qualityGuidance = null,
+  requestedChanges = [],
   generateWithFallbackImpl = generateWithModelFallback
 }) => {
   assertExactlyOneProviderReferenceImage(originalReferenceImages)
@@ -1429,6 +1469,7 @@ const generateKeyframeActionSpriteRow = async ({
     generationDeadlineMs,
     qualityProfile,
     qualityGuidance,
+    requestedChanges,
     generateWithFallbackImpl
   })
   if (!startKeyframeResult) {
@@ -1486,6 +1527,7 @@ const generateKeyframeActionSpriteRow = async ({
     generationDeadlineMs,
     qualityProfile,
     qualityGuidance,
+    requestedChanges,
     generateWithFallbackImpl
   })
   if (!peakKeyframeResult.ok) {
@@ -1535,10 +1577,12 @@ const generateKeyframeActionSpriteRow = async ({
     role: 'keyframe-action-reference-board'
   }
   const promptBuild = buildActionSpriteRowPrompt({
+    model: selectedModel,
     appearanceIntent: resolveProviderAppearanceIntent(run),
     referenceRole: 'keyframe-action-reference-board',
     action,
-    qualityGuidance
+    qualityGuidance,
+    requestedChanges
   })
   const promptFile = writeAnchorPromptFile({
     dataDir,
@@ -1723,6 +1767,7 @@ const generateDirectSourceActionAnchorCandidateSet = async ({
     const candidateId = candidateVariant.id
     const candidateSegment = createCandidateFileSegment(index, candidateId)
     const candidatePromptBuild = buildActionAnchorPrompt({
+      model: selectedModel,
       referenceRole: actionReferenceImage.role,
       action,
       qualityGuidance,
@@ -1907,6 +1952,7 @@ const generateAnchorReferences = async ({
   let characterAnchor = null
   if (!shouldSkipCharacterAnchorForActions(run)) {
     const characterPromptBuild = buildCharacterAnchorPrompt({
+      model: selectedModel,
       appearanceIntent: resolveProviderAppearanceIntent(run),
       referenceRole: 'composite-reference-board',
       qualityGuidance,
@@ -1976,6 +2022,7 @@ const generateAnchorReferences = async ({
         : characterReferenceImage
       const actionReferenceRole = actionReferenceImage.role
       const actionPromptBuild = buildActionAnchorPrompt({
+        model: selectedModel,
         appearanceIntent: resolveProviderAppearanceIntent(run),
         referenceRole: actionReferenceRole,
         action,
@@ -2142,7 +2189,8 @@ const generateFullPetBasicActionSource = async ({
   qualityReferenceImages = referenceImages,
   generationDeadlineMs = 0,
   qualityProfile = getDefaultQualityProfile(),
-  qualityGuidance = null
+  qualityGuidance = null,
+  requestedChanges = []
 }) => {
   let providerRow = null
   try {
@@ -2172,7 +2220,8 @@ const generateFullPetBasicActionSource = async ({
       qualityReferenceImages,
       generationDeadlineMs,
       qualityProfile,
-      qualityGuidance
+      qualityGuidance,
+      requestedChanges
     })
     if (!providerRow?.ok || !providerRow.output) {
       const error = new Error(providerRow?.error || `Creator Studio official row generation failed for ${safeActionId}`)
@@ -2242,6 +2291,7 @@ const generateFullPetBasicActionSources = async ({
   generationDeadlineMs = 0,
   qualityProfile = getDefaultQualityProfile(),
   qualityGuidance = null,
+  repairChangesByActionId = {},
   requestedActionIds = GENERATED_FULL_PET_ACTION_IDS,
   generateActionSourceImpl = generateFullPetBasicActionSource,
   mirrorRowFramesImpl = mirrorRowFrames,
@@ -2300,7 +2350,10 @@ const generateFullPetBasicActionSources = async ({
       qualityReferenceImages,
       generationDeadlineMs,
       qualityProfile,
-      qualityGuidance
+      qualityGuidance,
+      requestedChanges: Array.isArray(repairChangesByActionId[actionId])
+        ? repairChangesByActionId[actionId]
+        : []
     })
     if (reusable) reusedActionIds.push(actionId)
     else attemptedActionIds.push(actionId)
@@ -2530,6 +2583,10 @@ const regenerateFullPetActionsViaHostModelBridge = async ({ dataDir, run, action
     generationDeadlineMs: Date.now() + FULL_PET_WORKFLOW_MAX_DURATION_MS,
     qualityProfile: governance.qualityProfile,
     qualityGuidance: governance.qualityGuidance,
+    repairChangesByActionId: createActionRepairChanges({
+      previousGenerationResult,
+      actionIds
+    }),
     requestedActionIds: actionIds
   })
   const { failure: _discardedFailure, ...previous } = previousGenerationResult

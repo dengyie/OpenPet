@@ -40,12 +40,15 @@ The branch already contains:
 - explicit single-output Provider requests with fail-closed deliverable output-count enforcement;
 - bounded same-model retry for transient Provider transport failures;
 - canonical full-pet action identity boards with separate canonical QA references;
-- idle-specific minimal-motion semantics, provider image-task schema v2, prompt compiler v2, and local prompt-builder v5;
+- idle-specific minimal-motion semantics, provider image-task schema v3, prompt compiler v3, and local prompt-builder v6;
 - versioned human-example registries and immutable quality profiles;
 - profile-bound prompts, reference-board metadata, keyframe QA, row QA, and atlas QA;
 - action-scoped and identity-scoped repair with archived prior evidence;
 - machine-readable Provider production-art claim gates.
-- bounded appearance intent compiled into Provider-neutral prompts without raw prompt passthrough;
+- bounded visual plans compiled into Provider-neutral semantics and model-aware final prompts without raw prompt passthrough;
+- GPT Image 2-aligned `DELIVERABLE / REFERENCE / CHANGE / PRESERVE / COMPOSITION / ACTION or FRAME PLAN / BACKGROUND / CONSTRAINTS` prompt sections;
+- capability-aware opaque-background generation for `gpt-image-2`, followed by deterministic local background removal;
+- complete per-cell animation beats, preserved direction/secondary/forbidden motion semantics, and action-scoped repair guidance;
 - atomic `run.json` replacement, last-valid backup, and visible failed-state recovery.
 
 The landed deterministic official row package can compose and validate complete or partial sets of `row-real` and `approved-mirror` inputs. That packaging support is not evidence that a real Provider has produced approved art for every available row.
@@ -207,6 +210,8 @@ The canonical character must:
 - avoid text, borders, guide marks, UI, scenery, or unrelated effects;
 - provide enough identity information for every later action row.
 
+The transparent background above is the final OpenPet artifact contract, not necessarily the direct Provider-output contract. For `gpt-image-2`, the Provider prompt requests one uniform opaque background with clean separable edges. OpenPet then removes that background locally, clears RGB residue under zero alpha, and applies the existing edge, halo, alpha, occupancy, and cell-boundary gates before the artifact can satisfy the transparent-output requirement.
+
 The optional text description can add name, temperament, or action intent. If text conflicts with the visible source identity, the image wins.
 
 ## 6. End-To-End Generation Architecture
@@ -254,7 +259,9 @@ The Provider receives that one board as its only reference attachment. Keyframe 
 
 Send the composite board as the only image attachment and request a complete action-specific sheet or row. The Provider must author the actual pose changes. OpenPet may specify layout, key poses, transparency, scale, and continuity, but it must not later fabricate missing semantics from the base pose.
 
-The upstream prompt is self-contained and Provider-neutral. It states the requested pixel dimensions and aspect ratio, explains how to interpret the attached image, fixes visible identity authority, applies at most six bounded appearance-intent directives, then restates the action, framing, transparency, and exclusion contracts. Raw Creator Studio prompts, project terminology, paths, URIs, secrets, transport terms, identifiers, and prompt-control instructions cannot pass through to the image model. If appearance text conflicts with the attached identity, the image wins.
+The upstream prompt is self-contained and model-aware. Creator Studio first validates a Provider-neutral visual plan and image task, then selects a registered capability profile and renderer for the configured image model. `gpt-image-2` receives short labeled sections in this order: deliverable, reference responsibility, change, preservation invariants, composition, action or per-cell frame plan, opaque background, and final constraints. A registered generic renderer may use a different supported background contract while preserving the same semantics.
+
+The prompt explicitly separates what changes from what stays unchanged. The reference image controls visible identity; the written action plan controls non-idle pose; the canvas contract controls scale, root, and padding; the model profile controls background behavior. Every action sheet describes every required cell, including direction, allowed secondary motion, forbidden motion, and loop closure. Raw Creator Studio prompts, project terminology, product-only character text, paths, URIs, secrets, transport terms, identifiers, and prompt-control instructions cannot pass through to the image model. If appearance text conflicts with the attached identity, the image wins.
 
 Transient transport failures such as `fetch failed`, connection reset, a closed socket, or a bounded timeout/connectivity code receive at most one same-model retry inside the existing two-attempt and total-time budgets. The retry does not change the selected model, quality thresholds, output-count contract, or request evidence. An exhausted retry remains an explicit failure with sanitized transport evidence.
 

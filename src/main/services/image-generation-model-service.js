@@ -534,8 +534,19 @@ const normalizePromptCompilerEvidence = (value = {}) => {
   const taskType = String(value.taskType || '').trim()
   const stage = String(value.stage || '').trim()
   const aspectRatio = String(value.aspectRatio || '').trim()
+  const normalizeIdentifier = (entry, maxLength = 120) => {
+    const text = String(entry || '').trim().slice(0, maxLength)
+    return /^[a-z0-9][a-z0-9._:-]*$/i.test(text) ? text : ''
+  }
+  const promptClauseIds = Array.isArray(value.promptClauseIds)
+    ? value.promptClauseIds.map((entry) => normalizeIdentifier(entry)).filter(Boolean).slice(0, 64)
+    : []
   return {
+    visualPlanVersion: Math.max(0, Number(value.visualPlanVersion) || 0),
+    providerImageTaskVersion: Math.max(0, Number(value.providerImageTaskVersion) || 0),
     promptCompilerVersion: Math.max(0, Number(value.promptCompilerVersion || value.version) || 0),
+    promptRenderer: normalizeIdentifier(value.promptRenderer),
+    modelCapabilityProfile: normalizeIdentifier(value.modelCapabilityProfile),
     taskType: /^[a-z][a-z-]{0,79}$/.test(taskType) ? taskType : '',
     stage: /^[a-z][a-z-]{0,79}$/.test(stage) ? stage : '',
     width: Math.max(0, Number(value.width) || 0),
@@ -543,6 +554,10 @@ const normalizePromptCompilerEvidence = (value = {}) => {
     aspectRatio: /^\d+:\d+$/.test(aspectRatio) ? aspectRatio : '',
     referenceImageCount: Math.max(0, Number(value.referenceImageCount) || 0),
     requestedOutputCount: Math.max(0, Number(value.requestedOutputCount) || 0),
+    backgroundStrategy: normalizeIdentifier(value.backgroundStrategy),
+    frameBeatCount: Math.max(0, Number(value.frameBeatCount) || 0),
+    promptCharacterCount: Math.max(0, Number(value.promptCharacterCount) || 0),
+    promptClauseIds,
     promptSafety: String(value.promptSafety || '').trim()
   }
 }

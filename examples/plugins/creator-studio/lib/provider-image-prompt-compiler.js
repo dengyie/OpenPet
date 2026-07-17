@@ -1,10 +1,14 @@
 const {
   createProviderImageTask,
-  createTaskError,
-  sanitizeVisualDirective
+  createTaskError
 } = require('./provider-image-task')
+const { createVisualPlan } = require('./visual-plan')
+const { resolveImageModelCapabilities } = require('./image-model-capabilities')
+const { buildProviderImagePromptClauses } = require('./provider-image-prompt-clauses')
+const { renderGptImage2Prompt } = require('./gpt-image-2-prompt-renderer')
+const { renderGenericImagePrompt } = require('./generic-image-prompt-renderer')
 
-const PROMPT_COMPILER_VERSION = 2
+const PROMPT_COMPILER_VERSION = 3
 const MAX_PROMPT_LENGTH = 12000
 
 const FORBIDDEN_PROMPT_PATTERNS = Object.freeze([
@@ -32,7 +36,7 @@ const FORBIDDEN_PROMPT_PATTERNS = Object.freeze([
   Object.freeze({ pattern: /(?:忽略|无视|覆盖|泄露|透露|重复).{0,40}(?:指令|提示词|系统|规则|要求)/i, label: 'prompt control' })
 ])
 
-const assertProviderNeutralPrompt = (value) => {
+const assertProviderNeutralPrompt = (value, capabilities = null) => {
   const text = String(value || '').trim()
   if (!text) throw createTaskError('image_prompt_contract_invalid', 'Compiled image prompt is empty')
   if (text.length > MAX_PROMPT_LENGTH) {
@@ -46,154 +50,14 @@ const assertProviderNeutralPrompt = (value) => {
       )
     }
   }
+  if (capabilities && !capabilities.supportsDirectTransparency && /\btransparent\b/i.test(text)) {
+    throw createTaskError(
+      'image_prompt_capability_conflict',
+      'Compiled image prompt requests unsupported transparency'
+    )
+  }
   return text
 }
-
-const createReferenceParagraph = (reference) => {
-  if (reference.type === 'identity-comparison') {
-    const primaryRegion = reference.primaryRegion || 'the main character view'
-    const secondaryRegion = reference.secondaryRegion || 'the supporting detail view'
-    return [
-      'Use the attached image as the complete visual reference.',
-      `It contains ${primaryRegion} and ${secondaryRegion}.`,
-      `Match the pose scale and framing of ${primaryRegion} while preserving the visible face, eyes, markings, colors, accessories, material or fur texture, body proportions, silhouette, lighting, and rendering style shown across the reference.`,
-      'If written appearance details conflict with the image, follow the image.',
-      'Do not reproduce the reference layout, repeated views, presentation spacing, labels, borders, or panel background.'
-    ].join(' ')
-  }
-  if (reference.type === 'identity-and-motion') {
-    return [
-      'Use the attached image as the complete visual reference.',
-      'It contains one identity view followed by ordered pose examples.',
-      'Use the identity view for appearance and use the pose examples for the starting pose, motion direction, and motion extreme.',
-      'If written appearance details conflict with the image, follow the image.',
-      'Do not reproduce the reference layout, repeated views, presentation spacing, labels, borders, or panel background.'
-    ].join(' ')
-  }
-  return [
-    'Use the attached character as the exact identity and visual-style reference.',
-    'Preserve every clearly visible identity feature, proportion, color, marking, accessory, material, lighting choice, and rendering characteristic.',
-    'If written appearance details conflict with the image, follow the image.'
-  ].join(' ')
-}
-
-const createIdentityLock = (task) => {
-  const locks = Array.isArray(task.styleLocks) ? task.styleLocks.filter(Boolean) : []
-  if (!locks.length) return ''
-  return `Keep the ${locks.join(', ')}.`
-}
-
-const createFramingParagraph = (subject) => [
-  `Place the character at the ${subject.rootAnchor.replace('-', ' ')} of the canvas.`,
-  'Keep the complete body, ears, paws, limbs, tail, hair, clothing, and accessories visible.',
-  `Fill approximately ${subject.targetOccupancyPercent}% of the canvas height and keep about ${subject.safePaddingPercent}% clear padding on every side.`,
-  'Do not crop or let any body part touch an image edge.'
-].join(' ')
-
-const createRequestedChangesParagraph = (task) => {
-  const changes = Array.isArray(task.requestedChanges)
-    ? task.requestedChanges.map(sanitizeVisualDirective).filter(Boolean)
-    : []
-  if (!changes.length) return ''
-  return `Apply these bounded visual adjustments while preserving every fixed requirement: ${changes.join('; ')}.`
-}
-
-const createAppearanceIntentParagraph = (task) => {
-  const intent = Array.isArray(task.appearanceIntent) ? task.appearanceIntent.filter(Boolean) : []
-  if (!intent.length) return ''
-  return `Apply this requested visual treatment only where it does not conflict with the attached character identity: ${intent.join('; ')}.`
-}
-
-const createGuidanceParagraph = (qualityGuidance) => {
-  const lines = Array.isArray(qualityGuidance)
-    ? qualityGuidance.map(sanitizeVisualDirective).filter(Boolean).slice(0, 12)
-    : []
-  if (!lines.length) return ''
-  return `Additional visual-quality guidance: ${lines.join(' ')}`
-}
-
-const createSingleImageGoal = (task) => {
-  if (task.taskType === 'character-image') {
-    return 'Draw one complete full-body character in a calm, readable identity pose with the face and distinguishing features clearly visible.'
-  }
-  const moment = String(task.action?.moment || '').trim()
-  const name = String(task.action?.name || '').trim()
-  const stageDescription = task.stage === 'start'
-    ? 'This is the starting pose before the main motion.'
-    : task.stage === 'peak'
-      ? 'This is the clearest motion extreme.'
-      : task.stage === 'repair'
-        ? 'This is a corrected replacement image.'
-        : 'This is the required action pose.'
-  return [
-    `Draw one complete full-body character${name ? ` performing ${name}` : ''}.`,
-    moment ? `Show this exact visible moment: ${moment}.` : '',
-    stageDescription
-  ].filter(Boolean).join(' ')
-}
-
-const createSingleImageExclusions = () => [
-  'Do not add text, labels, a logo, watermark, border, panel, grid, second character, duplicate pose, prop, scenery, floor, cast shadow, or visible background.',
-  'Do not change the species, face, eyes, markings, colors, accessories, clothing, body proportions, or rendering style.',
-  'Do not add or remove limbs, ears, paws, wings, tail parts, clothing, or accessories.'
-].join(' ')
-
-const createFixedSingleImageContract = (task) => [
-  createFramingParagraph(task.subject),
-  'Return one clean isolated full-body character on a transparent background.',
-  createSingleImageExclusions()
-].join('\n\n')
-
-const createSingleImageBrief = (task, qualityGuidance) => [
-  `Create exactly one ${task.canvas.width} x ${task.canvas.height} image with a ${task.canvas.aspectRatio} aspect ratio.`,
-  createSingleImageGoal(task),
-  createReferenceParagraph(task.referenceInterpretation),
-  createIdentityLock(task),
-  createAppearanceIntentParagraph(task),
-  createRequestedChangesParagraph(task),
-  createGuidanceParagraph(qualityGuidance),
-  createFixedSingleImageContract(task)
-].filter(Boolean).join('\n\n')
-
-const createFramePlanParagraph = (task) => {
-  const framePlan = Array.isArray(task.action?.framePlan)
-    ? task.action.framePlan.filter(Boolean)
-    : []
-  if (!framePlan.length) {
-    return 'Create a visibly progressive action sequence with a clear start, readable motion extreme, and loop-compatible ending.'
-  }
-  return ['Required motion moments:', ...framePlan.map((line, index) => `${index + 1}. ${line}`)].join('\n')
-}
-
-const createMovingPartsParagraph = (task) => {
-  const movingParts = Array.isArray(task.action?.movingParts) ? task.action.movingParts.filter(Boolean) : []
-  const lockedParts = Array.isArray(task.action?.lockedParts) ? task.action.lockedParts.filter(Boolean) : []
-  return [
-    movingParts.length ? `Animate these parts clearly: ${movingParts.join(', ')}.` : '',
-    lockedParts.length ? `Keep these features stable: ${lockedParts.join(', ')}.` : '',
-    task.action?.loopIntent ? `Sequence intent: ${task.action.loopIntent}.` : ''
-  ].filter(Boolean).join(' ')
-}
-
-const createFixedFrameSheetContract = (task) => [
-  `Arrange exactly ${task.sheet.frameCount} full-body frames in ${task.sheet.columns} columns and ${task.sheet.rows} rows, ordered from left to right and then top to bottom.`,
-  'Use equal invisible cells. Put one complete character pose in each required cell and leave every unused cell completely empty and transparent.',
-  `Keep the same lower-center root, viewpoint, scale, identity, lighting, and approximately ${task.subject.safePaddingPercent}% clear cell padding in every frame.`,
-  'Return one transparent animation frame sheet with no visible grid lines, labels, borders, numbers, text, logo, watermark, props, scenery, floor, cast shadow, duplicated placeholder frames, or character parts crossing between cells.'
-].join('\n\n')
-
-const createFrameSheetBrief = (task, qualityGuidance) => [
-  `Create exactly one ${task.canvas.width} x ${task.canvas.height} image with a ${task.canvas.aspectRatio} aspect ratio.`,
-  `Draw a complete animation frame sheet${task.action?.name ? ` for ${task.action.name}` : ''}.`,
-  createReferenceParagraph(task.referenceInterpretation),
-  createIdentityLock(task),
-  createAppearanceIntentParagraph(task),
-  createMovingPartsParagraph(task),
-  createFramePlanParagraph(task),
-  createRequestedChangesParagraph(task),
-  createGuidanceParagraph(qualityGuidance),
-  createFixedFrameSheetContract(task)
-].filter(Boolean).join('\n\n')
 
 const normalizeCompilerTask = (task = {}) => createProviderImageTask({
   taskType: task.taskType,
@@ -209,31 +73,83 @@ const normalizeCompilerTask = (task = {}) => createProviderImageTask({
   requestedChanges: task.requestedChanges
 })
 
-const compileProviderImagePrompt = ({ task, qualityGuidance = [] } = {}) => {
+const renderPrompt = ({ task, clauses, capabilities }) => {
+  if (capabilities.promptRenderer === 'gpt-image-2-v1') {
+    return renderGptImage2Prompt({ task, clauses, capabilities })
+  }
+  if (capabilities.promptRenderer === 'generic-image-edit-v1') {
+    return renderGenericImagePrompt({ task, clauses, capabilities })
+  }
+  throw createTaskError(
+    'image_prompt_capability_conflict',
+    'Selected image model prompt renderer is unavailable'
+  )
+}
+
+const compileProviderImagePrompt = ({
+  task,
+  model = 'gpt-image-2',
+  visualPlan = null,
+  qualityGuidance = []
+} = {}) => {
   const normalizedTask = normalizeCompilerTask(task)
+  const capabilities = resolveImageModelCapabilities(model)
+  const normalizedVisualPlan = createVisualPlan(visualPlan || {
+    appearanceIntent: normalizedTask.appearanceIntent,
+    requestedChanges: normalizedTask.requestedChanges,
+    action: normalizedTask.action,
+    subject: normalizedTask.subject
+  })
+  const clauses = buildProviderImagePromptClauses({
+    task: normalizedTask,
+    visualPlan: normalizedVisualPlan,
+    capabilities,
+    qualityGuidance
+  })
   const text = assertProviderNeutralPrompt(
-    normalizedTask.taskType === 'action-frame-sheet'
-      ? createFrameSheetBrief(normalizedTask, qualityGuidance)
-      : createSingleImageBrief(normalizedTask, qualityGuidance)
+    renderPrompt({ task: normalizedTask, clauses, capabilities }),
+    capabilities
   )
   return Object.freeze({
     version: PROMPT_COMPILER_VERSION,
     taskType: normalizedTask.taskType,
     text,
     safeSummary: Object.freeze({
+      visualPlanVersion: normalizedVisualPlan.version,
+      providerImageTaskVersion: normalizedTask.version,
       promptCompilerVersion: PROMPT_COMPILER_VERSION,
+      promptRenderer: capabilities.promptRenderer,
+      modelCapabilityProfile: capabilities.id,
       taskType: normalizedTask.taskType,
       stage: normalizedTask.stage,
       width: normalizedTask.canvas.width,
       height: normalizedTask.canvas.height,
       aspectRatio: normalizedTask.canvas.aspectRatio,
       referenceImageCount: 1,
-      requestedOutputCount: 1,
-      promptSafety: 'provider-neutral',
+      requestedOutputCount: capabilities.requestedOutputCount,
+      backgroundStrategy: capabilities.cutoutStrategy,
+      frameBeatCount: normalizedTask.action?.frameBeats?.length || 0,
+      promptClauseIds: Object.freeze(clauses.map((clause) => clause.id)),
+      promptCharacterCount: text.length,
+      promptSafety: 'provider-neutral-model-aware',
       ...(normalizedTask.strategyId ? { strategyId: normalizedTask.strategyId } : {})
     }),
     warnings: Object.freeze([])
   })
+}
+
+const createReferenceParagraph = (reference) => {
+  const task = createProviderImageTask({
+    taskType: 'character-image',
+    stage: 'identity',
+    referenceInterpretation: reference
+  })
+  const capabilities = resolveImageModelCapabilities('gpt-image-2')
+  return buildProviderImagePromptClauses({
+    task,
+    visualPlan: createVisualPlan({ subject: task.subject }),
+    capabilities
+  }).find((clause) => clause.category === 'reference')?.text || ''
 }
 
 module.exports = {
