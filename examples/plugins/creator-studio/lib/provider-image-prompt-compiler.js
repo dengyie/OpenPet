@@ -23,6 +23,7 @@ const FORBIDDEN_PROMPT_PATTERNS = Object.freeze([
   Object.freeze({ pattern: /\bcheckpoint\b/i, label: 'checkpoint term' }),
   Object.freeze({ pattern: /\bmultipart\b/i, label: 'transport format' }),
   Object.freeze({ pattern: /\b(?:sk-[A-Za-z0-9_-]+|bearer\s+[A-Za-z0-9._~-]+|(?:[A-Za-z0-9_-]*token[A-Za-z0-9_-]*|api[-_ ]?key|secret|credential|password|authorization)\s*[:=]\s*(?:(?:bearer|basic)\s+)?\S+)\b/i, label: 'secret' }),
+  Object.freeze({ pattern: /\b[A-Za-z0-9_-]*token[A-Za-z0-9_-]*\b/i, label: 'token identifier' }),
   Object.freeze({ pattern: /https?:\/\/\S+/i, label: 'URL' }),
   Object.freeze({ pattern: /\bfile:\/{2,3}\S+/i, label: 'file URI' }),
   Object.freeze({ pattern: /(?:^|\s)(?:\.\.[/\\])+\S*/i, label: 'path traversal' }),

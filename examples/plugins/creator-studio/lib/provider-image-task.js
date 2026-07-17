@@ -32,6 +32,7 @@ const DEFAULT_STYLE_LOCKS = Object.freeze([
 
 const INTERNAL_VISUAL_TEXT = /\b(?:openpet|creator[-_ ]?studio|codex[-_ ]?pet|hatch[-_ ]?pet|provider|backend|run[-_ ]?id|action[-_ ]?id|checkpoint|multipart|reference[-_ ]?role)\b/gi
 const SECRET_LIKE_TEXT = /\b(?:sk-[A-Za-z0-9_-]+|bearer\s+[A-Za-z0-9._~-]+|(?:[A-Za-z0-9_-]*token[A-Za-z0-9_-]*|api[-_ ]?key|secret|credential|password|authorization)\s*[:=]\s*(?:(?:bearer|basic)\s+)?\S+)\b/gi
+const TOKEN_IDENTIFIER_TEXT = /\b[A-Za-z0-9_-]*token[A-Za-z0-9_-]*\b/gi
 const HOST_PATH_TEXT = /(?:\/Users|\/var|\/tmp|\/private|\/Volumes)\/[^\s,，。)]+/g
 const URL_TEXT = /https?:\/\/\S+/gi
 const FILE_URI_TEXT = /\bfile:\/{2,3}\S+/gi
@@ -44,6 +45,7 @@ const POSIX_ABSOLUTE_PATH_TEXT = /(?:^|\s)\/(?!\/)\S+/g
 const UNSAFE_APPEARANCE_INTENT_PATTERNS = Object.freeze([
   Object.freeze({ pattern: /\b(?:openpet|creator[-_ ]?studio|codex[-_ ]?pet|hatch[-_ ]?pet|provider|backend|run[-_ ]?id|action[-_ ]?id|checkpoint|multipart|reference[-_ ]?role)\b/i, label: 'internal term' }),
   Object.freeze({ pattern: /\b(?:sk-[A-Za-z0-9_-]+|bearer\s+[A-Za-z0-9._~-]+|(?:[A-Za-z0-9_-]*token[A-Za-z0-9_-]*|api[-_ ]?key|secret|credential|password|authorization)\s*[:=]\s*(?:(?:bearer|basic)\s+)?\S+)\b/i, label: 'secret' }),
+  Object.freeze({ pattern: /\b[A-Za-z0-9_-]*token[A-Za-z0-9_-]*\b/i, label: 'token identifier' }),
   Object.freeze({ pattern: /https?:\/\/\S+/i, label: 'URL' }),
   Object.freeze({ pattern: /\bfile:\/{2,3}\S+/i, label: 'file URI' }),
   Object.freeze({ pattern: /(?:^|\s)(?:\.\.[/\\])+\S*/i, label: 'path traversal' }),
@@ -140,6 +142,7 @@ const resolveProviderCanvasForLayout = ({ columns, rows } = {}) => {
 const sanitizeVisualDirective = (value) => String(value || '')
   .replace(/[\u0000-\u001F\u007F]/g, ' ')
   .replace(SECRET_LIKE_TEXT, ' ')
+  .replace(TOKEN_IDENTIFIER_TEXT, ' ')
   .replace(URL_TEXT, ' ')
   .replace(FILE_URI_TEXT, ' ')
   .replace(TRAVERSAL_TEXT, ' ')
