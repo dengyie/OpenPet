@@ -3,7 +3,7 @@
 ## Assignment
 
 - Production branch: `codex/dev8-main-review-fix`
-- Production checkpoint: `33504539` (`feat: align image prompts with gpt image 2`)
+- Production checkpoint: `51ebbf22` (`fix: harden prompt frame and identity contracts`), including implementation ancestor `33504539`
 - Development status: implemented but independently unverified
 - Required test owner: an isolated test branch/worktree; do not modify, switch, merge, reset, rebase, or push the production branch
 - Image handling: real generation and visual evaluation must be delegated to fresh one-use visual agents; do not load generated images into the long-running development task
@@ -29,7 +29,7 @@ No automated or real Provider test was run on the production branch.
 
 ## Branch Preparation
 
-Use a clean isolated test worktree. Bring in exactly production checkpoint `33504539` by the test branch's established integration method. Record both commit IDs and stable patch IDs if cherry-picking produces a different hash.
+Use a clean isolated test worktree. Start from exactly production checkpoint `51ebbf22`. Record the production and test commit IDs and stable patch IDs if cherry-picking produces different hashes.
 
 Do not copy or commit the unrelated dirty files that remain in the production worktree:
 
