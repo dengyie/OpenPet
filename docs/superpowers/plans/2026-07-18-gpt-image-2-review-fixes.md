@@ -23,10 +23,10 @@
 - Modify: `examples/plugins/creator-studio/lib/provider-image-prompt-compiler.js`
 - Modify: `src/main/services/image-generation-model-service.js` only if request construction needs capability input
 
-- [ ] Write failing tests for unknown models and opaque background behavior.
-- [ ] Run the focused test and confirm failure.
-- [ ] Implement explicit capability profiles and fail-closed unknown-model behavior.
-- [ ] Run the focused test and confirm pass.
+- [x] Write failing tests for unknown models and opaque background behavior.
+- [x] Run the focused test and confirm failure.
+- [x] Implement explicit capability profiles and fail-closed unknown-model behavior.
+- [x] Run the focused test and confirm pass.
 
 ### Task 2: Mixed Brief Preservation
 
@@ -35,9 +35,9 @@
 - Modify: `examples/plugins/creator-studio/lib/openpet-prompt-builder.js`
 - Test: `tests/examples/creator-studio-prompt-review-regressions.test.js`
 
-- [ ] Add a failing mixed product-plus-visual brief test.
-- [ ] Implement deterministic visual residue extraction with explicit warning/error behavior.
-- [ ] Run the focused test and confirm pass without restoring internal product terms.
+- [x] Add a failing mixed product-plus-visual brief test.
+- [x] Implement deterministic visual residue extraction with explicit warning behavior.
+- [x] Run the focused test and confirm pass without restoring internal product terms.
 
 ### Task 3: Official Running Semantics
 
@@ -46,9 +46,9 @@
 - Modify: `src/main/services/creator-workflow-service.js`
 - Test: `tests/examples/creator-studio-prompt-review-regressions.test.js`
 
-- [ ] Add failing tests for `running` work-state and `running-right` locomotion.
-- [ ] Add official action-ID semantic precedence and work-state phases.
-- [ ] Run focused prompt and creator workflow tests.
+- [x] Add failing tests for `running` work-state and `running-right` locomotion.
+- [x] Add official action-ID semantic precedence and work-state phases.
+- [x] Run focused prompt and creator workflow tests.
 
 ### Task 4: Renderer Cleanup and Verification Assets
 
@@ -57,6 +57,8 @@
 - Modify: `examples/plugins/creator-studio/lib/provider-image-prompt-compiler.js`
 - Test: `tests/examples/creator-studio-prompt-review-regressions.test.js`
 
-- [ ] Remove the no-op renderer alias and route the currently supported renderer directly.
-- [ ] Run syntax, focused suites, core, and Control Center regression commands.
+- [x] Remove the no-op renderer alias and route the currently supported renderer directly.
+- [x] Run syntax, focused suites, core, and Control Center regression commands.
 - [ ] Rebase this branch onto the latest `main` before final handoff and rerun affected tests.
+
+Rebase remains intentionally pending because the worktree contains three pre-existing uncommitted files outside this plan. Rebasing would require stashing or rewriting those unrelated changes; preserve them for their owning task and rebase after that task commits or clears them.

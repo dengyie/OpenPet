@@ -131,7 +131,9 @@ const compileProviderImagePrompt = ({
       promptSafety: 'provider-neutral-model-aware',
       ...(normalizedTask.strategyId ? { strategyId: normalizedTask.strategyId } : {})
     }),
-    warnings: Object.freeze([])
+    warnings: Object.freeze(Array.isArray(normalizedVisualPlan.warnings)
+      ? normalizedVisualPlan.warnings.slice(0, 8)
+      : [])
   })
 }
 

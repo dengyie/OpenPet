@@ -36,6 +36,13 @@ const stripNonVisualProductLanguage = (value) => {
     .trim()
 }
 
+const containsNonVisualProductLanguage = (value) => (
+  Array.isArray(value) && value.some((entry) => {
+    const text = sanitizeVisualDirective(entry)
+    return Boolean(text && NON_VISUAL_PRODUCT_LANGUAGE.some((pattern) => pattern.test(text)))
+  })
+)
+
 const normalizeTextList = (value, { rejectProductLanguage = false } = {}) => {
   if (!Array.isArray(value)) return []
   return value
@@ -55,6 +62,13 @@ const createVisualPlan = (input = {}) => {
     ? input.composition
     : existingSubject
   const backgroundIntent = input.backgroundIntent || 'isolated-cutout-ready'
+  const warnings = new Set(Array.isArray(input.warnings) ? input.warnings.map(String).filter(Boolean) : [])
+  if (
+    containsNonVisualProductLanguage(appearanceIntent) ||
+    containsNonVisualProductLanguage(requestedChanges)
+  ) {
+    warnings.add('visual_plan_product_language_removed')
+  }
   const normalizedAction = action && typeof action === 'object'
     ? {
         name: sanitizeVisualDirective(action.name),
@@ -86,12 +100,14 @@ const createVisualPlan = (input = {}) => {
     },
     backgroundIntent: backgroundIntent === 'isolated-cutout-ready'
       ? backgroundIntent
-      : 'isolated-cutout-ready'
+      : 'isolated-cutout-ready',
+    warnings: [...warnings]
   })
 }
 
 module.exports = {
   NON_VISUAL_PRODUCT_LANGUAGE,
+  containsNonVisualProductLanguage,
   createVisualPlan,
   stripNonVisualProductLanguage
 }

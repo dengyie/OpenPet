@@ -47,6 +47,7 @@ test('compiled prompts retain mixed brief visual details without product languag
   assert.match(result.prompt, /soft watercolor rendering/i)
   assert.doesNotMatch(result.prompt, /reusable|desktop pet/i)
   assert.match(result.prompt, /uniform opaque background color/i)
+  assert.ok(result.warnings.includes('visual_plan_product_language_removed'))
 })
 
 test('official running work state uses stationary processing motion instead of locomotion', () => {
