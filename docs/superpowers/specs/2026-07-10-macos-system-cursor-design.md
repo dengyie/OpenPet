@@ -6,7 +6,7 @@
 
 ## Outcome
 
-When a macOS user selects a non-system cursor and enables `应用到整个电脑`, OpenPet must hide the native pointer and display the selected cursor at the global mouse location, including while another application owns focus. Switching back to `仅 OpenPet`, selecting `系统默认`, deleting the active cursor, helper failure, or quitting OpenPet must restore the native pointer.
+When a macOS user selects a non-system cursor and enables `应用到整个电脑`, OpenPet must replace the WindowServer cursor across applications. Switching back to `仅 OpenPet`, selecting `系统默认`, deleting the active cursor, helper failure, or quitting OpenPet must restore the cursor theme that was active before OpenPet.
 
 The UI must report the actual runtime result. A failed native activation keeps `customCursorScope: 'openpet'`; it must never persist or display a false enabled state.
 
@@ -16,14 +16,14 @@ The UI must report the actual runtime result. A failed native activation keeps `
 
 `native/macos-system-cursor/OpenPetSystemCursor.swift` is a small AppKit executable. It:
 
-- decodes a PNG cursor asset supplied by the host;
-- creates a click-through, non-activating transparent panel at the cursor window level;
-- polls the global mouse location and positions the image so the configured hotspot stays under the pointer;
-- calls `CGDisplayHideCursor` exactly once after the panel is ready;
-- balances that hide call with `CGDisplayShowCursor` on every normal termination path;
-- emits one JSON `ready` line only after the image, panel, and hidden-cursor state are active.
+- dynamically resolves the private CGS cursor APIs and fails closed if they are unavailable;
+- copies the current named and auxiliary cursor images into OpenPet-owned backup registrations;
+- registers the selected PNG, configured size, and hotspot for every covered cursor family;
+- includes legacy identifiers, discovered system identifiers, and macOS 26 `ArrowS` / `IBeamS` aliases;
+- runs a restore watchdog that restores backups if the helper exits unexpectedly;
+- emits `ready` only after backup, watchdog, and replacement are active.
 
-The helper owns both hiding and drawing so those operations cannot drift across two processes. It never edits macOS preference files or changes the user's installed cursor theme.
+The helper does not create an overlay window and does not hide the native pointer. It replaces the native WindowServer cursor and restores the previous cursor theme on clean shutdown, helper loss, or the next activation after an unclean exit.
 
 ### Main-process service
 
@@ -56,15 +56,15 @@ This milestone implements macOS only. On Windows and Linux the service reports u
 ## Failure And Recovery
 
 - The helper exits before `ready`: activation fails and settings remain unchanged.
-- The helper exits after `ready`: the service records the failure and persists a fallback to `openpet` through a host callback.
+- The helper exits after `ready`: the restore watchdog restores the previous cursor theme, while the service records the failure and persists a fallback to `openpet` through a host callback.
 - A replacement cursor fails to start: the current working helper remains active until the replacement is ready.
 - Electron quits: runtime lifecycle awaits `dispose()` before final quit.
-- Helper receives `SIGTERM`, `SIGINT`, or `SIGHUP`: it restores the native pointer before exit.
-- A force kill or machine crash cannot run cleanup. macOS releases process-owned cursor hiding when the process exits; this behavior is verified by an isolated helper smoke test in this milestone.
+- Helper receives `SIGTERM` or `SIGINT`: it restores the previous cursor theme before exit. `SIGHUP` atomically re-registers the new OpenPet cursor while preserving the original backup set.
+- A machine crash cannot run cleanup. The watchdog covers helper `SIGKILL`, but a full host crash still requires a fresh activation to restore stale OpenPet backups or, if the session was externally polluted, manual recovery of the system cursor theme.
 
 ## Verification
 
 - Node unit tests cover platform support, helper readiness, replacement, startup failure, unexpected exit, stop, and settings fallback.
 - IPC tests cover successful persistence, failure without persistence, and local-overlay suppression in system mode.
-- Swift helper smoke launches against a generated cursor, confirms `ready`, verifies the overlay process stays alive, then terminates and confirms clean exit.
+- Swift helper smoke launches against generated cursors, verifies representative named and auxiliary registrations, verifies update, then proves normal and abnormal exit restoration.
 - `npm run check:syntax`, focused tests, `npm test`, and Control Center cursor Playwright regressions run before merge readiness.
