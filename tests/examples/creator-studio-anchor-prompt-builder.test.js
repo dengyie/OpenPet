@@ -26,25 +26,31 @@ test('character anchor prompt is self-contained and reference authoritative', ()
   })
 
   assert.equal(result.role, 'character-anchor')
-  assert.equal(result.version, 5)
-  assert.equal(result.promptCompilerVersion, 2)
-  assert.deepEqual(result.promptCompiler, {
-    promptCompilerVersion: 2,
-    taskType: 'character-image',
-    stage: 'identity',
-    width: 1024,
-    height: 1024,
-    aspectRatio: '1:1',
-    referenceImageCount: 1,
-    requestedOutputCount: 1,
-    promptSafety: 'provider-neutral'
-  })
-  assert.match(result.prompt, /^Create exactly one 1024 x 1024 image with a 1:1 aspect ratio\./)
-  assert.match(result.prompt, /main identity view and the supporting identity views/i)
-  assert.match(result.prompt, /If written appearance details conflict with the image, follow the image/i)
-  assert.match(result.prompt, /same face and eye design.*markings.*accessories.*body proportions.*rendering style/is)
+  assert.equal(result.version, 6)
+  assert.equal(result.promptCompilerVersion, 3)
+  assert.equal(result.promptCompiler.visualPlanVersion, 1)
+  assert.equal(result.promptCompiler.providerImageTaskVersion, 3)
+  assert.equal(result.promptCompiler.promptCompilerVersion, 3)
+  assert.equal(result.promptCompiler.taskType, 'character-image')
+  assert.equal(result.promptCompiler.stage, 'identity')
+  assert.equal(result.promptCompiler.width, 1024)
+  assert.equal(result.promptCompiler.height, 1024)
+  assert.equal(result.promptCompiler.aspectRatio, '1:1')
+  assert.equal(result.promptCompiler.referenceImageCount, 1)
+  assert.equal(result.promptCompiler.requestedOutputCount, 1)
+  assert.equal(result.promptCompiler.promptRenderer, 'gpt-image-2-v1')
+  assert.equal(result.promptCompiler.modelCapabilityProfile, 'gpt-image-2-v1')
+  assert.equal(result.promptCompiler.backgroundStrategy, 'solid-background-then-local-removal')
+  assert.equal(result.promptCompiler.promptSafety, 'provider-neutral-model-aware')
+  assert.match(result.prompt, /^DELIVERABLE\nCreate one complete full-body character image at 1024 x 1024 with a 1:1 aspect ratio\./)
+  assert.match(result.prompt, /The main identity view controls canonical continuity, and the supporting identity views supplies visible identity details/i)
+  assert.doesNotMatch(result.prompt, /Its the /i)
+  assert.match(result.prompt, /every identity-bearing feature.*every body part or accessory visible in the reference/is)
+  assert.doesNotMatch(result.prompt, /ACTION PLAN|FRAME PLAN|Do not preserve the neutral reference pose/i)
   assert.match(result.prompt, /lower center of the canvas/i)
-  assert.match(result.prompt, /transparent background/i)
+  assert.match(result.prompt, /uniform opaque background color/i)
+  assert.match(result.prompt, /downstream background removal/i)
+  assert.doesNotMatch(result.prompt, /transparent/i)
   assertProviderNeutral(result.prompt)
 })
 
@@ -63,11 +69,12 @@ test('action anchor prompt keeps identity while describing only visible motion',
 
   assert.equal(result.role, 'action-anchor')
   assert.equal(result.actionId, 'waving')
-  assert.match(result.prompt, /performing Waving/i)
-  assert.match(result.prompt, /waving front paw/i)
+  assert.match(result.prompt, /Change only the pose to this exact visible moment/i)
+  assert.match(result.prompt, /selected visible waving appendage/i)
   assert.match(result.prompt, /head, torso, feet\/base/i)
-  assert.match(result.prompt, /clearest motion extreme/i)
-  assert.match(result.prompt, /complete full-body character/i)
+  assert.match(result.prompt, /complete full-body action keyframe/i)
+  assert.match(result.prompt, /ACTION PLAN/i)
+  assert.match(result.prompt, /viewer-right front paw/i)
   assertProviderNeutral(result.prompt)
 })
 
@@ -81,8 +88,8 @@ test('canonical prompts preserve visible source accessories', () => {
     }
   })
 
-  assert.match(result.prompt, /same accessories and clothing when visible/i)
-  assert.match(result.prompt, /same accessories and clothing when visible/i)
+  assert.match(result.prompt, /same visible accessories or garments when present/i)
+  assert.match(result.prompt, /Do not invent, remove, duplicate, or redesign visible anatomy or accessories/i)
   assertProviderNeutral(result.prompt)
 })
 
@@ -102,15 +109,15 @@ test('action sprite row prompt defines an exact reference-conditioned frame shee
 
   assert.equal(result.role, 'action-sprite-row')
   assert.equal(result.frameCount, 6)
-  assert.match(result.prompt, /^Create exactly one 1536 x 1024 image with a 3:2 aspect ratio\./)
-  assert.match(result.prompt, /one identity view followed by ordered pose examples/i)
-  assert.match(result.prompt, /exactly 6 full-body frames in 3 columns and 2 rows/i)
-  assert.match(result.prompt, /left to right and then top to bottom/i)
-  assert.match(result.prompt, /Frame 1: start pose.*neutral/is)
-  assert.match(result.prompt, /Frame 3: peak pose.*fully raised/is)
-  assert.match(result.prompt, /Frame 6: return pose.*starting pose/is)
-  assert.match(result.prompt, /same lower-center root, viewpoint, scale, identity, lighting/i)
-  assert.match(result.prompt, /unused cell completely empty and transparent/i)
+  assert.match(result.prompt, /^DELIVERABLE\nCreate one 1536 x 1024 animation frame sheet with exactly 6 complete full-body character frames arranged in 3 columns and 2 rows\./)
+  assert.match(result.prompt, /pose examples only for the action moments they visibly represent/i)
+  assert.match(result.prompt, /Read cells left to right, then top to bottom/i)
+  assert.match(result.prompt, /Cell 1 \(row 1 column 1\).*neutral anchored pose/is)
+  assert.match(result.prompt, /Cell 3 \(row 1 column 3\).*greeting pose/is)
+  assert.match(result.prompt, /Cell 6 \(row 2 column 3\).*starting pose/is)
+  assert.match(result.prompt, /same viewpoint, character scale, subject lighting, and lower-center root/i)
+  assert.match(result.prompt, /uniform opaque background color/i)
+  assert.doesNotMatch(result.prompt, /transparent/i)
   assertProviderNeutral(result.prompt)
 })
 
@@ -126,10 +133,12 @@ test('action keyframe prompts create separate start and peak images', () => {
 
   assert.equal(start.keyframeRole, 'start')
   assert.equal(peak.keyframeRole, 'peak')
-  assert.match(start.prompt, /starting pose before the main motion/i)
-  assert.match(peak.prompt, /waving front paw clearly changed from neutral and fully raised beside the face/i)
-  assert.match(start.prompt, /one clean isolated full-body character on a transparent background/i)
-  assert.match(peak.prompt, /one clean isolated full-body character on a transparent background/i)
+  assert.match(start.prompt, /full-body neutral pose with the body anchored/i)
+  assert.match(peak.prompt, /selected visible waving appendage clearly changed from neutral and fully raised/i)
+  assert.match(start.prompt, /uniform opaque background color/i)
+  assert.match(peak.prompt, /uniform opaque background color/i)
+  assert.doesNotMatch(start.prompt, /transparent/i)
+  assert.doesNotMatch(peak.prompt, /transparent/i)
   assertProviderNeutral(start.prompt)
   assertProviderNeutral(peak.prompt)
 })
@@ -143,7 +152,7 @@ test('sparse wave metadata still produces a complete moving-part contract', () =
     }
   })
 
-  assert.match(result.prompt, /Animate these parts clearly: waving front paw/i)
+  assert.match(result.prompt, /Primary motion: the selected visible waving appendage/i)
   assert.match(result.prompt, /seamless stationary loop with a stable body root/i)
   assert.doesNotMatch(result.prompt, /the requested moving part/i)
   assertProviderNeutral(result.prompt)
@@ -159,9 +168,9 @@ test('four-frame wave plans close the loop by returning to the start pose', () =
     }
   })
 
-  assert.match(result.prompt, /Frame 3:.*fully raised/is)
-  assert.match(result.prompt, /Frame 4:.*return.*starting pose/is)
-  assert.doesNotMatch(result.prompt, /Frame 4:.*tilts slightly outward/is)
+  assert.match(result.prompt, /Cell 3 .*wave peak/is)
+  assert.match(result.prompt, /Cell 4 .*return.*starting pose/is)
+  assert.doesNotMatch(result.prompt, /Cell 4 .*tilts slightly outward/is)
 })
 
 test('sparse running metadata produces a complete locomotion cycle', () => {
@@ -174,13 +183,14 @@ test('sparse running metadata produces a complete locomotion cycle', () => {
     }
   })
 
-  assert.match(result.prompt, /^Create exactly one 1536 x 1024 image with a 3:2 aspect ratio\./)
+  assert.match(result.prompt, /^DELIVERABLE\nCreate one 1536 x 1024 animation frame sheet with exactly 8 complete full-body character frames arranged in 4 columns and 2 rows\./)
   assert.match(result.prompt, /seamless in-place locomotion cycle/i)
-  assert.match(result.prompt, /exactly 8 full-body frames in 4 columns and 2 rows/i)
+  assert.match(result.prompt, /exactly 8 complete full-body character frames arranged in 4 columns and 2 rows/i)
   assert.match(result.prompt, /contact pose/i)
   assert.match(result.prompt, /passing pose/i)
   assert.match(result.prompt, /opposite contact pose/i)
-  assert.match(result.prompt, /legs, arms, wings, tail, and locomotion parts/i)
+  assert.match(result.prompt, /visible locomotion appendages and supporting body motion/i)
+  assert.doesNotMatch(result.prompt, /\b(?:ears?|paws?|tails?|wings?|clothing)\b/i)
   assertProviderNeutral(result.prompt)
 })
 
@@ -204,7 +214,7 @@ test('action identity takes precedence over incidental motion words', () => {
   })
 
   assert.match(waving.prompt, /seamless stationary loop with a stable body root/i)
-  assert.match(waving.prompt, /waving front paw/i)
+  assert.match(waving.prompt, /selected visible waving appendage/i)
   assert.match(jumping.prompt, /airborne peak/i)
   assert.match(jumping.prompt, /return to the same baseline/i)
   assertProviderNeutral(waving.prompt)

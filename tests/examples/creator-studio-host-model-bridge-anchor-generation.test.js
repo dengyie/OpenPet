@@ -856,6 +856,7 @@ test('host model bridge routes every single action through a keyframe-conditione
           requests.push({
             dataRelativeDir,
             prompt: String(payload.prompt || ''),
+            promptCompiler: payload.promptCompiler,
             referenceRoles: Array.isArray(payload.referenceImages)
               ? payload.referenceImages.map((reference) => reference.role)
               : []
@@ -936,17 +937,37 @@ test('host model bridge routes every single action through a keyframe-conditione
     assert.equal(result.conditioning.endpoint, '/images/edits')
     assert.equal(result.conditioning.multipartImageField, 'image')
     assert.equal(result.conditioning.requestedOutputCount, 1)
+    assert.equal(result.conditioning.promptCompiler.providerImageTaskVersion, 3)
+    assert.equal(result.conditioning.promptCompiler.promptCompilerVersion, 3)
+    assert.equal(result.conditioning.promptCompiler.promptRenderer, 'gpt-image-2-v1')
+    assert.equal(result.conditioning.promptCompiler.modelCapabilityProfile, 'gpt-image-2-v1')
+    assert.equal(result.conditioning.promptCompiler.backgroundStrategy, 'solid-background-then-local-removal')
+    assert.equal(result.conditioning.promptCompiler.frameBeatCount, 6)
+    assert.equal(result.conditioning.promptCompiler.referenceImageCount, 1)
+    assert.equal(result.conditioning.promptCompiler.requestedOutputCount, 1)
+    assert.equal(result.conditioning.promptCompiler.promptClauseIds.filter((id) => id.startsWith('frame-beat.')).length, 6)
     assert.deepEqual(result.conditioning.references.map((reference) => reference.role), [
       'keyframe-action-reference-board'
     ])
     assert.equal(result.outputs[0].dataRelativePath, 'runs/run-anchor-flow/frames/base/waving-keyframe-row/0001.png')
-    assert.match(requests[0].prompt, /starting pose before the main motion/i)
-    assert.match(requests[1].prompt, /clearest motion extreme/i)
-    assert.match(requests[1].prompt, /one identity view followed by ordered pose examples/i)
-    assert.match(requests[1].prompt, /starting pose, motion direction, and motion extreme/i)
-    assert.match(requests[2].prompt, /complete animation frame sheet for Waving/i)
-    assert.match(requests[2].prompt, /one identity view followed by ordered pose examples/i)
-    assert.match(requests[2].prompt, /Frame 3: peak pose.*fully raised beside the face/is)
+    for (const requestEntry of requests) {
+      assert.equal(requestEntry.promptCompiler.providerImageTaskVersion, 3)
+      assert.equal(requestEntry.promptCompiler.promptCompilerVersion, 3)
+      assert.equal(requestEntry.promptCompiler.promptRenderer, 'gpt-image-2-v1')
+      assert.equal(requestEntry.promptCompiler.modelCapabilityProfile, 'gpt-image-2-v1')
+      assert.equal(requestEntry.promptCompiler.backgroundStrategy, 'solid-background-then-local-removal')
+      assert.equal(requestEntry.promptCompiler.referenceImageCount, 1)
+      assert.equal(requestEntry.promptCompiler.requestedOutputCount, 1)
+      assert.ok(Array.isArray(requestEntry.promptCompiler.promptClauseIds))
+      assert.doesNotMatch(requestEntry.prompt, /transparent/i)
+    }
+    assert.match(requests[0].prompt, /full-body neutral pose with the body anchored/i)
+    assert.match(requests[1].prompt, /selected visible waving appendage.*fully raised/is)
+    assert.match(requests[1].prompt, /attached board for character identity/i)
+    assert.match(requests[1].prompt, /written frame plan controls all other poses/i)
+    assert.match(requests[2].prompt, /animation frame sheet with exactly 6 complete full-body character frames/i)
+    assert.match(requests[2].prompt, /pose examples only for the action moments they visibly represent/i)
+    assert.match(requests[2].prompt, /Cell 3 .*greeting pose/i)
     assert.deepEqual(result.generationStages.map((stage) => ({
       stage: stage.stage,
       ok: stage.ok,

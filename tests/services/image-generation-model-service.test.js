@@ -6,6 +6,7 @@ const path = require('path')
 
 const { createImageGenerationModelService } = require('../../src/main/services/image-generation-model-service')
 const { createSavedProviderModelCatalog } = require('../../src/main/services/provider-model-catalog')
+const { buildCharacterAnchorPrompt } = require('../../examples/plugins/creator-studio/lib/anchor-prompt-builder')
 
 const createSettingsService = (initialSettings = {}) => {
   let current = {
@@ -1100,8 +1101,13 @@ test('image generation model service uses a gpt-image-2 compatible edit payload'
     now: () => new Date('2026-06-19T00:00:00.000Z')
   })
 
+  const promptBuild = buildCharacterAnchorPrompt({
+    model: 'gpt-image-2',
+    appearanceIntent: ['small mint-colored character']
+  })
   const result = await service.generateImage({
-    prompt: 'small mint helper cat, transparent background',
+    prompt: promptBuild.prompt,
+    promptCompiler: promptBuild.promptCompiler,
     referenceImages: createReferenceImages(dataDir),
     output: {
       dataDir,
@@ -1119,7 +1125,10 @@ test('image generation model service uses a gpt-image-2 compatible edit payload'
   assert.equal(requests[0].url, 'http://127.0.0.1:8317/v1/images/edits')
   assert.match(payload, /name="image"; filename="canonical-reference\.png"/)
   assert.match(payload, /name="model"\r\n\r\ngpt-image-2\r\n/)
-  assert.match(payload, /name="prompt"\r\n\r\nsmall mint helper cat, transparent background\r\n/)
+  assert.match(payload, /name="prompt"\r\n\r\nDELIVERABLE\n/)
+  assert.match(payload, /uniform opaque background color/i)
+  assert.match(payload, /downstream background removal/i)
+  assert.doesNotMatch(payload, /\btransparent\b/i)
   assert.match(payload, /name="size"\r\n\r\n1024x1024\r\n/)
   assert.match(payload, /name="n"\r\n\r\n1\r\n/)
   assert.match(payload, /name="quality"\r\n\r\nhigh\r\n/)
@@ -1129,6 +1138,26 @@ test('image generation model service uses a gpt-image-2 compatible edit payload'
   assert.equal(logs[1].details.backgroundMode, 'omitted')
   assert.equal(logs[1].details.quality, 'high')
   assert.equal(logs[1].details.requestedTransparent, true)
+  assert.equal(logs[1].details.referenceImageCount, 1)
+  assert.equal(logs[1].details.multipartImageField, 'image')
+  assert.equal(logs[1].details.requestedOutputCount, 1)
+  assert.equal(logs[1].details.providerImageTaskVersion, 3)
+  assert.equal(logs[1].details.promptCompilerVersion, 3)
+  assert.equal(logs[1].details.promptRenderer, 'gpt-image-2-v1')
+  assert.equal(logs[1].details.modelCapabilityProfile, 'gpt-image-2-v1')
+  assert.equal(logs[1].details.backgroundStrategy, 'solid-background-then-local-removal')
+  assert.equal(logs[1].details.frameBeatCount, 0)
+  assert.ok(Array.isArray(logs[1].details.promptClauseIds))
+  assert.equal(result.conditioning.referenceImageCount, 1)
+  assert.equal(result.conditioning.multipartImageField, 'image')
+  assert.equal(result.conditioning.requestedOutputCount, 1)
+  assert.equal(result.conditioning.promptCompiler.providerImageTaskVersion, 3)
+  assert.equal(result.conditioning.promptCompiler.promptCompilerVersion, 3)
+  assert.equal(result.conditioning.promptCompiler.promptRenderer, 'gpt-image-2-v1')
+  assert.equal(result.conditioning.promptCompiler.modelCapabilityProfile, 'gpt-image-2-v1')
+  assert.equal(result.conditioning.promptCompiler.backgroundStrategy, 'solid-background-then-local-removal')
+  assert.equal(result.conditioning.promptCompiler.frameBeatCount, 0)
+  assert.ok(Array.isArray(result.conditioning.promptCompiler.promptClauseIds))
 })
 
 test('image generation model service uses image edits when reference conditioning inputs are provided', async () => {

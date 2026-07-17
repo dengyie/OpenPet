@@ -586,13 +586,19 @@ test('creator studio prompt builder creates an OpenPet full-pet prompt with runt
   assert.match(built.prompt, /no text, logo, watermark/)
   assert.match(built.prompt, /一只软乎乎的橘猫桌宠/)
   assert.equal(built.prompt.includes('response_format'), false)
-  assert.equal(built.promptBuilderVersion, 5)
-  assert.equal(built.promptCompiler.promptCompilerVersion, 2)
-  assert.match(built.providerPrompt, /^Create exactly one 1024 x 1024 image with a 1:1 aspect ratio\./)
-  assert.match(built.providerPrompt, /one complete full-body character/i)
-  assert.match(built.providerPrompt, /attached character as the exact identity and visual-style reference/i)
+  assert.equal(built.promptBuilderVersion, 6)
+  assert.equal(built.promptCompiler.promptCompilerVersion, 3)
+  assert.equal(built.promptCompiler.providerImageTaskVersion, 3)
+  assert.equal(built.promptCompiler.promptRenderer, 'gpt-image-2-v1')
+  assert.equal(built.promptCompiler.modelCapabilityProfile, 'gpt-image-2-v1')
+  assert.equal(built.promptCompiler.backgroundStrategy, 'solid-background-then-local-removal')
+  assert.match(built.providerPrompt, /^DELIVERABLE\nCreate one complete full-body character image at 1024 x 1024 with a 1:1 aspect ratio\./)
+  assert.match(built.providerPrompt, /one character only in a calm, readable identity pose/i)
+  assert.match(built.providerPrompt, /attached image as the identity and visual-style reference/i)
   assert.match(built.providerPrompt, /lower center of the canvas/i)
-  assert.match(built.providerPrompt, /transparent background/i)
+  assert.match(built.providerPrompt, /uniform opaque background color/i)
+  assert.match(built.providerPrompt, /downstream background removal/i)
+  assert.doesNotMatch(built.providerPrompt, /transparent/i)
   assertProviderNeutralImagePrompt(built.providerPrompt)
 })
 
@@ -628,12 +634,12 @@ test('creator studio prompt builder preserves custom action semantics and curren
   assert.match(built.prompt, /keep the current pet's style, proportions, palette, facial design, and line work/i)
   assert.match(built.prompt, /same character identity/)
   assert.match(built.prompt, /新增一个自定义动作：原地打滚/)
-  assert.match(built.providerPrompt, /^Create exactly one 1536 x 1024 image with a 3:2 aspect ratio\./)
-  assert.match(built.providerPrompt, /complete animation frame sheet for 原地打滚/i)
-  assert.match(built.providerPrompt, /exactly 12 full-body frames in 4 columns and 3 rows/i)
+  assert.match(built.providerPrompt, /^DELIVERABLE\nCreate one 1536 x 1024 animation frame sheet with exactly 12 complete full-body character frames arranged in 4 columns and 3 rows\./)
+  assert.match(built.providerPrompt, /Change only the pose from cell to cell to perform 原地打滚/i)
   assert.match(built.providerPrompt, /equal invisible cells/i)
-  assert.match(built.providerPrompt, /same lower-center root, viewpoint, scale, identity, lighting/i)
+  assert.match(built.providerPrompt, /same viewpoint, character scale, subject lighting, and lower-center root/i)
   assert.match(built.providerPrompt, /seamless loop that returns to the starting pose/i)
+  assert.equal((built.providerPrompt.match(/^Cell \d+ /gm) || []).length, 12)
   assertProviderNeutralImagePrompt(built.providerPrompt)
 })
 
@@ -668,11 +674,12 @@ test('creator studio prompt builder emits complete sprite-sheet instructions for
   })
 
   assert.equal(built.actionId, 'wave')
-  assert.match(built.providerPrompt, /^Create exactly one 1536 x 1024 image with a 3:2 aspect ratio\./)
-  assert.match(built.providerPrompt, /complete animation frame sheet for Wave/i)
-  assert.match(built.providerPrompt, /exactly 6 full-body frames in 3 columns and 2 rows/i)
-  assert.match(built.providerPrompt, /viewer-right front limb/i)
-  assert.match(built.providerPrompt, /transparent animation frame sheet/i)
+  assert.match(built.providerPrompt, /^DELIVERABLE\nCreate one 1536 x 1024 animation frame sheet with exactly 6 complete full-body character frames arranged in 3 columns and 2 rows\./)
+  assert.match(built.providerPrompt, /Change only the pose from cell to cell to perform Wave/i)
+  assert.match(built.providerPrompt, /selected visible waving appendage/i)
+  assert.match(built.providerPrompt, /uniform opaque background color/i)
+  assert.match(built.providerPrompt, /downstream background removal/i)
+  assert.doesNotMatch(built.providerPrompt, /transparent/i)
   assertProviderNeutralImagePrompt(built.providerPrompt)
 })
 
@@ -722,17 +729,16 @@ test('creator studio prompt builder emits a generic OpenPet action asset protoco
     model: 'gpt-image-2'
   })
 
-  assert.equal(built.promptBuilderVersion, 5)
-  assert.equal(built.promptCompiler.promptCompilerVersion, 2)
-  assert.match(built.providerPrompt, /^Create exactly one 1536 x 1024 image with a 3:2 aspect ratio\./)
-  assert.match(built.providerPrompt, /complete animation frame sheet for wave/i)
-  assert.match(built.providerPrompt, /attached character as the exact identity and visual-style reference/i)
-  assert.match(built.providerPrompt, /same face and eye design.*markings.*body proportions.*accessories/is)
-  assert.match(built.providerPrompt, /viewer-right front limb, hand, paw, wing, arm, or equivalent waving appendage/i)
-  assert.match(built.providerPrompt, /Frame 2: viewer-right front limb begins to lift/i)
-  assert.match(built.providerPrompt, /exactly 6 full-body frames in 3 columns and 2 rows/i)
-  assert.match(built.providerPrompt, /no visible grid lines/i)
-  assert.match(built.providerPrompt, /character parts crossing between cells/i)
+  assert.equal(built.promptBuilderVersion, 6)
+  assert.equal(built.promptCompiler.promptCompilerVersion, 3)
+  assert.match(built.providerPrompt, /^DELIVERABLE\nCreate one 1536 x 1024 animation frame sheet with exactly 6 complete full-body character frames arranged in 3 columns and 2 rows\./)
+  assert.match(built.providerPrompt, /Change only the pose from cell to cell to perform wave/i)
+  assert.match(built.providerPrompt, /attached image as the identity and visual-style reference/i)
+  assert.match(built.providerPrompt, /every visible identity-bearing detail.*body proportion.*accessory/is)
+  assert.match(built.providerPrompt, /Primary motion: the selected visible waving appendage/i)
+  assert.match(built.providerPrompt, /Cell 2 .*viewer-right front limb begins to lift/i)
+  assert.match(built.providerPrompt, /No visible grid/i)
+  assert.match(built.providerPrompt, /character pixels cross between cells/i)
   assertProviderNeutralImagePrompt(built.providerPrompt)
 })
 
@@ -772,7 +778,7 @@ test('creator studio prompt builder changes anchor rules for locomotion actions'
 
   assert.match(built.providerPrompt, /seamless loop that returns to the starting pose/i)
   assert.match(built.providerPrompt, /legs, arms, tail or equivalent locomotion parts/i)
-  assert.match(built.providerPrompt, /exactly 8 full-body frames in 4 columns and 2 rows/i)
+  assert.match(built.providerPrompt, /exactly 8 complete full-body character frames arranged in 4 columns and 2 rows/i)
   assert.match(built.providerPrompt, /contact pose/i)
   assert.match(built.providerPrompt, /passing pose/i)
   assertProviderNeutralImagePrompt(built.providerPrompt)
@@ -822,12 +828,13 @@ test('creator studio prompt builder emits dedicated reaction and emote rules', (
     model: 'local-pet-sprite'
   }).providerPrompt
 
-  assert.match(reactionPrompt, /facial expression, head, ears, limbs, or equivalent reaction parts/i)
-  assert.match(reactionPrompt, /clearest reaction peak/i)
-  assert.match(reactionPrompt, /recovery pose with the same root anchor, scale, and identity/i)
-  assert.match(emotePrompt, /facial expression, eyes, mouth, cheeks, small limbs, or equivalent emote parts/i)
+  assert.match(reactionPrompt, /visible parts required to communicate the reaction/i)
+  assert.match(reactionPrompt, /clearest readable reaction peak/i)
+  assert.match(reactionPrompt, /controlled recovery with the same root anchor and scale/i)
+  assert.match(emotePrompt, /visible expressive features required by the emote/i)
   assert.match(emotePrompt, /clearest expression peak/i)
-  assert.match(emotePrompt, /loop-compatible expression recovery with the same body anchor and identity/i)
+  assert.match(emotePrompt, /loop-compatible return toward the neutral expression/i)
+  assert.doesNotMatch(`${reactionPrompt}\n${emotePrompt}`, /\b(?:ears?|paws?|tails?|wings?|clothing)\b/i)
   assertProviderNeutralImagePrompt(reactionPrompt)
   assertProviderNeutralImagePrompt(emotePrompt)
 })
@@ -875,18 +882,18 @@ test('creator studio prompt builder keeps wave and reaction inference ahead of b
   }).providerPrompt
 
   assert.match(wavePrompt, /seamless loop that returns to the starting pose/i)
-  assert.match(wavePrompt, /viewer-right front limb, hand, paw, wing, arm, or equivalent waving appendage/)
-  assert.match(wavePrompt, /Frame 3: peak pose/i)
-  assert.match(reactionPrompt, /facial expression, head, ears, limbs, or equivalent reaction parts/)
-  assert.match(reactionPrompt, /clearest reaction peak/i)
+  assert.match(wavePrompt, /selected visible waving appendage/i)
+  assert.match(wavePrompt, /Cell 3 .*greeting pose/i)
+  assert.match(reactionPrompt, /visible parts required to communicate the reaction/i)
+  assert.match(reactionPrompt, /clearest readable reaction peak/i)
   assertProviderNeutralImagePrompt(wavePrompt)
   assertProviderNeutralImagePrompt(reactionPrompt)
 })
 
-test('creator studio prompt builder rejects secret-bearing creative intent before compilation', () => {
+test('creator studio prompt builder removes secret-bearing creative intent before compilation', () => {
   const { buildOpenPetImagePrompt } = require('../../examples/plugins/creator-studio/lib/openpet-prompt-builder')
 
-  assert.throws(() => buildOpenPetImagePrompt({
+  const built = buildOpenPetImagePrompt({
     run: {
       petId: 'unsafe-cat',
       input: {
@@ -896,7 +903,13 @@ test('creator studio prompt builder rejects secret-bearing creative intent befor
     },
     backend: 'provider',
     model: 'gpt-image-2'
-  }), /forbidden secret/i)
+  })
+  assert.equal(built.warnings.includes('creative_brief_sanitized'), true)
+  assert.equal(built.providerPrompt.includes('sk-test-secret'), false)
+  assert.equal(built.providerPrompt.includes('/Users/mango/private/ref.png'), false)
+  assert.equal(built.providerPrompt.includes('127.0.0.1:8317'), false)
+  assert.equal(built.providerPrompt.includes('bridge-token'), false)
+  assertProviderNeutralImagePrompt(built.providerPrompt)
 })
 
 test('creator studio run store creates and advances durable run state', () => {
@@ -1627,7 +1640,7 @@ test('creator studio run-step command uses host bridge for provider generation w
     })
     assert.equal(JSON.stringify(frameQa).includes(dataDir), false)
     assert.match(requests[3].payload.prompt, /animation frame sheet/i)
-    assert.match(requests[3].payload.prompt, /exactly 12 full-body frames/i)
+    assert.match(requests[3].payload.prompt, /exactly 12 complete full-body character frames/i)
     assert.deepEqual(requests[3].payload.referenceImages.map((reference) => reference.role), ['keyframe-action-reference-board'])
     assert.equal(requests[3].payload.prompt.includes('bridge-token'), false)
     assert.equal(Object.hasOwn(requests[3].payload, 'model'), false)
@@ -1639,12 +1652,12 @@ test('creator studio run-step command uses host bridge for provider generation w
       baseUrlHost: '127.0.0.1:7860'
     })
     assert.deepEqual(run.artifacts.generatedImage.modelSnapshot, run.modelSnapshot)
-    assert.equal(run.artifacts.generatedImage.promptBuilder.version, 5)
+    assert.equal(run.artifacts.generatedImage.promptBuilder.version, 6)
     assert.equal(run.artifacts.generatedImage.promptBuilder.mode, 'single-action')
     assert.equal(run.artifacts.generatedImage.promptBuilder.promptPreview.truncated, false)
-    assert.match(run.artifacts.generatedImage.promptBuilder.promptPreview.text, /Create exactly one 1536 x 1024 image with a 3:2 aspect ratio\./)
+    assert.match(run.artifacts.generatedImage.promptBuilder.promptPreview.text, /^DELIVERABLE\nCreate one 1536 x 1024 animation frame sheet with exactly 12 complete full-body character frames arranged in 4 columns and 3 rows\./)
     assertProviderNeutralImagePrompt(run.artifacts.generatedImage.promptBuilder.promptPreview.text)
-    assert.match(run.artifacts.generatedImage.promptBuilder.promptPreview.text, /complete animation frame sheet for 原地打滚/i)
+    assert.match(run.artifacts.generatedImage.promptBuilder.promptPreview.text, /Change only the pose from cell to cell to perform 原地打滚/i)
     const providerPromptPath = path.join(dataDir, 'runs', created.json.run.runId, 'inputs', 'provider-prompt.md')
     assert.equal(fs.existsSync(providerPromptPath), true)
     assert.equal(fs.readFileSync(providerPromptPath, 'utf-8'), `${run.artifacts.generatedImage.promptBuilder.promptPreview.text}\n`)
@@ -1680,6 +1693,23 @@ test('creator studio run-step command fails and persists run state when provider
     request.on('data', (chunk) => { body += chunk })
     request.on('end', () => {
       void body
+      if (request.url.endsWith('/creator/model-settings')) {
+        response.writeHead(200, {
+          'Content-Type': 'application/json',
+          Connection: 'close'
+        })
+        response.end(JSON.stringify({
+          ok: true,
+          config: {
+            provider: 'openai-compatible',
+            baseUrl: 'http://127.0.0.1:7860/v1',
+            model: 'gpt-image-2',
+            timeoutMs: 120000,
+            hasApiKey: true
+          }
+        }))
+        return
+      }
       setTimeout(() => {
         if (response.writableEnded) return
         response.writeHead(400, {
@@ -1773,6 +1803,19 @@ test('creator studio run-step command surfaces provider business errors from the
         'Content-Type': 'application/json',
         Connection: 'close'
       })
+      if (request.url.endsWith('/creator/model-settings')) {
+        response.end(JSON.stringify({
+          ok: true,
+          config: {
+            provider: 'openai-compatible',
+            baseUrl: 'http://127.0.0.1:7860/v1',
+            model: 'gpt-image-2',
+            timeoutMs: 120000,
+            hasApiKey: true
+          }
+        }))
+        return
+      }
       response.end(JSON.stringify({
         ok: false,
         error: '该接口未接入公益站独立网关，旧转发链路已关闭'
@@ -1837,6 +1880,19 @@ test('creator studio preview-only host run cannot be exported as a pet bundle', 
         'Content-Type': 'application/json',
         Connection: 'close'
       })
+      if (request.url.endsWith('/creator/model-settings')) {
+        response.end(JSON.stringify({
+          ok: true,
+          config: {
+            provider: 'openai-compatible',
+            baseUrl: 'http://127.0.0.1:7860/v1',
+            model: 'local-pet-sprite',
+            timeoutMs: 120000,
+            hasApiKey: true
+          }
+        }))
+        return
+      }
       const dataRelativePath = `runs/${created.json.run.runId}/frames/base/0001.png`
       const generatedPath = path.join(dataDir, dataRelativePath)
       fs.mkdirSync(path.dirname(generatedPath), { recursive: true })
@@ -4797,14 +4853,14 @@ test('creator studio service exposes sanitized host prompt provenance for dashbo
     assert.equal(detail.run.status, 'ready_for_review')
     assert.equal(detail.run.developerPrompt.available, true)
     assert.equal(detail.run.developerPrompt.source, 'host-model-bridge')
-    assert.equal(detail.run.developerPrompt.promptBuilder.version, 5)
+    assert.equal(detail.run.developerPrompt.promptBuilder.version, 6)
     assert.equal(detail.run.developerPrompt.promptBuilder.mode, 'single-action')
     assert.equal(detail.run.developerPrompt.promptBuilder.actionId, detail.run.generationTask.actions[0].actionId)
     assert.equal(detail.run.developerPrompt.promptBuilder.warnings.includes('creative_brief_sanitized'), true)
     assert.equal(detail.run.developerPrompt.conditioning.mode, 'image-edit')
     assert.equal(detail.run.developerPrompt.conditioning.referenceImageCount, 1)
     assert.equal(detail.run.developerPrompt.promptPreview.truncated, false)
-    assert.match(detail.run.developerPrompt.promptPreview.text, /Create exactly one 1024 x 1024 image with a 1:1 aspect ratio\./)
+    assert.match(detail.run.developerPrompt.promptPreview.text, /^DELIVERABLE\nCreate one 1024 x 1024 animation frame sheet with exactly 16 complete full-body character frames arranged in 4 columns and 4 rows\./)
     assertProviderNeutralImagePrompt(detail.run.developerPrompt.promptPreview.text)
     assert.equal(detail.run.developerPrompt.promptPreview.text.includes('sk-test-secret'), false)
     assert.equal(detail.run.developerPrompt.promptPreview.text.includes('/Users/mango/private/ref.png'), false)
