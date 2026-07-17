@@ -374,45 +374,52 @@ const detectProviderFamily = (baseUrl: string): ProviderFamily => {
 
 const describeImageModelCompatibility = (baseUrl: string, model: string) => {
   const normalizedModel = String(model || '').trim()
+  const normalizedModelId = normalizedModel.toLowerCase()
   const providerFamily = detectProviderFamily(baseUrl)
   if (!normalizedModel) {
     return {
       title: '图片模型兼容提示',
-      summary: '填写图片 Model 后，这里会显示透明背景请求的兼容提示。'
+      summary: '填写图片 Model 后，这里会显示背景生成与本地去背兼容策略。'
     }
   }
-  if (normalizedModel === 'gpt-image-2') {
+  if (normalizedModelId === 'gpt-image-2') {
     const familyPrefix = providerFamily === 'openai'
       ? 'OpenAI 官方'
       : providerFamily === 'local-gateway'
         ? '当前本地/代理网关'
         : '当前 Provider'
     return {
-      title: `${normalizedModel} 透明背景模式`,
-      summary: `${familyPrefix} 使用 ${normalizedModel} 时，Creator Studio 不会强制发送 background 参数；透明背景能力由当前 provider 的原生行为决定。`
+      title: `${normalizedModel} 不透明去背模式`,
+      summary: `${familyPrefix} 使用 ${normalizedModel} 时，Creator Studio 不会强制发送 background 参数；提示词要求不透明纯色背景，生成后由本地去背流程产出透明素材。`
+    }
+  }
+  if (normalizedModelId === 'gpt-image-1' || normalizedModelId === 'gpt-image-1.5') {
+    return {
+      title: `${normalizedModel} 直接透明模式`,
+      summary: '该模型已注册直接透明输出能力；Creator Studio 会发送 background=transparent 和 b64_json。'
     }
   }
   if (providerFamily === 'openrouter') {
     return {
       title: `${normalizedModel} OpenRouter 图片兼容模式`,
-      summary: 'OpenPet 会按 OpenAI-compatible 图片请求发送 background 和 b64_json；请确认当前 OpenRouter 路由已映射到支持透明背景和该参数形状的图片模型。'
+      summary: '当前 OpenRouter 路由中的未注册模型使用保守背景合同：OpenPet 会发送 background=white 和 b64_json，要求不透明纯色背景，并在生成后执行本地去背。'
     }
   }
   if (providerFamily === 'together') {
     return {
       title: `${normalizedModel} Together 图片兼容模式`,
-      summary: 'OpenPet 会按 OpenAI-compatible 图片请求发送 background 和 b64_json；请确认 Together 侧当前模型支持透明背景参数和返回格式。'
+      summary: '未注册模型使用保守背景合同：OpenPet 会发送 background=white 和 b64_json，要求不透明纯色背景，并在生成后执行本地去背。'
     }
   }
   if (providerFamily === 'local-gateway' || providerFamily === 'lm-studio' || providerFamily === 'vllm') {
     return {
       title: `${normalizedModel} 本地网关图片兼容模式`,
-      summary: 'OpenPet 会按 OpenAI-compatible 图片请求发送 background=transparent 或 white，并附带 b64_json 输出；请确认当前本地网关完整支持 images/generations 与透明背景参数。'
+      summary: '未注册模型使用保守背景合同：OpenPet 会发送 background=white 和 b64_json，要求不透明纯色背景，并在生成后执行本地去背。'
     }
   }
   return {
-    title: `${normalizedModel} OpenAI-compatible 透明背景模式`,
-    summary: 'Creator Studio 会按 OpenAI-compatible 方式发送 background=transparent 或 white，并附带 b64_json 输出；请确认当前模型支持 transparent 背景参数。'
+    title: `${normalizedModel} OpenAI-compatible 不透明去背模式`,
+    summary: '未注册模型使用保守背景合同：Creator Studio 会发送 background=white 和 b64_json，要求不透明纯色背景，并在生成后执行本地去背。'
   }
 }
 

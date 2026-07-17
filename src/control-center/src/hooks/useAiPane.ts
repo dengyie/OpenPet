@@ -255,11 +255,15 @@ const createImageModelDiscoveryFromHealth = (
 
 const getImageTransparencyCompatibilityHint = (model: string) => {
   const normalizedModel = String(model || '').trim()
+  const normalizedModelId = normalizedModel.toLowerCase()
   if (!normalizedModel) return '请输入图片模型后再确认透明背景兼容策略。'
-  if (normalizedModel === 'gpt-image-2') {
-    return 'gpt-image-2 走兼容模式：OpenPet host 不额外传 background 参数，transparent/white 背景能力取决于 provider 自身实现。'
+  if (normalizedModelId === 'gpt-image-2') {
+    return 'gpt-image-2 使用不透明纯色背景合同：OpenPet host 不额外传 background 参数，生成后由本地去背流程产出透明素材。'
   }
-  return `${normalizedModel} 会由 OpenPet host 显式传 background=transparent 或 white，并请求 b64_json 输出。`
+  if (normalizedModelId === 'gpt-image-1' || normalizedModelId === 'gpt-image-1.5') {
+    return `${normalizedModel} 已注册直接透明输出能力：OpenPet host 会发送 background=transparent，并请求 b64_json 输出。`
+  }
+  return `${normalizedModel} 未注册直接透明输出能力：OpenPet host 会发送 background=white，要求不透明纯色背景，并在生成后执行本地去背。`
 }
 
 const defaultHatchPetAgentConfig: HatchPetAgentConfigView = {
