@@ -381,10 +381,281 @@ const resolveOfficialActionCoverage = (basicActions) => {
   }
 }
 
+const OFFICIAL_PROGRESS_ACTION_IDS = [
+  'idle',
+  'running-right',
+  'running-left',
+  'waving',
+  'jumping',
+  'failed',
+  'waiting',
+  'running',
+  'review'
+]
+
+const WORKFLOW_STAGE_DEFS = [
+  { id: 'draft', label: '起草任务' },
+  { id: 'confirm', label: '确认任务' },
+  { id: 'generate', label: '生成资源' },
+  { id: 'quality-gate', label: '质量门' },
+  { id: 'review', label: '人工复查' },
+  { id: 'import', label: '导入激活' }
+]
+
+const sanitizeProgressReason = (value) => sanitizeLogText(normalizeText(value), { maxChars: 180 })
+
+const readJsonIfExists = (filePath, fallback = null) => {
+  if (!filePath || !fs.existsSync(filePath)) return fallback
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+  } catch (_) {
+    return fallback
+  }
+}
+
+const createStageViews = ({
+  runStatus = '',
+  taskStatus = '',
+  currentStep = '',
+  reviewStatus = '',
+  importStatus = '',
+  failureReason = ''
+} = {}) => {
+  const status = normalizeText(runStatus)
+  const task = normalizeText(taskStatus)
+  const step = normalizeText(currentStep)
+  const review = normalizeText(reviewStatus)
+  const imported = normalizeText(importStatus)
+  const failed = status === 'failed'
+  const readyForReview = status === 'ready_for_review'
+  const approved = status === 'approved'
+  const isImported = status === 'imported' || imported === 'imported'
+  const generating = status === 'generating' || (
+    task === 'confirmed' &&
+    !readyForReview &&
+    !failed &&
+    !approved &&
+    !isImported &&
+    (status === 'draft' || status === '' || step === 'generate')
+  )
+  const confirmed = task === 'confirmed' || readyForReview || approved || isImported || generating || failed
+  const drafted = confirmed || task === 'ready_for_confirmation' || Boolean(status)
+
+  const stageStatus = {
+    draft: drafted ? 'completed' : 'pending',
+    confirm: confirmed
+      ? 'completed'
+      : (task === 'ready_for_confirmation' ? 'active' : 'pending'),
+    generate: 'pending',
+    'quality-gate': 'pending',
+    review: 'pending',
+    import: 'pending'
+  }
+
+  if (confirmed && !readyForReview && !approved && !isImported && !failed) {
+    stageStatus.generate = generating || step === 'generate' ? 'active' : 'pending'
+  }
+
+  if (readyForReview || approved || isImported) {
+    stageStatus.generate = 'completed'
+    stageStatus['quality-gate'] = 'completed'
+    stageStatus.review = review === 'approved' || approved || isImported ? 'completed' : 'active'
+  }
+
+  if (approved || isImported) {
+    stageStatus.review = 'completed'
+    stageStatus.import = isImported ? 'completed' : 'active'
+  }
+
+  if (failed) {
+    if (step === 'review') {
+      stageStatus.generate = 'completed'
+      stageStatus['quality-gate'] = 'completed'
+      stageStatus.review = 'failed'
+      stageStatus.import = 'skipped'
+    } else {
+      stageStatus.generate = 'failed'
+      stageStatus['quality-gate'] = failureReason ? 'failed' : 'pending'
+      stageStatus.review = 'pending'
+      stageStatus.import = 'skipped'
+    }
+  }
+
+  return WORKFLOW_STAGE_DEFS.map((stage) => ({
+    id: stage.id,
+    label: stage.label,
+    status: stageStatus[stage.id] || 'pending',
+    ...((stage.id === 'generate' || stage.id === 'quality-gate') && failed && failureReason
+      ? { message: sanitizeProgressReason(failureReason) }
+      : {})
+  }))
+}
+
+const createActionProgressViews = ({ checkpoints = null, runStatus = '', currentStep = '' } = {}) => {
+  const actions = isPlainObject(checkpoints?.actions) ? checkpoints.actions : {}
+  const hasAnyCheckpoint = Object.keys(actions).length > 0
+  if (!hasAnyCheckpoint) return []
+
+  const status = normalizeText(runStatus)
+  const generating = status === 'generating' || (
+    status !== 'failed' &&
+    status !== 'ready_for_review' &&
+    status !== 'approved' &&
+    status !== 'imported' &&
+    normalizeText(currentStep) === 'generate'
+  )
+  let markedRunning = false
+
+  return OFFICIAL_PROGRESS_ACTION_IDS.map((actionId) => {
+    const record = actions[actionId]
+    if (!record || typeof record !== 'object') {
+      if (generating && !markedRunning) {
+        markedRunning = true
+        return {
+          actionId,
+          status: 'running',
+          reason: '生成中',
+          quality: '',
+          updatedAt: ''
+        }
+      }
+      return {
+        actionId,
+        status: 'pending',
+        reason: '',
+        quality: '',
+        updatedAt: ''
+      }
+    }
+
+    const failureConditions = Array.isArray(record.failureConditions)
+      ? record.failureConditions.map((item) => normalizeText(item)).filter(Boolean)
+      : []
+    const errorText = sanitizeProgressReason(record.error || failureConditions.join(', '))
+    const quality = normalizeText(record?.row?.quality || record.quality)
+    const updatedAt = normalizeText(record.updatedAt)
+    const hasRow = Boolean(record.row && Array.isArray(record.row.frames) && record.row.frames.length > 0)
+
+    if (record.ok === true && hasRow) {
+      const mirrored = actionId === 'running-left' || quality === 'approved-mirror'
+      return {
+        actionId,
+        status: mirrored ? 'mirrored' : 'passed',
+        reason: mirrored ? '已从 running-right 镜像' : '已通过',
+        quality,
+        updatedAt
+      }
+    }
+
+    if (record.ok === false || errorText || failureConditions.length > 0) {
+      return {
+        actionId,
+        status: 'failed',
+        reason: errorText || '动作生成失败',
+        quality,
+        updatedAt
+      }
+    }
+
+    if (generating && !markedRunning) {
+      markedRunning = true
+      return {
+        actionId,
+        status: 'running',
+        reason: '生成中',
+        quality,
+        updatedAt
+      }
+    }
+
+    return {
+      actionId,
+      status: 'pending',
+      reason: '',
+      quality,
+      updatedAt
+    }
+  })
+}
+
+const createWorkflowProgressView = ({
+  run = null,
+  checkpoints = null
+} = {}) => {
+  if (!isPlainObject(run)) return null
+  const runStatus = normalizeText(run.status)
+  const taskStatus = normalizeText(run.taskStatus)
+  const currentStep = normalizeText(run.currentStep)
+  const reviewStatus = normalizeText(run.reviewStatus)
+  const importStatus = normalizeText(run.importStatus)
+  const failureReason = sanitizeProgressReason(
+    run?.artifacts?.generatedImage?.failure?.message || run?.error || run?.backendStatus?.message
+  )
+  const stages = createStageViews({
+    runStatus,
+    taskStatus,
+    currentStep,
+    reviewStatus,
+    importStatus,
+    failureReason
+  })
+  const actions = createActionProgressViews({
+    checkpoints,
+    runStatus,
+    currentStep
+  })
+  const activeStage = stages.find((stage) => stage.status === 'active')
+    || stages.find((stage) => stage.status === 'failed')
+    || stages.find((stage) => stage.status === 'completed')
+    || stages[0]
+  const passedActions = actions.filter((action) => action.status === 'passed' || action.status === 'mirrored')
+  const failedActions = actions.filter((action) => action.status === 'failed')
+  const runningAction = actions.find((action) => action.status === 'running')
+
+  let summary = ''
+  if (failureReason && runStatus === 'failed') {
+    const failedList = failedActions
+      .slice(0, 4)
+      .map((action) => (action.reason ? (action.actionId + '（' + action.reason + '）') : action.actionId))
+      .join('；')
+    summary = failedList
+      ? ('生成失败：' + failureReason + '。失败动作：' + failedList)
+      : ('生成失败：' + failureReason)
+  } else if (runningAction) {
+    summary = '正在生成 ' + runningAction.actionId + '… 已通过 ' + passedActions.length + '/' + Math.max(actions.length, 1)
+  } else if (runStatus === 'ready_for_review') {
+    summary = failedActions.length > 0
+      ? ('已进入人工复查；通过 ' + passedActions.length + ' 个动作，失败 ' + failedActions.length + ' 个')
+      : '已进入人工复查；官方动作检查完成'
+  } else if (runStatus === 'imported') {
+    summary = '已导入并完成激活准备'
+  } else if (runStatus === 'approved') {
+    summary = '已批准，等待导入激活'
+  } else if (taskStatus === 'ready_for_confirmation') {
+    summary = '任务已起草，等待确认'
+  } else if (taskStatus === 'confirmed') {
+    summary = '任务已确认，准备生成'
+  } else {
+    summary = activeStage ? ('当前阶段：' + activeStage.label) : '生成进度更新中'
+  }
+
+  return {
+    phase: normalizeText(activeStage?.id) || 'generate',
+    phaseLabel: normalizeText(activeStage?.label) || '生成资源',
+    summary: sanitizeProgressReason(summary) || '生成进度更新中',
+    stages,
+    actions,
+    runStatus,
+    currentStep,
+    failureReason
+  }
+}
+
 const readWorkflowDiagnostics = ({ pluginDataDir, runId }) => {
   const normalizedRunId = normalizeText(runId)
   if (!pluginDataDir || !normalizedRunId) return null
-  const runPath = path.join(path.resolve(pluginDataDir), 'runs', normalizedRunId, 'run.json')
+  const runDir = path.join(path.resolve(pluginDataDir), 'runs', normalizedRunId)
+  const runPath = path.join(runDir, 'run.json')
   if (!fs.existsSync(runPath)) return null
   try {
     const run = JSON.parse(fs.readFileSync(runPath, 'utf-8'))
@@ -393,6 +664,8 @@ const readWorkflowDiagnostics = ({ pluginDataDir, runId }) => {
       ? generatedImage.conditioning
       : null
     const outputCount = Array.isArray(generatedImage?.outputs) ? generatedImage.outputs.length : 0
+    const checkpoints = readJsonIfExists(path.join(runDir, 'full-pet-action-checkpoints.json'), null)
+    const failureReason = normalizeText(generatedImage?.failure?.message || run?.error || run?.backendStatus?.message)
     return {
       runStatus: normalizeText(run?.status),
       currentStep: normalizeText(run?.currentStep),
@@ -412,7 +685,7 @@ const readWorkflowDiagnostics = ({ pluginDataDir, runId }) => {
       outputCount,
       generatedAt: normalizeText(generatedImage?.generatedAt),
       failedAt: normalizeText(generatedImage?.failedAt),
-      failureReason: normalizeText(generatedImage?.failure?.message || run?.error || run?.backendStatus?.message),
+      failureReason,
       conditioning: conditioning
         ? {
             mode: normalizeText(conditioning.mode),
@@ -421,7 +694,8 @@ const readWorkflowDiagnostics = ({ pluginDataDir, runId }) => {
             multipartImageField: normalizeText(conditioning.multipartImageField),
             requestedOutputCount: Number(conditioning.requestedOutputCount) || 0
           }
-        : null
+        : null,
+      progress: createWorkflowProgressView({ run, checkpoints })
     }
   } catch (_) {
     return null
@@ -614,16 +888,27 @@ const createCreatorWorkflowService = ({
     return setLastRun(createGeneratingRunView(activeWorkflow))
   }
 
-  const updateWorkflowProgress = ({ runId = '', commandId = '', message = '' } = {}) => {
-    if (!activeWorkflow) return null
-    activeWorkflow = {
-      ...activeWorkflow,
-      runId: normalizeText(runId) || activeWorkflow.runId,
-      commandId: normalizeText(commandId) || activeWorkflow.commandId,
-      message: normalizeText(message) || activeWorkflow.message
+ const updateWorkflowProgress = ({ runId = '', commandId = '', message = '' } = {}) => {
+   if (!activeWorkflow) return null
+    const nextRunId = normalizeText(runId) || activeWorkflow.runId
+    const nextCommandId = normalizeText(commandId) || activeWorkflow.commandId
+    let nextMessage = normalizeText(message) || activeWorkflow.message
+    try {
+      const pluginDataDir = pluginService.getPluginCreatorDataDir(CREATOR_STUDIO_PLUGIN_ID)
+      const diagnostics = readWorkflowDiagnostics({ pluginDataDir, runId: nextRunId })
+      const progressSummary = normalizeText(diagnostics?.progress?.summary)
+      if (progressSummary) nextMessage = progressSummary
+    } catch (_) {
+      // Progress enrichment is best-effort only.
     }
-    return setLastRun(createGeneratingRunView(activeWorkflow))
-  }
+   activeWorkflow = {
+     ...activeWorkflow,
+      runId: nextRunId,
+      commandId: nextCommandId,
+      message: nextMessage
+   }
+   return setLastRun(createGeneratingRunView(activeWorkflow))
+ }
 
   const clearWorkflow = () => {
     activeWorkflow = null
@@ -1187,7 +1472,9 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
 module.exports = {
   __testInternals: {
     readBasicActionCoverage,
-    resolveOfficialActionCoverage
+    resolveOfficialActionCoverage,
+    readWorkflowDiagnostics,
+    createWorkflowProgressView
   },
   CREATOR_STUDIO_DASHBOARD_ID,
   CREATOR_STUDIO_PLUGIN_ID,

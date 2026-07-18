@@ -1,6 +1,9 @@
 import type {
+  CreatorActionAttemptViewState,
   CreatorStateViewState,
-  CreatorWorkflowResult
+  CreatorWorkflowProgressViewState,
+  CreatorWorkflowResult,
+  CreatorWorkflowStageViewState
 } from '../../../shared/openpet-contracts'
 
 export type CreatorPaneMode = 'new-character' | 'existing-character'
@@ -53,9 +56,62 @@ const formatWorkflowState = (state: CreatorWorkflowResult['state']) => {
   if (state === 'generating') return '进行中'
   if (state === 'provider-not-ready') return 'Provider 未就绪'
   if (state === 'review-required') return '需要复查'
+  if (state === 'preview-ready') return '预览就绪'
   if (state === 'import-failed') return '导入失败'
   return '缺少输入'
 }
+
+const formatStageStatus = (status: CreatorWorkflowStageViewState['status']) => {
+  if (status === 'completed') return '已完成'
+  if (status === 'active') return '进行中'
+  if (status === 'failed') return '失败'
+  if (status === 'skipped') return '已跳过'
+  return '等待中'
+}
+
+const formatActionAttemptStatus = (status: CreatorActionAttemptViewState['status']) => {
+  if (status === 'passed') return '通过'
+  if (status === 'mirrored') return '镜像'
+  if (status === 'failed') return '失败'
+  if (status === 'running') return '生成中'
+  if (status === 'omitted') return '省略'
+  return '等待中'
+}
+
+const WorkflowProgressPanel = ({ progress }: { progress: CreatorWorkflowProgressViewState }) => (
+  <div className="creator-progress" data-testid="creator-progress">
+    <div className="creator-result-grid">
+      <span><strong>当前阶段</strong> {progress.phaseLabel || progress.phase || '-'}</span>
+      <span><strong>Run status</strong> {progress.runStatus || '-'}</span>
+      <span><strong>Current step</strong> {progress.currentStep || '-'}</span>
+    </div>
+    {progress.summary ? <span data-testid="creator-progress-summary">{progress.summary}</span> : null}
+    {progress.failureReason ? (
+      <span data-testid="creator-progress-failure"><strong>失败原因</strong> {progress.failureReason}</span>
+    ) : null}
+    {progress.stages?.length ? (
+      <div className="creator-result-grid" data-testid="creator-progress-stages">
+        {progress.stages.map((stage) => (
+          <span key={stage.id}>
+            <strong>{stage.label}</strong> {formatStageStatus(stage.status)}
+            {stage.message ? ` · ${stage.message}` : ''}
+          </span>
+        ))}
+      </div>
+    ) : null}
+    {progress.actions?.length ? (
+      <div className="creator-result-grid" data-testid="creator-progress-actions">
+        {progress.actions.map((action) => (
+          <span key={action.actionId}>
+            <strong>{action.actionId}</strong> {formatActionAttemptStatus(action.status)}
+            {action.reason ? ` · ${action.reason}` : ''}
+            {action.quality ? ` · ${action.quality}` : ''}
+          </span>
+        ))}
+      </div>
+    ) : null}
+  </div>
+)
 
 const formatTimestamp = (value: string) => {
   const timestamp = Date.parse(value)
@@ -94,9 +150,10 @@ const ResultCard = ({
 }) => {
   const tone = ['completed', 'review-required'].includes(result.state)
     ? 'ok'
-    : result.state === 'generating'
+    : result.state === 'preview-ready' || result.state === 'generating'
       ? ''
       : 'error'
+  const progress = result.diagnostics?.progress || null
   const showAdvanced = dashboardAvailable && Boolean(result.run?.runId)
   const diagnostics = result.diagnostics || null
   const hatchPetAgent = diagnostics?.hatchPetAgent || null
@@ -116,8 +173,21 @@ const ResultCard = ({
     <div className={`provider-feedback ${tone}`.trim()} data-testid="creator-result">
       <strong>{formatWorkflowState(result.state)}</strong>
       <span>{result.message}</span>
+      {progress?.phaseLabel ? (
+        <span data-testid="creator-result-phase">阶段：{progress.phaseLabel}</span>
+      ) : null}
+      {progress ? <WorkflowProgressPanel progress={progress} /> : null}
       {result.state === 'completed' ? (
         <span className="creator-result-cta">可以立即预览，或直接点击桌宠验证动作。</span>
+      ) : null}
+      {result.state === 'generating' ? (
+        <span className="creator-result-cta">生成进行中，下方会同步阶段与动作成败。</span>
+      ) : null}
+      {result.state === 'review-required' ? (
+        <span className="creator-result-cta">已进入复查阶段；请查看失败动作后决定修复或打开详情。</span>
+      ) : null}
+      {result.state === 'preview-ready' ? (
+        <span className="creator-result-cta">预览产物已生成，但官方动作行未齐全，不能自动导入。</span>
       ) : null}
       {result.reference ? (
         <div className="creator-result-grid">

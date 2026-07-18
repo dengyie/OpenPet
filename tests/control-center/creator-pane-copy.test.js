@@ -21,3 +21,21 @@ test('creator pane exposes only bounded hatch-pet shadow fields and non-authorit
   assert.match(source, /hatchPetAgent\.decisionId/)
   assert.doesNotMatch(source, /hatchPetAgent\.(raw|message|path|output)/)
 })
+
+test('creator pane renders workflow stage and action progress feedback', () => {
+  const source = fs.readFileSync(creatorPanePath, 'utf-8')
+  assert.match(source, /creator-progress-stages/)
+  assert.match(source, /creator-progress-actions/)
+  assert.match(source, /creator-progress-summary/)
+  assert.match(source, /preview-ready/)
+  assert.match(source, /阶段：/)
+})
+
+test('creator pane hook gives explicit feedback for non-previewable states and stopped dashboard service', () => {
+  const hookPath = path.resolve(__dirname, '../../src/control-center/src/hooks/useCreatorPane.ts')
+  const source = fs.readFileSync(hookPath, 'utf-8')
+  assert.match(source, /当前状态不可预览/)
+  assert.match(source, /serviceStatus !== 'running'/)
+  assert.match(source, /请先启动 Creator Studio Service/)
+  assert.match(source, /setInterval/)
+})

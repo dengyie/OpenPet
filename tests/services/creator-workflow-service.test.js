@@ -1110,6 +1110,190 @@ test('creator workflow service blocks new-character default flow when the approv
   assert.match(result.message, /单张干净正面图/)
 })
 
+test('creator workflow diagnostics expose stage and action progress for failed full-pet checkpoints', () => {
+  const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-progress-failed-'))
+  const runId = 'run-progress-failed'
+  const runDir = path.join(pluginDataDir, 'runs', runId)
+  fs.mkdirSync(runDir, { recursive: true })
+  fs.writeFileSync(path.join(runDir, 'run.json'), `${JSON.stringify({
+    runId,
+    status: 'failed',
+    taskStatus: 'confirmed',
+    currentStep: 'generate',
+    reviewStatus: 'pending',
+    importStatus: 'not-imported',
+    backend: 'provider',
+    backendStatus: {
+      state: 'failed',
+      message: 'Official full-pet row idle failed QA: row_identity_shape_drift'
+    },
+    error: 'Official full-pet row idle failed QA: row_identity_shape_drift',
+    artifacts: {
+      generatedImage: {
+        outputs: [{ dataRelativePath: 'runs/run-progress-failed/frames/base/0001.png' }],
+        conditioning: {
+          mode: 'image-edit',
+          endpoint: '/images/edits',
+          referenceImageCount: 1,
+          multipartImageField: 'image',
+          requestedOutputCount: 1
+        }
+      }
+    }
+  }, null, 2)}\n`)
+  fs.writeFileSync(path.join(runDir, 'full-pet-action-checkpoints.json'), `${JSON.stringify({
+    version: 1,
+    runId,
+    actions: {
+      idle: {
+        actionId: 'idle',
+        ok: true,
+        row: {
+          quality: 'row-real',
+          frames: [{ relativePath: 'runs/run-progress-failed/official-row-frames/idle/01.png', sha256: 'a' }]
+        },
+        updatedAt: '2026-07-19T00:00:00.000Z'
+      },
+      'running-right': {
+        actionId: 'running-right',
+        ok: true,
+        row: {
+          quality: 'row-real',
+          frames: [{ relativePath: 'runs/run-progress-failed/official-row-frames/running-right/01.png', sha256: 'b' }]
+        }
+      },
+      waving: {
+        actionId: 'waving',
+        ok: false,
+        failureConditions: ['identity-descriptor-distance-high'],
+        error: 'identity-descriptor-distance-high'
+      }
+    }
+  }, null, 2)}\n`)
+
+  const diagnostics = __testInternals.readWorkflowDiagnostics({
+    pluginDataDir,
+    runId
+  })
+
+  assert.equal(diagnostics.runStatus, 'failed')
+  assert.equal(diagnostics.progress.phase, 'generate')
+  assert.equal(diagnostics.progress.phaseLabel, '生成资源')
+  assert.match(diagnostics.progress.summary, /row_identity_shape_drift/)
+  assert.match(diagnostics.progress.summary, /waving/)
+  assert.equal(diagnostics.progress.stages.find((stage) => stage.id === 'generate').status, 'failed')
+  assert.equal(diagnostics.progress.stages.find((stage) => stage.id === 'quality-gate').status, 'failed')
+  assert.equal(diagnostics.progress.actions.find((action) => action.actionId === 'idle').status, 'passed')
+  assert.equal(diagnostics.progress.actions.find((action) => action.actionId === 'running-right').status, 'passed')
+  assert.equal(diagnostics.progress.actions.find((action) => action.actionId === 'waving').status, 'failed')
+  assert.match(diagnostics.progress.actions.find((action) => action.actionId === 'waving').reason, /identity-descriptor-distance-high/)
+  assert.equal(JSON.stringify(diagnostics).includes(pluginDataDir), false)
+})
+
+test('creator workflow diagnostics mark generate active while checkpoints are partial', () => {
+  const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-progress-running-'))
+  const runId = 'run-progress-running'
+  const runDir = path.join(pluginDataDir, 'runs', runId)
+  fs.mkdirSync(runDir, { recursive: true })
+  fs.writeFileSync(path.join(runDir, 'run.json'), `${JSON.stringify({
+    runId,
+    status: 'generating',
+    taskStatus: 'confirmed',
+    currentStep: 'generate',
+    reviewStatus: 'pending',
+    importStatus: 'not-imported',
+    backend: 'provider',
+    backendStatus: { state: 'running', message: 'generating' }
+  }, null, 2)}\n`)
+  fs.writeFileSync(path.join(runDir, 'full-pet-action-checkpoints.json'), `${JSON.stringify({
+    version: 1,
+    runId,
+    actions: {
+      idle: {
+        actionId: 'idle',
+        ok: true,
+        row: {
+          quality: 'row-real',
+          frames: [{ relativePath: 'runs/run-progress-running/official-row-frames/idle/01.png', sha256: 'a' }]
+        }
+      }
+    }
+  }, null, 2)}\n`)
+
+  const diagnostics = __testInternals.readWorkflowDiagnostics({
+    pluginDataDir,
+    runId
+  })
+
+  assert.equal(diagnostics.progress.stages.find((stage) => stage.id === 'confirm').status, 'completed')
+  assert.equal(diagnostics.progress.stages.find((stage) => stage.id === 'generate').status, 'active')
+  assert.equal(diagnostics.progress.actions.find((action) => action.actionId === 'idle').status, 'passed')
+  assert.equal(diagnostics.progress.actions.find((action) => action.actionId === 'running-right').status, 'running')
+  assert.match(diagnostics.progress.summary, /running-right/)
+})
+
+test('creator workflow diagnostics enter review stage for ready_for_review runs', () => {
+  const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-progress-review-'))
+  const runId = 'run-progress-review'
+  const runDir = path.join(pluginDataDir, 'runs', runId)
+  fs.mkdirSync(runDir, { recursive: true })
+  fs.writeFileSync(path.join(runDir, 'run.json'), `${JSON.stringify({
+    runId,
+    status: 'ready_for_review',
+    taskStatus: 'confirmed',
+    currentStep: 'review',
+    reviewStatus: 'pending',
+    importStatus: 'not-imported',
+    backend: 'provider',
+    backendStatus: { state: 'ready', message: 'ready' },
+    artifacts: {
+      generatedImage: {
+        outputs: [{ dataRelativePath: 'runs/run-progress-review/frames/base/0001.png' }],
+        conditioning: {
+          mode: 'image-edit',
+          endpoint: '/images/edits',
+          referenceImageCount: 1,
+          multipartImageField: 'image',
+          requestedOutputCount: 1
+        }
+      }
+    }
+  }, null, 2)}\n`)
+  fs.writeFileSync(path.join(runDir, 'full-pet-action-checkpoints.json'), `${JSON.stringify({
+    version: 1,
+    runId,
+    actions: Object.fromEntries([
+      'idle',
+      'running-right',
+      'running-left',
+      'waving',
+      'jumping',
+      'failed',
+      'waiting',
+      'running',
+      'review'
+    ].map((actionId) => [actionId, {
+      actionId,
+      ok: true,
+      row: {
+        quality: actionId === 'running-left' ? 'approved-mirror' : 'row-real',
+        frames: [{ relativePath: `runs/${runId}/official-row-frames/${actionId}/01.png`, sha256: actionId }]
+      }
+    }]))
+  }, null, 2)}\n`)
+
+  const diagnostics = __testInternals.readWorkflowDiagnostics({
+    pluginDataDir,
+    runId
+  })
+
+  assert.equal(diagnostics.progress.phase, 'review')
+  assert.equal(diagnostics.progress.stages.find((stage) => stage.id === 'quality-gate').status, 'completed')
+  assert.equal(diagnostics.progress.stages.find((stage) => stage.id === 'review').status, 'active')
+  assert.equal(diagnostics.progress.actions.find((action) => action.actionId === 'running-left').status, 'mirrored')
+  assert.match(diagnostics.progress.summary, /人工复查/)
+})
+
 test('creator workflow service rejects overlapping workflow starts while one run is active', async () => {
   let releaseDraft = null
   const draftStarted = new Promise((resolve) => {

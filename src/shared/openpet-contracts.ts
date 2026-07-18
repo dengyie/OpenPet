@@ -2026,6 +2026,47 @@ export interface CreatorWorkflowConditioningSummaryViewState {
   referenceFileNames?: string[]
 }
 
+export type CreatorWorkflowStageStatus =
+  | 'pending'
+  | 'active'
+  | 'completed'
+  | 'failed'
+  | 'skipped'
+
+export type CreatorActionAttemptStatus =
+  | 'pending'
+  | 'running'
+  | 'passed'
+  | 'failed'
+  | 'omitted'
+  | 'mirrored'
+
+export interface CreatorWorkflowStageViewState {
+  id: string
+  label: string
+  status: CreatorWorkflowStageStatus
+  message?: string
+}
+
+export interface CreatorActionAttemptViewState {
+  actionId: string
+  status: CreatorActionAttemptStatus
+  reason: string
+  quality?: string
+  updatedAt?: string
+}
+
+export interface CreatorWorkflowProgressViewState {
+  phase: string
+  phaseLabel: string
+  summary: string
+  stages: CreatorWorkflowStageViewState[]
+  actions: CreatorActionAttemptViewState[]
+  runStatus: string
+  currentStep: string
+  failureReason: string
+}
+
 export interface CreatorWorkflowDiagnosticsViewState {
   runStatus: string
   currentStep: string
@@ -2039,6 +2080,7 @@ export interface CreatorWorkflowDiagnosticsViewState {
   failedAt: string
   failureReason: string
   conditioning: CreatorWorkflowConditioningSummaryViewState | null
+  progress?: CreatorWorkflowProgressViewState | null
   hatchPetAgent?: {
     mode: string
     status: string

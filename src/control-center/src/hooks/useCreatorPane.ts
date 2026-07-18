@@ -72,6 +72,17 @@ const resolvePreviewActionId = (result: CreatorWorkflowResult | null): string =>
   ).trim()
 }
 
+const formatWorkflowStateFallback = (state: CreatorWorkflowResult['state'] | string) => {
+  if (state === 'completed') return '已完成'
+  if (state === 'generating') return '进行中'
+  if (state === 'provider-not-ready') return 'Provider 未就绪'
+  if (state === 'review-required') return '需要复查'
+  if (state === 'preview-ready') return '预览就绪'
+  if (state === 'import-failed') return '导入失败'
+  if (state === 'missing-input') return '缺少输入'
+  return String(state || '未知状态')
+}
+
 export function useCreatorPane(active: boolean) {
   const [loading, setLoading] = useState(false)
   const [creatorState, setCreatorState] = useState<CreatorStateViewState>(defaultCreatorState)
@@ -105,6 +116,40 @@ export function useCreatorPane(active: boolean) {
     })
     return () => { mounted = false }
   }, [active])
+
+  useEffect(() => {
+    if (!active || !running) return undefined
+    let canceled = false
+    const tick = async () => {
+      try {
+        const nextState = await refreshCreatorState()
+        if (canceled) return
+        const lastRun = nextState.lastRun
+        if (!lastRun) return
+        if (lastRun.message) setStatus(lastRun.message)
+        setResult((current) => {
+          if (!current || current.state !== 'generating') return current
+          return {
+            ...current,
+            message: lastRun.message || current.message,
+            run: {
+              ...(current.run || lastRun),
+              ...lastRun,
+              state: 'generating'
+            }
+          }
+        })
+      } catch (error) {
+        if (!canceled) setStatus(messageFromError(error, '生成进度刷新失败'))
+      }
+    }
+    void tick()
+    const timer = window.setInterval(() => { void tick() }, 2000)
+    return () => {
+      canceled = true
+      window.clearInterval(timer)
+    }
+  }, [active, running])
 
   const syncAfterWorkflow = async (nextResult: CreatorWorkflowResult) => {
     setResult(nextResult)
@@ -167,6 +212,10 @@ export function useCreatorPane(active: boolean) {
       setStatus(dashboard.reason || 'Creator Studio 不可用')
       return
     }
+    if (dashboard.serviceStatus !== 'running') {
+      setStatus(dashboard.reason || '请先启动 Creator Studio Service（Plugins），再打开详情页。当前详情服务未运行。')
+      return
+    }
     setOpeningDashboard(true)
     try {
       await api.openPluginDashboard(
@@ -183,8 +232,21 @@ export function useCreatorPane(active: boolean) {
   }
 
   const onPreviewResult = async () => {
+    if (previewing) return
+    if (!result) {
+      setStatus('还没有可预览的生成结果')
+      return
+    }
+    if (result.state !== 'completed') {
+      const phase = result.diagnostics?.progress?.phaseLabel || formatWorkflowStateFallback(result.state)
+      setStatus(`当前状态不可预览（${phase}）。只有导入完成后的角色才能立即预览。`)
+      return
+    }
     const actionId = resolvePreviewActionId(result)
-    if (!actionId || previewing) return
+    if (!actionId) {
+      setStatus('当前结果没有可预览的动作')
+      return
+    }
     setPreviewing(true)
     try {
       await api.playPetAction(actionId)
