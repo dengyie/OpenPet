@@ -1,4 +1,9 @@
 import type { AboutInfoViewState, UpdateCheckViewState } from '../../../shared/openpet-contracts'
+import { Button } from '../components/Button'
+import { Card } from '../components/Card'
+import { ReadonlyRow } from '../components/Field'
+import { StatusLine } from '../components/Feedback'
+import { PaneScaffold } from '../components/PaneScaffold'
 
 export interface AboutPaneProps {
   aboutInfo: AboutInfoViewState
@@ -30,46 +35,28 @@ export function AboutPane({ aboutInfo, updateCheck, status, checking, onCheckUpd
     : `${updateCheck.message || updateCheck.status}${updateCheck.latestVersion ? ` · ${updateCheck.latestVersion}` : ''}`
 
   return (
-    <section className="pane">
-      <header className="pane-header">
-        <div>
-          <h1>About</h1>
-          <p>版本与发布信息</p>
-        </div>
-        <div className="header-actions">
-          <button type="button" className="primary" onClick={onCheckUpdates} disabled={checking}>
-            {checking ? '检查中' : '检查更新'}
-          </button>
-        </div>
-      </header>
-      <div className="section compact">
+    <PaneScaffold
+      title="About"
+      description="版本与发布信息"
+      actions={
+        <Button variant="primary" onClick={onCheckUpdates} disabled={checking}>
+          {checking ? '检查中' : '检查更新'}
+        </Button>
+      }
+    >
+      <Card compact>
         {rows.map((row) => (
-          <div className="readonly-row" key={row.label}>
-            <span>{row.label}</span>
-            <strong>{row.value}</strong>
-          </div>
+          <ReadonlyRow key={row.label} label={row.label} value={row.value} />
         ))}
-      </div>
+      </Card>
 
-      <div className="section compact">
-        <div className="readonly-row">
-          <span>更新状态</span>
-          <strong>{updateSummary}</strong>
-        </div>
-        <div className="readonly-row">
-          <span>上次检查</span>
-          <strong>{formatCheckedAt(updateCheck.checkedAt)}</strong>
-        </div>
-        <div className="readonly-row">
-          <span>安装包</span>
-          <strong>{updateCheck.assets?.length ? updateCheck.assets.map((asset) => asset.name).join(', ') : '-'}</strong>
-        </div>
-        <div className="readonly-row">
-          <span>Release</span>
-          <strong className="endpoint-text">{updateCheck.releaseUrl || '-'}</strong>
-        </div>
-      </div>
-      {status ? <div className="status-line">{status}</div> : null}
-    </section>
+      <Card compact>
+        <ReadonlyRow label="更新状态" value={updateSummary} />
+        <ReadonlyRow label="上次检查" value={formatCheckedAt(updateCheck.checkedAt)} />
+        <ReadonlyRow label="安装包" value={updateCheck.assets?.length ? updateCheck.assets.map((asset) => asset.name).join(', ') : '-'} />
+        <ReadonlyRow label="Release" value={updateCheck.releaseUrl || '-'} mono />
+      </Card>
+      <StatusLine>{status}</StatusLine>
+    </PaneScaffold>
   )
 }
