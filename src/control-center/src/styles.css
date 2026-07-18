@@ -17,162 +17,13 @@
 
 /* ═══ 旧兼容层（migration in progress） ═══
    以下选择器仍被各 pane 使用；迁移到共享组件/令牌后逐块移除。
-   与新分层重复的定义已被新层覆盖（CSS 后导入优先）。 */
-
-.shell {
-  display: grid;
-  grid-template-columns: 188px minmax(0, 1fr);
-  min-width: 0;
-  min-height: 560px;
-  width: 100%;
-  height: 100%;
-  background: #f4f6f8;
-}
-
-.sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  min-width: 0;
-  padding: 22px 14px;
-  border-right: 1px solid #dde2e8;
-  background: #ffffff;
-}
-
-.brand {
-  display: grid;
-  gap: 3px;
-  padding: 0 8px;
-}
-
-.brand strong {
-  font-size: 18px;
-  line-height: 22px;
-}
-
-.brand span {
-  color: #6b7280;
-  font-size: 12px;
-}
-
-.nav {
-  display: grid;
-  gap: 4px;
-}
-
-.nav button {
-  min-height: 34px;
-  padding: 0 10px;
-  border-radius: 7px;
-  background: transparent;
-  color: #3f4652;
-  text-align: left;
-  cursor: pointer;
-}
-
-.nav button:hover {
-  background: #eef2f6;
-}
-
-.nav button.active {
-  background: #1f2937;
-  color: #ffffff;
-}
-
-.content {
-  min-width: 0;
-  padding: 28px 34px;
-  overflow: auto;
-}
-
-.pane {
-  display: grid;
-  gap: 24px;
-  min-width: 0;
-  width: 100%;
-  max-width: 860px;
-}
-
-.ai-pane {
-  max-width: 1180px;
-}
-
-.creator-pane {
-  max-width: 920px;
-}
-
-.pet-pane {
-  width: 100%;
-  max-width: 1480px;
-}
-
-.pane-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  min-height: 52px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid #dde2e8;
-}
-
-.pane-header h1 {
-  margin: 0;
-  font-size: 22px;
-  line-height: 28px;
-  font-weight: 650;
-}
-
-.pane-header p {
-  margin: 4px 0 0;
-  color: #6b7280;
-  font-size: 13px;
-}
-
-.header-actions {
-  display: flex;
-  gap: 10px;
-  flex-shrink: 0;
-}
-
-.primary,
-.ghost {
-  min-width: 74px;
-  min-height: 34px;
-  padding: 0 14px;
-  border-radius: 7px;
-  cursor: pointer;
-}
-
-.primary {
-  background: #1f2937;
-  color: #ffffff;
-}
-
-.ghost {
-  border: 1px solid #cfd6df;
-  background: #ffffff;
-  color: #374151;
-}
-
-.primary:disabled,
-.ghost:disabled {
-  cursor: default;
-  opacity: 0.55;
-}
-
-.section {
-  display: grid;
-  border-top: 1px solid #dde2e8;
-}
-
-.section.compact {
-  max-width: 620px;
-}
+   与新分层重复的基础选择器（shell/sidebar/nav/content/pane/pane-header/
+   primary/ghost/section/field-row/text-input/toggle/segmented/empty-chat/
+   status-line/loading）已迁移到 styles/ 分层并被删除，新层为唯一定义。 */
 
 .ai-section {
   display: grid;
-  border-top: 1px solid #dde2e8;
+  border-top: 1px solid var(--op-color-border);
 }
 
 .ai-section[open] {
@@ -714,70 +565,10 @@
   color: #4b5563;
 }
 
-.field-row,
-.readonly-row {
-  display: grid;
-  grid-template-columns: minmax(140px, 190px) minmax(0, 1fr);
-  align-items: center;
-  gap: 22px;
-  min-height: 64px;
-  border-bottom: 1px solid #dde2e8;
-}
+/* field-row / readonly-row / field-label / field-note / range / text-input
+   已迁移到 styles/components.css（令牌化，唯一定义）。 */
 
-.field-row.tall {
-  align-items: start;
-  min-height: 118px;
-  padding-top: 18px;
-}
-
-.field-label {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.field-note {
-  margin-top: 4px;
-  color: #6b7280;
-  font-size: 12px;
-}
-
-.range {
-  width: min(360px, 100%);
-  accent-color: #1f2937;
-}
-
-.text-input {
-  width: min(440px, 100%);
-  min-height: 34px;
-  padding: 7px 10px;
-  border: 1px solid #cfd6df;
-  border-radius: 7px;
-  background: #ffffff;
-  color: #202124;
-  outline: none;
-}
-
-.text-input:disabled {
-  background: #eef2f6;
-  color: #6b7280;
-}
-
-.text-input:focus {
-  border-color: #1f2937;
-  box-shadow: 0 0 0 2px rgba(31, 41, 55, 0.12);
-}
-
-.textarea {
-  min-height: 84px;
-  resize: vertical;
-}
-
-.inline-action {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
+/* textarea / inline-action 已迁移到 styles/components.css。 */
 
 .provider-preset-grid {
   display: grid;
@@ -1031,31 +822,8 @@
   color: #1f2937;
 }
 
-.button-icon {
-  display: inline-flex;
-  width: 16px;
-  height: 16px;
-}
-
-.button-icon svg {
-  width: 100%;
-  height: 100%;
-}
-
-.ghost.accent {
-  border-color: rgba(111, 92, 255, 0.34);
-  color: #6f5cff;
-}
-
-.ghost.icon-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.ghost.danger {
-  color: #d14343;
-}
+/* button-icon / ghost.accent / ghost.icon-button / ghost.danger
+   已迁移到 styles/components.css。 */
 
 .cursor-settings-block {
   padding: 18px 0 6px;
@@ -1462,72 +1230,11 @@
   line-height: 1.45;
 }
 
-.segmented {
-  display: inline-grid;
-  grid-auto-flow: column;
-  justify-content: start;
-  gap: 2px;
-  width: max-content;
-  padding: 3px;
-  border: 1px solid #cfd6df;
-  border-radius: 8px;
-  background: #ffffff;
-}
-
-.segmented button {
-  min-width: 62px;
-  min-height: 30px;
-  padding: 0 12px;
-  border-radius: 6px;
-  background: transparent;
-  color: #3f4652;
-  cursor: pointer;
-}
-
-.segmented button.active {
-  background: #1f2937;
-  color: #ffffff;
-}
-
-.toggle {
-  position: relative;
-  width: 42px;
-  height: 24px;
-  border-radius: 12px;
-  background: #cfd6df;
-  cursor: pointer;
-}
-
-.toggle span {
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: #ffffff;
-  transition: transform 140ms ease;
-}
-
-.toggle.on {
-  background: #1f2937;
-}
-
-.toggle.on span {
-  transform: translateX(18px);
-}
-
-.readonly-row strong {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.endpoint-text {
-  overflow-wrap: anywhere;
-}
+/* segmented / toggle / readonly-row strong / endpoint-text
+   已迁移到 styles/components.css。 */
 
 .readonly-row span {
-  color: #4b5563;
+  color: var(--op-color-text-faint);
 }
 
 .provider-summary {
@@ -1623,10 +1330,7 @@
   color: #b91c1c;
 }
 
-.status-line {
-  color: #6b7280;
-  font-size: 12px;
-}
+/* status-line 已迁移到 styles/components.css。 */
 
 .chat-panel {
   display: grid;
@@ -1694,10 +1398,7 @@
   background: linear-gradient(180deg, #fffdf8 0%, #f8fbff 100%);
 }
 
-.empty-chat {
-  color: #6b7280;
-  font-size: 13px;
-}
+/* empty-chat 已迁移到 styles/components.css。 */
 
 .chat-message {
   display: grid;
@@ -2029,18 +1730,7 @@
   gap: 10px;
 }
 
-.danger-text {
-  min-height: 0;
-  padding: 0;
-  background: transparent;
-  color: #b91c1c;
-  cursor: pointer;
-}
-
-.danger-text:disabled {
-  color: #9ca3af;
-  cursor: default;
-}
+/* danger-text 已迁移到 styles/components.css。 */
 
 .plugin-list {
   display: grid;
@@ -2814,12 +2504,7 @@
   text-align: left;
 }
 
-.loading {
-  display: grid;
-  place-items: center;
-  min-height: 300px;
-  color: #6b7280;
-}
+/* loading 已迁移到 styles/layout.css。 */
 
 @media (max-width: 820px) {
   .shell {

@@ -77,38 +77,57 @@
 .pane {
   display: grid;
   gap: var(--op-space-7);
-  max-width: 1080px;
+  min-width: 0;
+  width: 100%;
+  max-width: 860px;
+}
+
+/* pane 级宽度覆盖（保留旧层语义） */
+.ai-pane {
+  max-width: 1180px;
+}
+
+.creator-pane {
+  max-width: 920px;
+}
+
+.pet-pane {
+  max-width: 1480px;
 }
 
 .pane-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: var(--op-space-7);
+  min-height: 52px;
+  padding-bottom: var(--op-space-7);
+  border-bottom: 1px solid var(--op-color-border);
 }
 
 .pane-header h1 {
   margin: 0;
   font-size: var(--op-font-size-4xl);
+  line-height: 28px;
+  font-weight: var(--op-font-weight-semibold);
 }
 
 .pane-header p {
-  margin: var(--op-space-2) 0 0;
+  margin: var(--op-space-1) 0 0;
   color: var(--op-color-text-muted);
   font-size: var(--op-font-size-lg);
-  line-height: var(--op-line-height-relaxed);
 }
 
 .header-actions {
   display: flex;
-  gap: var(--op-space-3);
+  gap: var(--op-space-4);
   flex-shrink: 0;
 }
 
 .loading {
   display: grid;
   place-items: center;
-  min-height: 200px;
+  min-height: 300px;
   color: var(--op-color-text-muted);
   font-size: var(--op-font-size-lg);
 }

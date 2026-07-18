@@ -90,6 +90,7 @@
 .section.compact {
   gap: var(--op-space-4);
   padding: var(--op-space-5);
+  max-width: 620px;
 }
 
 .section-actions {
@@ -103,8 +104,11 @@
 .field-row,
 .readonly-row {
   display: grid;
-  gap: var(--op-space-2);
-  padding: var(--op-space-3) 0;
+  grid-template-columns: minmax(140px, 190px) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--op-space-9);
+  min-height: 64px;
+  padding: var(--op-space-2) 0;
   border-bottom: 1px solid var(--op-color-border-soft);
 }
 
@@ -114,16 +118,19 @@
 }
 
 .field-row.tall {
-  gap: var(--op-space-3);
+  align-items: start;
+  min-height: 118px;
+  padding-top: var(--op-space-8);
 }
 
 .field-label {
-  font-size: var(--op-font-size-lg);
-  font-weight: var(--op-font-weight-medium);
+  font-size: var(--op-font-size-xl);
+  font-weight: var(--op-font-weight-semibold);
   color: var(--op-color-text);
 }
 
 .field-note {
+  margin-top: var(--op-space-1);
   font-size: var(--op-font-size-md);
   color: var(--op-color-text-muted);
   line-height: var(--op-line-height-relaxed);
@@ -132,12 +139,12 @@
 /* ── 输入控件 ─────────────────────────────────── */
 
 .range {
-  width: 100%;
+  width: min(360px, 100%);
   accent-color: var(--op-color-accent);
 }
 
 .text-input {
-  width: 100%;
+  width: min(440px, 100%);
   min-height: 34px;
   padding: var(--op-space-2) var(--op-space-4);
   border: 1px solid var(--op-color-border);
@@ -179,20 +186,35 @@
 }
 
 .inline-action {
-  color: var(--op-color-accent-text);
-  background: none;
-  padding: 0;
-  font-size: var(--op-font-size-md);
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  display: flex;
+  align-items: center;
+  gap: var(--op-space-4);
+  min-width: 0;
 }
 
 /* ── 徽标 / 状态 ──────────────────────────────── */
 
 .danger-text {
+  min-height: 0;
+  padding: 0;
+  background: transparent;
   color: var(--op-color-danger);
   font-size: var(--op-font-size-md);
+  cursor: pointer;
+}
+
+.danger-text:disabled {
+  color: var(--op-color-text-muted);
+  cursor: default;
+}
+
+.readonly-row strong {
+  font-size: var(--op-font-size-xl);
+  font-weight: var(--op-font-weight-semibold);
+}
+
+.endpoint-text {
+  overflow-wrap: anywhere;
 }
 
 .status-line {
