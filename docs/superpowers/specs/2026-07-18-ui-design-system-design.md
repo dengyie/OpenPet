@@ -2,7 +2,7 @@
 
 > Date: 2026-07-18
 > Branch: `refactor/ui-design-system`
-> Status: approved contract, in implementation
+> Status: ✅ delivered (phases 0–5 complete)
 
 ## 1. Goal
 
