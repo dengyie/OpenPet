@@ -2729,3 +2729,135 @@
     justify-content: flex-start;
   }
 }
+
+
+.creator-action-matrix {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.creator-action-chip {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-left: 4px solid #94a3b8;
+  border-radius: 12px;
+  background: #f8fafc;
+  font-size: 12px;
+}
+
+.creator-action-chip.ok {
+  border-color: #bbf7d0;
+  border-left-color: #16a34a;
+  background: #f0fdf4;
+}
+
+.creator-action-chip.error {
+  border-color: #fecaca;
+  border-left-color: #dc2626;
+  background: #fef2f2;
+}
+
+.creator-action-reason,
+.creator-action-flag {
+  color: #475569;
+}
+
+.creator-asset-review {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(100, 116, 139, 0.35);
+}
+
+.creator-asset-review-list {
+  display: grid;
+  gap: 10px;
+}
+
+.creator-asset-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #dbe3ee;
+  border-left: 4px solid #94a3b8;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.creator-asset-card.ok {
+  border-left-color: #16a34a;
+}
+
+.creator-asset-card.error {
+  border-left-color: #dc2626;
+  background: #fff7f7;
+}
+
+.creator-asset-card-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+}
+
+.creator-asset-thumbs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+  gap: 8px;
+}
+
+.creator-asset-thumb {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.creator-asset-thumb img,
+.creator-asset-thumb-fallback {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background:
+    linear-gradient(45deg, #f1f5f9 25%, transparent 25%),
+    linear-gradient(-45deg, #f1f5f9 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #f1f5f9 75%),
+    linear-gradient(-45deg, transparent 75%, #f1f5f9 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+
+.creator-asset-thumb-fallback {
+  display: grid;
+  place-items: center;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.creator-asset-thumb code {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #64748b;
+  font-size: 10px;
+}
+
+.creator-prompt-pre {
+  margin: 8px 0 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: 10px;
+  border-radius: 10px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

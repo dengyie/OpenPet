@@ -55,6 +55,10 @@ const registerCreatorIpc = ({
   ipcMainService.handle(IPC.CREATOR_RETRY_IDENTITY, (_event, payload) => requireService().retryFullPetIdentity({
     runId: payload?.runId
   }))
+  ipcMainService.handle(IPC.CREATOR_IMPORT_AVAILABLE_ACTIONS, (_event, payload) => requireService().importAvailableActions({
+    runId: payload?.runId,
+    activate: payload?.activate
+  }))
   ipcMainService.handle(IPC.CREATOR_GET_LAST_RUN, () => requireService().getLastRun())
 }
 

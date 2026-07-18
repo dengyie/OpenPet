@@ -138,6 +138,7 @@ const IPC = Object.freeze({
   CREATOR_GENERATE_EXISTING_ACTION: 'creator:generate-existing-action',
   CREATOR_RETRY_ACTION: 'creator:retry-action',
   CREATOR_RETRY_IDENTITY: 'creator:retry-identity',
+  CREATOR_IMPORT_AVAILABLE_ACTIONS: 'creator:import-available-actions',
   CREATOR_GET_LAST_RUN: 'creator:get-last-run',
   SERVICE_GET_STATUS: 'service:get-status',
   SERVICE_SAVE_CONFIG: 'service:save-config',

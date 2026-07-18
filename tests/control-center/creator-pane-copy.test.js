@@ -40,3 +40,24 @@ test('creator pane hook gives explicit feedback for non-previewable states and s
  assert.match(source, /setInterval/)
   assert.match(source, /lastRun\.diagnostics/)
 })
+
+
+test('creator pane exposes partial import CTA, asset review bench, and retry entry points', () => {
+  const source = fs.readFileSync(creatorPanePath, 'utf-8')
+  assert.match(source, /creator-asset-review/)
+  assert.match(source, /creator-action-matrix/)
+  assert.match(source, /creator-import-available-actions/)
+  assert.match(source, /查看提示词/)
+  assert.match(source, /坏在哪/)
+  assert.match(source, /onImportAvailableActions/)
+  assert.match(source, /一键重生成失败动作/)
+  assert.match(source, /data-testid=\{`creator-retry-action-\$\{action\.actionId\}`\}/)
+})
+
+test('creator pane hook wires import available actions API', () => {
+  const hookPath = path.resolve(__dirname, '../../src/control-center/src/hooks/useCreatorPane.ts')
+  const source = fs.readFileSync(hookPath, 'utf-8')
+  assert.match(source, /importCreatorAvailableActions/)
+  assert.match(source, /onImportAvailableActions/)
+  assert.match(source, /正在导入可用动作/)
+})

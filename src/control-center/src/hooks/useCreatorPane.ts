@@ -317,6 +317,47 @@ export function useCreatorPane(active: boolean) {
     }
   }
 
+  const onImportAvailableActions = async () => {
+    const runId = String(result?.run?.runId || creatorState.lastRun?.runId || '').trim()
+    if (!runId || running) return
+    setRunning(true)
+    setStatus('正在导入可用动作…')
+    try {
+      const nextResult = await api.importCreatorAvailableActions({ runId, activate: true })
+      await syncAfterWorkflow(nextResult)
+    } catch (error) {
+      setStatus(messageFromError(error, '可用动作导入失败'))
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  const onCopyText = async (value: string, label = '内容') => {
+    const textValue = String(value || '')
+    if (!textValue) {
+      setStatus(`${label}为空，无法复制`)
+      return
+    }
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(textValue)
+      } else {
+        const area = document.createElement('textarea')
+        area.value = textValue
+        area.setAttribute('readonly', 'true')
+        area.style.position = 'fixed'
+        area.style.opacity = '0'
+        document.body.appendChild(area)
+        area.select()
+        document.execCommand('copy')
+        document.body.removeChild(area)
+      }
+      setStatus(`已复制${label}`)
+    } catch (error) {
+      setStatus(messageFromError(error, `复制${label}失败`))
+    }
+  }
+
   const hasStoredEditableReference = Boolean(creatorState.editableReference)
   const creatorStudioPluginReady = creatorState.dashboard.available
   const creatorStudioReady = creatorState.dashboard.available && creatorState.dashboard.serviceStatus === 'running'
@@ -395,7 +436,9 @@ export function useCreatorPane(active: boolean) {
     onRestoreClickAction,
     onRetryFullPetAction,
     onRetryFullPetIdentity,
-    onOpenCreatorStudioDetails
+    onImportAvailableActions,
+    onOpenCreatorStudioDetails,
+    onCopyText
   } satisfies CreatorPaneProps
 
   return {

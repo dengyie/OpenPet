@@ -1,4 +1,5 @@
 import type {
+  CreatorActionAssetViewState,
   CreatorActionAttemptViewState,
   CreatorStateViewState,
   CreatorWorkflowProgressViewState,
@@ -48,7 +49,9 @@ export interface CreatorPaneProps {
   onRestoreClickAction: () => void | Promise<void>
   onRetryFullPetAction: (actionId: string) => void | Promise<void>
   onRetryFullPetIdentity: () => void | Promise<void>
+  onImportAvailableActions: () => void | Promise<void>
   onOpenCreatorStudioDetails: () => void | Promise<void>
+  onCopyText?: (text: string, label?: string) => void | Promise<void>
 }
 
 const formatWorkflowState = (state: CreatorWorkflowResult['state']) => {
@@ -78,6 +81,171 @@ const formatActionAttemptStatus = (status: CreatorActionAttemptViewState['status
   return '等待中'
 }
 
+const createUniqueActionIds = (values: string[]) => {
+  const seen = new Set<string>()
+  const items: string[] = []
+  for (const value of values) {
+    const item = String(value || '').trim()
+    if (!item || seen.has(item)) continue
+    seen.add(item)
+    items.push(item)
+  }
+  return items
+}
+
+const actionToneClass = (status: CreatorActionAttemptViewState['status']) => {
+  if (status === 'passed' || status === 'mirrored') return 'ok'
+  if (status === 'failed') return 'error'
+  return ''
+}
+
+const ActionMatrix = ({
+  actions,
+  running,
+  canRepair,
+  onRetryFullPetAction
+}: {
+  actions: CreatorActionAttemptViewState[]
+  running: boolean
+  canRepair: boolean
+  onRetryFullPetAction: (actionId: string) => void | Promise<void>
+}) => (
+  <div className="creator-action-matrix" data-testid="creator-action-matrix">
+    {actions.map((action) => (
+      <div
+        key={action.actionId}
+        className={`creator-action-chip ${actionToneClass(action.status)}`.trim()}
+        data-testid={`creator-action-chip-${action.actionId}`}
+        data-status={action.status}
+      >
+        <strong>{action.actionId}</strong>
+        <span>{formatActionAttemptStatus(action.status)}</span>
+        {action.reason ? <span className="creator-action-reason">{action.reason}</span> : null}
+        {action.importable ? <span className="creator-action-flag">可导入</span> : null}
+        {action.status === 'failed' && canRepair && action.actionId !== 'running-left' ? (
+          <button
+            type="button"
+            className="ghost"
+            disabled={running}
+            data-testid={`creator-retry-action-${action.actionId}`}
+            onClick={() => onRetryFullPetAction(action.actionId)}
+          >
+            重新生成
+          </button>
+        ) : null}
+      </div>
+    ))}
+  </div>
+)
+
+const AssetReviewBench = ({
+  actions,
+  actionAssets,
+  onCopyText,
+  onRetryFullPetAction,
+  running,
+  canRepair
+}: {
+  actions: CreatorActionAttemptViewState[]
+  actionAssets: CreatorActionAssetViewState[]
+  onCopyText?: (text: string, label?: string) => void | Promise<void>
+  onRetryFullPetAction: (actionId: string) => void | Promise<void>
+  running: boolean
+  canRepair: boolean
+}) => {
+  const assets = actionAssets.length
+    ? actionAssets
+    : actions.flatMap((action) => action.assets || [])
+  if (!actions.length && !assets.length) return null
+
+  return (
+    <div className="creator-asset-review" data-testid="creator-asset-review">
+      <strong>本次生成资产审查台</strong>
+      <span className="field-note">失败帧也会完整展示，方便对照为什么坏、以及对应提示词。</span>
+      <div className="creator-asset-review-list">
+        {actions.map((action) => {
+          const related = (action.assets && action.assets.length
+            ? action.assets
+            : assets.filter((asset) => asset.actionId === action.actionId))
+          const evidence = action.failureEvidence || []
+          const promptText = action.promptText || related.find((asset) => asset.promptText)?.promptText || ''
+          return (
+            <div
+              key={action.actionId}
+              className={`creator-asset-card ${actionToneClass(action.status)}`.trim()}
+              data-testid={`creator-asset-card-${action.actionId}`}
+            >
+              <div className="creator-asset-card-header">
+                <strong>{action.actionId}</strong>
+                <span>{formatActionAttemptStatus(action.status)}</span>
+                {action.quality ? <span>{action.quality}</span> : null}
+                {typeof action.score === 'number' ? <span>分数 {action.score}</span> : null}
+              </div>
+              {action.reason ? <span data-testid={`creator-asset-reason-${action.actionId}`}>{action.reason}</span> : null}
+              {evidence.length ? (
+                <div className="creator-asset-evidence" data-testid={`creator-asset-evidence-${action.actionId}`}>
+                  {evidence.map((item, index) => (
+                    <span key={`${item.code}-${index}`}>
+                      <strong>坏在哪</strong> {item.message || item.code}
+                      {item.code ? `（${item.code}）` : ''}
+                      {typeof item.score === 'number' ? ` · 分数 ${item.score}` : ''}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              {related.length ? (
+                <div className="creator-asset-thumbs" data-testid={`creator-asset-thumbs-${action.actionId}`}>
+                  {related.filter((asset) => asset.kind !== 'prompt').map((asset) => (
+                    <div key={`${asset.kind}-${asset.relativePath}`} className="creator-asset-thumb">
+                      {asset.previewable && asset.previewDataUrl ? (
+                        <img src={asset.previewDataUrl} alt={`${action.actionId} ${asset.label}`} />
+                      ) : (
+                        <div className="creator-asset-thumb-fallback">{asset.label || asset.kind}</div>
+                      )}
+                      <span>{asset.label || asset.kind}</span>
+                      <code>{asset.relativePath}</code>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <span className="field-note">暂无缩略图（可能仍在生成或未落盘）</span>
+              )}
+              <div className="header-actions">
+                {promptText ? (
+                  <>
+                    <details data-testid={`creator-asset-prompt-${action.actionId}`}>
+                      <summary>查看提示词</summary>
+                      <pre className="creator-prompt-pre">{promptText}</pre>
+                    </details>
+                    <button
+                      type="button"
+                      className="ghost"
+                      data-testid={`creator-copy-prompt-${action.actionId}`}
+                      onClick={() => onCopyText?.(promptText, `${action.actionId} 提示词`)}
+                    >
+                      复制提示词
+                    </button>
+                  </>
+                ) : null}
+                {action.status === 'failed' && canRepair && action.actionId !== 'running-left' ? (
+                  <button
+                    type="button"
+                    className="ghost"
+                    disabled={running}
+                    onClick={() => onRetryFullPetAction(action.actionId)}
+                  >
+                    重新生成 {action.actionId}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 const WorkflowProgressPanel = ({ progress }: { progress: CreatorWorkflowProgressViewState }) => (
   <div className="creator-progress" data-testid="creator-progress">
     <div className="creator-result-grid">
@@ -102,12 +270,20 @@ const WorkflowProgressPanel = ({ progress }: { progress: CreatorWorkflowProgress
     {progress.actions?.length ? (
       <div className="creator-result-grid" data-testid="creator-progress-actions">
         {progress.actions.map((action) => (
-          <span key={action.actionId}>
+          <span key={action.actionId} className={actionToneClass(action.status)} data-status={action.status}>
             <strong>{action.actionId}</strong> {formatActionAttemptStatus(action.status)}
             {action.reason ? ` · ${action.reason}` : ''}
             {action.quality ? ` · ${action.quality}` : ''}
+            {action.importable ? ' · 可导入' : ''}
           </span>
         ))}
+      </div>
+    ) : null}
+    {progress.availableActionIds?.length || progress.failedActionIds?.length ? (
+      <div className="creator-result-grid" data-testid="creator-progress-availability">
+        <span><strong>可导入</strong> {progress.availableActionIds?.length ? progress.availableActionIds.join(', ') : 'none'}</span>
+        <span><strong>失败</strong> {progress.failedActionIds?.length ? progress.failedActionIds.join(', ') : 'none'}</span>
+        <span><strong>完整性</strong> {progress.completeness || '-'}</span>
       </div>
     ) : null}
   </div>
@@ -135,7 +311,9 @@ const ResultCard = ({
   onRestoreClickAction,
   onRetryFullPetAction,
   onRetryFullPetIdentity,
-  onOpenCreatorStudioDetails
+  onImportAvailableActions,
+  onOpenCreatorStudioDetails,
+  onCopyText
 }: {
   result: CreatorWorkflowResult
   running: boolean
@@ -146,7 +324,9 @@ const ResultCard = ({
   onRestoreClickAction: () => void | Promise<void>
   onRetryFullPetAction: (actionId: string) => void | Promise<void>
   onRetryFullPetIdentity: () => void | Promise<void>
+  onImportAvailableActions: () => void | Promise<void>
   onOpenCreatorStudioDetails: () => void | Promise<void>
+  onCopyText?: (text: string, label?: string) => void | Promise<void>
 }) => {
   const tone = ['completed', 'review-required'].includes(result.state)
     ? 'ok'
@@ -163,11 +343,28 @@ const ResultCard = ({
   const conditioningReferences = conditioning?.referenceFileNames?.length
     ? conditioning.referenceFileNames.join(', ')
     : 'none'
+  const progressActions = progress?.actions || []
+  const actionAssets = result.actionAssets || progress?.actionAssets || []
+  const availableActionIds = result.availableActionIds?.length
+    ? result.availableActionIds
+    : (progress?.availableActionIds || basicActions?.availableActionIds || [])
+  const failedActionIds = result.failedActionIds?.length
+    ? result.failedActionIds
+    : (progress?.failedActionIds || progressActions.filter((action) => action.status === 'failed').map((action) => action.actionId))
   const canRepairFullPet = result.run?.mode === 'full-pet' &&
-    ['review-required', 'preview-ready'].includes(String(result.state))
+    ['review-required', 'preview-ready', 'completed', 'import-failed'].includes(String(result.state))
   const repairableActionIds = canRepairFullPet
-    ? (basicActions?.omittedActionIds || basicActions?.missingRequiredOfficialActionIds || []).filter((actionId) => actionId !== 'running-left')
+    ? createUniqueActionIds([
+      ...failedActionIds,
+      ...(basicActions?.omittedActionIds || []),
+      ...(basicActions?.missingRequiredOfficialActionIds || []),
+      ...progressActions.filter((action) => action.status === 'failed').map((action) => action.actionId)
+    ]).filter((actionId) => actionId !== 'running-left')
     : []
+  const canImportAvailable = result.run?.mode === 'full-pet' &&
+    availableActionIds.length > 0 &&
+    ['review-required', 'preview-ready', 'import-failed'].includes(String(result.state))
+  const canPreview = result.state === 'completed' || Boolean(result.importedAction) || Boolean(result.activePet)
 
   return (
     <div className={`provider-feedback ${tone}`.trim()} data-testid="creator-result">
@@ -177,6 +374,53 @@ const ResultCard = ({
         <span data-testid="creator-result-phase">阶段：{progress.phaseLabel}</span>
       ) : null}
       {progress ? <WorkflowProgressPanel progress={progress} /> : null}
+      {progressActions.length ? (
+        <ActionMatrix
+          actions={progressActions}
+          running={running}
+          canRepair={canRepairFullPet}
+          onRetryFullPetAction={onRetryFullPetAction}
+        />
+      ) : null}
+      {(progressActions.length || actionAssets.length) ? (
+        <AssetReviewBench
+          actions={progressActions}
+          actionAssets={actionAssets}
+          onCopyText={onCopyText}
+          onRetryFullPetAction={onRetryFullPetAction}
+          running={running}
+          canRepair={canRepairFullPet}
+        />
+      ) : null}
+      {result.importNotes ? (
+        <span data-testid="creator-import-notes"><strong>导入说明</strong> {result.importNotes}</span>
+      ) : null}
+      {canImportAvailable || repairableActionIds.length ? (
+        <div className="header-actions" data-testid="creator-main-ctas">
+          {canImportAvailable ? (
+            <button
+              type="button"
+              className="primary"
+              disabled={running || previewing}
+              onClick={onImportAvailableActions}
+              data-testid="creator-import-available-actions"
+            >
+              {running ? '导入中' : `导入可用动作（${availableActionIds.length}）`}
+            </button>
+          ) : null}
+          {repairableActionIds.length ? (
+            <button
+              type="button"
+              className="ghost"
+              disabled={running || previewing}
+              onClick={() => onRetryFullPetAction(repairableActionIds[0])}
+              data-testid="creator-retry-failed-actions"
+            >
+              一键重生成失败动作
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {result.state === 'completed' ? (
         <span className="creator-result-cta">可以立即预览，或直接点击桌宠验证动作。</span>
       ) : null}
@@ -184,10 +428,10 @@ const ResultCard = ({
         <span className="creator-result-cta">生成进行中，下方会同步阶段与动作成败。</span>
       ) : null}
       {result.state === 'review-required' ? (
-        <span className="creator-result-cta">已进入复查阶段；请查看失败动作后决定修复或打开详情。</span>
+        <span className="creator-result-cta">已进入复查阶段；可用动作可直接导入，失败动作可在审查台查看并重生成。</span>
       ) : null}
       {result.state === 'preview-ready' ? (
-        <span className="creator-result-cta">预览产物已生成，但官方动作行未齐全，不能自动导入。</span>
+        <span className="creator-result-cta">预览产物已生成；可用动作可导入，缺失/失败动作会标红并保留资产供审查。</span>
       ) : null}
       {result.reference ? (
         <div className="creator-result-grid">
@@ -252,8 +496,8 @@ const ResultCard = ({
       ) : null}
       {showAdvanced ? (
         <div className="header-actions">
-          <button type="button" className="primary" disabled={previewing} onClick={onPreviewResult} data-testid="creator-preview-result">
-            {previewing ? '预览中' : '立即预览'}
+          <button type="button" className="primary" disabled={previewing || !canPreview} onClick={onPreviewResult} data-testid="creator-preview-result" title={canPreview ? '' : '当前状态不可预览'}>
+            {previewing ? '预览中' : (canPreview ? '立即预览' : '当前不可预览')}
           </button>
           {clickActionChange?.canRestore ? (
             <button type="button" className="ghost" disabled={previewing} onClick={onRestoreClickAction} data-testid="creator-restore-click-action">
@@ -282,8 +526,8 @@ const ResultCard = ({
         </div>
       ) : result.state === 'completed' ? (
         <div className="header-actions">
-          <button type="button" className="primary" disabled={previewing} onClick={onPreviewResult} data-testid="creator-preview-result">
-            {previewing ? '预览中' : '立即预览'}
+          <button type="button" className="primary" disabled={previewing || !canPreview} onClick={onPreviewResult} data-testid="creator-preview-result" title={canPreview ? '' : '当前状态不可预览'}>
+            {previewing ? '预览中' : (canPreview ? '立即预览' : '当前不可预览')}
           </button>
           {clickActionChange?.canRestore ? (
             <button type="button" className="ghost" disabled={previewing} onClick={onRestoreClickAction} data-testid="creator-restore-click-action">
@@ -322,7 +566,9 @@ export function CreatorPane({
   onRestoreClickAction,
   onRetryFullPetAction,
   onRetryFullPetIdentity,
-  onOpenCreatorStudioDetails
+  onImportAvailableActions,
+  onOpenCreatorStudioDetails,
+  onCopyText
 }: CreatorPaneProps) {
   const providerReady = creatorState.provider.ready
   const hasEditableReference = Boolean(creatorState.editableReference)
@@ -538,7 +784,9 @@ export function CreatorPane({
           onRestoreClickAction={onRestoreClickAction}
           onRetryFullPetAction={onRetryFullPetAction}
           onRetryFullPetIdentity={onRetryFullPetIdentity}
+          onImportAvailableActions={onImportAvailableActions}
           onOpenCreatorStudioDetails={onOpenCreatorStudioDetails}
+          onCopyText={onCopyText}
         />
       ) : creatorState.lastRun ? (
         <div className="provider-feedback" data-testid="creator-last-run">

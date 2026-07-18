@@ -223,6 +223,7 @@ contextBridge.exposeInMainWorld('controlCenterAPI', {
   generateCreatorExistingAction: (payload) => ipcRenderer.invoke(IPC.CREATOR_GENERATE_EXISTING_ACTION, payload),
   retryCreatorAction: (payload) => ipcRenderer.invoke(IPC.CREATOR_RETRY_ACTION, payload),
   retryCreatorIdentity: (payload) => ipcRenderer.invoke(IPC.CREATOR_RETRY_IDENTITY, payload),
+  importCreatorAvailableActions: (payload) => ipcRenderer.invoke(IPC.CREATOR_IMPORT_AVAILABLE_ACTIONS, payload),
   getCreatorLastRun: () => ipcRenderer.invoke(IPC.CREATOR_GET_LAST_RUN),
   playPetAction: (actionId) => ipcRenderer.invoke(IPC.PET_PLAY_ACTION, { actionId }),
   runCreatorStudioDefaultFlow: (prompt) => ipcRenderer.invoke(IPC.PLUGINS_RUN_CREATOR_STUDIO_DEFAULT_FLOW, { prompt }),

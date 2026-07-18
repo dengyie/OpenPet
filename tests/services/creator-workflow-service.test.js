@@ -1643,3 +1643,206 @@ test('creator workflow progress polling attaches diagnostics onto lastRun during
   assert.ok(['review-required', 'preview-ready'].includes(result.state))
  assert.ok(result.diagnostics?.progress)
 })
+
+
+test('creator workflow diagnostics expose failed assets and prompt metadata without absolute paths', () => {
+  const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-assets-'))
+  const runId = 'run-assets-failed'
+  const runDir = path.join(pluginDataDir, 'runs', runId)
+  const frameDir = path.join(runDir, 'official-row-frames', 'waving')
+  const promptPath = path.join(runDir, 'prompts', 'rows', 'waving.md')
+  const framePath = path.join(frameDir, '01.png')
+  fs.mkdirSync(frameDir, { recursive: true })
+  fs.mkdirSync(path.dirname(promptPath), { recursive: true })
+  // minimal PNG
+  fs.writeFileSync(framePath, Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64'
+  ))
+  fs.writeFileSync(promptPath, 'Keep identity stable while waving the front paw.\n')
+  fs.writeFileSync(path.join(runDir, 'run.json'), `${JSON.stringify({
+    runId,
+    status: 'failed',
+    taskStatus: 'confirmed',
+    currentStep: 'generate',
+    reviewStatus: 'pending',
+    importStatus: 'not-imported',
+    backend: 'provider',
+    backendStatus: { state: 'failed', message: 'identity-descriptor-distance-high' },
+    error: 'Official full-pet row waving failed QA: identity-descriptor-distance-high',
+    artifacts: {
+      generatedImage: {
+        outputs: [{ dataRelativePath: `runs/${runId}/frames/base/0001.png` }],
+        conditioning: {
+          mode: 'image-edit',
+          endpoint: '/images/edits',
+          referenceImageCount: 1,
+          multipartImageField: 'image',
+          requestedOutputCount: 1
+        }
+      }
+    }
+  }, null, 2)}\n`)
+  fs.writeFileSync(path.join(runDir, 'full-pet-action-checkpoints.json'), `${JSON.stringify({
+    version: 1,
+    runId,
+    actions: {
+      idle: {
+        actionId: 'idle',
+        ok: true,
+        row: {
+          quality: 'row-real',
+          frames: [{ relativePath: `runs/${runId}/official-row-frames/idle/01.png`, sha256: 'a' }]
+        }
+      },
+      waving: {
+        actionId: 'waving',
+        ok: false,
+        failureConditions: ['identity-descriptor-distance-high'],
+        error: 'identity-descriptor-distance-high',
+        keyframes: [{
+          relativePath: `runs/${runId}/official-row-frames/waving/01.png`,
+          role: 'peak',
+          promptRelativePath: `runs/${runId}/prompts/rows/waving.md`
+        }],
+        row: {
+          quality: 'failed',
+          frames: [{ relativePath: `runs/${runId}/official-row-frames/waving/01.png`, sha256: 'b' }]
+        }
+      }
+    }
+  }, null, 2)}\n`)
+
+  // also create idle frame for completeness of file existence in collect
+  const idleDir = path.join(runDir, 'official-row-frames', 'idle')
+  fs.mkdirSync(idleDir, { recursive: true })
+  fs.writeFileSync(path.join(idleDir, '01.png'), fs.readFileSync(framePath))
+
+  const diagnostics = __testInternals.readWorkflowDiagnostics({ pluginDataDir, runId })
+  const waving = diagnostics.progress.actions.find((action) => action.actionId === 'waving')
+  assert.equal(waving.status, 'failed')
+  assert.equal(waving.importable, false)
+  assert.ok(Array.isArray(waving.assets) && waving.assets.length > 0)
+  assert.ok(waving.assets.some((asset) => asset.kind === 'frame' || asset.kind === 'keyframe'))
+  assert.ok(waving.promptText.includes('Keep identity stable') || waving.assets.some((asset) => asset.kind === 'prompt'))
+  assert.ok(Array.isArray(diagnostics.progress.actionAssets))
+  assert.ok(diagnostics.progress.actionAssets.some((asset) => asset.actionId === 'waving' && asset.relativePath.includes('official-row-frames/waving')))
+  assert.equal(diagnostics.progress.failedActionIds.includes('waving'), true)
+  assert.equal(diagnostics.progress.availableActionIds.includes('idle'), true)
+  assert.equal(diagnostics.progress.completeness, 'partial')
+  assert.equal(JSON.stringify(diagnostics).includes(pluginDataDir), false)
+  assert.equal(JSON.stringify(diagnostics).includes(runDir), false)
+})
+
+test('creator workflow service imports available actions as partial pack when idle failed frames are absent', async () => {
+  const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-partial-import-'))
+  const runId = 'run-partial-import'
+  const runDir = path.join(pluginDataDir, 'runs', runId)
+  const rightDir = path.join(runDir, 'official-row-frames', 'running-right')
+  const leftDir = path.join(runDir, 'official-row-frames', 'running-left')
+  fs.mkdirSync(rightDir, { recursive: true })
+  fs.mkdirSync(leftDir, { recursive: true })
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64'
+  )
+  fs.writeFileSync(path.join(rightDir, '01.png'), png)
+  fs.writeFileSync(path.join(leftDir, '01.png'), png)
+  fs.writeFileSync(path.join(runDir, 'run.json'), `${JSON.stringify({
+    runId,
+    petId: 'partial-cat',
+    input: { petName: 'Partial Cat', prompt: 'demo' },
+    status: 'failed',
+    taskStatus: 'confirmed',
+    currentStep: 'generate',
+    reviewStatus: 'pending',
+    importStatus: 'not-imported',
+    backend: 'provider',
+    backendStatus: { state: 'failed', message: 'idle failed' },
+    error: 'idle failed',
+    artifacts: {}
+  }, null, 2)}\n`)
+  fs.writeFileSync(path.join(runDir, 'full-pet-action-checkpoints.json'), `${JSON.stringify({
+    version: 1,
+    runId,
+    actions: {
+      idle: {
+        actionId: 'idle',
+        ok: false,
+        failureConditions: ['row_identity_shape_drift'],
+        error: 'row_identity_shape_drift'
+      },
+      'running-right': {
+        actionId: 'running-right',
+        ok: true,
+        row: {
+          quality: 'row-real',
+          frames: [{ relativePath: `runs/${runId}/official-row-frames/running-right/01.png`, sha256: 'r' }]
+        }
+      },
+      'running-left': {
+        actionId: 'running-left',
+        ok: true,
+        row: {
+          quality: 'approved-mirror',
+          frames: [{ relativePath: `runs/${runId}/official-row-frames/running-left/01.png`, sha256: 'l' }]
+        }
+      }
+    }
+  }, null, 2)}\n`)
+
+  const importedPacks = []
+  const service = createCreatorWorkflowService({
+    pluginService: {
+      listPlugins: () => ([{ id: 'openpet.creator-studio', enabled: true, runnable: true, commands: [{ id: 'draft-task' }] }]),
+      runCommand: async () => { throw new Error('should not need creator studio commands for partial import') },
+      getPluginCreatorDataDir: () => pluginDataDir
+    },
+    imageGenerationModelService: {
+      checkHealth: async () => ({ ok: true, code: 'provider_healthy', message: 'ok' }),
+      getConfig: () => ({ provider: 'openai-compatible', model: 'gpt-image-2', creatorWorkflowModelPolicy: { verifiedModels: ['gpt-image-2'] } })
+    },
+    actionService: {
+      getConfig: () => ({ defaultAction: 'idle', clickAction: 'waving', actions: [] }),
+      acceptTriggerProposalItem: () => ({})
+    },
+    creatorReferenceService: {
+      getReference: () => null,
+      bindReference: async () => ({ replaced: false, reference: null }),
+      copyReferenceIntoRun: () => ({})
+    },
+    petPackService: {
+      inspectPackSource: (sourcePath) => {
+        assert.equal(fs.existsSync(path.join(sourcePath, 'pet.json')), true)
+        const manifest = JSON.parse(fs.readFileSync(path.join(sourcePath, 'pet.json'), 'utf-8'))
+        assert.equal(manifest.defaultAction, 'idle')
+        assert.equal(manifest.actions.some((action) => action.id === 'idle'), true)
+        assert.equal(manifest.availableActionIds.includes('running-right'), true)
+        return {
+          selectionId: 'sel-partial',
+          valid: true,
+          errors: [],
+          pack: { id: manifest.id, displayName: manifest.displayName }
+        }
+      },
+      importPack: (selectionId) => {
+        assert.equal(selectionId, 'sel-partial')
+        const pack = { id: 'partial-cat', displayName: 'Partial Cat', defaultAction: 'idle', clickAction: 'idle' }
+        importedPacks.push(pack)
+        return { pack }
+      },
+      setActivePack: (packId) => ({ activePackId: packId, pack: importedPacks[0] })
+    }
+  })
+
+  const result = await service.importAvailableActions({ runId, activate: true })
+  assert.equal(result.state, 'completed')
+  assert.equal(result.code, 'partial_actions_imported')
+  assert.equal(result.completeness, 'partial')
+  assert.equal(result.availableActionIds.includes('idle'), true)
+  assert.equal(result.availableActionIds.includes('running-right'), true)
+  assert.equal(result.failedActionIds.includes('idle') || result.importNotes.includes('idle'), true)
+  assert.equal(result.run.importedPackId, 'partial-cat')
+  assert.equal(importedPacks.length, 1)
+  assert.equal(JSON.stringify(result).includes(pluginDataDir), false)
+})

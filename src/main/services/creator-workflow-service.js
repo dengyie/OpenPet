@@ -235,8 +235,14 @@ const createWorkflowResult = ({
   clickAction = '',
   clickActionChange = null,
   basicActions = null,
-  diagnostics = null
-}) => ({
+  diagnostics = null,
+  actionAssets = null,
+  completeness = '',
+  availableActionIds = null,
+  failedActionIds = null,
+  omittedActionIds = null,
+  importNotes = ''
+}) => finalizeWorkflowResult({
   ok: true,
   state,
   code: normalizeText(code),
@@ -301,7 +307,50 @@ const createWorkflowResult = ({
     : null,
   diagnostics: diagnostics && typeof diagnostics === 'object'
     ? diagnostics
-    : null
+    : null,
+  actionAssets: Array.isArray(actionAssets)
+    ? actionAssets.map((asset) => ({
+        actionId: normalizeText(asset?.actionId),
+        kind: normalizeText(asset?.kind) || 'frame',
+        relativePath: normalizeSafeRelativePath(asset?.relativePath),
+        label: normalizeText(asset?.label).slice(0, 80),
+        role: normalizeText(asset?.role).slice(0, 80),
+        previewable: Boolean(asset?.previewable),
+        ...(asset?.previewDataUrl ? { previewDataUrl: String(asset.previewDataUrl) } : {}),
+        ...(asset?.promptText ? { promptText: String(asset.promptText).slice(0, 12000) } : {}),
+        ...(normalizeSafeRelativePath(asset?.promptRelativePath)
+          ? { promptRelativePath: normalizeSafeRelativePath(asset.promptRelativePath) }
+          : {}),
+        failureEvidence: asset?.failureEvidence && typeof asset.failureEvidence === 'object'
+          ? {
+              code: normalizeText(asset.failureEvidence.code).slice(0, 80),
+              message: sanitizeProgressReason(asset.failureEvidence.message),
+              score: Number.isFinite(Number(asset.failureEvidence.score))
+                ? Number(asset.failureEvidence.score)
+                : null
+            }
+          : null
+      })).filter((asset) => asset.actionId && asset.relativePath)
+    : [],
+  completeness: ['full', 'partial', 'none'].includes(normalizeText(completeness))
+    ? normalizeText(completeness)
+    : (['full', 'partial', 'none'].includes(normalizeText(diagnostics?.progress?.completeness))
+      ? normalizeText(diagnostics.progress.completeness)
+      : ''),
+  availableActionIds: Array.isArray(availableActionIds)
+    ? availableActionIds.map(normalizeText).filter(Boolean)
+    : (Array.isArray(diagnostics?.progress?.availableActionIds)
+      ? diagnostics.progress.availableActionIds.map(normalizeText).filter(Boolean)
+      : []),
+  failedActionIds: Array.isArray(failedActionIds)
+    ? failedActionIds.map(normalizeText).filter(Boolean)
+    : (Array.isArray(diagnostics?.progress?.failedActionIds)
+      ? diagnostics.progress.failedActionIds.map(normalizeText).filter(Boolean)
+      : []),
+  omittedActionIds: Array.isArray(omittedActionIds)
+    ? omittedActionIds.map(normalizeText).filter(Boolean)
+    : [],
+  importNotes: normalizeText(importNotes).slice(0, 400)
 })
 
 const readBasicActionCoverage = ({ pluginDataDir, runId }) => {
@@ -407,6 +456,325 @@ const WORKFLOW_STAGE_DEFS = [
 ]
 
 const sanitizeProgressReason = (value) => sanitizeLogText(normalizeText(value), { maxChars: 180 })
+
+const MIME_BY_EXT = Object.freeze({
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif'
+})
+
+const IMAGE_PREVIEW_MAX_BYTES = 1_500_000
+const PROMPT_TEXT_MAX_CHARS = 12000
+
+const toRunRelativePath = ({ pluginDataDir, runId, absolutePath }) => {
+  const runRoot = path.join(path.resolve(pluginDataDir), 'runs', normalizeText(runId))
+  const absolute = path.resolve(absolutePath)
+  const relative = path.relative(runRoot, absolute).split(path.sep).join('/')
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return ''
+  return `runs/${normalizeText(runId)}/${relative}`
+}
+
+const fileToPreviewDataUrl = (absolutePath) => {
+  try {
+    if (!absolutePath || !fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isFile()) return ''
+    const size = fs.statSync(absolutePath).size
+    if (!Number.isFinite(size) || size <= 0 || size > IMAGE_PREVIEW_MAX_BYTES) return ''
+    const ext = path.extname(absolutePath).toLowerCase()
+    const mime = MIME_BY_EXT[ext]
+    if (!mime) return ''
+    return `data:${mime};base64,${fs.readFileSync(absolutePath).toString('base64')}`
+  } catch (_) {
+    return ''
+  }
+}
+
+const readPromptTextIfExists = (absolutePath) => {
+  try {
+    if (!absolutePath || !fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isFile()) return ''
+    const text = fs.readFileSync(absolutePath, 'utf-8')
+    return sanitizeLogText(String(text || ''), { maxChars: PROMPT_TEXT_MAX_CHARS })
+  } catch (_) {
+    return ''
+  }
+}
+
+const listImageFilesRecursive = (dirPath, limit = 24) => {
+  const results = []
+  if (!dirPath || !fs.existsSync(dirPath)) return results
+  const stack = [dirPath]
+  while (stack.length && results.length < limit) {
+    const current = stack.pop()
+    let entries = []
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true })
+    } catch (_) {
+      continue
+    }
+    for (const entry of entries) {
+      if (results.length >= limit) break
+      const full = path.join(current, entry.name)
+      if (entry.isDirectory()) {
+        stack.push(full)
+        continue
+      }
+      if (!entry.isFile()) continue
+      const ext = path.extname(entry.name).toLowerCase()
+      if (!MIME_BY_EXT[ext]) continue
+      results.push(full)
+    }
+  }
+  return results.sort()
+}
+
+const createFailureEvidenceList = (record = {}) => {
+  const items = []
+  const failureConditions = Array.isArray(record.failureConditions)
+    ? record.failureConditions.map((item) => normalizeText(item)).filter(Boolean)
+    : []
+  for (const code of failureConditions.slice(0, 8)) {
+    items.push({
+      code: code.slice(0, 80),
+      message: sanitizeProgressReason(code),
+      score: null
+    })
+  }
+  const errorText = sanitizeProgressReason(record.error)
+  if (errorText && !items.some((item) => item.message === errorText || item.code === errorText)) {
+    items.unshift({
+      code: failureConditions[0] || 'action_failed',
+      message: errorText,
+      score: null
+    })
+  }
+  const scoreCandidates = [
+    record?.quality?.score,
+    record?.row?.qualityScore,
+    record?.score
+  ]
+  for (const candidate of scoreCandidates) {
+    const score = Number(candidate)
+    if (Number.isFinite(score) && items[0]) {
+      items[0].score = score
+      break
+    }
+  }
+  return items
+}
+
+const collectActionAssetsForRun = ({ pluginDataDir, runId, checkpoints = null }) => {
+  const normalizedRunId = normalizeText(runId)
+  if (!pluginDataDir || !normalizedRunId) {
+    return { actions: [], actionAssets: [], availableActionIds: [], failedActionIds: [], importableActionIds: [], completeness: 'none' }
+  }
+  const runDir = path.join(path.resolve(pluginDataDir), 'runs', normalizedRunId)
+  const checkpointActions = isPlainObject(checkpoints?.actions)
+    ? checkpoints.actions
+    : readJsonIfExists(path.join(runDir, 'full-pet-action-checkpoints.json'), { actions: {} })?.actions || {}
+  const actionIds = createUniqueTextList([
+    ...OFFICIAL_PROGRESS_ACTION_IDS,
+    ...Object.keys(isPlainObject(checkpointActions) ? checkpointActions : {})
+  ])
+  const actionAssets = []
+  const actionViews = []
+  const availableActionIds = []
+  const failedActionIds = []
+  const importableActionIds = []
+
+  for (const actionId of actionIds) {
+    const record = isPlainObject(checkpointActions?.[actionId]) ? checkpointActions[actionId] : null
+    const assets = []
+    const failureEvidence = createFailureEvidenceList(record || {})
+    let promptRelativePath = ''
+    let promptText = ''
+
+    const promptCandidates = [
+      path.join(runDir, 'prompts', 'rows', `${actionId}.txt`),
+      path.join(runDir, 'prompts', 'rows', `${actionId}.md`),
+      path.join(runDir, 'prompts', 'keyframes', 'actions', `${actionId}-sprite-row.md`),
+      path.join(runDir, 'prompts', 'keyframes', 'actions', `${actionId}.md`)
+    ]
+    for (const candidate of promptCandidates) {
+      if (!fs.existsSync(candidate)) continue
+      promptRelativePath = toRunRelativePath({ pluginDataDir, runId: normalizedRunId, absolutePath: candidate })
+      promptText = readPromptTextIfExists(candidate)
+      if (promptRelativePath) {
+        assets.push({
+          actionId,
+          kind: 'prompt',
+          relativePath: promptRelativePath,
+          label: '提示词',
+          role: 'prompt',
+          previewable: false,
+          promptText,
+          promptRelativePath,
+          failureEvidence: null
+        })
+      }
+      break
+    }
+
+    const keyframes = Array.isArray(record?.keyframes) ? record.keyframes : []
+    for (const [index, keyframe] of keyframes.slice(0, 4).entries()) {
+      const relative = normalizeSafeRelativePath(
+        keyframe?.relativePath || keyframe?.dataRelativePath || keyframe?.outputRelativePath
+      )
+      if (!relative) continue
+      const absolute = path.join(path.resolve(pluginDataDir), relative)
+      const previewDataUrl = fileToPreviewDataUrl(absolute)
+      const keyframePrompt = normalizeSafeRelativePath(keyframe?.promptRelativePath)
+      assets.push({
+        actionId,
+        kind: 'keyframe',
+        relativePath: relative,
+        label: `关键帧 ${index + 1}`,
+        role: normalizeText(keyframe?.role || keyframe?.stage || `keyframe-${index + 1}`),
+        previewable: Boolean(previewDataUrl),
+        ...(previewDataUrl ? { previewDataUrl } : {}),
+        ...(keyframePrompt ? { promptRelativePath: keyframePrompt } : {}),
+        failureEvidence: failureEvidence[0] || null
+      })
+      actionAssets.push(assets[assets.length - 1])
+    }
+
+    const rowFrames = Array.isArray(record?.row?.frames) ? record.row.frames : []
+    for (const [index, frame] of rowFrames.slice(0, 8).entries()) {
+      const relative = normalizeSafeRelativePath(frame?.relativePath || frame?.path)
+      if (!relative) continue
+      const absolute = path.join(path.resolve(pluginDataDir), relative)
+      const previewDataUrl = fileToPreviewDataUrl(absolute)
+      assets.push({
+        actionId,
+        kind: 'frame',
+        relativePath: relative,
+        label: `帧 ${index + 1}`,
+        role: 'official-row-frame',
+        previewable: Boolean(previewDataUrl),
+        ...(previewDataUrl ? { previewDataUrl } : {}),
+        failureEvidence: record?.ok === false ? (failureEvidence[0] || null) : null
+      })
+      actionAssets.push(assets[assets.length - 1])
+    }
+
+    // Disk fallback for failed actions that still wrote frames/prompts.
+    const officialFrameDir = path.join(runDir, 'official-row-frames', actionId)
+    if (rowFrames.length === 0 && fs.existsSync(officialFrameDir)) {
+      for (const [index, absolute] of listImageFilesRecursive(officialFrameDir, 8).entries()) {
+        const relative = toRunRelativePath({ pluginDataDir, runId: normalizedRunId, absolutePath: absolute })
+        if (!relative) continue
+        const previewDataUrl = fileToPreviewDataUrl(absolute)
+        assets.push({
+          actionId,
+          kind: 'frame',
+          relativePath: relative,
+          label: `磁盘帧 ${index + 1}`,
+          role: 'official-row-frame',
+          previewable: Boolean(previewDataUrl),
+          ...(previewDataUrl ? { previewDataUrl } : {}),
+          failureEvidence: failureEvidence[0] || null
+        })
+        actionAssets.push(assets[assets.length - 1])
+      }
+    }
+
+    const stripCandidates = [
+      path.join(runDir, 'rows', actionId, 'strip.png'),
+      path.join(runDir, 'rows', actionId, 'strip.webp')
+    ]
+    for (const absolute of stripCandidates) {
+      if (!fs.existsSync(absolute)) continue
+      const relative = toRunRelativePath({ pluginDataDir, runId: normalizedRunId, absolutePath: absolute })
+      if (!relative) continue
+      const previewDataUrl = fileToPreviewDataUrl(absolute)
+      assets.push({
+        actionId,
+        kind: 'row',
+        relativePath: relative,
+        label: '动作条',
+        role: 'row-strip',
+        previewable: Boolean(previewDataUrl),
+        ...(previewDataUrl ? { previewDataUrl } : {}),
+        failureEvidence: failureEvidence[0] || null
+      })
+      actionAssets.push(assets[assets.length - 1])
+      break
+    }
+
+    const hasRow = rowFrames.length > 0 || assets.some((asset) => asset.kind === 'frame')
+    const quality = normalizeText(record?.row?.quality || record?.quality)
+    let status = 'pending'
+    let reason = ''
+    if (record?.ok === true && hasRow) {
+      status = actionId === 'running-left' || quality === 'approved-mirror' ? 'mirrored' : 'passed'
+      reason = status === 'mirrored' ? '已从 running-right 镜像' : '已通过'
+    } else if (record?.ok === false || failureEvidence.length > 0) {
+      status = 'failed'
+      reason = failureEvidence[0]?.message || '动作生成失败'
+    } else if (record) {
+      status = hasRow ? 'passed' : 'pending'
+      reason = hasRow ? '已通过' : ''
+    }
+
+    const importable = status === 'passed' || status === 'mirrored'
+    const previewable = assets.some((asset) => asset.previewable)
+    if (importable) {
+      availableActionIds.push(actionId)
+      importableActionIds.push(actionId)
+    }
+    if (status === 'failed') failedActionIds.push(actionId)
+
+    actionViews.push({
+      actionId,
+      status,
+      reason,
+      quality,
+      updatedAt: normalizeText(record?.updatedAt),
+      importable,
+      previewable,
+      score: failureEvidence[0]?.score ?? null,
+      promptText,
+      promptRelativePath,
+      assets,
+      failureEvidence
+    })
+  }
+
+  // Directional pair consistency for importables.
+  const availableSet = new Set(importableActionIds)
+  if (availableSet.has('running-right') !== availableSet.has('running-left')) {
+    for (const actionId of ['running-right', 'running-left']) {
+      availableSet.delete(actionId)
+      const view = actionViews.find((item) => item.actionId === actionId)
+      if (view && view.importable) {
+        view.importable = false
+        if (view.status === 'passed' || view.status === 'mirrored') {
+          view.reason = view.reason
+            ? `${view.reason}；方向配对不完整，暂不可导入`
+            : '方向配对不完整，暂不可导入'
+        }
+      }
+    }
+  }
+
+  const finalImportable = actionViews.filter((item) => item.importable).map((item) => item.actionId)
+  const finalAvailable = finalImportable.slice()
+  const finalFailed = actionViews.filter((item) => item.status === 'failed').map((item) => item.actionId)
+  const completeness = finalAvailable.length === 0
+    ? 'none'
+    : (finalFailed.length > 0 || finalAvailable.length < OFFICIAL_PROGRESS_ACTION_IDS.length)
+      ? 'partial'
+      : 'full'
+
+  return {
+    actions: actionViews,
+    actionAssets: actionAssets.filter((asset) => normalizeSafeRelativePath(asset.relativePath)),
+    availableActionIds: finalAvailable,
+    failedActionIds: finalFailed,
+    importableActionIds: finalImportable,
+    completeness
+  }
+}
 
 const readJsonIfExists = (filePath, fallback = null) => {
   if (!filePath || !fs.existsSync(filePath)) return fallback
@@ -584,7 +952,8 @@ const createActionProgressViews = ({ checkpoints = null, runStatus = '', current
 
 const createWorkflowProgressView = ({
   run = null,
-  checkpoints = null
+  checkpoints = null,
+  pluginDataDir = ''
 } = {}) => {
   if (!isPlainObject(run)) return null
   const runStatus = normalizeText(run.status)
@@ -603,11 +972,49 @@ const createWorkflowProgressView = ({
     importStatus,
     failureReason
   })
-  const actions = createActionProgressViews({
+  const progressActions = createActionProgressViews({
     checkpoints,
     runStatus,
     currentStep
   })
+  const assetBundle = collectActionAssetsForRun({
+    pluginDataDir,
+    runId: normalizeText(run?.runId),
+    checkpoints
+  })
+  // Prefer live progress status, then enrich with assets/import flags from disk.
+  const actionsById = new Map(progressActions.map((action) => [action.actionId, action]))
+  for (const assetAction of assetBundle.actions) {
+    const current = actionsById.get(assetAction.actionId)
+    if (!current) {
+      actionsById.set(assetAction.actionId, assetAction)
+      continue
+    }
+    actionsById.set(assetAction.actionId, {
+      ...current,
+      importable: assetAction.importable,
+      previewable: assetAction.previewable,
+      score: assetAction.score,
+      promptText: assetAction.promptText,
+      promptRelativePath: assetAction.promptRelativePath,
+      assets: assetAction.assets,
+      failureEvidence: assetAction.failureEvidence,
+      ...(current.status === 'pending' && assetAction.status !== 'pending'
+        ? {
+            status: assetAction.status,
+            reason: assetAction.reason || current.reason,
+            quality: assetAction.quality || current.quality
+          }
+        : {}),
+      ...(current.status === 'failed' && !current.reason && assetAction.reason
+        ? { reason: assetAction.reason }
+        : {})
+    })
+  }
+  const actions = OFFICIAL_PROGRESS_ACTION_IDS
+    .map((actionId) => actionsById.get(actionId))
+    .filter(Boolean)
+    .concat([...actionsById.values()].filter((action) => !OFFICIAL_PROGRESS_ACTION_IDS.includes(action.actionId)))
   const activeStage = stages.find((stage) => stage.status === 'active')
     || stages.find((stage) => stage.status === 'failed')
     || stages.find((stage) => stage.status === 'completed')
@@ -643,12 +1050,26 @@ const createWorkflowProgressView = ({
     summary = activeStage ? ('当前阶段：' + activeStage.label) : '生成进度更新中'
   }
 
+  const importableActionIds = actions.filter((action) => action.importable).map((action) => action.actionId)
+  const availableActionIds = importableActionIds.slice()
+  const failedActionIds = failedActions.map((action) => action.actionId)
+  const completeness = availableActionIds.length === 0
+    ? 'none'
+    : (failedActionIds.length > 0 || availableActionIds.length < OFFICIAL_PROGRESS_ACTION_IDS.length)
+      ? 'partial'
+      : 'full'
+
   return {
     phase: normalizeText(activeStage?.id) || 'generate',
     phaseLabel: normalizeText(activeStage?.label) || '生成资源',
     summary: sanitizeProgressReason(summary) || '生成进度更新中',
     stages,
     actions,
+    actionAssets: assetBundle.actionAssets,
+    availableActionIds,
+    failedActionIds,
+    importableActionIds,
+    completeness,
     runStatus,
     currentStep,
     failureReason
@@ -699,7 +1120,7 @@ const readWorkflowDiagnostics = ({ pluginDataDir, runId }) => {
             requestedOutputCount: Number(conditioning.requestedOutputCount) || 0
           }
         : null,
-      progress: createWorkflowProgressView({ run, checkpoints })
+      progress: createWorkflowProgressView({ run, checkpoints, pluginDataDir })
     }
   } catch (_) {
     return null
@@ -764,11 +1185,57 @@ const createExistingActionTask = ({ actionName, motionPrompt }) => {
   }
 }
 
+
+const finalizeWorkflowResult = (result) => {
+  const diagnostics = result?.diagnostics || null
+  const progress = diagnostics?.progress || null
+  if (!progress) return result
+  return {
+    ...result,
+    actionAssets: Array.isArray(result.actionAssets) && result.actionAssets.length
+      ? result.actionAssets
+      : (Array.isArray(progress.actionAssets) ? progress.actionAssets : []),
+    completeness: result.completeness || progress.completeness || '',
+    availableActionIds: Array.isArray(result.availableActionIds) && result.availableActionIds.length
+      ? result.availableActionIds
+      : (Array.isArray(progress.availableActionIds) ? progress.availableActionIds : []),
+    failedActionIds: Array.isArray(result.failedActionIds) && result.failedActionIds.length
+      ? result.failedActionIds
+      : (Array.isArray(progress.failedActionIds) ? progress.failedActionIds : []),
+    omittedActionIds: Array.isArray(result.omittedActionIds) && result.omittedActionIds.length
+      ? result.omittedActionIds
+      : (Array.isArray(progress.failedActionIds) ? progress.failedActionIds : []),
+    importNotes: result.importNotes || ''
+  }
+}
+
+const withActionAssetFields = (result, diagnostics = null) => {
+  const progress = diagnostics?.progress || result?.diagnostics?.progress || null
+  if (!progress) return result
+  return {
+    ...result,
+    actionAssets: Array.isArray(result.actionAssets) && result.actionAssets.length
+      ? result.actionAssets
+      : (Array.isArray(progress.actionAssets) ? progress.actionAssets : []),
+    completeness: result.completeness || progress.completeness || '',
+    availableActionIds: Array.isArray(result.availableActionIds) && result.availableActionIds.length
+      ? result.availableActionIds
+      : (Array.isArray(progress.availableActionIds) ? progress.availableActionIds : []),
+    failedActionIds: Array.isArray(result.failedActionIds) && result.failedActionIds.length
+      ? result.failedActionIds
+      : (Array.isArray(progress.failedActionIds) ? progress.failedActionIds : []),
+    omittedActionIds: Array.isArray(result.omittedActionIds) && result.omittedActionIds.length
+      ? result.omittedActionIds
+      : (Array.isArray(progress.failedActionIds) ? progress.failedActionIds : [])
+  }
+}
+
 const createCreatorWorkflowService = ({
   pluginService,
   imageGenerationModelService,
   actionService,
   creatorReferenceService,
+  petPackService = null,
   hatchPetAgentService = null,
   appLogService = null,
   providerHealthTimeoutMs = DEFAULT_PROVIDER_HEALTH_TIMEOUT_MS,
@@ -1492,6 +1959,365 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
     label: '正在重新生成 canonical identity'
   })
 
+  const importAvailableActions = async ({ runId, activate = true } = {}) => {
+    const normalizedRunId = normalizeText(runId)
+    if (!normalizedRunId) {
+      return createWorkflowResult({
+        state: 'missing-input',
+        code: 'missing_run_id',
+        message: '导入可用动作需要 run id'
+      })
+    }
+
+    return runExclusively({
+      mode: 'full-pet',
+      message: `正在导入 run ${normalizedRunId} 的可用动作`
+    }, async () => {
+      assertPluginReady()
+      const pluginDataDir = pluginService.getPluginCreatorDataDir(CREATOR_STUDIO_PLUGIN_ID)
+      const runDir = path.join(path.resolve(pluginDataDir), 'runs', normalizedRunId)
+      const runPath = path.join(runDir, 'run.json')
+      const run = readJsonIfExists(runPath, null)
+      if (!isPlainObject(run)) {
+        return createWorkflowResult({
+          state: 'missing-input',
+          code: 'run_not_found',
+          message: `找不到 run ${normalizedRunId}`
+        })
+      }
+
+      const checkpoints = readJsonIfExists(path.join(runDir, 'full-pet-action-checkpoints.json'), null)
+      const diagnostics = readWorkflowDiagnostics({ pluginDataDir, runId: normalizedRunId })
+      const assetBundle = collectActionAssetsForRun({
+        pluginDataDir,
+        runId: normalizedRunId,
+        checkpoints
+      })
+      const progress = diagnostics?.progress || null
+      let availableActionIds = createUniqueTextList(
+        progress?.importableActionIds ||
+        progress?.availableActionIds ||
+        assetBundle.importableActionIds ||
+        assetBundle.availableActionIds
+      )
+      const availableSet = new Set(availableActionIds)
+      if (availableSet.has('running-right') !== availableSet.has('running-left')) {
+        availableSet.delete('running-right')
+        availableSet.delete('running-left')
+      }
+      availableActionIds = [...availableSet]
+      const failedActionIds = createUniqueTextList(progress?.failedActionIds || assetBundle.failedActionIds)
+      const omittedActionIds = createUniqueTextList([
+        ...failedActionIds,
+        ...OFFICIAL_PROGRESS_ACTION_IDS.filter((actionId) => !availableSet.has(actionId))
+      ])
+
+      if (availableActionIds.length === 0) {
+        return createWorkflowResult({
+          state: 'review-required',
+          code: 'no_importable_actions',
+          message: '当前没有可导入的可用动作。失败资产仍可在下方审查台查看。',
+          run: createRunView({
+            state: 'review-required',
+            mode: 'full-pet',
+            runId: normalizedRunId,
+            commandId: 'import-available-actions',
+            message: 'No importable actions',
+            diagnostics
+          }),
+          diagnostics,
+          actionAssets: assetBundle.actionAssets,
+          completeness: 'none',
+          availableActionIds: [],
+          failedActionIds,
+          omittedActionIds,
+          importNotes: '没有可导入动作'
+        })
+      }
+
+      let defaultActionNote = ''
+      let importedPackId = ''
+      let activatedPackId = ''
+      let activePet = null
+      let importMessage = ''
+      let usedPartialComposer = false
+
+      const collectFramePathsForAction = (actionId) => {
+        const paths = []
+        const record = isPlainObject(checkpoints?.actions?.[actionId]) ? checkpoints.actions[actionId] : null
+        for (const frame of Array.isArray(record?.row?.frames) ? record.row.frames : []) {
+          const relative = normalizeSafeRelativePath(frame?.relativePath || frame?.path)
+          if (!relative) continue
+          const absolute = path.join(path.resolve(pluginDataDir), relative)
+          if (fs.existsSync(absolute) && fs.statSync(absolute).isFile()) paths.push(absolute)
+        }
+        if (paths.length === 0) {
+          paths.push(...listImageFilesRecursive(path.join(runDir, 'official-row-frames', actionId), 24))
+        }
+        return paths
+      }
+
+      const outputDirExisting = normalizeText(run?.artifacts?.outputDir)
+      const hasExistingImportableOutput = Boolean(
+        outputDirExisting &&
+        fs.existsSync(outputDirExisting) &&
+        fs.existsSync(path.join(outputDirExisting, 'pet.json')) &&
+        availableActionIds.includes('idle') &&
+        ['ready_for_review', 'approved', 'imported'].includes(normalizeText(run?.status))
+      )
+
+      if (hasExistingImportableOutput && petPackService?.inspectPackSource && petPackService?.importPack) {
+        if (normalizeText(run.status) === 'ready_for_review') {
+          try {
+            await pluginService.runCommand(CREATOR_STUDIO_PLUGIN_ID, 'approve-run', {
+              runId: normalizedRunId,
+              humanApproval: {
+                approvedBy: 'create-ui',
+                note: 'Import available actions from Create UI'
+              }
+            })
+          } catch (_) {
+            // Approval may fail QA for partial packages; fall through to partial composer.
+          }
+        }
+        try {
+          const imported = await pluginService.runCommand(CREATOR_STUDIO_PLUGIN_ID, 'import-approved-pet', {
+            runId: normalizedRunId,
+            activate: activate !== false
+          })
+          const importedRun = getCreatorStudioRun(imported)
+          importedPackId = normalizeText(importedRun?.importedPackId || imported?.result?.imported?.pack?.id)
+          activatedPackId = normalizeText(importedRun?.activatedPackId || imported?.result?.activated?.activePackId)
+          activePet = imported?.result?.imported?.pack || null
+          importMessage = getCommandMessage(imported, `已导入可用动作：${availableActionIds.join(', ')}`)
+        } catch (_) {
+          // Fall through to partial directory import.
+        }
+      }
+
+      if (!importedPackId) {
+        if (!petPackService?.inspectPackSource || !petPackService?.importPack) {
+          return createWorkflowResult({
+            state: 'import-failed',
+            code: 'pet_pack_import_unavailable',
+            message: '当前 Host 未启用 pet pack 导入能力，无法导入可用动作',
+            run: createRunView({
+              state: 'import-failed',
+              mode: 'full-pet',
+              runId: normalizedRunId,
+              commandId: 'import-available-actions',
+              message: 'pet pack import unavailable',
+              diagnostics
+            }),
+            diagnostics,
+            actionAssets: assetBundle.actionAssets,
+            completeness: 'partial',
+            availableActionIds,
+            failedActionIds,
+            omittedActionIds
+          })
+        }
+
+        const partialRoot = path.join(runDir, 'partial-import')
+        const framesRoot = path.join(partialRoot, 'frames')
+        fs.rmSync(partialRoot, { recursive: true, force: true })
+        fs.mkdirSync(framesRoot, { recursive: true })
+
+        const actions = []
+        for (const actionId of availableActionIds) {
+          const framePaths = collectFramePathsForAction(actionId)
+          if (framePaths.length === 0) continue
+          const actionDir = path.join(framesRoot, actionId)
+          fs.mkdirSync(actionDir, { recursive: true })
+          framePaths.forEach((sourcePath, index) => {
+            const ext = path.extname(sourcePath) || '.png'
+            fs.copyFileSync(sourcePath, path.join(actionDir, `${String(index + 1).padStart(2, '0')}${ext}`))
+          })
+          const files = fs.readdirSync(actionDir).filter((name) => !name.startsWith('.')).sort()
+          if (!files.length) continue
+          actions.push({
+            id: actionId,
+            label: actionId,
+            kind: actionId === 'idle' ? 'state' : 'action',
+            loop: actionId === 'idle' || actionId.startsWith('running'),
+            frameCount: files.length,
+            frameMs: 100,
+            frameWidth: 192,
+            frameHeight: 208,
+            frameRow: 0,
+            frameColumn: 0,
+            sprite: path.posix.join('frames', actionId, files[0])
+          })
+        }
+
+        if (!actions.some((action) => action.id === 'idle')) {
+          const donor = actions[0]
+          if (!donor) {
+            return createWorkflowResult({
+              state: 'review-required',
+              code: 'no_importable_action_frames',
+              message: '可用动作缺少可导入帧文件。失败资产仍可在审查台查看。',
+              run: createRunView({
+                state: 'review-required',
+                mode: 'full-pet',
+                runId: normalizedRunId,
+                commandId: 'import-available-actions',
+                message: 'No importable frames',
+                diagnostics
+              }),
+              diagnostics,
+              actionAssets: assetBundle.actionAssets,
+              completeness: 'none',
+              availableActionIds: [],
+              failedActionIds,
+              omittedActionIds,
+              importNotes: '缺少可导入帧'
+            })
+          }
+          const idleDir = path.join(framesRoot, 'idle')
+          fs.mkdirSync(idleDir, { recursive: true })
+          const donorPath = path.join(partialRoot, donor.sprite)
+          const idleName = '01' + path.extname(donorPath)
+          fs.copyFileSync(donorPath, path.join(idleDir, idleName))
+          actions.unshift({
+            id: 'idle',
+            label: 'idle',
+            kind: 'state',
+            loop: true,
+            frameCount: 1,
+            frameMs: 100,
+            frameWidth: donor.frameWidth,
+            frameHeight: donor.frameHeight,
+            frameRow: 0,
+            frameColumn: 0,
+            sprite: path.posix.join('frames', 'idle', idleName)
+          })
+          if (!availableActionIds.includes('idle')) availableActionIds.unshift('idle')
+          defaultActionNote = 'idle 原生成失败，已用其他可用动作帧降级作为 defaultAction=idle（静帧占位），请尽快重生成 idle。'
+        }
+
+        const petId = normalizeText(run?.petId) || slugify(run?.input?.petName || normalizedRunId)
+        const displayName = normalizeText(run?.input?.petName) || petId
+        const clickAction = actions.some((action) => action.id === 'waving') ? 'waving' : 'idle'
+        const actionAvailability = Object.fromEntries(OFFICIAL_PROGRESS_ACTION_IDS.map((actionId) => {
+          const available = actions.some((action) => action.id === actionId)
+          return [actionId, {
+            available,
+            quality: available ? 'row-real' : '',
+            reason: available ? '' : (failedActionIds.includes(actionId) ? 'failed' : 'omitted')
+          }]
+        }))
+        const manifest = {
+          schemaVersion: 1,
+          id: petId,
+          displayName,
+          version: '1.0.0-partial',
+          defaultAction: 'idle',
+          clickAction,
+          requiredActionIds: ['idle'],
+          availableActionIds: actions.map((action) => action.id),
+          omittedActionIds: omittedActionIds.filter((actionId) => !actions.some((action) => action.id === actionId)),
+          actionAvailability,
+          actions,
+          creatorStudio: {
+            sourceRunId: normalizedRunId,
+            importMode: 'available-actions',
+            completeness: 'partial',
+            failedActionIds,
+            notes: defaultActionNote
+          }
+        }
+        fs.writeFileSync(path.join(partialRoot, 'pet.json'), `${JSON.stringify(manifest, null, 2)}\n`)
+        usedPartialComposer = true
+
+        const inspection = petPackService.inspectPackSource(partialRoot)
+        if (!inspection?.valid || !inspection.selectionId) {
+          const errors = Array.isArray(inspection?.errors) ? inspection.errors.join('; ') : 'partial pack inspection failed'
+          return createWorkflowResult({
+            state: 'import-failed',
+            code: 'partial_pack_invalid',
+            message: `可用动作包校验失败：${errors}`,
+            run: createRunView({
+              state: 'import-failed',
+              mode: 'full-pet',
+              runId: normalizedRunId,
+              commandId: 'import-available-actions',
+              message: errors,
+              diagnostics
+            }),
+            diagnostics,
+            actionAssets: assetBundle.actionAssets,
+            completeness: 'partial',
+            availableActionIds,
+            failedActionIds,
+            omittedActionIds,
+            importNotes: errors
+          })
+        }
+
+        const imported = petPackService.importPack(inspection.selectionId)
+        importedPackId = normalizeText(imported?.pack?.id || imported?.manifest?.id)
+        activePet = imported?.pack || null
+        if (activate !== false && importedPackId && petPackService.setActivePack) {
+          const activated = petPackService.setActivePack(importedPackId)
+          activatedPackId = normalizeText(activated?.activePackId || importedPackId)
+          activePet = activated?.pack || activePet
+        }
+        importMessage = `已导入可用动作（partial）：${availableActionIds.join(', ')}`
+      }
+
+      try {
+        const latest = readJsonIfExists(runPath, run) || run
+        fs.writeFileSync(runPath, `${JSON.stringify({
+          ...latest,
+          status: 'imported',
+          importStatus: 'imported',
+          currentStep: 'imported',
+          importedPackId,
+          activatedPackId,
+          importCompleteness: failedActionIds.length ? 'partial' : 'full',
+          availableActionIds,
+          omittedActionIds,
+          failedActionIds,
+          importNotes: defaultActionNote || (failedActionIds.length
+            ? `已导入可用动作，失败动作未导入：${failedActionIds.join(', ')}`
+            : '已导入全部可用动作')
+        }, null, 2)}\n`)
+      } catch (_) {}
+
+      const nextDiagnostics = readWorkflowDiagnostics({ pluginDataDir, runId: normalizedRunId })
+      const notes = [
+        failedActionIds.length ? `失败未导入：${failedActionIds.join(', ')}` : '',
+        defaultActionNote,
+        usedPartialComposer ? '使用了可用动作 partial 包导入' : ''
+      ].filter(Boolean).join('；')
+
+      return createWorkflowResult({
+        state: 'completed',
+        code: failedActionIds.length ? 'partial_actions_imported' : 'actions_imported',
+        message: importMessage || `已导入可用动作：${availableActionIds.join(', ')}`,
+        run: createRunView({
+          state: 'completed',
+          mode: 'full-pet',
+          runId: normalizedRunId,
+          commandId: 'import-available-actions',
+          message: importMessage || 'imported available actions',
+          importedPackId,
+          activatedPackId,
+          diagnostics: nextDiagnostics
+        }),
+        activePet,
+        diagnostics: nextDiagnostics,
+        actionAssets: assetBundle.actionAssets,
+        completeness: failedActionIds.length || usedPartialComposer ? 'partial' : 'full',
+        availableActionIds,
+        failedActionIds,
+        omittedActionIds,
+        importNotes: notes
+      })
+    })
+  }
+
   return {
     approveReferenceSourcePath,
     getState,
@@ -1500,7 +2326,8 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
     generateNewCharacter,
     generateExistingAction,
     retryFullPetAction,
-    retryFullPetIdentity
+    retryFullPetIdentity,
+    importAvailableActions
   }
 }
 
@@ -1509,7 +2336,8 @@ module.exports = {
     readBasicActionCoverage,
     resolveOfficialActionCoverage,
     readWorkflowDiagnostics,
-    createWorkflowProgressView
+    createWorkflowProgressView,
+    collectActionAssetsForRun
   },
   CREATOR_STUDIO_DASHBOARD_ID,
   CREATOR_STUDIO_PLUGIN_ID,

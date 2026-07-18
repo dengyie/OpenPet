@@ -173,6 +173,7 @@ const createOpenPetRuntime = ({
     imageGenerationModelService,
     actionService,
     creatorReferenceService,
+    petPackService,
     hatchPetAgentService,
     appLogService
   })

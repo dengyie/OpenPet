@@ -2018,6 +2018,11 @@ export interface CreatorRetryIdentityRequest {
   runId: string
 }
 
+export interface CreatorImportAvailableActionsRequest {
+  runId: string
+  activate?: boolean
+}
+
 export interface CreatorWorkflowConditioningSummaryViewState {
   mode: string
   endpoint: string
@@ -2049,12 +2054,45 @@ export interface CreatorWorkflowStageViewState {
   message?: string
 }
 
+export type CreatorActionAssetKind =
+  | 'keyframe'
+  | 'row'
+  | 'sheet'
+  | 'frame'
+  | 'prompt'
+
+export interface CreatorActionFailureEvidenceViewState {
+  code: string
+  message: string
+  score?: number | null
+}
+
+export interface CreatorActionAssetViewState {
+  actionId: string
+  kind: CreatorActionAssetKind
+  relativePath: string
+  label: string
+  role?: string
+  previewable: boolean
+  previewDataUrl?: string
+  promptText?: string
+  promptRelativePath?: string
+  failureEvidence?: CreatorActionFailureEvidenceViewState | null
+}
+
 export interface CreatorActionAttemptViewState {
   actionId: string
   status: CreatorActionAttemptStatus
   reason: string
   quality?: string
   updatedAt?: string
+  importable?: boolean
+  previewable?: boolean
+  score?: number | null
+  promptText?: string
+  promptRelativePath?: string
+  assets?: CreatorActionAssetViewState[]
+  failureEvidence?: CreatorActionFailureEvidenceViewState[]
 }
 
 export interface CreatorWorkflowProgressViewState {
@@ -2063,6 +2101,11 @@ export interface CreatorWorkflowProgressViewState {
   summary: string
   stages: CreatorWorkflowStageViewState[]
   actions: CreatorActionAttemptViewState[]
+  actionAssets?: CreatorActionAssetViewState[]
+  availableActionIds?: string[]
+  failedActionIds?: string[]
+  importableActionIds?: string[]
+  completeness?: 'full' | 'partial' | 'none'
   runStatus: string
   currentStep: string
   failureReason: string
@@ -2103,6 +2146,12 @@ export interface CreatorWorkflowResult extends OkResponse {
   clickActionChange?: CreatorClickActionChangeViewState | null
   basicActions?: CreatorBasicActionCoverageViewState | null
   diagnostics?: CreatorWorkflowDiagnosticsViewState | null
+  actionAssets?: CreatorActionAssetViewState[]
+  completeness?: 'full' | 'partial' | 'none'
+  availableActionIds?: string[]
+  failedActionIds?: string[]
+  omittedActionIds?: string[]
+  importNotes?: string
 }
 
 export interface CreatorLastRunResult extends OkResponse {
@@ -3562,6 +3611,7 @@ export interface ControlCenterApi {
   generateCreatorExistingAction: (payload: CreatorGenerateExistingActionRequest) => Promise<CreatorWorkflowResult>
   retryCreatorAction: (payload: CreatorRetryActionRequest) => Promise<CreatorWorkflowResult>
   retryCreatorIdentity: (payload: CreatorRetryIdentityRequest) => Promise<CreatorWorkflowResult>
+  importCreatorAvailableActions: (payload: CreatorImportAvailableActionsRequest) => Promise<CreatorWorkflowResult>
   getCreatorLastRun: () => Promise<CreatorLastRunResult>
   playPetAction: (actionId: string) => Promise<PetActionPlaybackResult>
   runCreatorStudioDefaultFlow: (prompt: string) => Promise<CreatorStudioDefaultFlowResult>

@@ -43,6 +43,7 @@ import type {
   CreatorGenerateNewCharacterRequest,
   CreatorRetryActionRequest,
   CreatorRetryIdentityRequest,
+  CreatorImportAvailableActionsRequest,
   CreatorLastRunResult,
   CreatorLastRunViewState,
   CreatorReferencePickerResult,
@@ -4177,6 +4178,43 @@ export const demoControlCenterAPI: ControlCenterApi = {
       run,
       basicActions: null,
       diagnostics: createDemoCreatorDiagnostics(run.runId, 'retry-identity')
+    }
+  },
+  importCreatorAvailableActions: async (payload: CreatorImportAvailableActionsRequest): Promise<CreatorWorkflowResult> => {
+    const runId = String(payload?.runId || demoState.creatorLastRun?.runId || 'demo-run').trim()
+    return {
+      ok: true,
+      state: 'completed',
+      code: 'partial_actions_imported',
+      message: '已导入可用动作（demo partial）：idle, running-right, running-left',
+      run: {
+        state: 'completed',
+        mode: 'full-pet',
+        runId,
+        commandId: 'import-available-actions',
+        message: 'demo partial import',
+        importedActionId: '',
+        importedPackId: 'demo-partial-pack',
+        activatedPackId: 'demo-partial-pack'
+      },
+      activePet: {
+        id: 'demo-partial-pack',
+        displayName: 'Demo Partial Pack',
+        version: '1.0.0-partial',
+        defaultAction: 'idle',
+        clickAction: 'idle',
+        actionCount: 3,
+        sourceType: 'directory',
+        isActive: true,
+        isBuiltIn: false
+      } as any,
+      completeness: 'partial',
+      availableActionIds: ['idle', 'running-right', 'running-left'],
+      failedActionIds: ['waving'],
+      omittedActionIds: ['waving', 'jumping', 'failed', 'waiting', 'running', 'review'],
+      importNotes: '失败未导入：waving',
+      actionAssets: [],
+      diagnostics: createDemoCreatorDiagnostics(runId, 'import-available-actions')
     }
   },
   getCreatorLastRun: async (): Promise<CreatorLastRunResult> => ({
