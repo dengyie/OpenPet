@@ -1,0 +1,133 @@
+/**
+ * 布局层：应用外壳（shell / sidebar / nav / content）。
+ * 消费 tokens.css。替代 styles.css 中对应的 shell 区块。
+ */
+
+.shell {
+  display: grid;
+  grid-template-columns: var(--op-sidebar-width) minmax(0, 1fr);
+  min-width: 0;
+  min-height: var(--op-shell-min-height);
+  width: 100%;
+  height: 100%;
+  background: var(--op-color-bg);
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--op-space-9);
+  min-width: 0;
+  padding: var(--op-space-9) var(--op-space-6);
+  border-right: 1px solid var(--op-color-border);
+  background: var(--op-color-surface);
+}
+
+.brand {
+  display: grid;
+  gap: 3px;
+  padding: 0 var(--op-space-3);
+}
+
+.brand strong {
+  font-size: var(--op-font-size-3xl);
+  line-height: var(--op-line-height-tight);
+  color: var(--op-color-text-strong);
+}
+
+.brand span {
+  color: var(--op-color-text-muted);
+  font-size: var(--op-font-size-md);
+}
+
+.nav {
+  display: grid;
+  gap: var(--op-space-1);
+}
+
+.nav button {
+  min-height: var(--op-nav-height);
+  padding: 0 var(--op-space-4);
+  border-radius: var(--op-radius-sm);
+  background: transparent;
+  color: var(--op-color-text-faint);
+  text-align: left;
+  cursor: pointer;
+  font-size: var(--op-font-size-lg);
+  transition: background var(--op-transition-fast), color var(--op-transition-fast);
+}
+
+.nav button:hover {
+  background: var(--op-color-surface-sunken);
+  color: var(--op-color-text);
+}
+
+.nav button.active {
+  background: var(--op-color-accent-soft);
+  color: var(--op-color-accent-text);
+  font-weight: var(--op-font-weight-semibold);
+}
+
+.content {
+  min-width: 0;
+  overflow-y: auto;
+  padding: var(--op-space-8) var(--op-space-9);
+}
+
+.pane {
+  display: grid;
+  gap: var(--op-space-7);
+  min-width: 0;
+  width: 100%;
+  max-width: 860px;
+}
+
+/* pane 级宽度覆盖（保留旧层语义） */
+.ai-pane {
+  max-width: 1180px;
+}
+
+.creator-pane {
+  max-width: 920px;
+}
+
+.pet-pane {
+  max-width: 1480px;
+}
+
+.pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--op-space-7);
+  min-height: 52px;
+  padding-bottom: var(--op-space-7);
+  border-bottom: 1px solid var(--op-color-border);
+}
+
+.pane-header h1 {
+  margin: 0;
+  font-size: var(--op-font-size-4xl);
+  line-height: 28px;
+  font-weight: var(--op-font-weight-semibold);
+}
+
+.pane-header p {
+  margin: var(--op-space-1) 0 0;
+  color: var(--op-color-text-muted);
+  font-size: var(--op-font-size-lg);
+}
+
+.header-actions {
+  display: flex;
+  gap: var(--op-space-4);
+  flex-shrink: 0;
+}
+
+.loading {
+  display: grid;
+  place-items: center;
+  min-height: 300px;
+  color: var(--op-color-text-muted);
+  font-size: var(--op-font-size-lg);
+}

@@ -1,0 +1,125 @@
+/**
+ * OpenPet Design Tokens
+ *
+ * 唯一可信的设计变量源。所有 UI 样式必须消费这些令牌，
+ * 禁止在组件样式里写魔法颜色/间距/圆角值。
+ *
+ * 来源：design-system/MASTER.md 视觉种子
+ *   - 柔和白底 + 蓝灰阴影
+ *   - 紫色仅用于激活强调、边框、徽标、主要描边动作
+ *   - 圆角大容器 + 充足内边距
+ *   - 接近原生桌面应用的克制密度
+ */
+
+:root {
+  /* ── 色彩：表面 ─────────────────────────────── */
+  --op-color-bg: #f4f6f8;            /* 应用底色 */
+  --op-color-surface: #ffffff;       /* 卡片/面板 */
+  --op-color-surface-sunken: #f8fafc;/* 凹陷/次级表面 */
+  --op-color-surface-raised: #fbfcff;/* 浮起表面 */
+  --op-color-border: #dde2e8;        /* 主边框 */
+  --op-color-border-strong: #cfd6df; /* 强边框 */
+  --op-color-border-soft: #e8edf5;   /* 弱边框/分隔线 */
+
+  /* ── 色彩：文本 ─────────────────────────────── */
+  --op-color-text: #1f2937;          /* 主文本 */
+  --op-color-text-strong: #111827;   /* 标题 */
+  --op-color-text-muted: #6b7280;    /* 次要文本 */
+  --op-color-text-subtle: #64748b;   /* 辅助/说明 */
+  --op-color-text-faint: #475569;    /* 更弱 */
+
+  /* ── 色彩：品牌/强调 ─────────────────────────── */
+  --op-color-accent: #6f5cff;        /* 主强调紫 */
+  --op-color-accent-hover: #5f4de6;
+  --op-color-accent-soft: #f6f2ff;   /* 强调浅底 */
+  --op-color-accent-border: #e0d9ff;
+  --op-color-accent-text: #5a48d6;
+
+  /* ── 色彩：语义 ─────────────────────────────── */
+  --op-color-success: #15803d;
+  --op-color-success-soft: #f0fdf4;
+  --op-color-success-border: #bbf7d0;
+  --op-color-warning: #92400e;
+  --op-color-warning-soft: #fffdf8;
+  --op-color-warning-border: #fde68a;
+  --op-color-danger: #b91c1c;
+  --op-color-danger-hover: #991b1b;
+  --op-color-danger-soft: #fef2f2;
+  --op-color-danger-border: #fecaca;
+  --op-color-info-soft: #eef2f7;
+
+  /* ── 间距刻度（4px 基线） ────────────────────── */
+  --op-space-0: 0;
+  --op-space-1: 4px;
+  --op-space-2: 6px;
+  --op-space-3: 8px;
+  --op-space-4: 10px;
+  --op-space-5: 12px;
+  --op-space-6: 14px;
+  --op-space-7: 16px;
+  --op-space-8: 18px;
+  --op-space-9: 20px;
+  --op-space-10: 24px;
+  --op-space-11: 28px;
+  --op-space-12: 32px;
+
+  /* ── 圆角 ───────────────────────────────────── */
+  --op-radius-xs: 6px;
+  --op-radius-sm: 7px;
+  --op-radius-md: 8px;
+  --op-radius-lg: 12px;
+  --op-radius-xl: 14px;
+  --op-radius-2xl: 16px;
+  --op-radius-3xl: 18px;
+  --op-radius-pill: 999px;
+
+  /* ── 阴影（蓝灰系，克制） ─────────────────────── */
+  --op-shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --op-shadow-sm: 0 8px 24px rgba(31, 41, 55, 0.04);
+  --op-shadow-md: 0 8px 24px rgba(15, 23, 42, 0.05);
+  --op-shadow-lg: 0 14px 30px rgba(15, 23, 42, 0.05);
+  --op-shadow-accent: 0 14px 30px rgba(111, 92, 255, 0.32);
+  --op-shadow-danger: 0 10px 22px rgba(209, 67, 67, 0.18);
+  --op-shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  --op-shadow-focus: 0 0 0 2px rgba(111, 92, 255, 0.35);
+
+  /* ── 字体刻度 ───────────────────────────────── */
+  --op-font-size-xs: 10px;
+  --op-font-size-sm: 11px;
+  --op-font-size-md: 12px;
+  --op-font-size-lg: 13px;
+  --op-font-size-xl: 14px;
+  --op-font-size-2xl: 16px;
+  --op-font-size-3xl: 18px;
+  --op-font-size-4xl: 22px;
+
+  --op-font-weight-normal: 400;
+  --op-font-weight-medium: 500;
+  --op-font-weight-semibold: 600;
+  --op-font-weight-bold: 700;
+
+  --op-line-height-tight: 1.25;
+  --op-line-height-normal: 1.5;
+  --op-line-height-relaxed: 1.65;
+
+  /* ── 字体族 ─────────────────────────────────── */
+  --op-font-family: -apple-system, BlinkMacSystemFont, "PingFang SC",
+    "Microsoft YaHei", "Segoe UI", sans-serif;
+  --op-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+
+  /* ── 布局 ───────────────────────────────────── */
+  --op-sidebar-width: 188px;
+  --op-shell-min-height: 560px;
+  --op-nav-height: 34px;
+
+  /* ── 动效 ───────────────────────────────────── */
+  --op-transition-fast: 120ms ease;
+  --op-transition-base: 180ms ease;
+
+  /* ── z-index ────────────────────────────────── */
+  --op-z-dropdown: 100;
+  --op-z-overlay: 200;
+  --op-z-modal: 300;
+}
+
+/* 窄窗口紧凑模式由布局层覆盖 */

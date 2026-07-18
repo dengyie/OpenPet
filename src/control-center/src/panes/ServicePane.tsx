@@ -4,6 +4,11 @@ import type {
   ServiceLogEntry,
   ServiceStatusViewState
 } from '../../../shared/openpet-contracts'
+import { Button } from '../components/Button'
+import { Card } from '../components/Card'
+import { FieldRow, ReadonlyRow } from '../components/Field'
+import { EmptyState, StatusLine } from '../components/Feedback'
+import { PaneScaffold } from '../components/PaneScaffold'
 import { Toggle } from '../components/Toggle'
 
 type LogExportFormat = 'json' | 'csv'
@@ -43,38 +48,24 @@ export function ServicePane({ serviceStatus, logs, logsPage, status, saving, onC
     : '未启动'
 
   return (
-    <section className="pane">
-      <header className="pane-header">
-        <div>
-          <h1>Service</h1>
-          <p>本机 HTTP API</p>
-        </div>
-        <div className="header-actions">
-          <button type="button" className="ghost" onClick={onRotateToken} disabled={saving}>
-            轮换令牌
-          </button>
-          <button type="button" className="primary" onClick={onSave} disabled={saving}>
-            {saving ? '保存中' : '保存'}
-          </button>
-        </div>
-      </header>
-
-      <div className="section">
-        <div className="field-row">
-          <div>
-            <div className="field-label">HTTP API</div>
-            <div className="field-note">{runtime.enabled ? '运行中' : '未启动'}</div>
-          </div>
+    <PaneScaffold
+      title="Service"
+      description="本机 HTTP API"
+      actions={
+        <>
+          <Button variant="ghost" onClick={onRotateToken} disabled={saving}>轮换令牌</Button>
+          <Button variant="primary" onClick={onSave} disabled={saving}>{saving ? '保存中' : '保存'}</Button>
+        </>
+      }
+    >
+      <Card>
+        <FieldRow label="HTTP API" note={runtime.enabled ? '运行中' : '未启动'}>
           <Toggle ariaLabel="Enable HTTP API" checked={config.enabled} onChange={(enabled) => onChange({ enabled })} />
-        </div>
+        </FieldRow>
 
-        <div className="field-row">
-          <div>
-            <div className="field-label">监听地址</div>
-            <div className="field-note">固定为本机回环地址</div>
-          </div>
+        <FieldRow label="监听地址" note="固定为本机回环地址">
           <input className="text-input" value="127.0.0.1" disabled />
-        </div>
+        </FieldRow>
 
         <label className="field-row">
           <span className="field-label">端口</span>
@@ -88,31 +79,20 @@ export function ServicePane({ serviceStatus, logs, logsPage, status, saving, onC
           />
         </label>
 
-        <div className="readonly-row">
-          <span>当前端点</span>
-          <strong className="endpoint-text">{endpoint}</strong>
-        </div>
-
-        <div className="readonly-row">
-          <span>访问令牌</span>
-          <code className="endpoint-text">{config.token || '启用服务后生成'}</code>
-        </div>
-
-        <div className="readonly-row">
-          <span>MCP</span>
-          <strong className="endpoint-text">{mcpEndpoint}</strong>
-        </div>
+        <ReadonlyRow label="当前端点" value={endpoint} mono />
+        <ReadonlyRow label="访问令牌" value={config.token || '启用服务后生成'} mono />
+        <ReadonlyRow label="MCP" value={mcpEndpoint} mono />
 
         <div className="readonly-row">
           <span>MCP Sessions</span>
           <div className="inline-action">
             <strong>{runtime.mcp?.activeSessions || 0}</strong>
-            <button type="button" className="ghost" onClick={onRevokeMcpSessions} disabled={saving || !runtime.enabled || !(runtime.mcp?.activeSessions)}>
+            <Button variant="ghost" onClick={onRevokeMcpSessions} disabled={saving || !runtime.enabled || !(runtime.mcp?.activeSessions)}>
               撤销全部
-            </button>
+            </Button>
           </div>
         </div>
-      </div>
+      </Card>
 
       <div className="plugin-log-panel">
         <div className="plugin-log-header">
@@ -121,15 +101,15 @@ export function ServicePane({ serviceStatus, logs, logsPage, status, saving, onC
             <span>第 {logsPage.page} / {logsPage.totalPages} 页 · 共 {logsPage.total} 条</span>
           </div>
           <div className="plugin-log-actions">
-            <button type="button" className="ghost" onClick={onRefreshLogs}>刷新</button>
-            <button type="button" className="ghost" onClick={() => onExportLogs('json')} disabled={logs.length === 0}>JSON</button>
-            <button type="button" className="ghost" onClick={() => onExportLogs('csv')} disabled={logs.length === 0}>CSV</button>
-            <button type="button" className="ghost" onClick={onClearLogs} disabled={logs.length === 0}>清空</button>
+            <Button variant="ghost" onClick={onRefreshLogs}>刷新</Button>
+            <Button variant="ghost" onClick={() => onExportLogs('json')} disabled={logs.length === 0}>JSON</Button>
+            <Button variant="ghost" onClick={() => onExportLogs('csv')} disabled={logs.length === 0}>CSV</Button>
+            <Button variant="ghost" onClick={onClearLogs} disabled={logs.length === 0}>清空</Button>
           </div>
         </div>
         <div className="plugin-log-list">
           {logs.length === 0 ? (
-            <div className="empty-state">暂无请求</div>
+            <EmptyState>暂无请求</EmptyState>
           ) : logs.map((log) => (
             <div className={log.statusCode >= 400 ? 'plugin-log-row error service-log-row' : 'plugin-log-row service-log-row'} key={log.id}>
               <span>{formatLogTime(log.timestamp)}</span>
@@ -140,13 +120,13 @@ export function ServicePane({ serviceStatus, logs, logsPage, status, saving, onC
           ))}
         </div>
         <div className="log-pagination">
-          <button type="button" className="ghost" onClick={onPrevLogsPage} disabled={!onPrevLogsPage}>上一页</button>
+          <Button variant="ghost" onClick={onPrevLogsPage} disabled={!onPrevLogsPage}>上一页</Button>
           <span>当前 {logs.length} 条 / 每页 {logsPage.pageSize} 条</span>
-          <button type="button" className="ghost" onClick={onNextLogsPage} disabled={!onNextLogsPage}>下一页</button>
+          <Button variant="ghost" onClick={onNextLogsPage} disabled={!onNextLogsPage}>下一页</Button>
         </div>
       </div>
 
-      {status ? <div className="status-line">{status}</div> : null}
-    </section>
+      <StatusLine>{status}</StatusLine>
+    </PaneScaffold>
   )
 }

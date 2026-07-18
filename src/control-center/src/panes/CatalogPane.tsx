@@ -8,6 +8,9 @@ import type {
   CatalogState,
   PermissionDiffState
 } from '../../../shared/openpet-contracts'
+import { Button } from '../components/Button'
+import { EmptyState, StatusLine } from '../components/Feedback'
+import { PaneScaffold } from '../components/PaneScaffold'
 import { PluginEntryDetails } from '../components/PluginEntryDetails'
 import { formatBytes } from '../lib/format'
 
@@ -221,17 +224,11 @@ function BlocklistList({
 
 export function CatalogPane({ catalog, status, preparing, installing, selection, blocklistDraft, onPrepareInstall, onClearSelection, onInstallSelection, onChangeBlocklistDraft, onAddBlocklistEntry, onRemoveBlocklistEntry, onRefreshCatalog }: CatalogPaneProps) {
   return (
-    <section className="pane">
-      <header className="pane-header">
-        <div>
-          <h1>Catalog</h1>
-          <p>插件与 Pet Pack 目录</p>
-        </div>
-        <div className="header-actions">
-          <button type="button" className="ghost" onClick={onRefreshCatalog}>刷新</button>
-        </div>
-      </header>
-
+    <PaneScaffold
+      title="Catalog"
+      description="插件与 Pet Pack 目录"
+      actions={<Button variant="ghost" onClick={onRefreshCatalog}>刷新</Button>}
+    >
       <CatalogPluginReview
         selection={selection?.kind === 'plugin' ? selection : null}
         installing={installing}
@@ -253,7 +250,7 @@ export function CatalogPane({ catalog, status, preparing, installing, selection,
           </div>
         </div>
         <div className="catalog-list">
-          {catalog.plugins.length === 0 ? <div className="empty-chat">暂无插件目录项</div> : catalog.plugins.map((item) => (
+          {catalog.plugins.length === 0 ? <EmptyState>暂无插件目录项</EmptyState> : catalog.plugins.map((item) => (
             <CatalogItem item={item} kind="plugin" preparing={preparing} onPrepareInstall={onPrepareInstall} key={item.id} />
           ))}
         </div>
@@ -267,7 +264,7 @@ export function CatalogPane({ catalog, status, preparing, installing, selection,
           </div>
         </div>
         <div className="catalog-list">
-          {catalog.petPacks.length === 0 ? <div className="empty-chat">暂无 Pet Pack 目录项</div> : catalog.petPacks.map((item) => (
+          {catalog.petPacks.length === 0 ? <EmptyState>暂无 Pet Pack 目录项</EmptyState> : catalog.petPacks.map((item) => (
             <CatalogItem item={item} kind="pet-pack" preparing={preparing} onPrepareInstall={onPrepareInstall} key={item.id} />
           ))}
         </div>
@@ -296,7 +293,7 @@ export function CatalogPane({ catalog, status, preparing, installing, selection,
         </div>
       </div>
 
-      {status ? <div className="status-line">{status}</div> : null}
-    </section>
+      <StatusLine>{status}</StatusLine>
+    </PaneScaffold>
   )
 }

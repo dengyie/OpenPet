@@ -11,7 +11,7 @@
   --notice-bubble-bg: linear-gradient(180deg, rgba(255, 245, 214, 0.84), rgba(255, 237, 198, 0.72));
   --composer-bg: linear-gradient(180deg, rgba(255, 254, 250, 0.9), rgba(251, 243, 232, 0.84));
   --composer-ring: rgba(126, 86, 48, 0.12);
-  --composer-focus: rgba(69, 142, 196, 0.24);
+  --composer-focus: rgba(111, 92, 255, 0.28);
 }
 
 * {
@@ -383,9 +383,9 @@ button[aria-pressed="true"] {
 #send-button {
   min-width: 52px;
   padding-inline: 12px;
-  background: linear-gradient(180deg, rgba(93, 64, 35, 0.9), rgba(74, 45, 24, 0.94));
-  color: #fffaf3;
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.08);
+  background: linear-gradient(180deg, rgba(124, 92, 255, 0.94), rgba(95, 77, 230, 0.96));
+  color: #fdfbff;
+  text-shadow: 0 1px 0 rgba(60, 40, 160, 0.16);
 }
 
 #send-button:disabled {
