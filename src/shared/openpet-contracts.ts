@@ -1929,6 +1929,7 @@ export interface CreatorLastRunViewState {
   importedActionId: string
   importedPackId: string
   activatedPackId: string
+  diagnostics?: CreatorWorkflowDiagnosticsViewState | null
 }
 
 export interface CreatorImportedActionViewState {

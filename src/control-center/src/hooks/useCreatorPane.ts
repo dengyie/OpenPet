@@ -136,7 +136,8 @@ export function useCreatorPane(active: boolean) {
               ...(current.run || lastRun),
               ...lastRun,
               state: 'generating'
-            }
+            },
+            diagnostics: lastRun.diagnostics || current.diagnostics || null
           }
         })
       } catch (error) {

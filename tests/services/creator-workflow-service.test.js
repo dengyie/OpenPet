@@ -1505,3 +1505,141 @@ test('creator workflow service blocks existing-action default flow when the stor
   assert.equal(result.code, 'unsupported_reference_image')
   assert.match(result.message, /单张干净正面图/)
 })
+
+
+test('creator workflow progress polling attaches diagnostics onto lastRun during generation', async () => {
+  const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-progress-live-'))
+  const runId = 'run-progress-live'
+  const runDir = path.join(pluginDataDir, 'runs', runId)
+  fs.mkdirSync(runDir, { recursive: true })
+  fs.writeFileSync(path.join(runDir, 'run.json'), `${JSON.stringify({
+    runId,
+    status: 'generating',
+    taskStatus: 'confirmed',
+    currentStep: 'generate',
+    reviewStatus: 'pending',
+    importStatus: 'not-imported',
+    backend: 'provider',
+    backendStatus: { state: 'running', message: 'generating' }
+  }, null, 2)}\n`)
+  fs.writeFileSync(path.join(runDir, 'full-pet-action-checkpoints.json'), `${JSON.stringify({
+    version: 1,
+    runId,
+    actions: {
+      idle: {
+        actionId: 'idle',
+        ok: true,
+        row: {
+          quality: 'row-real',
+          frames: [{ relativePath: 'runs/run-progress-live/official-row-frames/idle/01.png', sha256: 'a' }]
+        }
+      }
+    }
+  }, null, 2)}\n`)
+
+  let releaseGenerate
+  const generateGate = new Promise((resolve) => {
+    releaseGenerate = resolve
+  })
+
+  const service = createCreatorWorkflowService({
+    pluginService: {
+      listPlugins: () => [createPluginView()],
+      getPluginCreatorDataDir: () => pluginDataDir,
+     runCommand: async (_pluginId, commandId) => {
+       if (commandId === 'draft-task') {
+         return {
+           ok: true,
+           commandId,
+            result: {
+              ok: true,
+              message: 'drafted',
+              run: {
+                runId,
+                status: 'draft',
+                taskStatus: 'ready_for_confirmation',
+                currentStep: 'confirm'
+              }
+            }
+         }
+       }
+       if (commandId === 'confirm-task') {
+         return {
+           ok: true,
+           commandId,
+            result: {
+              ok: true,
+              message: 'confirmed',
+              run: {
+                runId,
+                status: 'draft',
+                taskStatus: 'confirmed',
+                currentStep: 'generate'
+              }
+            }
+         }
+       }
+       if (commandId === 'run-step') {
+         await generateGate
+         return {
+           ok: true,
+           commandId,
+            result: {
+              ok: true,
+              message: 'generated',
+              run: {
+                runId,
+                status: 'ready_for_review',
+                taskStatus: 'confirmed',
+                currentStep: 'review',
+                reviewStatus: 'pending'
+              }
+            }
+         }
+       }
+        throw new Error(`unexpected command ${commandId}`)
+      }
+    },
+    imageGenerationModelService: {
+      checkHealth: async () => ({ ok: true, code: 'provider_healthy', message: 'ok' }),
+      getConfig: () => ({ provider: 'openai-compatible', model: 'gpt-image-2' })
+    },
+    actionService: {
+      getConfig: () => ({ defaultAction: 'idle', clickAction: 'wave', actions: [{ id: 'idle' }, { id: 'wave' }] }),
+      acceptTriggerProposalItem: () => ({ animations: { clickAction: 'wave' } })
+    },
+    creatorReferenceService: {
+      getReference: () => null,
+      bindReference: async () => ({ replaced: true, reference: { fileName: 'ref.png', updatedAt: '2026-07-19T00:00:00.000Z' } }),
+      copyReferenceIntoRun: () => ({}),
+      inspectApprovedSource: async () => ({ defaultPathEligible: true })
+    }
+  })
+
+  const pending = service.generateNewCharacter({
+    characterName: 'Live Progress Cat',
+    stylePrompt: 'soft orange helper cat',
+    referenceImageToken: 'token-live'
+  })
+
+  let sawDiagnostics = false
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    const lastRun = (await service.getLastRun()).run
+    if (lastRun?.diagnostics?.progress?.actions?.length) {
+      assert.equal(lastRun.state, 'generating')
+      assert.equal(lastRun.runId, runId)
+      assert.equal(lastRun.diagnostics.progress.actions.find((action) => action.actionId === 'idle').status, 'passed')
+      assert.equal(lastRun.diagnostics.progress.actions.find((action) => action.actionId === 'running-right').status, 'running')
+      assert.ok(String(lastRun.message || '').length > 0)
+      sawDiagnostics = true
+      break
+    }
+  }
+
+ releaseGenerate()
+ const result = await pending
+ assert.equal(sawDiagnostics, true)
+  assert.ok(['review-required', 'preview-ready'].includes(result.state))
+ assert.ok(result.diagnostics?.progress)
+})

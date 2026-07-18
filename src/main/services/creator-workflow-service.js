@@ -195,7 +195,8 @@ const createRunView = ({
   message = '',
   importedActionId = '',
   importedPackId = '',
-  activatedPackId = ''
+  activatedPackId = '',
+  diagnostics = null
 } = {}) => ({
   state,
   mode: normalizeText(mode),
@@ -204,20 +205,23 @@ const createRunView = ({
   message: normalizeText(message),
   importedActionId: normalizeText(importedActionId),
   importedPackId: normalizeText(importedPackId),
-  activatedPackId: normalizeText(activatedPackId)
+  activatedPackId: normalizeText(activatedPackId),
+  diagnostics: diagnostics && typeof diagnostics === 'object' ? diagnostics : null
 })
 
 const createGeneratingRunView = ({
   mode = '',
   runId = '',
   commandId = '',
-  message = ''
+  message = '',
+  diagnostics = null
 } = {}) => createRunView({
   state: 'generating',
   mode,
   runId,
   commandId,
-  message: normalizeText(message) || '生成任务进行中'
+  message: normalizeText(message) || '生成任务进行中',
+  diagnostics
 })
 
 const createWorkflowResult = ({
@@ -785,6 +789,7 @@ const createCreatorWorkflowService = ({
 
   let lastRun = null
   let activeWorkflow = null
+  let progressPollTimer = null
 
   const recordLog = (entry) => {
     try {
@@ -883,34 +888,63 @@ const createCreatorWorkflowService = ({
       mode: normalizeText(mode),
       runId: '',
       commandId: '',
-      message: normalizeText(message) || '生成任务进行中'
+      message: normalizeText(message) || '生成任务进行中',
+      diagnostics: null
     }
     return setLastRun(createGeneratingRunView(activeWorkflow))
   }
 
- const updateWorkflowProgress = ({ runId = '', commandId = '', message = '' } = {}) => {
-   if (!activeWorkflow) return null
+  const updateWorkflowProgress = ({ runId = '', commandId = '', message = '' } = {}) => {
+    if (!activeWorkflow) return null
     const nextRunId = normalizeText(runId) || activeWorkflow.runId
     const nextCommandId = normalizeText(commandId) || activeWorkflow.commandId
     let nextMessage = normalizeText(message) || activeWorkflow.message
+    let nextDiagnostics = activeWorkflow.diagnostics || null
     try {
       const pluginDataDir = pluginService.getPluginCreatorDataDir(CREATOR_STUDIO_PLUGIN_ID)
       const diagnostics = readWorkflowDiagnostics({ pluginDataDir, runId: nextRunId })
       const progressSummary = normalizeText(diagnostics?.progress?.summary)
       if (progressSummary) nextMessage = progressSummary
+      if (diagnostics) nextDiagnostics = diagnostics
     } catch (_) {
       // Progress enrichment is best-effort only.
     }
-   activeWorkflow = {
-     ...activeWorkflow,
+    activeWorkflow = {
+      ...activeWorkflow,
       runId: nextRunId,
       commandId: nextCommandId,
-      message: nextMessage
-   }
-   return setLastRun(createGeneratingRunView(activeWorkflow))
- }
+      message: nextMessage,
+      diagnostics: nextDiagnostics
+    }
+    return setLastRun(createGeneratingRunView(activeWorkflow))
+  }
+
+  const stopProgressPolling = () => {
+    if (progressPollTimer) {
+      clearInterval(progressPollTimer)
+      progressPollTimer = null
+    }
+  }
+
+  const startProgressPolling = () => {
+    stopProgressPolling()
+    progressPollTimer = setInterval(() => {
+      if (!activeWorkflow?.runId) return
+      try {
+        updateWorkflowProgress({
+          runId: activeWorkflow.runId,
+          commandId: activeWorkflow.commandId,
+          message: activeWorkflow.message
+        })
+      } catch (_) {
+        // Progress polling must never interrupt the active workflow.
+      }
+    }, 1500)
+    if (typeof progressPollTimer?.unref === 'function') progressPollTimer.unref()
+  }
 
   const clearWorkflow = () => {
+    stopProgressPolling()
     activeWorkflow = null
   }
 
@@ -1097,6 +1131,7 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
         commandId: drafted?.commandId || commandId,
         message: getCommandMessage(drafted, '草稿任务已创建')
       })
+      startProgressPolling()
 
       creatorReferenceService.copyReferenceIntoRun({
         targetType: referenceTarget.targetType,

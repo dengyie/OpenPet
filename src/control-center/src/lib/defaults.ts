@@ -311,7 +311,8 @@ export const defaultCreatorLastRun = {
   message: '',
   importedActionId: '',
   importedPackId: '',
-  activatedPackId: ''
+  activatedPackId: '',
+  diagnostics: null
 } satisfies CreatorLastRunViewState
 
 export const defaultCreatorReference = {
