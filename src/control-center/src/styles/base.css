@@ -1,0 +1,64 @@
+/**
+ * 基础层：元素默认值与全局重置。只消费 tokens.css。
+ */
+
+:root {
+  color-scheme: light;
+  font-family: var(--op-font-family);
+  color: var(--op-color-text);
+  background: var(--op-color-bg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  border: 0;
+}
+
+h1, h2, h3, h4 {
+  color: var(--op-color-text-strong);
+  font-weight: var(--op-font-weight-semibold);
+  line-height: var(--op-line-height-tight);
+}
+
+code, pre {
+  font-family: var(--op-font-mono);
+}
+
+::selection {
+  background: var(--op-color-accent-soft);
+}
+
+/* 细滚动条，贴合桌面应用质感 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--op-color-border-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--op-color-border-strong);
+  border-radius: var(--op-radius-pill);
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}

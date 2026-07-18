@@ -1,32 +1,23 @@
-:root {
-  color-scheme: light;
-  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", Segoe UI, sans-serif;
-  color: #202124;
-  background: #f4f6f8;
-}
+/**
+ * OpenPet Control Center 样式入口。
+ *
+ * 新设计系统分层：
+ *   tokens.css      — 设计令牌（颜色/间距/圆角/阴影/字体）
+ *   base.css        — 元素默认值
+ *   layout.css      — 应用外壳
+ *   components.css  — 共享组件
+ *   本文件余下部分   — pane 级旧样式（兼容层，随迁移逐步移除）
+ *
+ * 规则：新增/修改样式必须消费 tokens，禁止新增魔法值。
+ */
+@import './styles/tokens.css';
+@import './styles/base.css';
+@import './styles/layout.css';
+@import './styles/components.css';
 
-* {
-  box-sizing: border-box;
-}
-
-html,
-body,
-#root {
-  width: 100%;
-  height: 100%;
-  margin: 0;
-}
-
-button,
-input,
-select,
-textarea {
-  font: inherit;
-}
-
-button {
-  border: 0;
-}
+/* ═══ 旧兼容层（migration in progress） ═══
+   以下选择器仍被各 pane 使用；迁移到共享组件/令牌后逐块移除。
+   与新分层重复的定义已被新层覆盖（CSS 后导入优先）。 */
 
 .shell {
   display: grid;

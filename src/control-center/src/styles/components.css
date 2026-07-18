@@ -1,0 +1,275 @@
+/**
+ * 共享组件样式层：Button / Card / FieldRow / Badge / Section / EmptyState /
+ * StatusLine / TextInput 等。消费 tokens.css。
+ *
+ * 与 layout.css 一起构成新设计系统的公共样式；pane 级样式仍在各 pane 模块。
+ */
+
+/* ── 按钮 ─────────────────────────────────────── */
+
+.primary,
+.ghost {
+  min-height: 34px;
+  padding: 0 var(--op-space-6);
+  border-radius: var(--op-radius-sm);
+  font-size: var(--op-font-size-lg);
+  font-weight: var(--op-font-weight-medium);
+  cursor: pointer;
+  transition: background var(--op-transition-fast), color var(--op-transition-fast),
+    border-color var(--op-transition-fast), box-shadow var(--op-transition-fast);
+}
+
+.primary {
+  background: var(--op-color-accent);
+  color: #fff;
+  box-shadow: var(--op-shadow-xs);
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--op-color-accent-hover);
+}
+
+.ghost {
+  background: var(--op-color-surface);
+  color: var(--op-color-text);
+  border: 1px solid var(--op-color-border);
+}
+
+.ghost:hover:not(:disabled) {
+  background: var(--op-color-surface-sunken);
+  border-color: var(--op-color-border-strong);
+}
+
+.primary:disabled,
+.ghost:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ghost.accent {
+  color: var(--op-color-accent-text);
+  border-color: var(--op-color-accent-border);
+}
+
+.ghost.danger {
+  color: var(--op-color-danger);
+  border-color: var(--op-color-danger-border);
+}
+
+.ghost.icon-button {
+  display: inline-grid;
+  place-items: center;
+  min-width: 34px;
+  padding: 0 var(--op-space-3);
+}
+
+.button-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+}
+
+.button-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* ── 卡片 / 区块 ──────────────────────────────── */
+
+.section {
+  display: grid;
+  gap: var(--op-space-6);
+  padding: var(--op-space-7);
+  background: var(--op-color-surface);
+  border: 1px solid var(--op-color-border);
+  border-radius: var(--op-radius-lg);
+  box-shadow: var(--op-shadow-sm);
+}
+
+.section.compact {
+  gap: var(--op-space-4);
+  padding: var(--op-space-5);
+}
+
+.section-actions {
+  display: flex;
+  gap: var(--op-space-3);
+  flex-wrap: wrap;
+}
+
+/* ── 表单字段行 ───────────────────────────────── */
+
+.field-row,
+.readonly-row {
+  display: grid;
+  gap: var(--op-space-2);
+  padding: var(--op-space-3) 0;
+  border-bottom: 1px solid var(--op-color-border-soft);
+}
+
+.field-row:last-child,
+.readonly-row:last-child {
+  border-bottom: 0;
+}
+
+.field-row.tall {
+  gap: var(--op-space-3);
+}
+
+.field-label {
+  font-size: var(--op-font-size-lg);
+  font-weight: var(--op-font-weight-medium);
+  color: var(--op-color-text);
+}
+
+.field-note {
+  font-size: var(--op-font-size-md);
+  color: var(--op-color-text-muted);
+  line-height: var(--op-line-height-relaxed);
+}
+
+/* ── 输入控件 ─────────────────────────────────── */
+
+.range {
+  width: 100%;
+  accent-color: var(--op-color-accent);
+}
+
+.text-input {
+  width: 100%;
+  min-height: 34px;
+  padding: var(--op-space-2) var(--op-space-4);
+  border: 1px solid var(--op-color-border);
+  border-radius: var(--op-radius-sm);
+  background: var(--op-color-surface);
+  color: var(--op-color-text);
+  font-size: var(--op-font-size-lg);
+  transition: border-color var(--op-transition-fast), box-shadow var(--op-transition-fast);
+}
+
+.text-input:focus {
+  outline: none;
+  border-color: var(--op-color-accent);
+  box-shadow: var(--op-shadow-focus);
+}
+
+.text-input:disabled {
+  background: var(--op-color-surface-sunken);
+  color: var(--op-color-text-muted);
+}
+
+.textarea {
+  width: 100%;
+  min-height: 88px;
+  padding: var(--op-space-3) var(--op-space-4);
+  border: 1px solid var(--op-color-border);
+  border-radius: var(--op-radius-sm);
+  background: var(--op-color-surface);
+  color: var(--op-color-text);
+  font-size: var(--op-font-size-lg);
+  line-height: var(--op-line-height-normal);
+  resize: vertical;
+}
+
+.textarea:focus {
+  outline: none;
+  border-color: var(--op-color-accent);
+  box-shadow: var(--op-shadow-focus);
+}
+
+.inline-action {
+  color: var(--op-color-accent-text);
+  background: none;
+  padding: 0;
+  font-size: var(--op-font-size-md);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ── 徽标 / 状态 ──────────────────────────────── */
+
+.danger-text {
+  color: var(--op-color-danger);
+  font-size: var(--op-font-size-md);
+}
+
+.status-line {
+  font-size: var(--op-font-size-md);
+  color: var(--op-color-text-muted);
+  line-height: var(--op-line-height-relaxed);
+}
+
+/* ── 空状态 ───────────────────────────────────── */
+
+.empty-chat {
+  display: grid;
+  place-items: center;
+  min-height: 120px;
+  padding: var(--op-space-7);
+  color: var(--op-color-text-muted);
+  font-size: var(--op-font-size-lg);
+  text-align: center;
+  border: 1px dashed var(--op-color-border);
+  border-radius: var(--op-radius-lg);
+  background: var(--op-color-surface-sunken);
+}
+
+/* ── 分段控件 / 开关（已有组件，令牌化） ────────── */
+
+.segmented {
+  display: inline-flex;
+  gap: var(--op-space-1);
+  padding: var(--op-space-1);
+  background: var(--op-color-surface-sunken);
+  border: 1px solid var(--op-color-border);
+  border-radius: var(--op-radius-md);
+}
+
+.segmented button {
+  min-height: 28px;
+  padding: 0 var(--op-space-4);
+  border-radius: var(--op-radius-sm);
+  background: transparent;
+  color: var(--op-color-text-muted);
+  font-size: var(--op-font-size-md);
+  cursor: pointer;
+}
+
+.segmented button.active {
+  background: var(--op-color-surface);
+  color: var(--op-color-text);
+  font-weight: var(--op-font-weight-semibold);
+  box-shadow: var(--op-shadow-xs);
+}
+
+.toggle {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  border-radius: var(--op-radius-pill);
+  background: var(--op-color-border-strong);
+  cursor: pointer;
+  transition: background var(--op-transition-base);
+}
+
+.toggle span {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--op-color-surface);
+  box-shadow: var(--op-shadow-xs);
+  transition: transform var(--op-transition-base);
+}
+
+.toggle.on {
+  background: var(--op-color-accent);
+}
+
+.toggle.on span {
+  transform: translateX(18px);
+}
