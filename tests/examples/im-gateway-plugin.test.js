@@ -787,6 +787,110 @@ test('bridge client forwards external cancellation to an active request', async 
   assert.equal(requestSignal?.aborted, true)
 })
 
+test('bridge client timeout remains active while a successful response body is pending', async () => {
+  let timeoutCallback = null
+  let requestSignal = null
+  let markBodyStarted
+  const bodyStarted = new Promise((resolve) => {
+    markBodyStarted = resolve
+  })
+  const client = createBridgeClient({
+    baseUrl: 'http://127.0.0.1:8796',
+    token: 'bridge-token',
+    timeoutMs: 20,
+    setTimer: (callback) => {
+      timeoutCallback = callback
+      return { unref: () => {} }
+    },
+    clearTimer: () => {},
+    fetchImpl: async (_url, options = {}) => {
+      requestSignal = options.signal
+      return {
+        ok: true,
+        json: async () => new Promise((_resolve, reject) => {
+          markBodyStarted()
+          requestSignal.addEventListener('abort', () => {
+            const error = new Error('response body aborted')
+            error.name = 'AbortError'
+            reject(error)
+          }, { once: true })
+        })
+      }
+    }
+  })
+
+  const request = client.aiChat({ message: 'hello', conversationKey: 'telegram:private:abc123def456' })
+  await bodyStarted
+  timeoutCallback()
+
+  await assert.rejects(request, /Bridge request timed out/)
+  assert.equal(requestSignal.aborted, true)
+})
+
+test('bridge client forwards external cancellation while a successful response body is pending', async () => {
+  const controller = new AbortController()
+  let requestSignal = null
+  let markBodyStarted
+  let watchdog = null
+  const bodyStarted = new Promise((resolve) => {
+    markBodyStarted = resolve
+  })
+  const client = createBridgeClient({
+    baseUrl: 'http://127.0.0.1:8796',
+    token: 'bridge-token',
+    timeoutMs: 0,
+    fetchImpl: async (_url, options = {}) => {
+      requestSignal = options.signal
+      return {
+        ok: true,
+        json: async () => new Promise((_resolve, reject) => {
+          markBodyStarted()
+          requestSignal.addEventListener('abort', () => {
+            const error = new Error('response body aborted')
+            error.name = 'AbortError'
+            reject(error)
+          }, { once: true })
+        })
+      }
+    }
+  })
+
+  const request = client.aiChat(
+    { message: 'hello', conversationKey: 'telegram:private:abc123def456' },
+    { signal: controller.signal }
+  )
+  await bodyStarted
+  controller.abort()
+
+  try {
+    await assert.rejects(Promise.race([
+      request,
+      new Promise((_resolve, reject) => {
+        watchdog = setTimeout(() => reject(new Error('body cancellation did not settle')), 100)
+      })
+    ]), (error) => error?.name === 'AbortError')
+  } finally {
+    clearTimeout(watchdog)
+  }
+  assert.equal(requestSignal.aborted, true)
+})
+
+test('bridge client preserves the successful fallback for malformed JSON bodies', async () => {
+  const client = createBridgeClient({
+    baseUrl: 'http://127.0.0.1:8796',
+    token: 'bridge-token',
+    timeoutMs: 0,
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => {
+        throw new SyntaxError('Unexpected token')
+      }
+    })
+  })
+
+  assert.deepEqual(await client.say({ text: 'hello' }), { ok: true })
+})
+
 test('telegram middleware does not block helper updates behind a hanging AI request', async () => {
   let middleware = null
   class ConcurrentBot {

@@ -27,26 +27,40 @@ const isJsonRequest = (request) => {
 }
 
 const readJsonBody = (request, maxBodyBytes = MAX_PLUGIN_BRIDGE_BODY_BYTES) => new Promise((resolve, reject) => {
-  let body = ''
+  const chunks = []
+  let bodyBytes = 0
+  let settled = false
+  const settle = (callback, value) => {
+    if (settled) return false
+    settled = true
+    callback(value)
+    return true
+  }
   request.on('data', (chunk) => {
-    body += chunk
-    if (body.length > maxBodyBytes) {
-      request.destroy()
-      reject(new Error('Request body is too large'))
+    if (settled) return
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+    bodyBytes += buffer.length
+    if (bodyBytes > maxBodyBytes) {
+      chunks.length = 0
+      settle(reject, new Error('Request body is too large'))
+      return
     }
+    chunks.push(buffer)
   })
   request.on('end', () => {
+    if (settled) return
+    const body = Buffer.concat(chunks, bodyBytes).toString('utf8')
     if (!body) {
-      resolve({})
+      settle(resolve, {})
       return
     }
     try {
-      resolve(JSON.parse(body))
+      settle(resolve, JSON.parse(body))
     } catch (_) {
-      reject(new Error('Invalid JSON body'))
+      settle(reject, new Error('Invalid JSON body'))
     }
   })
-  request.on('error', reject)
+  request.on('error', (error) => settle(reject, error))
 })
 
 const sendJson = (response, statusCode, body) => {

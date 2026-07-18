@@ -37,6 +37,37 @@ const requestJson = (url, { token = 'token', method = 'POST', body = {}, headers
   request.end()
 })
 
+const requestChunkedJson = (url, { token = 'token', chunks = [] } = {}) => new Promise((resolve, reject) => {
+  const request = http.request(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  }, (response) => {
+    let text = ''
+    response.on('data', (chunk) => { text += chunk })
+    response.on('end', () => {
+      try {
+        resolve({ statusCode: response.statusCode, body: JSON.parse(text || '{}') })
+      } catch (error) {
+        reject(error)
+      }
+    })
+  })
+  request.on('error', reject)
+
+  const writeNext = (index) => {
+    if (index >= chunks.length) {
+      request.end()
+      return
+    }
+    request.write(chunks[index])
+    setImmediate(() => writeNext(index + 1))
+  }
+  writeNext(0)
+})
+
 test('plugin command bridge server dispatches read and json routes through registered runtime handlers', async () => {
   const runtimes = new Map()
   const server = createPluginCommandBridgeServer({ commandBridgeRuntimes: runtimes })
@@ -153,6 +184,81 @@ test('plugin command bridge server maps handler permission errors to 403 and bad
   assert.equal(invalidJson.statusCode, 400)
   assert.deepEqual(invalidJson.body, { ok: false, error: 'Invalid JSON body' })
 
+  server.close()
+})
+
+test('plugin command bridge server preserves UTF-8 characters split across HTTP chunks', async () => {
+  const runtimes = new Map()
+  const receivedPayloads = []
+  const server = createPluginCommandBridgeServer({ commandBridgeRuntimes: runtimes })
+  await server.ensureStarted()
+  const baseUrl = server.createBridgeBaseUrl({
+    pluginId: 'weather-declaration',
+    commandId: 'announce',
+    runId: 'run-1'
+  })
+  runtimes.set(createPluginBridgeKey('weather-declaration', 'announce', 'run-1'), {
+    status: 'running',
+    token: 'secret-token',
+    handlers: {
+      petSay: async (payload) => {
+        receivedPayloads.push(payload)
+        return { ok: true }
+      }
+    }
+  })
+
+  const chinese = Buffer.from('你')
+  const emoji = Buffer.from('🙂')
+  const response = await requestChunkedJson(`${baseUrl}/pet/say`, {
+    token: 'secret-token',
+    chunks: [
+      Buffer.concat([Buffer.from('{"text":"'), chinese.subarray(0, 1)]),
+      Buffer.concat([chinese.subarray(1), emoji.subarray(0, 2)]),
+      Buffer.concat([emoji.subarray(2), Buffer.from('"}')])
+    ]
+  })
+
+  assert.equal(response.statusCode, 200)
+  assert.deepEqual(receivedPayloads, [{ text: '你🙂' }])
+  server.close()
+})
+
+test('plugin command bridge server enforces request limits using actual bytes', async () => {
+  const runtimes = new Map()
+  let handlerCalls = 0
+  const payload = Buffer.from(JSON.stringify({ text: '🙂' }))
+  const server = createPluginCommandBridgeServer({
+    commandBridgeRuntimes: runtimes,
+    maxBodyBytes: payload.length - 1
+  })
+  await server.ensureStarted()
+  const baseUrl = server.createBridgeBaseUrl({
+    pluginId: 'weather-declaration',
+    commandId: 'announce',
+    runId: 'run-1'
+  })
+  runtimes.set(createPluginBridgeKey('weather-declaration', 'announce', 'run-1'), {
+    status: 'running',
+    token: 'secret-token',
+    handlers: {
+      petSay: async () => {
+        handlerCalls += 1
+        return { ok: true }
+      }
+    }
+  })
+
+  const response = await requestChunkedJson(`${baseUrl}/pet/say`, {
+    token: 'secret-token',
+    chunks: [payload]
+  })
+
+  assert.equal(Buffer.byteLength(payload.toString('utf8')), payload.length)
+  assert.equal(payload.toString('utf8').length <= payload.length - 1, true)
+  assert.equal(response.statusCode, 400)
+  assert.deepEqual(response.body, { ok: false, error: 'Request body is too large' })
+  assert.equal(handlerCalls, 0)
   server.close()
 })
 

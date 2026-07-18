@@ -1,3 +1,29 @@
+const createAbortError = (signal) => {
+  if (signal?.reason instanceof Error) return signal.reason
+  const error = new Error('Bridge request aborted')
+  error.name = 'AbortError'
+  return error
+}
+
+const raceWithAbort = async (operation, signal) => {
+  const pendingOperation = Promise.resolve(operation)
+  if (!signal) return await pendingOperation
+  if (signal.aborted) {
+    pendingOperation.catch(() => {})
+    throw createAbortError(signal)
+  }
+  let abortHandler
+  const aborted = new Promise((_resolve, reject) => {
+    abortHandler = () => reject(createAbortError(signal))
+    signal.addEventListener('abort', abortHandler, { once: true })
+  })
+  try {
+    return await Promise.race([pendingOperation, aborted])
+  } finally {
+    signal.removeEventListener('abort', abortHandler)
+  }
+}
+
 const createBridgeClient = ({
   baseUrl = process.env.OPENPET_SERVICE_BRIDGE_URL || process.env.OPENPET_BRIDGE_URL || '',
   token = process.env.OPENPET_SERVICE_BRIDGE_TOKEN || process.env.OPENPET_BRIDGE_TOKEN || '',
@@ -26,19 +52,25 @@ const createBridgeClient = ({
         }, boundedTimeoutMs)
       : null
     timeoutId?.unref?.()
+    const requestSignal = abortController?.signal || externalSignal
 
     try {
-      const response = await fetchImpl(`${baseUrl}${route}`, {
+      const response = await raceWithAbort(fetchImpl(`${baseUrl}${route}`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(payload),
-        ...((abortController?.signal || externalSignal) ? { signal: abortController?.signal || externalSignal } : {})
-      })
+        ...(requestSignal ? { signal: requestSignal } : {})
+      }), requestSignal)
       if (!response.ok) throw new Error(`Bridge request failed: ${route} ${response.status}`)
-      return response.json().catch(() => ({ ok: true }))
+      try {
+        return await raceWithAbort(response.json(), requestSignal)
+      } catch (error) {
+        if (requestSignal?.aborted || error?.name === 'AbortError' || error?.name === 'TimeoutError') throw error
+        return { ok: true }
+      }
     } catch (error) {
       if (timedOut) throw new Error(`Bridge request timed out: ${route}`)
       throw error
