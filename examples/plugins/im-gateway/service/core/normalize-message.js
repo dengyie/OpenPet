@@ -9,6 +9,8 @@ const normalizeImMessage = (message = {}, {
   chatId: String(message.chatId || ''),
   userId: String(message.userId || ''),
   userName: String(message.userName || ''),
+  botUsername: String(message.botUsername || ''),
+  updateId: message.updateId == null ? '' : String(message.updateId),
   messageId: String(message.messageId || ''),
   text: String(message.text || ''),
   directMentionText: String(message.directMentionText || ''),

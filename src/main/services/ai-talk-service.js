@@ -519,6 +519,7 @@ const isControlCenterSessionId = (sessionId) => normalizeString(sessionId).start
 const resolveTraceErrorCode = (error) => {
   if (error?.providerCode) return sanitizeDiagnosticText(error.providerCode)
   if (error?.providerStatus) return `provider_http_${Number(error.providerStatus) || 0}`
+  if (error?.name === 'AbortError') return 'chat_aborted'
   const message = normalizeString(error?.message).toLowerCase()
   if (message.includes('disabled')) return 'chat_disabled'
   if (message.includes('too long')) return 'message_too_long'
@@ -754,6 +755,14 @@ const createAiTalkService = ({
     const error = new Error('AI talk service is disposed')
     error.code = 'ai_talk_disposed'
     return error
+  }
+
+  const throwIfAborted = (signal) => {
+    if (!signal?.aborted) return
+    if (signal.reason instanceof Error) throw signal.reason
+    const error = new Error('AI chat request was aborted')
+    error.name = 'AbortError'
+    throw error
   }
 
   const createCanceledStreamResult = ({ requestId, conversationId = '', partialReply = '', providerLatencyMs = 0 } = {}) => ({
@@ -1909,9 +1918,11 @@ const createAiTalkService = ({
     messageBatch = null,
     entrypoint = 'control-center',
     conversationId: requestedConversationId = 'main',
-    requestId
+    requestId,
+    signal = null
   } = {}) => {
     if (disposed) throw createDisposedError()
+    throwIfAborted(signal)
     const startedAt = Date.now()
     const turnRequest = createTurnRequest({
       message,
@@ -1924,17 +1935,22 @@ const createAiTalkService = ({
     let activePackDiagnostics = null
     const diagnostics = turnRequest.diagnostics
     try {
+      throwIfAborted(signal)
       try {
         activePackDiagnostics = resolveActivePack()
         diagnostics.petPackId = activePackDiagnostics.petPackId
       } catch (_) {
         activePackDiagnostics = null
       }
+      throwIfAborted(signal)
       const turnContext = resolveTurnContext({ request: turnRequest, activePack: activePackDiagnostics })
       if (disposed) throw createDisposedError()
+      throwIfAborted(signal)
       return await enqueueConversation(turnContext.conversationPublicId, async () => {
         if (disposed) throw createDisposedError()
+        throwIfAborted(signal)
         const turn = prepareTurn(turnContext)
+        throwIfAborted(signal)
         const {
           config,
           conversationPublicId,
@@ -1953,7 +1969,8 @@ const createAiTalkService = ({
           message: 'AI talk chat started',
           details: diagnostics
         })
-        const result = await aiService.complete({ messages, tools, requestId: diagnostics.requestId })
+        const result = await aiService.complete({ messages, tools, requestId: diagnostics.requestId, signal })
+        throwIfAborted(signal)
         const reply = normalizeString(result.reply)
         const finalized = finalizeSuccessfulTurn({ turn, reply, behaviorIntent: result.behaviorIntent })
         const { bubble, bubbleSegments, messages: nextMessages } = finalized

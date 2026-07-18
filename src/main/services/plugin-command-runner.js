@@ -1,5 +1,5 @@
 const { LOCAL_PLUGIN_COMMAND_TIMEOUT_MS } = require('./local-plugin-runner-client')
-const { createPluginProcessEnv, parsePluginProcessCommand } = require('./plugin-process-support')
+const { createPluginProcessEnv, resolvePluginProcessLaunch } = require('./plugin-process-support')
 const {
   sanitizePluginCommandResultValue,
   sanitizePluginCommandText
@@ -54,7 +54,7 @@ const runPluginCommandEntryProcess = async ({
   transformParsedResult = (parsedResult) => parsedResult
 }) => {
   const pluginId = plugin.manifest.id
-  const { file, args } = parsePluginProcessCommand(commandEntry.command)
+  const { file, args, runAsNode } = resolvePluginProcessLaunch(commandEntry.command)
   const cwd = resolveCommandCwd(plugin.manifest, commandEntry.cwd)
   await commandBridgeServer.ensureStarted()
   const bridgeRunId = createPluginBridgeRunId()
@@ -82,7 +82,7 @@ const runPluginCommandEntryProcess = async ({
     cwd,
     detached: false,
     env: {
-      ...createPluginProcessEnv(),
+      ...createPluginProcessEnv({ runAsNode }),
       OPENPET_DATA_DIR: creatorDirs.dataDir,
       OPENPET_CACHE_DIR: creatorDirs.cacheDir,
       OPENPET_LOG_DIR: creatorDirs.logDir,

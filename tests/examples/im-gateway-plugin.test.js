@@ -1,6 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
+const os = require('node:os')
 const path = require('node:path')
 
 const { normalizeConfigSchema } = require('../../src/main/plugins/config-schema')
@@ -11,6 +12,7 @@ const { createImGateway } = require('../../examples/plugins/im-gateway/service/c
 const { createFakeAdapter } = require('../../examples/plugins/im-gateway/service/adapters/fake')
 const { createTelegramAdapter, createTelegramMessage } = require('../../examples/plugins/im-gateway/service/adapters/telegram')
 const { createBridgeClient } = require('../../examples/plugins/im-gateway/service/bridge-client')
+const { createRuntimeLogEvent } = require('../../examples/plugins/im-gateway/service/runtime-log')
 const { normalizeImGatewayConfig } = require('../../examples/plugins/im-gateway/service/config')
 const { createSlidingWindowRateLimiter } = require('../../examples/plugins/im-gateway/service/core/rate-limiter')
 
@@ -113,6 +115,35 @@ test('im gateway command parser recognizes onboarding helper commands', () => {
     name: 'chatid',
     args: []
   })
+})
+
+test('im gateway ignores Telegram commands addressed to another bot', async () => {
+  const config = normalizeImGatewayConfig({ commandAliases: '/openpet,/op' })
+  assert.deepEqual(
+    parseOpenPetCommand('/openpet@other_bot action wave', config, { botUsername: 'openpet_bot' }),
+    { matched: false, reason: 'command-for-other-bot' }
+  )
+  assert.equal(
+    parseOpenPetCommand('/openpet@openpet_bot action wave', config, { botUsername: 'openpet_bot' }).matched,
+    true
+  )
+
+  const calls = []
+  const gateway = createImGateway({
+    bridgeClient: { action: async (payload) => calls.push(payload) },
+    config: normalizeImGatewayConfig({ allowedUsers: '1001', allowedChats: '-2001' })
+  })
+  const adapter = { id: 'telegram', platform: 'telegram', sendReceipt: async () => {} }
+  const message = createTelegramMessage({
+    update: { update_id: 10 },
+    message: { message_id: 1, text: '/openpet@other_bot action wave' },
+    chat: { id: -2001, type: 'group' },
+    from: { id: 1001 },
+    me: { username: 'openpet_bot' }
+  })
+
+  await gateway.handleMessage(adapter, message)
+  assert.deepEqual(calls, [])
 })
 
 test('im gateway helper commands bypass allowlist while non-helper commands still block', async () => {
@@ -281,12 +312,14 @@ test('im gateway routes private ai-chat text through the host ai bridge', async 
     chatId: '1001',
     userId: '1001',
     text: 'x'.repeat(2500),
-    messageId: 'msg-ai-private'
+    messageId: 'raw-telegram-message-id-42'
   })
 
   assert.equal(aiCalls[0].message.length, 2000)
   assert.match(aiCalls[0].conversationKey, /^telegram:private:[a-f0-9]{12}$/)
   assert.equal(aiCalls[0].conversationKey.includes('1001'), false)
+  assert.match(aiCalls[0].requestId, /^telegram-request:[a-f0-9]{12}$/)
+  assert.equal(JSON.stringify(aiCalls[0]).includes('raw-telegram-message-id-42'), false)
   assert.equal(Object.hasOwn(aiCalls[0], 'sourceContext'), false)
   assert.equal(adapter.receipts[0].text.length, 800)
 })
@@ -520,6 +553,7 @@ test('im gateway health exposes redacted ai counters and error codes', async () 
 })
 
 test('im gateway records a redacted send failure code when reply delivery fails', async () => {
+  const logEvents = []
   const adapter = {
     id: 'telegram',
     platform: 'telegram',
@@ -545,7 +579,8 @@ test('im gateway records a redacted send failure code when reply delivery fails'
       allowedUsers: '1001',
       privateTextMode: 'ai-chat'
     }),
-    now: () => '2026-07-09T00:00:00.000Z'
+    now: () => '2026-07-09T00:00:00.000Z',
+    logEvent: (event) => logEvents.push(event)
   })
 
   await gateway.handleMessage(adapter, {
@@ -560,6 +595,11 @@ test('im gateway records a redacted send failure code when reply delivery fails'
   })
 
   assert.equal(gateway.getHealth().adapters.telegram.lastAiErrorCode, 'reply-send-failed')
+  assert.deepEqual(logEvents, [{
+    level: 'error',
+    event: 'telegram.ai.failed',
+    code: 'reply-send-failed'
+  }])
 })
 
 test('im gateway health exposes adapter error codes for operator diagnostics', async () => {
@@ -577,6 +617,8 @@ test('im gateway health exposes adapter error codes for operator diagnostics', a
 
   assert.equal(health.adapters.telegram.status, 'missing-token')
   assert.equal(health.adapters.telegram.lastErrorCode, 'missing-token')
+  assert.equal(health.adapters.telegram.pendingHandlerCount, 0)
+  assert.equal(health.adapters.telegram.droppedHandlerCount, 0)
 })
 
 test('telegram adapter is disabled without a token and lazily constructs a grammY bot when provided', async () => {
@@ -710,6 +752,41 @@ test('bridge client aborts stalled requests after the configured timeout', async
   assert.equal(clearCalls, 1)
 })
 
+test('bridge client forwards external cancellation to an active request', async () => {
+  const controller = new AbortController()
+  let requestSignal = null
+  let resolveFetch
+  const client = createBridgeClient({
+    baseUrl: 'http://127.0.0.1:8796',
+    token: 'bridge-token',
+    timeoutMs: 0,
+    fetchImpl: async (_url, options = {}) => {
+      requestSignal = options.signal
+      return new Promise((resolve, reject) => {
+        resolveFetch = () => resolve({
+          ok: true,
+          json: async () => ({ ok: true })
+        })
+        options.signal?.addEventListener('abort', () => {
+          const error = new Error('aborted')
+          error.name = 'AbortError'
+          reject(error)
+        }, { once: true })
+      })
+    }
+  })
+
+  const request = client.aiChat(
+    { message: 'hello', conversationKey: 'telegram:private:abc123def456' },
+    { signal: controller.signal }
+  )
+  controller.abort()
+  resolveFetch()
+
+  await assert.rejects(request, (error) => error?.name === 'AbortError')
+  assert.equal(requestSignal?.aborted, true)
+})
+
 test('telegram middleware does not block helper updates behind a hanging AI request', async () => {
   let middleware = null
   class ConcurrentBot {
@@ -737,7 +814,13 @@ test('telegram middleware does not block helper updates behind a hanging AI requ
       allowAllPrivateChats: true
     }),
     bridgeClient: {
-      aiChat: async () => new Promise(() => {})
+      aiChat: async (_payload, { signal } = {}) => new Promise((_resolve, reject) => {
+        signal?.addEventListener('abort', () => {
+          const error = new Error('aborted')
+          error.name = 'AbortError'
+          reject(error)
+        }, { once: true })
+      })
     }
   })
   await gateway.start()
@@ -763,6 +846,281 @@ test('telegram middleware does not block helper updates behind a hanging AI requ
   await new Promise((resolve) => setImmediate(resolve))
   assert.equal(replies.some((reply) => reply.includes('Telegram user id: 1001')), true)
   await gateway.stop()
+})
+
+test('telegram adapter bounds pending handlers and aborts active work during stop', async () => {
+  let middleware = null
+  class BoundedBot {
+    on(_route, handler) {
+      middleware = handler
+    }
+    catch() {}
+    start(options = {}) {
+      options.onStart?.()
+      return new Promise(() => {})
+    }
+    stop() {}
+  }
+
+  const adapter = createTelegramAdapter({
+    token: 'telegram-token',
+    config: normalizeImGatewayConfig({ telegramEnabled: true }),
+    grammy: { Bot: BoundedBot },
+    maxPendingHandlers: 2,
+    handlerStopTimeoutMs: 50
+  })
+  const signals = []
+  adapter.onMessage(async (_message, { signal }) => {
+    signals.push(signal)
+    await new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }))
+  })
+  await adapter.start()
+
+  const context = (messageId) => ({
+    message: { message_id: messageId, text: '/openpet whoami' },
+    chat: { id: 1001, type: 'private' },
+    from: { id: 1001, username: 'alice' }
+  })
+  await middleware(context(1))
+  await middleware(context(2))
+  await middleware(context(3))
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.equal(adapter.getStatus().pendingHandlerCount, 2)
+  assert.equal(adapter.getStatus().droppedHandlerCount, 1)
+  assert.equal(adapter.getStatus().lastErrorCode, 'telegram-handler-overloaded')
+
+  await adapter.stop()
+  assert.equal(signals.length, 2)
+  assert.equal(signals.every((signal) => signal.aborted), true)
+  assert.equal(adapter.getStatus().pendingHandlerCount, 0)
+  assert.equal(adapter.getStatus().lastErrorCode, 'telegram-handler-overloaded')
+})
+
+test('telegram adapter persists update ids and ignores redelivery after restart', async () => {
+  const statePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-telegram-dedupe-')), 'updates.json')
+  const middlewares = []
+  class DedupeBot {
+    on(_route, handler) {
+      middlewares.push(handler)
+    }
+    catch() {}
+    start(options = {}) {
+      options.onStart?.()
+      return new Promise(() => {})
+    }
+    stop() {}
+  }
+  const createContext = (updateId, messageId) => ({
+    update: { update_id: updateId },
+    message: { message_id: messageId, text: '/openpet status' },
+    chat: { id: 1001, type: 'private' },
+    from: { id: 1001 },
+    me: { username: 'openpet_bot' }
+  })
+
+  let handled = 0
+  const first = createTelegramAdapter({
+    token: 'telegram-token',
+    config: normalizeImGatewayConfig({ telegramEnabled: true }),
+    grammy: { Bot: DedupeBot },
+    updateStatePath: statePath
+  })
+  first.onMessage(async () => { handled += 1 })
+  await first.start()
+  await middlewares[0](createContext(100, 1))
+  await new Promise((resolve) => setImmediate(resolve))
+  await first.stop()
+
+  const second = createTelegramAdapter({
+    token: 'telegram-token',
+    config: normalizeImGatewayConfig({ telegramEnabled: true }),
+    grammy: { Bot: DedupeBot },
+    updateStatePath: statePath
+  })
+  second.onMessage(async () => { handled += 1 })
+  await second.start()
+  await middlewares[1](createContext(100, 1))
+  await middlewares[1](createContext(101, 2))
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.equal(handled, 2)
+  assert.equal(second.getStatus().duplicateUpdateCount, 1)
+  assert.deepEqual(JSON.parse(fs.readFileSync(statePath, 'utf8')), { claimedUpdateIds: [100, 101] })
+  await second.stop()
+})
+
+test('telegram adapter emits bounded redacted diagnostics for overload', async () => {
+  let middleware = null
+  class LoggingBot {
+    on(_route, handler) { middleware = handler }
+    catch() {}
+    start(options = {}) {
+      options.onStart?.()
+      return new Promise(() => {})
+    }
+    stop() {}
+  }
+  const events = []
+  const adapter = createTelegramAdapter({
+    token: 'telegram-token',
+    config: normalizeImGatewayConfig({ telegramEnabled: true }),
+    grammy: { Bot: LoggingBot },
+    maxPendingHandlers: 1,
+    logEvent: (event) => events.push(event)
+  })
+  adapter.onMessage(async (_message, { signal }) => {
+    await new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }))
+  })
+  await adapter.start()
+  const context = (updateId) => ({
+    update: { update_id: updateId },
+    message: { message_id: updateId, text: 'secret message text' },
+    chat: { id: 1001, type: 'private' },
+    from: { id: 9001, username: 'sensitive-user' },
+    me: { username: 'openpet_bot' }
+  })
+  await middleware(context(1))
+  await middleware(context(2))
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.deepEqual(events.filter((event) => event.code === 'telegram-handler-overloaded'), [{
+    level: 'warn',
+    event: 'telegram.handler.overloaded',
+    code: 'telegram-handler-overloaded',
+    count: 1
+  }])
+  const encoded = JSON.stringify(events)
+  assert.equal(encoded.includes('secret message text'), false)
+  assert.equal(encoded.includes('sensitive-user'), false)
+  assert.equal(encoded.includes('9001'), false)
+  await adapter.stop()
+})
+
+test('im gateway runtime log rate limits repeated persistent diagnostics and contains writer failures', () => {
+  const lines = []
+  let currentTime = 1000
+  const logEvent = createRuntimeLogEvent({
+    consoleImpl: {
+      warn: (line) => lines.push(JSON.parse(line))
+    },
+    now: () => '2026-07-18T00:00:00.000Z',
+    nowMs: () => currentTime,
+    minIntervalMs: 5000
+  })
+
+  assert.equal(logEvent({
+    level: 'warn',
+    event: 'telegram.handler.overloaded',
+    code: 'telegram-handler-overloaded',
+    secret: 'must-not-be-serialized'
+  }), true)
+  currentTime += 1000
+  assert.equal(logEvent({
+    level: 'warn',
+    event: 'telegram.handler.overloaded',
+    code: 'telegram-handler-overloaded'
+  }), false)
+  currentTime += 5000
+  assert.equal(logEvent({
+    level: 'warn',
+    event: 'telegram.handler.overloaded',
+    code: 'telegram-handler-overloaded'
+  }), true)
+
+  assert.deepEqual(lines, [{
+    service: 'openpet.im-gateway',
+    timestamp: '2026-07-18T00:00:00.000Z',
+    level: 'warn',
+    event: 'telegram.handler.overloaded',
+    code: 'telegram-handler-overloaded'
+  }, {
+    service: 'openpet.im-gateway',
+    timestamp: '2026-07-18T00:00:00.000Z',
+    level: 'warn',
+    event: 'telegram.handler.overloaded',
+    code: 'telegram-handler-overloaded',
+    count: 3
+  }])
+  assert.equal(JSON.stringify(lines).includes('must-not-be-serialized'), false)
+
+  const failingLogEvent = createRuntimeLogEvent({
+    consoleImpl: { error: () => { throw new Error('closed stream') } },
+    minIntervalMs: 0
+  })
+  assert.equal(failingLogEvent({ level: 'error', event: 'telegram.polling.failed', code: 'telegram-polling-failed' }), false)
+})
+
+test('telegram adapter still aborts handlers when grammY stop fails', async () => {
+  let middleware = null
+  class FailingStopBot {
+    on(_route, handler) {
+      middleware = handler
+    }
+    catch() {}
+    start(options = {}) {
+      options.onStart?.()
+      return new Promise(() => {})
+    }
+    stop() {
+      throw new Error('sensitive stop failure')
+    }
+  }
+
+  const adapter = createTelegramAdapter({
+    token: 'telegram-token',
+    config: normalizeImGatewayConfig({ telegramEnabled: true }),
+    grammy: { Bot: FailingStopBot },
+    handlerStopTimeoutMs: 50
+  })
+  let handlerSignal = null
+  adapter.onMessage(async (_message, { signal }) => {
+    handlerSignal = signal
+    await new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }))
+  })
+  await adapter.start()
+  await middleware({
+    message: { message_id: 1, text: 'hello' },
+    chat: { id: 1001, type: 'private' },
+    from: { id: 1001 }
+  })
+  await new Promise((resolve) => setImmediate(resolve))
+
+  await assert.doesNotReject(() => adapter.stop())
+  assert.equal(handlerSignal?.aborted, true)
+  assert.equal(adapter.getStatus().pendingHandlerCount, 0)
+  assert.equal(adapter.getStatus().lastErrorCode, 'telegram-polling-stop-failed')
+})
+
+test('telegram adapter bounds a grammY stop call that never settles', async () => {
+  class HangingStopBot {
+    on() {}
+    catch() {}
+    start(options = {}) {
+      options.onStart?.()
+      return new Promise(() => {})
+    }
+    stop() {
+      return new Promise(() => {})
+    }
+  }
+
+  const adapter = createTelegramAdapter({
+    token: 'telegram-token',
+    config: normalizeImGatewayConfig({ telegramEnabled: true }),
+    grammy: { Bot: HangingStopBot },
+    handlerStopTimeoutMs: 5
+  })
+  await adapter.start()
+
+  const result = await Promise.race([
+    adapter.stop().then(() => 'stopped'),
+    new Promise((resolve) => setTimeout(() => resolve('blocked'), 50))
+  ])
+
+  assert.equal(result, 'stopped')
+  assert.equal(adapter.getStatus().status, 'stopped')
+  assert.equal(adapter.getStatus().lastErrorCode, 'telegram-stop-timeout')
 })
 
 test('telegram adapter contains middleware failures and registers a polling error guard', async () => {

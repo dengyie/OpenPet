@@ -110,6 +110,9 @@ const sanitizeReferenceImageSummary = (value) => {
 }
 
 const sanitizeSourceSessionDir = (sessionDir) => {
+  const normalized = toPosixPath(String(sessionDir || '').trim())
+  const knownReleasePath = normalized.match(/(?:^|\/)(release\/creator-workflow-host-smoke\/[A-Za-z0-9._:-]+)$/)
+  if (knownReleasePath) return knownReleasePath[1]
   const relative = toPosixPath(path.relative(process.cwd(), String(sessionDir || '').trim()))
   if (relative && !relative.startsWith('../') && !path.isAbsolute(relative)) return sanitizeText(relative, 240)
   return 'release/creator-workflow-host-smoke/<session>'

@@ -5,7 +5,7 @@ const { resolveAiRoute, truncateAiReply } = require('./ai-routing')
 const { createSlidingWindowRateLimiter } = require('./rate-limiter')
 const { normalizeImGatewayConfig } = require('../config')
 const { createGatewayHealth } = require('../health')
-const { sanitizeReceiptText } = require('../log-safety')
+const { hashIdentifier, sanitizeReceiptText } = require('../log-safety')
 
 const PRIVATE_BUSY_NOTICE = 'Still thinking about your last message. Please send one more message in a moment.'
 const PRIVATE_FAILURE_NOTICE = 'I could not reply just now. Please try again in a moment.'
@@ -33,7 +33,8 @@ const createImGateway = ({
   bridgeClient = {},
   config: rawConfig = {},
   now = () => new Date().toISOString(),
-  aiRateLimiter = createSlidingWindowRateLimiter()
+  aiRateLimiter = createSlidingWindowRateLimiter(),
+  logEvent = () => {}
 } = {}) => {
   const config = normalizeImGatewayConfig(rawConfig)
   const adapterState = new Map()
@@ -91,7 +92,13 @@ const createImGateway = ({
 
   const markAiError = (adapter, message, code) => {
     const state = getState(adapter)
-    state.lastAiErrorCode = String(code || 'ai-reply-failed')
+    const nextCode = String(code || 'ai-reply-failed')
+    if (state.lastAiErrorCode !== nextCode) {
+      try {
+        logEvent({ level: 'error', event: 'telegram.ai.failed', code: nextCode })
+      } catch (_) {}
+    }
+    state.lastAiErrorCode = nextCode
     state.lastChatId = message.chatId || ''
     state.lastUserId = message.userId || ''
   }
@@ -125,7 +132,7 @@ const createImGateway = ({
   ]).join(' | ')
   const isHelperCommand = (command = {}) => command.matched === true && HELPER_COMMANDS.has(String(command.name || ''))
 
-  const handleCommand = async (adapter, message, command) => {
+  const handleCommand = async (adapter, message, command, { signal = null } = {}) => {
     if (command.name === 'whoami') {
       await sendDirectReply(adapter, message, buildWhoamiReply(message))
       markDiagnostic(adapter, message, 'helper-whoami')
@@ -137,19 +144,19 @@ const createImGateway = ({
       return
     }
     if (command.name === 'say' && command.text) {
-      await bridgeClient.say?.({ text: command.text, ttlMs: config.petSayTtlMs })
+      await bridgeClient.say?.({ text: command.text, ttlMs: config.petSayTtlMs }, { signal })
       markTrigger(adapter, message)
       await sendReceipt(adapter, message, 'Message sent.')
       return
     }
     if (command.name === 'action' && command.actionId) {
-      await bridgeClient.action?.({ actionId: command.actionId })
+      await bridgeClient.action?.({ actionId: command.actionId }, { signal })
       markTrigger(adapter, message)
       await sendReceipt(adapter, message, 'Action requested.')
       return
     }
     if (command.name === 'event' && command.type) {
-      await bridgeClient.event?.({ type: command.type, message: command.message, ttlMs: config.petSayTtlMs })
+      await bridgeClient.event?.({ type: command.type, message: command.message, ttlMs: config.petSayTtlMs }, { signal })
       markTrigger(adapter, message)
       await sendReceipt(adapter, message, 'Event posted.')
       return
@@ -161,11 +168,13 @@ const createImGateway = ({
     await sendReceipt(adapter, message, 'Unknown OpenPet command.')
   }
 
-  const handleMessage = async (adapter, message) => {
+  const handleMessage = async (adapter, message, { signal = null } = {}) => {
+    if (signal?.aborted) return
     markMessage(adapter, message)
-    const command = parseOpenPetCommand(message.text, config)
+    const command = parseOpenPetCommand(message.text, config, { botUsername: message.botUsername })
+    if (command.reason === 'command-for-other-bot') return
     if (isHelperCommand(command)) {
-      await handleCommand(adapter, message, command)
+      await handleCommand(adapter, message, command, { signal })
       return
     }
 
@@ -178,7 +187,7 @@ const createImGateway = ({
     }
 
     if (command.matched) {
-      await handleCommand(adapter, message, command)
+      await handleCommand(adapter, message, command, { signal })
       return
     }
 
@@ -186,7 +195,7 @@ const createImGateway = ({
     if (route.mode === 'ignore') return
 
     if (route.mode === 'pet-say') {
-      await bridgeClient.say?.({ text: route.messageText, ttlMs: config.petSayTtlMs })
+      await bridgeClient.say?.({ text: route.messageText, ttlMs: config.petSayTtlMs }, { signal })
       markTrigger(adapter, message)
       return
     }
@@ -205,12 +214,16 @@ const createImGateway = ({
 
     await aiQueue.push(route.conversationKey, {
       run: async () => {
+        if (signal?.aborted) return
         try {
           const result = await bridgeClient.aiChat?.({
             message: route.messageText,
             conversationKey: route.conversationKey,
-            requestId: message.messageId ? `telegram-${String(message.messageId).slice(0, 96)}` : ''
-          })
+            requestId: message.messageId
+              ? `telegram-request:${hashIdentifier(`${route.conversationKey}:${message.messageId}`)}`
+              : ''
+          }, { signal })
+          if (signal?.aborted) return
           const replyText = truncateAiReply(result?.result?.reply || result?.reply || '', message)
           if (!replyText) throw new Error('empty-ai-reply')
           try {
@@ -222,6 +235,10 @@ const createImGateway = ({
           markAiReply(adapter, message)
           markTrigger(adapter, message)
         } catch (_) {
+          if (signal?.aborted) {
+            markAiError(adapter, message, 'ai-request-canceled')
+            return
+          }
           markAiError(adapter, message, 'ai-reply-failed')
           if (String(message.chatType || '').toLowerCase() === 'private') {
             try {
@@ -244,7 +261,7 @@ const createImGateway = ({
   const start = async () => {
     for (const adapter of adapters) {
       getState(adapter)
-      adapter.onMessage?.((message) => handleMessage(adapter, message))
+      adapter.onMessage?.((message, context) => handleMessage(adapter, message, context))
       await adapter.start?.()
     }
   }

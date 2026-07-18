@@ -59,10 +59,12 @@ const createPluginProcessEnv = ({
   platform = process.platform,
   modulePaths = module.paths,
   pathDelimiter = path.delimiter,
-  existsSync = fs.existsSync
+  existsSync = fs.existsSync,
+  runAsNode = false
 } = {}) => {
   const nextEnv = {}
   if (env.PATH) nextEnv.PATH = env.PATH
+  if (runAsNode) nextEnv.ELECTRON_RUN_AS_NODE = '1'
   const nodePathEntries = new Set()
   const rawNodePath = typeof env.NODE_PATH === 'string' ? env.NODE_PATH : ''
   for (const entry of rawNodePath.split(pathDelimiter).map((value) => value.trim()).filter(Boolean)) {
@@ -81,6 +83,20 @@ const createPluginProcessEnv = ({
     if (env.WINDIR) nextEnv.WINDIR = env.WINDIR
   }
   return nextEnv
+}
+
+const resolvePluginProcessLaunch = (command, {
+  platform = process.platform,
+  execPath = process.execPath,
+  electronVersion = process.versions.electron
+} = {}) => {
+  const { file, args } = parsePluginProcessCommand(command, { platform })
+  const runAsNode = file === 'node' && Boolean(electronVersion) && Boolean(execPath)
+  return {
+    file: runAsNode ? execPath : file,
+    args,
+    runAsNode
+  }
 }
 
 const createPluginEntryCwdResolver = ({
@@ -108,5 +124,6 @@ const createPluginEntryCwdResolver = ({
 module.exports = {
   createPluginEntryCwdResolver,
   createPluginProcessEnv,
-  parsePluginProcessCommand
+  parsePluginProcessCommand,
+  resolvePluginProcessLaunch
 }

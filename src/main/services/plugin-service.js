@@ -22,7 +22,7 @@ const { runPluginCommandEntryProcess } = require('./plugin-command-runner')
 const {
   createPluginEntryCwdResolver,
   createPluginProcessEnv,
-  parsePluginProcessCommand
+  resolvePluginProcessLaunch
 } = require('./plugin-process-support')
 const {
   sanitizePluginCommandResultValue,
@@ -82,6 +82,7 @@ const IM_GATEWAY_HEALTH_MESSAGES = new Map([
   ['telegram-polling-conflict', 'Telegram polling conflict'],
   ['telegram-polling-failed', 'Telegram polling failed'],
   ['telegram-handler-failed', 'Telegram message handler failed'],
+  ['telegram-handler-overloaded', 'Telegram handler capacity exceeded'],
   ['allowlist-miss', 'Recent Telegram message blocked by allowlist']
 ])
 const IM_GATEWAY_SAFE_HEALTH_LOG_MESSAGES = new Set([
@@ -268,7 +269,10 @@ const summarizeImGatewayHealthBody = (body) => {
   if (!enabled || status === 'disabled') {
     return { healthy: true, logLevel: 'info', message: 'Telegram disabled' }
   }
-  if (errorCode === 'telegram-handler-failed' && (status === 'connected' || status === 'running')) {
+  if (
+    (errorCode === 'telegram-handler-failed' || errorCode === 'telegram-handler-overloaded') &&
+    (status === 'connected' || status === 'running')
+  ) {
     return {
       healthy: true,
       logLevel: 'warn',
@@ -940,7 +944,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
   const createPluginServiceBridgeHandlers = (plugin, serviceId, bridgeRunId = '') => {
     return {
       ...createPluginPetBridgeHandlers(plugin, `service:${serviceId}`),
-      aiChat: async (payload = {}) => {
+      aiChat: async (payload = {}, { signal = null } = {}) => {
         assertPermission(plugin.manifest, 'ai:chat')
         if (!aiTalkService?.chatFromEntrypoint) throw new Error('AI talk service is not available')
         const message = typeof payload?.message === 'string' ? payload.message.trim() : ''
@@ -951,14 +955,19 @@ const createPluginService = ({ settingsService, petService, actionService, actio
           throw new Error('AI chat conversationKey is invalid')
         }
         appendLog({ pluginId: plugin.manifest.id, commandId: `service:${serviceId}`, level: 'info', message: 'Bridge ai.chat invoked' })
+        const result = await aiTalkService.chatFromEntrypoint({
+          message,
+          conversationId: `plugin:${plugin.manifest.id}:service:${serviceId}:${conversationKey}`,
+          entrypoint: plugin.manifest.id === IM_GATEWAY_PLUGIN_ID ? 'im-gateway' : 'plugin-service',
+          requestId: typeof payload?.requestId === 'string' ? payload.requestId.trim().slice(0, 120) : '',
+          signal
+        })
         return {
           ok: true,
-          result: await aiTalkService.chatFromEntrypoint({
-            message,
-            conversationId: `plugin:${plugin.manifest.id}:service:${serviceId}:${conversationKey}`,
-            entrypoint: plugin.manifest.id === IM_GATEWAY_PLUGIN_ID ? 'im-gateway' : 'plugin-service',
-            requestId: typeof payload?.requestId === 'string' ? payload.requestId.trim().slice(0, 120) : ''
-          })
+          result: {
+            reply: typeof result?.reply === 'string' ? result.reply : '',
+            requestId: typeof result?.requestId === 'string' ? result.requestId.slice(0, 120) : ''
+          }
         }
       }
     }
@@ -1760,12 +1769,12 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       const setupEntry = getSetupEntry(plugin, setupId)
       const existingRuntime = getPluginSetupRuntime(pluginId, setupId)
       if (ACTIVE_SETUP_STATUSES.has(existingRuntime?.status)) throw new Error('Plugin setup is already running')
-      const { file, args } = parsePluginProcessCommand(setupEntry.command)
+      const { file, args, runAsNode } = resolvePluginProcessLaunch(setupEntry.command)
       const cwd = resolveSetupCwd(plugin.manifest, setupEntry.cwd)
       const child = spawnSetupProcess(file, args, {
         cwd,
         detached: false,
-        env: createPluginProcessEnv(),
+        env: createPluginProcessEnv({ runAsNode }),
         shell: false,
         stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true
@@ -1908,6 +1917,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     let declaration
     let file
     let args
+    let runAsNode = false
     let cwd
     let existingRuntime
     try {
@@ -1918,7 +1928,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       if (ACTIVE_SERVICE_STATUSES.has(existingRuntime?.status)) throw new Error('Plugin service is already running')
       if (pendingServiceStarts.has(serviceStartKey)) throw new Error('Plugin service is already running')
       declaration = resolveServiceRuntimeDeclaration(serviceEntry)
-      ;({ file, args } = parsePluginProcessCommand(declaration.command))
+      ;({ file, args, runAsNode } = resolvePluginProcessLaunch(declaration.command))
       cwd = resolveServiceCwd(plugin.manifest, declaration.cwd)
     } catch (error) {
       appendLog({ pluginId, commandId, level: 'error', message: sanitizePluginCommandText(error?.message || 'Service start failed') })
@@ -1959,7 +1969,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
           cwd,
           detached: true,
           env: {
-            ...createPluginProcessEnv(),
+            ...createPluginProcessEnv({ runAsNode }),
             OPENPET_DATA_DIR: serviceDirs.dataDir,
             OPENPET_CACHE_DIR: serviceDirs.cacheDir,
             OPENPET_LOG_DIR: serviceDirs.logDir,

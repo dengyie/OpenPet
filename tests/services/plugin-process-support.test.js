@@ -7,7 +7,8 @@ const path = require('path')
 const {
   createPluginEntryCwdResolver,
   createPluginProcessEnv,
-  parsePluginProcessCommand
+  parsePluginProcessCommand,
+  resolvePluginProcessLaunch
 } = require('../../src/main/services/plugin-process-support')
 
 test('plugin process support parses quoted commands and escapes', () => {
@@ -82,6 +83,32 @@ test('plugin process support creates minimal process env per platform', () => {
       NODE_PATH: 'C:\\repo\\node_modules',
       SystemRoot: 'C:\\Windows',
       WINDIR: 'C:\\Windows'
+    }
+  )
+})
+
+test('plugin process support uses the packaged Electron binary as Node', () => {
+  assert.deepEqual(
+    resolvePluginProcessLaunch('node ./service/im-gateway-service.js', {
+      electronVersion: '42.4.0',
+      execPath: '/Applications/OpenPet.app/Contents/MacOS/OpenPet',
+      platform: 'darwin'
+    }),
+    {
+      file: '/Applications/OpenPet.app/Contents/MacOS/OpenPet',
+      args: ['./service/im-gateway-service.js'],
+      runAsNode: true
+    }
+  )
+  assert.deepEqual(
+    createPluginProcessEnv({
+      env: { PATH: '/usr/bin' },
+      modulePaths: [],
+      runAsNode: true
+    }),
+    {
+      PATH: '/usr/bin',
+      ELECTRON_RUN_AS_NODE: '1'
     }
   )
 })

@@ -41,7 +41,21 @@ bundled plugin runtime.
 - Private AI ingress is limited to 6 accepted requests per 30 seconds; group
   ingress is limited to 3 per 30 seconds. Rate-limit tracking is bounded.
 - Host bridge calls time out after 45 seconds, and Telegram update dispatch does
-  not wait for a pending AI response before accepting another update.
+  not wait for a pending AI response before accepting another update. Timeout,
+  adapter shutdown, and client disconnect cancellation propagate into the host
+  Provider request before a late assistant reply can be persisted.
+- Telegram message ids are converted to opaque request hashes before crossing
+  the bridge. The AI response DTO contains only `reply` and `requestId`; host
+  conversation history and behavior metadata are not returned to the plugin.
+- Telegram update ids are retained in a bounded plugin-local state file so
+  redelivered updates are ignored across normal service restarts. This is an
+  at-most-once duplicate guard, not an exactly-once delivery guarantee.
+- The Telegram adapter accepts at most 128 pending handlers globally, silently
+  drops excess updates, reports pending/drop counters in health, and aborts
+  active handlers during a bounded stop.
+- Polling, handler, duplicate-update, overload, AI, and stop failures emit
+  rate-limited, bounded JSON diagnostics containing only stable codes and
+  counters.
 - The host retains at most 500 non-main AI conversations and removes evicted
   conversation messages with them.
 - The plugin health view exposes only redacted counters, timestamps, error
@@ -72,7 +86,12 @@ is starting, running, or stopping. Stop the service before changing them.
 
 ## Verification Boundary
 
+The packaged service uses the bundled Electron Node runtime for declared
+`node` entries, so it does not require a separately installed system Node.
+
 The automated suite covers simulated grammY polling, readiness, allowlists,
-commands, AI routing, bridge timeouts, rate limits, retention, and redaction.
-A real Telegram Bot Token smoke session remains a manual follow-up and is not
-part of the repository test suite.
+commands, AI routing, bridge timeouts and disconnect cancellation, global
+handler overload, bounded shutdown, narrow AI bridge responses, rate limits,
+retention, duplicate updates, command targeting, bounded diagnostics, and
+redaction. A real Telegram Bot Token smoke session remains a manual follow-up
+and is not part of the repository test suite.

@@ -26,7 +26,6 @@ const createSlidingWindowRateLimiter = ({
     windows.set(normalizedKey, existing)
     return {
       allowed,
-      retryAfterMs: allowed ? 0 : Math.max(1, existing[0] + boundedWindowMs - currentTime),
       trackedKeyCount: windows.size
     }
   }

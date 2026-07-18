@@ -2397,6 +2397,7 @@ test.describe('Control Center smoke', () => {
     const pluginRow = page.locator('.plugin-row', { hasText: 'IM Gateway' })
     await expect(pluginRow).toContainText('openpet.im-gateway')
     await expect(pluginRow).toContainText('pet:say · pet:action · pet:event · ai:chat')
+    await openPluginManagement(pluginRow)
 
     const imCard = pluginRow.locator('[aria-label="IM Gateway 设置"]')
     const configCard = pluginRow.locator('.plugin-config-panel').filter({ hasText: 'IM Gateway Settings' })
@@ -2419,24 +2420,26 @@ test.describe('Control Center smoke', () => {
     await page.getByRole('button', { name: 'Plugins' }).click()
 
     const refreshedPluginRow = page.locator('.plugin-row', { hasText: 'IM Gateway' })
+    await openPluginManagement(refreshedPluginRow)
+    const refreshedImCard = refreshedPluginRow.locator('[aria-label="IM Gateway 设置"]')
     const refreshedConfigCard = refreshedPluginRow.locator('.plugin-config-panel').filter({ hasText: 'IM Gateway Settings' })
     await expect(refreshedConfigCard.getByLabel('Private text mode')).toHaveValue('2')
     await expect(refreshedConfigCard.getByRole('switch', { name: 'Enable group AI replies' })).toHaveAttribute('aria-checked', 'true')
 
-    const tokenInput = imCard.getByLabel('Telegram Bot Token')
+    const tokenInput = refreshedImCard.getByLabel('Telegram Bot Token')
     await tokenInput.fill('123456:stage3-secret-token')
-    await imCard.getByRole('button', { name: 'Save Telegram Token' }).click()
+    await refreshedImCard.getByRole('button', { name: 'Save Telegram Token' }).click()
 
     await expect(page.locator('.status-line')).toContainText('Telegram token saved')
-    await expect(imCard).toContainText('Telegram token: saved')
+    await expect(refreshedImCard).toContainText('Telegram token: saved')
     await expect(tokenInput).toHaveValue('')
     await expect(page.getByText('123456:stage3-secret-token')).toHaveCount(0)
 
-    await imCard.getByRole('button', { name: 'Clear Telegram Token' }).click()
+    await refreshedImCard.getByRole('button', { name: 'Clear Telegram Token' }).click()
 
     await expect(page.locator('.status-line')).toContainText('Telegram token cleared')
-    await expect(imCard).toContainText('Telegram token: not saved')
-    await expect(imCard.getByRole('button', { name: 'Clear Telegram Token' })).toBeDisabled()
+    await expect(refreshedImCard).toContainText('Telegram token: not saved')
+    await expect(refreshedImCard.getByRole('button', { name: 'Clear Telegram Token' })).toBeDisabled()
   })
 
   test('shows IM Gateway onboarding guidance and redacted diagnostics in the Plugins pane', async ({ page }) => {
@@ -2516,6 +2519,7 @@ test.describe('Control Center smoke', () => {
     await page.getByRole('button', { name: 'Plugins' }).click()
 
     const pluginRow = page.locator('.plugin-row', { hasText: 'IM Gateway' })
+    await openPluginManagement(pluginRow)
     const imCard = pluginRow.locator('[aria-label="IM Gateway 设置"]')
 
     await expect(imCard).toContainText('/openpet whoami')

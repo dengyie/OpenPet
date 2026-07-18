@@ -1,4 +1,6 @@
+const path = require('node:path')
 const { normalizeImMessage } = require('../core/normalize-message')
+const { createTelegramUpdateState } = require('../telegram-update-state')
 
 const toTelegramChatType = (type = '') => {
   const normalized = String(type || '').toLowerCase()
@@ -58,6 +60,8 @@ const createTelegramMessage = (ctx = {}, now) => {
     chatId: chat.id,
     userId: from.id,
     userName: from.username || [from.first_name, from.last_name].filter(Boolean).join(' '),
+    botUsername: normalizeTelegramHandle(ctx.me?.username),
+    updateId: ctx.update?.update_id,
     messageId: message.message_id,
     text: message.text,
     directMentionText: getDirectBotMentionText(ctx, message),
@@ -84,31 +88,106 @@ const classifyTelegramStartError = (error) => {
   return 'telegram-polling-failed'
 }
 
+const createHandlerStopError = () => {
+  const error = new Error('Telegram adapter stopped')
+  error.name = 'AbortError'
+  return error
+}
+
 const createTelegramAdapter = ({
   token = process.env.OPENPET_IM_TELEGRAM_BOT_TOKEN || '',
   config = {},
   grammy,
-  now = () => new Date().toISOString()
+  now = () => new Date().toISOString(),
+  maxPendingHandlers = 128,
+  handlerStopTimeoutMs = 1000,
+  updateStatePath = process.env.OPENPET_DATA_DIR
+    ? path.join(process.env.OPENPET_DATA_DIR, 'telegram-update-state.json')
+    : '',
+  logEvent = () => {}
 } = {}) => {
   let handler = null
   let bot = null
   let status = 'stopped'
   let lastErrorCode = ''
-  const handlerTasks = new Set()
+  let acceptingHandlers = false
+  let droppedHandlerCount = 0
+  let duplicateUpdateCount = 0
+  const handlerTasks = new Map()
+  const updateState = createTelegramUpdateState({ statePath: updateStatePath })
+  const parsedMaxPendingHandlers = Number(maxPendingHandlers)
+  const parsedHandlerStopTimeoutMs = Number(handlerStopTimeoutMs)
+  const boundedMaxPendingHandlers = Math.min(4096, Math.max(
+    1,
+    Number.isFinite(parsedMaxPendingHandlers) ? Math.floor(parsedMaxPendingHandlers) : 128
+  ))
+  const boundedHandlerStopTimeoutMs = Math.min(30000, Math.max(
+    0,
+    Number.isFinite(parsedHandlerStopTimeoutMs) ? Math.floor(parsedHandlerStopTimeoutMs) : 1000
+  ))
 
   const scheduleHandler = (message) => {
-    const task = Promise.resolve().then(() => handler(message))
-    handlerTasks.add(task)
+    if (!acceptingHandlers) return false
+    if (handlerTasks.size >= boundedMaxPendingHandlers) {
+      droppedHandlerCount += 1
+      lastErrorCode = 'telegram-handler-overloaded'
+      logEvent({
+        level: 'warn',
+        event: 'telegram.handler.overloaded',
+        code: lastErrorCode,
+        count: droppedHandlerCount
+      })
+      return false
+    }
+    let claimed = true
+    try {
+      claimed = updateState.claim(message.updateId)
+    } catch (_) {
+      lastErrorCode = 'telegram-update-state-failed'
+      logEvent({ level: 'error', event: 'telegram.update.state-failed', code: lastErrorCode })
+    }
+    if (!claimed) {
+      duplicateUpdateCount += 1
+      logEvent({
+        level: 'warn',
+        event: 'telegram.update.duplicate',
+        code: 'telegram-update-duplicate',
+        count: duplicateUpdateCount
+      })
+      return false
+    }
+    const controller = new AbortController()
+    const task = Promise.resolve().then(() => handler(message, { signal: controller.signal }))
+    handlerTasks.set(task, controller)
     task.then(
       () => {
         handlerTasks.delete(task)
-        if (lastErrorCode === 'telegram-handler-failed') lastErrorCode = ''
+        if (lastErrorCode === 'telegram-handler-failed' || lastErrorCode === 'telegram-handler-overloaded') lastErrorCode = ''
       },
       () => {
         handlerTasks.delete(task)
-        lastErrorCode = 'telegram-handler-failed'
+        if (!controller.signal.aborted) {
+          lastErrorCode = 'telegram-handler-failed'
+          logEvent({ level: 'error', event: 'telegram.handler.failed', code: lastErrorCode })
+        }
       }
     )
+    return true
+  }
+
+  const waitForStopWork = async (additionalWork = []) => {
+    const tasks = [...Array.from(handlerTasks.keys()), ...additionalWork]
+    if (!tasks.length) return false
+    if (boundedHandlerStopTimeoutMs === 0) return true
+    let timeoutId = null
+    const timedOut = await Promise.race([
+      Promise.allSettled(tasks).then(() => false),
+      new Promise((resolve) => {
+        timeoutId = setTimeout(() => resolve(true), boundedHandlerStopTimeoutMs)
+      })
+    ])
+    if (timeoutId) clearTimeout(timeoutId)
+    return timedOut
   }
 
   return {
@@ -130,12 +209,16 @@ const createTelegramAdapter = ({
       const { Bot } = resolveGrammy(grammy)
       bot = new Bot(token)
       const activeBot = bot
+      acceptingHandlers = true
+      droppedHandlerCount = 0
+      duplicateUpdateCount = 0
       bot.on('message:text', async (ctx) => {
         if (typeof handler !== 'function') return
         scheduleHandler(createTelegramMessage(ctx, now))
       })
       bot.catch?.(() => {
         lastErrorCode = 'telegram-handler-failed'
+        logEvent({ level: 'error', event: 'telegram.polling.handler-failed', code: lastErrorCode })
       })
       status = 'connecting'
       lastErrorCode = ''
@@ -145,17 +228,41 @@ const createTelegramAdapter = ({
         }
       }))
         .then(() => {
-          if (bot === activeBot && status === 'connected') status = 'stopped'
+          if (bot === activeBot && status === 'connected') {
+            acceptingHandlers = false
+            status = 'stopped'
+          }
         })
         .catch((error) => {
           if (bot !== activeBot) return
+          acceptingHandlers = false
           status = 'failed'
           lastErrorCode = classifyTelegramStartError(error)
+          logEvent({ level: 'error', event: 'telegram.polling.failed', code: lastErrorCode })
         })
     },
     stop: async () => {
-      if (bot?.stop) bot.stop()
+      acceptingHandlers = false
+      const activeBot = bot
       bot = null
+      const stopError = createHandlerStopError()
+      for (const controller of handlerTasks.values()) controller.abort(stopError)
+      let pollingStopFailed = false
+      const pollingStop = activeBot?.stop
+        ? Promise.resolve()
+          .then(() => activeBot.stop())
+          .catch(() => {
+            pollingStopFailed = true
+          })
+        : Promise.resolve()
+      const timedOut = await waitForStopWork([pollingStop])
+      if (timedOut) {
+        lastErrorCode = 'telegram-stop-timeout'
+        logEvent({ level: 'error', event: 'telegram.stop.timeout', code: lastErrorCode })
+      } else if (pollingStopFailed) {
+        lastErrorCode = 'telegram-polling-stop-failed'
+        logEvent({ level: 'error', event: 'telegram.stop.failed', code: lastErrorCode })
+      }
       status = status === 'disabled' ? 'disabled' : 'stopped'
     },
     sendReceipt: async (message, text) => {
@@ -165,7 +272,10 @@ const createTelegramAdapter = ({
       enabled: config.telegramEnabled === true,
       status,
       mode: 'polling',
-      lastErrorCode
+      lastErrorCode,
+      pendingHandlerCount: handlerTasks.size,
+      droppedHandlerCount,
+      duplicateUpdateCount
     })
   }
 }

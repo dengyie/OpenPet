@@ -4292,7 +4292,10 @@ test('plugin service bridge lets service runtimes call ai chat through aiTalkSer
         aiCalls.push(payload)
         return {
           conversationId: 'im-gateway:legacy-cat:plugin:weather-declaration:service:companion:telegram:private:1001:1001',
-          reply: 'host reply'
+          reply: 'host reply',
+          requestId: 'host-request-123',
+          messages: [{ role: 'user', content: 'sensitive conversation history' }],
+          behaviorIntent: { intent: 'wave' }
         }
       }
     },
@@ -4324,13 +4327,85 @@ test('plugin service bridge lets service runtimes call ai chat through aiTalkSer
   })
 
   assert.equal(response.status, 200)
-  assert.equal(response.body.result.reply, 'host reply')
-  assert.deepEqual(aiCalls, [{
+  assert.deepEqual(response.body, {
+    ok: true,
+    result: {
+      reply: 'host reply',
+      requestId: 'host-request-123'
+    }
+  })
+  assert.equal(JSON.stringify(response.body).includes('sensitive conversation history'), false)
+  assert.deepEqual(aiCalls.map(({ signal, ...payload }) => payload), [{
     message: 'hello from telegram',
     conversationId: 'plugin:weather-declaration:service:companion:telegram:private:abc123def456',
     entrypoint: 'plugin-service',
     requestId: ''
   }])
+  assert.equal(aiCalls[0].signal.aborted, false)
+})
+
+test('plugin service bridge aborts host AI work when the client disconnects', async () => {
+  const spawned = []
+  let hostSignal = null
+  let markHostStarted
+  let releaseHost
+  const hostStarted = new Promise((resolve) => {
+    markHostStarted = resolve
+  })
+  const hostPending = new Promise((resolve) => {
+    releaseHost = resolve
+  })
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'weather-declaration': true } }
+    }),
+    petService: createBridgeAwarePetService(),
+    aiTalkService: {
+      chatFromEntrypoint: async (payload) => {
+        hostSignal = payload.signal
+        markHostStarted()
+        return hostPending
+      }
+    },
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir({ permissions: ['ai:chat'] })],
+    spawnServiceProcess: (file, args, options) => {
+      spawned.push({ file, args, options })
+      return createSlowStoppingServiceProcess()
+    }
+  })
+
+  await service.startService('weather-declaration', 'companion')
+  const target = new URL(`${spawned[0].options.env.OPENPET_SERVICE_BRIDGE_URL}/ai/chat`)
+  const requestClosed = new Promise((resolve) => {
+    const request = http.request({
+      protocol: target.protocol,
+      hostname: target.hostname,
+      port: target.port,
+      path: target.pathname,
+      method: 'POST',
+      agent: false,
+      headers: {
+        Authorization: `Bearer ${spawned[0].options.env.OPENPET_SERVICE_BRIDGE_TOKEN}`,
+        'Content-Type': 'application/json'
+      }
+    })
+    request.on('error', resolve)
+    request.write(JSON.stringify({
+      message: 'cancel me',
+      conversationKey: 'telegram:private:abc123def456'
+    }))
+    request.end()
+    hostStarted.then(() => request.destroy())
+  })
+
+  await hostStarted
+  await requestClosed
+  await waitFor(() => hostSignal?.aborted === true)
+  assert.equal(hostSignal?.aborted, true)
+
+  releaseHost({ reply: 'late reply' })
+  service.stopService('weather-declaration', 'companion')
 })
 
 test('plugin service bridge rejects unsafe AI conversation keys', async () => {
@@ -5257,6 +5332,7 @@ test('plugin service maps IM Gateway health diagnostics to bounded operator summ
     ['missing-token', '', '', 'Telegram token missing', 'unhealthy', 'error', 'Service health unhealthy: Telegram token missing'],
     ['telegram-polling-failed', '', '', 'Telegram polling failed', 'unhealthy', 'error', 'Service health unhealthy: Telegram polling failed'],
     ['telegram-handler-failed', '', 'connected', 'Telegram message handler failed', 'healthy', 'warn', 'IM Gateway diagnostic: Telegram message handler failed'],
+    ['telegram-handler-overloaded', '', 'connected', 'Telegram handler capacity exceeded', 'healthy', 'warn', 'IM Gateway diagnostic: Telegram handler capacity exceeded'],
     ['', 'allowlist-miss', '', 'Recent Telegram message blocked by allowlist', 'healthy', 'warn', 'IM Gateway diagnostic: Recent Telegram message blocked by allowlist'],
     ['', '', '', 'Telegram connected', 'healthy', 'info', 'Service health healthy: Telegram connected']
   ]

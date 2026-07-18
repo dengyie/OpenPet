@@ -298,6 +298,43 @@ test('ai talk service serializes concurrent messages for the same main conversat
   ])
 })
 
+test('ai talk service aborts non-stream completion before persisting a late assistant reply', async () => {
+  const store = createStore()
+  const controller = new AbortController()
+  let providerSignal = null
+  let markProviderStarted
+  let resolveProvider
+  const providerStarted = new Promise((resolve) => {
+    markProviderStarted = resolve
+  })
+  const providerPending = new Promise((resolve) => {
+    resolveProvider = resolve
+  })
+  const service = createAiTalkService({
+    aiService: {
+      complete: async ({ signal }) => {
+        providerSignal = signal
+        markProviderStarted()
+        return providerPending
+      }
+    },
+    aiTalkStore: store,
+    petPackService: createPetPackService({ id: 'legacy-cat' })
+  })
+
+  const pending = service.chat({ message: 'cancel this turn', signal: controller.signal })
+  await providerStarted
+  controller.abort()
+  resolveProvider({ reply: 'late reply' })
+
+  await assert.rejects(pending, (error) => error?.name === 'AbortError')
+  assert.equal(providerSignal?.aborted, true)
+  assert.deepEqual(
+    store.getMessages('control-center:legacy-cat', 'main').map((message) => message.content),
+    ['cancel this turn']
+  )
+})
+
 test('ai talk service can send a merged user batch while preserving separate transcript messages', async () => {
   const requests = []
   const store = createStore()

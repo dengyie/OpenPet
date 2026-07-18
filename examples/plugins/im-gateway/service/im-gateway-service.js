@@ -3,6 +3,7 @@ const { createBridgeClient } = require('./bridge-client')
 const { readConfigFromEnv } = require('./config')
 const { createDefaultAdapters } = require('./adapters/registry')
 const { createImGateway } = require('./core/gateway')
+const { createRuntimeLogEvent } = require('./runtime-log')
 
 const DEFAULT_PORT = 8796
 
@@ -17,13 +18,15 @@ const sendJson = (response, statusCode, body) => {
 const createImGatewayServer = ({
   config = readConfigFromEnv(),
   bridgeClient = createBridgeClient(),
+  logEvent = createRuntimeLogEvent(),
   adapters = createDefaultAdapters({
     config,
-    token: process.env.OPENPET_IM_TELEGRAM_BOT_TOKEN || ''
+    token: process.env.OPENPET_IM_TELEGRAM_BOT_TOKEN || '',
+    logEvent
   }),
   createServer = http.createServer
 } = {}) => {
-  const gateway = createImGateway({ adapters, bridgeClient, config })
+  const gateway = createImGateway({ adapters, bridgeClient, config, logEvent })
   let server = null
 
   const handleRequest = async (request, response) => {

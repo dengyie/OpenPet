@@ -1,7 +1,7 @@
 const { createTelegramAdapter } = require('./telegram')
 
-const createDefaultAdapters = ({ config, token } = {}) => [
-  createTelegramAdapter({ config, token })
+const createDefaultAdapters = ({ config, token, logEvent } = {}) => [
+  createTelegramAdapter({ config, token, logEvent })
 ]
 
 module.exports = {

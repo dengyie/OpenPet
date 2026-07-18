@@ -252,7 +252,7 @@ const createSmokeGenerationTask = ({
   mode: 'single-action',
   targetPet: 'current',
   styleSource: 'currentPet',
-  characterBrief: prompt,
+  characterBrief: sanitizeCreativeBrief(prompt),
   actions: [{
     actionId,
     name: actionName,

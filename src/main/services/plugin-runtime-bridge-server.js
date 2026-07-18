@@ -50,11 +50,19 @@ const readJsonBody = (request, maxBodyBytes = MAX_PLUGIN_BRIDGE_BODY_BYTES) => n
 })
 
 const sendJson = (response, statusCode, body) => {
+  if (response.destroyed || response.writableEnded) return false
   response.writeHead(statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store'
   })
   response.end(JSON.stringify(body))
+  return true
+}
+
+const createClientDisconnectedError = () => {
+  const error = new Error('Plugin bridge client disconnected')
+  error.name = 'AbortError'
+  return error
 }
 
 const createPluginRuntimeBridgeServer = ({
@@ -117,7 +125,24 @@ const createPluginRuntimeBridgeServer = ({
 
       const jsonHandler = jsonRoutes.get(route)
       if (jsonHandler) {
-        sendJson(response, 200, await runtime.handlers[jsonHandler](await readJsonBody(request, maxBodyBytes)))
+        const controller = new AbortController()
+        const abortHandler = () => {
+          if (!controller.signal.aborted) controller.abort(createClientDisconnectedError())
+        }
+        const closeHandler = () => {
+          if (!response.writableEnded) abortHandler()
+        }
+        request.once('aborted', abortHandler)
+        response.once('close', closeHandler)
+        request.socket?.once('close', closeHandler)
+        try {
+          const payload = await readJsonBody(request, maxBodyBytes)
+          sendJson(response, 200, await runtime.handlers[jsonHandler](payload, { signal: controller.signal }))
+        } finally {
+          request.off('aborted', abortHandler)
+          response.off('close', closeHandler)
+          request.socket?.off('close', closeHandler)
+        }
         return
       }
 

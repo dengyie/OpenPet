@@ -15,6 +15,11 @@ This milestone closes the remaining gaps around:
 - Telegram readiness and service-health semantics;
 - bounded, redacted operator logs;
 - conservative AI request rate limiting;
+- cancellation propagation across Telegram, the plugin bridge, and host AI;
+- opaque request correlation and a minimal host response contract;
+- globally bounded Telegram handler concurrency and shutdown;
+- packaged service-process runtime resolution;
+- duplicate-update protection and stable runtime diagnostics;
 - deterministic simulated Telegram protocol coverage;
 - accurate active TODO and operator documentation;
 - compatibility with the latest host-owned Provider runtime on `main`.
@@ -109,6 +114,46 @@ Operator-facing health, logs, and renderer state must not contain:
 Allowed values are stable status/error codes, bounded summaries, timestamps,
 counters, and existing hashed peer identifiers.
 
+Telegram `message_id` values never become host request ids directly. The
+gateway hashes the pseudonymous conversation key plus message id into a bounded
+opaque request id before crossing the bridge. The host bridge returns only the
+assistant reply and opaque request id; conversation history, behavior intent,
+and other `AiTalkService` internals remain host-only.
+
+## 5.1 Cancellation And Handler Capacity
+
+Cancellation follows the resource owner chain:
+
+```text
+Telegram adapter stop / bridge timeout
+  -> plugin bridge fetch AbortSignal
+  -> host bridge client-disconnect AbortSignal
+  -> AiTalkService non-stream request
+  -> Provider request
+```
+
+The host checks cancellation before turn preparation, after queue acquisition,
+around Provider completion, and before successful-turn persistence. A user
+message already acquired by the conversation may remain in history, but a late
+assistant reply and success-side memory work are not committed after cancel.
+
+The Telegram adapter also enforces a fixed global limit of 128 pending message
+handlers in addition to the per-conversation AI queue. Excess updates are
+silently dropped to avoid creating more outbound work. Health reports bounded
+pending/drop counters. Stop rejects new handlers, aborts active controllers,
+and waits at most one second for settlement before returning.
+
+Telegram `update_id` values are retained in a bounded plugin-local state file.
+Previously claimed ids are ignored across normal service restarts. This is an
+at-most-once duplicate guard; it does not claim exactly-once delivery across a
+crash between an external side effect and local state persistence.
+
+The adapter and gateway emit rate-limited, bounded JSON diagnostics for
+polling, handler, duplicate-update, overload, AI, and stop failures. Diagnostic
+events contain only stable event/error codes and counters, never message text
+or identifiers. The logger retains at most 64 event-code throttle keys and
+contains output-stream failures so diagnostics cannot break message handling.
+
 ## 6. AI Request Rate Limiting
 
 The existing per-conversation queue remains in place:
@@ -184,6 +229,9 @@ Required coverage:
 - private `command-only`, `pet-say`, and `ai-chat` modes;
 - direct-mention-only group AI;
 - one-running plus one-queued backpressure;
+- global pending-handler overload and bounded stop cancellation;
+- duplicate update delivery across adapter recreation;
+- commands addressed to another Telegram bot;
 - private and group rate-limit behavior;
 - bounded private failure/busy/rate-limit notices;
 - silent group failure/drop behavior;
@@ -194,9 +242,12 @@ Required coverage:
 - token storage and service-only environment injection;
 - `ai:chat` permission enforcement;
 - conversation isolation through host-owned `AiTalkService`;
+- client-disconnect cancellation before late assistant persistence;
+- opaque Telegram request ids and reply-only bridge serialization;
 - HTTP liveness plus adapter-readiness health mapping;
 - bounded log level and summary mapping;
 - raw identifier and token redaction;
+- packaged child-process module resolution and runtime selection;
 - compatibility with host-owned Provider selection and request ids.
 
 ### Control Center
@@ -261,6 +312,10 @@ OneBot, Weixin, legacy private-policy, and trigger-policy shells. It also adds:
   bounded operator log messages;
 - non-blocking tracked Telegram handler tasks, a grammY error guard, and
   AbortController-backed 45-second bridge timeouts;
+- end-to-end cancellation from adapter stop or bridge disconnect into
+  non-stream host Provider requests, with no late assistant persistence;
+- opaque request hashes, a reply-only host bridge DTO, and a fixed 128-handler
+  global pending cap with overload counters and bounded stop waiting;
 - fixed 6/30s private and 3/30s group AI ingress limits with bounded key state;
 - a 500-entry non-main AI conversation cap with message cleanup and session
   reference repair.
