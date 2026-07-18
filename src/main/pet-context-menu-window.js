@@ -45,10 +45,12 @@ const createMenuHtml = (items, { scrollable = false } = {}) => {
       padding: ${MENU_METRICS.padding}px;
       overflow-x: hidden;
       overflow-y: ${scrollable ? 'auto' : 'hidden'};
-      border-radius: 12px;
-      background: rgba(255, 255, 255, 0.97);
-      box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.13);
-      color: #172033;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.98);
+      box-shadow:
+        inset 0 0 0 1px rgba(15, 23, 42, 0.1),
+        0 14px 30px rgba(15, 23, 42, 0.08);
+      color: #1f2937;
       scrollbar-width: thin;
     }
     button {
@@ -68,6 +70,7 @@ const createMenuHtml = (items, { scrollable = false } = {}) => {
       text-align: left;
       cursor: default;
       white-space: nowrap;
+      transition: background 120ms ease, color 120ms ease;
     }
     .label {
       min-width: 0;
@@ -77,18 +80,18 @@ const createMenuHtml = (items, { scrollable = false } = {}) => {
     .submenu-arrow {
       flex: none;
       margin-left: 12px;
-      color: rgba(15, 23, 42, 0.48);
+      color: rgba(15, 23, 42, 0.42);
       font-size: 12px;
     }
     button:hover, button:focus-visible {
       outline: none;
-      background: rgba(37, 99, 235, 0.1);
-      color: #123d91;
+      background: rgba(111, 92, 255, 0.12);
+      color: #5a48d6;
     }
     .separator {
       height: ${MENU_METRICS.separatorHeight}px;
       margin: ${MENU_METRICS.separatorMargin}px 4px;
-      background: rgba(15, 23, 42, 0.12);
+      background: rgba(15, 23, 42, 0.1);
     }
   </style>
 </head>

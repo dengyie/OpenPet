@@ -90,24 +90,27 @@
             display: block;
         }
 
-        /* 气泡默认隐藏在小猫头顶，显示时通过 opacity 和 transform 做轻量过渡。 */
+        /* 气泡默认隐藏在小猫头顶，显示时通过 opacity 和 transform 做轻量过渡。
+           视觉与 Control Center 设计种子对齐：柔和白底 + 蓝灰阴影 + 大圆角。 */
         #bubble {
             position: absolute;
             left: 50%;
             top: 18px;
-            max-width: 180px;
+            max-width: 200px;
             min-height: 32px;
-            padding: 7px 12px;
-            border-radius: 14px;
-            background: rgba(255, 255, 255, 0.92);
-            color: #2f2f2f;
+            padding: 8px 14px;
+            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.96);
+            color: #1f2937;
             font-size: 13px;
-            line-height: 18px;
+            line-height: 19px;
             text-align: center;
             transform: translateX(-50%) translateY(-8px);
             opacity: 0;
-            transition: opacity 160ms ease, transform 160ms ease;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+            transition: opacity 180ms ease, transform 180ms ease;
+            box-shadow:
+                0 0 0 1px rgba(15, 23, 42, 0.06),
+                0 14px 30px rgba(15, 23, 42, 0.12);
             pointer-events: none;
             z-index: 10;
         }
