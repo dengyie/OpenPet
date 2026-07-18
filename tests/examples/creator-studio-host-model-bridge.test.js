@@ -8,6 +8,7 @@ const path = require('node:path')
 const sharp = require('sharp')
 
 const { __testInternals, generateViaHostModelBridge } = require('../../examples/plugins/creator-studio/lib/host-model-bridge')
+const { buildCharacterAnchorPrompt } = require('../../examples/plugins/creator-studio/lib/anchor-prompt-builder')
 const {
   OFFICIAL_FULL_PET_ACTION_IDS,
   OFFICIAL_FULL_PET_ROWS
@@ -190,9 +191,96 @@ test('host model bridge delegates transient retry policy to the Host without res
   assert.match(String(failure?.message || ''), /HTTP 524/)
   assert.equal(requests.length, 1)
   assert.equal(Object.hasOwn(requests[0], 'model'), false)
+  assert.equal(requests[0].constraints.transparent, true)
+  assert.equal(requests[0].promptVariants[0].constraints.transparent, true)
   assert.deepEqual(failure.modelAttempts.map((attempt) => ({ model: attempt.model, ok: attempt.ok })), [
     { model: 'gpt-image-2', ok: false }
   ])
+})
+
+test('host model bridge sends a fresh compiled prompt variant for every Host fallback candidate', async () => {
+  const requests = []
+  const result = await __testInternals.generateWithModelFallback({
+    prompt: 'opaque primary prompt',
+    promptCompiler: {
+      modelCapabilityProfile: 'gpt-image-2-v1',
+      backgroundStrategy: 'solid-background-then-local-removal'
+    },
+    constraints: { width: 1024, height: 1024, transparent: false },
+    requestedTimeoutMs: 300000,
+    referenceImages: [{ role: 'canonical-reference' }],
+    runId: 'run-model-aware-fallback',
+    dataRelativeDir: 'runs/run-model-aware-fallback/keyframes/start',
+    settings: {
+      provider: 'openai-compatible',
+      creatorWorkflowModelPolicy: {
+        verifiedModels: ['gpt-image-2', 'gpt-image-1.5'],
+        fallbackModels: ['gpt-image-1.5']
+      }
+    },
+    preferredModel: 'gpt-image-2',
+    buildPromptForModel: (model) => buildCharacterAnchorPrompt({
+      model,
+      appearanceIntent: ['small mint-colored character']
+    }),
+    callHostImageGenerateImpl: async (request) => {
+      requests.push(request)
+      return {
+        result: {
+          model: 'gpt-image-1.5',
+          modelAttempts: [
+            { model: 'gpt-image-2', ok: false, timeoutMs: 180000 },
+            { model: 'gpt-image-1.5', ok: true, timeoutMs: 120000 }
+          ]
+        }
+      }
+    }
+  })
+
+  assert.equal(requests.length, 1)
+  assert.equal(requests[0].expectedModel, 'gpt-image-2')
+  assert.equal(requests[0].promptVariants.length, 2)
+  assert.equal(requests[0].promptVariants[0].model, 'gpt-image-2')
+  assert.equal(requests[0].promptVariants[0].promptCompiler.modelCapabilityProfile, 'gpt-image-2-v1')
+  assert.doesNotMatch(requests[0].promptVariants[0].prompt, /fully transparent/i)
+  assert.equal(requests[0].promptVariants[1].model, 'gpt-image-1.5')
+  assert.equal(requests[0].promptVariants[1].promptCompiler.modelCapabilityProfile, 'gpt-image-edit-transparent-v1')
+  assert.match(requests[0].promptVariants[1].prompt, /fully transparent/i)
+  assert.equal(result.selectedModel, 'gpt-image-1.5')
+  assert.deepEqual(result.attempts.map((attempt) => attempt.model), ['gpt-image-2', 'gpt-image-1.5'])
+})
+
+test('host model bridge prompt variants prefer the provider-safe prompt over legacy builder text', async () => {
+  const requests = []
+  await __testInternals.generateWithModelFallback({
+    prompt: 'safe primary prompt',
+    promptCompiler: { modelCapabilityProfile: 'gpt-image-2-v1' },
+    constraints: { width: 1024, height: 1024, transparent: false },
+    requestedTimeoutMs: 300000,
+    referenceImages: [{ role: 'canonical-reference' }],
+    runId: 'run-provider-prompt-precedence',
+    dataRelativeDir: 'runs/run-provider-prompt-precedence/frames/base',
+    settings: { creatorWorkflowModelPolicy: { verifiedModels: ['gpt-image-2'], fallbackModels: [] } },
+    preferredModel: 'gpt-image-2',
+    buildPromptForModel: () => ({
+      prompt: 'Create an OpenPet asset with internal workflow language.',
+      providerPrompt: 'Create one complete full-body character image.',
+      promptCompiler: {
+        width: 1024,
+        height: 1024,
+        backgroundStrategy: 'solid-background-then-local-removal',
+        modelCapabilityProfile: 'gpt-image-2-v1'
+      }
+    }),
+    callHostImageGenerateImpl: async (request) => {
+      requests.push(request)
+      return { result: { model: 'gpt-image-2' } }
+    }
+  })
+
+  assert.equal(requests[0].prompt, 'Create one complete full-body character image.')
+  assert.equal(requests[0].promptVariants[0].prompt, 'Create one complete full-body character image.')
+  assert.doesNotMatch(requests[0].promptVariants[0].prompt, /OpenPet|workflow/i)
 })
 
 test('host model bridge does not retry the same model after a non-transient provider HTTP failure', async () => {

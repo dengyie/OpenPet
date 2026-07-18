@@ -14,7 +14,16 @@ const NON_VISUAL_PRODUCT_LANGUAGE = Object.freeze([
   /\bapplication\b/i
 ])
 
-const VISUAL_INTENT_BOUNDARY = /\b(?:with|featuring|wearing|showing|depicting|rendered(?:\s+in)?|drawn(?:\s+in)?|painted(?:\s+in)?|styled(?:\s+as)?|using)\b[\s\S]*/i
+const VISUAL_CLAUSE_BOUNDARY = '(?:with|featuring|wearing|showing|depicting|rendered(?:\\s+in)?|drawn(?:\\s+in)?|painted(?:\\s+in)?|styled(?:\\s+as)?|using|in)'
+const NAMED_PRODUCT_CLAUSE = new RegExp(
+  `\\bnamed\\b[\\s:=-]*[\\s\\S]*?(?=\\b${VISUAL_CLAUSE_BOUNDARY}\\b|[,.;]|$)`,
+  'gi'
+)
+const EMPTY_PRODUCT_CONNECTOR = /\b(?:for|inside|within)\s+(?:the\s+)?(?=[,.;:]|$)/gi
+const ORPHANED_ARTICLE = new RegExp(`\\b(?:a|an)\\s+(?=\\b${VISUAL_CLAUSE_BOUNDARY}\\b)`, 'gi')
+const LEADING_CREATIVE_SCAFFOLD = /^(?:please\s+)?(?:create|make|design|generate)(?:\s+(?:a|an|the))?\s+/i
+const LEADING_EMPTY_CONNECTOR = /^(?:at|for|in|on|with|as|of|to|from)\s+/i
+const EMPTY_CREATIVE_SCAFFOLD = /^(?:create|make|design|generate)(?:\s+(?:a|an|the))?(?:\s+(?:at|for|in|on|with|as|of|to|from))*[\s.,;:!?-]*$/i
 
 const deepFreeze = (value) => {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value
@@ -27,13 +36,25 @@ const stripNonVisualProductLanguage = (value) => {
   const text = sanitizeVisualDirective(value)
   if (!text) return ''
   if (!NON_VISUAL_PRODUCT_LANGUAGE.some((pattern) => pattern.test(text))) return text
-  const visibleTail = text.match(VISUAL_INTENT_BOUNDARY)?.[0] || ''
-  if (!visibleTail) return ''
-  return NON_VISUAL_PRODUCT_LANGUAGE
-    .reduce((result, pattern) => result.replace(new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`), ' '), visibleTail)
+  const residue = NON_VISUAL_PRODUCT_LANGUAGE
+    .reduce(
+      (result, pattern) => result.replace(
+        new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`),
+        ' '
+      ),
+      text.replace(NAMED_PRODUCT_CLAUSE, ' ')
+    )
+    .replace(EMPTY_PRODUCT_CONNECTOR, ' ')
+    .replace(ORPHANED_ARTICLE, ' ')
     .replace(/\s+/g, ' ')
     .replace(/\s+([,.;:])/g, '$1')
     .trim()
+  if (EMPTY_CREATIVE_SCAFFOLD.test(residue)) return ''
+  const visualResidue = residue
+    .replace(LEADING_CREATIVE_SCAFFOLD, '')
+    .replace(LEADING_EMPTY_CONNECTOR, '')
+    .trim()
+  return EMPTY_CREATIVE_SCAFFOLD.test(visualResidue) ? '' : visualResidue
 }
 
 const containsNonVisualProductLanguage = (value) => (

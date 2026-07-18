@@ -31,8 +31,11 @@ const DEFAULT_CONFIG = {
 const PROVIDER_GENERATION_TIMEOUT_MS = 120000
 const DEFAULT_GPT_IMAGE_2_QUALITY = 'high'
 const REQUESTED_PROVIDER_OUTPUT_COUNT = 1
-const VERIFIED_CREATOR_WORKFLOW_IMAGE_MODELS = Object.freeze(['gpt-image-2'])
+const VERIFIED_CREATOR_WORKFLOW_IMAGE_MODELS = Object.freeze(['gpt-image-2', 'gpt-image-1', 'gpt-image-1.5'])
 const DIRECT_TRANSPARENT_IMAGE_MODELS = new Set(['gpt-image-1', 'gpt-image-1.5'])
+
+const normalizeImageModelCapabilityKey = (value) => String(value || '').trim().toLowerCase()
+const isGptImage2Model = (value) => normalizeImageModelCapabilityKey(value) === 'gpt-image-2'
 
 const isPlainObject = (value) => value && typeof value === 'object' && !Array.isArray(value)
 
@@ -248,7 +251,7 @@ const normalizeProviderQuality = (value, fallback = '') => {
 const getProviderImageQuality = ({ model, constraints = {} }) => {
   const explicit = normalizeProviderQuality(constraints.quality)
   if (explicit) return explicit
-  return model === 'gpt-image-2' ? DEFAULT_GPT_IMAGE_2_QUALITY : ''
+  return isGptImage2Model(model) ? DEFAULT_GPT_IMAGE_2_QUALITY : ''
 }
 
 const fetchWithTimeout = async ({
@@ -311,7 +314,7 @@ const sanitizeModelId = (value) => String(value || '')
   .trim()
 
 const isVerifiedCreatorWorkflowImageModel = (value) => VERIFIED_CREATOR_WORKFLOW_IMAGE_MODELS
-  .includes(sanitizeModelId(value))
+  .includes(normalizeImageModelCapabilityKey(sanitizeModelId(value)))
 
 const createCreatorWorkflowModelPolicy = ({ config = {}, storedState = {} }) => {
   const catalog = getScopedProviderModelCatalog({
@@ -324,15 +327,23 @@ const createCreatorWorkflowModelPolicy = ({ config = {}, storedState = {} }) => 
     ? uniqueModelIds(catalog.models.map(sanitizeModelId).filter(Boolean))
     : []
   const preferredModel = sanitizeModelId(config.model)
-  const verifiedModels = uniqueModelIds([
-    ...(isVerifiedCreatorWorkflowImageModel(preferredModel) ? [preferredModel] : []),
-    ...discoveredModels.filter(isVerifiedCreatorWorkflowImageModel)
-  ])
+  const verifiedModelsByCapability = new Map()
+  const addVerifiedModel = (modelId) => {
+    const capabilityKey = normalizeImageModelCapabilityKey(modelId)
+    if (!capabilityKey || verifiedModelsByCapability.has(capabilityKey)) return
+    verifiedModelsByCapability.set(capabilityKey, modelId)
+  }
+  if (isVerifiedCreatorWorkflowImageModel(preferredModel)) addVerifiedModel(preferredModel)
+  discoveredModels.filter(isVerifiedCreatorWorkflowImageModel).forEach(addVerifiedModel)
+  const verifiedModels = uniqueModelIds([...verifiedModelsByCapability.values()])
+  const preferredCapabilityKey = normalizeImageModelCapabilityKey(preferredModel)
   return {
     evidenceScope: 'creator-one-click-default',
     preferredModel,
     verifiedModels,
-    fallbackModels: verifiedModels.filter((modelId) => modelId !== preferredModel),
+    fallbackModels: verifiedModels.filter((modelId) => (
+      normalizeImageModelCapabilityKey(modelId) !== preferredCapabilityKey
+    )),
     discoveredModels,
     preferredModelVerified: isVerifiedCreatorWorkflowImageModel(preferredModel)
   }
@@ -511,7 +522,7 @@ const buildProviderEditMultipartRequest = ({ model, prompt, constraints, referen
   appendMultipartTextPart(buffers, boundary, 'size', `${constraints.width}x${constraints.height}`)
   appendMultipartTextPart(buffers, boundary, 'n', REQUESTED_PROVIDER_OUTPUT_COUNT)
   if (quality) appendMultipartTextPart(buffers, boundary, 'quality', quality)
-  if (model !== 'gpt-image-2') {
+  if (!isGptImage2Model(model)) {
     appendMultipartTextPart(buffers, boundary, 'background', backgroundMode)
     appendMultipartTextPart(buffers, boundary, 'response_format', 'b64_json')
   }
@@ -527,10 +538,38 @@ const buildProviderEditMultipartRequest = ({ model, prompt, constraints, referen
 }
 
 const getProviderGenerationBackgroundMode = ({ model, constraints }) => {
-  if (model === 'gpt-image-2') return 'omitted'
-  return DIRECT_TRANSPARENT_IMAGE_MODELS.has(String(model || '').trim().toLowerCase()) && constraints.transparent
+  const capabilityKey = normalizeImageModelCapabilityKey(model)
+  if (capabilityKey === 'gpt-image-2') return 'omitted'
+  return DIRECT_TRANSPARENT_IMAGE_MODELS.has(capabilityKey) && constraints.transparent
     ? 'transparent'
     : 'white'
+}
+
+const shouldTryFallbackImageModel = (error) => {
+  const message = String(error?.message || error || '').trim().toLowerCase()
+  if (!message) return false
+  if (
+    message.includes('api key is missing') ||
+    message.includes('allowed data directory') ||
+    message.includes('reference image') ||
+    message.includes('owner-controlled') ||
+    message.includes('model configuration changed')
+  ) return false
+  const statusMatch = message.match(/http\s+(\d{3})/i)
+  if (statusMatch) {
+    const status = Number(statusMatch[1])
+    if (
+      status === 408 || status === 425 || status === 429 ||
+      (status >= 500 && status <= 504) ||
+      (status >= 520 && status <= 524)
+    ) return true
+  }
+  return (
+    message.includes('request failed') ||
+    message.includes('timed out') ||
+    message.includes('unsupported model') ||
+    message.includes('model not found')
+  )
 }
 
 const normalizePromptCompilerEvidence = (value = {}) => {
@@ -565,6 +604,101 @@ const normalizePromptCompilerEvidence = (value = {}) => {
     promptSafety: String(value.promptSafety || '').trim()
   }
 }
+
+const normalizePromptVariantConstraints = (value = {}, fallback = {}) => ({
+  width: Math.max(0, Number(value.width ?? fallback.width) || 0),
+  height: Math.max(0, Number(value.height ?? fallback.height) || 0),
+  transparent: Boolean(value.transparent ?? fallback.transparent),
+  backgroundStrategy: String(value.backgroundStrategy || fallback.backgroundStrategy || '').trim(),
+  ...(normalizeProviderQuality(value.quality || fallback.quality)
+    ? { quality: normalizeProviderQuality(value.quality || fallback.quality) }
+    : {})
+})
+
+const resolvePromptVariantCapabilityContract = (model) => {
+  const capabilityKey = normalizeImageModelCapabilityKey(model)
+  if (capabilityKey === 'gpt-image-2') {
+    return {
+      profile: 'gpt-image-2-v1',
+      backgroundStrategy: 'solid-background-then-local-removal',
+      transparent: false
+    }
+  }
+  if (DIRECT_TRANSPARENT_IMAGE_MODELS.has(capabilityKey)) {
+    return {
+      profile: 'gpt-image-edit-transparent-v1',
+      backgroundStrategy: 'direct-transparent-output',
+      transparent: true
+    }
+  }
+  return {
+    profile: `generic-image-edit-v1:${capabilityKey.slice(0, 80)}`,
+    backgroundStrategy: 'solid-background-then-local-removal',
+    transparent: false
+  }
+}
+
+const assertPromptVariantCapabilityContract = ({ model, prompt, promptCompiler, constraints }) => {
+  if (!promptCompiler) return
+  const hasCapabilityEvidence = (
+    Number(promptCompiler.promptCompilerVersion) >= 3 ||
+    Boolean(promptCompiler.modelCapabilityProfile) ||
+    Boolean(promptCompiler.backgroundStrategy)
+  )
+  if (!hasCapabilityEvidence) return
+  const expected = resolvePromptVariantCapabilityContract(model)
+  if (
+    promptCompiler.modelCapabilityProfile !== expected.profile ||
+    promptCompiler.backgroundStrategy !== expected.backgroundStrategy ||
+    Boolean(constraints.transparent) !== expected.transparent ||
+    (constraints.backgroundStrategy && constraints.backgroundStrategy !== expected.backgroundStrategy) ||
+    (!expected.transparent && /\btransparent\b/i.test(prompt))
+  ) {
+    const error = new Error(`Image Provider prompt variant capability contract does not match model ${sanitizeModelId(model)}`)
+    error.code = 'image_prompt_capability_conflict'
+    throw error
+  }
+}
+
+const normalizeProviderPromptVariants = ({ variants, prompt, promptCompiler, constraints, model }) => {
+  const source = Array.isArray(variants) && variants.length
+    ? variants.slice(0, 8)
+    : [{ model, prompt, promptCompiler, constraints }]
+  const seen = new Set()
+  const normalized = []
+  for (const entry of source) {
+    if (!isPlainObject(entry)) continue
+    const candidateModel = sanitizeModelId(entry.model)
+    const capabilityKey = normalizeImageModelCapabilityKey(candidateModel)
+    const candidatePrompt = String(entry.prompt || '').trim()
+    if (!candidateModel || !capabilityKey || !candidatePrompt || candidatePrompt.length > 12000 || seen.has(capabilityKey)) continue
+    const candidateConstraints = normalizePromptVariantConstraints(entry.constraints, constraints)
+    if (!candidateConstraints.width || !candidateConstraints.height) continue
+    const normalizedPromptCompiler = normalizePromptCompilerEvidence(entry.promptCompiler)
+    assertPromptVariantCapabilityContract({
+      model: candidateModel,
+      prompt: candidatePrompt,
+      promptCompiler: normalizedPromptCompiler,
+      constraints: candidateConstraints
+    })
+    seen.add(capabilityKey)
+    normalized.push({
+      model: candidateModel,
+      prompt: candidatePrompt,
+      promptCompiler: normalizedPromptCompiler,
+      constraints: candidateConstraints
+    })
+  }
+  return normalized
+}
+
+const createProviderModelAttempt = ({ model, ok, timeoutMs, durationMs, error = '' }) => ({
+  model: sanitizeModelId(model),
+  ok: Boolean(ok),
+  timeoutMs: Math.max(0, Number(timeoutMs) || 0),
+  durationMs: Math.max(0, Number(durationMs) || 0),
+  ...(error ? { error: sanitizeLogText(error, { maxChars: 240 }) } : {})
+})
 
 const createConditioningSummary = ({
   endpoint,
@@ -1547,19 +1681,52 @@ const createImageGenerationModelService = ({
       throw new Error(`Image Provider owner-controlled fields cannot be changed: ${ownerFieldOverrides.join(', ')}`)
     }
     const {
+      expectedModel,
       prompt,
       promptCompiler,
+      promptVariants,
       output,
       constraints,
       timeoutMs,
       referenceImages = []
     } = request
+    const expectedModelKey = normalizeImageModelCapabilityKey(expectedModel)
+    const configuredModelKey = normalizeImageModelCapabilityKey(config.model)
+    if (expectedModelKey && expectedModelKey !== configuredModelKey) {
+      const error = new Error('Image Provider model configuration changed; recompile the image prompt for the current Host model')
+      error.code = 'image_model_configuration_changed'
+      throw error
+    }
     assertExactlyOneReferenceImage(referenceImages)
     const normalizedReferenceImages = normalizeReferenceImages(referenceImages, {
       dataDir: output?.dataDir
     })
     assertExactlyOneReferenceImage(normalizedReferenceImages)
-    const normalizedPromptCompiler = normalizePromptCompilerEvidence(promptCompiler)
+    const variants = normalizeProviderPromptVariants({
+      variants: promptVariants,
+      prompt,
+      promptCompiler,
+      constraints,
+      model: config.model
+    })
+    const variantByModel = new Map(variants.map((variant) => [
+      normalizeImageModelCapabilityKey(variant.model),
+      variant
+    ]))
+    const primaryVariant = variantByModel.get(configuredModelKey)
+    if (!primaryVariant) {
+      throw new Error('Image Provider prompt variants do not include the current Host model')
+    }
+    const storedState = getStoredImageGenerationState()
+    const workflowPolicy = createCreatorWorkflowModelPolicy({ config, storedState })
+    const candidateModels = [
+      config.model,
+      ...(Array.isArray(workflowPolicy.fallbackModels) ? workflowPolicy.fallbackModels : [])
+    ]
+    const candidateVariants = candidateModels
+      .map((model) => variantByModel.get(normalizeImageModelCapabilityKey(model)))
+      .filter(Boolean)
+    const normalizedPromptCompiler = primaryVariant.promptCompiler
     const startedMs = nowMs()
     const { relativeDir, targetDir } = ensureInsideDataDir({
       dataDir: output?.dataDir,
@@ -1583,9 +1750,9 @@ const createImageGenerationModelService = ({
         requestId,
         provider: config.provider,
         model: config.model,
-        width: constraints?.width,
-        height: constraints?.height,
-        requestedTransparent: Boolean(constraints?.transparent),
+        width: primaryVariant.constraints.width,
+        height: primaryVariant.constraints.height,
+        requestedTransparent: Boolean(primaryVariant.constraints.transparent),
         referenceImageCount: normalizedReferenceImages.length,
         multipartImageField: 'image',
         requestedOutputCount: REQUESTED_PROVIDER_OUTPUT_COUNT
@@ -1595,17 +1762,51 @@ const createImageGenerationModelService = ({
     let releaseProviderJobSlot = null
     try {
       releaseProviderJobSlot = await acquireProviderJobSlot({ config, requestId })
-      const result = await generateProviderImage({
-        config,
-        prompt,
-        promptCompiler: normalizedPromptCompiler,
-        targetDir,
-        relativeDir,
-        constraints,
-        requestId,
-        timeoutMs,
-        referenceImages: normalizedReferenceImages
-      })
+      const totalTimeoutMs = normalizeTimeoutMs(timeoutMs, getProviderTimeoutMs(config))
+      const deadlineMs = Date.now() + totalTimeoutMs
+      const modelAttempts = []
+      let result = null
+      for (const [index, variant] of candidateVariants.entries()) {
+        const remainingTimeoutMs = index === 0
+          ? totalTimeoutMs
+          : Math.max(1, deadlineMs - Date.now())
+        const attemptStartedMs = Date.now()
+        try {
+          result = await generateProviderImage({
+            config: { ...config, model: variant.model },
+            prompt: variant.prompt,
+            promptCompiler: variant.promptCompiler,
+            targetDir,
+            relativeDir,
+            constraints: variant.constraints,
+            requestId,
+            timeoutMs: remainingTimeoutMs,
+            referenceImages: normalizedReferenceImages
+          })
+          modelAttempts.push(createProviderModelAttempt({
+            model: variant.model,
+            ok: true,
+            timeoutMs: remainingTimeoutMs,
+            durationMs: Date.now() - attemptStartedMs
+          }))
+          break
+        } catch (error) {
+          modelAttempts.push(createProviderModelAttempt({
+            model: variant.model,
+            ok: false,
+            timeoutMs: remainingTimeoutMs,
+            durationMs: Date.now() - attemptStartedMs,
+            error: error?.message || error
+          }))
+          const hasFallback = index < candidateVariants.length - 1 && Date.now() < deadlineMs
+          if (!hasFallback || !shouldTryFallbackImageModel(error)) {
+            error.modelAttempts = modelAttempts
+            throw error
+          }
+        }
+      }
+      if (!result) throw new Error('Image Provider generation exhausted all Host model candidates')
+      result.modelAttempts = modelAttempts
       recordLog({
         level: 'info',
         event: 'imageGeneration.request.completed',
@@ -1614,14 +1815,14 @@ const createImageGenerationModelService = ({
           ...createProviderOperationDetails({
             capability: 'image',
             operation: 'generate',
-            config,
+            config: { ...config, model: result.model },
             configSource: 'image',
             requestId,
             outcome: 'completed'
           }),
           requestId,
           provider: config.provider,
-          model: config.model,
+          model: result.model,
           durationMs: nowMs() - startedMs,
           outputCount: result.outputs?.length || 0
         }

@@ -895,7 +895,8 @@ const createPluginService = ({ settingsService, petService, actionService, actio
           timeoutMs: config.timeoutMs,
           maxConcurrentJobs: config.maxConcurrentJobs,
           hasApiKey: config.hasApiKey,
-          modelCatalog: config.modelCatalog
+          modelCatalog: config.modelCatalog,
+          creatorWorkflowModelPolicy: config.creatorWorkflowModelPolicy
         }
       }
     },

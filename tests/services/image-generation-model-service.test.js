@@ -265,8 +265,8 @@ test('image generation model service exposes a creator workflow model policy wit
   assert.deepEqual(config.creatorWorkflowModelPolicy, {
     evidenceScope: 'creator-one-click-default',
     preferredModel: 'gpt-image-2',
-    verifiedModels: ['gpt-image-2'],
-    fallbackModels: [],
+    verifiedModels: ['gpt-image-1.5', 'gpt-image-2'],
+    fallbackModels: ['gpt-image-1.5'],
     discoveredModels: ['gpt-image-1.5', 'gpt-image-2', 'grok-imagine-image'],
     preferredModelVerified: true
   })
@@ -1116,7 +1116,7 @@ test('image generation model service uses a gpt-image-2 compatible edit payload'
     constraints: {
       width: 1024,
       height: 1024,
-      transparent: true
+      transparent: false
     }
   })
 
@@ -1134,10 +1134,10 @@ test('image generation model service uses a gpt-image-2 compatible edit payload'
   assert.match(payload, /name="quality"\r\n\r\nhigh\r\n/)
   assert.doesNotMatch(payload, /name="background"/)
   assert.doesNotMatch(payload, /name="response_format"/)
-  assert.equal(logs[0].details.requestedTransparent, true)
+  assert.equal(logs[0].details.requestedTransparent, false)
   assert.equal(logs[1].details.backgroundMode, 'omitted')
   assert.equal(logs[1].details.quality, 'high')
-  assert.equal(logs[1].details.requestedTransparent, true)
+  assert.equal(logs[1].details.requestedTransparent, false)
   assert.equal(logs[1].details.referenceImageCount, 1)
   assert.equal(logs[1].details.multipartImageField, 'image')
   assert.equal(logs[1].details.requestedOutputCount, 1)
@@ -1158,6 +1158,261 @@ test('image generation model service uses a gpt-image-2 compatible edit payload'
   assert.equal(result.conditioning.promptCompiler.backgroundStrategy, 'solid-background-then-local-removal')
   assert.equal(result.conditioning.promptCompiler.frameBeatCount, 0)
   assert.ok(Array.isArray(result.conditioning.promptCompiler.promptClauseIds))
+})
+
+test('image generation model service applies gpt-image-2 transport capabilities case-insensitively', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-'))
+  const requests = []
+  const logs = []
+  const baseUrl = 'http://127.0.0.1:8317/v1'
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings({
+      model: 'GPT-IMAGE-2',
+      modelCatalog: createSavedProviderModelCatalog({
+        capability: 'image',
+        provider: 'openai-compatible',
+        baseUrl,
+        models: ['gpt-image-2', 'gpt-image-1.5'],
+        fetchedAt: '2026-07-18T00:00:00.000Z'
+      })
+    })),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-1234', label: 'Image API Key' }
+    }),
+    appLogService: { record: (entry) => logs.push(entry) },
+    fetchImpl: async (url, options) => {
+      requests.push({ url, options })
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: [{ b64_json: Buffer.from('fake-image-2-bytes').toString('base64') }]
+        })
+      }
+    }
+  })
+
+  const promptBuild = buildCharacterAnchorPrompt({
+    model: 'GPT-IMAGE-2',
+    appearanceIntent: ['small mint-colored character']
+  })
+  const result = await service.generateImage({
+    prompt: promptBuild.prompt,
+    promptCompiler: promptBuild.promptCompiler,
+    referenceImages: createReferenceImages(dataDir),
+    output: {
+      dataDir,
+      dataRelativeDir: 'runs/gpt-image-2-mixed-case/frames/base'
+    },
+    constraints: {
+      width: 1024,
+      height: 1024,
+      transparent: false
+    }
+  })
+
+  const payload = requests[0].options.body.toString('utf8')
+  assert.match(payload, /name="model"\r\n\r\nGPT-IMAGE-2\r\n/)
+  assert.match(payload, /name="quality"\r\n\r\nhigh\r\n/)
+  assert.doesNotMatch(payload, /name="background"/)
+  assert.doesNotMatch(payload, /name="response_format"/)
+  assert.equal(logs[1].details.backgroundMode, 'omitted')
+  assert.equal(logs[1].details.quality, 'high')
+  assert.equal(result.conditioning.quality, 'high')
+  assert.equal(result.conditioning.promptCompiler.modelCapabilityProfile, 'gpt-image-2-v1')
+  assert.equal(service.getConfig().creatorWorkflowModelPolicy.preferredModelVerified, true)
+  assert.deepEqual(service.getConfig().creatorWorkflowModelPolicy.verifiedModels, ['GPT-IMAGE-2', 'gpt-image-1.5'])
+  assert.deepEqual(service.getConfig().creatorWorkflowModelPolicy.fallbackModels, ['gpt-image-1.5'])
+})
+
+test('image generation model service rejects prompts compiled for a stale Host model snapshot', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-'))
+  let requested = false
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings({ model: 'gpt-image-2' })),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-1234', label: 'Image API Key' }
+    }),
+    fetchImpl: async () => {
+      requested = true
+      throw new Error('stale prompt must not reach the Provider')
+    }
+  })
+
+  await assert.rejects(() => service.generateImage({
+    expectedModel: 'gpt-image-1.5',
+    prompt: 'prompt compiled for the previous transparent model',
+    referenceImages: createReferenceImages(dataDir),
+    output: {
+      dataDir,
+      dataRelativeDir: 'runs/stale-model/frames/base'
+    },
+    constraints: {
+      width: 1024,
+      height: 1024,
+      transparent: true
+    }
+  }), /model configuration changed/i)
+
+  assert.equal(requested, false)
+})
+
+test('image generation model service rejects prompt variants with a mismatched model capability contract', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-'))
+  let requested = false
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings({ model: 'gpt-image-2' })),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-1234', label: 'Image API Key' }
+    }),
+    fetchImpl: async () => {
+      requested = true
+      throw new Error('mismatched variant must not reach the Provider')
+    }
+  })
+
+  await assert.rejects(() => service.generateImage({
+    expectedModel: 'gpt-image-2',
+    promptVariants: [{
+      model: 'gpt-image-2',
+      prompt: 'Create one character on a fully transparent background.',
+      promptCompiler: {
+        promptCompilerVersion: 3,
+        modelCapabilityProfile: 'gpt-image-edit-transparent-v1',
+        backgroundStrategy: 'direct-transparent-output'
+      },
+      constraints: { width: 1024, height: 1024, transparent: true }
+    }],
+    referenceImages: createReferenceImages(dataDir),
+    output: {
+      dataDir,
+      dataRelativeDir: 'runs/mismatched-capability/frames/base'
+    },
+    constraints: { width: 1024, height: 1024, transparent: false }
+  }), /capability contract/i)
+
+  assert.equal(requested, false)
+})
+
+test('image generation model service rejects transparent constraints for an opaque gpt-image-2 prompt variant', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-'))
+  let requested = false
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings({ model: 'gpt-image-2' })),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-1234', label: 'Image API Key' }
+    }),
+    fetchImpl: async () => {
+      requested = true
+      throw new Error('invalid transparent constraint must not reach the Provider')
+    }
+  })
+
+  await assert.rejects(() => service.generateImage({
+    expectedModel: 'gpt-image-2',
+    promptVariants: [{
+      model: 'gpt-image-2',
+      prompt: 'Create one character on a uniform white background.',
+      promptCompiler: {
+        promptCompilerVersion: 3,
+        modelCapabilityProfile: 'gpt-image-2-v1',
+        backgroundStrategy: 'solid-background-then-local-removal'
+      },
+      constraints: {
+        width: 1024,
+        height: 1024,
+        transparent: true,
+        backgroundStrategy: 'solid-background-then-local-removal'
+      }
+    }],
+    referenceImages: createReferenceImages(dataDir),
+    output: {
+      dataDir,
+      dataRelativeDir: 'runs/opaque-capability-transparent-constraint/frames/base'
+    },
+    constraints: { width: 1024, height: 1024, transparent: false }
+  }), /capability contract/i)
+
+  assert.equal(requested, false)
+})
+
+test('image generation model service uses the Host fallback model matching prompt variant', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-'))
+  const requests = []
+  const baseUrl = 'http://127.0.0.1:8317/v1'
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings({
+      model: 'gpt-image-2',
+      modelCatalog: createSavedProviderModelCatalog({
+        capability: 'image',
+        provider: 'openai-compatible',
+        baseUrl,
+        models: ['gpt-image-2', 'gpt-image-1.5'],
+        fetchedAt: '2026-07-18T00:00:00.000Z'
+      })
+    })),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-1234', label: 'Image API Key' }
+    }),
+    fetchImpl: async (url, options) => {
+      const body = options.body.toString('utf8')
+      requests.push({ url, body })
+      if (/name="model"\r\n\r\ngpt-image-2\r\n/.test(body)) {
+        return { ok: false, status: 524, json: async () => ({}) }
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: [{ b64_json: Buffer.from('fallback-image').toString('base64') }]
+        })
+      }
+    }
+  })
+
+  const result = await service.generateImage({
+    expectedModel: 'gpt-image-2',
+    prompt: 'opaque primary prompt',
+    promptCompiler: {
+      promptCompilerVersion: 3,
+      modelCapabilityProfile: 'gpt-image-2-v1',
+      backgroundStrategy: 'solid-background-then-local-removal'
+    },
+    promptVariants: [{
+      model: 'gpt-image-2',
+      prompt: 'opaque primary prompt',
+      promptCompiler: {
+        promptCompilerVersion: 3,
+        modelCapabilityProfile: 'gpt-image-2-v1',
+        backgroundStrategy: 'solid-background-then-local-removal'
+      },
+      constraints: { width: 1024, height: 1024, transparent: false }
+    }, {
+      model: 'gpt-image-1.5',
+      prompt: 'transparent fallback prompt',
+      promptCompiler: {
+        promptCompilerVersion: 3,
+        modelCapabilityProfile: 'gpt-image-edit-transparent-v1',
+        backgroundStrategy: 'direct-transparent-output'
+      },
+      constraints: { width: 1024, height: 1024, transparent: true }
+    }],
+    referenceImages: createReferenceImages(dataDir),
+    output: {
+      dataDir,
+      dataRelativeDir: 'runs/model-fallback/frames/base'
+    },
+    constraints: { width: 1024, height: 1024, transparent: false }
+  })
+
+  assert.equal(requests.length >= 2, true)
+  assert.match(requests[0].body, /name="model"\r\n\r\ngpt-image-2\r\n/)
+  assert.match(requests.at(-1).body, /name="model"\r\n\r\ngpt-image-1\.5\r\n/)
+  assert.match(requests.at(-1).body, /name="prompt"\r\n\r\ntransparent fallback prompt\r\n/)
+  assert.match(requests.at(-1).body, /name="background"\r\n\r\ntransparent\r\n/)
+  assert.equal(result.model, 'gpt-image-1.5')
+  assert.equal(result.conditioning.promptCompiler.modelCapabilityProfile, 'gpt-image-edit-transparent-v1')
+  assert.deepEqual(result.modelAttempts.map((attempt) => attempt.model), ['gpt-image-2', 'gpt-image-1.5'])
 })
 
 test('image generation model service uses image edits when reference conditioning inputs are provided', async () => {

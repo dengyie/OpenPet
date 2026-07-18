@@ -145,6 +145,32 @@ const normalizeModelName = (value) => String(value || '')
   .replace(/[\u0000-\u001F\u007F]/g, '')
   .trim()
 
+const buildHostPromptCandidateModels = ({ settings = {}, preferredModel = '' }) => {
+  const candidates = []
+  const seen = new Set()
+  const addCandidate = (value) => {
+    const model = normalizeModelName(value)
+    const key = model.toLowerCase()
+    if (!model || seen.has(key)) return
+    seen.add(key)
+    candidates.push(model)
+  }
+  addCandidate(preferredModel)
+  const verifiedModels = new Set(
+    (Array.isArray(settings?.creatorWorkflowModelPolicy?.verifiedModels)
+      ? settings.creatorWorkflowModelPolicy.verifiedModels
+      : [])
+      .map((model) => normalizeModelName(model).toLowerCase())
+      .filter(Boolean)
+  )
+  for (const fallbackModel of Array.isArray(settings?.creatorWorkflowModelPolicy?.fallbackModels)
+    ? settings.creatorWorkflowModelPolicy.fallbackModels
+    : []) {
+    if (verifiedModels.has(normalizeModelName(fallbackModel).toLowerCase())) addCandidate(fallbackModel)
+  }
+  return candidates
+}
+
 const loadConfiguredProviderArtApprovals = () => loadProviderArtApprovals({
   registryPath: String(process.env.OPENPET_PROVIDER_ART_APPROVALS_PATH || '').trim() || DEFAULT_PROVIDER_ART_APPROVALS_PATH
 })
@@ -519,11 +545,23 @@ const resolveCompiledPromptConstraints = (promptBuild = {}) => ({
   backgroundStrategy: String(promptBuild?.promptCompiler?.backgroundStrategy || '').trim()
 })
 
-const callHostImageGenerate = ({ prompt, promptCompiler, requestedTimeoutMs, referenceImages, runId, dataRelativeDir, constraints = DEFAULT_CONSTRAINTS }) => {
+const callHostImageGenerate = ({
+  expectedModel,
+  prompt,
+  promptCompiler,
+  promptVariants = [],
+  requestedTimeoutMs,
+  referenceImages,
+  runId,
+  dataRelativeDir,
+  constraints = DEFAULT_CONSTRAINTS
+}) => {
   assertExactlyOneProviderReferenceImage(referenceImages)
   return callBridge('/creator/model-image-generate', {
+    expectedModel,
     prompt,
     promptCompiler,
+    promptVariants,
     timeoutMs: requestedTimeoutMs,
     referenceImages,
     output: {
@@ -569,6 +607,7 @@ const averageKeyframeIdentityDescriptor = (keyframes = []) => averageIdentityDes
 )
 
 const generateWithModelFallback = async ({
+  settings = {},
   prompt,
   promptCompiler = null,
   constraints = DEFAULT_CONSTRAINTS,
@@ -577,32 +616,72 @@ const generateWithModelFallback = async ({
   runId,
   dataRelativeDir,
   preferredModel,
+  buildPromptForModel = null,
   callHostImageGenerateImpl = callHostImageGenerate
 }) => {
   assertExactlyOneProviderReferenceImage(referenceImages)
   const startedAtMs = Date.now()
   const effectiveTimeoutMs = Math.max(1, Number(requestedTimeoutMs) || CREATOR_PROVIDER_MIN_TIMEOUT_MS)
+  const candidateModels = buildHostPromptCandidateModels({ settings, preferredModel })
+  const promptVariants = candidateModels.map((model, index) => {
+    const promptBuild = typeof buildPromptForModel === 'function'
+      ? buildPromptForModel(model)
+      : index === 0
+        ? { prompt, promptCompiler }
+        : null
+    if (!promptBuild) return null
+    return {
+      model,
+      prompt: String(promptBuild.providerPrompt || promptBuild.prompt || '').trim(),
+      promptCompiler: promptBuild.promptCompiler || null,
+      constraints: promptBuild.promptCompiler
+        ? resolveCompiledPromptConstraints(promptBuild)
+        : { ...constraints }
+    }
+  }).filter((variant) => variant?.prompt)
+  const primaryVariant = promptVariants.find((variant) => (
+    normalizeModelName(variant.model).toLowerCase() === normalizeModelName(preferredModel).toLowerCase()
+  )) || promptVariants[0] || {
+    model: preferredModel,
+    prompt,
+    promptCompiler,
+    constraints
+  }
   try {
     const response = await callHostImageGenerateImpl({
-      prompt,
-      promptCompiler,
+      expectedModel: normalizeModelName(preferredModel),
+      prompt: primaryVariant.prompt,
+      promptCompiler: primaryVariant.promptCompiler,
+      promptVariants,
       requestedTimeoutMs: effectiveTimeoutMs,
       referenceImages,
       runId,
       dataRelativeDir,
-      constraints
+      constraints: primaryVariant.constraints
     })
     const selectedModel = normalizeModelName(response?.result?.model) || normalizeModelName(preferredModel)
+    const hostAttempts = Array.isArray(response?.result?.modelAttempts)
+      ? response.result.modelAttempts.map((attempt) => createGenerationAttemptRecord({
+          model: attempt?.model,
+          ok: attempt?.ok,
+          error: attempt?.error,
+          timeoutMs: attempt?.timeoutMs,
+          referenceImages,
+          durationMs: attempt?.durationMs
+        }))
+      : []
     return {
       response,
       selectedModel,
-      attempts: [createGenerationAttemptRecord({
-        model: selectedModel,
-        ok: true,
-        timeoutMs: effectiveTimeoutMs,
-        referenceImages,
-        durationMs: Date.now() - startedAtMs
-      })]
+      attempts: hostAttempts.length
+        ? hostAttempts
+        : [createGenerationAttemptRecord({
+            model: selectedModel,
+            ok: true,
+            timeoutMs: effectiveTimeoutMs,
+            referenceImages,
+            durationMs: Date.now() - startedAtMs
+          })]
     }
   } catch (error) {
     if (error && typeof error === 'object') {
@@ -1246,8 +1325,8 @@ const generateActionKeyframe = async ({
   const stageName = normalizedKeyframeRole === 'start'
     ? 'action-start-keyframe'
     : 'action-peak-keyframe'
-  const promptBuild = buildActionKeyframePrompt({
-    model: selectedModel,
+  const buildPromptForModel = (model) => buildActionKeyframePrompt({
+    model,
     appearanceIntent: resolveProviderAppearanceIntent(run),
     referenceRole: listReferenceRoles(referenceImages).join(', ') || 'canonical-reference',
     action,
@@ -1256,6 +1335,7 @@ const generateActionKeyframe = async ({
     canvas: DEFAULT_CONSTRAINTS,
     requestedChanges
   })
+  const promptBuild = buildPromptForModel(selectedModel)
   const promptFile = writeAnchorPromptFile({
     dataDir,
     relativePath: path.join(
@@ -1283,6 +1363,7 @@ const generateActionKeyframe = async ({
       model: selectedModel,
       prompt: promptBuild.prompt,
       promptCompiler: promptBuild.promptCompiler,
+      buildPromptForModel,
       constraints: resolveCompiledPromptConstraints(promptBuild),
       requestedTimeoutMs: stageTimeoutMs,
       referenceImages,
@@ -1577,14 +1658,15 @@ const generateKeyframeActionSpriteRow = async ({
     metadataRelativePath: conditioningBoard.metadataRelativePath,
     role: 'keyframe-action-reference-board'
   }
-  const promptBuild = buildActionSpriteRowPrompt({
-    model: selectedModel,
+  const buildPromptForModel = (model) => buildActionSpriteRowPrompt({
+    model,
     appearanceIntent: resolveProviderAppearanceIntent(run),
     referenceRole: 'keyframe-action-reference-board',
     action,
     qualityGuidance,
     requestedChanges
   })
+  const promptBuild = buildPromptForModel(selectedModel)
   const promptFile = writeAnchorPromptFile({
     dataDir,
     relativePath: path.join('runs', run.runId, 'prompts', 'keyframes', 'actions', `${actionId}-sprite-row.md`).replace(/\\/g, '/'),
@@ -1600,6 +1682,7 @@ const generateKeyframeActionSpriteRow = async ({
       model: selectedModel,
       prompt: promptBuild.prompt,
       promptCompiler: promptBuild.promptCompiler,
+      buildPromptForModel,
       constraints: resolveCompiledPromptConstraints(promptBuild),
       requestedTimeoutMs: finalStageTimeoutMs,
       referenceImages: [conditioningBoardReferenceImage],
@@ -1767,8 +1850,8 @@ const generateDirectSourceActionAnchorCandidateSet = async ({
   for (const [index, candidateVariant] of candidateVariants.entries()) {
     const candidateId = candidateVariant.id
     const candidateSegment = createCandidateFileSegment(index, candidateId)
-    const candidatePromptBuild = buildActionAnchorPrompt({
-      model: selectedModel,
+    const buildPromptForModel = (model) => buildActionAnchorPrompt({
+      model,
       referenceRole: actionReferenceImage.role,
       action,
       qualityGuidance,
@@ -1777,6 +1860,7 @@ const generateDirectSourceActionAnchorCandidateSet = async ({
       strategyId: candidateVariant.id,
       requestedChanges: candidateVariant.requestedChanges
     })
+    const candidatePromptBuild = buildPromptForModel(selectedModel)
     const prompt = candidatePromptBuild.prompt
     const promptFile = writeAnchorPromptFile({
       dataDir,
@@ -1798,6 +1882,7 @@ const generateDirectSourceActionAnchorCandidateSet = async ({
         model: selectedModel,
         prompt,
         promptCompiler: candidatePromptBuild.promptCompiler,
+        buildPromptForModel,
         constraints: resolveCompiledPromptConstraints(candidatePromptBuild),
         requestedTimeoutMs,
         referenceImages: [actionReferenceImage],
@@ -1952,13 +2037,14 @@ const generateAnchorReferences = async ({
 
   let characterAnchor = null
   if (!shouldSkipCharacterAnchorForActions(run)) {
-    const characterPromptBuild = buildCharacterAnchorPrompt({
-      model: selectedModel,
+    const buildCharacterPromptForModel = (model) => buildCharacterAnchorPrompt({
+      model,
       appearanceIntent: resolveProviderAppearanceIntent(run),
       referenceRole: 'composite-reference-board',
       qualityGuidance,
       canvas: DEFAULT_CONSTRAINTS
     })
+    const characterPromptBuild = buildCharacterPromptForModel(selectedModel)
     const characterPromptFile = writeAnchorPromptFile({
       dataDir,
       relativePath: path.join('runs', run.runId, 'prompts', 'anchors', 'character-anchor.md').replace(/\\/g, '/'),
@@ -1970,6 +2056,7 @@ const generateAnchorReferences = async ({
       model: selectedModel,
       prompt: characterPromptBuild.prompt,
       promptCompiler: characterPromptBuild.promptCompiler,
+      buildPromptForModel: buildCharacterPromptForModel,
       constraints: resolveCompiledPromptConstraints(characterPromptBuild),
       requestedTimeoutMs,
       referenceImages: [compositeReferenceImage],
@@ -2022,14 +2109,15 @@ const generateAnchorReferences = async ({
           }
         : characterReferenceImage
       const actionReferenceRole = actionReferenceImage.role
-      const actionPromptBuild = buildActionAnchorPrompt({
-        model: selectedModel,
+      const buildActionPromptForModel = (model) => buildActionAnchorPrompt({
+        model,
         appearanceIntent: resolveProviderAppearanceIntent(run),
         referenceRole: actionReferenceRole,
         action,
         qualityGuidance,
         canvas: DEFAULT_CONSTRAINTS
       })
+      const actionPromptBuild = buildActionPromptForModel(selectedModel)
       const promptFile = writeAnchorPromptFile({
         dataDir,
         relativePath: path.join('runs', run.runId, 'prompts', 'anchors', 'actions', `${actionId}-anchor.md`).replace(/\\/g, '/'),
@@ -2064,6 +2152,7 @@ const generateAnchorReferences = async ({
           model: selectedModel,
           prompt: actionPromptBuild.prompt,
           promptCompiler: actionPromptBuild.promptCompiler,
+          buildPromptForModel: buildActionPromptForModel,
           constraints: resolveCompiledPromptConstraints(actionPromptBuild),
           requestedTimeoutMs,
           referenceImages: [actionReferenceImage],
@@ -2711,14 +2800,15 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
       }
     }
   }
-  const promptBuild = buildOpenPetImagePrompt({
+  const buildPromptForModel = (model) => buildOpenPetImagePrompt({
     run: runForGeneration,
     backend: normalizedBackend,
-    model: configuredModelSnapshot.model,
+    model,
     qualityGuidance,
     constraints: DEFAULT_CONSTRAINTS,
     referenceRole: String(originalReferenceImages[0]?.role || 'single-character-reference')
   })
+  const promptBuild = buildPromptForModel(configuredModelSnapshot.model)
   const providerPrompt = String(promptBuild.providerPrompt || promptBuild.prompt || '')
   const promptPreviewText = providerPrompt
   const keyframeSpriteRow = canonicalSingleAction
@@ -2900,6 +2990,7 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
       preferredModel: configuredModelSnapshot.model,
       prompt: providerPrompt,
       promptCompiler: promptBuild.promptCompiler,
+      buildPromptForModel,
       constraints: resolveCompiledPromptConstraints(promptBuild),
       requestedTimeoutMs: baseStageTimeoutMs,
       referenceImages,

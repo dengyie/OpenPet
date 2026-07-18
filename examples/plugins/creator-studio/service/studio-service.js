@@ -188,7 +188,11 @@ const createPublicPromptPreview = ({ dataDir, promptPreview = {} }) => {
 const createPublicPromptCompiler = ({ dataDir, promptCompiler = {} }) => {
   if (!promptCompiler || typeof promptCompiler !== 'object' || Object.keys(promptCompiler).length === 0) return undefined
   return {
+    visualPlanVersion: Math.max(0, Number(promptCompiler.visualPlanVersion) || 0),
+    providerImageTaskVersion: Math.max(0, Number(promptCompiler.providerImageTaskVersion) || 0),
     version: Number(promptCompiler.promptCompilerVersion || promptCompiler.version || 0),
+    promptRenderer: createPublicText({ dataDir, value: promptCompiler.promptRenderer || '' }),
+    modelCapabilityProfile: createPublicText({ dataDir, value: promptCompiler.modelCapabilityProfile || '' }),
     taskType: createPublicText({ dataDir, value: promptCompiler.taskType || '' }),
     stage: createPublicText({ dataDir, value: promptCompiler.stage || '' }),
     width: Math.max(0, Number(promptCompiler.width) || 0),
@@ -196,6 +200,13 @@ const createPublicPromptCompiler = ({ dataDir, promptCompiler = {} }) => {
     aspectRatio: createPublicText({ dataDir, value: promptCompiler.aspectRatio || '' }),
     referenceImageCount: Math.max(0, Number(promptCompiler.referenceImageCount) || 0),
     requestedOutputCount: Math.max(0, Number(promptCompiler.requestedOutputCount) || 0),
+    backgroundStrategy: createPublicText({ dataDir, value: promptCompiler.backgroundStrategy || '' }),
+    frameBeatCount: Math.max(0, Number(promptCompiler.frameBeatCount) || 0),
+    promptCharacterCount: Math.max(0, Number(promptCompiler.promptCharacterCount) || 0),
+    promptClauseIds: (Array.isArray(promptCompiler.promptClauseIds) ? promptCompiler.promptClauseIds : [])
+      .slice(0, 64)
+      .map((clauseId) => createPublicText({ dataDir, value: clauseId }))
+      .filter(Boolean),
     promptSafety: createPublicText({ dataDir, value: promptCompiler.promptSafety || '' })
   }
 }
@@ -1288,7 +1299,7 @@ const createPublicArtifacts = ({ dataDir, artifacts = {} }) => {
 
 const isDeveloperMode = (url) => String(url?.searchParams?.get('developer') || '').trim() === '1'
 
-const createPromptProvenance = ({ run, developerMode = false }) => {
+const createPromptProvenance = ({ dataDir, run, developerMode = false }) => {
   const generatedImage = run?.artifacts?.generatedImage
   const promptBuilder = generatedImage?.promptBuilder
   const snapshot = generatedImage?.modelSnapshot || run?.modelSnapshot || {}
@@ -1308,17 +1319,10 @@ const createPromptProvenance = ({ run, developerMode = false }) => {
     warnings: Array.isArray(promptBuilder?.warnings) ? promptBuilder.warnings.map((warning) => String(warning || '')).filter(Boolean) : [],
     ...(promptBuilder?.promptCompiler
       ? {
-          promptCompiler: {
-            version: Number(promptBuilder.promptCompiler.promptCompilerVersion || promptBuilder.promptCompiler.version || 0),
-            taskType: String(promptBuilder.promptCompiler.taskType || ''),
-            stage: String(promptBuilder.promptCompiler.stage || ''),
-            width: Number(promptBuilder.promptCompiler.width) || 0,
-            height: Number(promptBuilder.promptCompiler.height) || 0,
-            aspectRatio: String(promptBuilder.promptCompiler.aspectRatio || ''),
-            referenceImageCount: Math.max(0, Number(promptBuilder.promptCompiler.referenceImageCount) || 0),
-            requestedOutputCount: Math.max(0, Number(promptBuilder.promptCompiler.requestedOutputCount) || 0),
-            promptSafety: String(promptBuilder.promptCompiler.promptSafety || '')
-          }
+          promptCompiler: createPublicPromptCompiler({
+            dataDir,
+            promptCompiler: promptBuilder.promptCompiler
+          })
         }
       : {})
   }
@@ -1450,8 +1454,8 @@ const createImportReadiness = ({ run }) => {
   }
 }
 
-const createDashboardState = ({ run, developerMode = false }) => {
-  const promptProvenance = createPromptProvenance({ run, developerMode })
+const createDashboardState = ({ dataDir, run, developerMode = false }) => {
+  const promptProvenance = createPromptProvenance({ dataDir, run, developerMode })
   const recoveryMessage = String(run?.backendStatus?.message || run?.error || '').trim()
   const canRetryGeneration = String(run?.status || '') === 'failed'
   return {
@@ -1517,7 +1521,7 @@ const createPublicRun = ({ dataDir, run, developerMode = false }) => {
     artifacts: createPublicArtifacts({ dataDir, artifacts: run.artifacts || {} }),
     developerPrompt: createDeveloperPrompt({ dataDir, run }),
     recovery: createPublicRecovery({ dataDir, run }),
-    dashboard: createDashboardState({ run, developerMode }),
+    dashboard: createDashboardState({ dataDir, run, developerMode }),
     wizardState,
     workflowGuidance,
     reviewCheckpoint,
