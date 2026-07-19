@@ -1,4 +1,156 @@
+const crypto = require('node:crypto')
+
 const normalizeText = (value) => String(value || '').trim()
+
+const createMotionPreset = ({ actionId, id, phases }) => Object.freeze({
+  actionId,
+  id,
+  frameCount: phases.length,
+  phases: Object.freeze(phases.map((phase) => Object.freeze({ ...phase })))
+})
+
+const MOTION_PRESETS = Object.freeze({
+  'idle-subtle-loop-v1': createMotionPreset({
+    actionId: 'idle',
+    id: 'idle-subtle-loop-v1',
+    phases: [
+      { id: 'canonical-neutral', prompt: 'match the accepted neutral pose and body root' },
+      { id: 'inhale', prompt: 'begin one subtle breathing or source-appropriate secondary movement' },
+      { id: 'secondary-motion', prompt: 'continue the small local movement without translating the body' },
+      { id: 'peak', prompt: 'reach the quiet motion peak while preserving identity and scale' },
+      { id: 'settle', prompt: 'settle toward the accepted neutral pose' },
+      { id: 'canonical-return', prompt: 'return to the accepted neutral pose for a seamless loop' }
+    ]
+  }),
+  'running-right-gait-v1': createMotionPreset({
+    actionId: 'running-right',
+    id: 'running-right-gait-v1',
+    phases: [
+      { id: 'contact', prompt: 'right-facing first contact pose with opposing locomotion limbs separated' },
+      { id: 'down', prompt: 'right-facing down pose with readable weight absorption' },
+      { id: 'passing', prompt: 'right-facing first passing pose with the support limb under the body' },
+      { id: 'up', prompt: 'right-facing first up pose before the next contact' },
+      { id: 'opposite-contact', prompt: 'right-facing opposite contact pose with limb positions reversed' },
+      { id: 'opposite-down', prompt: 'right-facing opposite down pose with clear weight transfer' },
+      { id: 'opposite-passing', prompt: 'right-facing opposite passing pose with exchanged limb roles' },
+      { id: 'loop-close', prompt: 'right-facing loop-closing up pose that returns smoothly to frame 1' }
+    ]
+  }),
+  'waving-four-phase-v1': createMotionPreset({
+    actionId: 'waving',
+    id: 'waving-four-phase-v1',
+    phases: [
+      { id: 'neutral', prompt: 'neutral anchored pose with the greeting limb down' },
+      { id: 'lift', prompt: 'begin lifting the source-appropriate greeting limb' },
+      { id: 'peak', prompt: 'readable raised-limb greeting peak beside the face' },
+      { id: 'return', prompt: 'return the greeting limb toward the neutral pose' }
+    ]
+  }),
+  'jumping-five-phase-v1': createMotionPreset({
+    actionId: 'jumping',
+    id: 'jumping-five-phase-v1',
+    phases: [
+      { id: 'anticipation', prompt: 'grounded anticipation at the original horizontal root' },
+      { id: 'takeoff', prompt: 'clear takeoff with the body leaving the baseline' },
+      { id: 'airborne-peak', prompt: 'highest airborne pose with preserved anatomical scale' },
+      { id: 'landing', prompt: 'landing pose returning to the original horizontal root' },
+      { id: 'grounded-recovery', prompt: 'grounded recovery that closes the loop' }
+    ]
+  }),
+  'failed-eight-phase-v1': createMotionPreset({
+    actionId: 'failed',
+    id: 'failed-eight-phase-v1',
+    phases: [
+      { id: 'neutral', prompt: 'neutral anchored state' },
+      { id: 'recognition', prompt: 'recognize the failed outcome with a readable local reaction' },
+      { id: 'compression', prompt: 'compress the pose without changing anatomical scale' },
+      { id: 'dejected-peak', prompt: 'clearest dejected failure pose' },
+      { id: 'hold', prompt: 'briefly hold the failure pose' },
+      { id: 'recovery-start', prompt: 'begin recovering while the root stays fixed' },
+      { id: 'recovery', prompt: 'continue returning toward neutral' },
+      { id: 'loop-close', prompt: 'close the loop at the original root and scale' }
+    ]
+  }),
+  'waiting-six-phase-v1': createMotionPreset({
+    actionId: 'waiting',
+    id: 'waiting-six-phase-v1',
+    phases: [
+      { id: 'neutral', prompt: 'neutral patient pose' },
+      { id: 'attention-shift', prompt: 'small source-appropriate attention shift' },
+      { id: 'patient-hold', prompt: 'patient hold distinct from the quiet idle' },
+      { id: 'secondary-motion', prompt: 'small waiting-specific secondary movement' },
+      { id: 'settle', prompt: 'settle toward the neutral pose' },
+      { id: 'neutral-return', prompt: 'return to neutral for a seamless loop' }
+    ]
+  }),
+  'working-six-phase-v1': createMotionPreset({
+    actionId: 'running',
+    id: 'working-six-phase-v1',
+    phases: [
+      { id: 'neutral-work', prompt: 'neutral focused work pose' },
+      { id: 'engage', prompt: 'engage in the in-place work motion' },
+      { id: 'work-peak-a', prompt: 'first readable work peak' },
+      { id: 'transition', prompt: 'transition to the complementary work pose' },
+      { id: 'work-peak-b', prompt: 'second complementary work peak' },
+      { id: 'loop-close', prompt: 'return toward the focused starting pose' }
+    ]
+  }),
+  'review-six-phase-v1': createMotionPreset({
+    actionId: 'review',
+    id: 'review-six-phase-v1',
+    phases: [
+      { id: 'neutral', prompt: 'neutral anchored pose' },
+      { id: 'inspect-start', prompt: 'begin a deliberate inspection motion' },
+      { id: 'inspect-peak', prompt: 'clearest readable inspection pose' },
+      { id: 'decision-beat', prompt: 'small decision or acknowledgement beat' },
+      { id: 'settle', prompt: 'settle toward the starting pose' },
+      { id: 'neutral-return', prompt: 'return to neutral for a seamless loop' }
+    ]
+  })
+})
+
+const DEFAULT_MOTION_PRESET_BY_ACTION = Object.freeze(Object.fromEntries(
+  Object.values(MOTION_PRESETS).map((preset) => [preset.actionId, preset.id])
+))
+
+const getDefaultMotionPresetId = (actionId) => DEFAULT_MOTION_PRESET_BY_ACTION[normalizeText(actionId)] || ''
+
+const expandMotionPreset = ({ actionId, motionPresetId, motionParameters = {}, frameCount } = {}) => {
+  const normalizedActionId = normalizeText(actionId)
+  const preset = MOTION_PRESETS[normalizeText(motionPresetId)]
+  if (!preset || preset.actionId !== normalizedActionId) {
+    throw new Error(`Unsupported motion preset for ${normalizedActionId || 'action'}`)
+  }
+  if (Number(frameCount) !== preset.frameCount) {
+    throw new Error(`Motion preset ${preset.id} requires ${preset.frameCount} frames`)
+  }
+  const allowedParameters = new Set(['intensity', 'leadSide'])
+  for (const key of Object.keys(motionParameters || {})) {
+    if (!allowedParameters.has(key)) throw new Error(`Motion preset contains unknown motion parameter ${key}`)
+  }
+  const intensity = normalizeText(motionParameters.intensity || 'normal')
+  const leadSide = normalizeText(motionParameters.leadSide || 'viewer-left')
+  if (!new Set(['subtle', 'normal']).has(intensity)) throw new Error('Motion preset intensity is invalid')
+  if (!new Set(['viewer-left', 'viewer-right']).has(leadSide)) throw new Error('Motion preset leadSide is invalid')
+  const semanticChecks = preset.phases.map((phase) => phase.id)
+  const framePlan = preset.phases.map((phase, index) => (
+    `Frame ${index + 1}: ${phase.prompt}; use ${intensity} intensity and let ${leadSide} lead where a side is required.`
+  ))
+  const payload = {
+    version: 1,
+    actionId: normalizedActionId,
+    motionPresetId: preset.id,
+    motionParameters: { intensity, leadSide },
+    framePlan,
+    movingParts: [resolvePrimaryAnimatedPart({ actionId: normalizedActionId })],
+    lockedParts: getDefaultLockedParts({ actionId: normalizedActionId }),
+    semanticChecks
+  }
+  return Object.freeze({
+    ...payload,
+    hash: crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex')
+  })
+}
 
 const getActionText = (action = {}) => [
   action.actionId,
@@ -243,8 +395,11 @@ const getKeyframePoseInstruction = ({ action = {}, keyframeRole = 'start' } = {}
 }
 
 module.exports = {
+  MOTION_PRESETS,
   buildActionFramePlan,
+  expandMotionPreset,
   getActionText,
+  getDefaultMotionPresetId,
   getDefaultLockedParts,
   getKeyframePoseInstruction,
   inferAnimationType,

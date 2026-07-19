@@ -1,6 +1,10 @@
 const TASK_TYPES = new Set(['character-image', 'action-keyframe', 'action-frame-sheet'])
 const STAGES = new Set(['identity', 'start', 'peak', 'final', 'repair'])
 const REFERENCE_TYPES = new Set(['single-character', 'identity-comparison', 'identity-and-motion'])
+const ACTION_CLASSES = new Set(['grounded-subtle-loop', 'grounded-locomotion', 'grounded-gesture', 'airborne-arc', 'grounded-state-loop', 'grounded-work-loop'])
+const ANCHOR_POLICIES = new Set(['compact-contact-root-v1', 'elongated-envelope-root-v1', 'floating-core-centroid-v1', 'action-relative-root-v1'])
+const COMPONENT_POLICIES = new Set(['reference-guided-body-v1'])
+const EFFECT_POLICIES = new Set(['forbid-detached-effects'])
 const MAX_VISUAL_DIRECTIVE_LENGTH = 240
 const MAX_VISUAL_DIRECTIVES = 12
 const MAX_APPEARANCE_INTENT_DIRECTIVES = 6
@@ -322,7 +326,13 @@ const createProviderImageTask = (input = {}) => {
       'styleLocks',
       'appearanceIntent',
       'strategyId',
-      'requestedChanges'
+      'requestedChanges',
+      'actionClass',
+      'anchorPolicy',
+      'componentPolicy',
+      'effectPolicy',
+      'motionPresetId',
+      'framePlanVersion'
     ]),
     'imageTask'
   )
@@ -341,9 +351,19 @@ const createProviderImageTask = (input = {}) => {
   if (taskType !== 'action-frame-sheet' && sheet) {
     throw createTaskError('image_prompt_contract_invalid', 'Single image task must not contain sheet geometry')
   }
+  const hasQualityFirstPolicy = Boolean(
+    input.actionClass ||
+    input.anchorPolicy ||
+    input.componentPolicy ||
+    input.effectPolicy ||
+    input.motionPresetId ||
+    input.framePlanVersion
+  )
   const canvas = input.canvas
     ? createCanvas(input.canvas)
-    : sheet
+    : sheet && hasQualityFirstPolicy
+      ? createCanvas(PROVIDER_CANVASES.square)
+      : sheet
       ? resolveProviderCanvasForLayout(sheet)
       : createCanvas(PROVIDER_CANVASES.square)
   const action = normalizeAction(input.action)
@@ -354,8 +374,34 @@ const createProviderImageTask = (input = {}) => {
   if (strategyId && !/^[a-z0-9][a-z0-9-]{0,79}$/.test(strategyId)) {
     throw createTaskError('image_prompt_contract_invalid', 'Image task strategy is invalid')
   }
+  let qualityFirstPolicy = {}
+  if (hasQualityFirstPolicy) {
+    if (taskType !== 'action-frame-sheet') {
+      throw createTaskError('image_prompt_contract_invalid', 'Quality-first action policy requires a frame sheet task')
+    }
+    const actionClass = String(input.actionClass || '')
+    const anchorPolicy = String(input.anchorPolicy || '')
+    const componentPolicy = String(input.componentPolicy || '')
+    const effectPolicy = String(input.effectPolicy || '')
+    const motionPresetId = String(input.motionPresetId || '').trim()
+    const framePlanVersion = Number(input.framePlanVersion)
+    if (!ACTION_CLASSES.has(actionClass)) throw createTaskError('image_prompt_contract_invalid', 'Image task actionClass is invalid')
+    if (!ANCHOR_POLICIES.has(anchorPolicy)) throw createTaskError('image_prompt_contract_invalid', 'Image task anchorPolicy is invalid')
+    if (!COMPONENT_POLICIES.has(componentPolicy)) throw createTaskError('image_prompt_contract_invalid', 'Image task componentPolicy is invalid')
+    if (!EFFECT_POLICIES.has(effectPolicy)) throw createTaskError('image_prompt_contract_invalid', 'Image task effectPolicy is invalid')
+    if (!/^[a-z0-9][a-z0-9-]{0,79}$/.test(motionPresetId)) throw createTaskError('image_prompt_contract_invalid', 'Image task motionPresetId is invalid')
+    if (framePlanVersion !== 1) throw createTaskError('image_prompt_contract_invalid', 'Image task framePlanVersion is invalid')
+    qualityFirstPolicy = {
+      actionClass,
+      anchorPolicy,
+      componentPolicy,
+      effectPolicy,
+      motionPresetId,
+      framePlanVersion
+    }
+  }
   return deepFreeze({
-    version: 2,
+    version: hasQualityFirstPolicy ? 3 : 2,
     taskType,
     stage,
     canvas,
@@ -369,13 +415,18 @@ const createProviderImageTask = (input = {}) => {
     styleLocks: normalizeVisualDirectives(input.styleLocks, DEFAULT_STYLE_LOCKS),
     appearanceIntent: normalizeAppearanceIntent(input.appearanceIntent),
     strategyId,
-    requestedChanges: normalizeVisualDirectives(input.requestedChanges)
+    requestedChanges: normalizeVisualDirectives(input.requestedChanges),
+    ...qualityFirstPolicy
   })
 }
 
 module.exports = {
   DEFAULT_FULL_BODY_SUBJECT,
   DEFAULT_STYLE_LOCKS,
+  ACTION_CLASSES,
+  ANCHOR_POLICIES,
+  COMPONENT_POLICIES,
+  EFFECT_POLICIES,
   PROVIDER_CANVASES,
   UNSAFE_APPEARANCE_INTENT_PATTERNS,
   createCanvas,

@@ -7,6 +7,31 @@ const {
   buildActionSpriteRowPrompt,
   buildCharacterAnchorPrompt
 } = require('../../examples/plugins/creator-studio/lib/anchor-prompt-builder')
+const { createProviderImageTask } = require('../../examples/plugins/creator-studio/lib/provider-image-task')
+
+test('quality-first frame-sheet image task uses square canvas and strict action policies', () => {
+  const task = createProviderImageTask({
+    taskType: 'action-frame-sheet',
+    stage: 'final',
+    sheet: { frameCount: 8, columns: 4, rows: 2 },
+    referenceRole: 'action-anchor-grid',
+    action: { name: 'in-place gait', moment: 'alternating contact cycle', movingParts: ['locomotion limbs'], lockedParts: ['identity'], loopIntent: 'closed loop', framePlan: ['contact', 'down', 'passing', 'up', 'opposite contact', 'opposite down', 'opposite passing', 'loop close'] },
+    actionClass: 'grounded-locomotion',
+    anchorPolicy: 'compact-contact-root-v1',
+    componentPolicy: 'reference-guided-body-v1',
+    effectPolicy: 'forbid-detached-effects',
+    motionPresetId: 'running-right-gait-v1',
+    framePlanVersion: 1
+  })
+
+  assert.deepEqual(task.canvas, { width: 1024, height: 1024, aspectRatio: '1:1' })
+  assert.equal(task.actionClass, 'grounded-locomotion')
+  assert.equal(task.anchorPolicy, 'compact-contact-root-v1')
+  assert.equal(task.componentPolicy, 'reference-guided-body-v1')
+  assert.equal(task.effectPolicy, 'forbid-detached-effects')
+  assert.equal(task.motionPresetId, 'running-right-gait-v1')
+  assert.equal(task.framePlanVersion, 1)
+})
 
 const assertProviderNeutral = (prompt) => {
   assert.doesNotMatch(prompt, /\bOpenPet\b/i)
