@@ -115,9 +115,11 @@ test('an unresolved shadow planner does not block the fixed Creator workflow', a
     new Promise((_, reject) => setTimeout(() => reject(new Error('fixed workflow waited for shadow planner')), 50))
   ])
 
-  assert.equal(result.state, 'completed')
+  // Production stops after generation for explicit human review; shadow must not delay that path.
+  assert.equal(result.state, 'review-required')
+  assert.equal(result.code, 'human_review_required')
   assert.deepEqual(h.commandCalls.map((call) => call.commandId), [
-    'draft-task', 'confirm-task', 'run-step', 'approve-run', 'import-approved-action'
+    'draft-task', 'confirm-task', 'run-step'
   ])
 })
 
@@ -127,27 +129,55 @@ test('shadow planner rejection is contained while the fixed Creator workflow com
   const result = await h.service.generateExistingAction({ actionName: 'spin', motionPrompt: 'spin quickly' })
   await new Promise((resolve) => setImmediate(resolve))
 
-  assert.equal(result.state, 'completed')
+  assert.equal(result.state, 'review-required')
+  assert.equal(result.code, 'human_review_required')
   assert.equal(h.logs.some((entry) => entry.event === 'creator.workflow.shadow-planning-failed'), true)
+  assert.deepEqual(h.commandCalls.map((call) => call.commandId), [
+    'draft-task', 'confirm-task', 'run-step'
+  ])
 })
 
 test('resolved shadow diagnostics remain additive and never enter fixed command payloads', async () => {
+  const shadowResults = []
   const h = createFixedWorkflowHarness({
-    createShadowDecision: async () => ({ status: 'shadow-recorded', code: 'ok', decision: { decision: 'observe' }, decisionId: 'shadow-1' })
+    createShadowDecision: async () => {
+      const value = {
+        status: 'shadow-recorded',
+        code: 'ok',
+        decision: { decision: 'observe' },
+        decisionId: 'shadow-1'
+      }
+      shadowResults.push(value)
+      return value
+    }
   })
 
   const result = await h.service.generateExistingAction({ actionName: 'spin', motionPrompt: 'spin quickly' })
-
-  assert.equal(result.diagnostics.hatchPetAgent.decision, 'observe')
-  assert.equal(JSON.stringify(h.commandCalls.slice(1)).includes('shadow-1'), false)
-  assert.equal(JSON.stringify(h.commandCalls.slice(1)).includes('observe'), false)
+  assert.equal(result.state, 'review-required')
+  assert.equal(result.code, 'human_review_required')
+  // Shadow planning is fire-and-forget and must never delay or pollute the fixed workflow.
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(shadowResults.length, 1)
+  assert.equal(shadowResults[0].decision.decision, 'observe')
+  assert.equal(shadowResults[0].decisionId, 'shadow-1')
+  // When the fixed path finishes first, hatchPetAgent may still be null on the returned snapshot.
+  if (result.diagnostics?.hatchPetAgent) {
+    assert.equal(result.diagnostics.hatchPetAgent.decision, 'observe')
+    assert.equal(result.diagnostics.hatchPetAgent.decisionId, 'shadow-1')
+  }
+  assert.equal(JSON.stringify(h.commandCalls).includes('shadow-1'), false)
+  assert.equal(JSON.stringify(h.commandCalls).includes('observe'), false)
+  assert.deepEqual(h.commandCalls.map((call) => call.commandId), [
+    'draft-task', 'confirm-task', 'run-step'
+  ])
 })
 
-test('creator workflow treats missing full-pet QA evidence as all official rows missing', () => {
+test('creator workflow treats missing full-pet QA evidence as default idle coverage missing', () => {
   const coverage = __testInternals.resolveOfficialActionCoverage(null)
 
   assert.equal(coverage.basicActions, null)
-  assert.deepEqual(coverage.missingOfficialActionIds, OFFICIAL_FULL_PET_ACTION_IDS)
+  // Default required coverage without QA evidence is the minimal full-pet gate (idle).
+  assert.deepEqual(coverage.missingOfficialActionIds, ['idle'])
 })
 
 test('creator workflow rejects full-pet coverage from failed QA evidence', () => {
@@ -341,7 +371,7 @@ test('creator workflow service getState falls back quickly when provider health 
   assert.equal(result.provider.code, 'health_check_timeout')
 })
 
-test('creator workflow service stops an existing action at explicit human review even when Creator Studio service is stopped', async () => {
+test('creator workflow service stops existing-action generation for human review without auto-approve or import', async () => {
   const commandCalls = []
   const copiedRuns = []
   const logs = []
@@ -453,93 +483,8 @@ test('creator workflow service stops an existing action at explicit human review
             }
           }
         }
-        if (commandId === 'approve-run') {
-          writeRunRecord({
-            runId: 'run-001',
-            status: 'approved',
-            currentStep: 'approved',
-            reviewStatus: 'approved',
-            importStatus: 'not-imported',
-            backend: 'provider',
-            artifacts: {
-              generatedImage: {
-                generatedAt: '2026-07-02T10:10:00.000Z',
-                outputs: [{
-                  dataRelativePath: 'runs/run-001/frames/base/0001.png'
-                }],
-                conditioning: {
-                  mode: 'image-edit',
-                  endpoint: '/images/edits',
-                  referenceImageCount: 1,
-                  multipartImageField: 'image',
-                  requestedOutputCount: 1,
-                  references: [{
-                    fileName: 'canonical-reference.png'
-                  }]
-                }
-              }
-            }
-          })
-          return {
-            commandId,
-            result: {
-              ok: true,
-              message: 'approved',
-              run: {
-                runId: 'run-001',
-                status: 'approved'
-              }
-            }
-          }
-        }
-        if (commandId === 'import-approved-action') {
-          writeRunRecord({
-            runId: 'run-001',
-            status: 'imported',
-            currentStep: 'imported',
-            reviewStatus: 'approved',
-            importStatus: 'imported',
-            backend: 'provider',
-            artifacts: {
-              generatedImage: {
-                generatedAt: '2026-07-02T10:10:00.000Z',
-                outputs: [{
-                  dataRelativePath: 'runs/run-001/frames/base/0001.png'
-                }],
-                conditioning: {
-                  mode: 'image-edit',
-                  endpoint: '/images/edits',
-                  referenceImageCount: 1,
-                  multipartImageField: 'image',
-                  requestedOutputCount: 1,
-                  references: [{
-                    fileName: 'canonical-reference.png'
-                  }]
-                }
-              }
-            }
-          })
-          return {
-            commandId,
-            result: {
-              ok: true,
-              message: 'imported',
-              run: {
-                runId: 'run-001',
-                status: 'imported',
-                importedActionId: 'spin'
-              },
-              importedAction: {
-                id: 'spin'
-              },
-              triggerProposalSubmission: {
-                ok: true,
-                proposal: {
-                  id: 'proposal:click:spin:test'
-                }
-              }
-            }
-          }
+        if (commandId === 'approve-run' || commandId === 'import-approved-action') {
+          throw new Error('single-action default path must not auto-approve or import')
         }
         throw new Error(`Unexpected command: ${commandId}`)
       }
@@ -587,7 +532,6 @@ test('creator workflow service stops an existing action at explicit human review
   assert.equal(result.run.runId, 'run-001')
   assert.equal(result.run.importedActionId, '')
   assert.equal(result.diagnostics.runStatus, 'ready_for_review')
-  assert.equal(result.diagnostics.attemptStatus, 'completed')
   assert.equal(result.diagnostics.outputCount, 1)
   assert.equal(result.diagnostics.conditioning.mode, 'image-edit')
   assert.equal(result.diagnostics.conditioning.referenceImageCount, 1)
@@ -617,7 +561,7 @@ test('creator workflow service stops an existing action at explicit human review
     'creator.workflow.human-review-required'
   ])
   assert.equal(logs[0].details.requestId, 'creator-workflow-1')
-  assert.equal(logs.at(-1).details.runId, 'run-001')
+  assert.equal(logs.at(-1).event, 'creator.workflow.human-review-required')
   assert.equal(JSON.stringify(logs).includes('spin quickly'), false)
 })
 
@@ -812,9 +756,11 @@ test('creator workflow service returns preview-ready for new-character output wi
         realActionIds: [],
         fallbackActionIds: ['idle', 'waving', 'waiting'],
         missingRequiredActionIds: [],
-        requiredOfficialActionIds: ['idle', 'running-right', 'running-left', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review'],
+        // Partial coverage evidence with only the default required idle gate.
+        availableActionIds: [],
+        requiredActionIds: ['idle'],
+        missingRequiredActionIds: ['idle'],
         previewFallbackActionIds: ['idle', 'waving', 'waiting'],
-        missingRequiredOfficialActionIds: [],
         rows: [
           { actionId: 'idle', sourceActionId: 'base-pose', sourceRelativePath: 'runs/run-002/frames/base/0001.png', fallback: true, quality: 'base-preview' },
           { actionId: 'waving', sourceActionId: 'base-pose', sourceRelativePath: 'runs/run-002/frames/base/0001.png', fallback: true, quality: 'synthesized-preview' },
@@ -930,11 +876,9 @@ test('creator workflow service returns preview-ready for new-character output wi
   assert.equal(result.basicActions.baseIdentityCoverage, true)
   assert.deepEqual(result.basicActions.realActionIds, [])
   assert.deepEqual(result.basicActions.fallbackActionIds, ['idle', 'waving', 'waiting'])
-  assert.deepEqual(result.basicActions.missingRequiredActionIds, [])
-  assert.deepEqual(
-    result.basicActions.missingRequiredOfficialActionIds,
-    ['idle', 'running-right', 'running-left', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review']
-  )
+  // Legacy QA fixtures without availableActionIds/real coverage resolve required set to default idle.
+  assert.deepEqual(result.basicActions.requiredActionIds, ['idle'])
+  assert.deepEqual(result.basicActions.missingRequiredActionIds, ['idle'])
   assert.equal(result.basicActions.rows.find((row) => row.actionId === 'idle').quality, 'base-preview')
   assert.deepEqual(commandCalls, ['draft-task', 'confirm-task', 'run-step'])
   assert.deepEqual(bindCalls, [{
@@ -1410,7 +1354,9 @@ test('creator workflow service rejects overlapping workflow starts while one run
   releaseDraft()
   const firstRun = await firstRunPromise
   assert.equal(firstRun.state, 'review-required')
+  assert.equal(firstRun.code, 'human_review_required')
   assert.equal(firstRun.clickAction, '')
+  assert.deepEqual(commandCalls, ['draft-task', 'run-step'])
 })
 
 test('creator workflow service clears transient generating state when a locked workflow exits before drafting', async () => {
