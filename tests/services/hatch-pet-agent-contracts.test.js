@@ -3,18 +3,32 @@ const assert = require('node:assert/strict')
 
 const {
   DEFAULT_HATCH_PET_AGENT_CONFIG,
+  DEFAULT_HATCH_PET_BUDGETS,
+  HATCH_PET_EXECUTION_MODES,
   normalizeHatchPetAgentConfig,
   resolveHatchPetCompletionConfig,
   createHatchPetAgentPublicConfig,
   validateHatchPetDecision
 } = require('../../src/main/services/hatch-pet-agent-contracts')
 
+test('quality-first hatch-pet contracts expose production mode and mandatory identity review', () => {
+  assert.equal(HATCH_PET_EXECUTION_MODES.has('production'), true)
+  assert.equal(DEFAULT_HATCH_PET_AGENT_CONFIG.requireIdentityReviewBeforeActions, true)
+  assert.equal(DEFAULT_HATCH_PET_BUDGETS.maxPlannerCalls, 34)
+  assert.equal(DEFAULT_HATCH_PET_BUDGETS.maxEvaluatorCalls, 68)
+  assert.equal(DEFAULT_HATCH_PET_BUDGETS.maxProviderCalls, 72)
+  assert.equal(DEFAULT_HATCH_PET_BUDGETS.maxElapsedMs, 43_200_000)
+  const production = normalizeHatchPetAgentConfig({ enabled: true, executionMode: 'production' })
+  assert.equal(production.executionMode, 'production')
+  assert.equal(production.requireIdentityReviewBeforeActions, true)
+})
+
 test('hatch-pet contracts default disabled and fixed shadow while clamping budgets', () => {
   assert.equal(DEFAULT_HATCH_PET_AGENT_CONFIG.enabled, false)
   assert.equal(DEFAULT_HATCH_PET_AGENT_CONFIG.executionMode, 'shadow')
-  const value = normalizeHatchPetAgentConfig({ enabled: true, executionMode: 'execute', apiKeyRef: 'attacker', budgets: { maxIdentityRegenerations: 99, maxActionAttemptsPerAction: 0, maxEvaluationAttemptsPerArtifact: 9, maxProviderCalls: 999, maxElapsedMs: 1, maxEstimatedCost: -2 } })
+  const value = normalizeHatchPetAgentConfig({ enabled: true, executionMode: 'execute', apiKeyRef: 'attacker', budgets: { maxIdentityRegenerations: 99, maxActionAttemptsPerAction: 0, maxEvaluationAttemptsPerArtifact: 9, maxPlannerCalls: 999, maxEvaluatorCalls: 999, maxProviderCalls: 999, maxElapsedMs: 999999999, maxEstimatedCost: -2 } })
   assert.equal(value.executionMode, 'shadow')
-  assert.deepEqual(value.budgets, { maxIdentityRegenerations: 3, maxActionAttemptsPerAction: 1, maxEvaluationAttemptsPerArtifact: 3, maxProviderCalls: 200, maxElapsedMs: 60000, maxEstimatedCost: 0.01 })
+  assert.deepEqual(value.budgets, { maxIdentityRegenerations: 3, maxActionAttemptsPerAction: 1, maxEvaluationAttemptsPerArtifact: 3, maxPlannerCalls: 34, maxEvaluatorCalls: 68, maxProviderCalls: 72, maxElapsedMs: 43200000, maxEstimatedCost: 0.01 })
 })
 
 test('hatch-pet resolution separates follow-chat from dedicated and public URLs remove credentials query and fragment', () => {

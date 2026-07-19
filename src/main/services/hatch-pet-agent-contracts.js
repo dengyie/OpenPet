@@ -2,8 +2,10 @@ const DEFAULT_HATCH_PET_BUDGETS = Object.freeze({
   maxIdentityRegenerations: 1,
   maxActionAttemptsPerAction: 3,
   maxEvaluationAttemptsPerArtifact: 2,
-  maxProviderCalls: 64,
-  maxElapsedMs: 3600000,
+  maxPlannerCalls: 34,
+  maxEvaluatorCalls: 68,
+  maxProviderCalls: 72,
+  maxElapsedMs: 43200000,
   maxEstimatedCost: null
 })
 
@@ -16,12 +18,12 @@ const DEFAULT_HATCH_PET_AGENT_CONFIG = Object.freeze({
   model: 'gpt-4o-mini',
   apiKeyRef: 'ai.hatch-pet',
   systemPromptVersion: 1,
-  requireIdentityReviewBeforeActions: false,
+  requireIdentityReviewBeforeActions: true,
   budgets: DEFAULT_HATCH_PET_BUDGETS
 })
 
 const HATCH_PET_CONFIG_MODES = new Set(['follow-chat', 'override'])
-const HATCH_PET_EXECUTION_MODES = new Set(['shadow'])
+const HATCH_PET_EXECUTION_MODES = new Set(['shadow', 'production'])
 const HATCH_PET_DECISIONS = new Set([
   'generate-identity',
   'retry-identity',
@@ -112,17 +114,29 @@ const normalizeHatchPetBudgets = (value = {}) => {
       1,
       3
     ),
+    maxPlannerCalls: clampInteger(
+      source.maxPlannerCalls,
+      DEFAULT_HATCH_PET_BUDGETS.maxPlannerCalls,
+      1,
+      34
+    ),
+    maxEvaluatorCalls: clampInteger(
+      source.maxEvaluatorCalls,
+      DEFAULT_HATCH_PET_BUDGETS.maxEvaluatorCalls,
+      1,
+      68
+    ),
     maxProviderCalls: clampInteger(
       source.maxProviderCalls,
       DEFAULT_HATCH_PET_BUDGETS.maxProviderCalls,
       1,
-      200
+      72
     ),
     maxElapsedMs: clampInteger(
       source.maxElapsedMs,
       DEFAULT_HATCH_PET_BUDGETS.maxElapsedMs,
       60000,
-      14400000
+      43200000
     ),
     maxEstimatedCost: normalizeEstimatedCost(source.maxEstimatedCost)
   }
@@ -135,14 +149,16 @@ const normalizeHatchPetAgentConfig = (value = {}) => {
     : DEFAULT_HATCH_PET_AGENT_CONFIG.configMode
   return {
     enabled: source.enabled === true,
-    executionMode: DEFAULT_HATCH_PET_AGENT_CONFIG.executionMode,
+    executionMode: HATCH_PET_EXECUTION_MODES.has(source.executionMode)
+      ? source.executionMode
+      : DEFAULT_HATCH_PET_AGENT_CONFIG.executionMode,
     configMode,
     provider: normalizeText(source.provider, DEFAULT_HATCH_PET_AGENT_CONFIG.provider),
     baseUrl: normalizeBaseUrl(source.baseUrl, DEFAULT_HATCH_PET_AGENT_CONFIG.baseUrl),
     model: normalizeText(source.model, DEFAULT_HATCH_PET_AGENT_CONFIG.model),
     apiKeyRef: normalizeText(source.apiKeyRef, DEFAULT_HATCH_PET_AGENT_CONFIG.apiKeyRef),
     systemPromptVersion: clampInteger(source.systemPromptVersion, 1, 1, 20),
-    requireIdentityReviewBeforeActions: source.requireIdentityReviewBeforeActions === true,
+    requireIdentityReviewBeforeActions: true,
     budgets: normalizeHatchPetBudgets(source.budgets)
   }
 }

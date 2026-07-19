@@ -232,7 +232,7 @@ test('full-pet command watchdogs outlive the bounded generation workflow', () =>
   const manifest = JSON.parse(fs.readFileSync(path.join(pluginRoot, 'plugin.json'), 'utf-8'))
   const timeouts = Object.fromEntries(manifest.entries.commands.map((command) => [command.id, command.timeoutMs]))
 
-  assert.equal(FULL_PET_WORKFLOW_MAX_DURATION_MS, 90 * 60 * 1000)
+  assert.equal(FULL_PET_WORKFLOW_MAX_DURATION_MS, 12 * 60 * 60 * 1000)
   for (const commandId of ['run-step', 'retry-action', 'retry-identity']) {
     assert.equal(timeouts[commandId], FULL_PET_COMMAND_TIMEOUT_MS)
     assert.ok(timeouts[commandId] > FULL_PET_WORKFLOW_MAX_DURATION_MS)

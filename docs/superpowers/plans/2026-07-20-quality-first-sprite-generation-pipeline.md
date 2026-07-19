@@ -82,7 +82,7 @@ Tests mirror each production unit under `tests/examples`, `tests/services`, and 
 - `assertPlanFitsBudget({ dispatchSlots, providerTimeoutMs, plannerCalls, evaluatorCalls, structuredTimeoutMs, processingReserveMs, elapsedLimitMs })`
 - `createBudgetPublicView(ledger) -> renderer-safe view`
 
-- [ ] **Step 1: Write failing budget tests**
+- [x] **Step 1: Write failing budget tests**
 
 ```js
 test('accepts the quality-first worst-case budget', () => {
@@ -105,19 +105,19 @@ test('rejects an image timeout that cannot fit the run deadline', () => {
 })
 ```
 
-- [ ] **Step 2: Run the focused tests and verify the expected missing-interface failures**
+- [x] **Step 2: Run the focused tests and verify the expected missing-interface failures**
 
 Run: `node --test tests/examples/creator-studio-full-pet-workflow-contract.test.js tests/services/hatch-pet-agent-budget-ledger.test.js`
 
 Expected: FAIL because the new budget constants and ledger exports do not exist.
 
-- [ ] **Step 3: Implement the exact deadline and ledger contract**
+- [x] **Step 3: Implement the exact deadline and ledger contract**
 
 Set `FULL_PET_WORKFLOW_MAX_DURATION_MS = 43_200_000`, keep shutdown grace at `300_000`, and derive `FULL_PET_COMMAND_TIMEOUT_MS = 43_500_000`. Change Hatch Pet execution modes to `shadow` and `production`, default production quality mode to `requireIdentityReviewBeforeActions: true`, raise the elapsed upper bound to `43_200_000`, and add planner/evaluator call limits.
 
 The ledger must atomically persist `budgets/ledger.json`, reserve before dispatch, reject exhausted elapsed/provider/planner/evaluator/cost budgets, and preserve usage after failures.
 
-- [ ] **Step 4: Run focused tests and commit**
+- [x] **Step 4: Run focused tests and commit**
 
 Run: `node --test tests/examples/creator-studio-full-pet-workflow-contract.test.js tests/services/hatch-pet-agent-contracts.test.js tests/services/hatch-pet-agent-budget-ledger.test.js`
 
