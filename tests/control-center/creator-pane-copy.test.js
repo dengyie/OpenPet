@@ -4,6 +4,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 
 const creatorPanePath = path.resolve(__dirname, '../../src/control-center/src/panes/CreatorPane.tsx')
+const demoControlCenterApiPath = path.resolve(__dirname, '../../src/control-center/src/api/demo-control-center-api.ts')
 
 test('creator pane copy explains internal anchor preparation instead of rejecting composite-board wording', () => {
   const source = fs.readFileSync(creatorPanePath, 'utf-8')
@@ -73,6 +74,12 @@ test('creator pane hook wires import available actions API', () => {
   assert.match(source, /importCreatorAvailableActions/)
   assert.match(source, /onImportAvailableActions/)
   assert.match(source, /正在导入可用动作/)
+})
+
+test('demo partial import falls back to the module-level creator last run', () => {
+  const source = fs.readFileSync(demoControlCenterApiPath, 'utf-8')
+  assert.match(source, /payload\?\.runId \|\| demoCreatorLastRun\?\.runId \|\| 'demo-run'/)
+  assert.doesNotMatch(source, /demoState\.creatorLastRun/)
 })
 
 test('creator pane hook loads asset previews on demand and marks prompt copy state', () => {

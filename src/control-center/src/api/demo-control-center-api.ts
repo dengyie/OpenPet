@@ -4181,7 +4181,7 @@ export const demoControlCenterAPI: ControlCenterApi = {
     }
   },
   importCreatorAvailableActions: async (payload: CreatorImportAvailableActionsRequest): Promise<CreatorWorkflowResult> => {
-    const runId = String(payload?.runId || demoState.creatorLastRun?.runId || 'demo-run').trim()
+    const runId = String(payload?.runId || demoCreatorLastRun?.runId || 'demo-run').trim()
     return {
       ok: true,
       state: 'completed',
