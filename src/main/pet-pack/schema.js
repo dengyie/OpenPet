@@ -214,7 +214,7 @@ const normalizePetPackManifest = (manifest) => {
     clickAction,
     actions
   }
-  for (const field of ['requiredActionIds', 'availableActionIds', 'omittedActionIds']) {
+  for (const field of ['requiredActionIds', 'availableActionIds', 'degradedActionIds', 'omittedActionIds']) {
     if (Array.isArray(manifest[field])) {
       normalized[field] = [...new Set(manifest[field].map((value) => optionalString(value)).filter(Boolean))]
     }

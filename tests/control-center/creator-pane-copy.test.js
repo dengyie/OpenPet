@@ -68,6 +68,13 @@ test('creator pane asset review shows compare, process assets, lazy preview and 
   assert.match(source, /creator-load-preview/)
 })
 
+test('creator pane explains degraded placeholder actions instead of presenting them as quality-passed', () => {
+  const source = fs.readFileSync(creatorPanePath, 'utf-8')
+  assert.match(source, /creator-degraded-actions/)
+  assert.match(source, /降级占位动作/)
+  assert.match(source, /不是通过质量门的真实动作/)
+})
+
 test('creator pane hook wires import available actions API', () => {
   const hookPath = path.resolve(__dirname, '../../src/control-center/src/hooks/useCreatorPane.ts')
   const source = fs.readFileSync(hookPath, 'utf-8')

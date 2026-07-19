@@ -532,6 +532,11 @@ const ResultCard = ({
       {result.importNotes ? (
         <span data-testid="creator-import-notes"><strong>导入说明</strong> {result.importNotes}</span>
       ) : null}
+      {result.degradedActionIds?.length ? (
+        <span data-testid="creator-degraded-actions">
+          <strong>降级占位动作</strong> {result.degradedActionIds.join(', ')}；当前可运行但不是通过质量门的真实动作，请重新生成。
+        </span>
+      ) : null}
       {canImportAvailable || repairableActionIds.length ? (
         <div className="header-actions" data-testid="creator-main-ctas">
           {canImportAvailable ? (

@@ -1597,15 +1597,18 @@ test('creator workflow diagnostics expose failed assets and prompt metadata with
   const runDir = path.join(pluginDataDir, 'runs', runId)
   const frameDir = path.join(runDir, 'official-row-frames', 'waving')
   const promptPath = path.join(runDir, 'prompts', 'rows', 'waving.md')
+  const retryPromptPath = path.join(runDir, 'prompts', 'keyframes', 'actions', 'waving-peak-keyframe-soft-retry.md')
   const framePath = path.join(frameDir, '01.png')
   fs.mkdirSync(frameDir, { recursive: true })
   fs.mkdirSync(path.dirname(promptPath), { recursive: true })
+  fs.mkdirSync(path.dirname(retryPromptPath), { recursive: true })
   // minimal PNG
   fs.writeFileSync(framePath, Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
     'base64'
   ))
   fs.writeFileSync(promptPath, 'Keep identity stable while waving the front paw.\n')
+  fs.writeFileSync(retryPromptPath, 'Soft retry: strengthen canonical identity lock for the waving peak.\n')
   fs.writeFileSync(path.join(runDir, 'run.json'), `${JSON.stringify({
     runId,
     status: 'failed',
@@ -1649,7 +1652,7 @@ test('creator workflow diagnostics expose failed assets and prompt metadata with
         keyframes: [{
           relativePath: `runs/${runId}/official-row-frames/waving/01.png`,
           role: 'peak',
-          promptRelativePath: `runs/${runId}/prompts/rows/waving.md`
+          promptRelativePath: `runs/${runId}/prompts/keyframes/actions/waving-peak-keyframe-soft-retry.md`
         }],
         row: {
           quality: 'failed',
@@ -1670,7 +1673,7 @@ test('creator workflow diagnostics expose failed assets and prompt metadata with
   assert.equal(waving.importable, false)
   assert.ok(Array.isArray(waving.assets) && waving.assets.length > 0)
   assert.ok(waving.assets.some((asset) => asset.kind === 'frame' || asset.kind === 'keyframe'))
-  assert.ok(waving.promptText.includes('Keep identity stable') || waving.assets.some((asset) => asset.kind === 'prompt'))
+  assert.match(waving.promptText, /Soft retry: strengthen canonical identity lock/)
   assert.ok(Array.isArray(diagnostics.progress.actionAssets))
   assert.ok(diagnostics.progress.actionAssets.some((asset) => asset.actionId === 'waving' && asset.relativePath.includes('official-row-frames/waving')))
   assert.equal(diagnostics.progress.failedActionIds.includes('waving'), true)
@@ -1738,6 +1741,7 @@ test('creator workflow service imports available actions as partial pack when id
   }, null, 2)}\n`)
 
   const importedPacks = []
+  let inspectedManifest = null
   const service = createCreatorWorkflowService({
     pluginService: {
       listPlugins: () => ([{ id: 'openpet.creator-studio', enabled: true, runnable: true, commands: [{ id: 'draft-task' }] }]),
@@ -1761,6 +1765,7 @@ test('creator workflow service imports available actions as partial pack when id
       inspectPackSource: (sourcePath) => {
         assert.equal(fs.existsSync(path.join(sourcePath, 'pet.json')), true)
         const manifest = JSON.parse(fs.readFileSync(path.join(sourcePath, 'pet.json'), 'utf-8'))
+        inspectedManifest = manifest
         assert.equal(manifest.defaultAction, 'idle')
         assert.equal(manifest.actions.some((action) => action.id === 'idle'), true)
         assert.equal(manifest.availableActionIds.includes('running-right'), true)
@@ -1788,6 +1793,10 @@ test('creator workflow service imports available actions as partial pack when id
   assert.equal(result.availableActionIds.includes('idle'), true)
   assert.equal(result.availableActionIds.includes('running-right'), true)
   assert.equal(result.failedActionIds.includes('idle') || result.importNotes.includes('idle'), true)
+  assert.equal(inspectedManifest.actionAvailability.idle.available, false)
+  assert.equal(inspectedManifest.actionAvailability.idle.quality, 'placeholder')
+  assert.match(inspectedManifest.actionAvailability.idle.reason, /placeholder|fallback/i)
+  assert.deepEqual(inspectedManifest.creatorStudio.degradedActionIds, ['idle'])
   assert.equal(result.run.importedPackId, 'partial-cat')
   assert.equal(importedPacks.length, 1)
   assert.equal(JSON.stringify(result).includes(pluginDataDir), false)
@@ -1916,4 +1925,29 @@ test('creator workflow asset preview loads on demand and rejects path escape', a
   const outside = await service.getAssetPreview({ runId, relativePath: 'runs/other/01.png' })
   assert.equal(outside.ok, false)
   assert.equal(JSON.stringify(okPreview).includes(pluginDataDir), false)
+})
+
+test('creator workflow rejects unsafe run ids before reading outside the creator data boundary', () => {
+  const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-run-boundary-'))
+  const pluginDataDir = path.join(workspaceDir, 'data')
+  const escapedRunDir = path.join(workspaceDir, 'outside-run')
+  fs.mkdirSync(path.join(escapedRunDir), { recursive: true })
+  fs.writeFileSync(path.join(escapedRunDir, 'run.json'), JSON.stringify({
+    runId: '../../outside-run',
+    status: 'failed',
+    error: 'outside data must not be read'
+  }) + '\n')
+
+  const diagnostics = __testInternals.readWorkflowDiagnostics({
+    pluginDataDir,
+    runId: '../../outside-run'
+  })
+  const assets = __testInternals.collectActionAssetsForRun({
+    pluginDataDir,
+    runId: '../../outside-run'
+  })
+
+  assert.equal(diagnostics, null)
+  assert.deepEqual(assets.actions, [])
+  assert.deepEqual(assets.actionAssets, [])
 })

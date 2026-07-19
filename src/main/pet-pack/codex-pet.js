@@ -142,6 +142,10 @@ const normalizeCodexPetManifest = (manifest, { rootPath }) => {
     ? [...new Set(manifest.omittedActionIds.map((value) => String(value || '').trim()))]
         .filter((actionId) => CODEX_ROWS.some((row) => row.id === actionId) && !availableActionIds.includes(actionId))
     : CODEX_ROWS.map((row) => row.id).filter((actionId) => !availableActionIds.includes(actionId))
+  const degradedActionIds = Array.isArray(manifest.degradedActionIds)
+    ? [...new Set(manifest.degradedActionIds.map((value) => String(value || '').trim()))]
+        .filter((actionId) => availableActionIds.includes(actionId))
+    : []
   if (hasDirectionalPairMismatch) {
     omittedActionIds.push(...['running-right', 'running-left'].filter((actionId) => !omittedActionIds.includes(actionId)))
   }
@@ -167,6 +171,7 @@ const normalizeCodexPetManifest = (manifest, { rootPath }) => {
     clickAction: availableActionIds.includes('waving') ? 'waving' : 'idle',
     requiredActionIds: ['idle'],
     availableActionIds,
+    degradedActionIds,
     omittedActionIds,
     actionAvailability,
     actions: availableRows.map((row) => ({

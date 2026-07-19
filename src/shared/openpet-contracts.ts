@@ -2169,6 +2169,7 @@ export interface CreatorWorkflowResult extends OkResponse {
   availableActionIds?: string[]
   failedActionIds?: string[]
   omittedActionIds?: string[]
+  degradedActionIds?: string[]
   importNotes?: string
 }
 

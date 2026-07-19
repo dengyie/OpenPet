@@ -121,9 +121,10 @@ test('loads only available actions from a partial Codex pet manifest', () => {
     spritesheetPath: 'spritesheet.webp',
     requiredActionIds: ['idle'],
     availableActionIds: ['idle'],
+    degradedActionIds: ['idle'],
     omittedActionIds: ['waving'],
     actionAvailability: {
-      idle: { available: true, quality: 'row-real' },
+      idle: { available: false, quality: 'placeholder', reason: 'idle-placeholder-fallback' },
       waving: { available: false, reason: 'identity-descriptor-distance-high' }
     }
   }))
@@ -134,6 +135,12 @@ test('loads only available actions from a partial Codex pet manifest', () => {
   assert.equal(pack.manifest.defaultAction, 'idle')
   assert.equal(pack.manifest.clickAction, 'idle')
   assert.deepEqual(pack.manifest.availableActionIds, ['idle'])
+  assert.deepEqual(pack.manifest.degradedActionIds, ['idle'])
+  assert.deepEqual(pack.manifest.actionAvailability.idle, {
+    available: false,
+    quality: 'placeholder',
+    reason: 'idle-placeholder-fallback'
+  })
   assert.deepEqual(pack.manifest.omittedActionIds, ['waving'])
 })
 

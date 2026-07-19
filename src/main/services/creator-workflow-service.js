@@ -19,6 +19,8 @@ const EDITABLE_TARGET_TYPE = 'editable-action-host'
 const EDITABLE_TARGET_ID = 'legacy-editable-host'
 const EDITABLE_TARGET_NAME = 'Current Editable Character'
 const SAFE_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9:_-]*$/
+const SAFE_RUN_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/
+const SAFE_PATH_SEGMENT_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/
 const DEFAULT_PROVIDER_HEALTH_TIMEOUT_MS = 3000
 
 const normalizeText = (value) => String(value || '').trim()
@@ -35,6 +37,50 @@ const normalizeSafeRelativePath = (value) => {
     return ''
   }
   return normalized
+}
+
+const isSafeRunId = (value) => SAFE_RUN_ID_PATTERN.test(normalizeText(value))
+
+const isSafePathSegment = (value) => SAFE_PATH_SEGMENT_PATTERN.test(normalizeText(value))
+
+const isPathInsideDirectory = ({ rootPath, targetPath, requireExisting = false }) => {
+  try {
+    const root = path.resolve(rootPath)
+    const target = path.resolve(targetPath)
+    const relative = path.relative(root, target)
+    if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return false
+    if (!requireExisting) return true
+    if (!fs.existsSync(root) || !fs.existsSync(target)) return false
+    const rootStat = fs.lstatSync(root)
+    const targetStat = fs.lstatSync(target)
+    if (rootStat.isSymbolicLink() || targetStat.isSymbolicLink()) return false
+    const realRoot = fs.realpathSync.native(root)
+    const realTarget = fs.realpathSync.native(target)
+    const realRelative = path.relative(realRoot, realTarget)
+    return realRelative !== '..' && !realRelative.startsWith(`..${path.sep}`) && !path.isAbsolute(realRelative)
+  } catch (_) {
+    return false
+  }
+}
+
+const getSafeCreatorRunDir = ({ pluginDataDir, runId, requireExisting = false }) => {
+  const normalizedRunId = normalizeText(runId)
+  if (!pluginDataDir || !isSafeRunId(normalizedRunId)) return null
+  const dataRoot = path.resolve(pluginDataDir)
+  const runsRoot = path.join(dataRoot, 'runs')
+  const runDir = path.join(runsRoot, normalizedRunId)
+  if (!isPathInsideDirectory({ rootPath: runsRoot, targetPath: runDir })) return null
+  if (requireExisting && !isPathInsideDirectory({ rootPath: runsRoot, targetPath: runDir, requireExisting: true })) return null
+  return { dataRoot, runsRoot, runDir, runId: normalizedRunId }
+}
+
+const isRunRelativePath = ({ runId, relativePath }) => {
+  const normalizedRunId = normalizeText(runId)
+  const normalizedPath = normalizeSafeRelativePath(relativePath)
+  return Boolean(
+    isSafeRunId(normalizedRunId) &&
+    normalizedPath.startsWith(`runs/${normalizedRunId}/`)
+  )
 }
 
 const withTimeout = async (promise, timeoutMs, message) => {
@@ -242,6 +288,7 @@ const createWorkflowResult = ({
   availableActionIds = null,
   failedActionIds = null,
   omittedActionIds = null,
+  degradedActionIds = null,
   importNotes = ''
 }) => finalizeWorkflowResult({
   ok: true,
@@ -357,13 +404,16 @@ const createWorkflowResult = ({
   omittedActionIds: Array.isArray(omittedActionIds)
     ? omittedActionIds.map(normalizeText).filter(Boolean)
     : [],
+  degradedActionIds: Array.isArray(degradedActionIds)
+    ? degradedActionIds.map(normalizeText).filter(Boolean)
+    : [],
   importNotes: normalizeText(importNotes).slice(0, 400)
 })
 
 const readBasicActionCoverage = ({ pluginDataDir, runId }) => {
-  const normalizedRunId = normalizeText(runId)
-  if (!pluginDataDir || !normalizedRunId) return null
-  const qaPath = path.join(path.resolve(pluginDataDir), 'runs', normalizedRunId, 'qa', 'atlas-validation.json')
+  const safeRun = getSafeCreatorRunDir({ pluginDataDir, runId, requireExisting: true })
+  if (!safeRun) return null
+  const qaPath = path.join(safeRun.runDir, 'qa', 'atlas-validation.json')
   if (!fs.existsSync(qaPath)) return null
   try {
     const qa = JSON.parse(fs.readFileSync(qaPath, 'utf-8'))
@@ -564,11 +614,14 @@ const stripPreviewDataUrlsFromValue = (value) => {
 }
 
 const toRunRelativePath = ({ pluginDataDir, runId, absolutePath }) => {
-  const runRoot = path.join(path.resolve(pluginDataDir), 'runs', normalizeText(runId))
+  const safeRun = getSafeCreatorRunDir({ pluginDataDir, runId, requireExisting: true })
+  if (!safeRun) return ''
+  const runRoot = safeRun.runDir
   const absolute = path.resolve(absolutePath)
   const relative = path.relative(runRoot, absolute).split(path.sep).join('/')
-  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return ''
-  return `runs/${normalizeText(runId)}/${relative}`
+  if (!relative || relative === '..' || relative.startsWith('../') || path.isAbsolute(relative)) return ''
+  if (!isPathInsideDirectory({ rootPath: runRoot, targetPath: absolute, requireExisting: true })) return ''
+  return `runs/${safeRun.runId}/${relative}`
 }
 
 const fileToPreviewDataUrl = (absolutePath) => {
@@ -655,9 +708,9 @@ const createFailureEvidenceList = (record = {}) => {
 }
 
 const collectProcessAssetsForRun = ({ pluginDataDir, runId, includePreviews = false }) => {
-  const normalizedRunId = normalizeText(runId)
-  if (!pluginDataDir || !normalizedRunId) return []
-  const runDir = path.join(path.resolve(pluginDataDir), 'runs', normalizedRunId)
+  const safeRun = getSafeCreatorRunDir({ pluginDataDir, runId, requireExisting: true })
+  if (!safeRun) return []
+  const { runDir, runId: normalizedRunId } = safeRun
   const processAssets = []
   const seen = new Set()
 
@@ -705,7 +758,7 @@ const collectProcessAssetsForRun = ({ pluginDataDir, runId, includePreviews = fa
       kind,
       label: kind === 'conditioning-board' ? '条件板' : (kind === 'identity' ? '身份板' : '参考板'),
       role: base.replace(/\.(png|webp|jpe?g|gif)$/i, ''),
-      actionId: SAFE_ID_PATTERN.test(actionIdGuess) ? actionIdGuess : 'process'
+      actionId: isSafePathSegment(actionIdGuess) ? actionIdGuess : 'process'
     })
   }
 
@@ -751,8 +804,8 @@ const collectProcessAssetsForRun = ({ pluginDataDir, runId, includePreviews = fa
 }
 
 const collectActionAssetsForRun = ({ pluginDataDir, runId, checkpoints = null, includePreviews = false }) => {
-  const normalizedRunId = normalizeText(runId)
-  if (!pluginDataDir || !normalizedRunId) {
+  const safeRun = getSafeCreatorRunDir({ pluginDataDir, runId, requireExisting: true })
+  if (!safeRun) {
     return {
       actions: [],
       actionAssets: [],
@@ -763,14 +816,14 @@ const collectActionAssetsForRun = ({ pluginDataDir, runId, checkpoints = null, i
       completeness: 'none'
     }
   }
-  const runDir = path.join(path.resolve(pluginDataDir), 'runs', normalizedRunId)
+  const { dataRoot, runDir, runId: normalizedRunId } = safeRun
   const checkpointActions = isPlainObject(checkpoints?.actions)
     ? checkpoints.actions
     : readJsonIfExists(path.join(runDir, 'full-pet-action-checkpoints.json'), { actions: {} })?.actions || {}
   const actionIds = createUniqueTextList([
     ...OFFICIAL_PROGRESS_ACTION_IDS,
     ...Object.keys(isPlainObject(checkpointActions) ? checkpointActions : {})
-  ])
+  ]).filter(isSafePathSegment)
   const actionAssets = []
   const actionViews = []
   const availableActionIds = []
@@ -849,10 +902,15 @@ const collectActionAssetsForRun = ({ pluginDataDir, runId, checkpoints = null, i
         keyframe?.relativePath || keyframe?.dataRelativePath || keyframe?.outputRelativePath
       )
       if (!relative) continue
-      const absolute = path.join(path.resolve(pluginDataDir), relative)
+      if (!isRunRelativePath({ runId: normalizedRunId, relativePath: relative })) continue
+      const absolute = path.join(dataRoot, relative)
       const previewable = canPreviewImageFile(absolute)
       const previewDataUrl = includePreviews && previewable ? fileToPreviewDataUrl(absolute) : ''
       const keyframePrompt = normalizeSafeRelativePath(keyframe?.promptRelativePath)
+      const keyframePromptInRun = isRunRelativePath({ runId: normalizedRunId, relativePath: keyframePrompt })
+      const keyframePromptText = keyframePromptInRun
+        ? readPromptTextIfExists(path.join(dataRoot, keyframePrompt))
+        : ''
       assets.push({
         actionId,
         kind: 'keyframe',
@@ -861,17 +919,49 @@ const collectActionAssetsForRun = ({ pluginDataDir, runId, checkpoints = null, i
         role: normalizeText(keyframe?.role || keyframe?.stage || `keyframe-${index + 1}`),
         previewable,
         ...(previewDataUrl ? { previewDataUrl } : {}),
-        ...(keyframePrompt ? { promptRelativePath: keyframePrompt } : {}),
+        ...(keyframePromptInRun
+          ? {
+              promptRelativePath: keyframePrompt,
+              ...(keyframePromptText ? { promptText: keyframePromptText } : {})
+            }
+          : {}),
         failureEvidence: failureEvidence[0] || null
       })
       actionAssets.push(assets[assets.length - 1])
+    }
+
+    const failedStage = Array.isArray(record?.generationStages)
+      ? record.generationStages.find((stage) => stage?.ok === false && stage?.promptRelativePath)
+      : null
+    const failedStagePrompt = normalizeSafeRelativePath(failedStage?.promptRelativePath)
+    const hasKeyframeFailure = record?.ok === false && (
+      /keyframe/i.test(normalizeText(failedStage?.stage || failedStage?.id || record?.error)) ||
+      assets.some((asset) => asset.kind === 'keyframe' && /soft-retry/i.test(asset.promptRelativePath || ''))
+    )
+    const failedKeyframePrompt = hasKeyframeFailure
+      ? (
+          assets.find((asset) => asset.kind === 'keyframe' && asset.promptRelativePath === failedStagePrompt && asset.promptText) ||
+          assets.find((asset) => asset.kind === 'keyframe' && /soft-retry/i.test(asset.promptRelativePath || '') && asset.promptText) ||
+          assets.find((asset) => asset.kind === 'keyframe' && asset.promptText && asset.promptRelativePath)
+        )
+      : null
+    if (failedKeyframePrompt) {
+      promptText = failedKeyframePrompt.promptText
+      promptRelativePath = failedKeyframePrompt.promptRelativePath
+      const promptAsset = assets.find((asset) => asset.kind === 'prompt')
+      if (promptAsset) {
+        promptAsset.promptText = promptText
+        promptAsset.promptRelativePath = promptRelativePath
+        promptAsset.relativePath = promptRelativePath
+      }
     }
 
     const rowFrames = Array.isArray(record?.row?.frames) ? record.row.frames : []
     for (const [index, frame] of rowFrames.slice(0, 8).entries()) {
       const relative = normalizeSafeRelativePath(frame?.relativePath || frame?.path)
       if (!relative) continue
-      const absolute = path.join(path.resolve(pluginDataDir), relative)
+      if (!isRunRelativePath({ runId: normalizedRunId, relativePath: relative })) continue
+      const absolute = path.join(dataRoot, relative)
       const previewable = canPreviewImageFile(absolute)
       const previewDataUrl = includePreviews && previewable ? fileToPreviewDataUrl(absolute) : ''
       assets.push({
@@ -1313,13 +1403,14 @@ const createWorkflowProgressView = ({
 }
 
 const readWorkflowDiagnostics = ({ pluginDataDir, runId }) => {
-  const normalizedRunId = normalizeText(runId)
-  if (!pluginDataDir || !normalizedRunId) return null
-  const runDir = path.join(path.resolve(pluginDataDir), 'runs', normalizedRunId)
+  const safeRun = getSafeCreatorRunDir({ pluginDataDir, runId, requireExisting: true })
+  if (!safeRun) return null
+  const runDir = safeRun.runDir
   const runPath = path.join(runDir, 'run.json')
   if (!fs.existsSync(runPath)) return null
   try {
     const run = JSON.parse(fs.readFileSync(runPath, 'utf-8'))
+    if (!isPlainObject(run) || normalizeText(run.runId) !== safeRun.runId) return null
     const generatedImage = run?.artifacts?.generatedImage
     const conditioning = generatedImage?.conditioning && typeof generatedImage.conditioning === 'object'
       ? generatedImage.conditioning
@@ -2145,11 +2236,25 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
         message: 'Creator repair requires a run id'
       })
     }
+    if (!isSafeRunId(normalizedRunId)) {
+      return createWorkflowResult({
+        state: 'missing-input',
+        code: 'invalid_run_id',
+        message: 'Creator repair requires a safe run id'
+      })
+    }
     if (commandId === CREATOR_STUDIO_RETRY_ACTION_COMMAND_ID && !normalizedActionId) {
       return createWorkflowResult({
         state: 'missing-input',
         code: 'missing_action_id',
         message: 'Creator action repair requires an action id'
+      })
+    }
+    if (commandId === CREATOR_STUDIO_RETRY_ACTION_COMMAND_ID && !isSafePathSegment(normalizedActionId)) {
+      return createWorkflowResult({
+        state: 'missing-input',
+        code: 'invalid_action_id',
+        message: 'Creator action repair requires a safe action id'
       })
     }
     return runExclusively({
@@ -2209,6 +2314,13 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
         message: '导入可用动作需要 run id'
       })
     }
+    if (!isSafeRunId(normalizedRunId)) {
+      return createWorkflowResult({
+        state: 'missing-input',
+        code: 'invalid_run_id',
+        message: '导入可用动作需要安全的 run id'
+      })
+    }
 
     return runExclusively({
       mode: 'full-pet',
@@ -2216,10 +2328,18 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
     }, async () => {
       assertPluginReady()
       const pluginDataDir = pluginService.getPluginCreatorDataDir(CREATOR_STUDIO_PLUGIN_ID)
-      const runDir = path.join(path.resolve(pluginDataDir), 'runs', normalizedRunId)
+      const safeRun = getSafeCreatorRunDir({ pluginDataDir, runId: normalizedRunId, requireExisting: true })
+      if (!safeRun) {
+        return createWorkflowResult({
+          state: 'missing-input',
+          code: 'run_not_found',
+          message: `找不到 run ${normalizedRunId}`
+        })
+      }
+      const { dataRoot, runDir } = safeRun
       const runPath = path.join(runDir, 'run.json')
       const run = readJsonIfExists(runPath, null)
-      if (!isPlainObject(run)) {
+      if (!isPlainObject(run) || normalizeText(run.runId) !== normalizedRunId) {
         return createWorkflowResult({
           state: 'missing-input',
           code: 'run_not_found',
@@ -2290,7 +2410,8 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
         for (const frame of Array.isArray(record?.row?.frames) ? record.row.frames : []) {
           const relative = normalizeSafeRelativePath(frame?.relativePath || frame?.path)
           if (!relative) continue
-          const absolute = path.join(path.resolve(pluginDataDir), relative)
+          if (!isRunRelativePath({ runId: normalizedRunId, relativePath: relative })) continue
+          const absolute = path.join(dataRoot, relative)
           if (fs.existsSync(absolute) && fs.statSync(absolute).isFile()) paths.push(absolute)
         }
         if (paths.length === 0) {
@@ -2302,6 +2423,7 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
       const outputDirExisting = normalizeText(run?.artifacts?.outputDir)
       const hasExistingImportableOutput = Boolean(
         outputDirExisting &&
+        isPathInsideDirectory({ rootPath: runDir, targetPath: outputDirExisting, requireExisting: true }) &&
         fs.existsSync(outputDirExisting) &&
         fs.existsSync(path.join(outputDirExisting, 'pet.json')) &&
         availableActionIds.includes('idle') &&
@@ -2337,6 +2459,7 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
         }
       }
 
+      const degradedActionIds = []
       if (!importedPackId) {
         if (!petPackService?.inspectPackSource || !petPackService?.importPack) {
           return createWorkflowResult({
@@ -2368,6 +2491,7 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
 
         const actions = []
         for (const actionId of availableActionIds) {
+          if (!isSafePathSegment(actionId)) continue
           const framePaths = collectFramePathsForAction(actionId)
           if (framePaths.length === 0) continue
           const actionDir = path.join(framesRoot, actionId)
@@ -2437,6 +2561,7 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
             sprite: path.posix.join('frames', 'idle', idleName)
           })
           if (!availableActionIds.includes('idle')) availableActionIds.unshift('idle')
+          degradedActionIds.push('idle')
           defaultActionNote = 'idle 原生成失败，已用其他可用动作帧降级作为 defaultAction=idle（静帧占位），请尽快重生成 idle。'
         }
 
@@ -2445,10 +2570,13 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
         const clickAction = actions.some((action) => action.id === 'waving') ? 'waving' : 'idle'
         const actionAvailability = Object.fromEntries(OFFICIAL_PROGRESS_ACTION_IDS.map((actionId) => {
           const available = actions.some((action) => action.id === actionId)
+          const degraded = degradedActionIds.includes(actionId)
           return [actionId, {
-            available,
-            quality: available ? 'row-real' : '',
-            reason: available ? '' : (failedActionIds.includes(actionId) ? 'failed' : 'omitted')
+            available: available && !degraded,
+            quality: degraded ? 'placeholder' : (available ? 'row-real' : ''),
+            reason: degraded
+              ? 'idle-placeholder-fallback'
+              : (available ? '' : (failedActionIds.includes(actionId) ? 'failed' : 'omitted'))
           }]
         }))
         const manifest = {
@@ -2460,6 +2588,7 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
           clickAction,
           requiredActionIds: ['idle'],
           availableActionIds: actions.map((action) => action.id),
+          degradedActionIds,
           omittedActionIds: omittedActionIds.filter((actionId) => !actions.some((action) => action.id === actionId)),
           actionAvailability,
           actions,
@@ -2468,6 +2597,7 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
             importMode: 'available-actions',
             completeness: 'partial',
             failedActionIds,
+            degradedActionIds,
             notes: defaultActionNote
           }
         }
@@ -2559,6 +2689,7 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
         availableActionIds,
         failedActionIds,
         omittedActionIds,
+        degradedActionIds,
         importNotes: notes
       })
     })
@@ -2576,6 +2707,15 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
         previewDataUrl: ''
       }
     }
+    if (!isSafeRunId(normalizedRunId)) {
+      return {
+        ok: false,
+        code: 'invalid_run_id',
+        message: 'runId 不符合安全格式',
+        relativePath: safeRelative,
+        previewDataUrl: ''
+      }
+    }
     if (!safeRelative.startsWith(`runs/${normalizedRunId}/`)) {
       return {
         ok: false,
@@ -2588,11 +2728,19 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
     try {
       assertPluginReady()
       const pluginDataDir = pluginService.getPluginCreatorDataDir(CREATOR_STUDIO_PLUGIN_ID)
-      const absolute = path.join(path.resolve(pluginDataDir), safeRelative)
-      const runRoot = path.join(path.resolve(pluginDataDir), 'runs', normalizedRunId)
-      const resolved = path.resolve(absolute)
-      const resolvedRoot = path.resolve(runRoot)
-      if (resolved !== resolvedRoot && !resolved.startsWith(resolvedRoot + path.sep)) {
+      const safeRun = getSafeCreatorRunDir({ pluginDataDir, runId: normalizedRunId, requireExisting: true })
+      if (!safeRun) {
+        return {
+          ok: false,
+          code: 'run_not_found',
+          message: '当前 run 不存在或已越出数据边界',
+          relativePath: safeRelative,
+          previewDataUrl: ''
+        }
+      }
+      const assetRelativePath = safeRelative.slice(`runs/${normalizedRunId}/`.length)
+      const resolved = path.resolve(safeRun.runDir, assetRelativePath)
+      if (!isPathInsideDirectory({ rootPath: safeRun.runDir, targetPath: resolved, requireExisting: true })) {
         return {
           ok: false,
           code: 'asset_path_outside_run',

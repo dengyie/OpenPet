@@ -2981,6 +2981,8 @@ const generateActionKeyframe = async ({
   let keyframe = null
   let candidateSelection = null
   let candidateCount = 0
+  let selectedPromptRelativePath = promptFile.relativePath
+  let selectedPromptCompiler = promptBuild.promptCompiler
   try {
     stageTimeoutMs = resolveGenerationStageTimeout({ requestedTimeoutMs, deadlineMs: generationDeadlineMs })
     attempt = await generateWithFallbackImpl({
@@ -3056,8 +3058,8 @@ const generateActionKeyframe = async ({
       output: materializedOutput,
       actionId,
       keyframeRole: normalizedKeyframeRole,
-      promptRelativePath: promptFile.relativePath,
-      promptCompiler: promptBuild.promptCompiler,
+      promptRelativePath: selectedPromptRelativePath,
+      promptCompiler: selectedPromptCompiler,
       model: attempt.selectedModel,
       modelAttempts: attempt.attempts,
       quality
@@ -3077,18 +3079,21 @@ const generateActionKeyframe = async ({
           quality: diagnosticCandidate.quality
         })
       })
-      writeAnchorPromptFile({
-        dataDir,
-        relativePath: path.join(
+      const softRetryPromptRelativePath = path.join(
           'runs',
           run.runId,
           'prompts',
           'keyframes',
           'actions',
           `${actionId}-${normalizedKeyframeRole}-keyframe-soft-retry.md`
-        ).replace(/\\/g, '/'),
+        ).replace(/\\/g, '/')
+      writeAnchorPromptFile({
+        dataDir,
+        relativePath: softRetryPromptRelativePath,
         prompt: softRetryPromptBuild.prompt
       })
+      selectedPromptRelativePath = softRetryPromptRelativePath
+      selectedPromptCompiler = softRetryPromptBuild.promptCompiler || selectedPromptCompiler
       const softRetryAttempt = await generateWithFallbackImpl({
         settings,
         preferredModel: selectedModel,
@@ -3167,8 +3172,8 @@ const generateActionKeyframe = async ({
         output: materializedOutput,
         actionId,
         keyframeRole: normalizedKeyframeRole,
-        promptRelativePath: promptFile.relativePath,
-        promptCompiler: softRetryPromptBuild.promptCompiler || promptBuild.promptCompiler,
+        promptRelativePath: selectedPromptRelativePath,
+        promptCompiler: selectedPromptCompiler,
         model: attempt.selectedModel,
         modelAttempts: attempt.attempts,
         quality
@@ -3193,8 +3198,8 @@ const generateActionKeyframe = async ({
       actionId,
       keyframe,
       referenceImage,
-      promptRelativePath: promptFile.relativePath,
-      promptCompiler: promptBuild.promptCompiler,
+      promptRelativePath: selectedPromptRelativePath,
+      promptCompiler: selectedPromptCompiler,
       model: attempt.selectedModel,
       modelAttempts: attempt.attempts,
       stage: createProviderGenerationStage({
@@ -3207,7 +3212,7 @@ const generateActionKeyframe = async ({
         model: attempt.selectedModel,
         modelAttempts: attempt.attempts,
         outputRelativePath: materializedOutput.dataRelativePath,
-        promptRelativePath: promptFile.relativePath,
+        promptRelativePath: selectedPromptRelativePath,
         outputCount: candidateCount,
         qualityProfile
       })
@@ -3223,7 +3228,7 @@ const generateActionKeyframe = async ({
       actionId,
       keyframe,
       referenceImage: null,
-      promptRelativePath: promptFile.relativePath,
+      promptRelativePath: selectedPromptRelativePath,
       error: String(error?.message || `${normalizedKeyframeRole} keyframe generation failed`),
       model: attempt?.selectedModel || selectedModel,
       modelAttempts,
@@ -3237,7 +3242,7 @@ const generateActionKeyframe = async ({
         model: attempt?.selectedModel || selectedModel,
         modelAttempts,
         outputRelativePath: materializedOutput?.dataRelativePath || '',
-        promptRelativePath: promptFile.relativePath,
+        promptRelativePath: selectedPromptRelativePath,
         outputCount: candidateCount,
         quality,
         qualityProfile,
