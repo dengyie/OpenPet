@@ -1704,3 +1704,165 @@ test('host model bridge records final-stage timeout diagnostics when final actio
     await new Promise((resolve) => server.close(resolve))
   }
 })
+
+
+test('soft identity descriptor retry is limited to the 70-80 band with the same request contract', () => {
+  const eligible = __testInternals.isSoftIdentityDescriptorRetryEligible({
+    ok: false,
+    safeComposition: true,
+    identityDescriptorDistance: 77.75,
+    failureConditions: ['identity-descriptor-distance-high']
+  })
+  const tooLow = __testInternals.isSoftIdentityDescriptorRetryEligible({
+    ok: false,
+    safeComposition: true,
+    identityDescriptorDistance: 70,
+    failureConditions: ['identity-descriptor-distance-high']
+  })
+  const tooHigh = __testInternals.isSoftIdentityDescriptorRetryEligible({
+    ok: false,
+    safeComposition: true,
+    identityDescriptorDistance: 85.87,
+    failureConditions: ['identity-descriptor-distance-high']
+  })
+  const severe = __testInternals.isSoftIdentityDescriptorRetryEligible({
+    ok: false,
+    safeComposition: true,
+    identityDescriptorDistance: 75,
+    failureConditions: ['identity-descriptor-distance-high', 'raw-score-below-minimum']
+  })
+  const colorFail = __testInternals.isSoftIdentityDescriptorRetryEligible({
+    ok: false,
+    safeComposition: true,
+    identityDescriptorDistance: 75,
+    failureConditions: ['identity-descriptor-distance-high', 'identity-color-distance-high']
+  })
+
+  assert.equal(eligible, true)
+  assert.equal(tooLow, false)
+  assert.equal(tooHigh, false)
+  assert.equal(severe, false)
+  assert.equal(colorFail, false)
+  assert.deepEqual(__testInternals.SOFT_IDENTITY_DESCRIPTOR_RETRY_BAND, {
+    minExclusive: 70,
+    maxInclusive: 80
+  })
+
+  const requestedChanges = __testInternals.createSoftIdentityRetryRequestedChanges({
+    action: { actionId: 'waving', name: 'Waving' },
+    keyframeRole: 'peak',
+    quality: { identityDescriptorDistance: 77.75 }
+  })
+  assert.equal(Array.isArray(requestedChanges), true)
+  assert.match(requestedChanges.join(' '), /stronger identity lock/i)
+  assert.match(requestedChanges.join(' '), /foot baseline|lower-center root/i)
+  assert.match(requestedChanges.join(' '), /77\.8|77\.75/)
+})
+
+
+test('generateActionKeyframe retries once on soft identity-descriptor misses using the same model', async () => {
+  const dataDir = makeDataDir()
+  const sourceRelativePath = 'runs/run-soft-retry/inputs/references/cat.png'
+  await writeSourceImage(path.join(dataDir, sourceRelativePath))
+  const calls = []
+  let evaluateCount = 0
+
+  const result = await __testInternals.generateActionKeyframe({
+    dataDir,
+    run: {
+      runId: 'run-soft-retry',
+      generationTask: {
+        characterBrief: 'Golden cat',
+        actions: [{ actionId: 'waving', name: 'Waving', motionPrompt: 'wave' }]
+      }
+    },
+    settings: { provider: 'openai-compatible', model: 'gpt-image-2', timeoutMs: 300000 },
+    selectedModel: 'gpt-image-2',
+    requestedTimeoutMs: 300000,
+    action: { actionId: 'waving', name: 'Waving', motionPrompt: 'wave one front paw' },
+    keyframeRole: 'peak',
+    referenceImages: [{
+      path: path.join(dataDir, sourceRelativePath),
+      fileName: 'cat.png',
+      relativePath: sourceRelativePath,
+      role: 'full-pet-action-identity-board'
+    }],
+    evaluateActionKeyframeQualityImpl: (args) => {
+      evaluateCount += 1
+      if (evaluateCount === 1) {
+        return {
+          ok: false,
+          score: 0,
+          rawScore: 90.5,
+          safeComposition: true,
+          identityConsistent: false,
+          identityColorDistance: 10,
+          identityDescriptorDistance: 77.75,
+          maxIdentityDescriptorDistance: 70,
+          minAcceptableScore: 30,
+          qualityProfile: { version: 1, id: 'pet-generation-default-v1', sourceDatasetId: '' },
+          failureConditions: ['identity-descriptor-distance-high'],
+          backgroundPreparation: { safe: true },
+          metrics: args.metrics || {}
+        }
+      }
+      return {
+        ok: true,
+        score: 94,
+        rawScore: 94,
+        safeComposition: true,
+        identityConsistent: true,
+        identityColorDistance: 8,
+        identityDescriptorDistance: 42,
+        maxIdentityDescriptorDistance: 70,
+        minAcceptableScore: 30,
+        qualityProfile: { version: 1, id: 'pet-generation-default-v1', sourceDatasetId: '' },
+        failureConditions: [],
+        backgroundPreparation: { safe: true },
+        metrics: args.metrics || {}
+      }
+    },
+    generateWithFallbackImpl: async (request) => {
+      calls.push({
+        model: request.model,
+        preferredModel: request.preferredModel,
+        prompt: request.prompt,
+        dataRelativeDir: request.dataRelativeDir
+      })
+      const dataRelativeDir = String(request.dataRelativeDir || '')
+      const dataRelativePath = `${dataRelativeDir}/0001.png`
+      await writeCandidateAnchorImage({
+        filePath: path.join(dataDir, dataRelativePath),
+        kind: 'good'
+      })
+      return {
+        selectedModel: request.model || 'gpt-image-2',
+        attempts: [{
+          model: request.model || 'gpt-image-2',
+          ok: true,
+          timeoutMs: 300000,
+          durationMs: 11,
+          referenceImageCount: 1,
+          referenceRoles: ['full-pet-action-identity-board']
+        }],
+        response: {
+          result: {
+            outputs: [{ dataRelativePath, mimeType: 'image/png', sha256: `${dataRelativePath}-${calls.length}` }]
+          }
+        }
+      }
+    }
+  })
+
+  assert.equal(result.ok, true)
+  assert.equal(calls.length, 2)
+  assert.equal(calls[0].model, 'gpt-image-2')
+  assert.equal(calls[1].model, 'gpt-image-2')
+  assert.equal(calls[0].preferredModel, 'gpt-image-2')
+  assert.equal(calls[1].preferredModel, 'gpt-image-2')
+  assert.match(calls[1].dataRelativeDir, /soft-retry/)
+  assert.match(calls[1].prompt, /stronger identity lock|Preserve the exact face/i)
+  assert.equal(result.keyframe.softIdentityRetry, true)
+  assert.equal(result.keyframe.quality.ok, true)
+  assert.equal(evaluateCount, 2)
+})

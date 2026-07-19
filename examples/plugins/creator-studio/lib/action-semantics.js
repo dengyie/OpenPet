@@ -64,6 +64,34 @@ const inferAnimationType = (action = {}) => {
   return 'reaction'
 }
 
+const getDefaultLockedParts = (action = {}) => {
+  if (isIdleAction(action)) {
+    return [
+      'face',
+      'eyes',
+      'identity markings',
+      'body proportions',
+      'character scale',
+      'torso center',
+      'foot baseline',
+      'lower-center root',
+      'horizontal cell placement'
+    ]
+  }
+  if (isVerticalBounceAction(action) || inferAnimationType(action) === 'vertical_bounce') {
+    return [
+      'face',
+      'eyes',
+      'identity markings',
+      'body proportions',
+      'character scale',
+      'horizontal root alignment',
+      'silhouette volume'
+    ]
+  }
+  return ['face', 'eyes', 'identity markings', 'body proportions', 'character scale']
+}
+
 const resolvePrimaryAnimatedPart = (action = {}) => {
   if (isIdleAction(action)) return 'subtle chest breathing, blink, ear movement, and tail-tip motion only'
   const custom = Array.isArray(action.animatedParts)
@@ -83,18 +111,18 @@ const buildActionFramePlan = ({ action = {}, frameCount = 6 } = {}) => {
   const count = Math.max(1, Number(frameCount) || 1)
   if (isIdleAction(action)) {
     if (count === 1) {
-      return ['Frame 1: match the canonical identity pose, viewpoint, silhouette, scale, markings, accessories, and lower-center root exactly.']
+      return ['Frame 1: match the canonical identity pose, viewpoint, silhouette, scale, markings, accessories, foot baseline, and lower-center root exactly; stay in place with no cross-cell translation.']
     }
     if (count === 2) {
       return [
-        'Frame 1: match the canonical identity pose, viewpoint, silhouette, scale, markings, accessories, and lower-center root exactly.',
-        'Frame 2: add only a subtle breathing, blink, ear, or tail-tip change that can loop directly back to frame 1 without moving the body root.'
+        'Frame 1: match the canonical identity pose, viewpoint, silhouette, scale, markings, accessories, foot baseline, and lower-center root exactly; stay in place with no cross-cell translation.',
+        'Frame 2: add only a subtle breathing, blink, ear, or tail-tip change that can loop directly back to frame 1 without moving the body root, foot baseline, scale, or horizontal placement.'
       ]
     }
     return [
-      'Frame 1: match the canonical identity pose, viewpoint, silhouette, scale, markings, accessories, and lower-center root exactly.',
-      `Frame ${Math.max(2, Math.ceil(count / 2))}: add only a subtle breathing, blink, ear, or tail-tip change without moving the body root or redesigning any feature.`,
-      `Frame ${count}: settle back to the canonical frame-1 pose for a seamless quiet loop.`
+      'Frame 1: match the canonical identity pose, viewpoint, silhouette, scale, markings, accessories, foot baseline, and lower-center root exactly; stay in place with no cross-cell translation.',
+      `Frame ${Math.max(2, Math.ceil(count / 2))}: add only a subtle breathing, blink, ear, or tail-tip change without moving the body root, foot baseline, scale, horizontal placement, or redesigning any feature.`,
+      `Frame ${count}: settle back to the canonical frame-1 pose for a seamless quiet loop with the same foot baseline, body scale, and lower-center root.`
     ]
   }
   if (Array.isArray(action.framePlan) && action.framePlan.length > 0) {
@@ -200,16 +228,16 @@ const getKeyframePoseInstruction = ({ action = {}, keyframeRole = 'start' } = {}
   const animationType = inferAnimationType(action)
   if (isIdleAction(action)) {
     return isStart
-      ? 'Pose: match the canonical reference pose and viewpoint as closely as possible; do not force a new front-facing view or change limb placement merely to neutralize the pose.'
-      : 'Pose: preserve the canonical pose and silhouette with only a subtle breathing, blink, ear, or tail-tip change; no action extreme or large limb movement.'
+      ? 'Pose: match the canonical reference pose and viewpoint as closely as possible; lock lower-center root, foot baseline, scale, and proportions; do not re-frame or translate the body.'
+      : 'Pose: preserve the canonical pose and silhouette with only a subtle breathing, blink, ear, or tail-tip change; keep lower-center root, foot baseline, scale, and proportions; no large motion or translation.'
   }
   if (isStart) {
     if (animationType === 'locomotion_loop') return 'Pose: first contact pose of an in-place gait cycle, full body visible, with opposing locomotion limbs clearly separated.'
-    if (animationType === 'vertical_bounce') return 'Pose: grounded anticipation pose at the original baseline, full body visible and ready to jump.'
-    return 'Pose: full-body neutral front-facing pose, body anchored, both front paws/limbs down unless the source image clearly uses a different neutral stance.'
+    if (animationType === 'vertical_bounce') return 'Pose: grounded anticipation pose at the original baseline, full body visible and ready to jump; preserve exact identity silhouette, markings, eyes, accessories, proportions, and horizontal root.'
+    return 'Pose: full-body neutral front-facing pose, body anchored at the lower-center root with locked foot baseline and body scale, both front paws/limbs down unless the source image clearly uses a different neutral stance.'
   }
   if (animationType === 'locomotion_loop') return 'Pose: opposite contact or passing pose of the gait cycle, with locomotion limbs visibly reversed from the start while identity, scale, and root remain stable.'
-  if (animationType === 'vertical_bounce') return 'Pose: airborne peak with the full body clearly above the starting baseline; preserve identity, scale, and horizontal root alignment so the final sequence can return to the same baseline.'
+  if (animationType === 'vertical_bounce') return 'Pose: airborne peak with the full body clearly above the starting baseline; preserve exact identity silhouette, markings, eyes, accessories, proportions, scale, and horizontal root for a same-baseline landing.'
   if (isWavingAction(action)) return 'Pose: full-body action pose with the waving front paw clearly changed from neutral and fully raised beside the face while the head, torso, feet/base, identity, scale, and lower-center root remain stable.'
   return `Pose: full-body action peak with the ${resolvePrimaryAnimatedPart(action)} clearly changed from neutral while identity, scale, and lower-center root remain stable.`
 }
@@ -217,6 +245,7 @@ const getKeyframePoseInstruction = ({ action = {}, keyframeRole = 'start' } = {}
 module.exports = {
   buildActionFramePlan,
   getActionText,
+  getDefaultLockedParts,
   getKeyframePoseInstruction,
   inferAnimationType,
   isEmoteAction,

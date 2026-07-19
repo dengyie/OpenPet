@@ -291,22 +291,31 @@ const writeMockActionSheetPng = async ({ outputPath, actionId }) => {
   const cellWidth = 256
   const cellHeight = 256
   fs.mkdirSync(path.dirname(outputPath), { recursive: true })
-  const composites = row.durations.map((_duration, index) => ({
-    input: Buffer.from(`
+  const composites = row.durations.map((_duration, index) => {
+    const jumpLift = actionId === 'jumping'
+      ? (index === 0 || index === row.durations.length - 1 ? 0 : 28 + ((index % 2) * 8))
+      : 0
+    const bodyY = 150 - jumpLift
+    const headY = 92 - jumpLift - (actionId === 'idle' ? (index % 2) : 0)
+    const footY = 210 - jumpLift
+    return {
+      input: Buffer.from(`
       <svg width="${cellWidth}" height="${cellHeight}" xmlns="http://www.w3.org/2000/svg">
-        <ellipse cx="128" cy="150" rx="50" ry="60" fill="#d89b45" />
-        <circle cx="128" cy="92" r="42" fill="#e2ad5b" />
-        <circle cx="111" cy="90" r="6" fill="#4f8c42" />
-        <circle cx="145" cy="90" r="6" fill="#4f8c42" />
-        <ellipse cx="128" cy="162" rx="24" ry="36" fill="#f2dcc0" />
-        <rect x="${154 + (index % 3)}" y="${98 - (index % 4)}" width="12" height="${36 + (index % 5)}" rx="6" fill="#d89b45" />
-        <ellipse cx="${104 - (index % 3) * 3}" cy="210" rx="16" ry="9" fill="#d89b45" />
-        <ellipse cx="${152 + (index % 3) * 3}" cy="210" rx="16" ry="9" fill="#d89b45" />
+        <ellipse cx="128" cy="${bodyY}" rx="50" ry="60" fill="#d89b45" />
+        <circle cx="128" cy="${headY}" r="42" fill="#e2ad5b" />
+        <circle cx="111" cy="${headY - 2}" r="6" fill="#4f8c42" />
+        <circle cx="145" cy="${headY - 2}" r="6" fill="#4f8c42" />
+        <ellipse cx="128" cy="${bodyY + 12}" rx="24" ry="36" fill="#f2dcc0" />
+        <path d="M ${168 + (index % 2) * 2} ${120 - jumpLift} Q ${190 + index * 3} ${90 - index * 2 - jumpLift} ${175 + index} ${70 + (index % 3) * 4 - jumpLift}" stroke="#d89b45" stroke-width="14" fill="none" stroke-linecap="round" />
+        <ellipse cx="${110 - (index % 2)}" cy="${footY}" rx="${14 + (index % 3)}" ry="9" fill="#d89b45" />
+        <ellipse cx="${150 + (index % 2)}" cy="${footY}" rx="${14 + ((index + 1) % 3)}" ry="9" fill="#d89b45" />
+        <ellipse cx="${80 - index}" cy="${bodyY + (index % 2)}" rx="10" ry="18" fill="#c8893a" />
       </svg>
     `),
-    left: (index % columns) * cellWidth,
-    top: Math.floor(index / columns) * cellHeight
-  }))
+      left: (index % columns) * cellWidth,
+      top: Math.floor(index / columns) * cellHeight
+    }
+  })
   await sharp({
     create: {
       width: columns * cellWidth,

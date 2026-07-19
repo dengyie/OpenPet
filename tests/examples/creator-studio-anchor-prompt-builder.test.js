@@ -26,10 +26,10 @@ test('character anchor prompt is self-contained and reference authoritative', ()
   })
 
   assert.equal(result.role, 'character-anchor')
-  assert.equal(result.version, 5)
-  assert.equal(result.promptCompilerVersion, 1)
+  assert.equal(result.version, 6)
+  assert.equal(result.promptCompilerVersion, 3)
   assert.deepEqual(result.promptCompiler, {
-    promptCompilerVersion: 1,
+    promptCompilerVersion: 3,
     taskType: 'character-image',
     stage: 'identity',
     width: 1024,
@@ -109,7 +109,7 @@ test('action sprite row prompt defines an exact reference-conditioned frame shee
   assert.match(result.prompt, /Frame 1: start pose.*neutral/is)
   assert.match(result.prompt, /Frame 3: peak pose.*fully raised/is)
   assert.match(result.prompt, /Frame 6: return pose.*starting pose/is)
-  assert.match(result.prompt, /same lower-center root, viewpoint, scale, identity, lighting/i)
+  assert.match(result.prompt, /same lower-center root, foot baseline, viewpoint, character scale, identity, lighting/i)
   assert.match(result.prompt, /unused cell completely empty and transparent/i)
   assertProviderNeutral(result.prompt)
 })
@@ -206,7 +206,53 @@ test('action identity takes precedence over incidental motion words', () => {
   assert.match(waving.prompt, /seamless stationary loop with a stable body root/i)
   assert.match(waving.prompt, /waving front paw/i)
   assert.match(jumping.prompt, /airborne peak/i)
-  assert.match(jumping.prompt, /return to the same baseline/i)
+  assert.match(jumping.prompt, /same-baseline landing|return to the same baseline/i)
   assertProviderNeutral(waving.prompt)
   assertProviderNeutral(jumping.prompt)
+})
+
+
+test('idle sprite row locks registration, baseline, and scale in place', () => {
+  const result = buildActionSpriteRowPrompt({
+    action: {
+      actionId: 'idle',
+      name: 'Idle',
+      motionPrompt: 'soft breathing',
+      frameCount: 6
+    }
+  })
+
+  assert.match(result.prompt, /foot baseline/i)
+  assert.match(result.prompt, /no cross-cell translation|do not translate the body across the cell/i)
+  assert.match(result.prompt, /lower-center root/i)
+  assert.match(result.prompt, /character scale/i)
+  assert.match(result.prompt, /Lock registration across frames/i)
+  assertProviderNeutral(result.prompt)
+})
+
+test('idle and jumping keyframes strengthen identity and root locks', () => {
+  const idleStart = buildActionKeyframePrompt({
+    keyframeRole: 'start',
+    action: { actionId: 'idle', name: 'Idle', motionPrompt: 'soft breathing' }
+  })
+  const jumpStart = buildActionKeyframePrompt({
+    keyframeRole: 'start',
+    action: { actionId: 'jumping', name: 'Jumping', motionPrompt: 'jump upward then land' }
+  })
+  const softRetry = buildActionKeyframePrompt({
+    keyframeRole: 'peak',
+    action: { actionId: 'waving', name: 'Waving', motionPrompt: 'wave one front paw' },
+    requestedChanges: [
+      'Retry the peak pose for Waving with a stronger identity lock against the attached reference.',
+      'Preserve the exact face, eyes, markings, colors, accessories, silhouette volume, body proportions, and character scale from the identity reference.'
+    ]
+  })
+
+  assert.match(idleStart.prompt, /foot baseline|lower-center root/i)
+  assert.match(idleStart.prompt, /foot baseline|lower-center root|do not re-frame or translate the body/i)
+  assert.match(jumpStart.prompt, /exact identity silhouette|identity reference/i)
+  assert.match(softRetry.prompt, /stronger identity lock/i)
+  assertProviderNeutral(idleStart.prompt)
+  assertProviderNeutral(jumpStart.prompt)
+  assertProviderNeutral(softRetry.prompt)
 })

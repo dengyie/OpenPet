@@ -171,7 +171,7 @@ const isTransformLike = (measures) => {
     bboxWidthRange <= 2 &&
     bboxHeightRange <= 2 &&
     visiblePixelRatio <= 0.03 &&
-    (centroidXRange > 0 || centroidYRange > 0)
+    (centroidXRange > 2 || centroidYRange > 2)
   )
 }
 

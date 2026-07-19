@@ -320,3 +320,76 @@ test('rejects mirror source frame paths outside data directory', async () => {
     /Official row frame path escaped/
   )
 })
+
+
+test('idle extraction applies cross-frame registration lock for baseline and scale', async () => {
+  const dataDir = createTempDir()
+  const stripPath = path.join(dataDir, 'idle-strip.png')
+  const outputDir = path.join(dataDir, 'runs', 'run-1', 'official-row-frames', 'idle')
+  // Build a 3x2 grid with intentionally drifting placement/scale for the same silhouette.
+  const columns = 3
+  const rows = 2
+  const frameCount = 6
+  const composites = Array.from({ length: frameCount }, (_entry, index) => {
+    const width = 50 + (index * 6)
+    const height = 70 + (index * 4)
+    const x = 20 + (index * 8)
+    const y = 40 + ((index % 3) * 10)
+    return {
+      input: Buffer.from(
+        `<svg width="${CELL_WIDTH}" height="${CELL_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
+          <rect x="${x}" y="${y}" width="${width}" height="${height}" fill="#d89b45"/>
+        </svg>`
+      ),
+      left: (index % columns) * CELL_WIDTH,
+      top: Math.floor(index / columns) * CELL_HEIGHT
+    }
+  })
+  await sharp({
+    create: {
+      width: columns * CELL_WIDTH,
+      height: rows * CELL_HEIGHT,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 }
+    }
+  }).composite(composites).png().toFile(stripPath)
+
+  const extracted = await extractRowStripFrames({
+    dataDir,
+    stripPath,
+    actionId: 'idle',
+    outputDir,
+    layout: { columns, rows }
+  })
+
+  assert.equal(extracted.frames.length, 6)
+  assert.ok(extracted.extraction.registrationLock)
+  assert.equal(typeof extracted.extraction.registrationLock.targetScale, 'number')
+  assert.equal(typeof extracted.extraction.registrationLock.targetBaseline, 'number')
+
+  const baselines = []
+  const centers = []
+  for (const frame of extracted.frames) {
+    const { data, info } = await sharp(frame.path).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+    let minX = info.width, minY = info.height, maxX = -1, maxY = -1, sumX = 0, count = 0
+    for (let y = 0; y < info.height; y += 1) {
+      for (let x = 0; x < info.width; x += 1) {
+        const alpha = data[(y * info.width + x) * info.channels + 3]
+        if (alpha <= 8) continue
+        count += 1
+        sumX += x
+        minX = Math.min(minX, x)
+        minY = Math.min(minY, y)
+        maxX = Math.max(maxX, x)
+        maxY = Math.max(maxY, y)
+      }
+    }
+    assert.ok(count > 0)
+    baselines.push(maxY)
+    centers.push(sumX / count)
+  }
+  const baselineRange = Math.max(...baselines) - Math.min(...baselines)
+  const centerRange = Math.max(...centers) - Math.min(...centers)
+  assert.equal(baselineRange <= 2, true)
+  assert.equal(centerRange <= 4, true)
+})

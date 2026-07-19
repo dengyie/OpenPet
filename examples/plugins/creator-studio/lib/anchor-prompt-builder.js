@@ -11,12 +11,13 @@ const {
 } = require('./provider-image-prompt-compiler')
 const {
   buildActionFramePlan,
+  getDefaultLockedParts,
   getKeyframePoseInstruction,
   inferAnimationType,
   resolvePrimaryAnimatedPart
 } = require('./action-semantics')
 
-const PROMPT_BUILDER_VERSION = 5
+const PROMPT_BUILDER_VERSION = 6
 
 const normalizeActionText = (value, fallback = '') => (
   sanitizeVisualDirective(value || fallback)
@@ -45,7 +46,7 @@ const createVisualAction = ({ action = {}, keyframeRole = '', frameCount = 0 } =
       : [resolvePrimaryAnimatedPart(action)],
     lockedParts: Array.isArray(action.lockedParts) && action.lockedParts.length
       ? action.lockedParts
-      : ['face', 'eyes', 'identity markings', 'body proportions', 'character scale'],
+      : getDefaultLockedParts(action),
     loopIntent: resolveLoopIntent(action),
     framePlan: frameCount > 0 ? buildActionFramePlan({ action, frameCount }) : []
   }

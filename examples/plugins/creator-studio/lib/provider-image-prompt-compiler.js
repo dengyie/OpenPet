@@ -4,7 +4,7 @@ const {
   sanitizeVisualDirective
 } = require('./provider-image-task')
 
-const PROMPT_COMPILER_VERSION = 2
+const PROMPT_COMPILER_VERSION = 3
 const MAX_PROMPT_LENGTH = 12000
 
 const FORBIDDEN_PROMPT_PATTERNS = Object.freeze([
@@ -134,7 +134,7 @@ const createSingleImageGoal = (task) => {
 
 const createSingleImageExclusions = () => [
   'Do not add text, labels, a logo, watermark, border, panel, grid, second character, duplicate pose, prop, scenery, floor, cast shadow, or visible background.',
-  'Do not change the species, face, eyes, markings, colors, accessories, clothing, body proportions, or rendering style.',
+  'Do not change the species, face, eyes, markings, colors, accessories, clothing, body proportions, character scale, foot baseline, or rendering style.',
   'Do not add or remove limbs, ears, paws, wings, tail parts, clothing, or accessories.'
 ].join(' ')
 
@@ -178,7 +178,8 @@ const createMovingPartsParagraph = (task) => {
 const createFixedFrameSheetContract = (task) => [
   `Arrange exactly ${task.sheet.frameCount} full-body frames in ${task.sheet.columns} columns and ${task.sheet.rows} rows, ordered from left to right and then top to bottom.`,
   'Use equal invisible cells. Put one complete character pose in each required cell and leave every unused cell completely empty and transparent.',
-  `Keep the same lower-center root, viewpoint, scale, identity, lighting, and approximately ${task.subject.safePaddingPercent}% clear cell padding in every frame.`,
+  `Keep the same lower-center root, foot baseline, viewpoint, character scale, identity, lighting, and approximately ${task.subject.safePaddingPercent}% clear cell padding in every frame.`,
+  'Lock registration across frames: do not translate the body across the cell, do not change body proportions, and keep the feet or base on a shared horizontal baseline unless the action is a vertical jump that later returns to the same baseline.',
   'Return one transparent animation frame sheet with no visible grid lines, labels, borders, numbers, text, logo, watermark, props, scenery, floor, cast shadow, duplicated placeholder frames, or character parts crossing between cells.'
 ].join('\n\n')
 

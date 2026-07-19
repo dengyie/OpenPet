@@ -25,6 +25,7 @@ const {
   identityDescriptorDistance
 } = require('./identity-descriptor')
 const { extractRowStripFrames, mirrorRowFrames } = require('./full-pet-row-extractor')
+const { analyzeRowFrames } = require('./full-pet-row-qa')
 const { FULL_PET_ROW_QUALITY, getOfficialFullPetRow } = require('./full-pet-row-contract')
 const {
   readActionCheckpoints,
@@ -2891,6 +2892,44 @@ const createActionKeyframeCandidateSelection = ({ candidates, selectedCandidateI
   }))
 })
 
+
+const SOFT_IDENTITY_DESCRIPTOR_RETRY_BAND = Object.freeze({
+  minExclusive: 70,
+  maxInclusive: 80
+})
+
+const isSoftIdentityDescriptorRetryEligible = (quality = null) => {
+  if (!quality || quality.ok === true) return false
+  if (quality.safeComposition === false) return false
+  const failures = Array.isArray(quality.failureConditions) ? quality.failureConditions : []
+  if (!failures.includes('identity-descriptor-distance-high')) return false
+  if (failures.includes('raw-score-below-minimum')) return false
+  if (failures.includes('identity-color-distance-high')) return false
+  const distance = Number(quality.identityDescriptorDistance)
+  if (!Number.isFinite(distance)) return false
+  return distance > SOFT_IDENTITY_DESCRIPTOR_RETRY_BAND.minExclusive &&
+    distance <= SOFT_IDENTITY_DESCRIPTOR_RETRY_BAND.maxInclusive
+}
+
+const createSoftIdentityRetryRequestedChanges = ({
+  action = {},
+  keyframeRole = 'start',
+  quality = null
+} = {}) => {
+  const actionLabel = String(action?.name || action?.actionId || 'the action').trim() || 'the action'
+  const roleLabel = String(keyframeRole || 'start').trim().toLowerCase() === 'peak' ? 'peak' : 'start'
+  const distance = Number(quality?.identityDescriptorDistance)
+  const distanceHint = Number.isFinite(distance)
+    ? ` The previous candidate was only mildly off identity (descriptor distance about ${distance.toFixed(1)}).`
+    : ''
+  return [
+    `Retry the ${roleLabel} pose for ${actionLabel} with a stronger identity lock against the attached reference.`,
+    'Preserve the exact face, eyes, markings, colors, accessories, silhouette volume, body proportions, and character scale from the identity reference.',
+    'Keep the same lower-center root and foot baseline; stay in place with no cross-cell translation.',
+    `Only adjust the requested ${roleLabel} pose mechanics; do not redesign the character.${distanceHint}`
+  ]
+}
+
 const generateActionKeyframe = async ({
   dataDir,
   run,
@@ -2904,7 +2943,8 @@ const generateActionKeyframe = async ({
   generationDeadlineMs = 0,
   qualityProfile = getDefaultQualityProfile(),
   qualityGuidance = null,
-  generateWithFallbackImpl = generateWithModelFallback
+  generateWithFallbackImpl = generateWithModelFallback,
+  evaluateActionKeyframeQualityImpl = evaluateActionKeyframeQuality
 }) => {
   const normalizedKeyframeRole = String(keyframeRole || 'start').trim().toLowerCase() === 'start'
     ? 'start'
@@ -2983,7 +3023,7 @@ const generateActionKeyframe = async ({
         candidates.push({
           candidateIndex,
           output: candidateOutput,
-          quality: evaluateActionKeyframeQuality({
+          quality: evaluateActionKeyframeQualityImpl({
             metrics,
             referenceMetrics,
             action,
@@ -3003,8 +3043,8 @@ const generateActionKeyframe = async ({
     const passingCandidates = candidates
       .filter((candidate) => candidate.quality.ok)
       .sort((left, right) => Number(right.quality.score) - Number(left.quality.score))
-    const selectedCandidate = passingCandidates[0] || null
-    const diagnosticCandidate = selectedCandidate || [...candidates]
+    let selectedCandidate = passingCandidates[0] || null
+    let diagnosticCandidate = selectedCandidate || [...candidates]
       .sort((left, right) => Number(right.quality.rawScore) - Number(left.quality.rawScore))[0]
     materializedOutput = diagnosticCandidate.output
     quality = diagnosticCandidate.quality
@@ -3023,6 +3063,119 @@ const generateActionKeyframe = async ({
       quality
     })
     keyframe.candidateSelection = candidateSelection
+    if (!selectedCandidate && isSoftIdentityDescriptorRetryEligible(diagnosticCandidate?.quality)) {
+      const softRetryPromptBuild = buildActionKeyframePrompt({
+        appearanceIntent: resolveProviderAppearanceIntent(run),
+        referenceRole: listReferenceRoles(referenceImages).join(', ') || 'canonical-reference',
+        action,
+        keyframeRole: normalizedKeyframeRole,
+        qualityGuidance,
+        canvas: DEFAULT_CONSTRAINTS,
+        requestedChanges: createSoftIdentityRetryRequestedChanges({
+          action,
+          keyframeRole: normalizedKeyframeRole,
+          quality: diagnosticCandidate.quality
+        })
+      })
+      writeAnchorPromptFile({
+        dataDir,
+        relativePath: path.join(
+          'runs',
+          run.runId,
+          'prompts',
+          'keyframes',
+          'actions',
+          `${actionId}-${normalizedKeyframeRole}-keyframe-soft-retry.md`
+        ).replace(/\\/g, '/'),
+        prompt: softRetryPromptBuild.prompt
+      })
+      const softRetryAttempt = await generateWithFallbackImpl({
+        settings,
+        preferredModel: selectedModel,
+        model: selectedModel,
+        prompt: softRetryPromptBuild.prompt,
+        promptCompiler: softRetryPromptBuild.promptCompiler,
+        constraints: resolveCompiledPromptConstraints(softRetryPromptBuild),
+        requestedTimeoutMs: stageTimeoutMs,
+        referenceImages,
+        runId: run.runId,
+        dataRelativeDir: path.join(
+          'runs',
+          run.runId,
+          'keyframes',
+          'actions',
+          `${actionId}-${normalizedKeyframeRole}-keyframe-soft-retry`
+        ).replace(/\\/g, '/')
+      })
+      attempt = {
+        ...softRetryAttempt,
+        attempts: [
+          ...(Array.isArray(attempt?.attempts) ? attempt.attempts : []),
+          ...(Array.isArray(softRetryAttempt?.attempts) ? softRetryAttempt.attempts : [])
+        ]
+      }
+      const softRetryOutputs = filterExistingGeneratedOutputs({
+        dataDir,
+        outputs: Array.isArray(softRetryAttempt.response?.result?.outputs)
+          ? softRetryAttempt.response.result.outputs
+          : []
+      })
+      candidateCount += softRetryOutputs.length
+      for (const [retryIndex, output] of softRetryOutputs.entries()) {
+        const candidateOutput = createOutputFromGeneratedPath({ dataDir, output })
+        if (!candidateOutput) continue
+        const candidateIndex = candidates.length + retryIndex
+        try {
+          const candidatePath = path.join(dataDir, candidateOutput.dataRelativePath)
+          const backgroundPreparation = await prepareGeneratedKeyframeOutput(candidatePath)
+          candidateOutput.sha256 = sha256File(candidatePath)
+          const metrics = await readImageMaskMetrics(candidatePath)
+          candidates.push({
+            candidateIndex,
+            output: candidateOutput,
+            quality: evaluateActionKeyframeQualityImpl({
+              metrics,
+              referenceMetrics,
+              action,
+              backgroundPreparation,
+              qualityProfile
+            }),
+            softIdentityRetry: true
+          })
+        } catch (error) {
+          candidates.push({
+            candidateIndex,
+            output: candidateOutput,
+            quality: createFailedActionKeyframeCandidateQuality(error, qualityProfile),
+            softIdentityRetry: true
+          })
+        }
+      }
+      const softPassingCandidates = candidates
+        .filter((candidate) => candidate.quality.ok)
+        .sort((left, right) => Number(right.quality.score) - Number(left.quality.score))
+      selectedCandidate = softPassingCandidates[0] || null
+      diagnosticCandidate = selectedCandidate || [...candidates]
+        .sort((left, right) => Number(right.quality.rawScore) - Number(left.quality.rawScore))[0]
+      materializedOutput = diagnosticCandidate.output
+      quality = diagnosticCandidate.quality
+      candidateSelection = createActionKeyframeCandidateSelection({
+        candidates,
+        selectedCandidateIndex: selectedCandidate?.candidateIndex ?? -1
+      })
+      keyframe = createKeyframeRecordFromOutput({
+        output: materializedOutput,
+        actionId,
+        keyframeRole: normalizedKeyframeRole,
+        promptRelativePath: promptFile.relativePath,
+        promptCompiler: softRetryPromptBuild.promptCompiler || promptBuild.promptCompiler,
+        model: attempt.selectedModel,
+        modelAttempts: attempt.attempts,
+        quality
+      })
+      keyframe.candidateSelection = candidateSelection
+      keyframe.softIdentityRetry = true
+    }
     if (!selectedCandidate) {
       const failureConditions = [...new Set(candidates.flatMap((candidate) => candidate.quality.failureConditions || []))]
       throw new Error(
@@ -3895,6 +4048,25 @@ const generateFullPetBasicActionSource = async ({
       dataDir,
       layout: getActionSheetLayout(action.frameCount)
     })
+    const identityReferenceMeanRgb = averageKeyframeIdentityMeanRgb(providerRow.keyframes)
+    const identityReferenceDescriptor = averageKeyframeIdentityDescriptor(providerRow.keyframes)
+    const rowQa = await analyzeRowFrames({
+      actionId: safeActionId,
+      frames: extracted.frames,
+      sourceKind: 'row-real',
+      identityReferenceMeanRgb,
+      identityReferenceDescriptor,
+      qualityProfile
+    })
+    if (rowQa.quality === FULL_PET_ROW_QUALITY.FAILED) {
+      const error = new Error(
+        `Official full-pet row ${safeActionId} failed QA: ${(rowQa.errors || []).join(', ') || 'row quality failed'}`
+      )
+      error.modelAttempts = providerRow.modelAttempts || []
+      error.rowQa = rowQa
+      error.failureConditions = Array.isArray(rowQa.errors) ? rowQa.errors : []
+      throw error
+    }
     return {
       actionId: safeActionId,
       ok: true,
@@ -3905,12 +4077,13 @@ const generateFullPetBasicActionSource = async ({
       generationStages: providerRow.stages || [],
       keyframes: providerRow.keyframes || [],
       referenceBoard: providerRow.referenceBoard || null,
+      rowQa,
       row: {
         actionId: safeActionId,
         sourceRelativePath: materializedOutput.dataRelativePath,
         quality: FULL_PET_ROW_QUALITY.ROW_REAL,
-        identityReferenceMeanRgb: averageKeyframeIdentityMeanRgb(providerRow.keyframes),
-        identityReferenceDescriptor: averageKeyframeIdentityDescriptor(providerRow.keyframes),
+        identityReferenceMeanRgb,
+        identityReferenceDescriptor,
         frames: extracted.frames
       },
       outputs: []
@@ -3929,9 +4102,11 @@ const generateFullPetBasicActionSource = async ({
       modelAttempts: Array.isArray(error?.modelAttempts) ? error.modelAttempts : [],
       generationStages: Array.isArray(providerRow?.stages) ? providerRow.stages : [],
       keyframes: Array.isArray(providerRow?.keyframes) ? providerRow.keyframes : [],
-      failureConditions: Array.isArray(failedQuality?.failureConditions)
-        ? failedQuality.failureConditions
-        : [],
+      failureConditions: Array.isArray(error?.failureConditions)
+        ? error.failureConditions
+        : Array.isArray(failedQuality?.failureConditions)
+          ? failedQuality.failureConditions
+          : [],
       error: String(error?.message || 'Action source generation failed').slice(0, 240)
     }
   }
@@ -4816,16 +4991,19 @@ module.exports = {
     buildModelCandidateList,
     assertExactlyOneProviderReferenceImage,
     createFullPetActionIdentityContext,
+    createSoftIdentityRetryRequestedChanges,
     generateActionKeyframe,
     generateWithModelFallback,
     evaluateActionKeyframeQuality,
     generateFullPetBasicActionSources,
     getSuccessfulGenerationModels,
+    isSoftIdentityDescriptorRetryEligible,
     isTransientGatewayHttpFailure,
     prepareGeneratedKeyframeOutput,
     resolveProviderArtReadinessForModels,
     resolveGenerationStageTimeout,
-    scoreActionAnchorMetrics
+    scoreActionAnchorMetrics,
+    SOFT_IDENTITY_DESCRIPTOR_RETRY_BAND
   },
   generateAnchorReferences,
   generateViaHostModelBridge,
