@@ -237,6 +237,7 @@ const createWorkflowResult = ({
   basicActions = null,
   diagnostics = null,
   actionAssets = null,
+  processAssets = null,
   completeness = '',
   availableActionIds = null,
   failedActionIds = null,
@@ -316,21 +317,27 @@ const createWorkflowResult = ({
         label: normalizeText(asset?.label).slice(0, 80),
         role: normalizeText(asset?.role).slice(0, 80),
         previewable: Boolean(asset?.previewable),
-        ...(asset?.previewDataUrl ? { previewDataUrl: String(asset.previewDataUrl) } : {}),
         ...(asset?.promptText ? { promptText: String(asset.promptText).slice(0, 12000) } : {}),
         ...(normalizeSafeRelativePath(asset?.promptRelativePath)
           ? { promptRelativePath: normalizeSafeRelativePath(asset.promptRelativePath) }
           : {}),
         failureEvidence: asset?.failureEvidence && typeof asset.failureEvidence === 'object'
-          ? {
-              code: normalizeText(asset.failureEvidence.code).slice(0, 80),
-              message: sanitizeProgressReason(asset.failureEvidence.message),
-              score: Number.isFinite(Number(asset.failureEvidence.score))
-                ? Number(asset.failureEvidence.score)
-                : null
-            }
+          ? describeFailureEvidence(asset.failureEvidence)
           : null
       })).filter((asset) => asset.actionId && asset.relativePath)
+    : [],
+  processAssets: Array.isArray(processAssets)
+    ? processAssets.map((asset) => ({
+        actionId: normalizeText(asset?.actionId) || 'process',
+        kind: normalizeText(asset?.kind) || 'process',
+        relativePath: normalizeSafeRelativePath(asset?.relativePath),
+        label: normalizeText(asset?.label).slice(0, 80),
+        role: normalizeText(asset?.role).slice(0, 80),
+        previewable: Boolean(asset?.previewable),
+        failureEvidence: asset?.failureEvidence && typeof asset.failureEvidence === 'object'
+          ? describeFailureEvidence(asset.failureEvidence)
+          : null
+      })).filter((asset) => asset.relativePath)
     : [],
   completeness: ['full', 'partial', 'none'].includes(normalizeText(completeness))
     ? normalizeText(completeness)
@@ -468,6 +475,94 @@ const MIME_BY_EXT = Object.freeze({
 const IMAGE_PREVIEW_MAX_BYTES = 1_500_000
 const PROMPT_TEXT_MAX_CHARS = 12000
 
+const FAILURE_CODE_PLAIN_MESSAGES = Object.freeze({
+  'identity-descriptor-distance-high': '角色身份特征偏离参考太多（轮廓/五官/配色不一致）',
+  'identity-descriptor-distance': '角色身份特征偏离参考太多',
+  identityDescriptorDistance: '角色身份特征偏离参考太多',
+  'identity-drift': '角色身份漂移，和参考图不是同一只角色',
+  identity_drift: '角色身份漂移，和参考图不是同一只角色',
+  row_identity_shape_drift: '动作帧外形相对参考变化过大',
+  row_identity_reference_mismatch: '动作帧与身份参考不匹配',
+  row_identity_descriptor_mismatch: '动作帧身份描述符不匹配',
+  'semantic-mismatch': '动作语义不清晰，看不出目标动作',
+  semantic_mismatch: '动作语义不清晰，看不出目标动作',
+  'static-motion': '几乎没有真正的动作变化（帧太静）',
+  static_motion: '几乎没有真正的动作变化（帧太静）',
+  'transform-only-motion': '只是平移/缩放/旋转，没有真实姿态变化',
+  transform_only_motion: '只是平移/缩放/旋转，没有真实姿态变化',
+  'edge-contact': '角色贴边或裁切，身体不完整',
+  edge_contact: '角色贴边或裁切，身体不完整',
+  'background-contamination': '背景不干净（有地面/阴影/场景/文字）',
+  background_contamination: '背景不干净（有地面/阴影/场景/文字）',
+  'baseline-instability': '落脚点/根部位置不稳定',
+  baseline_instability: '落脚点/根部位置不稳定',
+  'scale-instability': '角色比例在序列中忽大忽小',
+  scale_instability: '角色比例在序列中忽大忽小',
+  'direction-mismatch': '朝向与目标方向不一致',
+  direction_mismatch: '朝向与目标方向不一致',
+  action_failed: '动作生成失败',
+  workflow_failed: '工作流失败',
+  identity_repair_review_required: '身份修复后仍需复查',
+  action_repair_review_required: '动作修复后仍需复查'
+})
+
+const describeFailureCode = (code) => {
+  const normalized = normalizeText(code)
+  if (!normalized) return ''
+  if (FAILURE_CODE_PLAIN_MESSAGES[normalized]) return FAILURE_CODE_PLAIN_MESSAGES[normalized]
+  const dashed = normalized.replace(/_/g, '-')
+  if (FAILURE_CODE_PLAIN_MESSAGES[dashed]) return FAILURE_CODE_PLAIN_MESSAGES[dashed]
+  const underscored = normalized.replace(/-/g, '_')
+  if (FAILURE_CODE_PLAIN_MESSAGES[underscored]) return FAILURE_CODE_PLAIN_MESSAGES[underscored]
+  return sanitizeProgressReason(normalized.replace(/[-_]+/g, ' '))
+}
+
+const describeFailureEvidence = (input = {}) => {
+  const normalizedCode = normalizeText(input.code)
+  const rawMessage = sanitizeProgressReason(input.message)
+  const plain = describeFailureCode(normalizedCode)
+  let plainMessage = plain
+  if (rawMessage && plain && rawMessage.toLowerCase() !== normalizedCode.toLowerCase() && rawMessage !== plain) {
+    if (!plain.includes(rawMessage) && rawMessage.length <= 80 && !/^[a-z0-9._-]+$/i.test(rawMessage)) {
+      plainMessage = `${plain}（${rawMessage}）`
+    }
+  } else if (!plain && rawMessage) {
+    plainMessage = rawMessage
+  } else if (!plainMessage) {
+    plainMessage = '动作未通过质量检查'
+  }
+  return {
+    code: normalizedCode.slice(0, 80),
+    message: plainMessage.slice(0, 180),
+    score: Number.isFinite(Number(input.score)) ? Number(input.score) : null
+  }
+}
+
+const canPreviewImageFile = (absolutePath) => {
+  try {
+    if (!absolutePath || !fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isFile()) return false
+    const size = fs.statSync(absolutePath).size
+    if (!Number.isFinite(size) || size <= 0 || size > IMAGE_PREVIEW_MAX_BYTES) return false
+    const ext = path.extname(absolutePath).toLowerCase()
+    return Boolean(MIME_BY_EXT[ext])
+  } catch (_) {
+    return false
+  }
+}
+
+const stripPreviewDataUrlsFromValue = (value) => {
+  if (Array.isArray(value)) {
+    return value.map((item) => stripPreviewDataUrlsFromValue(item))
+  }
+  if (!value || typeof value !== 'object') return value
+  const next = {}
+  for (const [key, item] of Object.entries(value)) {
+    if (key === 'previewDataUrl') continue
+    next[key] = stripPreviewDataUrlsFromValue(item)
+  }
+  return next
+}
+
 const toRunRelativePath = ({ pluginDataDir, runId, absolutePath }) => {
   const runRoot = path.join(path.resolve(pluginDataDir), 'runs', normalizeText(runId))
   const absolute = path.resolve(absolutePath)
@@ -534,19 +629,15 @@ const createFailureEvidenceList = (record = {}) => {
     ? record.failureConditions.map((item) => normalizeText(item)).filter(Boolean)
     : []
   for (const code of failureConditions.slice(0, 8)) {
-    items.push({
-      code: code.slice(0, 80),
-      message: sanitizeProgressReason(code),
-      score: null
-    })
+    items.push(describeFailureEvidence({ code, message: code, score: null }))
   }
   const errorText = sanitizeProgressReason(record.error)
-  if (errorText && !items.some((item) => item.message === errorText || item.code === errorText)) {
-    items.unshift({
+  if (errorText && !items.some((item) => item.message === errorText || item.code === errorText || item.code === normalizeText(record.error))) {
+    items.unshift(describeFailureEvidence({
       code: failureConditions[0] || 'action_failed',
       message: errorText,
       score: null
-    })
+    }))
   }
   const scoreCandidates = [
     record?.quality?.score,
@@ -563,10 +654,114 @@ const createFailureEvidenceList = (record = {}) => {
   return items
 }
 
-const collectActionAssetsForRun = ({ pluginDataDir, runId, checkpoints = null }) => {
+const collectProcessAssetsForRun = ({ pluginDataDir, runId, includePreviews = false }) => {
+  const normalizedRunId = normalizeText(runId)
+  if (!pluginDataDir || !normalizedRunId) return []
+  const runDir = path.join(path.resolve(pluginDataDir), 'runs', normalizedRunId)
+  const processAssets = []
+  const seen = new Set()
+
+  const add = ({ absolutePath, kind, label, role = '', actionId = 'process' }) => {
+    if (!absolutePath || !fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isFile()) return
+    const relative = toRunRelativePath({ pluginDataDir, runId: normalizedRunId, absolutePath })
+    if (!relative || seen.has(relative)) return
+    seen.add(relative)
+    const previewable = canPreviewImageFile(absolutePath)
+    const previewDataUrl = includePreviews && previewable ? fileToPreviewDataUrl(absolutePath) : ''
+    processAssets.push({
+      actionId: normalizeText(actionId) || 'process',
+      kind: normalizeText(kind) || 'process',
+      relativePath: relative,
+      label: normalizeText(label).slice(0, 80),
+      role: normalizeText(role).slice(0, 80),
+      previewable,
+      ...(previewDataUrl ? { previewDataUrl } : {}),
+      failureEvidence: null
+    })
+  }
+
+  const anchorDir = path.join(runDir, 'inputs', 'anchors')
+  for (const absolute of listImageFilesRecursive(anchorDir, 12)) {
+    const base = path.basename(absolute).toLowerCase()
+    const isIdentity = /identity|canonical|character-anchor/.test(base)
+    add({
+      absolutePath: absolute,
+      kind: isIdentity ? 'identity' : 'anchor',
+      label: isIdentity ? '身份参考' : '锚定板',
+      role: isIdentity ? 'identity-reference' : 'anchor-board'
+    })
+  }
+
+  const keyframeActionDir = path.join(runDir, 'inputs', 'keyframes', 'actions')
+  for (const absolute of listImageFilesRecursive(keyframeActionDir, 24)) {
+    const base = path.basename(absolute).toLowerCase()
+    if (!/conditioning|reference-board|identity-board/.test(base)) continue
+    const actionIdGuess = base.split('-')[0]
+    const kind = /conditioning/.test(base)
+      ? 'conditioning-board'
+      : (/identity/.test(base) ? 'identity' : 'anchor')
+    add({
+      absolutePath: absolute,
+      kind,
+      label: kind === 'conditioning-board' ? '条件板' : (kind === 'identity' ? '身份板' : '参考板'),
+      role: base.replace(/\.(png|webp|jpe?g|gif)$/i, ''),
+      actionId: SAFE_ID_PATTERN.test(actionIdGuess) ? actionIdGuess : 'process'
+    })
+  }
+
+  const runJson = readJsonIfExists(path.join(runDir, 'run.json'), null)
+  const artifactCandidates = [
+    runJson?.artifacts?.spritesheet,
+    runJson?.artifacts?.spriteSheet,
+    runJson?.artifacts?.contactSheet,
+    path.join(runDir, 'spritesheet.webp'),
+    path.join(runDir, 'spritesheet.png'),
+    path.join(runDir, 'output', 'spritesheet.webp'),
+    path.join(runDir, 'qa', 'full-pet-contact-sheet.png'),
+    path.join(runDir, 'qa', 'previews', 'full-pet-contact-sheet.png')
+  ]
+  for (const candidate of artifactCandidates) {
+    if (!candidate) continue
+    const absolute = path.isAbsolute(String(candidate))
+      ? String(candidate)
+      : path.join(path.resolve(pluginDataDir), normalizeSafeRelativePath(candidate) || String(candidate))
+    const base = path.basename(String(absolute)).toLowerCase()
+    const isSheet = /sprite/.test(base)
+    add({
+      absolutePath: absolute,
+      kind: isSheet ? 'sheet' : 'process',
+      label: isSheet ? 'Sprite Sheet' : 'Contact Sheet',
+      role: isSheet ? 'spritesheet' : 'contact-sheet'
+    })
+  }
+
+  for (const actionId of OFFICIAL_PROGRESS_ACTION_IDS) {
+    for (const name of ['strip.png', 'strip.webp']) {
+      add({
+        absolutePath: path.join(runDir, 'rows', actionId, name),
+        kind: 'row',
+        label: actionId + ' 动作条',
+        role: 'row-strip',
+        actionId
+      })
+    }
+  }
+
+  return processAssets.filter((asset) => normalizeSafeRelativePath(asset.relativePath))
+}
+
+const collectActionAssetsForRun = ({ pluginDataDir, runId, checkpoints = null, includePreviews = false }) => {
   const normalizedRunId = normalizeText(runId)
   if (!pluginDataDir || !normalizedRunId) {
-    return { actions: [], actionAssets: [], availableActionIds: [], failedActionIds: [], importableActionIds: [], completeness: 'none' }
+    return {
+      actions: [],
+      actionAssets: [],
+      processAssets: [],
+      availableActionIds: [],
+      failedActionIds: [],
+      importableActionIds: [],
+      completeness: 'none'
+    }
   }
   const runDir = path.join(path.resolve(pluginDataDir), 'runs', normalizedRunId)
   const checkpointActions = isPlainObject(checkpoints?.actions)
@@ -581,6 +776,14 @@ const collectActionAssetsForRun = ({ pluginDataDir, runId, checkpoints = null })
   const availableActionIds = []
   const failedActionIds = []
   const importableActionIds = []
+  const processAssets = collectProcessAssetsForRun({
+    pluginDataDir,
+    runId: normalizedRunId,
+    includePreviews
+  })
+  const identityProcess = processAssets.find((asset) => asset.kind === 'identity')
+    || processAssets.find((asset) => asset.kind === 'anchor')
+    || null
 
   for (const actionId of actionIds) {
     const record = isPlainObject(checkpointActions?.[actionId]) ? checkpointActions[actionId] : null
@@ -615,6 +818,31 @@ const collectActionAssetsForRun = ({ pluginDataDir, runId, checkpoints = null })
       break
     }
 
+    if (identityProcess) {
+      assets.push({
+        ...identityProcess,
+        actionId,
+        kind: 'identity',
+        label: identityProcess.label || '参考身份',
+        role: identityProcess.role || 'identity-reference',
+        failureEvidence: null
+      })
+    }
+
+    for (const processAsset of processAssets) {
+      if (processAsset.actionId !== actionId) continue
+      if (!['conditioning-board', 'anchor', 'sheet', 'row'].includes(processAsset.kind)) continue
+      if (assets.some((asset) => asset.relativePath === processAsset.relativePath)) continue
+      assets.push({
+        ...processAsset,
+        actionId,
+        failureEvidence: record?.ok === false ? (failureEvidence[0] || null) : null
+      })
+      if (processAsset.kind !== 'row') {
+        actionAssets.push(assets[assets.length - 1])
+      }
+    }
+
     const keyframes = Array.isArray(record?.keyframes) ? record.keyframes : []
     for (const [index, keyframe] of keyframes.slice(0, 4).entries()) {
       const relative = normalizeSafeRelativePath(
@@ -622,7 +850,8 @@ const collectActionAssetsForRun = ({ pluginDataDir, runId, checkpoints = null })
       )
       if (!relative) continue
       const absolute = path.join(path.resolve(pluginDataDir), relative)
-      const previewDataUrl = fileToPreviewDataUrl(absolute)
+      const previewable = canPreviewImageFile(absolute)
+      const previewDataUrl = includePreviews && previewable ? fileToPreviewDataUrl(absolute) : ''
       const keyframePrompt = normalizeSafeRelativePath(keyframe?.promptRelativePath)
       assets.push({
         actionId,
@@ -630,7 +859,7 @@ const collectActionAssetsForRun = ({ pluginDataDir, runId, checkpoints = null })
         relativePath: relative,
         label: `关键帧 ${index + 1}`,
         role: normalizeText(keyframe?.role || keyframe?.stage || `keyframe-${index + 1}`),
-        previewable: Boolean(previewDataUrl),
+        previewable,
         ...(previewDataUrl ? { previewDataUrl } : {}),
         ...(keyframePrompt ? { promptRelativePath: keyframePrompt } : {}),
         failureEvidence: failureEvidence[0] || null
@@ -643,14 +872,15 @@ const collectActionAssetsForRun = ({ pluginDataDir, runId, checkpoints = null })
       const relative = normalizeSafeRelativePath(frame?.relativePath || frame?.path)
       if (!relative) continue
       const absolute = path.join(path.resolve(pluginDataDir), relative)
-      const previewDataUrl = fileToPreviewDataUrl(absolute)
+      const previewable = canPreviewImageFile(absolute)
+      const previewDataUrl = includePreviews && previewable ? fileToPreviewDataUrl(absolute) : ''
       assets.push({
         actionId,
         kind: 'frame',
         relativePath: relative,
         label: `帧 ${index + 1}`,
         role: 'official-row-frame',
-        previewable: Boolean(previewDataUrl),
+        previewable,
         ...(previewDataUrl ? { previewDataUrl } : {}),
         failureEvidence: record?.ok === false ? (failureEvidence[0] || null) : null
       })
@@ -663,14 +893,15 @@ const collectActionAssetsForRun = ({ pluginDataDir, runId, checkpoints = null })
       for (const [index, absolute] of listImageFilesRecursive(officialFrameDir, 8).entries()) {
         const relative = toRunRelativePath({ pluginDataDir, runId: normalizedRunId, absolutePath: absolute })
         if (!relative) continue
-        const previewDataUrl = fileToPreviewDataUrl(absolute)
+        const previewable = canPreviewImageFile(absolute)
+        const previewDataUrl = includePreviews && previewable ? fileToPreviewDataUrl(absolute) : ''
         assets.push({
           actionId,
           kind: 'frame',
           relativePath: relative,
           label: `磁盘帧 ${index + 1}`,
           role: 'official-row-frame',
-          previewable: Boolean(previewDataUrl),
+          previewable,
           ...(previewDataUrl ? { previewDataUrl } : {}),
           failureEvidence: failureEvidence[0] || null
         })
@@ -686,14 +917,16 @@ const collectActionAssetsForRun = ({ pluginDataDir, runId, checkpoints = null })
       if (!fs.existsSync(absolute)) continue
       const relative = toRunRelativePath({ pluginDataDir, runId: normalizedRunId, absolutePath: absolute })
       if (!relative) continue
-      const previewDataUrl = fileToPreviewDataUrl(absolute)
+      if (assets.some((asset) => asset.relativePath === relative)) break
+      const previewable = canPreviewImageFile(absolute)
+      const previewDataUrl = includePreviews && previewable ? fileToPreviewDataUrl(absolute) : ''
       assets.push({
         actionId,
         kind: 'row',
         relativePath: relative,
         label: '动作条',
         role: 'row-strip',
-        previewable: Boolean(previewDataUrl),
+        previewable,
         ...(previewDataUrl ? { previewDataUrl } : {}),
         failureEvidence: failureEvidence[0] || null
       })
@@ -769,6 +1002,7 @@ const collectActionAssetsForRun = ({ pluginDataDir, runId, checkpoints = null })
   return {
     actions: actionViews,
     actionAssets: actionAssets.filter((asset) => normalizeSafeRelativePath(asset.relativePath)),
+    processAssets,
     availableActionIds: finalAvailable,
     failedActionIds: finalFailed,
     importableActionIds: finalImportable,
@@ -980,7 +1214,8 @@ const createWorkflowProgressView = ({
   const assetBundle = collectActionAssetsForRun({
     pluginDataDir,
     runId: normalizeText(run?.runId),
-    checkpoints
+    checkpoints,
+    includePreviews: false
   })
   // Prefer live progress status, then enrich with assets/import flags from disk.
   const actionsById = new Map(progressActions.map((action) => [action.actionId, action]))
@@ -1066,6 +1301,7 @@ const createWorkflowProgressView = ({
     stages,
     actions,
     actionAssets: assetBundle.actionAssets,
+    processAssets: assetBundle.processAssets || [],
     availableActionIds,
     failedActionIds,
     importableActionIds,
@@ -1189,24 +1425,29 @@ const createExistingActionTask = ({ actionName, motionPrompt }) => {
 const finalizeWorkflowResult = (result) => {
   const diagnostics = result?.diagnostics || null
   const progress = diagnostics?.progress || null
-  if (!progress) return result
-  return {
-    ...result,
-    actionAssets: Array.isArray(result.actionAssets) && result.actionAssets.length
-      ? result.actionAssets
-      : (Array.isArray(progress.actionAssets) ? progress.actionAssets : []),
-    completeness: result.completeness || progress.completeness || '',
-    availableActionIds: Array.isArray(result.availableActionIds) && result.availableActionIds.length
-      ? result.availableActionIds
-      : (Array.isArray(progress.availableActionIds) ? progress.availableActionIds : []),
-    failedActionIds: Array.isArray(result.failedActionIds) && result.failedActionIds.length
-      ? result.failedActionIds
-      : (Array.isArray(progress.failedActionIds) ? progress.failedActionIds : []),
-    omittedActionIds: Array.isArray(result.omittedActionIds) && result.omittedActionIds.length
-      ? result.omittedActionIds
-      : (Array.isArray(progress.failedActionIds) ? progress.failedActionIds : []),
-    importNotes: result.importNotes || ''
-  }
+  const base = progress
+    ? {
+        ...result,
+        actionAssets: Array.isArray(result.actionAssets) && result.actionAssets.length
+          ? result.actionAssets
+          : (Array.isArray(progress.actionAssets) ? progress.actionAssets : []),
+        processAssets: Array.isArray(result.processAssets) && result.processAssets.length
+          ? result.processAssets
+          : (Array.isArray(progress.processAssets) ? progress.processAssets : []),
+        completeness: result.completeness || progress.completeness || '',
+        availableActionIds: Array.isArray(result.availableActionIds) && result.availableActionIds.length
+          ? result.availableActionIds
+          : (Array.isArray(progress.availableActionIds) ? progress.availableActionIds : []),
+        failedActionIds: Array.isArray(result.failedActionIds) && result.failedActionIds.length
+          ? result.failedActionIds
+          : (Array.isArray(progress.failedActionIds) ? progress.failedActionIds : []),
+        omittedActionIds: Array.isArray(result.omittedActionIds) && result.omittedActionIds.length
+          ? result.omittedActionIds
+          : (Array.isArray(progress.failedActionIds) ? progress.failedActionIds : []),
+        importNotes: result.importNotes || ''
+      }
+    : result
+  return stripPreviewDataUrlsFromValue(base)
 }
 
 const withActionAssetFields = (result, diagnostics = null) => {
@@ -1305,7 +1546,7 @@ const createCreatorWorkflowService = ({
         targetType: EDITABLE_TARGET_TYPE,
         targetId: EDITABLE_TARGET_ID
       }),
-      lastRun,
+      lastRun: lastRun ? stripPreviewDataUrlsFromValue(lastRun) : null,
       dashboard: createDashboardView(plugin)
     }
   }
@@ -2027,6 +2268,7 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
           }),
           diagnostics,
           actionAssets: assetBundle.actionAssets,
+          processAssets: assetBundle.processAssets || [],
           completeness: 'none',
           availableActionIds: [],
           failedActionIds,
@@ -2111,6 +2353,7 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
             }),
             diagnostics,
             actionAssets: assetBundle.actionAssets,
+          processAssets: assetBundle.processAssets || [],
             completeness: 'partial',
             availableActionIds,
             failedActionIds,
@@ -2167,6 +2410,7 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
               }),
               diagnostics,
               actionAssets: assetBundle.actionAssets,
+          processAssets: assetBundle.processAssets || [],
               completeness: 'none',
               availableActionIds: [],
               failedActionIds,
@@ -2247,6 +2491,7 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
             }),
             diagnostics,
             actionAssets: assetBundle.actionAssets,
+          processAssets: assetBundle.processAssets || [],
             completeness: 'partial',
             availableActionIds,
             failedActionIds,
@@ -2309,6 +2554,7 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
         activePet,
         diagnostics: nextDiagnostics,
         actionAssets: assetBundle.actionAssets,
+        processAssets: assetBundle.processAssets || [],
         completeness: failedActionIds.length || usedPartialComposer ? 'partial' : 'full',
         availableActionIds,
         failedActionIds,
@@ -2318,10 +2564,85 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
     })
   }
 
+  const getAssetPreview = async ({ runId, relativePath } = {}) => {
+    const normalizedRunId = normalizeText(runId)
+    const safeRelative = normalizeSafeRelativePath(relativePath)
+    if (!normalizedRunId || !safeRelative) {
+      return {
+        ok: false,
+        code: 'missing_asset_preview_target',
+        message: '缺少 runId 或资源相对路径',
+        relativePath: safeRelative,
+        previewDataUrl: ''
+      }
+    }
+    if (!safeRelative.startsWith(`runs/${normalizedRunId}/`)) {
+      return {
+        ok: false,
+        code: 'asset_path_outside_run',
+        message: '资源路径必须位于当前 run 目录内',
+        relativePath: safeRelative,
+        previewDataUrl: ''
+      }
+    }
+    try {
+      assertPluginReady()
+      const pluginDataDir = pluginService.getPluginCreatorDataDir(CREATOR_STUDIO_PLUGIN_ID)
+      const absolute = path.join(path.resolve(pluginDataDir), safeRelative)
+      const runRoot = path.join(path.resolve(pluginDataDir), 'runs', normalizedRunId)
+      const resolved = path.resolve(absolute)
+      const resolvedRoot = path.resolve(runRoot)
+      if (resolved !== resolvedRoot && !resolved.startsWith(resolvedRoot + path.sep)) {
+        return {
+          ok: false,
+          code: 'asset_path_outside_run',
+          message: '资源路径越界',
+          relativePath: safeRelative,
+          previewDataUrl: ''
+        }
+      }
+      if (!canPreviewImageFile(resolved)) {
+        return {
+          ok: false,
+          code: 'asset_preview_unavailable',
+          message: '该资源不可预览（不存在、过大或格式不支持）',
+          relativePath: safeRelative,
+          previewDataUrl: ''
+        }
+      }
+      const previewDataUrl = fileToPreviewDataUrl(resolved)
+      if (!previewDataUrl) {
+        return {
+          ok: false,
+          code: 'asset_preview_unavailable',
+          message: '资源预览生成失败',
+          relativePath: safeRelative,
+          previewDataUrl: ''
+        }
+      }
+      return {
+        ok: true,
+        code: 'asset_preview_ready',
+        message: 'ok',
+        relativePath: safeRelative,
+        previewDataUrl
+      }
+    } catch (error) {
+      return {
+        ok: false,
+        code: 'asset_preview_failed',
+        message: sanitizeProgressReason(error?.message || '资源预览失败'),
+        relativePath: safeRelative,
+        previewDataUrl: ''
+      }
+    }
+  }
+
   return {
     approveReferenceSourcePath,
     getState,
     getLastRun,
+    getAssetPreview,
     bindReference,
     generateNewCharacter,
     generateExistingAction,
@@ -2337,7 +2658,10 @@ module.exports = {
     resolveOfficialActionCoverage,
     readWorkflowDiagnostics,
     createWorkflowProgressView,
-    collectActionAssetsForRun
+    collectActionAssetsForRun,
+    collectProcessAssetsForRun,
+    describeFailureEvidence,
+    stripPreviewDataUrlsFromValue
   },
   CREATOR_STUDIO_DASHBOARD_ID,
   CREATOR_STUDIO_PLUGIN_ID,

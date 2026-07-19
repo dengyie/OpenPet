@@ -131,6 +131,7 @@ export const IPC = Object.freeze({
   CREATOR_RETRY_IDENTITY: 'creator:retry-identity',
   CREATOR_IMPORT_AVAILABLE_ACTIONS: 'creator:import-available-actions',
   CREATOR_GET_LAST_RUN: 'creator:get-last-run',
+  CREATOR_GET_ASSET_PREVIEW: 'creator:get-asset-preview',
   SERVICE_GET_STATUS: 'service:get-status',
   SERVICE_SAVE_CONFIG: 'service:save-config',
   SERVICE_GET_LOGS: 'service:get-logs',

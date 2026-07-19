@@ -1792,3 +1792,128 @@ test('creator workflow service imports available actions as partial pack when id
   assert.equal(importedPacks.length, 1)
   assert.equal(JSON.stringify(result).includes(pluginDataDir), false)
 })
+
+test('creator workflow diagnostics keep process assets without embedding preview data urls by default', () => {
+  const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-process-assets-'))
+  const runId = 'run-process-assets'
+  const runDir = path.join(pluginDataDir, 'runs', runId)
+  const anchorDir = path.join(runDir, 'inputs', 'anchors')
+  const conditioningDir = path.join(runDir, 'inputs', 'keyframes', 'actions')
+  const frameDir = path.join(runDir, 'official-row-frames', 'waving')
+  fs.mkdirSync(anchorDir, { recursive: true })
+  fs.mkdirSync(conditioningDir, { recursive: true })
+  fs.mkdirSync(frameDir, { recursive: true })
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64'
+  )
+  fs.writeFileSync(path.join(anchorDir, 'full-pet-action-identity-board.png'), png)
+  fs.writeFileSync(path.join(conditioningDir, 'waving-peak-conditioning-board.png'), png)
+  fs.writeFileSync(path.join(frameDir, '01.png'), png)
+  fs.writeFileSync(path.join(runDir, 'spritesheet.webp'), png)
+  const runJson = {
+    runId,
+    status: 'failed',
+    taskStatus: 'confirmed',
+    currentStep: 'generate',
+    reviewStatus: 'pending',
+    importStatus: 'not-imported',
+    backend: 'provider',
+    error: 'waving failed',
+    artifacts: {
+      spritesheet: 'runs/' + runId + '/spritesheet.webp',
+      generatedImage: {
+        outputs: [],
+        conditioning: {
+          mode: 'image-edit',
+          endpoint: '/images/edits',
+          referenceImageCount: 1,
+          multipartImageField: 'image',
+          requestedOutputCount: 1
+        }
+      }
+    }
+  }
+  fs.writeFileSync(path.join(runDir, 'run.json'), JSON.stringify(runJson, null, 2) + '\n')
+  const checkpoints = {
+    version: 1,
+    runId,
+    actions: {
+      waving: {
+        actionId: 'waving',
+        ok: false,
+        failureConditions: ['identity-descriptor-distance-high'],
+        error: 'identity-descriptor-distance-high',
+        row: {
+          quality: 'failed',
+          frames: [{ relativePath: 'runs/' + runId + '/official-row-frames/waving/01.png', sha256: 'b' }]
+        }
+      }
+    }
+  }
+  fs.writeFileSync(path.join(runDir, 'full-pet-action-checkpoints.json'), JSON.stringify(checkpoints, null, 2) + '\n')
+
+  const diagnostics = __testInternals.readWorkflowDiagnostics({ pluginDataDir, runId })
+  assert.ok(Array.isArray(diagnostics.progress.processAssets))
+  assert.ok(diagnostics.progress.processAssets.some((asset) => asset.kind === 'identity' || asset.kind === 'anchor'))
+  assert.ok(diagnostics.progress.processAssets.some((asset) => asset.kind === 'conditioning-board' || String(asset.role || '').includes('conditioning')))
+  assert.ok(diagnostics.progress.processAssets.some((asset) => asset.kind === 'sheet' || /sprite/i.test(asset.label || '')))
+  assert.equal(JSON.stringify(diagnostics).includes('data:image'), false)
+  assert.equal(JSON.stringify(diagnostics).includes(pluginDataDir), false)
+
+  const waving = diagnostics.progress.actions.find((action) => action.actionId === 'waving')
+  assert.equal(waving.status, 'failed')
+  assert.ok(waving.failureEvidence?.[0]?.message.includes('身份') || waving.reason.includes('身份'))
+  assert.ok(waving.assets.some((asset) => asset.kind === 'identity' || asset.kind === 'anchor'))
+  assert.ok(waving.assets.some((asset) => asset.kind === 'frame' || asset.kind === 'keyframe'))
+  assert.equal(waving.assets.some((asset) => asset.previewDataUrl), false)
+})
+
+test('creator workflow asset preview loads on demand and rejects path escape', async () => {
+  const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-asset-preview-'))
+  const runId = 'run-preview-on-demand'
+  const runDir = path.join(pluginDataDir, 'runs', runId)
+  const frameDir = path.join(runDir, 'official-row-frames', 'idle')
+  fs.mkdirSync(frameDir, { recursive: true })
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64'
+  )
+  const relativePath = 'runs/' + runId + '/official-row-frames/idle/01.png'
+  fs.writeFileSync(path.join(frameDir, '01.png'), png)
+  fs.writeFileSync(path.join(runDir, 'run.json'), JSON.stringify({ runId, status: 'failed' }, null, 2) + '\n')
+
+  const service = createCreatorWorkflowService({
+    pluginService: {
+      listPlugins: () => ([{ id: 'openpet.creator-studio', enabled: true, runnable: true, commands: [{ id: 'draft-task' }] }]),
+      runCommand: async () => ({ ok: true }),
+      getPluginCreatorDataDir: () => pluginDataDir
+    },
+    imageGenerationModelService: {
+      checkHealth: async () => ({ ok: true, code: 'provider_healthy', message: 'ok' }),
+      getConfig: () => ({ provider: 'openai-compatible', model: 'gpt-image-2', creatorWorkflowModelPolicy: { verifiedModels: ['gpt-image-2'] } })
+    },
+    actionService: {
+      getConfig: () => ({ defaultAction: 'idle', clickAction: 'waving', actions: [] }),
+      acceptTriggerProposalItem: () => ({})
+    },
+    creatorReferenceService: {
+      getReference: () => null,
+      bindReference: async () => ({ replaced: false, reference: null }),
+      copyReferenceIntoRun: () => ({})
+    }
+  })
+
+  const okPreview = await service.getAssetPreview({ runId, relativePath })
+  assert.equal(okPreview.ok, true)
+  assert.match(okPreview.previewDataUrl, /^data:image\/png;base64,/)
+  assert.equal(okPreview.relativePath, relativePath)
+
+  const escaped = await service.getAssetPreview({ runId, relativePath: '../secret.png' })
+  assert.equal(escaped.ok, false)
+  assert.equal(escaped.previewDataUrl, '')
+
+  const outside = await service.getAssetPreview({ runId, relativePath: 'runs/other/01.png' })
+  assert.equal(outside.ok, false)
+  assert.equal(JSON.stringify(okPreview).includes(pluginDataDir), false)
+})

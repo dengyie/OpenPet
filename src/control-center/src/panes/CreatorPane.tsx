@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type {
   CreatorActionAssetViewState,
   CreatorActionAttemptViewState,
@@ -51,7 +52,9 @@ export interface CreatorPaneProps {
   onRetryFullPetIdentity: () => void | Promise<void>
   onImportAvailableActions: () => void | Promise<void>
   onOpenCreatorStudioDetails: () => void | Promise<void>
-  onCopyText?: (text: string, label?: string) => void | Promise<void>
+  onCopyText?: (text: string, label?: string, key?: string) => void | Promise<void>
+  onLoadAssetPreview?: (relativePath: string) => Promise<string>
+  copiedPromptKey?: string
 }
 
 const formatWorkflowState = (state: CreatorWorkflowResult['state']) => {
@@ -99,6 +102,67 @@ const actionToneClass = (status: CreatorActionAttemptViewState['status']) => {
   return ''
 }
 
+const formatFailurePlain = (code: string, message: string, score?: number | null) => {
+  const parts = [message || code || '动作未通过质量检查']
+  if (code) parts.push(`错误码 ${code}`)
+  if (typeof score === 'number') parts.push(`分数 ${score}`)
+  return parts.join(' · ')
+}
+
+const LazyAssetThumb = ({
+  asset,
+  actionId,
+  onLoadAssetPreview
+}: {
+  asset: CreatorActionAssetViewState
+  actionId: string
+  onLoadAssetPreview?: (relativePath: string) => Promise<string>
+}) => {
+  const [src, setSrc] = useState(asset.previewDataUrl || '')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const load = async () => {
+    if (src || loading) return
+    if (!asset.previewable || !asset.relativePath || !onLoadAssetPreview) {
+      setError('不可预览')
+      return
+    }
+    setLoading(true)
+    setError('')
+    try {
+      const next = await onLoadAssetPreview(asset.relativePath)
+      if (next) setSrc(next)
+      else setError('加载失败')
+    } catch (_) {
+      setError('加载失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="creator-asset-thumb" data-kind={asset.kind}>
+      {src ? (
+        <img src={src} alt={`${actionId} ${asset.label}`} />
+      ) : (
+        <button
+          type="button"
+          className="creator-asset-thumb-fallback"
+          data-testid={`creator-load-preview-${actionId}-${asset.kind}`}
+          onClick={() => { void load() }}
+          disabled={loading || !asset.previewable}
+          title={asset.previewable ? '点击加载预览' : '该资源不可预览'}
+        >
+          {loading ? '加载中…' : (error || asset.label || asset.kind)}
+        </button>
+      )}
+      <span>{asset.label || asset.kind}</span>
+      <code title={asset.relativePath}>{asset.relativePath}</code>
+    </div>
+  )
+}
+
 const ActionMatrix = ({
   actions,
   running,
@@ -141,27 +205,51 @@ const ActionMatrix = ({
 const AssetReviewBench = ({
   actions,
   actionAssets,
+  processAssets = [],
   onCopyText,
   onRetryFullPetAction,
   running,
-  canRepair
+  canRepair,
+  onLoadAssetPreview,
+  copiedPromptKey = ''
 }: {
   actions: CreatorActionAttemptViewState[]
   actionAssets: CreatorActionAssetViewState[]
-  onCopyText?: (text: string, label?: string) => void | Promise<void>
+  processAssets?: CreatorActionAssetViewState[]
+  onCopyText?: (text: string, label?: string, key?: string) => void | Promise<void>
   onRetryFullPetAction: (actionId: string) => void | Promise<void>
   running: boolean
   canRepair: boolean
+  onLoadAssetPreview?: (relativePath: string) => Promise<string>
+  copiedPromptKey?: string
 }) => {
   const assets = actionAssets.length
     ? actionAssets
     : actions.flatMap((action) => action.assets || [])
-  if (!actions.length && !assets.length) return null
+  if (!actions.length && !assets.length && !processAssets.length) return null
 
   return (
     <div className="creator-asset-review" data-testid="creator-asset-review">
       <strong>本次生成资产审查台</strong>
-      <span className="field-note">失败帧也会完整展示，方便对照为什么坏、以及对应提示词。</span>
+      <span className="field-note" data-testid="creator-asset-review-guide">
+        推荐流程：先导入可用动作 → 在此审查坏资产（对照参考身份/失败帧）→ 一键重生成红项。
+      </span>
+      {processAssets.length ? (
+        <div className="creator-process-assets" data-testid="creator-process-assets">
+          <strong>过程资产</strong>
+          <span className="field-note">anchor / conditioning board / sprite sheet 在失败时也会保留，可按需加载大图。</span>
+          <div className="creator-asset-thumbs">
+            {processAssets.map((asset) => (
+              <LazyAssetThumb
+                key={`process-${asset.kind}-${asset.relativePath}`}
+                asset={asset}
+                actionId={asset.actionId || 'process'}
+                onLoadAssetPreview={onLoadAssetPreview}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
       <div className="creator-asset-review-list">
         {actions.map((action) => {
           const related = (action.assets && action.assets.length
@@ -169,6 +257,11 @@ const AssetReviewBench = ({
             : assets.filter((asset) => asset.actionId === action.actionId))
           const evidence = action.failureEvidence || []
           const promptText = action.promptText || related.find((asset) => asset.promptText)?.promptText || ''
+          const identityAssets = related.filter((asset) => asset.kind === 'identity' || asset.kind === 'anchor')
+          const failedFrameAssets = related.filter((asset) => ['frame', 'keyframe', 'row'].includes(asset.kind))
+          const otherAssets = related.filter((asset) => !['prompt', 'identity', 'anchor', 'frame', 'keyframe', 'row'].includes(asset.kind))
+          const copyKey = `${action.actionId}:prompt`
+          const copied = copiedPromptKey === copyKey
           return (
             <div
               key={action.actionId}
@@ -186,30 +279,66 @@ const AssetReviewBench = ({
                 <div className="creator-asset-evidence" data-testid={`creator-asset-evidence-${action.actionId}`}>
                   {evidence.map((item, index) => (
                     <span key={`${item.code}-${index}`}>
-                      <strong>坏在哪</strong> {item.message || item.code}
-                      {item.code ? `（${item.code}）` : ''}
-                      {typeof item.score === 'number' ? ` · 分数 ${item.score}` : ''}
+                      <strong>坏在哪</strong> {formatFailurePlain(item.code, item.message, item.score)}
                     </span>
                   ))}
                 </div>
               ) : null}
-              {related.length ? (
+              {(identityAssets.length || failedFrameAssets.length) ? (
+                <div className="creator-asset-compare" data-testid={`creator-asset-compare-${action.actionId}`}>
+                  <div className="creator-asset-compare-col">
+                    <strong>参考身份</strong>
+                    <div className="creator-asset-thumbs">
+                      {identityAssets.length ? identityAssets.map((asset) => (
+                        <LazyAssetThumb
+                          key={`id-${asset.relativePath}`}
+                          asset={asset}
+                          actionId={action.actionId}
+                          onLoadAssetPreview={onLoadAssetPreview}
+                        />
+                      )) : <span className="field-note">无身份参考落盘</span>}
+                    </div>
+                  </div>
+                  <div className="creator-asset-compare-col">
+                    <strong>失败/生成帧</strong>
+                    <div className="creator-asset-thumbs" data-testid={`creator-asset-thumbs-${action.actionId}`}>
+                      {failedFrameAssets.length ? failedFrameAssets.map((asset) => (
+                        <LazyAssetThumb
+                          key={`frame-${asset.kind}-${asset.relativePath}`}
+                          asset={asset}
+                          actionId={action.actionId}
+                          onLoadAssetPreview={onLoadAssetPreview}
+                        />
+                      )) : <span className="field-note">暂无失败帧（可能未落盘）</span>}
+                    </div>
+                  </div>
+                </div>
+              ) : related.length ? (
                 <div className="creator-asset-thumbs" data-testid={`creator-asset-thumbs-${action.actionId}`}>
                   {related.filter((asset) => asset.kind !== 'prompt').map((asset) => (
-                    <div key={`${asset.kind}-${asset.relativePath}`} className="creator-asset-thumb">
-                      {asset.previewable && asset.previewDataUrl ? (
-                        <img src={asset.previewDataUrl} alt={`${action.actionId} ${asset.label}`} />
-                      ) : (
-                        <div className="creator-asset-thumb-fallback">{asset.label || asset.kind}</div>
-                      )}
-                      <span>{asset.label || asset.kind}</span>
-                      <code>{asset.relativePath}</code>
-                    </div>
+                    <LazyAssetThumb
+                      key={`${asset.kind}-${asset.relativePath}`}
+                      asset={asset}
+                      actionId={action.actionId}
+                      onLoadAssetPreview={onLoadAssetPreview}
+                    />
                   ))}
                 </div>
               ) : (
                 <span className="field-note">暂无缩略图（可能仍在生成或未落盘）</span>
               )}
+              {otherAssets.length ? (
+                <div className="creator-asset-thumbs" data-testid={`creator-asset-extra-${action.actionId}`}>
+                  {otherAssets.map((asset) => (
+                    <LazyAssetThumb
+                      key={`extra-${asset.kind}-${asset.relativePath}`}
+                      asset={asset}
+                      actionId={action.actionId}
+                      onLoadAssetPreview={onLoadAssetPreview}
+                    />
+                  ))}
+                </div>
+              ) : null}
               <div className="header-actions">
                 {promptText ? (
                   <>
@@ -221,9 +350,9 @@ const AssetReviewBench = ({
                       type="button"
                       className="ghost"
                       data-testid={`creator-copy-prompt-${action.actionId}`}
-                      onClick={() => onCopyText?.(promptText, `${action.actionId} 提示词`)}
+                      onClick={() => onCopyText?.(promptText, `${action.actionId} 提示词`, copyKey)}
                     >
-                      复制提示词
+                      {copied ? '已复制' : '复制提示词'}
                     </button>
                   </>
                 ) : null}
@@ -313,7 +442,9 @@ const ResultCard = ({
   onRetryFullPetIdentity,
   onImportAvailableActions,
   onOpenCreatorStudioDetails,
-  onCopyText
+  onCopyText,
+  onLoadAssetPreview,
+  copiedPromptKey
 }: {
   result: CreatorWorkflowResult
   running: boolean
@@ -326,7 +457,9 @@ const ResultCard = ({
   onRetryFullPetIdentity: () => void | Promise<void>
   onImportAvailableActions: () => void | Promise<void>
   onOpenCreatorStudioDetails: () => void | Promise<void>
-  onCopyText?: (text: string, label?: string) => void | Promise<void>
+  onCopyText?: (text: string, label?: string, key?: string) => void | Promise<void>
+  onLoadAssetPreview?: (relativePath: string) => Promise<string>
+  copiedPromptKey?: string
 }) => {
   const tone = ['completed', 'review-required'].includes(result.state)
     ? 'ok'
@@ -345,6 +478,7 @@ const ResultCard = ({
     : 'none'
   const progressActions = progress?.actions || []
   const actionAssets = result.actionAssets || progress?.actionAssets || []
+  const processAssets = result.processAssets || progress?.processAssets || []
   const availableActionIds = result.availableActionIds?.length
     ? result.availableActionIds
     : (progress?.availableActionIds || basicActions?.availableActionIds || [])
@@ -382,7 +516,7 @@ const ResultCard = ({
           onRetryFullPetAction={onRetryFullPetAction}
         />
       ) : null}
-      {(progressActions.length || actionAssets.length) ? (
+      {(progressActions.length || actionAssets.length || processAssets.length) ? (
         <AssetReviewBench
           actions={progressActions}
           actionAssets={actionAssets}
@@ -390,6 +524,9 @@ const ResultCard = ({
           onRetryFullPetAction={onRetryFullPetAction}
           running={running}
           canRepair={canRepairFullPet}
+          processAssets={processAssets}
+          onLoadAssetPreview={onLoadAssetPreview}
+          copiedPromptKey={copiedPromptKey}
         />
       ) : null}
       {result.importNotes ? (
@@ -428,10 +565,14 @@ const ResultCard = ({
         <span className="creator-result-cta">生成进行中，下方会同步阶段与动作成败。</span>
       ) : null}
       {result.state === 'review-required' ? (
-        <span className="creator-result-cta">已进入复查阶段；可用动作可直接导入，失败动作可在审查台查看并重生成。</span>
+        <span className="creator-result-cta" data-testid="creator-guide-review">
+          建议：先导入可用动作 → 审查坏资产（对照参考身份/失败帧）→ 一键重生成红项。桌宠预览仅在动作已导入后可用。
+        </span>
       ) : null}
       {result.state === 'preview-ready' ? (
-        <span className="creator-result-cta">预览产物已生成；可用动作可导入，缺失/失败动作会标红并保留资产供审查。</span>
+        <span className="creator-result-cta" data-testid="creator-guide-preview-ready">
+          预览产物已生成。下一步：导入可用 → 审查红项坏在哪 → 重生成失败动作。预览按钮只播放已导入动作，不会静默。
+        </span>
       ) : null}
       {result.reference ? (
         <div className="creator-result-grid">
@@ -568,7 +709,9 @@ export function CreatorPane({
   onRetryFullPetIdentity,
   onImportAvailableActions,
   onOpenCreatorStudioDetails,
-  onCopyText
+  onCopyText,
+  onLoadAssetPreview,
+  copiedPromptKey
 }: CreatorPaneProps) {
   const providerReady = creatorState.provider.ready
   const hasEditableReference = Boolean(creatorState.editableReference)
@@ -787,6 +930,8 @@ export function CreatorPane({
           onImportAvailableActions={onImportAvailableActions}
           onOpenCreatorStudioDetails={onOpenCreatorStudioDetails}
           onCopyText={onCopyText}
+          onLoadAssetPreview={onLoadAssetPreview}
+          copiedPromptKey={copiedPromptKey}
         />
       ) : creatorState.lastRun ? (
         <div className="provider-feedback" data-testid="creator-last-run">

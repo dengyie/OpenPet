@@ -2861,3 +2861,34 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+.creator-process-assets {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.creator-asset-compare {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.creator-asset-compare-col {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.creator-asset-thumb-fallback {
+  cursor: pointer;
+}
+
+button.creator-asset-thumb-fallback {
+  width: 100%;
+  border: 1px solid #e2e8f0;
+  font: inherit;
+}

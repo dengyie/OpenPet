@@ -62,7 +62,9 @@ const createInFlightResult = (mode: CreatorPaneMode): CreatorWorkflowResult => (
 })
 
 const resolvePreviewActionId = (result: CreatorWorkflowResult | null): string => {
-  if (!result || result.state !== 'completed') return ''
+  if (!result) return ''
+  // Preview only makes sense for imported/playable actions.
+  if (!(result.state === 'completed' || result.importedAction || result.activePet)) return ''
   return String(
     result.clickAction ||
     result.importedAction?.actionId ||
@@ -94,6 +96,8 @@ export function useCreatorPane(active: boolean) {
   const [previewing, setPreviewing] = useState(false)
   const [openingDashboard, setOpeningDashboard] = useState(false)
   const [result, setResult] = useState<CreatorWorkflowResult | null>(null)
+  const [copiedPromptKey, setCopiedPromptKey] = useState('')
+  const previewCacheRef = useRef(new Map<string, string>())
   const hasLoadedRef = useRef(false)
 
   const refreshCreatorState = async () => {
@@ -238,14 +242,14 @@ export function useCreatorPane(active: boolean) {
       setStatus('还没有可预览的生成结果')
       return
     }
-    if (result.state !== 'completed') {
+    if (!(result.state === 'completed' || result.importedAction || result.activePet)) {
       const phase = result.diagnostics?.progress?.phaseLabel || formatWorkflowStateFallback(result.state)
-      setStatus(`当前状态不可预览（${phase}）。只有导入完成后的角色才能立即预览。`)
+      setStatus(`当前状态不可预览（${phase}）。预览仅支持已导入动作，请先导入可用动作。`)
       return
     }
     const actionId = resolvePreviewActionId(result)
     if (!actionId) {
-      setStatus('当前结果没有可预览的动作')
+      setStatus('当前结果没有可预览的动作。预览只播放已导入动作，请先完成导入。')
       return
     }
     setPreviewing(true)
@@ -332,7 +336,7 @@ export function useCreatorPane(active: boolean) {
     }
   }
 
-  const onCopyText = async (value: string, label = '内容') => {
+  const onCopyText = async (value: string, label = '内容', key = '') => {
     const textValue = String(value || '')
     if (!textValue) {
       setStatus(`${label}为空，无法复制`)
@@ -353,8 +357,37 @@ export function useCreatorPane(active: boolean) {
         document.body.removeChild(area)
       }
       setStatus(`已复制${label}`)
+      if (key) setCopiedPromptKey(key)
+      else setCopiedPromptKey(label)
     } catch (error) {
       setStatus(messageFromError(error, `复制${label}失败`))
+    }
+  }
+
+  const onLoadAssetPreview = async (relativePath: string) => {
+    const safePath = String(relativePath || '').trim()
+    if (!safePath) {
+      setStatus('资源路径为空，无法加载预览')
+      return ''
+    }
+    const cached = previewCacheRef.current.get(safePath)
+    if (cached) return cached
+    const runId = String(result?.run?.runId || creatorState.lastRun?.runId || '').trim()
+    if (!runId) {
+      setStatus('当前没有 run，无法加载资源预览')
+      return ''
+    }
+    try {
+      const preview = await api.getCreatorAssetPreview({ runId, relativePath: safePath })
+      if (!preview?.ok || !preview.previewDataUrl) {
+        setStatus(preview?.message || '资源预览加载失败')
+        return ''
+      }
+      previewCacheRef.current.set(safePath, preview.previewDataUrl)
+      return preview.previewDataUrl
+    } catch (error) {
+      setStatus(messageFromError(error, '资源预览加载失败'))
+      return ''
     }
   }
 
@@ -438,7 +471,9 @@ export function useCreatorPane(active: boolean) {
     onRetryFullPetIdentity,
     onImportAvailableActions,
     onOpenCreatorStudioDetails,
-    onCopyText
+    onCopyText,
+    onLoadAssetPreview,
+    copiedPromptKey
   } satisfies CreatorPaneProps
 
   return {

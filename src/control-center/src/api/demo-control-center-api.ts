@@ -4221,6 +4221,13 @@ export const demoControlCenterAPI: ControlCenterApi = {
     ok: true,
     run: demoCreatorLastRun ? cloneCreatorLastRun(demoCreatorLastRun) : null
   }),
+  getCreatorAssetPreview: async (payload) => ({
+    ok: true,
+    code: 'asset_preview_ready',
+    message: 'ok',
+    relativePath: String(payload?.relativePath || ''),
+    previewDataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+  }),
   runCreatorStudioDefaultFlow: async (prompt) => createDemoCreatorStudioDefaultFlowResult(prompt),
   runPluginCommand: async (pluginId, commandId, payload) => {
     try {

@@ -60,6 +60,10 @@ const registerCreatorIpc = ({
     activate: payload?.activate
   }))
   ipcMainService.handle(IPC.CREATOR_GET_LAST_RUN, () => requireService().getLastRun())
+  ipcMainService.handle(IPC.CREATOR_GET_ASSET_PREVIEW, (_event, payload) => requireService().getAssetPreview({
+    runId: payload?.runId,
+    relativePath: payload?.relativePath
+  }))
 }
 
 module.exports = {

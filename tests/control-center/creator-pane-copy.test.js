@@ -54,10 +54,33 @@ test('creator pane exposes partial import CTA, asset review bench, and retry ent
   assert.match(source, /data-testid=\{`creator-retry-action-\$\{action\.actionId\}`\}/)
 })
 
+test('creator pane asset review shows compare, process assets, lazy preview and copy feedback', () => {
+  const source = fs.readFileSync(creatorPanePath, 'utf-8')
+  assert.match(source, /creator-asset-compare/)
+  assert.match(source, /creator-process-assets/)
+  assert.match(source, /creator-asset-review-guide/)
+  assert.match(source, /先导入可用动作/)
+  assert.match(source, /一键重生成红项/)
+  assert.match(source, /已复制/)
+  assert.match(source, /onLoadAssetPreview/)
+  assert.match(source, /LazyAssetThumb/)
+  assert.match(source, /creator-load-preview/)
+})
+
 test('creator pane hook wires import available actions API', () => {
   const hookPath = path.resolve(__dirname, '../../src/control-center/src/hooks/useCreatorPane.ts')
   const source = fs.readFileSync(hookPath, 'utf-8')
   assert.match(source, /importCreatorAvailableActions/)
   assert.match(source, /onImportAvailableActions/)
   assert.match(source, /正在导入可用动作/)
+})
+
+test('creator pane hook loads asset previews on demand and marks prompt copy state', () => {
+  const hookPath = path.resolve(__dirname, '../../src/control-center/src/hooks/useCreatorPane.ts')
+  const source = fs.readFileSync(hookPath, 'utf-8')
+  assert.match(source, /getCreatorAssetPreview/)
+  assert.match(source, /onLoadAssetPreview/)
+  assert.match(source, /setCopiedPromptKey/)
+  assert.match(source, /预览仅支持已导入动作/)
+  assert.match(source, /已复制/)
 })

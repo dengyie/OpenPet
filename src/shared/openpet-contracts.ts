@@ -2023,6 +2023,18 @@ export interface CreatorImportAvailableActionsRequest {
   activate?: boolean
 }
 
+export interface CreatorAssetPreviewRequest {
+  runId: string
+  relativePath: string
+}
+
+export interface CreatorAssetPreviewResult extends OkResponse {
+  code: string
+  message: string
+  relativePath: string
+  previewDataUrl: string
+}
+
 export interface CreatorWorkflowConditioningSummaryViewState {
   mode: string
   endpoint: string
@@ -2060,6 +2072,10 @@ export type CreatorActionAssetKind =
   | 'sheet'
   | 'frame'
   | 'prompt'
+  | 'identity'
+  | 'anchor'
+  | 'conditioning-board'
+  | 'process'
 
 export interface CreatorActionFailureEvidenceViewState {
   code: string
@@ -2102,6 +2118,7 @@ export interface CreatorWorkflowProgressViewState {
   stages: CreatorWorkflowStageViewState[]
   actions: CreatorActionAttemptViewState[]
   actionAssets?: CreatorActionAssetViewState[]
+  processAssets?: CreatorActionAssetViewState[]
   availableActionIds?: string[]
   failedActionIds?: string[]
   importableActionIds?: string[]
@@ -2147,6 +2164,7 @@ export interface CreatorWorkflowResult extends OkResponse {
   basicActions?: CreatorBasicActionCoverageViewState | null
   diagnostics?: CreatorWorkflowDiagnosticsViewState | null
   actionAssets?: CreatorActionAssetViewState[]
+  processAssets?: CreatorActionAssetViewState[]
   completeness?: 'full' | 'partial' | 'none'
   availableActionIds?: string[]
   failedActionIds?: string[]
@@ -3613,6 +3631,7 @@ export interface ControlCenterApi {
   retryCreatorIdentity: (payload: CreatorRetryIdentityRequest) => Promise<CreatorWorkflowResult>
   importCreatorAvailableActions: (payload: CreatorImportAvailableActionsRequest) => Promise<CreatorWorkflowResult>
   getCreatorLastRun: () => Promise<CreatorLastRunResult>
+  getCreatorAssetPreview: (payload: CreatorAssetPreviewRequest) => Promise<CreatorAssetPreviewResult>
   playPetAction: (actionId: string) => Promise<PetActionPlaybackResult>
   runCreatorStudioDefaultFlow: (prompt: string) => Promise<CreatorStudioDefaultFlowResult>
   runPluginCommand: (pluginId: string, commandId: string, payload?: JsonObject) => Promise<PluginCommandRunResultViewState>
