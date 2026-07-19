@@ -175,17 +175,17 @@ Run the three focused suites again; expected PASS. Commit: `git add examples/plu
 - `createActionEvaluatorBoard({ sourcePath, canonicalPath, adjacentPath, candidateFrames, outputPath }) -> { path, regions, sha256 }`
 - `validateEvaluationRegions({ evaluation, regions }) -> normalized evaluation`
 
-- [ ] **Step 1: Write failing geometry tests**
+- [x] **Step 1: Write failing geometry tests**
 
 Use Sharp fixtures to assert exact 1024 square anchor grids, 1536x1024 Provider boards, 2048 square canonical evaluator boards, 2048x1536 action evaluator boards, region hashes, contain-fit, transparent unused cells, and unknown region rejection.
 
-- [ ] **Step 2: Run the three focused suites and verify RED**
+- [x] **Step 2: Run the three focused suites and verify RED**
 
-- [ ] **Step 3: Implement deterministic composition**
+- [x] **Step 3: Implement deterministic composition**
 
 Anchor grids repeat the accepted master into used cells without labels. Provider boards place the 1024 anchor grid at `(0,0,1024,1024)` and normalized source detail at `(1024,0,512,1024)`. Evaluator boards use the exact spec coordinates and return region metadata with `regionId`, hash, coordinates, fit mode, and role. All temporary files are inside `dataDir` and are atomically renamed.
 
-- [ ] **Step 4: Run focused suites and commit**
+- [x] **Step 4: Run focused suites and commit**
 
 Commit: `git add examples/plugins/creator-studio/lib/character-anchor-grid.js examples/plugins/creator-studio/lib/action-reference-board.js src/main/services/hatch-pet-sprite-review-board.js tests/examples/creator-studio-character-anchor-grid.test.js tests/examples/creator-studio-action-reference-board.test.js tests/services/hatch-pet-sprite-review-board.test.js && git commit -m "feat add deterministic sprite reference boards"`
 
