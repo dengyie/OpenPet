@@ -38,6 +38,15 @@ const normalizeResult = ({ dataDir, result }) => {
     ...(Array.isArray(result.keyframes) ? { keyframes: result.keyframes } : {}),
     ...(result.error ? { error: result.error } : {})
   }
+  if (result.bindings && typeof result.bindings === 'object') {
+    normalized.bindings = {
+      planHash: String(result.bindings.planHash || ''),
+      canonicalHash: String(result.bindings.canonicalHash || ''),
+      profileHash: String(result.bindings.profileHash || ''),
+      processorVersion: Number(result.bindings.processorVersion),
+      qualityProfileHash: String(result.bindings.qualityProfileHash || '')
+    }
+  }
   if (!result.row || !Array.isArray(result.row.frames)) return normalized
 
   normalized.row = {
@@ -138,9 +147,16 @@ const invalidateAllActionCheckpoints = ({
   return writeCheckpointFile({ dataDir, runId, checkpoints, now })
 }
 
-const resolveReusableActionResult = ({ dataDir, runId, actionId }) => {
+const resolveReusableActionResult = ({ dataDir, runId, actionId, planHash, canonicalHash, profileHash, processorVersion, qualityProfileHash }) => {
   const record = readActionCheckpoints({ dataDir, runId }).actions?.[actionId]
   if (!record || record.ok !== true || !record.row || !Array.isArray(record.row.frames)) return null
+  if (record.bindings) {
+    if (!record.bindings.planHash || record.bindings.planHash !== String(planHash || '') ||
+      record.bindings.canonicalHash !== String(canonicalHash || '') ||
+      record.bindings.profileHash !== String(profileHash || '') ||
+      Number(record.bindings.processorVersion) !== Number(processorVersion) ||
+      record.bindings.qualityProfileHash !== String(qualityProfileHash || '')) return null
+  }
   try {
     const frames = record.row.frames.map((frame) => {
       const resolved = ensureDataRelativePath(dataDir, frame.relativePath)

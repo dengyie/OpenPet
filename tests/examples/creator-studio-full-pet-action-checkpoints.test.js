@@ -34,6 +34,14 @@ const createSuccessfulResult = ({ dataDir, runId, actionId = 'idle' }) => {
   }
 }
 
+const HASH_BINDINGS = Object.freeze({
+  planHash: '1'.repeat(64),
+  canonicalHash: '2'.repeat(64),
+  profileHash: '3'.repeat(64),
+  processorVersion: 1,
+  qualityProfileHash: '4'.repeat(64)
+})
+
 test('action checkpoint round-trips a successful row using data-relative hashed frames', () => {
   const dataDir = makeDataDir()
   const runId = 'run-checkpoint-success'
@@ -112,4 +120,18 @@ test('action checkpoint rejects frame paths outside the Creator Studio data dire
       }
     }
   }), /data directory/i)
+})
+
+test('action checkpoint reuse requires matching plan, canonical, profile, processor, and quality hashes', () => {
+  const dataDir = makeDataDir()
+  const runId = 'run-checkpoint-bindings'
+  const result = { ...createSuccessfulResult({ dataDir, runId }), bindings: HASH_BINDINGS }
+  writeActionCheckpoint({ dataDir, runId, result })
+
+  assert.ok(resolveReusableActionResult({ dataDir, runId, actionId: 'idle', ...HASH_BINDINGS }))
+  for (const [key, value] of Object.entries(HASH_BINDINGS)) {
+    const mismatch = typeof value === 'number' ? value + 1 : 'f'.repeat(64)
+    assert.equal(resolveReusableActionResult({ dataDir, runId, actionId: 'idle', ...HASH_BINDINGS, [key]: mismatch }), null, key)
+  }
+  assert.equal(resolveReusableActionResult({ dataDir, runId, actionId: 'idle' }), null)
 })
