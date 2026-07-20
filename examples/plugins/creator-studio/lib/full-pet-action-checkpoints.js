@@ -148,9 +148,10 @@ const invalidateAllActionCheckpoints = ({
   return writeCheckpointFile({ dataDir, runId, checkpoints, now })
 }
 
-const resolveReusableActionResult = ({ dataDir, runId, actionId, planHash, canonicalHash, profileHash, processorVersion, qualityProfileHash }) => {
+const resolveReusableActionResult = ({ dataDir, runId, actionId, planHash, canonicalHash, profileHash, processorVersion, qualityProfileHash, requireBindings = false }) => {
   const record = readActionCheckpoints({ dataDir, runId }).actions?.[actionId]
   if (!record || record.ok !== true || !record.row || !Array.isArray(record.row.frames)) return null
+  if (requireBindings && !record.bindings) return null
   if (record.bindings) {
     if (!record.bindings.planHash || record.bindings.planHash !== String(planHash || '') ||
       record.bindings.canonicalHash !== String(canonicalHash || '') ||
