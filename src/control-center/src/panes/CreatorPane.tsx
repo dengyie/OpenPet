@@ -50,6 +50,8 @@ export interface CreatorPaneProps {
   onRestoreClickAction: () => void | Promise<void>
   onRetryFullPetAction: (actionId: string) => void | Promise<void>
   onRetryFullPetIdentity: () => void | Promise<void>
+  onAcceptCreatorIdentity: (candidateId: string, sha256: string) => void | Promise<void>
+  onExportCreatorRecoveryBundle: () => void | Promise<void>
   onImportAvailableActions: () => void | Promise<void>
   onOpenCreatorStudioDetails: () => void | Promise<void>
   onCopyText?: (text: string, label?: string, key?: string) => void | Promise<void>
@@ -60,6 +62,8 @@ export interface CreatorPaneProps {
 const formatWorkflowState = (state: CreatorWorkflowResult['state']) => {
   if (state === 'completed') return '已完成'
   if (state === 'generating') return '进行中'
+  if (state === 'awaiting-identity-review') return '等待身份确认'
+  if (state === 'recovery-required') return '需要资产恢复'
   if (state === 'provider-not-ready') return 'Provider 未就绪'
   if (state === 'review-required') return '需要复查'
   if (state === 'preview-ready') return '预览就绪'
@@ -430,6 +434,87 @@ const formatAttemptStatus = (value: string) => {
   return 'unavailable'
 }
 
+const IdentityReviewPanel = ({
+  progress,
+  running,
+  onAcceptCreatorIdentity,
+  onRetryFullPetIdentity,
+  onLoadAssetPreview
+}: {
+  progress: CreatorWorkflowProgressViewState
+  running: boolean
+  onAcceptCreatorIdentity: (candidateId: string, sha256: string) => void | Promise<void>
+  onRetryFullPetIdentity: () => void | Promise<void>
+  onLoadAssetPreview?: (relativePath: string) => Promise<string>
+}) => {
+  const qualityFirst = progress.qualityFirst
+  const identityReview = qualityFirst?.identityReview
+  if (!qualityFirst || !identityReview) return null
+  return (
+    <div className="creator-identity-review" data-testid="creator-identity-review">
+      <div className="creator-identity-review-header">
+        <div>
+          <strong>选择 canonical identity</strong>
+          <span>动作生成尚未开始。请选择最符合参考图身份、比例和渲染风格的可用候选。</span>
+        </div>
+        <span>{qualityFirst.eligibleCandidateCount}/{qualityFirst.candidateCount} 可用</span>
+      </div>
+      <div className="creator-canonical-candidates" data-testid="canonical-candidates">
+        {identityReview.candidates.map((candidate) => (
+          <div
+            key={candidate.candidateId}
+            className={`creator-canonical-candidate ${candidate.eligible ? 'ok' : 'error'}`.trim()}
+            data-testid={`creator-canonical-candidate-${candidate.candidateId}`}
+          >
+            {candidate.relativePath ? (
+              <LazyAssetThumb
+                asset={{
+                  actionId: 'identity',
+                  kind: 'identity',
+                  relativePath: candidate.relativePath,
+                  label: candidate.candidateId,
+                  previewable: candidate.previewable
+                }}
+                actionId="identity"
+                onLoadAssetPreview={onLoadAssetPreview}
+              />
+            ) : <span className="creator-candidate-preview-missing">候选图不可预览</span>}
+            <div className="creator-candidate-details">
+              <strong>{candidate.candidateId}</strong>
+              <span>{candidate.eligible ? '通过技术门' : '不可接受'}</span>
+              {typeof candidate.score === 'number' ? <span>综合分 {candidate.score}</span> : null}
+              {candidate.model ? <span>模型 {candidate.model}</span> : null}
+              <code title={candidate.sha256}>sha256 {candidate.sha256.slice(0, 12)}…</code>
+              {candidate.failureCodes.length ? (
+                <span className="creator-candidate-failures">坏在哪：{candidate.failureCodes.join('、')}</span>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              className="primary"
+              disabled={running || !candidate.eligible || !candidate.sha256}
+              onClick={() => onAcceptCreatorIdentity(candidate.candidateId, candidate.sha256)}
+              data-testid={`creator-accept-identity-${candidate.candidateId}`}
+              title={candidate.eligible ? '接受此身份候选并开始 idle 生成' : '该候选未通过质量门'}
+            >
+              接受此身份候选
+            </button>
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        className="ghost"
+        disabled={running}
+        onClick={onRetryFullPetIdentity}
+        data-testid="creator-retry-identity-candidates"
+      >
+        重新生成身份候选
+      </button>
+    </div>
+  )
+}
+
 const ResultCard = ({
   result,
   running,
@@ -440,6 +525,8 @@ const ResultCard = ({
   onRestoreClickAction,
   onRetryFullPetAction,
   onRetryFullPetIdentity,
+  onAcceptCreatorIdentity,
+  onExportCreatorRecoveryBundle,
   onImportAvailableActions,
   onOpenCreatorStudioDetails,
   onCopyText,
@@ -455,6 +542,8 @@ const ResultCard = ({
   onRestoreClickAction: () => void | Promise<void>
   onRetryFullPetAction: (actionId: string) => void | Promise<void>
   onRetryFullPetIdentity: () => void | Promise<void>
+  onAcceptCreatorIdentity: (candidateId: string, sha256: string) => void | Promise<void>
+  onExportCreatorRecoveryBundle: () => void | Promise<void>
   onImportAvailableActions: () => void | Promise<void>
   onOpenCreatorStudioDetails: () => void | Promise<void>
   onCopyText?: (text: string, label?: string, key?: string) => void | Promise<void>
@@ -508,6 +597,31 @@ const ResultCard = ({
         <span data-testid="creator-result-phase">阶段：{progress.phaseLabel}</span>
       ) : null}
       {progress ? <WorkflowProgressPanel progress={progress} /> : null}
+      {progress?.qualityFirst?.phase === 'awaiting_identity_review' ? (
+        <IdentityReviewPanel
+          progress={progress}
+          running={running}
+          onAcceptCreatorIdentity={onAcceptCreatorIdentity}
+          onRetryFullPetIdentity={onRetryFullPetIdentity}
+          onLoadAssetPreview={onLoadAssetPreview}
+        />
+      ) : null}
+      {progress?.qualityFirst?.phase === 'recovery-required' ? (
+        <div className="creator-recovery-panel error" data-testid="creator-recovery-required">
+          <strong>idle 未通过质量门</strong>
+          <span>本次所有付费资产都已保留。你可以导出资产恢复包检查坏资产，或重新生成身份候选后再试。</span>
+          {progress.qualityFirst.recovery?.reason ? <span>失败原因：{progress.qualityFirst.recovery.reason}</span> : null}
+          <button
+            type="button"
+            className="primary"
+            disabled={running || !progress.qualityFirst.recovery?.exportable}
+            onClick={onExportCreatorRecoveryBundle}
+            data-testid="creator-export-recovery"
+          >
+            验证并导出资产恢复包
+          </button>
+        </div>
+      ) : null}
       {progressActions.length ? (
         <ActionMatrix
           actions={progressActions}
@@ -712,6 +826,8 @@ export function CreatorPane({
   onRestoreClickAction,
   onRetryFullPetAction,
   onRetryFullPetIdentity,
+  onAcceptCreatorIdentity,
+  onExportCreatorRecoveryBundle,
   onImportAvailableActions,
   onOpenCreatorStudioDetails,
   onCopyText,
@@ -932,6 +1048,8 @@ export function CreatorPane({
           onRestoreClickAction={onRestoreClickAction}
           onRetryFullPetAction={onRetryFullPetAction}
           onRetryFullPetIdentity={onRetryFullPetIdentity}
+          onAcceptCreatorIdentity={onAcceptCreatorIdentity}
+          onExportCreatorRecoveryBundle={onExportCreatorRecoveryBundle}
           onImportAvailableActions={onImportAvailableActions}
           onOpenCreatorStudioDetails={onOpenCreatorStudioDetails}
           onCopyText={onCopyText}

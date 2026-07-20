@@ -1683,6 +1683,167 @@ test('creator workflow diagnostics expose failed assets and prompt metadata with
   assert.equal(JSON.stringify(diagnostics).includes(runDir), false)
 })
 
+test('creator workflow diagnostics expose renderer-safe quality-first identity candidates', () => {
+  const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-quality-first-review-'))
+  const runId = 'run-quality-first-review'
+  const runDir = path.join(pluginDataDir, 'runs', runId)
+  const candidateDir = path.join(runDir, 'candidates', 'canonical', 'canonical-1', 'raw')
+  fs.mkdirSync(candidateDir, { recursive: true })
+  fs.writeFileSync(path.join(candidateDir, 'candidate.png'), 'png')
+  fs.writeFileSync(path.join(runDir, 'run.json'), `${JSON.stringify({
+    runId,
+    status: 'awaiting_identity_review',
+    currentStep: 'identity-review',
+    reviewStatus: 'identity-pending',
+    generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1' },
+    qualityFirst: {
+      version: 1,
+      phase: 'awaiting_identity_review',
+      planHash: 'p'.repeat(64),
+      nextAction: 'accept-canonical-identity',
+      canonicalCandidates: [{
+        candidateId: 'canonical-1',
+        eligible: true,
+        sha256: 'a'.repeat(64),
+        score: 94,
+        model: 'gpt-image-2',
+        relativePath: `runs/${runId}/candidates/canonical/canonical-1/raw/candidate.png`,
+        promptRelativePath: `runs/${runId}/prompts/quality-first/canonical-1.txt`,
+        failureCodes: []
+      }, {
+        candidateId: 'canonical-2',
+        eligible: false,
+        sha256: 'b'.repeat(64),
+        score: 58,
+        relativePath: '/Users/private/should-not-leak.png',
+        failureCodes: ['canonical-edge-touch']
+      }]
+    }
+  }, null, 2)}\n`)
+
+  const diagnostics = __testInternals.readWorkflowDiagnostics({ pluginDataDir, runId })
+  assert.equal(diagnostics.progress.phase, 'awaiting_identity_review')
+  assert.equal(diagnostics.progress.qualityFirst.phase, 'awaiting_identity_review')
+  assert.equal(diagnostics.progress.qualityFirst.nextAction, 'accept-canonical-identity')
+  assert.equal(diagnostics.progress.qualityFirst.identityReview.candidates.length, 2)
+  assert.equal(diagnostics.progress.qualityFirst.identityReview.candidates[0].previewable, true)
+  assert.equal(diagnostics.progress.qualityFirst.identityReview.candidates[1].relativePath, '')
+  assert.doesNotMatch(JSON.stringify(diagnostics), /\/Users\/private/)
+})
+
+test('creator workflow accepts an eligible canonical identity through an exact hash-bound command', async () => {
+  const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-accept-identity-'))
+  const runId = 'run-accept-identity'
+  const runDir = path.join(pluginDataDir, 'runs', runId)
+  fs.mkdirSync(runDir, { recursive: true })
+  fs.writeFileSync(path.join(runDir, 'run.json'), `${JSON.stringify({
+    runId,
+    status: 'awaiting_identity_review',
+    currentStep: 'identity-review',
+    generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1' },
+    qualityFirst: {
+      phase: 'awaiting_identity_review',
+      canonicalCandidates: [{ candidateId: 'canonical-1', eligible: true, sha256: 'a'.repeat(64) }]
+    }
+  }, null, 2)}\n`)
+  const calls = []
+  const service = createCreatorWorkflowService({
+    pluginService: {
+      listPlugins: () => [createPluginView({ commands: [{ id: 'accept-identity' }] })],
+      getPluginCreatorDataDir: () => pluginDataDir,
+      runCommand: async (_pluginId, commandId, payload) => {
+        calls.push({ commandId, payload })
+        return {
+          commandId,
+          result: {
+            message: 'identity accepted',
+            run: {
+              runId,
+              status: 'ready_for_review',
+              currentStep: 'review',
+              generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1' },
+              qualityFirst: { phase: 'ready_for_review', actionResults: {} }
+            }
+          }
+        }
+      }
+    },
+    imageGenerationModelService: {
+      checkHealth: async () => ({ ok: true, code: 'ok', message: 'ready' }),
+      getConfig: () => ({ provider: 'openai-compatible', model: 'gpt-image-2' })
+    },
+    actionService: {
+      getConfig: () => ({ defaultAction: 'idle', clickAction: 'waving', actions: [] }),
+      acceptTriggerProposalItem: () => ({ animations: {} })
+    },
+    creatorReferenceService: {
+      getReference: () => null,
+      bindReference: async () => ({ replaced: false, reference: null }),
+      copyReferenceIntoRun: () => ({})
+    }
+  })
+
+  const result = await service.acceptCreatorIdentity({
+    runId,
+    candidateId: 'canonical-1',
+    sha256: 'a'.repeat(64)
+  })
+  assert.equal(result.state, 'review-required')
+  assert.equal(result.code, 'identity_accepted_review_required')
+  assert.deepEqual(calls, [{
+    commandId: 'accept-identity',
+    payload: { runId, candidateId: 'canonical-1', sha256: 'a'.repeat(64) }
+  }])
+})
+
+test('creator workflow exports only a hash-verified recovery bundle inside the run directory', async () => {
+  const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-recovery-export-'))
+  const runId = 'run-recovery-export'
+  const recoveryDir = path.join(pluginDataDir, 'runs', runId, 'recovery')
+  fs.mkdirSync(recoveryDir, { recursive: true })
+  const bundlePath = path.join(recoveryDir, 'recovery.json')
+  fs.writeFileSync(bundlePath, '{"version":1}\n')
+  const sha256 = require('node:crypto').createHash('sha256').update(fs.readFileSync(bundlePath)).digest('hex')
+  fs.writeFileSync(path.join(pluginDataDir, 'runs', runId, 'run.json'), `${JSON.stringify({
+    runId,
+    status: 'recovery-required',
+    qualityFirst: {
+      phase: 'recovery-required',
+      recovery: {
+        relativePath: `runs/${runId}/recovery/recovery.json`,
+        sha256
+      }
+    }
+  }, null, 2)}\n`)
+  const service = createCreatorWorkflowService({
+    pluginService: {
+      listPlugins: () => [createPluginView()],
+      getPluginCreatorDataDir: () => pluginDataDir,
+      runCommand: async () => { throw new Error('not expected') }
+    },
+    imageGenerationModelService: {
+      checkHealth: async () => ({ ok: true }),
+      getConfig: () => ({ provider: 'openai-compatible', model: 'gpt-image-2' })
+    },
+    actionService: {
+      getConfig: () => ({ defaultAction: 'idle', clickAction: 'waving', actions: [] }),
+      acceptTriggerProposalItem: () => ({ animations: {} })
+    },
+    creatorReferenceService: {
+      getReference: () => null,
+      bindReference: async () => ({ replaced: false, reference: null }),
+      copyReferenceIntoRun: () => ({})
+    }
+  })
+
+  const result = await service.exportRecoveryBundle({ runId })
+  assert.equal(result.ok, true)
+  assert.equal(result.relativePath, `runs/${runId}/recovery/recovery.json`)
+  assert.equal(result.sha256, sha256)
+  assert.equal(Object.hasOwn(result, 'path'), false)
+  assert.doesNotMatch(JSON.stringify(result), new RegExp(pluginDataDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+})
+
 test('creator workflow service imports available actions as partial pack when idle failed frames are absent', async () => {
   const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-partial-import-'))
   const runId = 'run-partial-import'

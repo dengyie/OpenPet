@@ -13,12 +13,15 @@ const vectorDistance = (left, right) => {
   if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length || !left.length) return Number.POSITIVE_INFINITY
   return Math.sqrt(left.reduce((sum, value, index) => sum + ((Number(value) - Number(right[index])) ** 2), 0) / left.length)
 }
-const isDuplicate = (left, right, thresholds = {}) => {
+const areSpriteCandidatesDuplicates = (left, right, thresholds = {}) => {
   const perceptual = hammingDistance(left?.descriptors?.perceptualHash, right?.descriptors?.perceptualHash)
   if (perceptual > (Number(thresholds.perceptualHashDistance) || 4)) return false
   const identity = vectorDistance(left?.descriptors?.identityDescriptor, right?.descriptors?.identityDescriptor)
   const alpha = vectorDistance(left?.descriptors?.alphaMaskDescriptor, right?.descriptors?.alphaMaskDescriptor)
-  return identity <= (Number(thresholds.identityDescriptorDistance) || 0.08) && alpha <= (Number(thresholds.alphaMaskDistance) || 0.08)
+  const meanColor = vectorDistance(left?.descriptors?.meanColorDescriptor, right?.descriptors?.meanColorDescriptor)
+  return identity <= (Number(thresholds.identityDescriptorDistance) || 0.08) &&
+    alpha <= (Number(thresholds.alphaMaskDistance) || 0.08) &&
+    (!Number.isFinite(meanColor) || meanColor <= (Number(thresholds.meanColorDistance) || 0.08))
 }
 const hasDescriptors = (candidate) => Boolean(
   candidate?.descriptors?.perceptualHash &&
@@ -63,7 +66,7 @@ const runQualityFirstAction = async ({
       allCandidates.push(candidate)
       return candidate
     }
-    const duplicateOf = distinctCandidates.find((existing) => isDuplicate(existing, candidate, thresholds))
+    const duplicateOf = distinctCandidates.find((existing) => areSpriteCandidatesDuplicates(existing, candidate, thresholds))
     if (duplicateOf) {
       candidate.duplicateOfCandidateId = duplicateOf.candidateId
       allCandidates.push(candidate)
@@ -141,5 +144,6 @@ const runQualityFirstAction = async ({
 }
 
 module.exports = {
+  areSpriteCandidatesDuplicates,
   runQualityFirstAction
 }

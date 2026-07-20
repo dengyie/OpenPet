@@ -7,6 +7,7 @@ const VALID_TRIGGER_TYPES = new Set(['manual', 'click', 'random', 'state', 'even
 const HOST_RULE_TRIGGER_TYPES = new Set(['random', 'state', 'event'])
 const VALID_ANIMATION_TYPES = new Set(['stationary_loop', 'locomotion_loop', 'vertical_bounce', 'pose_transition', 'reaction', 'emote'])
 const VALID_SYNTHESIS_MODES = new Set(['canonical-frame'])
+const VALID_PIPELINES = new Set(['legacy-keyframe-v1', 'quality-first-v1'])
 const SAFE_ACTION_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/
 const MAX_ACTION_FRAME_COUNT = 32
 const MAX_TRIGGER_SPEC_TEXT_LENGTH = 240
@@ -154,8 +155,11 @@ const normalizeGenerationTask = (task = {}) => {
         ))
       : []
   if (actions.length === 0) throw new Error('Creator Studio generation task requires at least one action')
+  const pipeline = String(task.pipeline || 'legacy-keyframe-v1')
+  if (!VALID_PIPELINES.has(pipeline)) throw new Error(`Creator Studio generation pipeline is invalid: ${pipeline}`)
   return {
     mode,
+    pipeline,
     targetPet,
     styleSource,
     characterBrief: String(task.characterBrief || (styleSource === 'currentPet' ? 'Keep the current pet style, proportions, palette, and line work consistent.' : '')).trim(),

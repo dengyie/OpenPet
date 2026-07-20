@@ -10,6 +10,7 @@ const {
   writeRun
 } = require('./run-store')
 const {
+  createQualityFirstHostRuntime,
   generateViaHostModelBridge,
   regenerateFullPetActionsViaHostModelBridge
 } = require('./host-model-bridge')
@@ -561,6 +562,99 @@ const runFullPetIdentityRepair = async ({
   }
 }
 
+const runQualityFirstIdentityStage = async ({
+  dataDir,
+  runId,
+  orchestrator,
+  plan,
+  sourceReference = null,
+  now = () => new Date().toISOString()
+} = {}) => {
+  if (!orchestrator?.start) throw new Error('Quality-first identity stage requires an orchestrator')
+  const run = readRun({ dataDir, runId })
+  assertTaskReadyForGeneration(run)
+  if (run.generationTask?.mode !== 'full-pet') throw new Error('Quality-first identity stage requires a full-pet run')
+  const startedAt = now()
+  const lease = createGenerationLease({ commandId: 'quality-first-identity', startedAt, leaseId: `${runId}-quality-first-identity-${startedAt}` })
+  const generatingRun = {
+    ...run,
+    status: 'generating',
+    currentStep: 'canonical-candidates',
+    updatedAt: startedAt,
+    generationLease: lease,
+    backendStatus: createBackendStatus({ backend: PROVIDER_BACKEND, state: 'running', message: 'Generating canonical identity candidates', updatedAt: startedAt }),
+    error: ''
+  }
+  writeRun({ dataDir, run: generatingRun })
+  appendRunLog({ dataDir, runId, event: 'quality-first.identity.started', message: 'Canonical identity candidate generation started', now: () => startedAt })
+  const stopLeaseHeartbeat = createGenerationLeaseHeartbeat({ dataDir, runId, leaseId: lease.leaseId, now })
+  try {
+    const next = await orchestrator.start({ run: generatingRun, plan, sourceReference })
+    const { generationLease: _generationLease, ...pendingRun } = next
+    const persisted = {
+      ...pendingRun,
+      backendStatus: createBackendStatus({ backend: PROVIDER_BACKEND, state: 'awaiting-review', message: 'Canonical identity review required', updatedAt: now() })
+    }
+    writeRun({ dataDir, run: persisted })
+    appendRunLog({ dataDir, runId, event: 'quality-first.identity.awaiting-review', message: 'Canonical identity candidates require human selection', now })
+    return { outputDir: '', bundlePath: '', sha256: '', run: persisted }
+  } catch (error) {
+    updateRunStatus({ dataDir, runId, status: 'failed', patch: { generationLease: undefined, error: error.message, backendStatus: createBackendStatus({ backend: PROVIDER_BACKEND, state: 'failed', message: error.message, updatedAt: now() }) }, now })
+    throw error
+  } finally {
+    stopLeaseHeartbeat()
+  }
+}
+
+const acceptQualityFirstCanonicalIdentity = async ({
+  dataDir,
+  runId,
+  candidateId,
+  expectedHash,
+  orchestrator,
+  plan,
+  actions = [],
+  now = () => new Date().toISOString()
+} = {}) => {
+  if (!orchestrator?.acceptCanonicalIdentity) throw new Error('Quality-first identity acceptance requires an orchestrator')
+  const run = readRun({ dataDir, runId })
+  if (run.status !== 'awaiting_identity_review' || run.qualityFirst?.phase !== 'awaiting_identity_review') {
+    throw new Error('Creator Studio canonical identity review is not pending')
+  }
+  const candidate = run.qualityFirst.canonicalCandidates?.find((entry) => entry.candidateId === String(candidateId || ''))
+  if (!candidate || candidate.eligible !== true || candidate.sha256 !== String(expectedHash || '')) {
+    throw new Error('Creator Studio canonical identity candidate or hash is invalid')
+  }
+  const startedAt = now()
+  const lease = createGenerationLease({ commandId: 'accept-identity', startedAt, leaseId: `${runId}-accept-identity-${startedAt}` })
+  const generatingRun = {
+    ...run,
+    status: 'generating',
+    currentStep: 'idle',
+    updatedAt: startedAt,
+    generationLease: lease,
+    backendStatus: createBackendStatus({ backend: PROVIDER_BACKEND, state: 'running', message: 'Canonical identity accepted; generating actions', updatedAt: startedAt })
+  }
+  writeRun({ dataDir, run: generatingRun })
+  const stopLeaseHeartbeat = createGenerationLeaseHeartbeat({ dataDir, runId, leaseId: lease.leaseId, now })
+  try {
+    const next = await orchestrator.acceptCanonicalIdentity({ run: generatingRun, candidateId, sha256: expectedHash, plan, actions })
+    const { generationLease: _generationLease, ...completedRun } = next
+    const persisted = {
+      ...completedRun,
+      backendStatus: createBackendStatus({ backend: PROVIDER_BACKEND, state: completedRun.status === 'ready_for_review' ? 'ready' : 'recovery-required', message: completedRun.status === 'ready_for_review' ? 'Quality-first actions ready for review' : 'Asset recovery required', updatedAt: now() })
+    }
+    writeRun({ dataDir, run: persisted })
+    appendRunLog({ dataDir, runId, event: 'quality-first.identity.accepted', message: 'Canonical identity accepted and dependent action stage completed', data: { candidateId: String(candidateId) }, now })
+    return { outputDir: '', bundlePath: '', sha256: '', run: persisted }
+  } catch (error) {
+    updateRunStatus({ dataDir, runId, status: 'failed', patch: { generationLease: undefined, error: error.message, backendStatus: createBackendStatus({ backend: PROVIDER_BACKEND, state: 'failed', message: error.message, updatedAt: now() }) }, now })
+    throw error
+  } finally {
+    stopLeaseHeartbeat()
+  }
+}
+
 const runGenerationStep = async ({ dataDir, runId, now = () => new Date().toISOString() }) => {
   const run = readRun({ dataDir, runId })
   const backend = normalizeCreatorBackend(run.backend || run.input?.backend, FIXTURE_BACKEND)
@@ -569,6 +663,17 @@ const runGenerationStep = async ({ dataDir, runId, now = () => new Date().toISOS
     error.statusCode = 409
     error.run = run
     throw error
+  }
+  if (backend === PROVIDER_BACKEND && run.generationTask?.mode === 'full-pet' && run.generationTask?.pipeline === 'quality-first-v1') {
+    const runtime = await createQualityFirstHostRuntime({ dataDir, run })
+    return runQualityFirstIdentityStage({
+      dataDir,
+      runId,
+      orchestrator: runtime.orchestrator,
+      plan: runtime.plan,
+      sourceReference: runtime.sourceReference,
+      now
+    })
   }
   const startedAt = now()
   const generationLease = createGenerationLease({
@@ -706,9 +811,11 @@ const runGenerationStep = async ({ dataDir, runId, now = () => new Date().toISOS
 }
 
 module.exports = {
+  acceptQualityFirstCanonicalIdentity,
   buildHostGeneratedActionOutput,
   persistGeneratedImageAttempt,
   runFullPetActionRepair,
   runFullPetIdentityRepair,
-  runGenerationStep
+  runGenerationStep,
+  runQualityFirstIdentityStage
 }

@@ -464,7 +464,8 @@ const assertStorageKey = (key) => {
   }
 }
 
-const createPluginService = ({ settingsService, petService, actionService, actionImportService, petPackService, aiService, aiTalkService, imageGenerationModelService, secretService = null, fetchImpl = globalThis.fetch, resolveAddress, pluginNetworkConnect = connectPinnedHttps, pluginNetworkTimeoutMs = 10000, serviceHealthTimeoutMs, healthCheckTimeoutMs = serviceHealthTimeoutMs ?? PLUGIN_SERVICE_HEALTH_TIMEOUT_MS, serviceStopGracePeriodMs = PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS, commandProcessTimeoutMs = LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, openExternal = async () => { throw new Error('Dashboard opener is not available') }, selectCreatorAssetFrameFolder = async () => { throw new Error('Creator asset folder picker is not available') }, onPetPackActivated = () => {}, spawnServiceProcess = spawn, spawnSetupProcess = spawnServiceProcess, spawnCommandProcess = spawnServiceProcess, killServiceProcess = process.kill, signalServiceProcessTree = defaultServiceProcessTree.signalServiceProcessTree, setServiceHealthTimer = setTimeout, clearServiceHealthTimer = clearTimeout, probeAgentAwarenessActivity = defaultProbeAgentAwarenessActivity, setAgentAwarenessAutostartTimer = setInterval, clearAgentAwarenessAutostartTimer = clearInterval, agentAwarenessAutostartIntervalMs = DEFAULT_AGENT_AWARENESS_AUTOSTART_INTERVAL_MS, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
+const createPluginService = ({ settingsService, petService, actionService, actionImportService, petPackService, aiService, imageGenerationModelService, hatchPetAgentService = null, fetchImpl = globalThis.fetch, resolveAddress, serviceHealthTimeoutMs, healthCheckTimeoutMs = serviceHealthTimeoutMs ?? PLUGIN_SERVICE_HEALTH_TIMEOUT_MS, serviceStopGracePeriodMs = PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS, commandProcessTimeoutMs = LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, openExternal = async () => { throw new Error('Dashboard opener is not available') }, selectCreatorAssetFrameFolder = async () => { throw new Error('Creator asset folder picker is not available') }, onPetPackActivated = () => {}, spawnServiceProcess = spawn, spawnSetupProcess = spawnServiceProcess, spawnCommandProcess = spawnServiceProcess, killServiceProcess = process.kill, signalServiceProcessTree = defaultServiceProcessTree.signalServiceProcessTree, setServiceHealthTimer = setTimeout, clearServiceHealthTimer = clearTimeout, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
+  let effectiveHatchPetAgentService = hatchPetAgentService
   if (!settingsService) throw new Error('settingsService is required')
   if (!petService) throw new Error('petService is required')
   const commandBridgeRuntimes = new Map()
@@ -937,6 +938,40 @@ const createPluginService = ({ settingsService, petService, actionService, actio
             ...(payload.output || {}),
             dataDir: ensurePluginCreatorDirs(plugin.manifest).dataDir
           }
+        })
+      }
+    },
+    creatorHatchPetPlan: async (payload = {}) => {
+      assertPermission(plugin.manifest, 'model:image-generate')
+      if (!effectiveHatchPetAgentService?.planSprite) throw new Error('Creator hatch-pet planning is not available')
+      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.hatch-pet plan invoked' })
+      return {
+        ok: true,
+        result: await effectiveHatchPetAgentService.planSprite({
+          runId: String(payload.runId || ''),
+          userIntent: String(payload.userIntent || '')
+        })
+      }
+    },
+    creatorHatchPetEvaluate: async (payload = {}) => {
+      assertPermission(plugin.manifest, 'model:image-generate')
+      if (!effectiveHatchPetAgentService?.evaluateSprite) throw new Error('Creator hatch-pet evaluation is not available')
+      const board = payload.board && typeof payload.board === 'object' ? payload.board : {}
+      const boardPath = resolvePluginDataPath(plugin.manifest, board.relativePath)
+      if (!fs.statSync(boardPath).isFile()) throw new Error('Creator hatch-pet review board must be a file')
+      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.hatch-pet evaluate invoked' })
+      return {
+        ok: true,
+        result: await effectiveHatchPetAgentService.evaluateSprite({
+          runId: String(payload.runId || ''),
+          scope: String(payload.scope || ''),
+          board: {
+            path: boardPath,
+            relativePath: String(board.relativePath || ''),
+            sha256: String(board.sha256 || ''),
+            regions: Array.isArray(board.regions) ? board.regions : []
+          },
+          qa: payload.qa && typeof payload.qa === 'object' ? payload.qa : {}
         })
       }
     }
@@ -2330,7 +2365,9 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     return ensurePluginCreatorDirs(plugin.manifest).dataDir
   }
 
-  ensureAgentAwarenessAutostartMonitor()
+  const setHatchPetAgentService = (service) => {
+    effectiveHatchPetAgentService = service || null
+  }
 
   return {
     listPlugins,
@@ -2354,9 +2391,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     pollAgentAwarenessAutostart,
     getPluginDefinition,
     getPluginCreatorDataDir,
-    getImGatewaySecretState,
-    saveImGatewayTelegramBotToken,
-    clearImGatewayTelegramBotToken
+    setHatchPetAgentService
   }
 }
 

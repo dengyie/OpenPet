@@ -1,5 +1,17 @@
 const { callBridge } = require('./bridge-client')
 const { FULL_PET_WORKFLOW_MAX_DURATION_MS } = require('./full-pet-workflow-contract')
+const { areSpriteCandidatesDuplicates, runQualityFirstAction } = require('./quality-first-action-runner')
+const { archiveCandidateRevision, writeCandidateRecord } = require('./sprite-candidate-store')
+const { createQualityFirstFullPetOrchestrator } = require('./quality-first-full-pet-orchestrator')
+const { createProviderImageTask } = require('./provider-image-task')
+const { compileProviderImagePrompt } = require('./provider-image-prompt-compiler')
+const { createSpriteAssetPlan } = require('./sprite-asset-plan')
+const { createCharacterAnchorGrid } = require('./character-anchor-grid')
+const { createActionReferenceBoard } = require('./action-reference-board')
+const { processSpriteSheet } = require('./sprite-frame-processor')
+const { createCharacterScaleProfile, measureBodyMask } = require('./character-scale-profile')
+const { analyzeSpriteCandidate } = require('./sprite-candidate-qa')
+const { createSpriteImageDescriptors } = require('./sprite-image-descriptor')
 const {
   buildActionSpriteReferenceBoard,
   buildAnchorReferenceBoard
@@ -36,7 +48,7 @@ const {
   removeOpaqueEdgeBackground,
   sanitizeNearTransparentPixels
 } = require('./edge-background-cutout')
-const { validateGeneratedImageOutput } = require('./real-atlas-builder')
+const { buildRealAtlasFromGeneratedImage, validateGeneratedImageOutput } = require('./real-atlas-builder')
 const { loadPetGenerationGovernance } = require('./pet-generation-governance')
 const {
   createQualityProfileEvidence,
@@ -418,6 +430,32 @@ const readHostModelSettings = async () => {
   } catch (_) {
     return {}
   }
+}
+
+const requestHatchPetSpritePlan = async ({ runId, userIntent, budgetLedger = null } = {}) => {
+  const response = await callBridge('/creator/hatch-pet/plan', {
+    runId: String(runId || ''),
+    userIntent: String(userIntent || ''),
+    ...(budgetLedger ? { budgetLedger } : {})
+  })
+  if (!response?.result?.proposal) throw new Error('Hatch-pet sprite planner returned no proposal')
+  return response.result
+}
+
+const requestHatchPetSpriteEvaluation = async ({ runId, scope, board, qa, budgetLedger = null } = {}) => {
+  const response = await callBridge('/creator/hatch-pet/evaluate', {
+    runId: String(runId || ''),
+    scope: String(scope || ''),
+    board: {
+      relativePath: String(board?.relativePath || ''),
+      sha256: String(board?.sha256 || ''),
+      regions: Array.isArray(board?.regions) ? board.regions : []
+    },
+    qa: qa && typeof qa === 'object' ? qa : {},
+    ...(budgetLedger ? { budgetLedger } : {})
+  })
+  if (!response?.result?.gate) throw new Error('Hatch-pet sprite evaluator returned no gate')
+  return response.result
 }
 
 const createDefaultConditioningSummary = ({ model, referenceImages = [], promptCompiler = null }) => {
@@ -4371,6 +4409,444 @@ const hasAnchorEligibleRunReference = (run = {}) => {
   return Number(referenceImage?.width) > 0 && Number(referenceImage?.height) > 0
 }
 
+const CANONICAL_DIVERSITY_PROFILES = Object.freeze([
+  'identity-faithful-balanced-v1',
+  'silhouette-readability-v1',
+  'small-scale-detail-v1'
+])
+
+const createQualityFirstRecoveryBundle = async ({ dataDir, run, actionResults = {}, reason = 'idle_generation_failed' } = {}) => {
+  const root = path.resolve(String(dataDir || ''))
+  const runId = String(run?.runId || '').trim()
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(runId)) throw new Error('Quality-first recovery runId is invalid')
+  const runDir = path.resolve(root, 'runs', runId)
+  if (!runDir.startsWith(`${root}${path.sep}`) || !fs.existsSync(runDir)) throw new Error('Quality-first recovery run does not exist')
+  const files = []
+  const visit = (directory) => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const absolutePath = path.join(directory, entry.name)
+      if (entry.isSymbolicLink()) continue
+      if (entry.isDirectory()) {
+        if (path.relative(runDir, absolutePath).split(path.sep)[0] === 'recovery') continue
+        visit(absolutePath)
+        continue
+      }
+      if (!entry.isFile()) continue
+      const relativePath = path.relative(root, absolutePath).split(path.sep).join('/')
+      const stat = fs.statSync(absolutePath)
+      files.push({ relativePath, sha256: sha256File(absolutePath), byteSize: stat.size })
+    }
+  }
+  visit(runDir)
+  files.sort((left, right) => left.relativePath.localeCompare(right.relativePath))
+  const relativePath = `runs/${runId}/recovery/recovery.json`
+  const outputPath = path.resolve(root, relativePath)
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true })
+  const manifest = {
+    version: 1,
+    runId,
+    reason: String(reason || 'idle_generation_failed').slice(0, 160),
+    planHash: String(run?.qualityFirst?.planHash || '').slice(0, 128),
+    createdAt: new Date().toISOString(),
+    importable: false,
+    actionResults,
+    files
+  }
+  const temporaryPath = `${outputPath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  try {
+    fs.writeFileSync(temporaryPath, `${JSON.stringify(manifest, null, 2)}\n`)
+    fs.renameSync(temporaryPath, outputPath)
+  } finally {
+    try {
+      if (fs.existsSync(temporaryPath)) fs.unlinkSync(temporaryPath)
+    } catch (_) {}
+  }
+  return {
+    reason: manifest.reason,
+    relativePath,
+    sha256: sha256File(outputPath),
+    byteSize: fs.statSync(outputPath).size,
+    assetCount: files.length
+  }
+}
+
+const generateCanonicalCandidatePool = async ({
+  generateCandidate,
+  persistCandidate = () => {},
+  maxDispatches = 4
+} = {}) => {
+  if (typeof generateCandidate !== 'function') throw new Error('Canonical candidate pool requires a generation callback')
+  const candidates = []
+  const distinctCandidates = []
+  const limit = Math.min(4, Math.max(3, Number(maxDispatches) || 4))
+  for (let dispatchIndex = 1; dispatchIndex <= limit && distinctCandidates.length < 3; dispatchIndex += 1) {
+    const diversityProfileId = CANONICAL_DIVERSITY_PROFILES[(dispatchIndex - 1) % CANONICAL_DIVERSITY_PROFILES.length]
+    const generated = await generateCandidate({
+      candidateId: `canonical-${dispatchIndex}`,
+      dispatchIndex,
+      diversityProfileId
+    })
+    const sha256 = String(generated?.sha256 || '')
+    const duplicateOf = distinctCandidates.find((candidate) => (
+      candidate.sha256 === sha256 || areSpriteCandidatesDuplicates(candidate, generated, {
+        perceptualHashDistance: 4,
+        identityDescriptorDistance: 0.08,
+        alphaMaskDistance: 0.08,
+        meanColorDistance: 0.08
+      })
+    ))
+    const duplicate = Boolean(duplicateOf)
+    const candidate = {
+      ...generated,
+      candidateId: String(generated?.candidateId || `canonical-${dispatchIndex}`),
+      dispatchIndex,
+      diversityProfileId,
+      eligible: generated?.eligible === true && !duplicate,
+      ...(duplicate ? {
+        duplicateOfCandidateId: duplicateOf.candidateId,
+        duplicateOfSha256: duplicateOf.sha256,
+        failureCodes: [...new Set([...(generated?.failureCodes || []), 'canonical-candidate-duplicate'])]
+      } : {})
+    }
+    candidates.push(candidate)
+    if (candidate.eligible && sha256) distinctCandidates.push(candidate)
+    await persistCandidate(candidate)
+  }
+  return { version: 1, dispatchCount: candidates.length, distinctEligibleCount: distinctCandidates.length, candidates }
+}
+
+const generateSelectedFullPetAction = (options = {}) => runQualityFirstAction(options)
+
+const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null } = {}) => {
+  const settings = await readHostModelSettings()
+  const sourceReference = resolveOriginalReferenceImage({ dataDir, run })
+  if (!isUsableLocalReferenceImage({ dataDir, referenceImage: sourceReference })) {
+    throw createProviderReferenceContractError('reference_image_required', 'Quality-first generation requires one usable local reference image')
+  }
+  const planResult = planOverride ? { proposal: null, budgetLedger: null } : await requestHatchPetSpritePlan({
+    runId: run.runId,
+    userIntent: run.input?.originalPrompt || run.input?.prompt || ''
+  })
+  const plan = planOverride || createSpriteAssetPlan({
+    version: 1,
+    revision: 1,
+    character: { assetClass: planResult.proposal.assetClass },
+    actions: planResult.proposal.actions,
+    qualityProfile: { id: 'pet-generation-default-v2', sourceDatasetId: '' }
+  })
+  const planRelativePath = `runs/${run.runId}/sprite-plan.json`
+  writeJsonFile(path.join(dataDir, planRelativePath), plan)
+  const qualityProfile = require('./pet-generation-quality-profile').getQualityFirstQualityProfile()
+  const canonicalMetrics = async (candidate) => {
+    const decoded = await sharp(candidate.path).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+    return measureBodyMask({ data: decoded.data, width: decoded.info.width, height: decoded.info.height, characterClass: plan.character.assetClass })
+  }
+  const generateCanonicalCandidate = async ({ candidateId, diversityProfileId }) => {
+    const task = createProviderImageTask({
+      taskType: 'character-image',
+      stage: 'identity',
+      canvas: { width: 1024, height: 1024 },
+      referenceRole: sourceReference.role,
+      subject: { count: 1, framing: 'full-body', targetOccupancyPercent: 72, safePaddingPercent: 12, rootAnchor: 'lower-center' },
+      strategyId: diversityProfileId,
+      requestedChanges: diversityProfileId === 'silhouette-readability-v1'
+        ? ['preserve the exact source identity while keeping the full-body silhouette readable at small runtime size']
+        : diversityProfileId === 'small-scale-detail-v1'
+          ? ['preserve the source-authentic high-value markings and distinguishing details at small runtime size']
+          : ['preserve the exact source identity and rendering style with balanced full-body framing']
+    })
+    const compiled = compileProviderImagePrompt({ task })
+    const promptRelativePath = `runs/${run.runId}/prompts/quality-first/${candidateId}.txt`
+    fs.mkdirSync(path.dirname(path.join(dataDir, promptRelativePath)), { recursive: true })
+    fs.writeFileSync(path.join(dataDir, promptRelativePath), `${compiled.text}\n`)
+    try {
+      const generated = await generateWithModelFallback({
+        settings,
+        preferredModel: String(settings.model || ''),
+        prompt: compiled.text,
+        promptCompiler: { version: compiled.version, taskType: compiled.taskType },
+        constraints: { width: 1024, height: 1024, transparent: true },
+        requestedTimeoutMs: Math.max(Number(settings.timeoutMs) || 0, CREATOR_PROVIDER_MIN_TIMEOUT_MS),
+        referenceImages: [sourceReference],
+        runId: run.runId,
+        dataRelativeDir: `runs/${run.runId}/candidates/canonical/${candidateId}/raw`
+      })
+      const outputs = Array.isArray(generated.response?.result?.outputs) ? generated.response.result.outputs : []
+      if (outputs.length !== 1) throw new Error('canonical candidate requires exactly one Provider output')
+      const output = outputs[0]
+      const outputPath = path.join(dataDir, output.dataRelativePath)
+      const cutout = await prepareGeneratedKeyframeOutput(outputPath)
+      const metrics = await readImageMaskMetrics(outputPath)
+      const eligible = cutout.safe && metrics.visiblePixels > 0 && metrics.edgeRatio === 0 && metrics.minPaddingRatio >= 0.05
+      const sha256 = sha256File(outputPath)
+      const descriptors = await createSpriteImageDescriptors({ imagePath: outputPath })
+      return {
+        candidateId,
+        sha256,
+        path: outputPath,
+        relativePath: output.dataRelativePath,
+        promptRelativePath,
+        model: generated.selectedModel,
+        eligible,
+        score: eligible ? Math.round((1 - metrics.centerOffsetRatio) * 100) : 0,
+        canonicalMetrics: await canonicalMetrics({ path: outputPath }),
+        descriptors,
+        artifacts: [{ role: 'raw-canonical', path: outputPath, sha256 }],
+        provider: generated.response?.provider || settings.provider,
+        modelAttempts: generated.attempts,
+        failureCodes: eligible ? [] : [cutout.failureCondition || 'canonical-technical-qa-failed']
+      }
+    } catch (error) {
+      return {
+        candidateId,
+        sha256: '',
+        eligible: false,
+        score: 0,
+        promptRelativePath,
+        descriptors: { perceptualHash: candidateId, identityDescriptor: [0], alphaMaskDescriptor: [0] },
+        failureCodes: [String(error?.message || 'canonical-generation-failed').slice(0, 160)]
+      }
+    }
+  }
+  const persistCanonicalCandidate = async (candidate) => {
+    if (!candidate.path) return
+    const record = writeCandidateRecord({
+      dataDir,
+      runId: run.runId,
+      scope: 'canonical',
+      candidate: { ...candidate, artifacts: [{ role: 'raw-canonical', path: candidate.path, sha256: candidate.sha256 }] }
+    })
+    candidate.candidateRecordRelativePath = record.relativePath
+  }
+  const canonicalPool = async () => {
+    const pool = await generateCanonicalCandidatePool({
+      generateCandidate: generateCanonicalCandidate,
+      persistCandidate: persistCanonicalCandidate
+    })
+    const eligible = pool.candidates.filter((candidate) => candidate.eligible === true)
+    if (eligible.length !== 3) return pool
+    const evaluatorBoardPath = path.join(dataDir, `runs/${run.runId}/evaluations/canonical-comparison-board.png`)
+    const board = await require('../../../../src/main/services/hatch-pet-sprite-review-board').createCanonicalEvaluatorBoard({
+      sourcePath: sourceReference.path,
+      candidates: eligible,
+      outputPath: evaluatorBoardPath
+    })
+    const evaluation = await requestHatchPetSpriteEvaluation({
+      runId: run.runId,
+      scope: 'canonical-comparison',
+      board: {
+        relativePath: path.relative(dataDir, board.path).replace(/\\/g, '/'),
+        sha256: board.sha256,
+        regions: board.regions
+      },
+      qa: { ok: true, failures: [], metrics: { distinctEligibleCount: eligible.length } }
+    })
+    for (const candidate of pool.candidates) {
+      if (!candidate.eligible) continue
+      const candidateEvaluation = evaluation.evaluation?.candidates?.find((entry) => entry.candidateId === candidate.candidateId)
+      const candidateGate = evaluation.gate?.candidateGates?.[candidate.candidateId]
+      candidate.evaluation = candidateEvaluation || null
+      candidate.gate = candidateGate || { ok: false, outcome: 'cannot-evaluate', failures: ['canonical-comparison-result-missing'] }
+      candidate.eligible = candidate.gate.ok === true
+      candidate.score = Number(candidateEvaluation?.scores?.overall) || 0
+      candidate.failureCodes = [...new Set([...(candidate.failureCodes || []), ...(candidate.gate.failures || [])])]
+      candidate.evaluationEvidenceRelativePath = evaluation.evidenceRelativePath
+      await persistCanonicalCandidate(candidate)
+    }
+    return {
+      ...pool,
+      distinctEligibleCount: pool.candidates.filter((candidate) => candidate.eligible === true).length,
+      evaluationEvidenceRelativePath: evaluation.evidenceRelativePath,
+      evaluatorBoardRelativePath: path.relative(dataDir, board.path).replace(/\\/g, '/')
+    }
+  }
+  const runAction = async ({ actionId, canonical, profile }) => {
+    const action = plan.actions.find((entry) => entry.actionId === actionId)
+    if (!action) return { ok: false, actionId, disposition: 'omitted', failureCode: 'action_not_in_plan', candidates: [] }
+    const anchorPath = path.join(dataDir, `runs/${run.runId}/references/${actionId}/anchor-grid.png`)
+    const boardPath = path.join(dataDir, `runs/${run.runId}/references/${actionId}/action-reference-board.png`)
+    const canonicalPath = path.join(dataDir, canonical.relativePath)
+    await createCharacterAnchorGrid({ masterPath: canonicalPath, layout: action.layout, outputPath: anchorPath, dataDir, planRevision: plan.revision })
+    await createActionReferenceBoard({ anchorGridPath: anchorPath, sourceDetailPath: sourceReference.path, outputPath: boardPath, dataDir, metadata: { actionId, planHash: plan.hash } })
+    const boardRelativePath = path.relative(dataDir, boardPath).replace(/\\/g, '/')
+    const runner = await generateSelectedFullPetAction({
+      context: { actionId, duplicateThresholds: { perceptualHashDistance: 4, identityDescriptorDistance: 0.08, alphaMaskDistance: 0.08 } },
+      reserveCreativeDispatch: async () => {},
+      generateCandidate: async ({ candidateId }) => {
+        const task = createProviderImageTask({
+          taskType: 'action-frame-sheet',
+          stage: 'final',
+          canvas: action.layout.canvas,
+          sheet: { frameCount: action.frameCount, columns: action.layout.columns, rows: action.layout.rows, readingOrder: 'left-to-right-top-to-bottom' },
+          referenceRole: 'action-reference-board',
+          subject: { count: 1, framing: 'full-body', targetOccupancyPercent: 72, safePaddingPercent: 10, rootAnchor: 'lower-center' },
+          action: { name: actionId, moment: action.framePlan.join('; '), movingParts: action.movingParts, lockedParts: action.fixedParts, loopIntent: 'closed loop', framePlan: action.framePlan },
+          actionClass: action.actionClass,
+          anchorPolicy: action.anchorPolicy,
+          componentPolicy: action.componentPolicy,
+          effectPolicy: action.effectPolicy,
+          motionPresetId: action.motionPresetId,
+          framePlanVersion: action.framePlanVersion
+        })
+        const compiled = compileProviderImagePrompt({ task })
+        const promptRelativePath = `runs/${run.runId}/prompts/quality-first/${actionId}-${candidateId}.txt`
+        fs.mkdirSync(path.dirname(path.join(dataDir, promptRelativePath)), { recursive: true })
+        fs.writeFileSync(path.join(dataDir, promptRelativePath), `${compiled.text}\n`)
+        const generated = await generateWithModelFallback({ settings, preferredModel: String(settings.model || ''), prompt: compiled.text, promptCompiler: { version: compiled.version, taskType: compiled.taskType }, constraints: { width: 1024, height: 1024, transparent: true }, requestedTimeoutMs: Math.max(Number(settings.timeoutMs) || 0, CREATOR_PROVIDER_MIN_TIMEOUT_MS), referenceImages: [{ ...sourceReference, path: boardPath, relativePath: boardRelativePath, role: 'action-reference-board' }], runId: run.runId, dataRelativeDir: `runs/${run.runId}/candidates/${actionId}/${candidateId}/raw` })
+        const output = generated.response?.result?.outputs?.length === 1 ? generated.response.result.outputs[0] : null
+        if (!output) throw new Error('action candidate requires exactly one Provider output')
+        const rawPath = path.join(dataDir, output.dataRelativePath)
+        const outputDir = path.join(dataDir, `runs/${run.runId}/candidates/${actionId}/${candidateId}/processed`)
+        return { candidateId, rawPath, promptRelativePath, model: generated.selectedModel, sha256: sha256File(rawPath), descriptors: await createSpriteImageDescriptors({ imagePath: rawPath }), actionPolicy: { anchorPolicy: action.anchorPolicy }, outputDir }
+      },
+      processCandidate: async (candidate) => {
+        const processed = await processSpriteSheet({ inputPath: candidate.rawPath, outputDir: candidate.outputDir, layout: action.layout, profile, actionPolicy: { ...action, actionId } })
+        const qa = analyzeSpriteCandidate({ actionId, rawMetrics: processed.metrics, profile, actionPolicy: action })
+        return { ...candidate, processed, qa, artifacts: [{ role: 'raw-sheet', path: candidate.rawPath, sha256: candidate.sha256 }, { role: 'processed-sheet', path: processed.processedSheet.path, sha256: processed.processedSheet.sha256 }, { role: 'contact-sheet', path: processed.contactSheet.path, sha256: processed.contactSheet.sha256 }, { role: 'gif', path: processed.gif.path, sha256: processed.gif.sha256 }] }
+      },
+      evaluateCandidate: async (candidate) => {
+        const evaluatorBoardPath = path.join(candidate.outputDir, 'evaluator-board.png')
+        const board = await require('../../../../src/main/services/hatch-pet-sprite-review-board').createActionEvaluatorBoard({ sourcePath: sourceReference.path, canonicalPath, candidateFrames: candidate.processed.frames, outputPath: evaluatorBoardPath })
+        const evaluation = await requestHatchPetSpriteEvaluation({ runId: run.runId, scope: actionId === 'jumping' ? 'airborne-action' : 'grounded-action', board: { relativePath: path.relative(dataDir, board.path).replace(/\\/g, '/'), sha256: board.sha256, regions: board.regions }, qa: candidate.qa })
+        return { evaluation: evaluation.evaluation, gate: evaluation.gate, evaluationEvidenceRelativePath: evaluation.evidenceRelativePath }
+      },
+      persistCandidate: async (candidate) => {
+        const record = writeCandidateRecord({ dataDir, runId: run.runId, scope: `action-${actionId}`, candidate })
+        candidate.candidateRecordRelativePath = record.relativePath
+      },
+      archiveCandidateRevision: async () => archiveCandidateRevision({ dataDir, runId: run.runId, scope: `action-${actionId}`, reason: 'reason-directed-repair' })
+    })
+    return runner
+  }
+  const persistActionResult = async ({ actionId, result, canonical, profile }) => {
+    const actionPolicy = plan.actions.find((entry) => entry.actionId === actionId)
+    const officialRow = getOfficialFullPetRow(actionId)
+    const selected = result?.selectedCandidate
+    const frames = Array.isArray(selected?.processed?.frames) ? selected.processed.frames : []
+    const safeFrames = frames.filter((frame) => frame?.path && fs.existsSync(frame.path))
+    const packageFrameDir = path.join(dataDir, `runs/${run.runId}/quality-first/frames/${actionId}`)
+    fs.mkdirSync(packageFrameDir, { recursive: true })
+    const packagedFrames = []
+    for (const [index, frame] of safeFrames.entries()) {
+      const metadata = await sharp(frame.path).metadata()
+      const packagedPath = path.join(packageFrameDir, `${String(index + 1).padStart(2, '0')}.png`)
+      if (metadata.width === 192 && metadata.height === 208) {
+        fs.copyFileSync(frame.path, packagedPath)
+      } else {
+        await sharp({ create: { width: 192, height: 208, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+          .composite([{ input: frame.path, left: 32, top: 40 }])
+          .png()
+          .toFile(packagedPath)
+      }
+      packagedFrames.push({
+        path: packagedPath,
+        index: Number.isInteger(frame.index) ? frame.index : index,
+        durationMs: officialRow?.durations?.[index] || actionPolicy?.durations?.[index] || 120
+      })
+    }
+    const checkpointResult = {
+      actionId,
+      ok: result?.ok === true && safeFrames.length > 0,
+      outputCount: safeFrames.length,
+      model: selected?.model || '',
+      failureConditions: result?.ok === true ? [] : [String(result?.failureCode || 'action_quality_gate_failed')],
+      error: result?.ok === true ? '' : String(result?.failureCode || 'action_quality_gate_failed'),
+      bindings: {
+        planHash: String(plan.hash || '').slice(0, 128),
+        canonicalHash: String(canonical?.sha256 || '').slice(0, 128),
+        profileHash: String(profile?.hash || '').slice(0, 128),
+        processorVersion: 1,
+        qualityProfileHash: String(qualityProfile?.hash || '').slice(0, 128)
+      },
+      row: packagedFrames.length > 0 ? {
+        actionId,
+        quality: actionId === 'running-left' ? 'approved-mirror' : 'row-real',
+        frames: packagedFrames.map((frame) => ({
+          path: frame.path,
+          frameIndex: frame.index,
+          durationMs: frame.durationMs
+        }))
+      } : undefined
+    }
+    return writeActionCheckpoint({ dataDir, runId: run.runId, result: checkpointResult })
+  }
+  const finalizePackage = async ({ canonical }) => {
+    const checkpoints = readActionCheckpoints({ dataDir, runId: run.runId })
+    const officialRows = Object.values(checkpoints.actions || {})
+      .filter((entry) => entry?.ok === true && entry.row?.frames?.length)
+      .map((entry) => ({
+        actionId: entry.actionId,
+        quality: entry.row.quality,
+        sourceRelativePath: entry.row.frames[0].relativePath,
+        frames: entry.row.frames.map((frame) => ({
+          path: path.resolve(dataDir, frame.relativePath),
+          index: frame.frameIndex,
+          durationMs: frame.durationMs
+        }))
+      }))
+    if (!officialRows.some((row) => row.actionId === 'idle')) return null
+    const generatedImage = {
+      outputs: [{ dataRelativePath: canonical.relativePath }]
+    }
+    const outputDir = path.join(dataDir, `runs/${run.runId}/quality-first/package`)
+    const qaDir = path.join(dataDir, `runs/${run.runId}/quality-first/qa`)
+    const packaged = await buildRealAtlasFromGeneratedImage({
+      dataDir,
+      generationResult: generatedImage,
+      outputDir,
+      qaDir,
+      officialRows,
+      qualityProfile
+    })
+    return {
+      spritesheetRelativePath: path.relative(dataDir, packaged.spritesheetPath).replace(/\\/g, '/'),
+      atlasQaRelativePath: path.relative(dataDir, packaged.atlasQaPath).replace(/\\/g, '/'),
+      basicActions: packaged.basicActions,
+      spritesheetSha256: sha256File(packaged.spritesheetPath)
+    }
+  }
+  const orchestrator = createQualityFirstFullPetOrchestrator({
+    generateCanonicalCandidatePool: canonicalPool,
+    runQualityFirstAction: runAction,
+    createCharacterScaleProfile: async ({ canonical, idle }) => createCharacterScaleProfile({ canonicalMetrics: canonical.canonicalMetrics, idleMetrics: idle.selectedCandidate?.processed?.metrics?.frames || [], characterClass: plan.character.assetClass, anchorPolicy: 'compact-contact-root-v1', canonicalMasterSha256: canonical.sha256, idleCheckpointSha256: idle.selectedCandidateId, processorVersion: 1 }),
+    mirrorRunningLeft: async ({ source, profile }) => {
+      const selected = source?.selectedCandidate
+      const sourceFrames = Array.isArray(selected?.processed?.frames) ? selected.processed.frames : []
+      const outputDir = path.join(dataDir, `runs/${run.runId}/candidates/running-left/mirror`)
+      fs.mkdirSync(outputDir, { recursive: true })
+      const mirroredFrames = []
+      for (const [index, frame] of sourceFrames.entries()) {
+        const outputPath = path.join(outputDir, `${String(index + 1).padStart(2, '0')}.png`)
+        await sharp(frame.path).flop().png().toFile(outputPath)
+        mirroredFrames.push({ ...frame, path: outputPath, index })
+      }
+      return {
+        ok: mirroredFrames.length === sourceFrames.length && mirroredFrames.length > 0,
+        actionId: 'running-left',
+        mirroredFrom: 'running-right',
+        selectedCandidateId: `${source.selectedCandidateId || 'running-right'}-mirror`,
+        selectedCandidate: {
+          model: selected?.model || '',
+          processed: { frames: mirroredFrames },
+          qa: { ok: mirroredFrames.length > 0, failures: [] },
+          gate: { ok: mirroredFrames.length > 0, outcome: 'pass', failures: [] }
+        },
+        candidates: []
+      }
+    },
+    persistActionResult,
+    finalizePackage,
+    createRecoveryBundle: ({ run: recoveryRun, actionResults, reason }) => createQualityFirstRecoveryBundle({
+      dataDir,
+      run: recoveryRun,
+      actionResults,
+      reason
+    }),
+    now: () => new Date().toISOString()
+  })
+  return { plan, planResult, orchestrator, sourceReference, planRelativePath }
+}
+
 const regenerateFullPetActionsViaHostModelBridge = async ({ dataDir, run, actionIds }) => {
   if (!isFullPetRun(run)) throw new Error('Creator Studio scoped action repair requires a full-pet run')
   if (!process.env.OPENPET_BRIDGE_URL || !process.env.OPENPET_BRIDGE_TOKEN) {
@@ -5005,14 +5481,25 @@ module.exports = {
     isSoftIdentityDescriptorRetryEligible,
     isTransientGatewayHttpFailure,
     prepareGeneratedKeyframeOutput,
+    generateCanonicalCandidatePool,
+    generateSelectedFullPetAction,
+    createQualityFirstHostRuntime,
+    requestHatchPetSpriteEvaluation,
+    requestHatchPetSpritePlan,
     resolveProviderArtReadinessForModels,
     resolveGenerationStageTimeout,
     scoreActionAnchorMetrics,
     SOFT_IDENTITY_DESCRIPTOR_RETRY_BAND
   },
   generateAnchorReferences,
+  generateCanonicalCandidatePool,
+  generateSelectedFullPetAction,
+  createQualityFirstRecoveryBundle,
+  createQualityFirstHostRuntime,
   generateViaHostModelBridge,
   regenerateFullPetActionsViaHostModelBridge,
+  requestHatchPetSpriteEvaluation,
+  requestHatchPetSpritePlan,
   resolveRequiredRunReferenceImages,
   resolveRunReferenceImages,
   FULL_PET_WORKFLOW_MAX_DURATION_MS

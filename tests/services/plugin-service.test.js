@@ -774,6 +774,7 @@ test('declaration-only creator model bridge exposes settings, health, and host-o
     permissions: ['model:image-generate']
   })
   const bridgeCalls = []
+  const hatchPetCalls = []
   const service = createPluginService({
     settingsService: createSettingsService({
       plugins: { enabled: { 'weather-declaration': true } }
@@ -813,6 +814,16 @@ test('declaration-only creator model bridge exposes settings, health, and host-o
             sha256: 'abc123'
           }]
         }
+      }
+    },
+    hatchPetAgentService: {
+      planSprite: async (payload) => {
+        hatchPetCalls.push(['planSprite', payload])
+        return { proposal: { schemaVersion: 1, assetClass: 'grounded-compact-character', actions: [] }, budgetLedger: { usage: { plannerCalls: 1 } } }
+      },
+      evaluateSprite: async (payload) => {
+        hatchPetCalls.push(['evaluateSprite', payload])
+        return { gate: { ok: true, outcome: 'pass' }, evidenceRelativePath: 'runs/demo-run/evaluations/canonical.json', budgetLedger: { usage: { evaluatorCalls: 1 } } }
       }
     },
     officialPlugins: [],
@@ -867,6 +878,22 @@ test('declaration-only creator model bridge exposes settings, health, and host-o
       }]
     }
   })
+  const planResponse = await requestBridge(`${baseUrl}/creator/hatch-pet/plan`, {
+    method: 'POST',
+    token,
+    body: { runId: 'demo-run', userIntent: 'compact pet' }
+  })
+  const evaluateResponse = await requestBridge(`${baseUrl}/creator/hatch-pet/evaluate`, {
+    method: 'POST',
+    token,
+    body: {
+      runId: 'demo-run',
+      scope: 'canonical',
+      board: { relativePath: referenceRelativePath, sha256: 'a'.repeat(64), regions: [{ regionId: 'source' }] },
+      qa: { ok: true, failures: [], metrics: {} },
+      profile: { visual: { confidence: 0 } }
+    }
+  })
 
   child.stdout.write('{"ok":true}\n')
   child.emit('exit', 0, null)
@@ -887,6 +914,10 @@ test('declaration-only creator model bridge exposes settings, health, and host-o
   assert.equal(generateResponse.status, 200)
   assert.equal(generateResponse.body.ok, true)
   assert.equal(generateResponse.body.result.outputs[0].dataRelativePath, 'runs/demo-run/frames/base/0001.png')
+  assert.equal(planResponse.status, 200)
+  assert.equal(planResponse.body.result.proposal.assetClass, 'grounded-compact-character')
+  assert.equal(evaluateResponse.status, 200)
+  assert.equal(evaluateResponse.body.result.gate.outcome, 'pass')
 
   assert.deepEqual(bridgeCalls[0], ['checkHealth', {}])
   assert.equal(bridgeCalls[1][0], 'generateImage')
@@ -897,6 +928,10 @@ test('declaration-only creator model bridge exposes settings, health, and host-o
   assert.equal(Object.hasOwn(bridgeCalls[1][1], 'model'), false)
   assert.equal(bridgeCalls[1][1].output.dataRelativeDir, 'runs/demo-run/frames/base')
   assert.match(bridgeCalls[1][1].output.dataDir, /\.openpet\/weather-declaration\/data$/)
+  assert.equal(hatchPetCalls[0][0], 'planSprite')
+  assert.equal(hatchPetCalls[1][0], 'evaluateSprite')
+  assert.equal(hatchPetCalls[1][1].board.path, fs.realpathSync(path.join(pluginDataDir, referenceRelativePath)))
+  assert.equal(Object.hasOwn(hatchPetCalls[1][1], 'profile'), false)
   assert.deepEqual(bridgeCalls[1][1].referenceImages, [{
     path: fs.realpathSync(path.join(pluginDataDir, referenceRelativePath)),
     relativePath: referenceRelativePath,

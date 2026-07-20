@@ -65,7 +65,8 @@ const sanitizeCandidate = ({ dataDir, candidate }) => {
   const descriptors = source.descriptors && typeof source.descriptors === 'object' ? {
     perceptualHash: String(source.descriptors.perceptualHash || '').slice(0, 256),
     identityDescriptor: Array.isArray(source.descriptors.identityDescriptor) ? source.descriptors.identityDescriptor.filter((value) => Number.isFinite(value)).slice(0, 64) : [],
-    alphaMaskDescriptor: Array.isArray(source.descriptors.alphaMaskDescriptor) ? source.descriptors.alphaMaskDescriptor.filter((value) => Number.isFinite(value)).slice(0, 64) : []
+    alphaMaskDescriptor: Array.isArray(source.descriptors.alphaMaskDescriptor) ? source.descriptors.alphaMaskDescriptor.filter((value) => Number.isFinite(value)).slice(0, 64) : [],
+    meanColorDescriptor: Array.isArray(source.descriptors.meanColorDescriptor) ? source.descriptors.meanColorDescriptor.filter((value) => Number.isFinite(value)).slice(0, 8) : []
   } : undefined
   return {
     candidateId: normalizeSegment(source.candidateId, 'candidateId'),

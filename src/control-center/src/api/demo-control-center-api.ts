@@ -43,6 +43,9 @@ import type {
   CreatorGenerateNewCharacterRequest,
   CreatorRetryActionRequest,
   CreatorRetryIdentityRequest,
+  CreatorAcceptIdentityRequest,
+  CreatorExportRecoveryBundleRequest,
+  CreatorExportRecoveryBundleResult,
   CreatorImportAvailableActionsRequest,
   CreatorLastRunResult,
   CreatorLastRunViewState,
@@ -4180,6 +4183,32 @@ export const demoControlCenterAPI: ControlCenterApi = {
       diagnostics: createDemoCreatorDiagnostics(run.runId, 'retry-identity')
     }
   },
+  acceptCreatorIdentity: async (payload: CreatorAcceptIdentityRequest): Promise<CreatorWorkflowResult> => {
+    const run = completeDemoCreatorRun({
+      state: 'review-required',
+      mode: 'full-pet',
+      runId: payload.runId,
+      commandId: 'accept-identity',
+      message: `Accepted demo identity ${payload.candidateId}`
+    })
+    return {
+      ok: true,
+      state: 'review-required',
+      code: 'identity_accepted_review_required',
+      message: `身份候选 ${payload.candidateId} 已接受，动作候选已生成，请复查`,
+      run,
+      diagnostics: createDemoCreatorDiagnostics(run.runId, 'review')
+    }
+  },
+  exportCreatorRecoveryBundle: async (payload: CreatorExportRecoveryBundleRequest): Promise<CreatorExportRecoveryBundleResult> => ({
+    ok: true,
+    code: 'recovery_bundle_ready',
+    message: 'Demo 资产恢复包已验证',
+    runId: payload.runId,
+    relativePath: `runs/${payload.runId}/recovery/recovery.json`,
+    sha256: 'd'.repeat(64),
+    byteSize: 128
+  }),
   importCreatorAvailableActions: async (payload: CreatorImportAvailableActionsRequest): Promise<CreatorWorkflowResult> => {
     const runId = String(payload?.runId || demoCreatorLastRun?.runId || 'demo-run').trim()
     return {

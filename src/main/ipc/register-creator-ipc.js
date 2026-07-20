@@ -55,6 +55,14 @@ const registerCreatorIpc = ({
   ipcMainService.handle(IPC.CREATOR_RETRY_IDENTITY, (_event, payload) => requireService().retryFullPetIdentity({
     runId: payload?.runId
   }))
+  ipcMainService.handle(IPC.CREATOR_ACCEPT_IDENTITY, (_event, payload) => requireService().acceptCreatorIdentity({
+    runId: payload?.runId,
+    candidateId: payload?.candidateId,
+    sha256: payload?.sha256
+  }))
+  ipcMainService.handle(IPC.CREATOR_EXPORT_RECOVERY_BUNDLE, (_event, payload) => requireService().exportRecoveryBundle({
+    runId: payload?.runId
+  }))
   ipcMainService.handle(IPC.CREATOR_IMPORT_AVAILABLE_ACTIONS, (_event, payload) => requireService().importAvailableActions({
     runId: payload?.runId,
     activate: payload?.activate

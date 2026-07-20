@@ -74,6 +74,7 @@ const draftGenerationTask = ({ prompt = '', context = {} } = {}) => {
   }
   const generationTask = normalizeGenerationTask({
     mode,
+    pipeline: mode === 'full-pet' ? 'quality-first-v1' : 'legacy-keyframe-v1',
     targetPet: mode === 'single-action' ? 'current' : 'new',
     styleSource,
     characterBrief: context.characterBrief || (styleSource === 'currentPet' ? 'Keep the current pet style, proportions, palette, and line work consistent.' : originalPrompt),

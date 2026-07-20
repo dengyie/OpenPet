@@ -141,3 +141,50 @@ test('sprite evaluation repairs a provider response that omits the required tool
   assert.equal(result.gate.outcome, 'pass')
   assert.equal(h.calls.length, 2)
 })
+
+const validSpritePlanProposal = () => ({
+  schemaVersion: 1,
+  assetClass: 'grounded-compact-character',
+  actions: [
+    { actionId: 'idle', motionPresetId: 'idle-subtle-loop-v1', motionParameters: { intensity: 'subtle', leadSide: 'viewer-left' } },
+    { actionId: 'running-right', motionPresetId: 'running-right-gait-v1', motionParameters: { intensity: 'normal', leadSide: 'viewer-left' } }
+  ]
+})
+
+test('sprite planning returns only registered morphology, presets, and bounded enums', async () => {
+  const h = createHarness({ completions: [{ arguments: validSpritePlanProposal(), provider: 'p', model: 'm', elapsedMs: 1 }] })
+  const result = await h.service.planSprite({
+    runId: 'run-plan',
+    userIntent: 'keep the source identity and make a compact pet',
+    budgetLedger: createBudgetLedger({ startedAtMs: Date.now() })
+  })
+  assert.equal(result.proposal.assetClass, 'grounded-compact-character')
+  assert.deepEqual(result.proposal.actions.map((action) => action.actionId), ['idle', 'running-right'])
+  assert.equal(result.budgetLedger.usage.plannerCalls, 1)
+  const serialized = JSON.stringify(h.calls[0])
+  assert.equal(serialized.includes('framePoses'), false)
+  assert.equal(serialized.includes('threshold'), false)
+})
+
+test('sprite planning repairs one invalid proposal and rejects free-form or mismatched preset fields', async () => {
+  const invalid = { ...validSpritePlanProposal(), actions: [{ actionId: 'idle', motionPresetId: 'running-right-gait-v1', motionParameters: { intensity: 'normal', leadSide: 'viewer-left' }, framePoses: ['bad'] }] }
+  const h = createHarness({ completions: [
+    { arguments: invalid, provider: 'p', model: 'm', elapsedMs: 1 },
+    { arguments: validSpritePlanProposal(), provider: 'p', model: 'm', elapsedMs: 1 }
+  ] })
+  const result = await h.service.planSprite({ runId: 'run-plan-repair', userIntent: 'pet', budgetLedger: createBudgetLedger({ startedAtMs: Date.now() }) })
+  assert.equal(h.calls.length, 2)
+  assert.equal(result.budgetLedger.usage.plannerCalls, 2)
+  assert.match(h.calls[1].messages[0].content, /previous sprite plan was invalid/i)
+})
+
+test('sprite planning persists host-owned budget usage across separate bridge calls', async () => {
+  const completion = () => ({ arguments: validSpritePlanProposal(), provider: 'p', model: 'm', elapsedMs: 1 })
+  const h = createHarness({ completions: [completion(), completion()] })
+  const first = await h.service.planSprite({ runId: 'run-persisted-budget', userIntent: 'pet' })
+  const second = await h.service.planSprite({ runId: 'run-persisted-budget', userIntent: 'pet' })
+  assert.equal(first.budgetLedger.usage.plannerCalls, 1)
+  assert.equal(second.budgetLedger.usage.plannerCalls, 2)
+  const stored = JSON.parse(fs.readFileSync(path.join(h.dataDir, 'runs/run-persisted-budget/budgets/ledger.json'), 'utf8'))
+  assert.equal(stored.usage.plannerCalls, 2)
+})

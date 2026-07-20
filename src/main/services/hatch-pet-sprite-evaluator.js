@@ -3,6 +3,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 
 const EVALUATOR_TOOL_NAME = 'hatch_pet_sprite_evaluation'
+const CANONICAL_COMPARISON_SCOPE = 'canonical-comparison'
 const EVALUATION_SCOPES = Object.freeze({
   canonical: Object.freeze({ profileKey: 'canonical', scores: Object.freeze(['identity', 'silhouette', 'smallScale', 'completeness', 'style', 'overall']) }),
   'grounded-action': Object.freeze({ profileKey: 'groundedAction', scores: Object.freeze(['identity', 'actionReadability', 'crossFrame', 'crossAction', 'smallScale', 'style', 'overall']) }),
@@ -24,6 +25,15 @@ const DEFECT_CODES = Object.freeze([
 ])
 const DEFECT_SEVERITIES = Object.freeze(['blocking', 'major', 'minor'])
 const SAFE_RUN_ID = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/
+const DEFAULT_SPRITE_VISUAL_PROFILE = Object.freeze({
+  visual: Object.freeze({
+    confidence: 0.8,
+    canonical: Object.freeze({ identity: 90, silhouette: 85, smallScale: 82, completeness: 95, style: 85, overall: 88 }),
+    groundedAction: Object.freeze({ identity: 88, actionReadability: 85, crossFrame: 85, crossAction: 85, smallScale: 80, style: 85, overall: 86 }),
+    airborneAction: Object.freeze({ identity: 88, actionReadability: 88, crossFrame: 85, crossAction: 85, smallScale: 80, style: 85, overall: 86 }),
+    finalPackage: Object.freeze({ identity: 88, actionDistinctness: 85, crossAction: 88, smallScale: 80, style: 85, overall: 88 })
+  })
+})
 
 const isPlainObject = (value) => value && typeof value === 'object' && !Array.isArray(value)
 const sortedKeys = (value) => Object.keys(value || {}).filter((key) => value[key] !== undefined).sort()
@@ -86,6 +96,44 @@ const validateSpriteEvaluation = (value, { scope, regions = [] } = {}) => {
   })
 }
 
+const validateCanonicalComparisonEvaluation = (value, { regions = [] } = {}) => {
+  if (!isPlainObject(value) || !sameKeys(value, ['schemaVersion', 'recommendation', 'candidates'])) {
+    throw createInvalidError('canonical comparison must contain exactly schemaVersion, recommendation, candidates')
+  }
+  if (value.schemaVersion !== 1) throw createInvalidError('schemaVersion must be 1')
+  if (!RECOMMENDATIONS.includes(value.recommendation)) throw createInvalidError('recommendation is invalid')
+  const candidateRegions = regions.filter((region) => region?.role === 'canonical-candidate')
+  const allowed = new Set(candidateRegions.map((region) => String(region.regionId || '')).filter(Boolean))
+  if (!Array.isArray(value.candidates) || value.candidates.length !== allowed.size || allowed.size !== 3) {
+    throw createInvalidError('canonical comparison requires exactly one record for each of three candidate regions')
+  }
+  const seen = new Set()
+  const candidates = value.candidates.map((candidate) => {
+    if (!isPlainObject(candidate) || !sameKeys(candidate, ['candidateId', 'confidence', 'scores', 'defects'])) {
+      throw createInvalidError('canonical comparison candidate fields are invalid')
+    }
+    const candidateId = String(candidate.candidateId || '')
+    if (!allowed.has(candidateId)) throw createInvalidError(`unknown canonical candidate region: ${candidateId || '(missing)'}`)
+    if (seen.has(candidateId)) throw createInvalidError(`duplicate canonical candidate region: ${candidateId}`)
+    seen.add(candidateId)
+    const normalized = validateSpriteEvaluation({
+      schemaVersion: 1,
+      recommendation: value.recommendation,
+      confidence: candidate.confidence,
+      scores: candidate.scores,
+      defects: candidate.defects
+    }, { scope: 'canonical', regions })
+    return {
+      candidateId,
+      confidence: normalized.confidence,
+      scores: normalized.scores,
+      defects: normalized.defects
+    }
+  })
+  if (seen.size !== allowed.size) throw createInvalidError('canonical comparison omitted a candidate region')
+  return deepFreeze({ schemaVersion: 1, recommendation: value.recommendation, candidates })
+}
+
 const evaluateVisualGate = ({ scope, scores, defects = [], confidence, profile, regions = [] } = {}) => {
   const normalizedScope = requireScope(scope)
   const visualProfile = profile?.visual
@@ -123,6 +171,31 @@ const evaluateVisualGate = ({ scope, scores, defects = [], confidence, profile, 
     ok: outcome === 'pass',
     outcome,
     failures: uniqueFailures
+  })
+}
+
+const evaluateCanonicalComparisonGate = ({ evaluation, profile, regions = [] } = {}) => {
+  const candidateGates = Object.fromEntries((evaluation?.candidates || []).map((candidate) => [
+    candidate.candidateId,
+    evaluateVisualGate({
+      scope: 'canonical',
+      scores: candidate.scores,
+      defects: candidate.defects,
+      confidence: candidate.confidence,
+      profile,
+      regions
+    })
+  ]))
+  const failures = Object.entries(candidateGates)
+    .filter(([, gate]) => gate.ok !== true)
+    .flatMap(([candidateId, gate]) => gate.failures.map((failure) => `${candidateId}:${failure}`))
+  return deepFreeze({
+    version: 1,
+    scope: CANONICAL_COMPARISON_SCOPE,
+    ok: failures.length === 0 && Object.keys(candidateGates).length === 3,
+    outcome: failures.length === 0 && Object.keys(candidateGates).length === 3 ? 'pass' : 'repair',
+    failures,
+    candidateGates
   })
 }
 
@@ -167,12 +240,65 @@ const createTool = (scope) => {
   }
 }
 
+const createCanonicalComparisonTool = () => {
+  const canonicalScoreNames = EVALUATION_SCOPES.canonical.scores
+  const scoreProperties = Object.fromEntries(canonicalScoreNames.map((score) => [score, { type: 'number', minimum: 0, maximum: 100 }]))
+  return {
+    type: 'function',
+    function: {
+      name: EVALUATOR_TOOL_NAME,
+      description: 'Compare exactly three canonical sprite candidates against the source region and score each candidate region separately.',
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          schemaVersion: { type: 'integer', enum: [1] },
+          recommendation: { type: 'string', enum: RECOMMENDATIONS },
+          candidates: {
+            type: 'array',
+            minItems: 3,
+            maxItems: 3,
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                candidateId: { type: 'string', minLength: 1, maxLength: 128 },
+                confidence: { type: 'number', minimum: 0, maximum: 1 },
+                scores: { type: 'object', additionalProperties: false, properties: scoreProperties, required: canonicalScoreNames },
+                defects: {
+                  type: 'array',
+                  maxItems: 16,
+                  items: {
+                    type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                      code: { type: 'string', enum: DEFECT_CODES },
+                      severity: { type: 'string', enum: DEFECT_SEVERITIES },
+                      regionId: { type: 'string', minLength: 1, maxLength: 128 }
+                    },
+                    required: ['code', 'severity', 'regionId']
+                  }
+                }
+              },
+              required: ['candidateId', 'confidence', 'scores', 'defects']
+            }
+          }
+        },
+        required: ['schemaVersion', 'recommendation', 'candidates']
+      }
+    }
+  }
+}
+
 const createSpriteEvaluatorRequest = ({ scope, board, qa = {}, profile, repairReason = '' } = {}) => {
-  const normalizedScope = requireScope(scope)
+  const normalizedScope = String(scope || '').trim() === CANONICAL_COMPARISON_SCOPE
+    ? CANONICAL_COMPARISON_SCOPE
+    : requireScope(scope)
   const boardPath = path.resolve(String(board?.path || ''))
   if (!fs.existsSync(boardPath) || !fs.statSync(boardPath).isFile()) throw new Error('Sprite evaluator review board must be a file')
   const mimeType = String(board?.mimeType || 'image/png').toLowerCase() === 'image/jpeg' ? 'image/jpeg' : 'image/png'
-  const thresholds = profile?.visual?.[EVALUATION_SCOPES[normalizedScope].profileKey]
+  const thresholdScope = normalizedScope === CANONICAL_COMPARISON_SCOPE ? 'canonical' : normalizedScope
+  const thresholds = profile?.visual?.[EVALUATION_SCOPES[thresholdScope].profileKey]
   if (!isPlainObject(thresholds)) throw new Error('Sprite evaluator visual quality profile is invalid')
   const regionSummary = (Array.isArray(board?.regions) ? board.regions : []).map((region) => ({
     regionId: String(region?.regionId || '').slice(0, 128),
@@ -214,7 +340,7 @@ const createSpriteEvaluatorRequest = ({ scope, board, qa = {}, profile, repairRe
         ]
       }
     ],
-    tool: createTool(normalizedScope),
+    tool: normalizedScope === CANONICAL_COMPARISON_SCOPE ? createCanonicalComparisonTool() : createTool(normalizedScope),
     timeoutMs: 60000
   }
 }
@@ -224,7 +350,9 @@ const recordSpriteEvaluation = ({ dataDir, runId, scope, evaluation } = {}) => {
   if (!root) throw new Error('Sprite evaluation dataDir is required')
   const normalizedRunId = String(runId || '').trim()
   if (!SAFE_RUN_ID.test(normalizedRunId)) throw new Error('Sprite evaluation runId is invalid')
-  const normalizedScope = requireScope(scope)
+  const normalizedScope = String(scope || '').trim() === CANONICAL_COMPARISON_SCOPE
+    ? CANONICAL_COMPARISON_SCOPE
+    : requireScope(scope)
   const relativePath = path.join('runs', normalizedRunId, 'evaluations', `${normalizedScope}.json`).replace(/\\/g, '/')
   const targetPath = path.resolve(root, relativePath)
   if (!targetPath.startsWith(`${root}${path.sep}`)) throw new Error('Sprite evaluation path escaped dataDir')
@@ -248,7 +376,16 @@ const recordSpriteEvaluation = ({ dataDir, runId, scope, evaluation } = {}) => {
     model: typeof source.model === 'string' ? source.model.slice(0, 160) : undefined,
     boardSha256: typeof source.boardSha256 === 'string' && /^[a-f0-9]{64}$/i.test(source.boardSha256)
       ? source.boardSha256
-      : undefined
+      : undefined,
+    candidates: Array.isArray(source.candidates)
+      ? source.candidates.slice(0, 3).map((candidate) => ({
+          candidateId: String(candidate?.candidateId || '').slice(0, 128),
+          confidence: Number(candidate?.confidence) || 0,
+          scores: isPlainObject(candidate?.scores) ? candidate.scores : {},
+          defects: Array.isArray(candidate?.defects) ? candidate.defects.slice(0, 16) : []
+        }))
+      : undefined,
+    candidateGates: isPlainObject(source.gate?.candidateGates) ? source.gate.candidateGates : undefined
   }
   fs.mkdirSync(path.dirname(targetPath), { recursive: true })
   const temporaryPath = `${targetPath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -264,11 +401,15 @@ const recordSpriteEvaluation = ({ dataDir, runId, scope, evaluation } = {}) => {
 }
 
 module.exports = {
+  CANONICAL_COMPARISON_SCOPE,
+  DEFAULT_SPRITE_VISUAL_PROFILE,
   DEFECT_CODES,
   EVALUATION_SCOPES,
   EVALUATOR_TOOL_NAME,
   createSpriteEvaluatorRequest,
+  evaluateCanonicalComparisonGate,
   evaluateVisualGate,
   recordSpriteEvaluation,
+  validateCanonicalComparisonEvaluation,
   validateSpriteEvaluation
 }

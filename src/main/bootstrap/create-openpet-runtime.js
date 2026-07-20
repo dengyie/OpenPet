@@ -164,6 +164,7 @@ const createOpenPetRuntime = ({
     pluginService,
     appLogService
   })
+  pluginService.setHatchPetAgentService?.(hatchPetAgentService)
   const creatorStudioDefaultFlowService = factories.createCreatorStudioDefaultFlowService({
     pluginService,
     imageGenerationModelService

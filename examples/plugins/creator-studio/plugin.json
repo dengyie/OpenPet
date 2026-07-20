@@ -13,6 +13,7 @@
       { "id": "answer-question", "title": "Answer Creator Task Question", "command": "node ./commands/answer-question.js", "cwd": "." },
       { "id": "confirm-task", "title": "Confirm Creator Task", "command": "node ./commands/confirm-task.js", "cwd": "." },
       { "id": "run-step", "title": "Run Step", "command": "node ./commands/run-step.js", "cwd": ".", "timeoutMs": 43500000 },
+      { "id": "accept-identity", "title": "Accept Canonical Identity", "command": "node ./commands/accept-identity.js", "cwd": ".", "timeoutMs": 43500000 },
       { "id": "retry-action", "title": "Retry Pet Action", "command": "node ./commands/retry-action.js", "cwd": ".", "timeoutMs": 43500000 },
       { "id": "retry-identity", "title": "Retry Pet Identity", "command": "node ./commands/retry-identity.js", "cwd": ".", "timeoutMs": 43500000 },
       { "id": "approve-run", "title": "Approve Run", "command": "node ./commands/approve-run.js", "cwd": "." },

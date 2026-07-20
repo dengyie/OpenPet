@@ -9,7 +9,7 @@ const {
 
 const MAX_PLUGIN_BRIDGE_BODY_BYTES = 1024 * 1024
 
-const ROUTE_PATTERN = /^\/plugins\/bridge\/([^/]+)\/([^/]+)\/([^/]+)(\/context|\/pet\/say|\/pet\/action|\/pet\/event|\/creator\/actions|\/creator\/actions\/validate|\/creator\/actions\/apply|\/creator\/trigger-proposals\/submit|\/creator\/pack-manifest|\/creator\/pack-manifest\/validate|\/creator\/pack-manifest\/apply|\/creator\/assets\/inspect-frames|\/creator\/assets\/import-frames|\/creator\/assets\/pick-frames\/inspect|\/creator\/assets\/pick-frames\/import|\/creator\/pet-pack\/inspect-output|\/creator\/pet-pack\/import-output|\/creator\/model-settings|\/creator\/model-health-check|\/creator\/model-image-generate)$/
+const ROUTE_PATTERN = /^\/plugins\/bridge\/([^/]+)\/([^/]+)\/([^/]+)(\/context|\/pet\/say|\/pet\/action|\/pet\/event|\/creator\/actions|\/creator\/actions\/validate|\/creator\/actions\/apply|\/creator\/trigger-proposals\/submit|\/creator\/pack-manifest|\/creator\/pack-manifest\/validate|\/creator\/pack-manifest\/apply|\/creator\/assets\/inspect-frames|\/creator\/assets\/import-frames|\/creator\/assets\/pick-frames\/inspect|\/creator\/assets\/pick-frames\/import|\/creator\/pet-pack\/inspect-output|\/creator\/pet-pack\/import-output|\/creator\/model-settings|\/creator\/model-health-check|\/creator\/model-image-generate|\/creator\/hatch-pet\/plan|\/creator\/hatch-pet\/evaluate)$/
 
 const READ_ONLY_ROUTES = new Map([
   ['/context', 'context'],
@@ -34,7 +34,9 @@ const JSON_ROUTES = new Map([
   ['/creator/pet-pack/inspect-output', 'creatorPetPackInspectOutput'],
   ['/creator/pet-pack/import-output', 'creatorPetPackImportOutput'],
   ['/creator/model-health-check', 'creatorModelHealthCheck'],
-  ['/creator/model-image-generate', 'creatorModelImageGenerate']
+  ['/creator/model-image-generate', 'creatorModelImageGenerate'],
+  ['/creator/hatch-pet/plan', 'creatorHatchPetPlan'],
+  ['/creator/hatch-pet/evaluate', 'creatorHatchPetEvaluate']
 ])
 
 const createPluginCommandBridgeServer = ({

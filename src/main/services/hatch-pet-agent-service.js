@@ -1,4 +1,5 @@
 const crypto = require('crypto')
+const fs = require('fs')
 const path = require('path')
 const { sanitizeLogText } = require('./log-safety')
 const {
@@ -8,11 +9,15 @@ const {
   validateHatchPetDecision
 } = require('./hatch-pet-agent-contracts')
 const { createHatchPetAgentStore } = require('./hatch-pet-agent-store')
-const { createBudgetLedger, reserveEvaluatorCall } = require('./hatch-pet-agent-budget-ledger')
+const { createBudgetLedger, reserveEvaluatorCall, reservePlannerCall } = require('./hatch-pet-agent-budget-ledger')
 const {
+  DEFAULT_SPRITE_VISUAL_PROFILE,
+  CANONICAL_COMPARISON_SCOPE,
   createSpriteEvaluatorRequest,
+  evaluateCanonicalComparisonGate,
   evaluateVisualGate,
   recordSpriteEvaluation,
+  validateCanonicalComparisonEvaluation,
   validateSpriteEvaluation
 } = require('./hatch-pet-sprite-evaluator')
 
@@ -20,6 +25,17 @@ const CREATOR_STUDIO_PLUGIN_ID = 'openpet.creator-studio'
 const HATCH_PET_API_KEY_REF = 'ai.hatch-pet'
 const HATCH_PET_DECISION_TOOL_NAME = 'hatch_pet_decision'
 const HATCH_PET_CAPABILITY_TOOL_NAME = 'hatch_pet_capability_check'
+const HATCH_PET_SPRITE_PLAN_TOOL_NAME = 'hatch_pet_sprite_plan'
+const SPRITE_PRESET_BY_ACTION = Object.freeze({
+  idle: 'idle-subtle-loop-v1',
+  'running-right': 'running-right-gait-v1',
+  waving: 'waving-four-phase-v1',
+  jumping: 'jumping-five-phase-v1',
+  failed: 'failed-eight-phase-v1',
+  waiting: 'waiting-six-phase-v1',
+  running: 'working-six-phase-v1',
+  review: 'review-six-phase-v1'
+})
 const HATCH_PET_SHADOW_SYSTEM_PROMPT = [
   "You are OpenPet's hatch-pet shadow planner. Return exactly one hatch_pet_decision tool call.",
   'You do not execute tools, approve runs, import pets, change budgets, access secrets, or override QA.',
@@ -50,6 +66,82 @@ const isInvalidSpriteEvaluationError = (error) => {
     message === 'AI provider did not return required tool call: hatch_pet_sprite_evaluation' ||
     message === 'AI provider returned invalid tool arguments for hatch_pet_sprite_evaluation'
 }
+
+const createInvalidSpritePlanError = (message) => {
+  const error = new Error(`Invalid sprite plan: ${message}`)
+  error.code = 'invalid_sprite_plan'
+  return error
+}
+const isInvalidSpritePlanError = (error) => {
+  const message = error?.message || ''
+  return error?.code === 'invalid_sprite_plan' ||
+    /^Invalid sprite plan:/.test(message) ||
+    message === `AI provider did not return required tool call: ${HATCH_PET_SPRITE_PLAN_TOOL_NAME}` ||
+    message === `AI provider returned invalid tool arguments for ${HATCH_PET_SPRITE_PLAN_TOOL_NAME}`
+}
+const assertExactKeys = (value, keys, label) => {
+  if (!isPlainObject(value) || Object.keys(value).sort().join('\n') !== keys.slice().sort().join('\n')) throw createInvalidSpritePlanError(`${label} fields are invalid`)
+}
+const validateSpritePlanProposal = (value) => {
+  assertExactKeys(value, ['schemaVersion', 'assetClass', 'actions'], 'top-level')
+  if (value.schemaVersion !== 1) throw createInvalidSpritePlanError('schemaVersion must be 1')
+  if (!['grounded-compact-character', 'grounded-elongated-character', 'floating-character'].includes(value.assetClass)) throw createInvalidSpritePlanError('assetClass is invalid')
+  if (!Array.isArray(value.actions) || !value.actions.length || value.actions.length > 8) throw createInvalidSpritePlanError('actions must contain 1 to 8 registered actions')
+  const seen = new Set()
+  const actions = value.actions.map((action) => {
+    assertExactKeys(action, ['actionId', 'motionPresetId', 'motionParameters'], 'action')
+    const actionId = String(action.actionId || '')
+    if (!SPRITE_PRESET_BY_ACTION[actionId] || seen.has(actionId)) throw createInvalidSpritePlanError('actionId is invalid or duplicated')
+    seen.add(actionId)
+    if (action.motionPresetId !== SPRITE_PRESET_BY_ACTION[actionId]) throw createInvalidSpritePlanError(`motionPresetId does not match ${actionId}`)
+    assertExactKeys(action.motionParameters, ['intensity', 'leadSide'], 'motionParameters')
+    if (!['subtle', 'normal'].includes(action.motionParameters.intensity)) throw createInvalidSpritePlanError('motion intensity is invalid')
+    if (!['viewer-left', 'viewer-right'].includes(action.motionParameters.leadSide)) throw createInvalidSpritePlanError('motion leadSide is invalid')
+    return Object.freeze({ actionId, motionPresetId: action.motionPresetId, motionParameters: Object.freeze({ ...action.motionParameters }) })
+  })
+  if (!seen.has('idle')) throw createInvalidSpritePlanError('idle action is required')
+  return Object.freeze({ schemaVersion: 1, assetClass: value.assetClass, actions: Object.freeze(actions) })
+}
+
+const createSpritePlanTool = () => ({
+  type: 'function',
+  function: {
+    name: HATCH_PET_SPRITE_PLAN_TOOL_NAME,
+    description: 'Choose a registered character morphology and registered motion presets for the requested sprite set.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        schemaVersion: { type: 'integer', enum: [1] },
+        assetClass: { type: 'string', enum: ['grounded-compact-character', 'grounded-elongated-character', 'floating-character'] },
+        actions: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 8,
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              actionId: { type: 'string', enum: Object.keys(SPRITE_PRESET_BY_ACTION) },
+              motionPresetId: { type: 'string', enum: Object.values(SPRITE_PRESET_BY_ACTION) },
+              motionParameters: {
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                  intensity: { type: 'string', enum: ['subtle', 'normal'] },
+                  leadSide: { type: 'string', enum: ['viewer-left', 'viewer-right'] }
+                },
+                required: ['intensity', 'leadSide']
+              }
+            },
+            required: ['actionId', 'motionPresetId', 'motionParameters']
+          }
+        }
+      },
+      required: ['schemaVersion', 'assetClass', 'actions']
+    }
+  }
+})
 
 const createDecisionTool = () => ({
   type: 'function',
@@ -343,6 +435,54 @@ const createHatchPetAgentService = ({
     now
   })
 
+  const resolveBudgetLedger = ({ runId, supplied, limits }) => {
+    if (supplied) return supplied
+    const normalizedRunId = String(runId || '').trim()
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(normalizedRunId)) throw new Error('Hatch-pet budget runId is invalid')
+    const dataDir = pluginService.getPluginCreatorDataDir(CREATOR_STUDIO_PLUGIN_ID)
+    const ledgerPath = path.join(dataDir, 'runs', normalizedRunId, 'budgets', 'ledger.json')
+    if (!fs.existsSync(ledgerPath)) return createBudgetLedger({ limits })
+    let stored
+    try {
+      stored = JSON.parse(fs.readFileSync(ledgerPath, 'utf8'))
+    } catch (_) {
+      throw new Error('Hatch-pet budget ledger is invalid')
+    }
+    if (stored?.version !== 1 || !Number.isFinite(stored?.startedAtMs) || !isPlainObject(stored?.usage) || !isPlainObject(stored?.reservations)) {
+      throw new Error('Hatch-pet budget ledger is invalid')
+    }
+    const baseline = createBudgetLedger({ limits, startedAtMs: stored.startedAtMs })
+    return Object.freeze({
+      ...baseline,
+      usage: Object.freeze({
+        ...baseline.usage,
+        providerCalls: Math.max(0, Math.min(baseline.limits.maxProviderCalls, Number(stored.usage.providerCalls) || 0)),
+        plannerCalls: Math.max(0, Math.min(baseline.limits.maxPlannerCalls, Number(stored.usage.plannerCalls) || 0)),
+        evaluatorCalls: Math.max(0, Math.min(baseline.limits.maxEvaluatorCalls, Number(stored.usage.evaluatorCalls) || 0)),
+        estimatedCost: Math.max(0, Number(stored.usage.estimatedCost) || 0),
+        costKnown: stored.usage.costKnown !== false
+      }),
+      reservations: Object.freeze({})
+    })
+  }
+
+  const persistBudgetLedger = ({ runId, ledger }) => {
+    const normalizedRunId = String(runId || '').trim()
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(normalizedRunId)) throw new Error('Hatch-pet budget runId is invalid')
+    const dataDir = pluginService.getPluginCreatorDataDir(CREATOR_STUDIO_PLUGIN_ID)
+    const ledgerPath = path.join(dataDir, 'runs', normalizedRunId, 'budgets', 'ledger.json')
+    fs.mkdirSync(path.dirname(ledgerPath), { recursive: true })
+    const temporaryPath = `${ledgerPath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    try {
+      fs.writeFileSync(temporaryPath, `${JSON.stringify(ledger, null, 2)}\n`)
+      fs.renameSync(temporaryPath, ledgerPath)
+    } finally {
+      try {
+        if (fs.existsSync(temporaryPath)) fs.unlinkSync(temporaryPath)
+      } catch (_) {}
+    }
+  }
+
   const evaluateSprite = async ({ runId, scope, board, qa = {}, profile, budgetLedger = null } = {}) => {
     const config = getStoredConfig()
     if (!config.enabled) throw new Error('Hatch-pet agent is disabled')
@@ -352,19 +492,25 @@ const createHatchPetAgentService = ({
     const root = path.resolve(String(dataDir || ''))
     const boardPath = path.resolve(String(board?.path || ''))
     if (!boardPath || !boardPath.startsWith(`${root}${path.sep}`)) throw new Error('Sprite evaluator review board escaped the Creator Studio data directory')
-    let ledger = budgetLedger || createBudgetLedger({ limits: config.budgets })
+    const effectiveProfile = profile || DEFAULT_SPRITE_VISUAL_PROFILE
+    let ledger = resolveBudgetLedger({ runId, supplied: budgetLedger, limits: config.budgets })
     let repairReason = ''
     for (let attempt = 0; attempt < 2; attempt += 1) {
       let request
       try {
-        request = createSpriteEvaluatorRequest({ scope, board: { ...board, path: boardPath }, qa, profile, repairReason })
+        request = createSpriteEvaluatorRequest({ scope, board: { ...board, path: boardPath }, qa, profile: effectiveProfile, repairReason })
         ledger = reserveEvaluatorCall(ledger)
+        persistBudgetLedger({ runId, ledger })
         const completion = await aiService.completeStructuredTool({
           ...request,
           configOverride: completionConfig
         })
-        const evaluation = validateSpriteEvaluation(completion.arguments, { scope, regions: board?.regions || [] })
-        const gate = evaluateVisualGate({ scope, ...evaluation, profile, regions: board?.regions || [] })
+        const evaluation = String(scope || '').trim() === CANONICAL_COMPARISON_SCOPE
+          ? validateCanonicalComparisonEvaluation(completion.arguments, { regions: board?.regions || [] })
+          : validateSpriteEvaluation(completion.arguments, { scope, regions: board?.regions || [] })
+        const gate = String(scope || '').trim() === CANONICAL_COMPARISON_SCOPE
+          ? evaluateCanonicalComparisonGate({ evaluation, profile: effectiveProfile, regions: board?.regions || [] })
+          : evaluateVisualGate({ scope, ...evaluation, profile: effectiveProfile, regions: board?.regions || [] })
         const evidenceRelativePath = recordSpriteEvaluation({
           dataDir,
           runId,
@@ -394,6 +540,46 @@ const createHatchPetAgentService = ({
       }
     }
     throw new Error('Sprite evaluator exhausted its repair attempts')
+  }
+
+  const planSprite = async ({ runId, userIntent = '', budgetLedger = null } = {}) => {
+    const config = getStoredConfig()
+    if (!config.enabled) throw new Error('Hatch-pet agent is disabled')
+    const completionConfig = getEffectiveCompletionConfig()
+    if (!secretService.getSecretValue(completionConfig.apiKeyRef)) throw new Error('Hatch-pet API key is not configured')
+    let ledger = resolveBudgetLedger({ runId, supplied: budgetLedger, limits: config.budgets })
+    let repairReason = ''
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const messages = [{
+          role: 'system',
+          content: [
+            'Return the required sprite plan tool call using only registered values.',
+            'Do not add prose, frame poses, Provider choices, file paths, or workflow commands.',
+            ...(repairReason ? [`The previous sprite plan was invalid: ${normalizeText(repairReason, 240)}. Return a corrected tool call.`] : [])
+          ].join(' ')
+        }, {
+          role: 'user',
+          content: JSON.stringify({ schemaVersion: 1, runId: normalizeText(runId, 128), userIntent: normalizeText(userIntent, 2000), requiredActionId: 'idle' })
+        }]
+        ledger = reservePlannerCall(ledger)
+        persistBudgetLedger({ runId, ledger })
+        const completion = await aiService.completeStructuredTool({ messages, tool: createSpritePlanTool(), configOverride: completionConfig, timeoutMs: 60000 })
+        return {
+          proposal: validateSpritePlanProposal(completion.arguments),
+          provider: completion.provider,
+          model: completion.model,
+          budgetLedger: ledger
+        }
+      } catch (error) {
+        if (!isInvalidSpritePlanError(error) || attempt === 1) {
+          error.budgetLedger = ledger
+          throw error
+        }
+        repairReason = error.message
+      }
+    }
+    throw new Error('Sprite planner exhausted its repair attempts')
   }
 
   const requestDecision = async ({ snapshot, legalDecisions, completionConfig, repairReason = '' }) => {
@@ -635,6 +821,7 @@ const createHatchPetAgentService = ({
     checkCapability,
     createShadowDecision,
     evaluateSprite,
+    planSprite,
     getRunStatus
   }
 }
@@ -649,5 +836,6 @@ module.exports = {
   },
   HATCH_PET_CAPABILITY_TOOL_NAME,
   HATCH_PET_DECISION_TOOL_NAME,
+  HATCH_PET_SPRITE_PLAN_TOOL_NAME,
   createHatchPetAgentService
 }

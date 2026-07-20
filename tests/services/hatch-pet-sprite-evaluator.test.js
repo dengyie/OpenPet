@@ -7,6 +7,8 @@ const assert = require('node:assert/strict')
 const { getQualityFirstQualityProfile } = require('../../examples/plugins/creator-studio/lib/pet-generation-quality-profile')
 const {
   createSpriteEvaluatorRequest,
+  evaluateCanonicalComparisonGate,
+  validateCanonicalComparisonEvaluation,
   evaluateVisualGate,
   recordSpriteEvaluation,
   validateSpriteEvaluation
@@ -125,4 +127,36 @@ test('evaluation evidence is atomically stored under dataDir with a relative pat
   assert.equal(fs.readFileSync(path.join(dataDir, relativePath), 'utf8').includes('absolutePath'), false)
   assert.equal(fs.readFileSync(path.join(dataDir, relativePath), 'utf8').includes('sk-secret'), false)
   assert.throws(() => recordSpriteEvaluation({ dataDir, runId: '../escape', scope: 'canonical', evaluation: canonicalEvaluation() }), /runId is invalid/)
+})
+
+test('canonical comparison validates one score record per candidate region and gates each candidate', () => {
+  const regions = [
+    ...REGIONS,
+    { regionId: 'candidate-2', role: 'canonical-candidate' },
+    { regionId: 'candidate-3', role: 'canonical-candidate' }
+  ]
+  const evaluation = validateCanonicalComparisonEvaluation({
+    schemaVersion: 1,
+    recommendation: 'pass',
+    candidates: regions.slice(1).map((region, index) => ({
+      candidateId: region.regionId,
+      confidence: 0.95,
+      scores: canonicalScores({ overall: index === 1 ? 80 : 94 }),
+      defects: []
+    }))
+  }, { regions })
+  const result = evaluateCanonicalComparisonGate({ evaluation, profile: getQualityFirstQualityProfile(), regions })
+  assert.equal(result.ok, false)
+  assert.equal(result.candidateGates['candidate-1'].ok, true)
+  assert.equal(result.candidateGates['candidate-2'].ok, false)
+  assert.ok(result.candidateGates['candidate-2'].failures.includes('visual-score-overall-below-minimum'))
+  assert.throws(() => validateCanonicalComparisonEvaluation({
+    schemaVersion: 1,
+    recommendation: 'pass',
+    candidates: [
+      { ...evaluation.candidates[0], candidateId: 'unknown' },
+      evaluation.candidates[1],
+      evaluation.candidates[2]
+    ]
+  }, { regions }), /unknown canonical candidate region/)
 })

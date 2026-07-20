@@ -36,6 +36,7 @@ const normalizeResult = ({ dataDir, result }) => {
     ...(Array.isArray(result.failureConditions) ? { failureConditions: result.failureConditions } : {}),
     ...(Array.isArray(result.generationStages) ? { generationStages: result.generationStages } : {}),
     ...(Array.isArray(result.keyframes) ? { keyframes: result.keyframes } : {}),
+    ...(result.quality ? { quality: String(result.quality) } : {}),
     ...(result.error ? { error: result.error } : {})
   }
   if (result.bindings && typeof result.bindings === 'object') {

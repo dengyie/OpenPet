@@ -43,7 +43,8 @@ test('stale generating run recovery preserves evidence and enables retries', () 
         startedAt: '2026-07-15T00:00:00.000Z',
         heartbeatAt: '2026-07-15T00:00:00.000Z'
       },
-      artifacts: { generatedImage: { outputs: [{ dataRelativePath: 'runs/kept.png' }] } }
+      artifacts: { generatedImage: { outputs: [{ dataRelativePath: 'runs/kept.png' }] } },
+      qualityFirst: { phase: 'generating-actions', canonicalCandidates: [{ candidateId: 'kept-candidate' }] }
     }
   })
 
@@ -58,6 +59,7 @@ test('stale generating run recovery preserves evidence and enables retries', () 
   assert.equal(recoveredRun.error, GENERATION_COMMAND_TERMINATED_REASON)
   assert.equal(recoveredRun.backendStatus.message, GENERATION_COMMAND_TERMINATED_REASON)
   assert.deepEqual(recoveredRun.artifacts.generatedImage.outputs, [{ dataRelativePath: 'runs/kept.png' }])
+  assert.deepEqual(recoveredRun.qualityFirst.canonicalCandidates, [{ candidateId: 'kept-candidate' }])
   assert.equal(JSON.parse(fs.readFileSync(checkpointPath, 'utf-8')).checkpoints[0].evidence, 'kept')
   assert.equal(resolveRunId({ dataDir, runId: run.runId, statuses: ['failed'] }), run.runId)
 })

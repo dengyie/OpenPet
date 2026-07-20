@@ -1915,6 +1915,8 @@ export type CreatorWorkflowState =
   | 'missing-input'
   | 'provider-not-ready'
   | 'generating'
+  | 'awaiting-identity-review'
+  | 'recovery-required'
   | 'review-required'
   | 'preview-ready'
   | 'import-failed'
@@ -2018,6 +2020,25 @@ export interface CreatorRetryIdentityRequest {
   runId: string
 }
 
+export interface CreatorAcceptIdentityRequest {
+  runId: string
+  candidateId: string
+  sha256: string
+}
+
+export interface CreatorExportRecoveryBundleRequest {
+  runId: string
+}
+
+export interface CreatorExportRecoveryBundleResult extends OkResponse {
+  code: string
+  message: string
+  runId: string
+  relativePath: string
+  sha256: string
+  byteSize: number
+}
+
 export interface CreatorImportAvailableActionsRequest {
   runId: string
   activate?: boolean
@@ -2111,6 +2132,56 @@ export interface CreatorActionAttemptViewState {
   failureEvidence?: CreatorActionFailureEvidenceViewState[]
 }
 
+export interface CreatorCanonicalCandidateViewState {
+  candidateId: string
+  eligible: boolean
+  sha256: string
+  score: number | null
+  model: string
+  relativePath: string
+  promptRelativePath: string
+  previewable: boolean
+  failureCodes: string[]
+  artifacts: Array<{
+    role: string
+    relativePath: string
+    sha256: string
+  }>
+  canonicalMetrics: JsonObject | null
+  descriptors: JsonObject | null
+}
+
+export interface CreatorIdentityReviewViewState {
+  status: 'pending' | 'accepted' | 'unavailable'
+  candidates: CreatorCanonicalCandidateViewState[]
+  selectedCandidateId: string
+  acceptedCandidateId: string
+  acceptedSha256: string
+}
+
+export interface CreatorQualityFirstProgressViewState {
+  pipeline: 'quality-first-v1'
+  phase: string
+  planHash: string
+  candidateCount: number
+  eligibleCandidateCount: number
+  currentAction: string
+  nextAction: string
+  identityReview: CreatorIdentityReviewViewState
+  recovery: {
+    reason: string
+    relativePath: string
+    exportable: boolean
+  } | null
+  actionResults: Record<string, {
+    ok: boolean
+    disposition: string
+    selectedCandidateId: string
+    failureCode: string
+    candidateCount: number
+  }>
+}
+
 export interface CreatorWorkflowProgressViewState {
   phase: string
   phaseLabel: string
@@ -2126,6 +2197,7 @@ export interface CreatorWorkflowProgressViewState {
   runStatus: string
   currentStep: string
   failureReason: string
+  qualityFirst?: CreatorQualityFirstProgressViewState | null
 }
 
 export interface CreatorWorkflowDiagnosticsViewState {
@@ -3630,6 +3702,8 @@ export interface ControlCenterApi {
   generateCreatorExistingAction: (payload: CreatorGenerateExistingActionRequest) => Promise<CreatorWorkflowResult>
   retryCreatorAction: (payload: CreatorRetryActionRequest) => Promise<CreatorWorkflowResult>
   retryCreatorIdentity: (payload: CreatorRetryIdentityRequest) => Promise<CreatorWorkflowResult>
+  acceptCreatorIdentity: (payload: CreatorAcceptIdentityRequest) => Promise<CreatorWorkflowResult>
+  exportCreatorRecoveryBundle: (payload: CreatorExportRecoveryBundleRequest) => Promise<CreatorExportRecoveryBundleResult>
   importCreatorAvailableActions: (payload: CreatorImportAvailableActionsRequest) => Promise<CreatorWorkflowResult>
   getCreatorLastRun: () => Promise<CreatorLastRunResult>
   getCreatorAssetPreview: (payload: CreatorAssetPreviewRequest) => Promise<CreatorAssetPreviewResult>

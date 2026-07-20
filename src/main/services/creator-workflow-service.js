@@ -12,6 +12,7 @@ const DEFAULT_CREATOR_STUDIO_COMMAND_ID = 'draft-task'
 const LEGACY_CREATOR_STUDIO_COMMAND_ID = 'create-run'
 const CREATOR_STUDIO_CONFIRM_COMMAND_ID = 'confirm-task'
 const CREATOR_STUDIO_GENERATE_COMMAND_ID = 'run-step'
+const CREATOR_STUDIO_ACCEPT_IDENTITY_COMMAND_ID = 'accept-identity'
 const CREATOR_STUDIO_RETRY_ACTION_COMMAND_ID = 'retry-action'
 const CREATOR_STUDIO_RETRY_IDENTITY_COMMAND_ID = 'retry-identity'
 
@@ -1274,6 +1275,107 @@ const createActionProgressViews = ({ checkpoints = null, runStatus = '', current
   })
 }
 
+const createQualityFirstCandidateView = ({ candidate = {}, pluginDataDir = '', runId = '' } = {}) => {
+  const relativePath = normalizeSafeRelativePath(candidate.relativePath)
+  const promptRelativePath = normalizeSafeRelativePath(candidate.promptRelativePath)
+  const safeAssetPath = relativePath && isRunRelativePath({ runId, relativePath }) ? relativePath : ''
+  const safePromptPath = promptRelativePath && isRunRelativePath({ runId, relativePath: promptRelativePath })
+    ? promptRelativePath
+    : ''
+  const absolutePath = safeAssetPath && pluginDataDir ? path.resolve(pluginDataDir, safeAssetPath) : ''
+  const safeRun = getSafeCreatorRunDir({ pluginDataDir, runId, requireExisting: true })
+  const previewable = Boolean(
+    safeAssetPath &&
+    safeRun &&
+    isPathInsideDirectory({
+      rootPath: safeRun.runDir,
+      targetPath: absolutePath,
+      requireExisting: true
+    }) &&
+    canPreviewImageFile(absolutePath)
+  )
+  const artifacts = Array.isArray(candidate.artifacts)
+    ? candidate.artifacts.map((artifact) => {
+        const artifactPath = normalizeSafeRelativePath(artifact?.relativePath || artifact?.path)
+        return artifactPath && isRunRelativePath({ runId, relativePath: artifactPath })
+          ? {
+              role: normalizeText(artifact?.role).slice(0, 80),
+              relativePath: artifactPath,
+              sha256: normalizeText(artifact?.sha256).slice(0, 128)
+            }
+          : null
+      }).filter(Boolean)
+    : []
+  return {
+    candidateId: normalizeText(candidate.candidateId),
+    eligible: candidate.eligible === true,
+    sha256: normalizeText(candidate.sha256).slice(0, 128),
+    score: Number.isFinite(Number(candidate.score)) ? Number(candidate.score) : null,
+    model: normalizeText(candidate.model).slice(0, 160),
+    relativePath: safeAssetPath,
+    promptRelativePath: safePromptPath,
+    previewable,
+    failureCodes: createUniqueTextList(candidate.failureCodes).slice(0, 12),
+    artifacts,
+    canonicalMetrics: isPlainObject(candidate.canonicalMetrics) ? candidate.canonicalMetrics : null,
+    descriptors: isPlainObject(candidate.descriptors) ? candidate.descriptors : null
+  }
+}
+
+const createQualityFirstIdentityReviewView = ({ run = null, pluginDataDir = '' } = {}) => {
+  const qualityFirst = isPlainObject(run?.qualityFirst) ? run.qualityFirst : null
+  if (!qualityFirst) return null
+  const runId = normalizeText(run?.runId)
+  const candidates = Array.isArray(qualityFirst.canonicalCandidates)
+    ? qualityFirst.canonicalCandidates
+      .map((candidate) => createQualityFirstCandidateView({ candidate, pluginDataDir, runId }))
+      .filter((candidate) => candidate.candidateId)
+    : []
+  const phase = normalizeText(qualityFirst.phase)
+  const selectedCandidateId = normalizeText(qualityFirst.selectedCandidateId || qualityFirst.acceptedCanonical?.candidateId)
+  const acceptedCandidateId = normalizeText(qualityFirst.acceptedCanonical?.candidateId)
+  const acceptedSha256 = normalizeText(qualityFirst.acceptedCanonical?.sha256).slice(0, 128)
+  const nextAction = normalizeText(qualityFirst.nextAction)
+  return {
+    pipeline: 'quality-first-v1',
+    phase,
+    planHash: normalizeText(qualityFirst.planHash).slice(0, 128),
+    candidateCount: candidates.length,
+    eligibleCandidateCount: candidates.filter((candidate) => candidate.eligible).length,
+    currentAction: normalizeText(run?.currentStep),
+    nextAction,
+    identityReview: {
+      status: phase === 'awaiting_identity_review' ? 'pending' : (acceptedCandidateId ? 'accepted' : 'unavailable'),
+      candidates,
+      selectedCandidateId,
+      acceptedCandidateId,
+      acceptedSha256
+    },
+    recovery: isPlainObject(qualityFirst.recovery)
+      ? (() => {
+          const value = normalizeSafeRelativePath(qualityFirst.recovery.relativePath)
+          const relativePath = isRunRelativePath({ runId, relativePath: value }) ? value : ''
+          return {
+            reason: normalizeText(qualityFirst.recovery.reason || qualityFirst.recovery.failureCode).slice(0, 200),
+            relativePath,
+            exportable: Boolean(relativePath && /^[a-f0-9]{64}$/i.test(normalizeText(qualityFirst.recovery.sha256)))
+          }
+        })()
+      : null,
+    actionResults: isPlainObject(qualityFirst.actionResults)
+      ? Object.fromEntries(Object.entries(qualityFirst.actionResults).map(([actionId, result]) => [
+          normalizeText(actionId), {
+            ok: result?.ok === true,
+            disposition: normalizeText(result?.disposition),
+            selectedCandidateId: normalizeText(result?.selectedCandidateId),
+            failureCode: normalizeText(result?.failureCode),
+            candidateCount: Array.isArray(result?.candidates) ? result.candidates.length : 0
+          }
+        ]).filter(([actionId]) => actionId))
+      : {}
+  }
+}
+
 const createWorkflowProgressView = ({
   run = null,
   checkpoints = null,
@@ -1301,6 +1403,7 @@ const createWorkflowProgressView = ({
     runStatus,
     currentStep
   })
+  const qualityFirst = createQualityFirstIdentityReviewView({ run, pluginDataDir })
   const assetBundle = collectActionAssetsForRun({
     pluginDataDir,
     runId: normalizeText(run?.runId),
@@ -1349,7 +1452,11 @@ const createWorkflowProgressView = ({
   const runningAction = actions.find((action) => action.status === 'running')
 
   let summary = ''
-  if (failureReason && runStatus === 'failed') {
+  if (qualityFirst?.phase === 'awaiting_identity_review') {
+    summary = `等待人工确认 canonical identity（${qualityFirst.eligibleCandidateCount}/${qualityFirst.candidateCount} 个候选可用）`
+  } else if (qualityFirst?.phase === 'recovery-required') {
+    summary = 'idle 未通过质量门，已保留资产并生成恢复包；请导出恢复包或重新生成身份'
+  } else if (failureReason && runStatus === 'failed') {
     const failedList = failedActions
       .slice(0, 4)
       .map((action) => (action.reason ? (action.actionId + '（' + action.reason + '）') : action.actionId))
@@ -1385,8 +1492,12 @@ const createWorkflowProgressView = ({
       : 'full'
 
   return {
-    phase: normalizeText(activeStage?.id) || 'generate',
-    phaseLabel: normalizeText(activeStage?.label) || '生成资源',
+    phase: qualityFirst?.phase || normalizeText(activeStage?.id) || 'generate',
+    phaseLabel: qualityFirst?.phase === 'awaiting_identity_review'
+      ? '身份候选审查'
+      : qualityFirst?.phase === 'recovery-required'
+        ? '资产恢复'
+        : normalizeText(activeStage?.label) || '生成资源',
     summary: sanitizeProgressReason(summary) || '生成进度更新中',
     stages,
     actions,
@@ -1398,7 +1509,8 @@ const createWorkflowProgressView = ({
     completeness,
     runStatus,
     currentStep,
-    failureReason
+    failureReason,
+    qualityFirst
   }
 }
 
@@ -1456,6 +1568,7 @@ const readWorkflowDiagnostics = ({ pluginDataDir, runId }) => {
 
 const createFullPetTask = ({ characterName, stylePrompt = '' }) => ({
   mode: 'full-pet',
+  pipeline: 'quality-first-v1',
   targetPet: 'new',
   styleSource: 'referenceImage',
   characterBrief: normalizeText(stylePrompt) || 'Preserve the selected reference as one reusable full-body animated character.',
@@ -1962,6 +2075,54 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
         message: getCommandMessage(generated, '生成步骤已完成')
       })
 
+      if (
+        normalizeText(run?.status) === 'awaiting_identity_review' ||
+        normalizeText(run?.qualityFirst?.phase) === 'awaiting_identity_review'
+      ) {
+        const diagnostics = getWorkflowDiagnostics()
+        const result = createWorkflowResult({
+          state: 'awaiting-identity-review',
+          code: 'identity_review_required',
+          message: `已生成 canonical identity 候选，请选择一个可用候选后继续 run ${runId}`,
+          run: createRunView({
+            state: 'awaiting-identity-review',
+            mode,
+            runId,
+            commandId: generated?.commandId || CREATOR_STUDIO_GENERATE_COMMAND_ID,
+            message: getCommandMessage(generated, 'Canonical identity candidates require human review'),
+            diagnostics
+          }),
+          reference: creatorReferenceService.getReference(referenceTarget),
+          diagnostics
+        })
+        setLastRun(result.run)
+        return result
+      }
+
+      if (
+        normalizeText(run?.status) === 'recovery-required' ||
+        normalizeText(run?.qualityFirst?.phase) === 'recovery-required'
+      ) {
+        const diagnostics = getWorkflowDiagnostics()
+        const result = createWorkflowResult({
+          state: 'recovery-required',
+          code: 'idle_recovery_required',
+          message: `idle 未通过质量门；已保留全部生成资产，请导出恢复包或重新生成身份 run ${runId}`,
+          run: createRunView({
+            state: 'recovery-required',
+            mode,
+            runId,
+            commandId: generated?.commandId || CREATOR_STUDIO_GENERATE_COMMAND_ID,
+            message: getCommandMessage(generated, 'Asset recovery required'),
+            diagnostics
+          }),
+          reference: creatorReferenceService.getReference(referenceTarget),
+          diagnostics
+        })
+        setLastRun(result.run)
+        return result
+      }
+
       const generatedCoverage = isFullPet
         ? readBasicActionCoverage({ pluginDataDir, runId })
         : null
@@ -2304,6 +2465,116 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
     commandId: CREATOR_STUDIO_RETRY_IDENTITY_COMMAND_ID,
     label: '正在重新生成 canonical identity'
   })
+
+  const acceptCreatorIdentity = async ({ runId, candidateId, sha256 } = {}) => {
+    const normalizedRunId = normalizeText(runId)
+    const normalizedCandidateId = normalizeText(candidateId)
+    const normalizedSha256 = normalizeText(sha256).toLowerCase()
+    if (!normalizedRunId || !normalizedCandidateId || !normalizedSha256) {
+      return createWorkflowResult({
+        state: 'missing-input',
+        code: 'missing_identity_acceptance',
+        message: '接受身份候选需要 runId、candidateId 和 sha256'
+      })
+    }
+    if (!isSafeRunId(normalizedRunId) || !isSafePathSegment(normalizedCandidateId) || !/^[a-f0-9]{64}$/.test(normalizedSha256)) {
+      return createWorkflowResult({
+        state: 'missing-input',
+        code: 'invalid_identity_acceptance',
+        message: '身份候选标识或 sha256 不符合安全契约'
+      })
+    }
+    return runExclusively({
+      mode: 'full-pet',
+      message: `正在接受身份候选 ${normalizedCandidateId} 并生成动作`
+    }, async () => {
+      assertPluginReady()
+      const pluginDataDir = pluginService.getPluginCreatorDataDir(CREATOR_STUDIO_PLUGIN_ID)
+      const commandResult = await pluginService.runCommand(
+        CREATOR_STUDIO_PLUGIN_ID,
+        CREATOR_STUDIO_ACCEPT_IDENTITY_COMMAND_ID,
+        { runId: normalizedRunId, candidateId: normalizedCandidateId, sha256: normalizedSha256 }
+      )
+      const run = getCreatorStudioRun(commandResult)
+      if (!run?.runId) throw new Error('Creator Studio identity acceptance did not return a run')
+      const diagnostics = readWorkflowDiagnostics({ pluginDataDir, runId: run.runId })
+      const recoveryRequired = normalizeText(run.status) === 'recovery-required' || diagnostics?.progress?.qualityFirst?.phase === 'recovery-required'
+      const state = recoveryRequired ? 'recovery-required' : 'review-required'
+      return createWorkflowResult({
+        state,
+        code: recoveryRequired ? 'idle_recovery_required' : 'identity_accepted_review_required',
+        message: recoveryRequired
+          ? `身份候选已接受，但 idle 未通过质量门；请导出恢复包或重新生成身份 run ${run.runId}`
+          : `身份候选已接受，动作候选已生成；请复查 run ${run.runId}`,
+        run: createRunView({
+          state,
+          mode: 'full-pet',
+          runId: run.runId,
+          commandId: CREATOR_STUDIO_ACCEPT_IDENTITY_COMMAND_ID,
+          message: getCommandMessage(commandResult, 'Identity accepted'),
+          diagnostics
+        }),
+        diagnostics
+      })
+    })
+  }
+
+  const exportRecoveryBundle = async ({ runId } = {}) => {
+    const normalizedRunId = normalizeText(runId)
+    if (!isSafeRunId(normalizedRunId)) {
+      return {
+        ok: false,
+        code: 'invalid_run_id',
+        message: '导出恢复包需要安全的 runId',
+        runId: normalizedRunId,
+        relativePath: '',
+        sha256: '',
+        byteSize: 0
+      }
+    }
+    try {
+      assertPluginReady()
+      const pluginDataDir = pluginService.getPluginCreatorDataDir(CREATOR_STUDIO_PLUGIN_ID)
+      const safeRun = getSafeCreatorRunDir({ pluginDataDir, runId: normalizedRunId, requireExisting: true })
+      const run = safeRun ? readJsonIfExists(path.join(safeRun.runDir, 'run.json'), null) : null
+      const relativePath = normalizeSafeRelativePath(run?.qualityFirst?.recovery?.relativePath)
+      const expectedSha256 = normalizeText(run?.qualityFirst?.recovery?.sha256).toLowerCase()
+      if (
+        !safeRun ||
+        !relativePath ||
+        !isRunRelativePath({ runId: normalizedRunId, relativePath }) ||
+        !/^[a-f0-9]{64}$/.test(expectedSha256)
+      ) {
+        throw new Error('当前 run 没有可验证的资产恢复包')
+      }
+      const absolutePath = path.resolve(pluginDataDir, relativePath)
+      if (!isPathInsideDirectory({ rootPath: safeRun.runDir, targetPath: absolutePath, requireExisting: true })) {
+        throw new Error('资产恢复包路径越出当前 run')
+      }
+      const bytes = fs.readFileSync(absolutePath)
+      const actualSha256 = crypto.createHash('sha256').update(bytes).digest('hex')
+      if (actualSha256 !== expectedSha256) throw new Error('资产恢复包 hash 校验失败')
+      return {
+        ok: true,
+        code: 'recovery_bundle_ready',
+        message: '资产恢复包已验证并保留在 Creator Studio run 中',
+        runId: normalizedRunId,
+        relativePath,
+        sha256: actualSha256,
+        byteSize: bytes.length
+      }
+    } catch (error) {
+      return {
+        ok: false,
+        code: 'recovery_bundle_unavailable',
+        message: sanitizeProgressReason(error?.message || '资产恢复包不可用'),
+        runId: normalizedRunId,
+        relativePath: '',
+        sha256: '',
+        byteSize: 0
+      }
+    }
+  }
 
   const importAvailableActions = async ({ runId, activate = true } = {}) => {
     const normalizedRunId = normalizeText(runId)
@@ -2796,6 +3067,8 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
     generateExistingAction,
     retryFullPetAction,
     retryFullPetIdentity,
+    acceptCreatorIdentity,
+    exportRecoveryBundle,
     importAvailableActions
   }
 }
@@ -2806,6 +3079,7 @@ module.exports = {
     resolveOfficialActionCoverage,
     readWorkflowDiagnostics,
     createWorkflowProgressView,
+    createQualityFirstIdentityReviewView,
     collectActionAssetsForRun,
     collectProcessAssetsForRun,
     describeFailureEvidence,

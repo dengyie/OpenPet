@@ -321,6 +321,35 @@ export function useCreatorPane(active: boolean) {
     }
   }
 
+  const onAcceptCreatorIdentity = async (candidateId: string, sha256: string) => {
+    const runId = String(result?.run?.runId || creatorState.lastRun?.runId || '').trim()
+    if (!runId || !candidateId || !sha256 || running) return
+    setRunning(true)
+    setStatus(`正在接受身份候选 ${candidateId}，随后会先生成并检查 idle…`)
+    try {
+      const nextResult = await api.acceptCreatorIdentity({ runId, candidateId, sha256 })
+      await syncAfterWorkflow(nextResult)
+    } catch (error) {
+      setStatus(messageFromError(error, `身份候选 ${candidateId} 接受失败`))
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  const onExportCreatorRecoveryBundle = async () => {
+    const runId = String(result?.run?.runId || creatorState.lastRun?.runId || '').trim()
+    if (!runId || running) return
+    setStatus('正在验证资产恢复包…')
+    try {
+      const exported = await api.exportCreatorRecoveryBundle({ runId })
+      setStatus(exported.ok
+        ? `资产恢复包已验证：${exported.relativePath}（${exported.byteSize} bytes）`
+        : (exported.message || '资产恢复包不可用'))
+    } catch (error) {
+      setStatus(messageFromError(error, '资产恢复包导出失败'))
+    }
+  }
+
   const onImportAvailableActions = async () => {
     const runId = String(result?.run?.runId || creatorState.lastRun?.runId || '').trim()
     if (!runId || running) return
@@ -469,6 +498,8 @@ export function useCreatorPane(active: boolean) {
     onRestoreClickAction,
     onRetryFullPetAction,
     onRetryFullPetIdentity,
+    onAcceptCreatorIdentity,
+    onExportCreatorRecoveryBundle,
     onImportAvailableActions,
     onOpenCreatorStudioDetails,
     onCopyText,
