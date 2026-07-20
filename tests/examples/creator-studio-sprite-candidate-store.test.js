@@ -89,6 +89,70 @@ test('candidate archive atomically preserves an entire scope revision', () => {
   assert.equal(JSON.parse(fs.readFileSync(path.join(dataDir, archived, 'archive.json'), 'utf8')).reason, 'manual-repair')
 })
 
+test('consecutive candidate repairs keep each archived artifact revision hash-verifiable', () => {
+  const dataDir = createDataDir()
+  const runId = 'run-consecutive-archive'
+  const assetPath = path.join(dataDir, 'runs', runId, 'candidates', 'idle', 'candidate-1', 'raw.png')
+  fs.mkdirSync(path.dirname(assetPath), { recursive: true })
+  fs.writeFileSync(assetPath, 'paid-output-one')
+  writeCandidateRecord({
+    dataDir,
+    runId,
+    scope: 'action-idle',
+    candidate: { candidateId: 'candidate-1', artifacts: [{ role: 'raw-sheet', path: assetPath, sha256: sha256(assetPath) }] }
+  })
+  const firstArchive = archiveCandidateRevision({
+    dataDir,
+    runId,
+    scope: 'action-idle',
+    now: () => '2026-07-20T10:20:30.000Z'
+  })
+
+  fs.writeFileSync(assetPath, 'paid-output-two')
+  writeCandidateRecord({
+    dataDir,
+    runId,
+    scope: 'action-idle',
+    candidate: { candidateId: 'candidate-1', artifacts: [{ role: 'raw-sheet', path: assetPath, sha256: sha256(assetPath) }] }
+  })
+  const secondArchive = archiveCandidateRevision({
+    dataDir,
+    runId,
+    scope: 'action-idle',
+    now: () => '2026-07-20T10:21:30.000Z'
+  })
+
+  const firstRecord = JSON.parse(fs.readFileSync(path.join(dataDir, firstArchive, 'candidate-1', 'candidate.json'), 'utf8'))
+  const secondRecord = JSON.parse(fs.readFileSync(path.join(dataDir, secondArchive, 'candidate-1', 'candidate.json'), 'utf8'))
+  for (const [record, expected] of [[firstRecord, 'paid-output-one'], [secondRecord, 'paid-output-two']]) {
+    const artifact = record.candidate.artifacts[0]
+    assert.match(artifact.relativePath, /candidate-archives\/action-idle\/.*\/candidate-1\/artifacts\//)
+    assert.equal(fs.readFileSync(path.join(dataDir, artifact.relativePath), 'utf8'), expected)
+    assert.equal(sha256(path.join(dataDir, artifact.relativePath)), artifact.sha256)
+  }
+})
+
+test('candidate archive leaves the current revision intact when an artifact cannot be preserved', () => {
+  const dataDir = createDataDir()
+  const assetPath = path.join(dataDir, 'asset-to-delete.png')
+  fs.writeFileSync(assetPath, 'paid-output')
+  writeCandidateRecord({
+    dataDir,
+    runId: 'run-archive-failure',
+    scope: 'action-idle',
+    candidate: { candidateId: 'candidate-1', artifacts: [{ role: 'raw-sheet', path: assetPath, sha256: sha256(assetPath) }] }
+  })
+  fs.unlinkSync(assetPath)
+
+  assert.throws(() => archiveCandidateRevision({
+    dataDir,
+    runId: 'run-archive-failure',
+    scope: 'action-idle',
+    now: () => '2026-07-20T10:22:30.000Z'
+  }), /does not exist/)
+  assert.equal(fs.existsSync(path.join(dataDir, 'runs/run-archive-failure/candidates/action-idle/candidate-1/candidate.json')), true)
+})
+
 test('candidate selection uses visual score then identity distance and stable id', () => {
   const selected = selectBestPassingCandidate({
     candidates: [

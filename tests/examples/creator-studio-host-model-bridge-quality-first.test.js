@@ -1,12 +1,17 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
+const crypto = require('node:crypto')
 
 const {
+  createQualityFirstHostRuntime,
   generateCanonicalCandidatePool,
   generateSelectedFullPetAction,
   createQualityFirstRecoveryBundle,
   evaluateQualityFirstFinalPackage
 } = require('../../examples/plugins/creator-studio/lib/host-model-bridge')
+const { readActionCheckpoints, writeActionCheckpoint } = require('../../examples/plugins/creator-studio/lib/full-pet-action-checkpoints')
+const { getQualityFirstQualityProfile } = require('../../examples/plugins/creator-studio/lib/pet-generation-quality-profile')
+const { createSpriteAssetPlan } = require('../../examples/plugins/creator-studio/lib/sprite-asset-plan')
 const hostModelBridgeModule = require('../../examples/plugins/creator-studio/lib/host-model-bridge')
 
 const fs = require('node:fs')
@@ -58,6 +63,109 @@ test('host selected action delegates to the bounded quality-first runner', async
   })
   assert.equal(result.ok, true)
   assert.ok(['one', 'two'].includes(result.selectedCandidateId))
+})
+
+test('quality-first candidate records include prompt and evaluator evidence artifacts', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-quality-first-artifacts-'))
+  const candidateDir = path.join(dataDir, 'runs/run-artifacts/candidates/idle/candidate-1')
+  const outputDir = path.join(candidateDir, 'processed')
+  const rawPath = path.join(candidateDir, 'raw.png')
+  const promptRelativePath = 'runs/run-artifacts/prompts/idle-candidate-1.txt'
+  const evidenceRelativePath = 'runs/run-artifacts/evaluations/idle-candidate-1.json'
+  for (const [filePath, value] of [
+    [rawPath, 'raw'],
+    [path.join(dataDir, promptRelativePath), 'prompt'],
+    [path.join(dataDir, evidenceRelativePath), 'evaluation'],
+    [path.join(outputDir, 'evaluator-board.png'), 'board']
+  ]) {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true })
+    fs.writeFileSync(filePath, value)
+  }
+  const artifacts = hostModelBridgeModule.__testInternals.collectQualityFirstCandidateArtifacts({
+    dataDir,
+    candidate: {
+      rawPath,
+      sha256: crypto.createHash('sha256').update('raw').digest('hex'),
+      promptRelativePath,
+      evaluationEvidenceRelativePath: evidenceRelativePath,
+      outputDir
+    }
+  })
+  assert.deepEqual(artifacts.map((entry) => entry.role), ['raw-sheet', 'prompt', 'evaluation-evidence', 'evaluator-board'])
+  assert.equal(artifacts.every((entry) => /^[a-f0-9]{64}$/.test(entry.sha256)), true)
+})
+
+test('quality-first host runtime reuses a five-way-bound action checkpoint without Provider generation', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-quality-first-resume-'))
+  const runId = 'run-resume'
+  const sourceRelativePath = `runs/${runId}/inputs/reference.png`
+  const canonicalRelativePath = `runs/${runId}/canonical.png`
+  const framePath = path.join(dataDir, `runs/${runId}/quality-first/frames/idle/01.png`)
+  for (const filePath of [path.join(dataDir, sourceRelativePath), path.join(dataDir, canonicalRelativePath), framePath]) {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true })
+    await sharp({ create: { width: 192, height: 208, channels: 4, background: { r: 80, g: 120, b: 160, alpha: 1 } } }).png().toFile(filePath)
+  }
+  const plan = createSpriteAssetPlan({
+    version: 1,
+    revision: 1,
+    character: { assetClass: 'grounded-compact-character' },
+    actions: [{ actionId: 'idle' }]
+  })
+  const canonical = { candidateId: 'canonical-1', sha256: 'a'.repeat(64), relativePath: canonicalRelativePath }
+  const profileBase = { version: 1, maxBodyScaleCv: 0.08 }
+  const profile = { ...profileBase, hash: crypto.createHash('sha256').update(JSON.stringify(profileBase)).digest('hex') }
+  fs.writeFileSync(path.join(dataDir, `runs/${runId}/character-scale-profile.json`), `${JSON.stringify(profile)}\n`)
+  writeActionCheckpoint({
+    dataDir,
+    runId,
+    result: {
+      actionId: 'idle',
+      ok: true,
+      outputCount: 1,
+      model: 'paid-image-model',
+      bindings: {
+        planHash: plan.hash,
+        canonicalHash: canonical.sha256,
+        profileHash: profile.hash,
+        processorVersion: 1,
+        qualityProfileHash: getQualityFirstQualityProfile().hash
+      },
+      row: { actionId: 'idle', quality: 'row-real', frames: [{ index: 0, durationMs: 120, path: framePath }] }
+    }
+  })
+  const previousUrl = process.env.OPENPET_BRIDGE_URL
+  const previousToken = process.env.OPENPET_BRIDGE_TOKEN
+  delete process.env.OPENPET_BRIDGE_URL
+  delete process.env.OPENPET_BRIDGE_TOKEN
+  try {
+    const runtime = await createQualityFirstHostRuntime({
+      dataDir,
+      run: { runId, input: { referenceImage: { relativePath: sourceRelativePath } } },
+      planOverride: plan
+    })
+    const result = await runtime.runAction({ actionId: 'idle', canonical })
+    assert.equal(result.ok, true)
+    assert.equal(result.checkpointReused, true)
+    assert.equal(result.selectedCandidate.model, 'paid-image-model')
+    assert.equal(result.selectedCandidate.processed.frames[0].path, framePath)
+    assert.deepEqual(await runtime.createCharacterScaleProfile({ canonical, idle: result }), profile)
+    const beforePersist = readActionCheckpoints({ dataDir, runId }).actions.idle
+    await runtime.persistActionResult({ actionId: 'idle', result, canonical })
+    assert.deepEqual(readActionCheckpoints({ dataDir, runId }).actions.idle, beforePersist)
+
+    fs.writeFileSync(path.join(dataDir, `runs/${runId}/character-scale-profile.json`), `${JSON.stringify({ ...profile, maxBodyScaleCv: 999 })}\n`)
+    const corruptedRuntime = await createQualityFirstHostRuntime({
+      dataDir,
+      run: { runId, input: { referenceImage: { relativePath: sourceRelativePath } } },
+      planOverride: plan
+    })
+    await assert.rejects(() => corruptedRuntime.runAction({ actionId: 'idle', canonical }), /OpenPet bridge is not available/)
+  } finally {
+    if (previousUrl == null) delete process.env.OPENPET_BRIDGE_URL
+    else process.env.OPENPET_BRIDGE_URL = previousUrl
+    if (previousToken == null) delete process.env.OPENPET_BRIDGE_TOKEN
+    else process.env.OPENPET_BRIDGE_TOKEN = previousToken
+  }
 })
 
 test('quality-first recovery bundle retains every run asset with relative paths and hashes', async () => {

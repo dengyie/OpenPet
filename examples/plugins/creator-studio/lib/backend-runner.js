@@ -447,7 +447,17 @@ const acceptQualityFirstCanonicalIdentity = async ({
   writeRun({ dataDir, run: generatingRun })
   const stopLeaseHeartbeat = createGenerationLeaseHeartbeat({ dataDir, runId, leaseId: lease.leaseId, now })
   try {
-    const next = await orchestrator.acceptCanonicalIdentity({ run: generatingRun, candidateId, sha256: expectedHash, plan, actions })
+    const next = await orchestrator.acceptCanonicalIdentity({
+      run: generatingRun,
+      candidateId,
+      sha256: expectedHash,
+      plan,
+      actions,
+      persistRunState: async (nextRun) => {
+        if (!nextRun || String(nextRun.runId || '') !== runId) throw new Error('Quality-first durable run state is invalid')
+        writeRun({ dataDir, run: nextRun })
+      }
+    })
     const { generationLease: _generationLease, ...completedRun } = next
     const persisted = {
       ...completedRun,

@@ -766,7 +766,7 @@ test('declaration-only creator action bridge rejects missing permissions', async
   assert.equal(submitResponse.status, 403)
 })
 
-test('declaration-only creator model bridge exposes settings, health, and host-owned generation', async () => {
+test('non-Creator plugins can generate images without mutating Creator Studio hatch-pet budgets', async () => {
   const spawned = []
   const child = createFakeServiceProcess()
   const root = createDeclarationOnlyPluginDir({
@@ -920,10 +920,8 @@ test('declaration-only creator model bridge exposes settings, health, and host-o
   assert.equal(generateResponse.status, 200)
   assert.equal(generateResponse.body.ok, true)
   assert.equal(generateResponse.body.result.outputs[0].dataRelativePath, 'runs/demo-run/frames/base/0001.png')
-  assert.equal(planResponse.status, 200)
-  assert.equal(planResponse.body.result.proposal.assetClass, 'grounded-compact-character')
-  assert.equal(evaluateResponse.status, 200)
-  assert.equal(evaluateResponse.body.result.gate.outcome, 'pass')
+  assert.equal(planResponse.status, 403)
+  assert.equal(evaluateResponse.status, 403)
 
   assert.deepEqual(bridgeCalls[0], ['checkHealth', {}])
   assert.equal(bridgeCalls[1][0], 'generateImage')
@@ -934,15 +932,7 @@ test('declaration-only creator model bridge exposes settings, health, and host-o
   assert.equal(Object.hasOwn(bridgeCalls[1][1], 'model'), false)
   assert.equal(bridgeCalls[1][1].output.dataRelativeDir, 'runs/demo-run/frames/base')
   assert.match(bridgeCalls[1][1].output.dataDir, /\.openpet\/weather-declaration\/data$/)
-  assert.deepEqual(hatchPetCalls.slice(0, 2).map((entry) => entry[0]), ['reserveProviderCall', 'recordProviderCall'])
-  assert.deepEqual(hatchPetCalls[0][1], { runId: 'demo-run', timeoutMs: 0 })
-  assert.equal(hatchPetCalls[1][1].ok, true)
-  assert.equal(hatchPetCalls[1][1].reservationId, 'provider-1')
-  assert.equal(hatchPetCalls[1][1].estimatedCost, 0)
-  assert.equal(hatchPetCalls[2][0], 'planSprite')
-  assert.equal(hatchPetCalls[3][0], 'evaluateSprite')
-  assert.equal(hatchPetCalls[3][1].board.path, fs.realpathSync(path.join(pluginDataDir, referenceRelativePath)))
-  assert.equal(Object.hasOwn(hatchPetCalls[3][1], 'profile'), false)
+  assert.deepEqual(hatchPetCalls, [])
   assert.deepEqual(bridgeCalls[1][1].referenceImages, [{
     path: fs.realpathSync(path.join(pluginDataDir, referenceRelativePath)),
     relativePath: referenceRelativePath,
@@ -1409,7 +1399,7 @@ test('creator studio example imports approved fixture pet through host bridge', 
   await service.runCommand('openpet.creator-studio', 'run-step', { runId })
   await service.runCommand('openpet.creator-studio', 'approve-run', {
     runId,
-    humanApproval: createHumanApprovalEvidence()
+    humanApproval: { approved: true, source: 'control-center', approvedAt: '2026-06-19T00:00:00.000Z', evidenceVersion: 1 }
   })
   const importResult = await service.runCommand('openpet.creator-studio', 'import-approved-pet', { runId, activate: true })
 
@@ -1523,7 +1513,10 @@ test('creator studio example rejects importing a preview-only host pet', async (
     }
   })
   await service.runCommand('openpet.creator-studio', 'run-step', { runId })
-  await service.runCommand('openpet.creator-studio', 'approve-run', { runId })
+  await service.runCommand('openpet.creator-studio', 'approve-run', {
+    runId,
+    humanApproval: { approved: true, source: 'control-center', approvedAt: '2026-06-19T00:00:00.000Z', evidenceVersion: 1 }
+  })
   await assert.rejects(
     service.runCommand('openpet.creator-studio', 'import-approved-pet', { runId, activate: true }),
     /pet\.json|preview|official action/i

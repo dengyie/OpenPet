@@ -157,6 +157,27 @@ const recordProviderCall = (ledger, reservationId, { ok = false, code = '', esti
   })
 }
 
+const reconcileAbandonedProviderReservations = (ledger, { preserveReservationIds = [] } = {}) => {
+  const preserved = new Set(preserveReservationIds.map(String))
+  const abandoned = Object.entries(ledger.reservations || {})
+    .filter(([reservationId, reservation]) => reservation?.type === 'provider' && !preserved.has(reservationId))
+  if (abandoned.length === 0) return ledger
+  const nextReservations = { ...ledger.reservations }
+  for (const [reservationId] of abandoned) delete nextReservations[reservationId]
+  const providerCalls = Math.min(ledger.limits.maxProviderCalls, ledger.usage.providerCalls + abandoned.length)
+  const reconciledCount = Math.max(0, providerCalls - ledger.usage.providerCalls)
+  return updateLedger(ledger, {
+    usage: {
+      ...ledger.usage,
+      providerCalls,
+      providerFailures: (ledger.usage.providerFailures || 0) + reconciledCount,
+      lastProviderCode: 'abandoned-provider-reservation',
+      costKnown: false
+    },
+    reservations: nextReservations
+  })
+}
+
 const reserveStructuredCall = (ledger, type, now) => {
   assertElapsedBudget(ledger, now)
   const usageKey = type === 'planner' ? 'plannerCalls' : 'evaluatorCalls'
@@ -196,6 +217,7 @@ module.exports = {
   createBudgetLedger,
   createBudgetPublicView,
   recordProviderCall,
+  reconcileAbandonedProviderReservations,
   reserveEvaluatorCall,
   reservePlannerCall,
   reserveProviderCall

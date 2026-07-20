@@ -135,3 +135,10 @@ test('action checkpoint reuse requires matching plan, canonical, profile, proces
   }
   assert.equal(resolveReusableActionResult({ dataDir, runId, actionId: 'idle' }), null)
 })
+
+test('quality-first checkpoint reuse rejects records without complete binding metadata', () => {
+  const dataDir = makeDataDir()
+  const runId = 'run-checkpoint-unbound'
+  writeActionCheckpoint({ dataDir, runId, result: createSuccessfulResult({ dataDir, runId }) })
+  assert.equal(resolveReusableActionResult({ dataDir, runId, actionId: 'idle', requireBindings: true }), null)
+})

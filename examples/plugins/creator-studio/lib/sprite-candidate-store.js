@@ -106,18 +106,47 @@ const archiveCandidateRevision = ({ dataDir, runId, scope, reason = 'repair', no
   const currentRelative = path.join('runs', normalizedRunId, 'candidates', normalizedScope)
   const currentPath = path.resolve(dataDir, currentRelative)
   if (!fs.existsSync(currentPath)) return ''
-  const revision = String(now()).replace(/[^a-zA-Z0-9.-]/g, '-')
+  const archivedAt = String(now())
+  const revision = archivedAt.replace(/[^a-zA-Z0-9.-]/g, '-')
   const archiveRelative = path.join('runs', normalizedRunId, 'candidate-archives', normalizedScope, revision)
   const archivePath = path.resolve(dataDir, archiveRelative)
+  const stagingPath = `${archivePath}.tmp-${process.pid}-${Math.random().toString(16).slice(2)}`
   fs.mkdirSync(path.dirname(archivePath), { recursive: true })
-  fs.renameSync(currentPath, archivePath)
-  writeAtomic(path.join(archivePath, 'archive.json'), {
-    version: 1,
-    runId: normalizedRunId,
-    scope: normalizedScope,
-    reason: String(reason || 'repair').slice(0, 160),
-    archivedAt: now()
-  })
+  try {
+    fs.cpSync(currentPath, stagingPath, { recursive: true, errorOnExist: true, force: false })
+    for (const candidateEntry of fs.readdirSync(stagingPath, { withFileTypes: true })) {
+      if (!candidateEntry.isDirectory() || !SAFE_SEGMENT.test(candidateEntry.name)) continue
+      const recordPath = path.join(stagingPath, candidateEntry.name, 'candidate.json')
+      if (!fs.existsSync(recordPath)) continue
+      const record = JSON.parse(fs.readFileSync(recordPath, 'utf8'))
+      const artifacts = Array.isArray(record?.candidate?.artifacts) ? record.candidate.artifacts : []
+      record.candidate.artifacts = artifacts.map((artifact, index) => {
+        const source = resolveInsideDataDir({ dataDir, filePath: path.resolve(dataDir, artifact.relativePath) }).absolute
+        const fileName = `${String(index + 1).padStart(3, '0')}-${path.basename(source)}`
+        const archivedRelative = path.join(archiveRelative, candidateEntry.name, 'artifacts', fileName).replace(/\\/g, '/')
+        const stagedArtifactPath = path.join(stagingPath, candidateEntry.name, 'artifacts', fileName)
+        fs.mkdirSync(path.dirname(stagedArtifactPath), { recursive: true })
+        fs.copyFileSync(source, stagedArtifactPath)
+        const archivedHash = sha256File(stagedArtifactPath)
+        if (String(artifact.sha256 || '').toLowerCase() !== archivedHash) throw new Error('Candidate archive artifact hash mismatch')
+        return { ...artifact, relativePath: archivedRelative, sha256: archivedHash }
+      })
+      writeAtomic(recordPath, record)
+    }
+    writeAtomic(path.join(stagingPath, 'archive.json'), {
+      version: 1,
+      runId: normalizedRunId,
+      scope: normalizedScope,
+      reason: String(reason || 'repair').slice(0, 160),
+      archivedAt
+    })
+    fs.renameSync(stagingPath, archivePath)
+    fs.rmSync(currentPath, { recursive: true })
+  } finally {
+    try {
+      if (fs.existsSync(stagingPath)) fs.rmSync(stagingPath, { recursive: true, force: true })
+    } catch (_) {}
+  }
   return archiveRelative.replace(/\\/g, '/')
 }
 

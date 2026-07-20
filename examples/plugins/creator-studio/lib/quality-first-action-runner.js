@@ -50,11 +50,18 @@ const runQualityFirstAction = async ({
   const dispatches = []
   const failureCodes = []
   const dispatch = async (attemptKind, repairCodes = []) => {
-    await reserveCreativeDispatch({ actionId, attemptKind })
-    const generated = await generateCandidate({ actionId, attemptKind, failureCodes: repairCodes.slice() })
-    if (!generated || !generated.candidateId) throw new Error(`Quality-first action ${actionId} returned an invalid candidate`)
     const dispatchIndex = dispatches.length + 1
-    const requestedCandidateId = String(generated.candidateId)
+    const assignedCandidateId = `candidate-${dispatchIndex}`
+    await reserveCreativeDispatch({ actionId, attemptKind, candidateId: assignedCandidateId, dispatchIndex })
+    const generated = await generateCandidate({
+      actionId,
+      attemptKind,
+      candidateId: assignedCandidateId,
+      dispatchIndex,
+      failureCodes: repairCodes.slice()
+    })
+    if (!generated) throw new Error(`Quality-first action ${actionId} returned an invalid candidate`)
+    const requestedCandidateId = String(generated.candidateId || assignedCandidateId)
     const candidateId = dispatches.some((entry) => entry.candidateId === requestedCandidateId)
       ? `${requestedCandidateId}-${dispatchIndex}`.slice(0, 128)
       : requestedCandidateId

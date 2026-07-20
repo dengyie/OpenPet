@@ -12,6 +12,7 @@ const { createHatchPetAgentStore } = require('./hatch-pet-agent-store')
 const {
   createBudgetLedger,
   createBudgetPublicView,
+  reconcileAbandonedProviderReservations,
   recordProviderCall: recordBudgetProviderCall,
   reserveEvaluatorCall,
   reservePlannerCall,
@@ -282,6 +283,8 @@ const createHatchPetAgentService = ({
   if (!settingsService?.get || !settingsService?.update) throw new Error('SettingsService is required')
   if (!secretService?.getSecretValue || !secretService?.setSecret) throw new Error('SecretService is required')
   if (!pluginService?.getPluginCreatorDataDir) throw new Error('PluginService Creator data directory is required')
+  const liveProviderReservations = new Set()
+  const reservationKey = (runId, reservationId) => `${String(runId || '')}:${String(reservationId || '')}`
 
   const recordLog = (entry) => {
     try {
@@ -463,7 +466,7 @@ const createHatchPetAgentService = ({
       throw new Error('Hatch-pet budget ledger is invalid')
     }
     const baseline = createBudgetLedger({ limits, startedAtMs: stored.startedAtMs })
-    return Object.freeze({
+    const restored = Object.freeze({
       ...baseline,
       usage: Object.freeze({
         ...baseline.usage,
@@ -475,7 +478,21 @@ const createHatchPetAgentService = ({
         estimatedCost: Math.max(0, Number(stored.usage.estimatedCost) || 0),
         costKnown: stored.usage.costKnown !== false
       }),
-      reservations: Object.freeze({})
+      reservations: Object.freeze(Object.fromEntries(
+        Object.entries(stored.reservations)
+          .filter(([reservationId, reservation]) => (
+            /^provider-[1-9][0-9]*$/.test(reservationId) &&
+            reservation?.type === 'provider'
+          ))
+          .map(([reservationId, reservation]) => [reservationId, Object.freeze({
+            type: 'provider',
+            timeoutMs: Math.max(0, Number(reservation.timeoutMs) || 0),
+            reservedAtMs: Math.max(baseline.startedAtMs, Number(reservation.reservedAtMs) || baseline.startedAtMs)
+          })])
+      ))
+    })
+    return reconcileAbandonedProviderReservations(restored, {
+      preserveReservationIds: Object.keys(restored.reservations).filter((reservationId) => liveProviderReservations.has(reservationKey(normalizedRunId, reservationId)))
     })
   }
 
@@ -501,6 +518,7 @@ const createHatchPetAgentService = ({
     const ledger = resolveBudgetLedger({ runId, limits: config.budgets })
     const reservation = reserveBudgetProviderCall(ledger, { timeoutMs })
     persistBudgetLedger({ runId, ledger: reservation.ledger })
+    liveProviderReservations.add(reservationKey(runId, reservation.reservationId))
     return {
       reservationId: reservation.reservationId,
       budgetLedger: reservation.ledger,
@@ -511,6 +529,7 @@ const createHatchPetAgentService = ({
   const recordProviderCall = ({ runId, reservationId, budgetLedger, ok = false, code = '', estimatedCost = null } = {}) => {
     const config = getStoredConfig()
     const ledger = resolveBudgetLedger({ runId, supplied: budgetLedger, limits: config.budgets })
+    liveProviderReservations.delete(reservationKey(runId, reservationId))
     const recorded = recordBudgetProviderCall(ledger, reservationId, { ok, code, estimatedCost })
     persistBudgetLedger({ runId, ledger: recorded })
     return {

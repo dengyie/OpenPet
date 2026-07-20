@@ -1,5 +1,6 @@
 const fs = require('node:fs')
 const path = require('node:path')
+const crypto = require('node:crypto')
 
 const QUALITY_PROFILE_VERSION = 1
 const DEFAULT_QUALITY_PROFILE_ID = 'pet-generation-default-v1'
@@ -41,7 +42,7 @@ const DEFAULT_QUALITY_PROFILE = deepFreeze({
   }
 })
 
-const QUALITY_FIRST_QUALITY_PROFILE = deepFreeze({
+const QUALITY_FIRST_QUALITY_PROFILE_BASE = {
   version: 2,
   id: QUALITY_FIRST_QUALITY_PROFILE_ID,
   sourceDatasetId: '',
@@ -97,6 +98,11 @@ const QUALITY_FIRST_QUALITY_PROFILE = deepFreeze({
     airborneAction: { identity: 88, actionReadability: 88, crossFrame: 85, crossAction: 85, smallScale: 80, style: 85, overall: 86 },
     finalPackage: { identity: 88, actionDistinctness: 85, crossAction: 88, smallScale: 80, style: 85, overall: 88 }
   }
+}
+
+const QUALITY_FIRST_QUALITY_PROFILE = deepFreeze({
+  ...QUALITY_FIRST_QUALITY_PROFILE_BASE,
+  hash: crypto.createHash('sha256').update(JSON.stringify(QUALITY_FIRST_QUALITY_PROFILE_BASE)).digest('hex')
 })
 
 const PROFILE_LIMITS = Object.freeze({

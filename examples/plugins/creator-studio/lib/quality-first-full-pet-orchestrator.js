@@ -85,7 +85,7 @@ const createQualityFirstFullPetOrchestrator = ({
     }
   }
 
-  const acceptCanonicalIdentity = async ({ run, candidateId, sha256, plan, actions = [] } = {}) => {
+  const acceptCanonicalIdentity = async ({ run, candidateId, sha256, plan, actions = [], persistRunState = async () => {} } = {}) => {
     const state = run?.qualityFirst
     if (!state || state.phase !== 'awaiting_identity_review') throw new Error('Canonical identity review is not pending')
     const candidate = state.canonicalCandidates.find((entry) => entry.candidateId === normalizeId(candidateId))
@@ -104,19 +104,27 @@ const createQualityFirstFullPetOrchestrator = ({
         nextAction: 'generate-idle'
       }
     }
+    await persistRunState(acceptedRun)
     const idle = await runQualityFirstAction({ actionId: 'idle', plan, canonical: candidate })
     await persistActionResult({ actionId: 'idle', result: idle, canonical: candidate, profile: null })
     const actionResults = { idle: publicActionResult(idle) }
+    let durableRun = {
+      ...acceptedRun,
+      qualityFirst: { ...acceptedRun.qualityFirst, actionResults }
+    }
+    await persistRunState(durableRun)
     if (!idle?.ok) {
-      const recovery = await createRecoveryBundle({ run: acceptedRun, actionResults, reason: 'idle_generation_failed' })
-      return {
-        ...acceptedRun,
+      const recovery = await createRecoveryBundle({ run: durableRun, actionResults, reason: 'idle_generation_failed' })
+      durableRun = {
+        ...durableRun,
         status: 'recovery-required',
         currentStep: 'recovery',
         updatedAt: now(),
         reviewStatus: 'recovery-required',
-        qualityFirst: { ...acceptedRun.qualityFirst, phase: 'recovery-required', actionResults, nextAction: 'export-recovery-bundle', recovery }
+        qualityFirst: { ...durableRun.qualityFirst, phase: 'recovery-required', actionResults, nextAction: 'export-recovery-bundle', recovery }
       }
+      await persistRunState(durableRun)
+      return durableRun
     }
     const profile = await createCharacterScaleProfile({ canonical: candidate, idle })
     await persistScaleProfile({ profile, canonical: candidate, idle })
@@ -124,8 +132,27 @@ const createQualityFirstFullPetOrchestrator = ({
     actionResults.idle = { ...publicActionResult(idle), scaleProfileHash: profile.hash }
     const requestedActions = unique(actions.length ? actions : ACTION_ORDER)
     const orderedActions = ACTION_ORDER.filter((actionId) => requestedActions.includes(actionId) && actionId !== 'idle')
-    for (const actionId of orderedActions) {
+    durableRun = {
+      ...durableRun,
+      currentStep: orderedActions[0] || 'final-package',
+      qualityFirst: {
+        ...durableRun.qualityFirst,
+        phase: 'generating-actions',
+        actionResults,
+        scaleProfileHash: profile.hash,
+        nextAction: orderedActions[0] || 'finalize-package'
+      }
+    }
+    await persistRunState(durableRun)
+    for (const [actionIndex, actionId] of orderedActions.entries()) {
       if (actionId === 'running-left') continue
+      durableRun = {
+        ...durableRun,
+        currentStep: actionId,
+        updatedAt: now(),
+        qualityFirst: { ...durableRun.qualityFirst, actionResults, nextAction: actionId }
+      }
+      await persistRunState(durableRun)
       const result = await runQualityFirstAction({ actionId, plan, canonical: candidate, profile })
       await persistActionResult({ actionId, result, canonical: candidate, profile })
       actionResults[actionId] = publicActionResult(result)
@@ -134,11 +161,19 @@ const createQualityFirstFullPetOrchestrator = ({
         await persistActionResult({ actionId: 'running-left', result: mirrored, canonical: candidate, profile })
         actionResults['running-left'] = publicActionResult(mirrored)
       }
+      const nextAction = orderedActions.slice(actionIndex + 1).find((entry) => entry !== 'running-left') || 'finalize-package'
+      durableRun = {
+        ...durableRun,
+        currentStep: nextAction === 'finalize-package' ? 'final-package' : nextAction,
+        updatedAt: now(),
+        qualityFirst: { ...durableRun.qualityFirst, actionResults, nextAction }
+      }
+      await persistRunState(durableRun)
     }
     const failedOptional = Object.entries(actionResults)
       .filter(([actionId, result]) => actionId !== 'idle' && result?.ok !== true)
       .map(([actionId]) => actionId)
-    const packageResult = await finalizePackage({ run: acceptedRun, canonical: candidate, profile, actionResults })
+    const packageResult = await finalizePackage({ run: durableRun, canonical: candidate, profile, actionResults })
     if (!packageResult || typeof packageResult !== 'object' || !packageResult.artifacts || typeof packageResult.artifacts !== 'object') {
       const error = new Error('Quality-first final package artifacts are missing')
       error.code = 'quality_first_final_package_missing'
@@ -148,16 +183,16 @@ const createQualityFirstFullPetOrchestrator = ({
       ? packageResult
       : {}
     return {
-      ...acceptedRun,
+      ...durableRun,
       ...(packageArtifacts && typeof packageArtifacts === 'object'
-        ? { artifacts: { ...(acceptedRun.artifacts || {}), ...packageArtifacts } }
+        ? { artifacts: { ...(durableRun.artifacts || {}), ...packageArtifacts } }
         : {}),
       status: 'ready_for_review',
       currentStep: 'review',
       updatedAt: now(),
       reviewStatus: 'pending',
       qualityFirst: {
-        ...acceptedRun.qualityFirst,
+        ...durableRun.qualityFirst,
         phase: 'ready_for_review',
         actionResults,
         scaleProfileHash: profile.hash,

@@ -56,6 +56,7 @@ const PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS = 1500
 const MIN_PLUGIN_SERVICE_HEALTH_INTERVAL_MS = 15000
 const DEFAULT_PLUGIN_SERVICE_HEALTH_INTERVAL_MS = 30000
 const MAX_PLUGIN_SERVICE_HEALTH_INTERVAL_MS = 300000
+const CREATOR_STUDIO_PLUGIN_ID = 'openpet.creator-studio'
 const TRIGGER_PROPOSAL_TYPES = new Set(['manual', 'click', 'random', 'state', 'event', 'unbound'])
 const createPluginServiceKey = (pluginId, serviceId) => `${pluginId}:${serviceId}`
 const parsePluginServiceKey = (key) => {
@@ -914,6 +915,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       const { backend: _ignoredBackend, runId: rawRunId, ...providerPayload } = payload
       const runId = String(rawRunId || '').trim()
       const canAccountProviderCall = Boolean(
+        plugin.manifest.id === CREATOR_STUDIO_PLUGIN_ID &&
         runId &&
         effectiveHatchPetAgentService?.reserveProviderCall &&
         effectiveHatchPetAgentService?.recordProviderCall
@@ -964,6 +966,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     },
     creatorHatchPetPlan: async (payload = {}) => {
       assertPermission(plugin.manifest, 'model:image-generate')
+      if (plugin.manifest.id !== CREATOR_STUDIO_PLUGIN_ID) throw new Error(`Plugin ${plugin.manifest.id} does not have Creator Studio hatch-pet planning ownership`)
       if (!effectiveHatchPetAgentService?.planSprite) throw new Error('Creator hatch-pet planning is not available')
       appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.hatch-pet plan invoked' })
       return {
@@ -976,6 +979,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     },
     creatorHatchPetEvaluate: async (payload = {}) => {
       assertPermission(plugin.manifest, 'model:image-generate')
+      if (plugin.manifest.id !== CREATOR_STUDIO_PLUGIN_ID) throw new Error(`Plugin ${plugin.manifest.id} does not have Creator Studio hatch-pet evaluation ownership`)
       if (!effectiveHatchPetAgentService?.evaluateSprite) throw new Error('Creator hatch-pet evaluation is not available')
       const board = payload.board && typeof payload.board === 'object' ? payload.board : {}
       const boardPath = resolvePluginDataPath(plugin.manifest, board.relativePath)

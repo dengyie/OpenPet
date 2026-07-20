@@ -75,6 +75,12 @@ test('quality-first profile exposes every morphology and package threshold group
   assert.equal(Object.isFrozen(profile.crossAction), true)
 })
 
+test('quality-first profile exposes a deterministic content hash for checkpoint binding', () => {
+  const profile = getQualityFirstQualityProfile()
+  assert.match(profile.hash, /^[a-f0-9]{64}$/)
+  assert.equal(profile.hash, getQualityFirstQualityProfile().hash)
+})
+
 test('body measurement only keeps detached components that match canonical satellites', () => {
   const canonical = measureBodyMask({
     data: createRgba(100, 100, [

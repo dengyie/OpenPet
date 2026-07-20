@@ -41,6 +41,56 @@ test('backend persists awaiting identity review and resumes only after exact acc
   assert.deepEqual(readRunLogs({ dataDir, runId: created.runId }).map((entry) => entry.event), ['quality-first.identity.started', 'quality-first.identity.awaiting-review', 'quality-first.identity.accepted'])
 })
 
+test('backend preserves the latest accepted identity state when action generation fails', async () => {
+  const dataDir = createDataDir()
+  const created = createRun({
+    dataDir,
+    input: { petName: 'Durable Pet', backend: 'provider', generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1', actions: [{ actionId: 'idle', name: 'Idle', motionPrompt: 'idle', frameCount: 6, transparentBackground: true }], questions: [] } }
+  })
+  const canonical = { candidateId: 'canonical-1', eligible: true, sha256: 'a'.repeat(64) }
+  writeRun({ dataDir, run: {
+    ...created,
+    status: 'awaiting_identity_review',
+    taskStatus: 'confirmed',
+    qualityFirst: { phase: 'awaiting_identity_review', canonicalCandidates: [canonical], acceptedCanonical: null, actionResults: {} }
+  } })
+  const orchestrator = {
+    acceptCanonicalIdentity: async ({ run, persistRunState }) => {
+      await persistRunState({
+        ...run,
+        status: 'generating',
+        currentStep: 'waving',
+        qualityFirst: {
+          ...run.qualityFirst,
+          phase: 'generating-actions',
+          acceptedCanonical: canonical,
+          scaleProfileHash: 'p'.repeat(64),
+          actionResults: { idle: { ok: true, actionId: 'idle' } },
+          nextAction: 'waving'
+        }
+      })
+      throw new Error('waving provider failed')
+    }
+  }
+
+  await assert.rejects(() => acceptQualityFirstCanonicalIdentity({
+    dataDir,
+    runId: created.runId,
+    candidateId: canonical.candidateId,
+    expectedHash: canonical.sha256,
+    orchestrator,
+    plan: { hash: 'plan' },
+    actions: ['idle', 'waving']
+  }), /waving provider failed/)
+
+  const failed = readRun({ dataDir, runId: created.runId })
+  assert.equal(failed.status, 'failed')
+  assert.equal(failed.qualityFirst.phase, 'generating-actions')
+  assert.equal(failed.qualityFirst.acceptedCanonical.candidateId, canonical.candidateId)
+  assert.equal(failed.qualityFirst.scaleProfileHash, 'p'.repeat(64))
+  assert.equal(failed.qualityFirst.actionResults.idle.ok, true)
+})
+
 test('quality-first action repair reruns only the requested action and preserves accepted identity', async () => {
   const dataDir = createDataDir()
   const created = createRun({

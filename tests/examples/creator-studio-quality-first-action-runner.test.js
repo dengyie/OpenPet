@@ -53,6 +53,33 @@ test('runner evaluates two distinct initial candidates and selects the best pass
   assert.deepEqual(h.calls.persisted, ['candidate-1', 'candidate-2'])
 })
 
+test('runner assigns stable unique candidate ids before dispatching to the host generator', async () => {
+  const received = []
+  const queue = [
+    { descriptors: descriptors('0000', 0) },
+    { descriptors: descriptors('ffff', 2) },
+    { descriptors: descriptors('0f0f', 4) }
+  ]
+  const result = await runQualityFirstAction({
+    context: { actionId: 'waving' },
+    reserveCreativeDispatch: () => {},
+    generateCandidate: async (input) => {
+      received.push({ candidateId: input.candidateId, attemptKind: input.attemptKind })
+      return queue.shift()
+    },
+    processCandidate: async () => ({ qa: { ok: false, failures: ['quality-failed'] } }),
+    evaluateCandidate: async () => ({ gate: { ok: false, outcome: 'reject', failures: ['quality-failed'] } }),
+    persistCandidate: () => {}
+  })
+  assert.equal(result.ok, false)
+  assert.deepEqual(received, [
+    { candidateId: 'candidate-1', attemptKind: 'initial' },
+    { candidateId: 'candidate-2', attemptKind: 'initial' },
+    { candidateId: 'candidate-3', attemptKind: 'repair' }
+  ])
+  assert.equal(new Set(received.map((entry) => entry.candidateId)).size, 3)
+})
+
 test('runner replaces one duplicate and never accepts a singleton candidate pool', async () => {
   const h = createHarness({ generated: [
     { candidateId: 'candidate-1', descriptors: descriptors('0000', 0) },

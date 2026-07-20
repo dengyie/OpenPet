@@ -11,10 +11,10 @@ const { getQualityFirstQualityProfile } = require('../../examples/plugins/creato
 
 const validDecision = (decision = 'generate-identity') => ({ schemaVersion: 1, decision, scope: {}, reasonCodes: ['ready'], confidence: 0.8 })
 
-const createHarness = ({ enabled = true, configMode = 'follow-chat', completions = [], secret = 'sk-host-owned' } = {}) => {
+const createHarness = ({ enabled = true, configMode = 'follow-chat', completions = [], secret = 'sk-host-owned', dataDir: suppliedDataDir = '' } = {}) => {
   let settings = { ai: { provider: 'openai-compatible', baseUrl: 'https://chat.test/v1', model: 'chat-model', apiKeyRef: 'ai.default', conversations: { untouched: [{ role: 'user', content: 'keep' }] }, memory: { enabled: true }, behavior: { enabled: true }, hatchPet: { enabled, configMode, provider: 'openai-compatible', baseUrl: 'https://dedicated.test/v1', model: 'planner', apiKeyRef: 'wrong-ref' } } }
   const calls = []
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-hatch-service-'))
+  const dataDir = suppliedDataDir || fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-hatch-service-'))
   const queue = [...completions]
   const service = createHatchPetAgentService({
     aiService: { completeStructuredTool: async (request) => { calls.push(request); const next = queue.shift(); if (next instanceof Error) throw next; return next } },
@@ -237,4 +237,32 @@ test('host-owned provider reservations persist every image HTTP attempt includin
   const stored = JSON.parse(fs.readFileSync(path.join(h.dataDir, 'runs/run-provider-budget/budgets/ledger.json'), 'utf8'))
   assert.equal(stored.usage.providerCalls, 2)
   assert.deepEqual(stored.reservations, {})
+})
+
+test('restarting the hatch-pet service reconciles an abandoned provider reservation as a failed attempt', () => {
+  const first = createHarness()
+  const reservation = first.service.reserveProviderCall({ runId: 'run-restart-ledger', timeoutMs: 480000 })
+  assert.equal(reservation.reservationId, 'provider-1')
+
+  const restarted = createHarness({ dataDir: first.dataDir })
+  const next = restarted.service.reserveProviderCall({ runId: 'run-restart-ledger', timeoutMs: 480000 })
+  assert.equal(next.reservationId, 'provider-2')
+  assert.equal(next.budgetLedger.usage.providerCalls, 1)
+  assert.equal(next.budgetLedger.usage.providerFailures, 1)
+  assert.equal(next.budgetLedger.usage.costKnown, false)
+  const stored = JSON.parse(fs.readFileSync(path.join(first.dataDir, 'runs/run-restart-ledger/budgets/ledger.json'), 'utf8'))
+  assert.equal(stored.usage.providerCalls, 1)
+  assert.equal(stored.usage.providerFailures, 1)
+  assert.deepEqual(stored.reservations, { 'provider-2': stored.reservations['provider-2'] })
+})
+
+test('live provider reservations in the same service instance are not reconciled as abandoned', () => {
+  const h = createHarness()
+  const first = h.service.reserveProviderCall({ runId: 'run-live-reservations', timeoutMs: 480000 })
+  const second = h.service.reserveProviderCall({ runId: 'run-live-reservations', timeoutMs: 480000 })
+  assert.equal(first.reservationId, 'provider-1')
+  assert.equal(second.reservationId, 'provider-2')
+  assert.equal(second.budgetLedger.usage.providerCalls, 0)
+  assert.equal(second.budgetLedger.usage.providerFailures, 0)
+  assert.deepEqual(Object.keys(second.budgetLedger.reservations), ['provider-1', 'provider-2'])
 })

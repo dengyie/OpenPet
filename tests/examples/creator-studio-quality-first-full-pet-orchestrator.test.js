@@ -144,3 +144,41 @@ test('canonical acceptance fails closed when final package artifacts are missing
     return true
   })
 })
+
+test('canonical acceptance durably publishes identity, profile, and completed actions before later failure', async () => {
+  const snapshots = []
+  const orchestrator = createQualityFirstFullPetOrchestrator({
+    generateCanonicalCandidatePool: async () => ({
+      dispatchCount: 3,
+      candidates: [
+        { candidateId: 'canonical-1', eligible: true, sha256: 'a'.repeat(64) },
+        { candidateId: 'canonical-2', eligible: true, sha256: 'b'.repeat(64) },
+        { candidateId: 'canonical-3', eligible: true, sha256: 'c'.repeat(64) }
+      ]
+    }),
+    runQualityFirstAction: async ({ actionId }) => {
+      if (actionId === 'waving') throw new Error('waving provider failed')
+      return { ok: true, actionId, selectedCandidateId: `${actionId}-candidate` }
+    },
+    createCharacterScaleProfile: async () => ({ hash: 'p'.repeat(64) }),
+    finalizePackage: async () => ({ artifacts: { outputDir: '/data/package' } })
+  })
+  const pending = await orchestrator.start({ run: { runId: 'run-1' }, plan: { hash: 'plan-hash' } })
+
+  await assert.rejects(() => orchestrator.acceptCanonicalIdentity({
+    run: pending,
+    candidateId: 'canonical-1',
+    sha256: 'a'.repeat(64),
+    plan: { hash: 'plan-hash' },
+    actions: ['idle', 'running-right', 'waving'],
+    persistRunState: async (value) => snapshots.push(structuredClone(value))
+  }), /waving provider failed/)
+
+  assert.equal(snapshots[0].qualityFirst.acceptedCanonical.candidateId, 'canonical-1')
+  assert.equal(snapshots.some((entry) => entry.qualityFirst.scaleProfileHash === 'p'.repeat(64)), true)
+  const latest = snapshots.at(-1)
+  assert.equal(latest.qualityFirst.phase, 'generating-actions')
+  assert.equal(latest.qualityFirst.actionResults.idle.ok, true)
+  assert.equal(latest.qualityFirst.actionResults['running-right'].ok, true)
+  assert.equal(latest.qualityFirst.nextAction, 'waving')
+})

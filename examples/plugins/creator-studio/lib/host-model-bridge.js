@@ -675,6 +675,25 @@ const sha256File = (filePath) => crypto
   .update(fs.readFileSync(filePath))
   .digest('hex')
 
+const collectQualityFirstCandidateArtifacts = ({ dataDir, candidate = {} } = {}) => {
+  const artifacts = Array.isArray(candidate.artifacts) ? candidate.artifacts.slice() : []
+  const seen = new Set(artifacts.map((artifact) => `${String(artifact?.role || '')}\n${path.resolve(String(artifact?.path || ''))}`))
+  const append = (role, filePath) => {
+    const absolute = path.resolve(String(filePath || ''))
+    const relative = path.relative(path.resolve(String(dataDir || '')), absolute)
+    if (!filePath || relative.startsWith('..') || path.isAbsolute(relative) || !fs.existsSync(absolute) || !fs.statSync(absolute).isFile()) return
+    const key = `${role}\n${absolute}`
+    if (seen.has(key)) return
+    seen.add(key)
+    artifacts.push({ role, path: absolute, sha256: sha256File(absolute) })
+  }
+  append('raw-sheet', candidate.rawPath)
+  append('prompt', candidate.promptRelativePath ? path.join(dataDir, candidate.promptRelativePath) : '')
+  append('evaluation-evidence', candidate.evaluationEvidenceRelativePath ? path.join(dataDir, candidate.evaluationEvidenceRelativePath) : '')
+  append('evaluator-board', candidate.outputDir ? path.join(candidate.outputDir, 'evaluator-board.png') : '')
+  return artifacts
+}
+
 const writeJsonFile = (filePath, value) => {
   fs.mkdirSync(path.dirname(filePath), { recursive: true })
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`)
@@ -4633,6 +4652,18 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
   const planRelativePath = `runs/${run.runId}/sprite-plan.json`
   writeJsonFile(path.join(dataDir, planRelativePath), plan)
   const qualityProfile = require('./pet-generation-quality-profile').getQualityFirstQualityProfile()
+  const persistedScaleProfilePath = path.join(dataDir, `runs/${run.runId}/character-scale-profile.json`)
+  const readPersistedScaleProfile = () => {
+    try {
+      const value = JSON.parse(fs.readFileSync(persistedScaleProfilePath, 'utf8'))
+      if (!value || typeof value !== 'object' || !/^[a-f0-9]{64}$/.test(String(value.hash || ''))) return null
+      const { hash: recordedHash, ...profileWithoutHash } = value
+      const computedHash = crypto.createHash('sha256').update(JSON.stringify(profileWithoutHash)).digest('hex')
+      return computedHash === recordedHash ? value : null
+    } catch (_) {
+      return null
+    }
+  }
   const canonicalMetrics = async (candidate) => {
     const decoded = await sharp(candidate.path).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
     return measureBodyMask({ data: decoded.data, width: decoded.info.width, height: decoded.info.height, characterClass: plan.character.assetClass })
@@ -4710,7 +4741,13 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
       dataDir,
       runId: run.runId,
       scope: 'canonical',
-      candidate: { ...candidate, artifacts: [{ role: 'raw-canonical', path: candidate.path, sha256: candidate.sha256 }] }
+      candidate: {
+        ...candidate,
+        artifacts: collectQualityFirstCandidateArtifacts({
+          dataDir,
+          candidate: { ...candidate, artifacts: [{ role: 'raw-canonical', path: candidate.path, sha256: candidate.sha256 }] }
+        })
+      }
     })
     candidate.candidateRecordRelativePath = record.relativePath
   }
@@ -4759,6 +4796,40 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
   const runAction = async ({ actionId, canonical, profile }) => {
     const action = plan.actions.find((entry) => entry.actionId === actionId)
     if (!action) return { ok: false, actionId, disposition: 'omitted', failureCode: 'action_not_in_plan', candidates: [] }
+    const actionProfile = profile || readPersistedScaleProfile()
+    const reusable = resolveReusableActionResult({
+      dataDir,
+      runId: run.runId,
+      actionId,
+      planHash: plan.hash,
+      canonicalHash: canonical?.sha256,
+      profileHash: actionProfile?.hash,
+      processorVersion: 1,
+      qualityProfileHash: qualityProfile.hash,
+      requireBindings: true
+    })
+    if (reusable) {
+      const frames = reusable.row.frames.map((frame, index) => ({
+        ...frame,
+        index: Number.isInteger(frame.frameIndex) ? frame.frameIndex : (Number.isInteger(frame.index) ? frame.index : index),
+        durationMs: Number(frame.durationMs) || 120
+      }))
+      return {
+        ok: true,
+        actionId,
+        disposition: 'accepted',
+        checkpointReused: true,
+        selectedCandidateId: `checkpoint-${actionId}`,
+        selectedCandidate: {
+          candidateId: `checkpoint-${actionId}`,
+          model: String(reusable.model || ''),
+          processed: { frames },
+          qa: { ok: true, failures: [] },
+          gate: { ok: true, outcome: 'pass', failures: [] }
+        },
+        candidates: []
+      }
+    }
     const anchorPath = path.join(dataDir, `runs/${run.runId}/references/${actionId}/anchor-grid.png`)
     const boardPath = path.join(dataDir, `runs/${run.runId}/references/${actionId}/action-reference-board.png`)
     const canonicalPath = path.join(dataDir, canonical.relativePath)
@@ -4796,8 +4867,8 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
         return { candidateId, rawPath, promptRelativePath, model: generated.selectedModel, sha256: sha256File(rawPath), descriptors: await createSpriteImageDescriptors({ imagePath: rawPath }), actionPolicy: { anchorPolicy: action.anchorPolicy }, outputDir }
       },
       processCandidate: async (candidate) => {
-        const processed = await processSpriteSheet({ inputPath: candidate.rawPath, outputDir: candidate.outputDir, layout: action.layout, profile, actionPolicy: { ...action, actionId } })
-        const qa = analyzeSpriteCandidate({ actionId, rawMetrics: processed.metrics, profile, actionPolicy: action })
+        const processed = await processSpriteSheet({ inputPath: candidate.rawPath, outputDir: candidate.outputDir, layout: action.layout, profile: actionProfile, actionPolicy: { ...action, actionId } })
+        const qa = analyzeSpriteCandidate({ actionId, rawMetrics: processed.metrics, profile: actionProfile, actionPolicy: action })
         return { ...candidate, processed, qa, artifacts: [{ role: 'raw-sheet', path: candidate.rawPath, sha256: candidate.sha256 }, { role: 'processed-sheet', path: processed.processedSheet.path, sha256: processed.processedSheet.sha256 }, { role: 'contact-sheet', path: processed.contactSheet.path, sha256: processed.contactSheet.sha256 }, { role: 'gif', path: processed.gif.path, sha256: processed.gif.sha256 }] }
       },
       evaluateCandidate: async (candidate) => {
@@ -4807,7 +4878,12 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
         return { evaluation: evaluation.evaluation, gate: evaluation.gate, evaluationEvidenceRelativePath: evaluation.evidenceRelativePath }
       },
       persistCandidate: async (candidate) => {
-        const record = writeCandidateRecord({ dataDir, runId: run.runId, scope: `action-${actionId}`, candidate })
+        const record = writeCandidateRecord({
+          dataDir,
+          runId: run.runId,
+          scope: `action-${actionId}`,
+          candidate: { ...candidate, artifacts: collectQualityFirstCandidateArtifacts({ dataDir, candidate }) }
+        })
         candidate.candidateRecordRelativePath = record.relativePath
       },
       archiveCandidateRevision: async () => archiveCandidateRevision({ dataDir, runId: run.runId, scope: `action-${actionId}`, reason: 'reason-directed-repair' })
@@ -4815,6 +4891,9 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
     return runner
   }
   const persistActionResult = async ({ actionId, result, canonical, profile }) => {
+    if (result?.checkpointReused === true) {
+      return readActionCheckpoints({ dataDir, runId: run.runId }).actions?.[actionId] || null
+    }
     const actionPolicy = plan.actions.find((entry) => entry.actionId === actionId)
     const officialRow = getOfficialFullPetRow(actionId)
     const selected = result?.selectedCandidate
@@ -5000,10 +5079,25 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
     actionResults,
     reason
   })
+  const createRuntimeCharacterScaleProfile = async ({ canonical, idle }) => {
+    if (idle?.checkpointReused === true) {
+      const persisted = readPersistedScaleProfile()
+      if (persisted) return persisted
+    }
+    return createCharacterScaleProfile({
+      canonicalMetrics: canonical.canonicalMetrics,
+      idleMetrics: idle.selectedCandidate?.processed?.metrics?.frames || [],
+      characterClass: plan.character.assetClass,
+      anchorPolicy: 'compact-contact-root-v1',
+      canonicalMasterSha256: canonical.sha256,
+      idleCheckpointSha256: idle.selectedCandidateId,
+      processorVersion: 1
+    })
+  }
   const orchestrator = createQualityFirstFullPetOrchestrator({
     generateCanonicalCandidatePool: canonicalPool,
     runQualityFirstAction: runAction,
-    createCharacterScaleProfile: async ({ canonical, idle }) => createCharacterScaleProfile({ canonicalMetrics: canonical.canonicalMetrics, idleMetrics: idle.selectedCandidate?.processed?.metrics?.frames || [], characterClass: plan.character.assetClass, anchorPolicy: 'compact-contact-root-v1', canonicalMasterSha256: canonical.sha256, idleCheckpointSha256: idle.selectedCandidateId, processorVersion: 1 }),
+    createCharacterScaleProfile: createRuntimeCharacterScaleProfile,
     mirrorRunningLeft,
     persistActionResult,
     persistScaleProfile,
@@ -5017,6 +5111,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
     orchestrator,
     sourceReference,
     planRelativePath,
+    createCharacterScaleProfile: createRuntimeCharacterScaleProfile,
     runAction,
     mirrorRunningLeft,
     createRecoveryBundle,
@@ -5460,6 +5555,7 @@ module.exports = {
     buildModelCandidateList,
     assertExactlyOneProviderReferenceImage,
     createFullPetActionIdentityContext,
+    collectQualityFirstCandidateArtifacts,
     createSoftIdentityRetryRequestedChanges,
     generateActionKeyframe,
     generateWithModelFallback,
