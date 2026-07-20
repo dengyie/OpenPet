@@ -237,17 +237,17 @@ Commit: `git add examples/plugins/creator-studio/lib/character-scale-profile.js 
 - `createSpriteEvaluatorRequest({ scope, board, qa, profile }) -> structured request`
 - `recordSpriteEvaluation({ dataDir, runId, scope, evaluation }) -> relative evidence path`
 
-- [ ] **Step 1: Write failing threshold tests**
+- [x] **Step 1: Write failing threshold tests**
 
 Assert that any below-threshold dimension, blocking defect, invalid score, low confidence, unknown region ID, or model-only `recommendation: pass` is rejected. Assert canonical/action/airborne/package profiles use their own minimums.
 
-- [ ] **Step 2: Run focused suites and verify RED**
+- [x] **Step 2: Run focused suites and verify RED**
 
-- [ ] **Step 3: Implement strict schema and gate**
+- [x] **Step 3: Implement strict schema and gate**
 
 The model returns only `recommendation`, bounded numeric scores, fixed defect records, and region IDs. The code derives `pass`, `repair`, `reject`, or `cannot-evaluate` from the immutable profile. Evaluation retries consume evaluator budget; an evaluator cannot mutate a plan, threshold, approval, or import status.
 
-- [ ] **Step 4: Run focused suites and commit**
+- [x] **Step 4: Run focused suites and commit**
 
 Commit: `git add src/main/services/hatch-pet-sprite-evaluator.js src/main/services/hatch-pet-agent-service.js examples/plugins/creator-studio/lib/pet-generation-quality-profile.js tests/services/hatch-pet-sprite-evaluator.test.js tests/services/hatch-pet-agent-service.test.js && git commit -m "feat enforce code owned sprite visual gates"`
 

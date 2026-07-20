@@ -1,4 +1,5 @@
 const crypto = require('crypto')
+const path = require('path')
 const { sanitizeLogText } = require('./log-safety')
 const {
   createHatchPetAgentPublicConfig,
@@ -7,6 +8,13 @@ const {
   validateHatchPetDecision
 } = require('./hatch-pet-agent-contracts')
 const { createHatchPetAgentStore } = require('./hatch-pet-agent-store')
+const { createBudgetLedger, reserveEvaluatorCall } = require('./hatch-pet-agent-budget-ledger')
+const {
+  createSpriteEvaluatorRequest,
+  evaluateVisualGate,
+  recordSpriteEvaluation,
+  validateSpriteEvaluation
+} = require('./hatch-pet-sprite-evaluator')
 
 const CREATOR_STUDIO_PLUGIN_ID = 'openpet.creator-studio'
 const HATCH_PET_API_KEY_REF = 'ai.hatch-pet'
@@ -33,6 +41,14 @@ const isInvalidModelDecisionError = (error) => {
   return /^Invalid hatch-pet decision:/.test(message) ||
     message === `AI provider did not return required tool call: ${HATCH_PET_DECISION_TOOL_NAME}` ||
     message === `AI provider returned invalid tool arguments for ${HATCH_PET_DECISION_TOOL_NAME}`
+}
+
+const isInvalidSpriteEvaluationError = (error) => {
+  const message = error?.message || ''
+  return error?.code === 'invalid_sprite_evaluation' ||
+    /^Invalid sprite evaluation:/.test(message) ||
+    message === 'AI provider did not return required tool call: hatch_pet_sprite_evaluation' ||
+    message === 'AI provider returned invalid tool arguments for hatch_pet_sprite_evaluation'
 }
 
 const createDecisionTool = () => ({
@@ -327,6 +343,59 @@ const createHatchPetAgentService = ({
     now
   })
 
+  const evaluateSprite = async ({ runId, scope, board, qa = {}, profile, budgetLedger = null } = {}) => {
+    const config = getStoredConfig()
+    if (!config.enabled) throw new Error('Hatch-pet agent is disabled')
+    const completionConfig = getEffectiveCompletionConfig()
+    if (!secretService.getSecretValue(completionConfig.apiKeyRef)) throw new Error('Hatch-pet API key is not configured')
+    const dataDir = pluginService.getPluginCreatorDataDir(CREATOR_STUDIO_PLUGIN_ID)
+    const root = path.resolve(String(dataDir || ''))
+    const boardPath = path.resolve(String(board?.path || ''))
+    if (!boardPath || !boardPath.startsWith(`${root}${path.sep}`)) throw new Error('Sprite evaluator review board escaped the Creator Studio data directory')
+    let ledger = budgetLedger || createBudgetLedger({ limits: config.budgets })
+    let repairReason = ''
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      let request
+      try {
+        request = createSpriteEvaluatorRequest({ scope, board: { ...board, path: boardPath }, qa, profile, repairReason })
+        ledger = reserveEvaluatorCall(ledger)
+        const completion = await aiService.completeStructuredTool({
+          ...request,
+          configOverride: completionConfig
+        })
+        const evaluation = validateSpriteEvaluation(completion.arguments, { scope, regions: board?.regions || [] })
+        const gate = evaluateVisualGate({ scope, ...evaluation, profile, regions: board?.regions || [] })
+        const evidenceRelativePath = recordSpriteEvaluation({
+          dataDir,
+          runId,
+          scope,
+          evaluation: {
+            ...evaluation,
+            gate,
+            provider: completion.provider,
+            model: completion.model,
+            boardSha256: String(board?.sha256 || '').slice(0, 64)
+          }
+        })
+        return {
+          evaluation,
+          gate,
+          evidenceRelativePath,
+          provider: completion.provider,
+          model: completion.model,
+          budgetLedger: ledger
+        }
+      } catch (error) {
+        if (!isInvalidSpriteEvaluationError(error) || attempt === 1) {
+          error.budgetLedger = ledger
+          throw error
+        }
+        repairReason = error.message
+      }
+    }
+    throw new Error('Sprite evaluator exhausted its repair attempts')
+  }
+
   const requestDecision = async ({ snapshot, legalDecisions, completionConfig, repairReason = '' }) => {
     const messages = [
       { role: 'system', content: HATCH_PET_SHADOW_SYSTEM_PROMPT },
@@ -565,6 +634,7 @@ const createHatchPetAgentService = ({
     clearApiKey,
     checkCapability,
     createShadowDecision,
+    evaluateSprite,
     getRunStatus
   }
 }

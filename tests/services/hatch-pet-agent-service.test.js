@@ -3,8 +3,11 @@ const assert = require('node:assert/strict')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
+const sharp = require('sharp')
 
 const { createHatchPetAgentService } = require('../../src/main/services/hatch-pet-agent-service')
+const { createBudgetLedger } = require('../../src/main/services/hatch-pet-agent-budget-ledger')
+const { getQualityFirstQualityProfile } = require('../../examples/plugins/creator-studio/lib/pet-generation-quality-profile')
 
 const validDecision = (decision = 'generate-identity') => ({ schemaVersion: 1, decision, scope: {}, reasonCodes: ['ready'], confidence: 0.8 })
 
@@ -76,4 +79,65 @@ test('dedicated mode uses only fixed ai.hatch-pet secret reference', () => {
   const saved = h.service.saveConfig({ apiKeyRef: 'attacker-controlled', configMode: 'override' })
   assert.equal(saved.apiKeyRef, 'ai.hatch-pet')
   assert.equal(h.getSettings().ai.hatchPet.apiKeyRef, 'ai.hatch-pet')
+})
+
+test('sprite evaluation uses one local review board and records a code-owned gate', async () => {
+  const completion = {
+    arguments: { schemaVersion: 1, recommendation: 'pass', confidence: 0.95, scores: { identity: 96, silhouette: 94, smallScale: 90, completeness: 98, style: 92, overall: 94 }, defects: [] },
+    provider: 'openai-compatible',
+    model: 'chat-model',
+    elapsedMs: 10
+  }
+  const h = createHarness({ completions: [completion] })
+  const boardPath = path.join(h.dataDir, 'board.png')
+  await sharp({ create: { width: 8, height: 8, channels: 4, background: '#fff' } }).png().toFile(boardPath)
+  const result = await h.service.evaluateSprite({
+    runId: 'run-evaluate',
+    scope: 'canonical',
+    board: { path: boardPath, sha256: 'a'.repeat(64), regions: [{ regionId: 'source', role: 'source-identity' }, { regionId: 'candidate-1', role: 'canonical-candidate' }] },
+    qa: { ok: true, failures: [], metrics: {} },
+    profile: getQualityFirstQualityProfile(),
+    budgetLedger: createBudgetLedger({ startedAtMs: Date.now() })
+  })
+  assert.equal(result.gate.ok, true)
+  assert.equal(result.budgetLedger.usage.evaluatorCalls, 1)
+  assert.equal(h.calls.length, 1)
+  assert.equal(JSON.stringify(h.calls[0]).includes(boardPath), false)
+  assert.equal(fs.existsSync(path.join(h.dataDir, result.evidenceRelativePath)), true)
+})
+
+test('sprite evaluation allows exactly one invalid-output repair and charges both calls', async () => {
+  const invalid = { arguments: { schemaVersion: 1, recommendation: 'pass', confidence: 0.95, scores: {}, defects: [] }, provider: 'p', model: 'm', elapsedMs: 1 }
+  const valid = { arguments: { schemaVersion: 1, recommendation: 'pass', confidence: 0.95, scores: { identity: 96, silhouette: 94, smallScale: 90, completeness: 98, style: 92, overall: 94 }, defects: [] }, provider: 'p', model: 'm', elapsedMs: 1 }
+  const h = createHarness({ completions: [invalid, valid] })
+  const boardPath = path.join(h.dataDir, 'board.png')
+  await sharp({ create: { width: 8, height: 8, channels: 4, background: '#fff' } }).png().toFile(boardPath)
+  const result = await h.service.evaluateSprite({
+    runId: 'run-repair-evaluation',
+    scope: 'canonical',
+    board: { path: boardPath, sha256: 'a'.repeat(64), regions: [{ regionId: 'source' }, { regionId: 'candidate-1' }] },
+    qa: { ok: true, failures: [], metrics: {} },
+    profile: getQualityFirstQualityProfile(),
+    budgetLedger: createBudgetLedger({ startedAtMs: Date.now() })
+  })
+  assert.equal(h.calls.length, 2)
+  assert.equal(result.budgetLedger.usage.evaluatorCalls, 2)
+  assert.match(h.calls[1].messages[0].content, /previous evaluation was invalid/i)
+})
+
+test('sprite evaluation repairs a provider response that omits the required tool call', async () => {
+  const valid = { arguments: { schemaVersion: 1, recommendation: 'pass', confidence: 0.95, scores: { identity: 96, silhouette: 94, smallScale: 90, completeness: 98, style: 92, overall: 94 }, defects: [] }, provider: 'p', model: 'm', elapsedMs: 1 }
+  const h = createHarness({ completions: [new Error('AI provider did not return required tool call: hatch_pet_sprite_evaluation'), valid] })
+  const boardPath = path.join(h.dataDir, 'board.png')
+  await sharp({ create: { width: 8, height: 8, channels: 4, background: '#fff' } }).png().toFile(boardPath)
+  const result = await h.service.evaluateSprite({
+    runId: 'run-missing-tool',
+    scope: 'canonical',
+    board: { path: boardPath, sha256: 'a'.repeat(64), regions: [{ regionId: 'source' }, { regionId: 'candidate-1' }] },
+    qa: { ok: true, failures: [], metrics: {} },
+    profile: getQualityFirstQualityProfile(),
+    budgetLedger: createBudgetLedger({ startedAtMs: Date.now() })
+  })
+  assert.equal(result.gate.outcome, 'pass')
+  assert.equal(h.calls.length, 2)
 })
