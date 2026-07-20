@@ -946,7 +946,8 @@ test('host model bridge routes every single action through a keyframe-conditione
     assert.match(requests[1].prompt, /starting pose, motion direction, and motion extreme/i)
     assert.match(requests[2].prompt, /complete animation frame sheet for Waving/i)
     assert.match(requests[2].prompt, /one identity view followed by ordered pose examples/i)
-    assert.match(requests[2].prompt, /Frame 3: peak pose.*fully raised beside the face/is)
+    assert.match(requests[2].prompt, /Cell 3 \(row 1 column 3\).*selected waving appendage.*readable greeting pose/is)
+    assert.match(requests[2].prompt, /Cell 6 \(row 2 column 3\).*return close to the neutral anchored starting pose/is)
     assert.deepEqual(result.generationStages.map((stage) => ({
       stage: stage.stage,
       ok: stage.ok,

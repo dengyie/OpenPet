@@ -39,6 +39,37 @@ test('getScopedProviderModelCatalog only returns catalogs that match the sanitiz
   )
 })
 
+test('getScopedProviderModelCatalog sanitizes persisted model ids with the active owner secret', () => {
+  const apiKey = 'sk-persisted-secret-123456'
+  const shortApiKey = 'abc'
+  const catalog = getScopedProviderModelCatalog({
+    capability: 'chat',
+    provider: 'openai-compatible',
+    baseUrl: 'https://example.test/v1',
+    secrets: [apiKey, shortApiKey],
+    catalog: {
+      cacheKey: 'chat:openai-compatible:https://example.test/v1',
+      models: [
+        apiKey,
+        `Bearer ${apiKey}`,
+        `api_key=${apiKey}`,
+        `model-${shortApiKey}-private`,
+        `model-${'x'.repeat(MAX_PROVIDER_MODEL_ID_CHARS + 1)}`,
+        '000-safe-model\u0000',
+        ...Array.from({ length: MAX_MODEL_CATALOG_MODELS + 20 }, (_, index) => `safe-${index}`)
+      ],
+      fetchedAt: '2026-07-04T08:00:00.000Z',
+      source: 'saved'
+    }
+  })
+
+  assert.equal(catalog.models.length, MAX_MODEL_CATALOG_MODELS)
+  assert.equal(catalog.models.includes('000-safe-model'), true)
+  assert.equal(catalog.models.some((model) => model.includes(apiKey)), false)
+  assert.equal(catalog.models.some((model) => model.includes(shortApiKey)), false)
+  assert.equal(catalog.models.some((model) => model.length > MAX_PROVIDER_MODEL_ID_CHARS), false)
+})
+
 test('uniqueModelIds strips control characters before deduping provider model ids', () => {
   assert.deepEqual(
     uniqueModelIds(['gpt-image-2\0', 'gpt-image-2', ' gemini-image\t', '\n']),

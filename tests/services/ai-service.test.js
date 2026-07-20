@@ -82,13 +82,15 @@ test('ai service exposes config without secret values', () => {
       model: 'gpt-4o-mini',
       apiKeyRef: 'ai.hatch-pet',
       systemPromptVersion: 1,
-      requireIdentityReviewBeforeActions: false,
+      requireIdentityReviewBeforeActions: true,
       budgets: {
         maxIdentityRegenerations: 1,
         maxActionAttemptsPerAction: 3,
         maxEvaluationAttemptsPerArtifact: 2,
-        maxProviderCalls: 64,
-        maxElapsedMs: 3600000,
+        maxProviderCalls: 72,
+        maxPlannerCalls: 34,
+        maxEvaluatorCalls: 68,
+        maxElapsedMs: 43200000,
         maxEstimatedCost: null
       },
       hasApiKey: true
@@ -124,6 +126,38 @@ test('ai service structured completion forces one named tool without persisting 
   assert.equal(requests[0].tools.length, 1)
   assert.deepEqual(requests[0].tool_choice, { type: 'function', function: { name: 'required_tool' } })
   assert.deepEqual(settingsService.get().ai.conversations, { keep: [{ role: 'user', content: 'unchanged' }] })
+})
+
+test('ai service structured completion keeps its timeout active while reading the response body', async () => {
+  let bodyAborted = false
+  const service = createAiService({
+    settingsService: createSettingsService(),
+    secretService: { getSecretValue: () => 'sk-private', setSecret: () => {} },
+    fetchImpl: async (_url, options) => ({
+      ok: true,
+      status: 200,
+      json: async () => new Promise((_resolve, reject) => {
+        options.signal.addEventListener('abort', () => {
+          bodyAborted = true
+          const error = new Error('aborted while reading response body')
+          error.name = 'AbortError'
+          reject(error)
+        }, { once: true })
+      })
+    })
+  })
+
+  const result = await Promise.race([
+    service.completeStructuredTool({
+      messages: [{ role: 'user', content: 'bounded request' }],
+      tool: { type: 'function', function: { name: 'required_tool', parameters: { type: 'object' } } },
+      timeoutMs: 1000
+    }).catch((error) => error),
+    new Promise((resolve) => setTimeout(() => resolve(new Error('structured response body stayed pending')), 1300))
+  ])
+
+  assert.equal(result?.name, 'TimeoutError')
+  assert.equal(bodyAborted, true)
 })
 
 test('behavior tool definition exposes action candidates reason and display mode', () => {

@@ -173,6 +173,7 @@ test('registerAiIpc wires AI config, behavior, and chat-adjacent handlers', asyn
   const ipcMain = createIpcMainStub()
   const dryRunCalls = []
   const hatchCalls = []
+  const behaviorAdapterCalls = []
 
   registerAiIpc({
     ipcMainService: ipcMain,

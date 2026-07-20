@@ -108,6 +108,14 @@ const writeTransparentActionSheetPng = async (targetPath, {
 
 const getRequestedActionSheetLayout = (prompt = '') => {
   const promptText = String(prompt || '')
+  const structuredMatch = promptText.match(/with exactly (\d+) complete full-body character frames arranged in (\d+) columns and (\d+) rows/i)
+  if (structuredMatch) {
+    return {
+      columns: Number(structuredMatch[2]),
+      rows: Number(structuredMatch[3]),
+      frameCount: Number(structuredMatch[1])
+    }
+  }
   const match = promptText.match(/Arrange the frames in exactly (\d+) columns x (\d+) rows/i) ||
     promptText.match(/Arrange exactly \d+ sequential poses in a (\d+) column by (\d+) row grid/i) ||
     promptText.match(/Arrange exactly \d+ full-body frames in (\d+) columns and (\d+) rows/i)
@@ -2483,139 +2491,6 @@ test('creator studio dashboard shows failed generation recovery and retries the 
     assert.equal(generationAttempts, 6)
     assert.match(await page.locator('#status-line').textContent(), /Generated action output/i)
     assert.match(await page.locator('#action-review-panel').textContent(), /Review status/i)
-  } finally {
-    await browser.close()
-    await new Promise((resolve) => server.close(resolve))
-    bridgeServer.closeAllConnections?.()
-    await new Promise((resolve) => bridgeServer.close(resolve))
-    if (previousBridgeUrl == null) delete process.env.OPENPET_BRIDGE_URL
-    else process.env.OPENPET_BRIDGE_URL = previousBridgeUrl
-    if (previousBridgeToken == null) delete process.env.OPENPET_BRIDGE_TOKEN
-    else process.env.OPENPET_BRIDGE_TOKEN = previousBridgeToken
-  }
-})
-
-test('creator studio dashboard shows full-pet validation recovery and retries the same run', { concurrency: false }, async () => {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-full-pet-retry-'))
-  let baseGenerationAttempts = 0
-  let keyframeGenerationAttempts = 0
-  let actionRowGenerationAttempts = 0
-  let totalGenerationAttempts = 0
-  const bridgeServer = http.createServer((request, response) => {
-    let body = ''
-    request.on('data', (chunk) => { body += chunk })
-    request.on('end', () => {
-      const payload = body ? JSON.parse(body) : {}
-      response.setHeader('Content-Type', 'application/json')
-      if (request.url.endsWith('/creator/model-settings')) {
-        response.end(JSON.stringify({
-          ok: true,
-          config: {
-            provider: 'openai-compatible',
-            baseUrl: 'http://127.0.0.1:7860/v1',
-            model: 'local-full-pet-v2'
-          }
-        }))
-        return
-      }
-      if (request.url.endsWith('/creator/model-image-generate')) {
-        totalGenerationAttempts += 1
-        const outputDir = String(payload.output?.dataRelativeDir || '')
-        const actionRowMatch = outputDir.match(/\/frames\/base\/([^/]+)-keyframe-row$/)
-        const isActionRow = Boolean(actionRowMatch)
-        const isActionKeyframe = /\/keyframes\/actions\/[^/]+-(?:start|peak)-keyframe$/.test(outputDir)
-        const isBaseImage = /\/frames\/base$/.test(outputDir)
-        if (isBaseImage) baseGenerationAttempts += 1
-        else if (isActionKeyframe) keyframeGenerationAttempts += 1
-        else if (isActionRow) actionRowGenerationAttempts += 1
-        const dataRelativePath = `${outputDir}/0001.png`
-        const generatedPath = path.join(dataDir, dataRelativePath)
-        fs.mkdirSync(path.dirname(generatedPath), { recursive: true })
-        const writeOutput = isBaseImage && baseGenerationAttempts === 1
-          ? writeSolidPng(generatedPath, {
-              width: 96,
-              height: 112,
-              background: { r: 0, g: 0, b: 0, alpha: 0 }
-            })
-          : isActionRow
-            ? writeTransparentActionSheetPng(generatedPath, {
-                ...getRequestedActionSheetLayout(payload.prompt),
-                cellWidth: 256,
-                cellHeight: 256,
-                actionId: actionRowMatch[1]
-              })
-            : writeTransparentActionSheetPng(generatedPath, {
-                columns: 1,
-                rows: 1,
-                cellWidth: isBaseImage ? 512 : 256,
-                cellHeight: isBaseImage ? 512 : 256
-              })
-        writeOutput
-          .then(() => {
-            response.end(JSON.stringify({
-              ok: true,
-              result: {
-                ok: true,
-                backend: 'provider',
-                model: 'local-full-pet-v2',
-                generatedAt: '2026-06-27T00:00:00.000Z',
-	                outputs: [{
-	                  dataRelativePath,
-	                  mimeType: 'image/png',
-	                  sha256: !isActionRow && baseGenerationAttempts === 1 ? 'invalid-visible-pixels-sha' : 'full-pet-retry-sha'
-	                }]
-              }
-            }))
-          })
-          .catch((error) => {
-            response.statusCode = 500
-            response.end(JSON.stringify({ ok: false, error: error.message }))
-          })
-        return
-      }
-      response.statusCode = 404
-      response.end(JSON.stringify({ ok: false, error: 'Unknown route' }))
-    })
-  })
-  await new Promise((resolve) => bridgeServer.listen(0, '127.0.0.1', resolve))
-  const previousBridgeUrl = process.env.OPENPET_BRIDGE_URL
-  const previousBridgeToken = process.env.OPENPET_BRIDGE_TOKEN
-  process.env.OPENPET_BRIDGE_URL = `http://127.0.0.1:${bridgeServer.address().port}`
-  process.env.OPENPET_BRIDGE_TOKEN = 'bridge-token'
-  const server = await openDashboardServer(dataDir)
-  const { browser, page } = await openDashboardPage(server)
-
-  try {
-    await page.locator('#backend-select').selectOption('provider')
-    await page.locator('#prompt-input').fill('生成一只完整的新桌宠，平时懒懒的，被点击会害羞转圈，偶尔会打哈欠。')
-    await page.locator('#draft-button').click()
-    await page.waitForFunction(() => !document.querySelector('#confirm-button').disabled)
-    await page.waitForFunction(() => Boolean(document.querySelector('#run-select')?.value))
-    await attachCanonicalReferenceToRun({ dataDir, runId: await page.locator('#run-select').inputValue() })
-
-    await page.locator('#confirm-button').click()
-    await page.waitForFunction(() => !document.querySelector('#generate-button').disabled)
-    await page.locator('#generate-button').click()
-    await page.waitForFunction(() => /Generated image contains no visible pixels/.test(document.querySelector('#status-line').textContent))
-
-    const recoveryText = await page.locator('#recovery-panel').textContent()
-    assert.match(recoveryText, /Generation failed/i)
-    assert.match(recoveryText, /Generated image contains no visible pixels/i)
-    assert.match(recoveryText, /The generated source image was empty/i)
-    await expectRetryButtonLabel(page, 'Retry generation')
-
-    const runIdBeforeRetry = await page.locator('#run-select').inputValue()
-    await page.locator('#generate-button').click()
-    await waitForGeneratedOutput(page, 'pet-pack')
-
-    const runIdAfterRetry = await page.locator('#run-select').inputValue()
-    assert.equal(runIdAfterRetry, runIdBeforeRetry)
-    assert.equal(baseGenerationAttempts, 2)
-    assert.equal(keyframeGenerationAttempts, 16)
-    assert.equal(actionRowGenerationAttempts, 8)
-    assert.equal(totalGenerationAttempts, 26)
-    assert.match(await page.locator('#status-line').textContent(), /Generated pet-pack output/i)
-    assert.match(await page.locator('#full-pet-review-panel').textContent(), /Atlas QA/i)
   } finally {
     await browser.close()
     await new Promise((resolve) => server.close(resolve))

@@ -9,6 +9,7 @@ const {
   PROMPT_COMPILER_VERSION,
   compileProviderImagePrompt
 } = require('./provider-image-prompt-compiler')
+const { createVisualPlan } = require('./visual-plan')
 const {
   buildActionFramePlan,
   inferAnimationType,
@@ -20,7 +21,7 @@ const {
   isWavingAction
 } = require('./action-semantics')
 
-const PROMPT_BUILDER_VERSION = 5
+const PROMPT_BUILDER_VERSION = 6
 
 const SECTION_ORDER = [
   'Asset Goal',
@@ -110,23 +111,23 @@ const getActionSpec = ({ action = {}, frameCount }) => {
   const motionText = `${action.name || ''} ${action.motionPrompt || ''}`
   const animationType = inferAnimationType(action)
   const waving = isWavingAction(motionText)
-  const viewDirection = sanitizeCreativeBrief(action.viewDirection || (animationType === 'locomotion_loop' ? 'side-facing or requested view' : 'front-facing'))
+  const viewDirection = sanitizeCreativeBrief(action.viewDirection || (animationType === 'locomotion_loop' ? 'preserve the requested directional facing' : 'preserve the canonical viewpoint'))
   const loopType = sanitizeCreativeBrief(action.loopType || (action.loop ? 'looping animation' : 'one-shot animation'))
   const customAnimatedParts = Array.isArray(action.animatedParts) && action.animatedParts.length > 0
     ? action.animatedParts
     : []
   const defaultAnimatedParts = waving
-    ? ['viewer-right front limb, hand, paw, wing, arm, or equivalent waving appendage']
+    ? ['the selected visible waving appendage']
     : animationType === 'locomotion_loop'
-      ? ['legs, arms, wings, or locomotion parts']
+      ? ['the visible locomotion appendages and supporting body motion']
       : animationType === 'vertical_bounce'
-        ? ['whole character vertical position according to the frame plan', 'small limb follow-through']
+        ? ['the whole-character vertical pose according to the frame plan', 'small visible follow-through']
         : animationType === 'pose_transition'
-          ? ['parts needed for the requested pose transition']
+          ? ['the visible body parts required by the pose transition']
           : animationType === 'reaction'
-            ? ['facial expression, head, ears, limbs, or equivalent reaction parts']
+            ? ['the visible parts required to communicate the reaction']
             : animationType === 'emote'
-              ? ['facial expression, eyes, mouth, cheeks, small limbs, or equivalent emote parts']
+              ? ['the visible expressive features required by the emote']
               : ['the intended moving parts described by the action']
   const animatedParts = waving
     ? [...new Set([...defaultAnimatedParts, ...customAnimatedParts])]
@@ -134,18 +135,18 @@ const getActionSpec = ({ action = {}, frameCount }) => {
   const lockedParts = Array.isArray(action.lockedParts) && action.lockedParts.length > 0
     ? action.lockedParts
     : animationType === 'locomotion_loop'
-      ? ['face', 'identity-defining features', 'body scale', 'camera angle', 'color palette', 'accessories and markings']
-      : ['head', 'face', 'torso', 'body center', 'feet/base position', 'body proportions', 'outfit', 'accessories', 'markings', 'overall silhouette']
+      ? ['visible identity-bearing features', 'body proportions', 'character scale', 'viewpoint', 'palette', 'markings', 'visible accessories']
+      : ['visible identity-bearing features', 'markings', 'body proportions', 'character scale', 'lower-center root', 'viewpoint', 'visible accessories']
   const secondaryMotion = Array.isArray(action.secondaryMotion) && action.secondaryMotion.length > 0
     ? action.secondaryMotion
     : animationType === 'stationary_loop'
-      ? ['very subtle shoulder, ear, cheek, tail, or cute bounce motion only if it does not change identity or anchor stability']
+      ? ['one subtle local secondary motion only if it preserves identity and anchor stability']
       : animationType === 'locomotion_loop'
-        ? ['subtle body bob that keeps the character centered in each cell']
+        ? ['subtle supporting-body motion that keeps the character centered in each cell']
         : animationType === 'reaction'
-          ? ['brief squash, stretch, head bob, or limb follow-through only if the character returns to a stable readable pose']
+          ? ['brief local follow-through only if the character returns to a stable readable pose']
           : animationType === 'emote'
-            ? ['tiny head, cheek, ear, or shoulder motion only if it stays local and preserves the root anchor']
+            ? ['tiny local expressive motion only if it preserves the root anchor']
             : ['small controlled follow-through that preserves identity, scale, and frame alignment']
   const forbiddenMotion = Array.isArray(action.forbiddenMotion) && action.forbiddenMotion.length > 0
     ? action.forbiddenMotion
@@ -155,7 +156,7 @@ const getActionSpec = ({ action = {}, frameCount }) => {
         'face changes that redesign the character',
         'scale changes',
         'camera angle changes',
-        'new limbs',
+        'new or duplicated anatomy or components',
         'new props',
         'body parts crossing cell boundaries',
         ...(animationType === 'emote' ? ['No extra symbols, props, stickers, speech bubbles, or floating decorative effects unless explicitly requested'] : [])
@@ -427,6 +428,24 @@ const buildOpenPetImagePrompt = ({
     qualityGuidance
   })
   const actionSheet = getActionSheetLayout(action)
+  const actionSpec = action ? getActionSpec({ action, frameCount: actionSheet.frameCount }) : null
+  const requestedVisualPlan = createVisualPlan({
+    appearanceIntent,
+    requestedChanges,
+    action: actionSpec
+      ? {
+          name: action?.name || action?.motionPrompt || 'the requested action',
+          animationType: actionSpec.animationType,
+          viewDirection: actionSpec.viewDirection,
+          loopType: actionSpec.loopType,
+          movingParts: actionSpec.animatedParts,
+          secondaryMotion: actionSpec.secondaryMotion,
+          lockedParts: actionSpec.lockedParts,
+          forbiddenMotion: actionSpec.forbiddenMotion
+        }
+      : null,
+    subject: DEFAULT_FULL_BODY_SUBJECT
+  })
   const imageTask = createProviderImageTask({
     taskType: task.mode === 'single-action' ? 'action-frame-sheet' : 'character-image',
     stage: task.mode === 'single-action' ? 'final' : 'identity',
@@ -441,27 +460,40 @@ const buildOpenPetImagePrompt = ({
           },
           action: {
             name: action?.name || action?.motionPrompt || 'the requested action',
+            animationType: actionSpec.animationType,
             moment: action?.motionPrompt || action?.name || 'the requested action',
-            movingParts: getActionSpec({ action, frameCount: actionSheet.frameCount }).animatedParts,
-            lockedParts: getActionSpec({ action, frameCount: actionSheet.frameCount }).lockedParts,
+            viewDirection: actionSpec.viewDirection,
+            loopType: actionSpec.loopType,
+            movingParts: actionSpec.animatedParts,
+            secondaryMotion: actionSpec.secondaryMotion,
+            lockedParts: actionSpec.lockedParts,
+            forbiddenMotion: actionSpec.forbiddenMotion,
             loopIntent: action?.loop
               ? 'a seamless loop that returns to the starting pose'
               : 'a readable action with a clear ending pose',
-            framePlan: buildActionFramePlan({ action, frameCount: actionSheet.frameCount })
+            frameBeats: buildActionFramePlan({ action, frameCount: actionSheet.frameCount })
           }
         }
       : {}),
     referenceRole,
     subject: DEFAULT_FULL_BODY_SUBJECT,
-    appearanceIntent,
+    appearanceIntent: requestedVisualPlan.subject.mediumAndStyle,
     strategyId,
-    requestedChanges
+    requestedChanges: requestedVisualPlan.subject.requestedVisibleChanges
+  })
+  const visualPlan = createVisualPlan({
+    ...requestedVisualPlan,
+    action: imageTask.action,
+    composition: imageTask.subject
   })
   const compiled = compileProviderImagePrompt({
     task: imageTask,
+    model: model || 'gpt-image-2',
+    visualPlan,
     qualityGuidance: createQualityGuidanceLines({
       qualityGuidance,
-      actionId: action?.actionId || ''
+      actionId: action?.actionId || '',
+      animationType: actionSpec?.animationType || ''
     })
   })
 

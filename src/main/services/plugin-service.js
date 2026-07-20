@@ -465,7 +465,7 @@ const assertStorageKey = (key) => {
   }
 }
 
-const createPluginService = ({ settingsService, petService, actionService, actionImportService, petPackService, aiService, imageGenerationModelService, hatchPetAgentService = null, fetchImpl = globalThis.fetch, resolveAddress, serviceHealthTimeoutMs, healthCheckTimeoutMs = serviceHealthTimeoutMs ?? PLUGIN_SERVICE_HEALTH_TIMEOUT_MS, serviceStopGracePeriodMs = PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS, commandProcessTimeoutMs = LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, openExternal = async () => { throw new Error('Dashboard opener is not available') }, selectCreatorAssetFrameFolder = async () => { throw new Error('Creator asset folder picker is not available') }, onPetPackActivated = () => {}, spawnServiceProcess = spawn, spawnSetupProcess = spawnServiceProcess, spawnCommandProcess = spawnServiceProcess, killServiceProcess = process.kill, signalServiceProcessTree = defaultServiceProcessTree.signalServiceProcessTree, setServiceHealthTimer = setTimeout, clearServiceHealthTimer = clearTimeout, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
+const createPluginService = ({ settingsService, petService, actionService, actionImportService, petPackService, aiService, aiTalkService, imageGenerationModelService, secretService = null, hatchPetAgentService = null, fetchImpl = globalThis.fetch, resolveAddress, pluginNetworkConnect = connectPinnedHttps, pluginNetworkTimeoutMs = 10000, serviceHealthTimeoutMs, healthCheckTimeoutMs = serviceHealthTimeoutMs ?? PLUGIN_SERVICE_HEALTH_TIMEOUT_MS, serviceStopGracePeriodMs = PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS, commandProcessTimeoutMs = LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, openExternal = async () => { throw new Error('Dashboard opener is not available') }, selectCreatorAssetFrameFolder = async () => { throw new Error('Creator asset folder picker is not available') }, onPetPackActivated = () => {}, spawnServiceProcess = spawn, spawnSetupProcess = spawnServiceProcess, spawnCommandProcess = spawnServiceProcess, killServiceProcess = process.kill, signalServiceProcessTree = defaultServiceProcessTree.signalServiceProcessTree, setServiceHealthTimer = setTimeout, clearServiceHealthTimer = clearTimeout, probeAgentAwarenessActivity = defaultProbeAgentAwarenessActivity, setAgentAwarenessAutostartTimer = setInterval, clearAgentAwarenessAutostartTimer = clearInterval, agentAwarenessAutostartIntervalMs = DEFAULT_AGENT_AWARENESS_AUTOSTART_INTERVAL_MS, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
   let effectiveHatchPetAgentService = hatchPetAgentService
   if (!settingsService) throw new Error('settingsService is required')
   if (!petService) throw new Error('petService is required')
@@ -912,7 +912,25 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       assertPermission(plugin.manifest, 'model:image-generate')
       if (!imageGenerationModelService?.generateImage) throw new Error('Creator model image generation is not available')
       appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.model-image-generate invoked' })
-      const { backend: _ignoredBackend, runId: rawRunId, ...providerPayload } = payload
+      const {
+        backend: _ignoredBackend,
+        provider: _ignoredProvider,
+        baseUrl: _ignoredBaseUrl,
+        apiKeyRef: _ignoredApiKeyRef,
+        model: _ignoredModel,
+        runId: rawRunId,
+        ...providerPayload
+      } = payload
+      const ignoredOwnerFields = ['provider', 'baseUrl', 'apiKeyRef', 'model']
+        .filter((field) => Object.hasOwn(payload, field))
+      if (ignoredOwnerFields.length) {
+        appendLog({
+          pluginId: plugin.manifest.id,
+          commandId,
+          level: 'warn',
+          message: `Bridge ignored Provider owner-controlled fields: ${ignoredOwnerFields.join(', ')}`
+        })
+      }
       const runId = String(rawRunId || '').trim()
       const canAccountProviderCall = Boolean(
         plugin.manifest.id === CREATOR_STUDIO_PLUGIN_ID &&
@@ -2416,7 +2434,10 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     pollAgentAwarenessAutostart,
     getPluginDefinition,
     getPluginCreatorDataDir,
-    setHatchPetAgentService
+    setHatchPetAgentService,
+    getImGatewaySecretState,
+    saveImGatewayTelegramBotToken,
+    clearImGatewayTelegramBotToken
   }
 }
 

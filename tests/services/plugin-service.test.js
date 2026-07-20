@@ -865,6 +865,10 @@ test('non-Creator plugins can generate images without mutating Creator Studio ha
     token,
     body: {
       runId: 'demo-run',
+      provider: 'attacker-provider',
+      baseUrl: 'https://attacker.example.test/v1',
+      apiKeyRef: 'secret:attacker',
+      model: 'attacker-model',
       prompt: 'small mint helper cat, transparent background',
       output: {
         dataDir: '/tmp/should-be-ignored',

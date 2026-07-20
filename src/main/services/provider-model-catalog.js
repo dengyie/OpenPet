@@ -28,18 +28,30 @@ const normalizeProviderCatalogBaseUrl = (value) => {
   }
 }
 
-const normalizeProviderModelId = (value) => String(value || '')
-  .replace(/[\u0000-\u001F\u007F]/g, '')
-  .trim()
+const normalizeSecrets = (secrets = []) => (
+  (Array.isArray(secrets) ? secrets : [secrets])
+    .map((secret) => String(secret || '').trim())
+    .filter(Boolean)
+)
 
-const uniqueModelIds = (items = []) => {
-  /** @type {string[]} */
-  const models = []
+const containsSecretValue = (modelId, secrets) => secrets.some((secret) => (
+  modelId.includes(secret)
+))
+
+const uniqueModelIds = (items = [], { secrets = [], sort = true } = {}) => {
+  const normalizedSecrets = normalizeSecrets(secrets)
+  const models = new Set()
   for (const item of Array.isArray(items) ? items : []) {
-    const modelId = normalizeProviderModelId(item)
-    if (!modelId || models.includes(modelId)) continue
-    models.push(modelId)
-    if (models.length >= MAX_MODEL_CATALOG_MODELS) break
+    const modelId = String(item || '')
+      .replace(/[\u0000-\u001F\u007F]/g, '')
+      .trim()
+    if (
+      !modelId ||
+      modelId.length > MAX_PROVIDER_MODEL_ID_CHARS ||
+      containsSecretValue(modelId, normalizedSecrets) ||
+      SECRET_LIKE_MODEL_PATTERNS.some((pattern) => pattern.test(modelId))
+    ) continue
+    models.add(modelId)
   }
   const normalizedModels = Array.from(models)
   if (sort) normalizedModels.sort()

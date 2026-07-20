@@ -265,6 +265,8 @@ Current bridge routes:
 - `GET /creator/model-settings`
 - `POST /creator/model-health-check`
 - `POST /creator/model-image-generate`
+- `POST /creator/hatch-pet/plan`
+- `POST /creator/hatch-pet/evaluate`
 
 The bridge is loopback-only for command runs, token-gated, and valid only while the command run is active. The service bridge uses a separate URL/token pair and is valid only while the service runtime is active; it expires immediately when stop is requested.
 
@@ -316,6 +318,8 @@ Current endpoint set:
 - `GET /creator/model-settings`
 - `POST /creator/model-health-check`
 - `POST /creator/model-image-generate`
+- `POST /creator/hatch-pet/plan`
+- `POST /creator/hatch-pet/evaluate`
 
 Bridge rules:
 

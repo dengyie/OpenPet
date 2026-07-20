@@ -672,18 +672,18 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
                     return (
                       <>
                   <div className="plugin-config-header">
-                    <strong>生成并等待复查</strong>
-                    <button
-                      type="button"
-                      className="ghost"
-                      disabled={!plugin.enabled || plugin.blockStatus?.blocked || openingDashboard === `${plugin.id}:main`}
-                      onClick={() => onOpenDashboard(plugin.id, 'main')}
-                    >
-                      查看任务详情
-                    </button>
+                    <strong>IM Gateway</strong>
+                    <span className="field-note">
+                      Telegram token: {imGatewaySecretState.hasTelegramBotToken ? 'saved' : 'not saved'}
+                    </span>
                   </div>
-                  <div className="field-note">
-                    宿主默认路径会优先走已保存的图片 Provider，并在生成完成后停在人工复查。审批、导入和激活需要分别执行。
+                  <div className="field-note">Service: {runtimeStatus} · Health: {healthStatus}</div>
+                  {runtimeActive ? (
+                    <div className="field-note">Stop IM Gateway Service before changing Telegram credentials or routing policy.</div>
+                  ) : null}
+                  <div className="plugin-config-field">
+                    <span>Telegram</span>
+                    <small>Telegram: {String(plugin.config?.telegramMode || 'polling')}</small>
                   </div>
                   <div aria-label="IM Gateway onboarding">
                     <div className="plugin-config-header">
@@ -719,7 +719,15 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
                       disabled={runtimeActive || !imGatewayTelegramTokenDraft.trim() || savingImGatewayTelegramToken}
                       onClick={onSaveImGatewayTelegramBotToken}
                     >
-                      {runningCreatorStudioDefaultFlow ? '处理中' : '开始生成'}
+                      {savingImGatewayTelegramToken ? 'Saving Telegram Token' : 'Save Telegram Token'}
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost"
+                      disabled={runtimeActive || !imGatewaySecretState.hasTelegramBotToken || clearingImGatewayTelegramToken}
+                      onClick={onClearImGatewayTelegramBotToken}
+                    >
+                      {clearingImGatewayTelegramToken ? 'Clearing Telegram Token' : 'Clear Telegram Token'}
                     </button>
                   </div>
                       </>

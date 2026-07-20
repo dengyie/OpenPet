@@ -43,11 +43,12 @@ const createRegionObject = (value, fallback) => (
 
 const createDeliverableClause = (task) => {
   if (task.taskType === 'action-frame-sheet') {
+    const actionName = String(task.action?.name || '').trim()
     return createClause({
       id: 'deliverable.frame-sheet',
       category: 'deliverable',
       priority: 100,
-      text: `Create one ${task.canvas.width} x ${task.canvas.height} animation frame sheet with exactly ${task.sheet.frameCount} complete full-body character frames arranged in ${task.sheet.columns} columns and ${task.sheet.rows} rows. Read cells left to right, then top to bottom.`
+      text: `Create one complete animation frame sheet${actionName ? ` for ${actionName}` : ''} at ${task.canvas.width} x ${task.canvas.height} with exactly ${task.sheet.frameCount} complete full-body character frames arranged in ${task.sheet.columns} columns and ${task.sheet.rows} rows. Read cells left to right, then top to bottom.`
     })
   }
   if (task.taskType === 'action-keyframe') {
@@ -86,7 +87,7 @@ const createReferenceClause = (task) => {
       id: 'reference.identity-and-motion',
       category: 'reference',
       priority: 95,
-      text: 'Use the attached board for character identity, visible proportions, colors, markings, materials, accessories, viewpoint, scale, lighting style, and rendering style. Use its pose examples only for the action moments they visibly represent; the written frame plan controls all other poses. Do not copy the board layout, repeated views, spacing, labels, borders, or background.'
+      text: 'Use the attached board for character identity, visible proportions, colors, markings, materials, accessories, viewpoint, scale, lighting style, and rendering style. It contains one identity view followed by ordered pose examples. Use the identity view for appearance and use the pose examples for the starting pose, motion direction, and motion extreme. The written frame plan controls all other poses. Do not copy the board layout, repeated views, spacing, labels, borders, or background.'
     })
   }
   return createClause({
@@ -124,7 +125,14 @@ const createChangeClause = ({ task, visualPlan }) => {
     const moment = task.action?.moment || task.action?.name || 'the requested action pose'
     const sheetLanguage = task.taskType === 'action-frame-sheet'
       ? `Change only the pose from cell to cell to perform ${task.action?.name || 'the requested action'}.`
-      : `Change only the pose to this exact visible moment: ${moment}.`
+      : [
+          task.stage === 'start'
+            ? 'This is the starting pose before the main motion.'
+            : task.stage === 'peak'
+              ? 'This is the clearest motion extreme.'
+              : '',
+          `Change only the pose to this exact visible moment: ${moment}.`
+        ].filter(Boolean).join(' ')
     const scopedCorrection = [
       changes.length
         ? `Correct only this additional visible issue while keeping the requested action intact: ${changes[0]}.`
@@ -207,7 +215,7 @@ const createActionClauses = (task) => {
         category: 'frame-beat',
         scope: `frame:${beat.frame}`,
         priority: 70,
-        text: `Cell ${beat.frame} (${beat.cell}) — ${beat.beat}.`
+        text: `Cell ${beat.frame} (${beat.cell}) — ${String(beat.beat || '').replace(/[.!?]+$/g, '')}.`
       }))
     }
   }

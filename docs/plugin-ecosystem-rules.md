@@ -193,6 +193,8 @@ The current local bridge stays intentionally small:
 - `GET /creator/model-settings`
 - `POST /creator/model-health-check`
 - `POST /creator/model-image-generate`
+- `POST /creator/hatch-pet/plan`
+- `POST /creator/hatch-pet/evaluate`
 
 The bridge is for integration convenience. It is not a complete SDK, not a full security broker, and not a reason to block extensions from using their own local capabilities.
 

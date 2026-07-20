@@ -1137,6 +1137,7 @@ test('ai talk service injects relevant memories as dynamic context without chang
         tags: ['preference'],
         confidence: 0.9,
         importance: 0.8,
+        lastEvidenceAt: new Date().toISOString(),
         reason: 'stable preference'
       },
       {
@@ -1146,6 +1147,7 @@ test('ai talk service injects relevant memories as dynamic context without chang
         tags: ['relationship', 'focus'],
         confidence: 0.8,
         importance: 0.7,
+        lastEvidenceAt: new Date().toISOString(),
         reason: 'relationship cue'
       }
     ]

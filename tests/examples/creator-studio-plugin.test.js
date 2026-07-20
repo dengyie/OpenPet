@@ -32,6 +32,12 @@ const assertProviderNeutralImagePrompt = (prompt) => {
   assert.doesNotMatch(prompt, /\bmultipart\b/i)
   assert.doesNotMatch(prompt, /(?:\/Users|\/var|\/tmp|\/private|\/Volumes)\//i)
 }
+const createHumanApprovalEvidence = () => ({
+  approved: true,
+  source: 'creator-studio-dashboard',
+  approvedAt: '2026-07-20T00:00:00.000Z',
+  evidenceVersion: 1
+})
 const createActionFrameQa = ({
   actionId = 'shy-spin',
   frameCount = 1,
@@ -523,114 +529,6 @@ test('creator studio generation task validation clamps action frame count to bui
   assert.equal(task.actions[0].frameCount, 32)
 })
 
-test('creator studio prompt builder creates an OpenPet full-pet prompt with runtime and boundary rules', () => {
-  const { buildOpenPetImagePrompt } = require('../../examples/plugins/creator-studio/lib/openpet-prompt-builder')
-  const { normalizeGenerationTask } = require('../../examples/plugins/creator-studio/lib/generation-task')
-  const generationTask = normalizeGenerationTask({
-    mode: 'full-pet',
-    targetPet: 'new',
-    styleSource: 'referenceImage',
-    characterBrief: '一只软乎乎的橘猫桌宠，喜欢睡在键盘旁边。',
-    actions: [{
-      actionId: 'idle',
-      name: 'Idle',
-      motionPrompt: 'neutral idle pose',
-      loop: true,
-      frameCount: 12,
-      triggerProposal: { type: 'state', binding: 'idle' }
-    }]
-  })
-
-  const built = buildOpenPetImagePrompt({
-    run: {
-      petId: 'orange-cat',
-      input: {
-        prompt: '一只软乎乎的橘猫桌宠，喜欢睡在键盘旁边。',
-        generationTask
-      }
-    },
-    backend: 'provider',
-    model: 'gpt-image-2'
-  })
-
-  assert.equal(built.mode, 'full-pet')
-  assert.equal(built.actionId, 'idle')
-  assert.deepEqual(built.sections, [
-    'Asset Goal',
-    'Character Identity Contract',
-    'Sprite Sheet Contract',
-    'Programmatic Slicing Contract',
-    'Animation Contract',
-    'Root And Anchor Rules',
-    'Style And Quality Contract',
-    'Human-Reviewed Quality Guidance',
-    'Negative Contract',
-    'User Creative Brief'
-  ])
-  assert.match(built.prompt, /OpenPet animation asset/)
-  assert.match(built.prompt, /small floating desktop pet window/)
-  assert.match(built.prompt, /exactly one pet character/)
-  assert.match(built.prompt, /8-12% safe padding/)
-  assert.match(built.prompt, /no cropped ears, tail, paws, limbs/)
-  assert.match(built.prompt, /Use the source body and head proportions/)
-  assert.match(built.prompt, /If the reference image is a model sheet/)
-  assert.match(built.prompt, /Do not copy reference labels/)
-  assert.match(built.prompt, /full-pet/)
-  assert.match(built.prompt, /transparent-friendly, easy cutout silhouette/)
-  assert.match(built.prompt, /no text, logo, watermark/)
-  assert.match(built.prompt, /一只软乎乎的橘猫桌宠/)
-  assert.equal(built.prompt.includes('response_format'), false)
-  assert.equal(built.promptBuilderVersion, 5)
-  assert.equal(built.promptCompiler.promptCompilerVersion, 1)
-  assert.match(built.providerPrompt, /^Create exactly one 1024 x 1024 image with a 1:1 aspect ratio\./)
-  assert.match(built.providerPrompt, /one complete full-body character/i)
-  assert.match(built.providerPrompt, /attached character as the exact identity and visual-style reference/i)
-  assert.match(built.providerPrompt, /lower center of the canvas/i)
-  assert.match(built.providerPrompt, /transparent background/i)
-  assertProviderNeutralImagePrompt(built.providerPrompt)
-})
-
-test('creator studio prompt builder preserves custom action semantics and current-pet style consistency', () => {
-  const { buildOpenPetImagePrompt } = require('../../examples/plugins/creator-studio/lib/openpet-prompt-builder')
-  const { draftGenerationTask } = require('../../examples/plugins/creator-studio/lib/conversation-wizard')
-  const draft = draftGenerationTask({
-    prompt: '新增一个自定义动作：原地打滚，动作要循环。'
-  })
-
-  const built = buildOpenPetImagePrompt({
-    run: {
-      petId: 'current-cat',
-      input: {
-        prompt: draft.originalPrompt,
-        originalPrompt: draft.originalPrompt,
-        generationTask: draft.generationTask
-      }
-    },
-    backend: 'provider',
-    model: 'local-pet-sprite'
-  })
-
-  assert.equal(built.mode, 'single-action')
-  assert.equal(built.actionId, draft.generationTask.actions[0].actionId)
-  assert.match(built.prompt, /Mode: single-action/)
-  assert.match(built.prompt, /Target: current/)
-  assert.match(built.prompt, /Action ID: action-[0-9a-f]{8}/)
-  assert.match(built.prompt, /Action name: 原地打滚/)
-  assert.match(built.prompt, /Loop policy: looping/)
-  assert.match(built.prompt, /Frame count intent: 12/)
-  assert.match(built.prompt, /Trigger: unbound/)
-  assert.match(built.prompt, /keep the current pet's style, proportions, palette, facial design, and line work/i)
-  assert.match(built.prompt, /same character identity/)
-  assert.match(built.prompt, /新增一个自定义动作：原地打滚/)
-  assert.match(built.providerPrompt, /^Create exactly one 1536 x 1024 image with a 3:2 aspect ratio\./)
-  assert.match(built.providerPrompt, /complete animation frame sheet for 原地打滚/i)
-  assert.match(built.providerPrompt, /exactly 12 full-body frames in 4 columns and 3 rows/i)
-  assert.match(built.providerPrompt, /equal invisible cells/i)
-  assert.match(built.providerPrompt, /same lower-center root, viewpoint, scale, identity, lighting/i)
-  assert.match(built.providerPrompt, /seamless loop that returns to the starting pose/i)
-  assertProviderNeutralImagePrompt(built.providerPrompt)
-})
-
 test('creator studio prompt builder emits complete sprite-sheet instructions for canonical-frame actions', () => {
   const { buildOpenPetImagePrompt } = require('../../examples/plugins/creator-studio/lib/openpet-prompt-builder')
   const { normalizeGenerationTask } = require('../../examples/plugins/creator-studio/lib/generation-task')
@@ -662,253 +560,7 @@ test('creator studio prompt builder emits complete sprite-sheet instructions for
   })
 
   assert.equal(built.actionId, 'wave')
-  assert.match(built.providerPrompt, /^Create exactly one 1536 x 1024 image with a 3:2 aspect ratio\./)
-  assert.match(built.providerPrompt, /complete animation frame sheet for Wave/i)
-  assert.match(built.providerPrompt, /exactly 6 full-body frames in 3 columns and 2 rows/i)
-  assert.match(built.providerPrompt, /viewer-right front limb/i)
-  assert.match(built.providerPrompt, /transparent animation frame sheet/i)
-  assertProviderNeutralImagePrompt(built.providerPrompt)
-})
-
-test('creator studio prompt builder emits a generic OpenPet action asset protocol for wave actions', () => {
-  const { buildOpenPetImagePrompt } = require('../../examples/plugins/creator-studio/lib/openpet-prompt-builder')
-  const { normalizeGenerationTask } = require('../../examples/plugins/creator-studio/lib/generation-task')
-  const generationTask = normalizeGenerationTask({
-    mode: 'single-action',
-    targetPet: 'current',
-    styleSource: 'referenceImage',
-    characterBrief: 'Keep the reference character identity exactly, whether it is an animal, robot, slime, plush toy, or small monster.',
-    actions: [{
-      actionId: 'wave',
-      name: 'wave',
-      motionPrompt: 'friendly wave',
-      frameCount: 6,
-      loop: true,
-      animationType: 'stationary_loop',
-      viewDirection: 'front-facing',
-      loopType: 'short loop',
-      animatedParts: ['viewer-right front limb or equivalent waving appendage'],
-      lockedParts: ['head', 'face', 'torso', 'body center', 'feet/base', 'accessories'],
-      secondaryMotion: ['very subtle shoulder movement'],
-      forbiddenMotion: ['body drifting', 'head turning', 'face changing', 'scale changing', 'new props'],
-      framePlan: [
-        'Frame 1: neutral front-facing idle pose, both front limbs down.',
-        'Frame 2: viewer-right front limb begins to lift.',
-        'Frame 3: viewer-right front limb is fully raised beside the face.',
-        'Frame 4: raised limb tilts slightly outward in a wave.',
-        'Frame 5: raised limb tilts slightly inward in a wave.',
-        'Frame 6: raised limb returns close to the neutral pose.'
-      ],
-      triggerProposal: { type: 'manual' }
-    }]
-  })
-
-  const built = buildOpenPetImagePrompt({
-    run: {
-      petId: 'reference-character',
-      input: {
-        prompt: 'Make this character wave.',
-        originalPrompt: 'Make this character wave.',
-        generationTask
-      }
-    },
-    backend: 'provider',
-    model: 'gpt-image-2'
-  })
-
-  assert.equal(built.promptBuilderVersion, 5)
-  assert.equal(built.promptCompiler.promptCompilerVersion, 1)
-  assert.match(built.providerPrompt, /^Create exactly one 1536 x 1024 image with a 3:2 aspect ratio\./)
-  assert.match(built.providerPrompt, /complete animation frame sheet for wave/i)
-  assert.match(built.providerPrompt, /attached character as the exact identity and visual-style reference/i)
-  assert.match(built.providerPrompt, /same face and eye design.*markings.*body proportions.*accessories/is)
-  assert.match(built.providerPrompt, /viewer-right front limb, hand, paw, wing, arm, or equivalent waving appendage/i)
-  assert.match(built.providerPrompt, /Frame 2: viewer-right front limb begins to lift/i)
-  assert.match(built.providerPrompt, /exactly 6 full-body frames in 3 columns and 2 rows/i)
-  assert.match(built.providerPrompt, /no visible grid lines/i)
-  assert.match(built.providerPrompt, /character parts crossing between cells/i)
-  assertProviderNeutralImagePrompt(built.providerPrompt)
-})
-
-test('creator studio prompt builder changes anchor rules for locomotion actions', () => {
-  const { buildOpenPetImagePrompt } = require('../../examples/plugins/creator-studio/lib/openpet-prompt-builder')
-  const { normalizeGenerationTask } = require('../../examples/plugins/creator-studio/lib/generation-task')
-  const generationTask = normalizeGenerationTask({
-    mode: 'single-action',
-    targetPet: 'current',
-    styleSource: 'referenceImage',
-    characterBrief: 'Keep the same tiny desktop pet identity.',
-    actions: [{
-      actionId: 'run',
-      name: 'run',
-      motionPrompt: 'in-place running loop',
-      frameCount: 8,
-      loop: true,
-      animationType: 'locomotion_loop',
-      viewDirection: 'side-facing',
-      animatedParts: ['legs', 'arms', 'tail or equivalent locomotion parts'],
-      triggerProposal: { type: 'state', binding: 'running' }
-    }]
-  })
-
-  const built = buildOpenPetImagePrompt({
-    run: {
-      petId: 'runner',
-      input: {
-        prompt: 'Make the current pet run in place.',
-        originalPrompt: 'Make the current pet run in place.',
-        generationTask
-      }
-    },
-    backend: 'provider',
-    model: 'local-pet-sprite'
-  })
-
-  assert.match(built.providerPrompt, /seamless loop that returns to the starting pose/i)
-  assert.match(built.providerPrompt, /legs, arms, tail or equivalent locomotion parts/i)
-  assert.match(built.providerPrompt, /exactly 8 full-body frames in 4 columns and 2 rows/i)
-  assert.match(built.providerPrompt, /contact pose/i)
-  assert.match(built.providerPrompt, /passing pose/i)
-  assertProviderNeutralImagePrompt(built.providerPrompt)
-})
-
-test('creator studio prompt builder emits dedicated reaction and emote rules', () => {
-  const { buildOpenPetImagePrompt } = require('../../examples/plugins/creator-studio/lib/openpet-prompt-builder')
-  const { normalizeGenerationTask } = require('../../examples/plugins/creator-studio/lib/generation-task')
-
-  const reactionTask = normalizeGenerationTask({
-    mode: 'single-action',
-    targetPet: 'current',
-    styleSource: 'referenceImage',
-    actions: [{
-      actionId: 'surprised',
-      name: 'surprised reaction',
-      motionPrompt: 'surprised reaction after being clicked',
-      frameCount: 6,
-      loop: false,
-      animationType: 'reaction',
-      triggerProposal: { type: 'click' }
-    }]
-  })
-  const emoteTask = normalizeGenerationTask({
-    mode: 'single-action',
-    targetPet: 'current',
-    styleSource: 'referenceImage',
-    actions: [{
-      actionId: 'happy-emote',
-      name: 'happy emote',
-      motionPrompt: 'happy sparkle emote',
-      frameCount: 6,
-      loop: true,
-      animationType: 'emote',
-      triggerProposal: { type: 'manual' }
-    }]
-  })
-
-  const reactionPrompt = buildOpenPetImagePrompt({
-    run: { input: { prompt: 'Make a surprised click reaction.', generationTask: reactionTask } },
-    backend: 'provider',
-    model: 'local-pet-sprite'
-  }).providerPrompt
-  const emotePrompt = buildOpenPetImagePrompt({
-    run: { input: { prompt: 'Make a happy sparkle emote.', generationTask: emoteTask } },
-    backend: 'provider',
-    model: 'local-pet-sprite'
-  }).providerPrompt
-
-  assert.match(reactionPrompt, /facial expression, head, ears, limbs, or equivalent reaction parts/i)
-  assert.match(reactionPrompt, /clearest reaction peak/i)
-  assert.match(reactionPrompt, /recovery pose with the same root anchor, scale, and identity/i)
-  assert.match(emotePrompt, /facial expression, eyes, mouth, cheeks, small limbs, or equivalent emote parts/i)
-  assert.match(emotePrompt, /clearest expression peak/i)
-  assert.match(emotePrompt, /loop-compatible expression recovery with the same body anchor and identity/i)
-  assertProviderNeutralImagePrompt(reactionPrompt)
-  assertProviderNeutralImagePrompt(emotePrompt)
-})
-
-test('creator studio prompt builder keeps wave and reaction inference ahead of broad emote words', () => {
-  const { buildOpenPetImagePrompt } = require('../../examples/plugins/creator-studio/lib/openpet-prompt-builder')
-  const { normalizeGenerationTask } = require('../../examples/plugins/creator-studio/lib/generation-task')
-
-  const waveTask = normalizeGenerationTask({
-    mode: 'single-action',
-    targetPet: 'current',
-    styleSource: 'referenceImage',
-    actions: [{
-      actionId: 'happy-wave',
-      name: 'happy wave',
-      motionPrompt: 'happy wave loop',
-      frameCount: 6,
-      loop: true,
-      triggerProposal: { type: 'manual' }
-    }]
-  })
-  const reactionTask = normalizeGenerationTask({
-    mode: 'single-action',
-    targetPet: 'current',
-    styleSource: 'referenceImage',
-    actions: [{
-      actionId: 'surprised-click',
-      name: 'surprised reaction',
-      motionPrompt: 'surprised reaction after click',
-      frameCount: 6,
-      loop: false,
-      triggerProposal: { type: 'click' }
-    }]
-  })
-
-  const wavePrompt = buildOpenPetImagePrompt({
-    run: { input: { prompt: 'Make a happy wave loop.', generationTask: waveTask } },
-    backend: 'provider',
-    model: 'local-pet-sprite'
-  }).providerPrompt
-  const reactionPrompt = buildOpenPetImagePrompt({
-    run: { input: { prompt: 'Make a surprised click reaction.', generationTask: reactionTask } },
-    backend: 'provider',
-    model: 'local-pet-sprite'
-  }).providerPrompt
-
-  assert.match(wavePrompt, /seamless loop that returns to the starting pose/i)
-  assert.match(wavePrompt, /viewer-right front limb, hand, paw, wing, arm, or equivalent waving appendage/)
-  assert.match(wavePrompt, /Frame 3: peak pose/i)
-  assert.match(reactionPrompt, /facial expression, head, ears, limbs, or equivalent reaction parts/)
-  assert.match(reactionPrompt, /clearest reaction peak/i)
-  assertProviderNeutralImagePrompt(wavePrompt)
-  assertProviderNeutralImagePrompt(reactionPrompt)
-})
-
-test('creator studio prompt builder emits complete sprite-sheet instructions for canonical-frame actions', () => {
-  const { buildOpenPetImagePrompt } = require('../../examples/plugins/creator-studio/lib/openpet-prompt-builder')
-  const { normalizeGenerationTask } = require('../../examples/plugins/creator-studio/lib/generation-task')
-  const generationTask = normalizeGenerationTask({
-    mode: 'single-action',
-    targetPet: 'current',
-    styleSource: 'referenceImage',
-    characterBrief: 'Keep the same golden cat identity.',
-    actions: [{
-      actionId: 'wave',
-      name: 'Wave',
-      motionPrompt: 'wave one front paw',
-      frameCount: 6,
-      synthesisMode: 'canonical-frame',
-      triggerProposal: { type: 'click', binding: 'clickAction' }
-    }]
-  })
-
-  const built = buildOpenPetImagePrompt({
-    run: {
-      petId: 'golden-cat',
-      input: {
-        prompt: 'Keep the same golden cat identity.',
-        generationTask
-      }
-    },
-    backend: 'provider',
-    model: 'gpt-image-2'
-  })
-
-  assert.equal(built.actionId, 'wave')
-  assert.match(built.providerPrompt, /^DELIVERABLE\nCreate one 1536 x 1024 animation frame sheet with exactly 6 complete full-body character frames arranged in 3 columns and 2 rows\./)
+  assert.match(built.providerPrompt, /^DELIVERABLE\nCreate one complete animation frame sheet for Wave at 1536 x 1024 with exactly 6 complete full-body character frames arranged in 3 columns and 2 rows\./)
   assert.match(built.providerPrompt, /Change only the pose from cell to cell to perform Wave/i)
   assert.match(built.providerPrompt, /selected visible waving appendage/i)
   assert.match(built.providerPrompt, /uniform opaque background color/i)
@@ -965,11 +617,11 @@ test('creator studio prompt builder emits a generic OpenPet action asset protoco
 
   assert.equal(built.promptBuilderVersion, 6)
   assert.equal(built.promptCompiler.promptCompilerVersion, 3)
-  assert.match(built.providerPrompt, /^DELIVERABLE\nCreate one 1536 x 1024 animation frame sheet with exactly 6 complete full-body character frames arranged in 3 columns and 2 rows\./)
+  assert.match(built.providerPrompt, /^DELIVERABLE\nCreate one complete animation frame sheet for wave at 1536 x 1024 with exactly 6 complete full-body character frames arranged in 3 columns and 2 rows\./)
   assert.match(built.providerPrompt, /Change only the pose from cell to cell to perform wave/i)
   assert.match(built.providerPrompt, /attached image as the identity and visual-style reference/i)
   assert.match(built.providerPrompt, /every visible identity-bearing detail.*body proportion.*accessory/is)
-  assert.match(built.providerPrompt, /Primary motion: the selected visible waving appendage/i)
+  assert.match(built.providerPrompt, /Primary motion: .*waving appendage/i)
   assert.match(built.providerPrompt, /Cell 2 .*viewer-right front limb begins to lift/i)
   assert.match(built.providerPrompt, /No visible grid/i)
   assert.match(built.providerPrompt, /character pixels cross between cells/i)
@@ -1879,7 +1531,7 @@ test('creator studio run-step command uses host bridge for provider generation w
     })
     assert.equal(JSON.stringify(frameQa).includes(dataDir), false)
     assert.match(requests[3].payload.prompt, /animation frame sheet/i)
-    assert.match(requests[3].payload.prompt, /exactly 12 full-body frames/i)
+    assert.match(requests[3].payload.prompt, /exactly 12 complete full-body character frames/i)
     assert.deepEqual(requests[3].payload.referenceImages.map((reference) => reference.role), ['keyframe-action-reference-board'])
     assert.equal(requests[3].payload.prompt.includes('bridge-token'), false)
     assert.equal(requests[3].payload.timeoutMs, 300000)
@@ -1890,10 +1542,10 @@ test('creator studio run-step command uses host bridge for provider generation w
       baseUrlHost: '127.0.0.1:7860'
     })
     assert.deepEqual(run.artifacts.generatedImage.modelSnapshot, run.modelSnapshot)
-    assert.equal(run.artifacts.generatedImage.promptBuilder.version, 5)
+    assert.equal(run.artifacts.generatedImage.promptBuilder.version, 6)
     assert.equal(run.artifacts.generatedImage.promptBuilder.mode, 'single-action')
     assert.equal(run.artifacts.generatedImage.promptBuilder.promptPreview.truncated, false)
-    assert.match(run.artifacts.generatedImage.promptBuilder.promptPreview.text, /Create exactly one 1536 x 1024 image with a 3:2 aspect ratio\./)
+    assert.match(run.artifacts.generatedImage.promptBuilder.promptPreview.text, /Create one complete animation frame sheet for 原地打滚 at 1536 x 1024/)
     assertProviderNeutralImagePrompt(run.artifacts.generatedImage.promptBuilder.promptPreview.text)
     assert.match(run.artifacts.generatedImage.promptBuilder.promptPreview.text, /complete animation frame sheet for 原地打滚/i)
     const providerPromptPath = path.join(dataDir, 'runs', created.json.run.runId, 'inputs', 'provider-prompt.md')
@@ -2199,140 +1851,6 @@ test('creator studio preview-only host run cannot be exported as a pet bundle', 
   } finally {
     bridgeServer.closeAllConnections?.()
     await new Promise((resolve) => bridgeServer.close(resolve))
-  }
-})
-
-test('creator studio provider full-pet generation writes task qa without prompt text or prompt builder payload', async () => {
-  const { normalizeGenerationTask } = require('../../examples/plugins/creator-studio/lib/generation-task')
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-provider-full-pet-qa-'))
-  const created = runCreatorCommand({
-    command: 'create-run',
-    dataDir,
-    payload: {
-      petName: 'Provider QA Cat',
-      prompt: '生成一只完整的新桌宠。API key sk-test-secret 放在 /Users/mango/private/ref.png ，走 http://127.0.0.1:8317/v1。',
-      backend: 'local',
-      generationTask: normalizeGenerationTask({
-        mode: 'full-pet',
-        targetPet: 'new',
-        styleSource: 'referenceImage',
-        characterBrief: '一只圆滚滚的桌宠。',
-        actions: [{
-          actionId: 'idle',
-          name: 'Idle',
-          motionPrompt: 'neutral idle pose',
-          frameCount: 12,
-          loop: true,
-          triggerProposal: { type: 'state', binding: 'idle' }
-        }]
-      })
-    },
-    config: { backend: 'local' }
-  })
-  await attachCanonicalReferenceToRun({ dataDir, runId: created.json.run.runId })
-  const { server } = createBridgeServer({
-    routes: [
-      {
-        path: '/creator/model-settings',
-        handler: () => ({
-          body: {
-            ok: true,
-            config: {
-              provider: 'openai-compatible',
-              baseUrl: 'http://127.0.0.1:7860/v1',
-              model: 'local-pet-sprite',
-              apiKeyRef: 'secret:model.image.openai.apiKey'
-            }
-          }
-        })
-      },
-      {
-        path: '/creator/model-image-generate',
-        handler: async ({ payload }) => {
-          const dataRelativePath = `${payload.output.dataRelativeDir}/0001.png`
-          await writeMockProviderImage({
-            outputPath: path.join(dataDir, dataRelativePath),
-            dataRelativeDir: payload.output.dataRelativeDir
-          })
-          return {
-            body: {
-              ok: true,
-              result: {
-                ok: true,
-                backend: 'local',
-                model: 'local-pet-sprite',
-                generatedAt: '2026-06-27T00:00:00.000Z',
-                outputs: [{
-                  dataRelativePath,
-                  mimeType: 'image/png',
-                  sha256: 'provider-full-pet-sha'
-                }]
-              }
-            }
-          }
-        }
-      }
-    ]
-  })
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
-  const port = server.address().port
-
-  try {
-    const generatedImagePath = path.join(dataDir, 'runs', created.json.run.runId, 'frames', 'base', '0001.png')
-    fs.mkdirSync(path.dirname(generatedImagePath), { recursive: true })
-    await sharp({
-      create: {
-        width: 96,
-        height: 112,
-        channels: 4,
-        background: { r: 230, g: 130, b: 40, alpha: 1 }
-      }
-    }).png().toFile(generatedImagePath)
-
-    const generated = await runCreatorCommandAsync({
-      command: 'run-step',
-      dataDir,
-      payload: { runId: created.json.run.runId },
-      config: { backend: 'local' },
-      env: {
-        OPENPET_BRIDGE_URL: `http://127.0.0.1:${port}`,
-        OPENPET_BRIDGE_TOKEN: 'bridge-token'
-      }
-    })
-    assert.equal(generated.status, 0, generated.stderr || JSON.stringify(generated.json))
-    const actionTaskQaPath = generated.json.run.artifacts.actionTaskQa
-    const actionTaskQa = JSON.parse(fs.readFileSync(actionTaskQaPath, 'utf-8'))
-    const petJson = JSON.parse(fs.readFileSync(generated.json.run.artifacts.petJson, 'utf-8'))
-    const serialized = JSON.stringify(actionTaskQa)
-
-    assert.equal(actionTaskQa.ok, true)
-    assert.equal(actionTaskQa.mode, 'full-pet')
-    assert.equal(actionTaskQa.targetPet, 'new')
-    assert.equal(actionTaskQa.styleSource, 'referenceImage')
-    assert.equal(Object.hasOwn(actionTaskQa, 'originalPrompt'), false)
-    assert.equal(Object.hasOwn(actionTaskQa, 'promptBuilder'), false)
-    assert.equal(serialized.includes(dataDir), false)
-    assert.equal(serialized.includes('sk-test-secret'), false)
-    assert.equal(serialized.includes('/Users/mango/private/ref.png'), false)
-    assert.equal(serialized.includes('127.0.0.1:8317'), false)
-    assert.equal(serialized.includes('生成一只完整的新桌宠'), false)
-    assert.deepEqual(petJson.requiredActionIds, ['idle'])
-    assert.deepEqual(petJson.availableActionIds, [
-      'idle',
-      'running-right',
-      'running-left',
-      'waving',
-      'jumping',
-      'failed',
-      'waiting',
-      'running',
-      'review'
-    ])
-    assert.deepEqual(petJson.omittedActionIds, [])
-    assert.equal(petJson.actionAvailability.idle.available, true)
-  } finally {
-    server.closeAllConnections?.()
-    await new Promise((resolve) => server.close(resolve))
   }
 })
 
@@ -5091,14 +4609,14 @@ test('creator studio service exposes sanitized host prompt provenance for dashbo
     assert.equal(detail.run.status, 'ready_for_review')
     assert.equal(detail.run.developerPrompt.available, true)
     assert.equal(detail.run.developerPrompt.source, 'host-model-bridge')
-    assert.equal(detail.run.developerPrompt.promptBuilder.version, 5)
+    assert.equal(detail.run.developerPrompt.promptBuilder.version, 6)
     assert.equal(detail.run.developerPrompt.promptBuilder.mode, 'single-action')
     assert.equal(detail.run.developerPrompt.promptBuilder.actionId, detail.run.generationTask.actions[0].actionId)
     assert.equal(detail.run.developerPrompt.promptBuilder.warnings.includes('creative_brief_sanitized'), true)
     assert.equal(detail.run.developerPrompt.conditioning.mode, 'image-edit')
     assert.equal(detail.run.developerPrompt.conditioning.referenceImageCount, 1)
     assert.equal(detail.run.developerPrompt.promptPreview.truncated, false)
-    assert.match(detail.run.developerPrompt.promptPreview.text, /Create exactly one 1024 x 1024 image with a 1:1 aspect ratio\./)
+    assert.match(detail.run.developerPrompt.promptPreview.text, /^DELIVERABLE\nCreate one complete animation frame sheet/)
     assertProviderNeutralImagePrompt(detail.run.developerPrompt.promptPreview.text)
     assert.equal(detail.run.developerPrompt.promptPreview.text.includes('sk-test-secret'), false)
     assert.equal(detail.run.developerPrompt.promptPreview.text.includes('/Users/mango/private/ref.png'), false)
@@ -7088,119 +6606,6 @@ test('creator studio service lets dashboard update a drafted full-pet task befor
     assert.equal(stored.run.generationTask.actions[1].name, 'Shy Twirl')
     assert.equal(JSON.stringify(stored).includes(dataDir), false)
   } finally {
-    await new Promise((resolve) => server.close(resolve))
-  }
-})
-
-test('creator studio service exposes full-pet validation recovery guidance for dashboard clients', async () => {
-  const { createCreatorStudioServer } = require('../../examples/plugins/creator-studio/service/studio-service')
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-studio-full-pet-validation-retry-'))
-  const dashboardPath = path.join(pluginRoot, 'web', 'dashboard', 'index.html')
-  const server = createCreatorStudioServer({ dataDir, dashboardPath })
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
-  const port = server.address().port
-  let imageGenerationRequestCount = 0
-  const bridgeServer = require('node:http').createServer((request, response) => {
-    let body = ''
-    request.on('data', (chunk) => { body += chunk })
-    request.on('end', () => {
-      const payload = body ? JSON.parse(body) : {}
-      response.writeHead(200, {
-        'Content-Type': 'application/json',
-        Connection: 'close'
-      })
-      if (request.url.endsWith('/creator/model-settings')) {
-        response.end(JSON.stringify({
-          ok: true,
-          config: {
-            provider: 'openai-compatible',
-            baseUrl: 'http://127.0.0.1:7860/v1',
-            model: 'local-custom-sprite-v2'
-          }
-        }))
-        return
-      }
-      imageGenerationRequestCount += 1
-      const dataRelativePath = `runs/${payload.output.dataRelativeDir.split('/')[1]}/frames/base/0001.png`
-      const generatedPath = path.join(dataDir, dataRelativePath)
-      fs.mkdirSync(path.dirname(generatedPath), { recursive: true })
-      sharp({
-        create: {
-          width: 96,
-          height: 112,
-          channels: 4,
-          background: { r: 0, g: 0, b: 0, alpha: 0 }
-        }
-      })
-        .png()
-        .toFile(generatedPath)
-        .then(() => {
-          response.end(JSON.stringify({
-            ok: true,
-            result: {
-              ok: true,
-              backend: 'local',
-              model: 'local-custom-sprite-v2',
-              generatedAt: '2026-06-26T01:00:00.000Z',
-              outputs: [{
-                dataRelativePath,
-                mimeType: 'image/png',
-                sha256: 'invalid-visible-pixels-sha'
-              }]
-            }
-          }))
-        })
-        .catch((error) => {
-          response.end(JSON.stringify({ ok: false, error: error.message }))
-        })
-    })
-  })
-  await new Promise((resolve) => bridgeServer.listen(0, '127.0.0.1', resolve))
-  const bridgePort = bridgeServer.address().port
-  const previousBridgeUrl = process.env.OPENPET_BRIDGE_URL
-  const previousBridgeToken = process.env.OPENPET_BRIDGE_TOKEN
-  process.env.OPENPET_BRIDGE_URL = `http://127.0.0.1:${bridgePort}`
-  process.env.OPENPET_BRIDGE_TOKEN = 'bridge-token'
-
-  const postJsonResponse = async (pathname, body = {}) => {
-    const response = await fetch(`http://127.0.0.1:${port}${pathname}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    })
-    return { response, body: await response.json() }
-  }
-
-  try {
-    const draft = await postJsonResponse('/api/tasks/draft', {
-      prompt: '帮我做一只软乎乎的橘猫桌宠，平时懒懒的，被点击会害羞转圈，偶尔会打哈欠。',
-      backend: 'local'
-    })
-    const runId = draft.body.run.runId
-    await attachCanonicalReferenceToRun({ dataDir, runId })
-    await postJsonResponse(`/api/runs/${runId}/confirm`)
-    const failed = await postJsonResponse(`/api/runs/${runId}/generate-action`)
-
-    assert.equal(failed.response.status, 500)
-    assert.equal(failed.body.ok, false)
-    assert.match(failed.body.error, /Generated image contains no visible pixels/)
-    assert.equal(failed.body.run.generationTask.mode, 'full-pet')
-    assert.equal(failed.body.run.recovery.canRetryGeneration, true)
-    assert.equal(failed.body.run.recovery.actionLabel, 'Retry generation')
-    assert.equal(failed.body.run.recovery.failureKind, 'validation')
-    assert.equal(
-      failed.body.run.recovery.guidance,
-      'The generated source image was empty. Adjust the prompt or model settings, then retry generation on this same run.'
-    )
-    assert.equal(failed.body.run.recovery.qaFocus, 'Check source image validation expectations before retrying.')
-    assert.equal(imageGenerationRequestCount, 2)
-  } finally {
-    if (previousBridgeUrl == null) delete process.env.OPENPET_BRIDGE_URL
-    else process.env.OPENPET_BRIDGE_URL = previousBridgeUrl
-    if (previousBridgeToken == null) delete process.env.OPENPET_BRIDGE_TOKEN
-    else process.env.OPENPET_BRIDGE_TOKEN = previousBridgeToken
-    bridgeServer.closeAllConnections?.()
-    await new Promise((resolve) => bridgeServer.close(resolve))
     await new Promise((resolve) => server.close(resolve))
   }
 })

@@ -26,16 +26,17 @@ const DEFAULT_FULL_BODY_SUBJECT = Object.freeze({
 })
 
 const DEFAULT_STYLE_LOCKS = Object.freeze([
-  'same face and eye design',
+  'same visible identity-bearing features',
   'same visible markings and colors',
-  'same material or fur rendering',
+  'same material, surface, or texture rendering',
   'same body proportions and silhouette',
-  'same accessories and clothing when visible',
-  'same lighting and rendering style'
+  'same visible accessories or garments when present',
+  'same subject lighting and rendering style'
 ])
 
 const INTERNAL_VISUAL_TEXT = /\b(?:openpet|creator[-_ ]?studio|codex[-_ ]?pet|hatch[-_ ]?pet|provider|backend|run[-_ ]?id|action[-_ ]?id|checkpoint|multipart|reference[-_ ]?role)\b/gi
 const SECRET_LIKE_TEXT = /\b(?:sk-[A-Za-z0-9_-]+|bearer\s+[A-Za-z0-9._~-]+|(?:[A-Za-z0-9_-]*token[A-Za-z0-9_-]*|api[-_ ]?key|secret|credential|password|authorization)\s*[:=]\s*(?:(?:bearer|basic)\s+)?\S+)\b/gi
+const TOKEN_IDENTIFIER_TEXT = /\b[A-Za-z0-9_-]*token[A-Za-z0-9_-]*\b/gi
 const HOST_PATH_TEXT = /(?:\/Users|\/var|\/tmp|\/private|\/Volumes)\/[^\s,，。)]+/g
 const URL_TEXT = /https?:\/\/\S+/gi
 const FILE_URI_TEXT = /\bfile:\/{2,3}\S+/gi
@@ -48,6 +49,7 @@ const POSIX_ABSOLUTE_PATH_TEXT = /(?:^|\s)\/(?!\/)\S+/g
 const UNSAFE_APPEARANCE_INTENT_PATTERNS = Object.freeze([
   Object.freeze({ pattern: /\b(?:openpet|creator[-_ ]?studio|codex[-_ ]?pet|hatch[-_ ]?pet|provider|backend|run[-_ ]?id|action[-_ ]?id|checkpoint|multipart|reference[-_ ]?role)\b/i, label: 'internal term' }),
   Object.freeze({ pattern: /\b(?:sk-[A-Za-z0-9_-]+|bearer\s+[A-Za-z0-9._~-]+|(?:[A-Za-z0-9_-]*token[A-Za-z0-9_-]*|api[-_ ]?key|secret|credential|password|authorization)\s*[:=]\s*(?:(?:bearer|basic)\s+)?\S+)\b/i, label: 'secret' }),
+  Object.freeze({ pattern: /\b[A-Za-z0-9_-]*token[A-Za-z0-9_-]*\b/i, label: 'token identifier' }),
   Object.freeze({ pattern: /https?:\/\/\S+/i, label: 'URL' }),
   Object.freeze({ pattern: /\bfile:\/{2,3}\S+/i, label: 'file URI' }),
   Object.freeze({ pattern: /(?:^|\s)(?:\.\.[/\\])+\S*/i, label: 'path traversal' }),
@@ -144,6 +146,7 @@ const resolveProviderCanvasForLayout = ({ columns, rows } = {}) => {
 const sanitizeVisualDirective = (value) => String(value || '')
   .replace(/[\u0000-\u001F\u007F]/g, ' ')
   .replace(SECRET_LIKE_TEXT, ' ')
+  .replace(TOKEN_IDENTIFIER_TEXT, ' ')
   .replace(URL_TEXT, ' ')
   .replace(FILE_URI_TEXT, ' ')
   .replace(TRAVERSAL_TEXT, ' ')
@@ -294,20 +297,84 @@ const normalizeSubject = (value = DEFAULT_FULL_BODY_SUBJECT) => {
   })
 }
 
-const normalizeAction = (value) => {
+const createFrameCell = ({ frame, sheet }) => {
+  if (!sheet) return ''
+  const index = frame - 1
+  return `row ${Math.floor(index / sheet.columns) + 1} column ${(index % sheet.columns) + 1}`
+}
+
+const normalizeFrameBeats = (value, sheet) => {
+  if (value == null) return []
+  if (!Array.isArray(value)) {
+    throw createTaskError('image_prompt_contract_invalid', 'Image task action frame beats must be an array')
+  }
+  const normalized = value.map((entry, index) => {
+    const frame = index + 1
+    if (typeof entry === 'string') {
+      return {
+        frame,
+        cell: createFrameCell({ frame, sheet }),
+        beat: sanitizeVisualDirective(entry.replace(/^Frame\s+\d+\s*:\s*/i, ''))
+      }
+    }
+    assertAllowedKeys(entry, new Set(['frame', 'cell', 'beat']), `action.frameBeats[${index}]`)
+    const normalizedFrame = Number(entry.frame)
+    if (!Number.isInteger(normalizedFrame) || normalizedFrame !== frame) {
+      throw createTaskError('image_prompt_frame_plan_incomplete', 'Image task frame beats must be contiguous from frame 1')
+    }
+    const expectedCell = createFrameCell({ frame, sheet })
+    const providedCell = sanitizeVisualDirective(entry.cell)
+    if (sheet && providedCell && providedCell !== expectedCell) {
+      throw createTaskError('image_prompt_frame_plan_incomplete', 'Image task frame beat cell does not match sheet geometry')
+    }
+    return {
+      frame,
+      cell: expectedCell || providedCell,
+      beat: sanitizeVisualDirective(entry.beat)
+    }
+  })
+  if (sheet && normalized.length !== sheet.frameCount) {
+    throw createTaskError('image_prompt_frame_plan_incomplete', 'Image task frame beats must cover every required frame')
+  }
+  if (normalized.some((entry) => !entry.beat)) {
+    throw createTaskError('image_prompt_frame_plan_incomplete', 'Image task frame beat text is required')
+  }
+  return normalized
+}
+
+const normalizeAction = (value, sheet) => {
   if (value == null) return null
   assertAllowedKeys(
     value,
-    new Set(['name', 'moment', 'movingParts', 'lockedParts', 'loopIntent', 'framePlan']),
+    new Set([
+      'name',
+      'animationType',
+      'moment',
+      'viewDirection',
+      'loopType',
+      'movingParts',
+      'secondaryMotion',
+      'lockedParts',
+      'forbiddenMotion',
+      'loopIntent',
+      'framePlan',
+      'frameBeats'
+    ]),
     'action'
   )
+  const frameBeats = normalizeFrameBeats(value.frameBeats ?? value.framePlan, sheet)
   return deepFreeze({
     name: sanitizeVisualDirective(value.name),
+    animationType: sanitizeVisualDirective(value.animationType),
     moment: sanitizeVisualDirective(value.moment),
+    viewDirection: sanitizeVisualDirective(value.viewDirection),
+    loopType: sanitizeVisualDirective(value.loopType),
     movingParts: normalizeVisualDirectives(value.movingParts),
+    secondaryMotion: normalizeVisualDirectives(value.secondaryMotion),
     lockedParts: normalizeVisualDirectives(value.lockedParts),
+    forbiddenMotion: normalizeVisualDirectives(value.forbiddenMotion),
     loopIntent: sanitizeVisualDirective(value.loopIntent),
-    framePlan: normalizeVisualDirectives(value.framePlan)
+    frameBeats: deepFreeze(frameBeats)
   })
 }
 
@@ -366,7 +433,10 @@ const createProviderImageTask = (input = {}) => {
       : sheet
       ? resolveProviderCanvasForLayout(sheet)
       : createCanvas(PROVIDER_CANVASES.square)
-  const action = normalizeAction(input.action)
+  if (hasQualityFirstPolicy && (canvas.width !== canvas.height || canvas.width !== PROVIDER_CANVASES.square.width)) {
+    throw createTaskError('image_prompt_contract_invalid', 'Quality-first action policy requires a square 1024 canvas')
+  }
+  const action = normalizeAction(input.action, sheet)
   if (taskType !== 'character-image' && !action) {
     throw createTaskError('image_prompt_contract_invalid', 'Action image task requires a visual action')
   }
@@ -401,7 +471,7 @@ const createProviderImageTask = (input = {}) => {
     }
   }
   return deepFreeze({
-    version: hasQualityFirstPolicy ? 3 : 2,
+    version: 3,
     taskType,
     stage,
     canvas,

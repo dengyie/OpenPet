@@ -440,6 +440,9 @@ const scoreMemoryContext = ({ memory, currentTokens, historyTokens, nowMs }) => 
     else if (historyTokens.has(token)) historyMatches += 1
   }
   const scopeBoost = memory.scope === 'petPack' ? 0.14 : 0.06
+  const preferenceBoost = Array.isArray(memory.tags) && memory.tags.some((tag) => /^(preference|user-preference)$/i.test(String(tag || '').trim()))
+    ? 0.08
+    : 0
   const directBoost = Math.min(0.45, directMatches * 0.18)
   const historyBoost = Math.min(0.18, historyMatches * 0.06)
   const importanceBoost = Math.max(0, Number(memory.importance) || 0) * 0.28
@@ -450,6 +453,7 @@ const scoreMemoryContext = ({ memory, currentTokens, historyTokens, nowMs }) => 
   const unmatchedPetPackPenalty = (directMatches === 0 && historyMatches === 0 && memory.scope === 'petPack') ? -0.14 : 0
   return Number((
     scopeBoost +
+    preferenceBoost +
     directBoost +
     historyBoost +
     importanceBoost +
