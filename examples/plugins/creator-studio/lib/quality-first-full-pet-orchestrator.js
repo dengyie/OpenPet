@@ -139,8 +139,19 @@ const createQualityFirstFullPetOrchestrator = ({
       .filter(([actionId, result]) => actionId !== 'idle' && result?.ok !== true)
       .map(([actionId]) => actionId)
     const packageResult = await finalizePackage({ run: acceptedRun, canonical: candidate, profile, actionResults })
+    if (!packageResult || typeof packageResult !== 'object' || !packageResult.artifacts || typeof packageResult.artifacts !== 'object') {
+      const error = new Error('Quality-first final package artifacts are missing')
+      error.code = 'quality_first_final_package_missing'
+      throw error
+    }
+    const { artifacts: packageArtifacts, ...publicPackageResult } = packageResult && typeof packageResult === 'object'
+      ? packageResult
+      : {}
     return {
       ...acceptedRun,
+      ...(packageArtifacts && typeof packageArtifacts === 'object'
+        ? { artifacts: { ...(acceptedRun.artifacts || {}), ...packageArtifacts } }
+        : {}),
       status: 'ready_for_review',
       currentStep: 'review',
       updatedAt: now(),
@@ -151,7 +162,7 @@ const createQualityFirstFullPetOrchestrator = ({
         actionResults,
         scaleProfileHash: profile.hash,
         omittedActionIds: failedOptional,
-        ...(packageResult ? { package: packageResult } : {}),
+        ...(packageResult ? { package: publicPackageResult } : {}),
         nextAction: 'human-review'
       }
     }

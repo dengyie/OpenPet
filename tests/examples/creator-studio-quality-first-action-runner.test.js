@@ -96,6 +96,32 @@ test('runner performs at most one reason-directed repair after both initial cand
   assert.deepEqual(h.calls.archives, [{ actionId: 'idle', reasonCodes: ['cell-edge-contact', 'visual-score-overall-below-minimum'] }])
 })
 
+test('runner rewrites archived candidate record links after reason-directed repair', async () => {
+  const generated = [
+    { candidateId: 'candidate-1', descriptors: descriptors('0000', 0) },
+    { candidateId: 'candidate-2', descriptors: descriptors('ffff', 2) },
+    { candidateId: 'candidate-3', descriptors: descriptors('0f0f', 4) }
+  ]
+  const result = await runQualityFirstAction({
+    context: { actionId: 'waving' },
+    reserveCreativeDispatch: () => {},
+    generateCandidate: async () => generated.shift(),
+    processCandidate: async (candidate) => ({ qa: { ok: true, failures: [] }, candidateId: candidate.candidateId }),
+    evaluateCandidate: async (candidate) => candidate.candidateId === 'candidate-3'
+      ? { evaluation: { scores: { overall: 95 } }, gate: { ok: true, outcome: 'pass', failures: [] } }
+      : { evaluation: { scores: { overall: 70 } }, gate: { ok: false, outcome: 'repair', failures: ['visual-score-overall-below-minimum'] } },
+    persistCandidate: (candidate) => {
+      candidate.candidateRecordRelativePath = `runs/run-1/candidates/action-waving/${candidate.candidateId}/candidate.json`
+    },
+    archiveCandidateRevision: () => 'runs/run-1/candidate-archives/action-waving/revision-1'
+  })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.candidates[0].candidateRecordRelativePath, 'runs/run-1/candidate-archives/action-waving/revision-1/candidate-1/candidate.json')
+  assert.equal(result.candidates[1].candidateRecordRelativePath, 'runs/run-1/candidate-archives/action-waving/revision-1/candidate-2/candidate.json')
+  assert.equal(result.candidates[2].candidateRecordRelativePath, 'runs/run-1/candidates/action-waving/candidate-3/candidate.json')
+})
+
 test('runner blocks idle and omits optional actions when the single repair still fails', async () => {
   for (const [actionId, disposition] of [['idle', 'blocked'], ['waiting', 'omitted']]) {
     const h = createHarness({

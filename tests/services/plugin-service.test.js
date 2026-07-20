@@ -808,6 +808,7 @@ test('declaration-only creator model bridge exposes settings, health, and host-o
           provider: 'openai-compatible',
           model: 'gpt-image-2',
           generatedAt: '2026-06-19T00:00:00.000Z',
+          usage: { estimatedCostUsd: 0 },
           outputs: [{
             dataRelativePath: `${payload.output.dataRelativeDir}/0001.png`,
             mimeType: 'image/png',
@@ -817,6 +818,14 @@ test('declaration-only creator model bridge exposes settings, health, and host-o
       }
     },
     hatchPetAgentService: {
+      reserveProviderCall: ({ runId, timeoutMs }) => {
+        hatchPetCalls.push(['reserveProviderCall', { runId, timeoutMs }])
+        return { reservationId: 'provider-1', budgetLedger: { version: 1, reservations: { 'provider-1': { type: 'provider' } } } }
+      },
+      recordProviderCall: (payload) => {
+        hatchPetCalls.push(['recordProviderCall', payload])
+        return { budgetLedger: { usage: { providerCalls: 1 } } }
+      },
       planSprite: async (payload) => {
         hatchPetCalls.push(['planSprite', payload])
         return { proposal: { schemaVersion: 1, assetClass: 'grounded-compact-character', actions: [] }, budgetLedger: { usage: { plannerCalls: 1 } } }
@@ -855,10 +864,7 @@ test('declaration-only creator model bridge exposes settings, health, and host-o
     method: 'POST',
     token,
     body: {
-      provider: 'custom-provider',
-      baseUrl: 'https://attacker.example.test/v1',
-      apiKeyRef: 'ai.default',
-      model: 'plugin-selected-model',
+      runId: 'demo-run',
       prompt: 'small mint helper cat, transparent background',
       output: {
         dataDir: '/tmp/should-be-ignored',
@@ -928,10 +934,15 @@ test('declaration-only creator model bridge exposes settings, health, and host-o
   assert.equal(Object.hasOwn(bridgeCalls[1][1], 'model'), false)
   assert.equal(bridgeCalls[1][1].output.dataRelativeDir, 'runs/demo-run/frames/base')
   assert.match(bridgeCalls[1][1].output.dataDir, /\.openpet\/weather-declaration\/data$/)
-  assert.equal(hatchPetCalls[0][0], 'planSprite')
-  assert.equal(hatchPetCalls[1][0], 'evaluateSprite')
-  assert.equal(hatchPetCalls[1][1].board.path, fs.realpathSync(path.join(pluginDataDir, referenceRelativePath)))
-  assert.equal(Object.hasOwn(hatchPetCalls[1][1], 'profile'), false)
+  assert.deepEqual(hatchPetCalls.slice(0, 2).map((entry) => entry[0]), ['reserveProviderCall', 'recordProviderCall'])
+  assert.deepEqual(hatchPetCalls[0][1], { runId: 'demo-run', timeoutMs: 0 })
+  assert.equal(hatchPetCalls[1][1].ok, true)
+  assert.equal(hatchPetCalls[1][1].reservationId, 'provider-1')
+  assert.equal(hatchPetCalls[1][1].estimatedCost, 0)
+  assert.equal(hatchPetCalls[2][0], 'planSprite')
+  assert.equal(hatchPetCalls[3][0], 'evaluateSprite')
+  assert.equal(hatchPetCalls[3][1].board.path, fs.realpathSync(path.join(pluginDataDir, referenceRelativePath)))
+  assert.equal(Object.hasOwn(hatchPetCalls[3][1], 'profile'), false)
   assert.deepEqual(bridgeCalls[1][1].referenceImages, [{
     path: fs.realpathSync(path.join(pluginDataDir, referenceRelativePath)),
     relativePath: referenceRelativePath,

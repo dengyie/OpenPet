@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 
 const { createQualityFirstFullPetOrchestrator } = require('../../examples/plugins/creator-studio/lib/quality-first-full-pet-orchestrator')
 
-const createHarness = ({ idleOk = true } = {}) => {
+const createHarness = ({ idleOk = true, finalizePackage = async () => ({ spritesheetRelativePath: 'runs/run-1/quality-first/package/spritesheet.webp', artifacts: { outputDir: '/data/runs/run-1/quality-first/package' } }) } = {}) => {
   const calls = { canonical: 0, actions: [], mirrors: 0, recovery: 0 }
   const orchestrator = createQualityFirstFullPetOrchestrator({
     generateCanonicalCandidatePool: async () => {
@@ -30,6 +30,7 @@ const createHarness = ({ idleOk = true } = {}) => {
       calls.recovery += 1
       return { relativePath: 'runs/run-1/recovery/recovery.json' }
     },
+    finalizePackage,
     now: () => '2026-07-20T12:00:00.000Z'
   })
   return { orchestrator, calls }
@@ -62,6 +63,48 @@ test('canonical acceptance runs idle first, locks scale profile, continues optio
   assert.equal(run.qualityFirst.scaleProfileHash, 'p'.repeat(64))
 })
 
+test('canonical acceptance publishes finalized package artifacts for the existing approval and import contract', async () => {
+  const artifacts = {
+    outputDir: '/data/runs/run-1/quality-first/package',
+    petJson: '/data/runs/run-1/quality-first/package/pet.json',
+    spritesheet: '/data/runs/run-1/quality-first/package/spritesheet.webp',
+    bundle: '/data/runs/run-1/quality-first/package/pet.codex-pet.zip',
+    qa: '/data/runs/run-1/quality-first/qa/atlas-validation.json',
+    sourceImageQa: '/data/runs/run-1/quality-first/qa/source-image-validation.json',
+    generatedImage: { outputs: [{ dataRelativePath: 'runs/run-1/candidates/canonical/canonical-1/raw.png' }] }
+  }
+  const h = createHarness()
+  h.orchestrator = createQualityFirstFullPetOrchestrator({
+    generateCanonicalCandidatePool: async () => ({
+      dispatchCount: 3,
+      candidates: [
+        { candidateId: 'canonical-1', eligible: true, sha256: 'a'.repeat(64) },
+        { candidateId: 'canonical-2', eligible: true, sha256: 'b'.repeat(64) },
+        { candidateId: 'canonical-3', eligible: true, sha256: 'c'.repeat(64) }
+      ]
+    }),
+    runQualityFirstAction: async ({ actionId }) => ({ ok: true, actionId, selectedCandidateId: `${actionId}-candidate` }),
+    createCharacterScaleProfile: async () => ({ hash: 'p'.repeat(64) }),
+    finalizePackage: async () => ({
+      spritesheetRelativePath: 'runs/run-1/quality-first/package/spritesheet.webp',
+      atlasQaRelativePath: 'runs/run-1/quality-first/qa/atlas-validation.json',
+      artifacts
+    })
+  })
+  const pending = await h.orchestrator.start({ run: { runId: 'run-1', artifacts: { retained: true } }, plan: { hash: 'plan-hash' } })
+  const run = await h.orchestrator.acceptCanonicalIdentity({
+    run: pending,
+    candidateId: 'canonical-1',
+    sha256: 'a'.repeat(64),
+    plan: { hash: 'plan-hash' },
+    actions: ['idle']
+  })
+
+  assert.deepEqual(run.artifacts, { retained: true, ...artifacts })
+  assert.equal(run.qualityFirst.package.spritesheetRelativePath, 'runs/run-1/quality-first/package/spritesheet.webp')
+  assert.equal(Object.hasOwn(run.qualityFirst.package, 'artifacts'), false)
+})
+
 test('idle failure produces recovery-required state and never runs optional actions', async () => {
   const h = createHarness({ idleOk: false })
   const pending = await h.orchestrator.start({ run: { runId: 'run-1' }, plan: { hash: 'plan-hash' } })
@@ -85,4 +128,19 @@ test('canonical pool rejects fewer than three distinct eligible candidates', asy
     createCharacterScaleProfile: async () => ({ hash: 'hash' })
   })
   await assert.rejects(() => orchestrator.start({ run: { runId: 'run-1' }, plan: {} }), /canonical_candidate_diversity_insufficient/)
+})
+
+test('canonical acceptance fails closed when final package artifacts are missing', async () => {
+  const h = createHarness({ finalizePackage: async () => null })
+  const pending = await h.orchestrator.start({ run: { runId: 'run-1' }, plan: { hash: 'plan-hash' } })
+  await assert.rejects(() => h.orchestrator.acceptCanonicalIdentity({
+    run: pending,
+    candidateId: 'canonical-1',
+    sha256: 'a'.repeat(64),
+    plan: { hash: 'plan-hash' },
+    actions: ['idle']
+  }), (error) => {
+    assert.equal(error.code, 'quality_first_final_package_missing')
+    return true
+  })
 })

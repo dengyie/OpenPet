@@ -911,27 +911,22 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       assertPermission(plugin.manifest, 'model:image-generate')
       if (!imageGenerationModelService?.generateImage) throw new Error('Creator model image generation is not available')
       appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.model-image-generate invoked' })
-      const {
-        backend: _ignoredBackend,
-        provider: _ignoredProvider,
-        baseUrl: _ignoredBaseUrl,
-        apiKeyRef: _ignoredApiKeyRef,
-        model: _ignoredModel,
-        ...providerPayload
-      } = payload
-      const ignoredOwnerFields = ['provider', 'baseUrl', 'apiKeyRef', 'model']
-        .filter((field) => Object.hasOwn(payload, field))
-      if (ignoredOwnerFields.length) {
-        appendLog({
-          pluginId: plugin.manifest.id,
-          commandId,
-          level: 'warn',
-          message: `Bridge ignored Provider owner-controlled fields: ${ignoredOwnerFields.join(', ')}`
-        })
-      }
-      return {
-        ok: true,
-        result: await imageGenerationModelService.generateImage({
+      const { backend: _ignoredBackend, runId: rawRunId, ...providerPayload } = payload
+      const runId = String(rawRunId || '').trim()
+      const canAccountProviderCall = Boolean(
+        runId &&
+        effectiveHatchPetAgentService?.reserveProviderCall &&
+        effectiveHatchPetAgentService?.recordProviderCall
+      )
+      const reservation = canAccountProviderCall
+        ? effectiveHatchPetAgentService.reserveProviderCall({
+            runId,
+            timeoutMs: Math.max(0, Number(payload.timeoutMs) || 0)
+          })
+        : null
+      let result
+      try {
+        result = await imageGenerationModelService.generateImage({
           ...providerPayload,
           referenceImages: sanitizeCreatorModelReferenceImages(plugin.manifest, payload.referenceImages),
           output: {
@@ -939,6 +934,32 @@ const createPluginService = ({ settingsService, petService, actionService, actio
             dataDir: ensurePluginCreatorDirs(plugin.manifest).dataDir
           }
         })
+      } catch (error) {
+        if (reservation) {
+          const httpStatus = String(error?.message || '').match(/HTTP\s+(\d{3})/i)?.[1]
+          effectiveHatchPetAgentService.recordProviderCall({
+            runId,
+            reservationId: reservation.reservationId,
+            budgetLedger: reservation.budgetLedger,
+            ok: false,
+            code: httpStatus ? `http-${httpStatus}` : String(error?.code || 'provider-request-error').slice(0, 80)
+          })
+        }
+        throw error
+      }
+      if (reservation) {
+        effectiveHatchPetAgentService.recordProviderCall({
+          runId,
+          reservationId: reservation.reservationId,
+          budgetLedger: reservation.budgetLedger,
+          ok: true,
+          code: 'ok',
+          estimatedCost: result?.usage?.estimatedCostUsd ?? null
+        })
+      }
+      return {
+        ok: true,
+        result
       }
     },
     creatorHatchPetPlan: async (payload = {}) => {

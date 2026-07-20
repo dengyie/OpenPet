@@ -763,6 +763,57 @@ const collectProcessAssetsForRun = ({ pluginDataDir, runId, includePreviews = fa
     })
   }
 
+  const qualityReferenceDir = path.join(runDir, 'references')
+  for (const absolute of listImageFilesRecursive(qualityReferenceDir, 32)) {
+    const relativeToReferences = path.relative(qualityReferenceDir, absolute).split(path.sep)
+    const actionId = isSafePathSegment(relativeToReferences[0]) ? relativeToReferences[0] : 'process'
+    const base = path.basename(absolute).toLowerCase()
+    add({
+      absolutePath: absolute,
+      kind: /action-reference-board/.test(base) ? 'conditioning-board' : 'anchor',
+      label: /action-reference-board/.test(base) ? `${actionId} 条件板` : `${actionId} 角色锚定板`,
+      role: base.replace(/\.(png|webp|jpe?g|gif)$/i, ''),
+      actionId
+    })
+  }
+
+  const qualityCandidateDir = path.join(runDir, 'candidates')
+  for (const absolute of listImageFilesRecursive(qualityCandidateDir, 128)) {
+    const relativeToCandidates = path.relative(qualityCandidateDir, absolute).split(path.sep)
+    const scope = normalizeText(relativeToCandidates[0])
+    const actionId = scope.startsWith('action-') ? scope.slice('action-'.length) : scope
+    if (!isSafePathSegment(actionId) || actionId === 'canonical') continue
+    const relativeText = relativeToCandidates.join('/').toLowerCase()
+    const base = path.basename(absolute).toLowerCase()
+    const kind = /\/frames\//.test(`/${relativeText}`)
+      ? 'frame'
+      : /contact-sheet/.test(base)
+        ? 'process'
+        : /animation\.gif$/.test(base)
+          ? 'process'
+          : /sheet/.test(base) || /\/raw\//.test(`/${relativeText}`)
+            ? 'sheet'
+            : 'process'
+    add({
+      absolutePath: absolute,
+      kind,
+      label: kind === 'frame' ? `${actionId} 候选帧` : kind === 'sheet' ? `${actionId} 候选原图` : `${actionId} 处理产物`,
+      role: relativeText.includes('/raw/') ? 'raw-candidate' : relativeText.includes('/processed/') ? 'processed-candidate' : 'candidate-evidence',
+      actionId
+    })
+  }
+
+  const qualityPackageDir = path.join(runDir, 'quality-first')
+  for (const absolute of listImageFilesRecursive(qualityPackageDir, 32)) {
+    const base = path.basename(absolute).toLowerCase()
+    add({
+      absolutePath: absolute,
+      kind: /sprite/.test(base) ? 'sheet' : 'process',
+      label: /sprite/.test(base) ? 'Quality-first Sprite Sheet' : 'Quality-first review artifact',
+      role: 'quality-first-package'
+    })
+  }
+
   const runJson = readJsonIfExists(path.join(runDir, 'run.json'), null)
   const artifactCandidates = [
     runJson?.artifacts?.spritesheet,
@@ -847,6 +898,14 @@ const collectActionAssetsForRun = ({ pluginDataDir, runId, checkpoints = null, i
     let promptText = ''
 
     const promptCandidates = [
+      ...(() => {
+        const qualityPromptDir = path.join(runDir, 'prompts', 'quality-first')
+        if (!fs.existsSync(qualityPromptDir)) return []
+        return fs.readdirSync(qualityPromptDir)
+          .filter((name) => name.startsWith(`${actionId}-`) && /\.(txt|md)$/i.test(name))
+          .sort()
+          .map((name) => path.join(qualityPromptDir, name))
+      })(),
       path.join(runDir, 'prompts', 'rows', `${actionId}.txt`),
       path.join(runDir, 'prompts', 'rows', `${actionId}.md`),
       path.join(runDir, 'prompts', 'keyframes', 'actions', `${actionId}-sprite-row.md`),
@@ -885,7 +944,7 @@ const collectActionAssetsForRun = ({ pluginDataDir, runId, checkpoints = null, i
 
     for (const processAsset of processAssets) {
       if (processAsset.actionId !== actionId) continue
-      if (!['conditioning-board', 'anchor', 'sheet', 'row'].includes(processAsset.kind)) continue
+      if (!['conditioning-board', 'anchor', 'sheet', 'row', 'frame', 'process'].includes(processAsset.kind)) continue
       if (assets.some((asset) => asset.relativePath === processAsset.relativePath)) continue
       assets.push({
         ...processAsset,
@@ -1322,6 +1381,42 @@ const createQualityFirstCandidateView = ({ candidate = {}, pluginDataDir = '', r
   }
 }
 
+const createQualityFirstBudgetView = ({ pluginDataDir = '', runId = '' } = {}) => {
+  const safeRun = getSafeCreatorRunDir({ pluginDataDir, runId, requireExisting: true })
+  if (!safeRun) return null
+  const ledger = readJsonIfExists(path.join(safeRun.runDir, 'budgets', 'ledger.json'), null)
+  if (!isPlainObject(ledger) || ledger.version !== 1 || !isPlainObject(ledger.limits) || !isPlainObject(ledger.usage)) return null
+  const count = (value) => Math.max(0, Math.trunc(Number(value) || 0))
+  const amount = (value) => Math.max(0, Number(value) || 0)
+  const limits = {
+    providerCalls: count(ledger.limits.maxProviderCalls),
+    plannerCalls: count(ledger.limits.maxPlannerCalls),
+    evaluatorCalls: count(ledger.limits.maxEvaluatorCalls),
+    elapsedMs: count(ledger.limits.maxElapsedMs),
+    estimatedCost: ledger.limits.maxEstimatedCost == null ? null : amount(ledger.limits.maxEstimatedCost)
+  }
+  const usage = {
+    providerCalls: Math.min(limits.providerCalls, count(ledger.usage.providerCalls)),
+    providerFailures: Math.min(limits.providerCalls, count(ledger.usage.providerFailures)),
+    plannerCalls: Math.min(limits.plannerCalls, count(ledger.usage.plannerCalls)),
+    evaluatorCalls: Math.min(limits.evaluatorCalls, count(ledger.usage.evaluatorCalls)),
+    elapsedMs: Math.min(limits.elapsedMs, Math.max(0, Date.now() - count(ledger.startedAtMs))),
+    estimatedCost: amount(ledger.usage.estimatedCost),
+    costKnown: ledger.usage.costKnown !== false,
+    lastProviderCode: normalizeText(ledger.usage.lastProviderCode).slice(0, 80)
+  }
+  return {
+    limits,
+    usage,
+    remaining: {
+      providerCalls: Math.max(0, limits.providerCalls - usage.providerCalls),
+      plannerCalls: Math.max(0, limits.plannerCalls - usage.plannerCalls),
+      evaluatorCalls: Math.max(0, limits.evaluatorCalls - usage.evaluatorCalls),
+      elapsedMs: Math.max(0, limits.elapsedMs - usage.elapsedMs)
+    }
+  }
+}
+
 const createQualityFirstIdentityReviewView = ({ run = null, pluginDataDir = '' } = {}) => {
   const qualityFirst = isPlainObject(run?.qualityFirst) ? run.qualityFirst : null
   if (!qualityFirst) return null
@@ -1344,6 +1439,7 @@ const createQualityFirstIdentityReviewView = ({ run = null, pluginDataDir = '' }
     eligibleCandidateCount: candidates.filter((candidate) => candidate.eligible).length,
     currentAction: normalizeText(run?.currentStep),
     nextAction,
+    budget: createQualityFirstBudgetView({ pluginDataDir, runId }),
     identityReview: {
       status: phase === 'awaiting_identity_review' ? 'pending' : (acceptedCandidateId ? 'accepted' : 'unavailable'),
       candidates,

@@ -1689,7 +1689,15 @@ test('creator workflow diagnostics expose renderer-safe quality-first identity c
   const runDir = path.join(pluginDataDir, 'runs', runId)
   const candidateDir = path.join(runDir, 'candidates', 'canonical', 'canonical-1', 'raw')
   fs.mkdirSync(candidateDir, { recursive: true })
+  fs.mkdirSync(path.join(runDir, 'budgets'), { recursive: true })
   fs.writeFileSync(path.join(candidateDir, 'candidate.png'), 'png')
+  fs.writeFileSync(path.join(runDir, 'budgets', 'ledger.json'), `${JSON.stringify({
+    version: 1,
+    startedAtMs: Date.now() - 1000,
+    limits: { maxProviderCalls: 72, maxPlannerCalls: 34, maxEvaluatorCalls: 68, maxElapsedMs: 43200000, maxEstimatedCost: null },
+    usage: { providerCalls: 5, providerFailures: 1, plannerCalls: 1, evaluatorCalls: 3, estimatedCost: 0.4, costKnown: true },
+    reservations: {}
+  })}\n`)
   fs.writeFileSync(path.join(runDir, 'run.json'), `${JSON.stringify({
     runId,
     status: 'awaiting_identity_review',
@@ -1728,6 +1736,10 @@ test('creator workflow diagnostics expose renderer-safe quality-first identity c
   assert.equal(diagnostics.progress.qualityFirst.identityReview.candidates.length, 2)
   assert.equal(diagnostics.progress.qualityFirst.identityReview.candidates[0].previewable, true)
   assert.equal(diagnostics.progress.qualityFirst.identityReview.candidates[1].relativePath, '')
+  assert.equal(diagnostics.progress.qualityFirst.budget.usage.providerCalls, 5)
+  assert.equal(diagnostics.progress.qualityFirst.budget.usage.providerFailures, 1)
+  assert.equal(diagnostics.progress.qualityFirst.budget.remaining.providerCalls, 67)
+  assert.equal(diagnostics.progress.qualityFirst.budget.remaining.evaluatorCalls, 65)
   assert.doesNotMatch(JSON.stringify(diagnostics), /\/Users\/private/)
 })
 
@@ -1868,6 +1880,31 @@ test('quality-first identity retry returns to awaiting identity review instead o
   const result = await service.retryFullPetIdentity({ runId })
   assert.equal(result.state, 'awaiting-identity-review')
   assert.equal(result.code, 'identity_review_required')
+})
+
+test('quality-first diagnostics keep raw and processed paid action candidates visible', () => {
+  const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-quality-assets-'))
+  const runId = 'run-quality-assets'
+  const runDir = path.join(pluginDataDir, 'runs', runId)
+  const candidateDir = path.join(runDir, 'candidates', 'waving', 'candidate-1')
+  fs.mkdirSync(path.join(candidateDir, 'raw'), { recursive: true })
+  fs.mkdirSync(path.join(candidateDir, 'processed', 'frames'), { recursive: true })
+  fs.mkdirSync(path.join(runDir, 'prompts', 'quality-first'), { recursive: true })
+  fs.writeFileSync(path.join(candidateDir, 'raw', 'sheet.png'), 'png')
+  fs.writeFileSync(path.join(candidateDir, 'processed', 'frames', '01.png'), 'png')
+  fs.writeFileSync(path.join(runDir, 'prompts', 'quality-first', 'waving-candidate-1.txt'), 'provider-neutral prompt')
+  fs.writeFileSync(path.join(runDir, 'run.json'), `${JSON.stringify({ runId, status: 'ready_for_review', currentStep: 'review', qualityFirst: { phase: 'ready_for_review' } })}\n`)
+  fs.writeFileSync(path.join(runDir, 'full-pet-action-checkpoints.json'), `${JSON.stringify({
+    version: 1,
+    runId,
+    actions: { waving: { actionId: 'waving', ok: false, error: 'action_quality_gate_failed', failureConditions: ['identity-drift'] } }
+  })}\n`)
+
+  const diagnostics = __testInternals.readWorkflowDiagnostics({ pluginDataDir, runId })
+  const waving = diagnostics.progress.actions.find((action) => action.actionId === 'waving')
+  assert.ok(waving.assets.some((asset) => asset.relativePath.includes('/candidates/waving/candidate-1/raw/sheet.png')))
+  assert.ok(waving.assets.some((asset) => asset.relativePath.includes('/candidates/waving/candidate-1/processed/frames/01.png')))
+  assert.equal(waving.promptRelativePath, `runs/${runId}/prompts/quality-first/waving-candidate-1.txt`)
 })
 
 test('creator workflow service imports available actions as partial pack when idle failed frames are absent', async () => {

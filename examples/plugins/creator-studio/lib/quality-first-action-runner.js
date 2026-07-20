@@ -116,7 +116,16 @@ const runQualityFirstAction = async ({
   let selected = selectBestPassingCandidate({ candidates: evaluatedCandidates })
   if (!selected) {
     const repairCodes = unique(failureCodes)
-    await archiveCandidateRevision({ actionId, reasonCodes: repairCodes })
+    const archiveRelativePath = String(await archiveCandidateRevision({ actionId, reasonCodes: repairCodes }) || '').replace(/\\/g, '/')
+    if (archiveRelativePath) {
+      if (archiveRelativePath.startsWith('/') || /^[a-zA-Z]:\//.test(archiveRelativePath) || archiveRelativePath.split('/').includes('..')) {
+        throw new Error('Quality-first candidate archive returned an unsafe relative path')
+      }
+      for (const candidate of allCandidates) {
+        if (!candidate.candidateRecordRelativePath) continue
+        candidate.candidateRecordRelativePath = `${archiveRelativePath}/${candidate.candidateId}/candidate.json`
+      }
+    }
     const repair = await dispatch('repair', repairCodes)
     if (!repair.duplicateOfCandidateId && !repair.invalidCandidate) {
       try {

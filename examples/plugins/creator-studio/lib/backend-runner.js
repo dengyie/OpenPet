@@ -11,8 +11,7 @@ const {
 } = require('./run-store')
 const {
   createQualityFirstHostRuntime,
-  generateViaHostModelBridge,
-  regenerateFullPetActionsViaHostModelBridge
+  generateViaHostModelBridge
 } = require('./host-model-bridge')
 const {
   buildCanonicalActionFramesFromGeneratedImage
@@ -259,45 +258,6 @@ const buildHostGeneratedRunOutput = async ({ dataDir, run, generationResult, now
   }
 }
 
-const assertRepairableFullPetRun = ({ run, operation }) => {
-  if (run?.generationTask?.mode !== 'full-pet') {
-    throw new Error(`Creator Studio ${operation} requires a full-pet run`)
-  }
-  if (normalizeCreatorBackend(run.backend || run.input?.backend, FIXTURE_BACKEND) !== PROVIDER_BACKEND) {
-    throw new Error(`Creator Studio ${operation} requires a Provider run`)
-  }
-  if (!['failed', 'ready_for_review'].includes(String(run.status || ''))) {
-    throw new Error(`Creator Studio ${operation} requires a failed or reviewable run: ${run.status}`)
-  }
-}
-
-const createRepairBaseRun = ({ run, preserveGeneratedImage }) => {
-  const preservedArtifacts = preserveGeneratedImage
-    ? {
-        ...(run.artifacts?.generatedImage ? { generatedImage: run.artifacts.generatedImage } : {}),
-        ...(run.artifacts?.anchorReferences ? { anchorReferences: run.artifacts.anchorReferences } : {})
-      }
-    : {}
-  const {
-    activatedPackId: _discardedActivatedPackId,
-    humanApproval: _discardedHumanApproval,
-    importedActionId: _discardedImportedActionId,
-    importedPackId: _discardedImportedPackId,
-    modelSnapshot: _discardedModelSnapshot,
-    triggerProposalSubmission: _discardedTriggerProposalSubmission,
-    ...baseRun
-  } = run
-  return {
-    ...baseRun,
-    status: 'failed',
-    currentStep: 'generate',
-    artifacts: preservedArtifacts,
-    reviewStatus: 'pending',
-    importStatus: 'not-imported',
-    error: ''
-  }
-}
-
 const createSafeArchiveSegment = (value) => String(value || '')
   .replace(/[^a-zA-Z0-9._-]+/g, '-')
   .replace(/-{2,}/g, '-')
@@ -349,6 +309,13 @@ const archiveRepairEvidence = ({ dataDir, run, scope, actionId = '', archivedAt 
         'sprite-plan.json'
       ]
     : [
+        path.join('candidates', actionId),
+        path.join('candidates', `action-${actionId}`),
+        path.join('candidate-archives', `action-${actionId}`),
+        path.join('references', actionId),
+        path.join('quality-first', 'frames', actionId),
+        path.join('prompts', 'quality-first'),
+        'evaluations',
         path.join('keyframes', 'actions', `${actionId}-start-keyframe`),
         path.join('keyframes', 'actions', `${actionId}-peak-keyframe`),
         path.join('inputs', 'keyframes', 'actions'),
@@ -366,207 +333,6 @@ const archiveRepairEvidence = ({ dataDir, run, scope, actionId = '', archivedAt 
     })
   }
   return archiveRelativePath
-}
-
-const runFullPetActionRepair = async ({
-  dataDir,
-  runId,
-  actionId,
-  now = () => new Date().toISOString()
-}) => {
-  const run = readRun({ dataDir, runId })
-  assertRepairableFullPetRun({ run, operation: 'action repair' })
-  const normalizedActionId = String(actionId || '').trim()
-  if (!GENERATED_FULL_PET_ACTION_IDS.includes(normalizedActionId)) {
-    throw new Error(
-      normalizedActionId === 'running-left'
-        ? 'Creator Studio running-left repair must regenerate running-right and derive its mirror'
-        : `Creator Studio cannot repair unknown generated action: ${normalizedActionId || '(missing)'}`
-    )
-  }
-  const startedAt = now()
-  const evidenceArchive = archiveRepairEvidence({
-    dataDir,
-    run,
-    scope: 'action',
-    actionId: normalizedActionId,
-    archivedAt: startedAt
-  })
-  invalidateActionCheckpoint({
-    dataDir,
-    runId,
-    actionId: normalizedActionId,
-    reason: 'scoped-action-repair',
-    now
-  })
-  const repairRun = {
-    ...createRepairBaseRun({ run, preserveGeneratedImage: true }),
-    status: 'generating',
-    updatedAt: startedAt,
-    generationLease: createGenerationLease({
-      commandId: 'retry-action',
-      startedAt,
-      leaseId: `${runId}-retry-action-${startedAt}`
-    }),
-    backendStatus: createBackendStatus({
-      backend: PROVIDER_BACKEND,
-      state: 'running',
-      message: `Repairing action ${normalizedActionId}`,
-      updatedAt: startedAt
-    })
-  }
-  writeRun({ dataDir, run: repairRun })
-  const stopLeaseHeartbeat = createGenerationLeaseHeartbeat({
-    dataDir,
-    runId,
-    leaseId: repairRun.generationLease.leaseId,
-    now
-  })
-  appendRunLog({
-    dataDir,
-    runId,
-    level: 'info',
-    event: 'repair.action.started',
-    message: `Scoped repair started for ${normalizedActionId}`,
-    data: { scope: 'action', actionId: normalizedActionId, evidenceArchive },
-    now: () => startedAt
-  })
-  try {
-    const generationResult = await regenerateFullPetActionsViaHostModelBridge({
-      dataDir,
-      run: repairRun,
-      actionIds: [normalizedActionId]
-    })
-    const runWithGeneratedImage = persistGeneratedImageAttempt({
-      dataDir,
-      run: repairRun,
-      generationResult,
-      now
-    })
-    const output = await buildHostGeneratedRunOutput({
-      dataDir,
-      run: runWithGeneratedImage,
-      generationResult,
-      now
-    })
-    const completedAt = now()
-    const { generationLease: _generationLease, ...outputRun } = output.run
-    const completedRun = {
-      ...outputRun,
-      backendStatus: createBackendStatus({
-        backend: PROVIDER_BACKEND,
-        state: 'ready',
-        message: `Action repair completed for ${normalizedActionId}`,
-        updatedAt: completedAt
-      }),
-      updatedAt: completedAt
-    }
-    writeRun({ dataDir, run: completedRun })
-    appendRunLog({
-      dataDir,
-      runId,
-      level: 'info',
-      event: 'repair.action.completed',
-      message: `Scoped repair completed for ${normalizedActionId}`,
-      data: { scope: 'action', actionId: normalizedActionId },
-      now: () => completedAt
-    })
-    return {
-      ...output,
-      run: completedRun,
-      repair: { scope: 'action', actionId: normalizedActionId, evidenceArchive }
-    }
-  } catch (error) {
-    const failedAt = now()
-    const failedRun = updateRunStatus({
-      dataDir,
-      runId,
-      status: 'failed',
-      patch: {
-        currentStep: 'generate',
-        reviewStatus: 'pending',
-        importStatus: 'not-imported',
-        backendStatus: createBackendStatus({
-          backend: PROVIDER_BACKEND,
-          state: 'failed',
-          message: error?.message || 'Creator Studio action repair failed',
-          updatedAt: failedAt
-        }),
-        error: error?.message || 'Creator Studio action repair failed',
-        generationLease: undefined
-      },
-      now: () => failedAt
-    })
-    appendRunLog({
-      dataDir,
-      runId,
-      level: 'error',
-      event: 'repair.action.failed',
-      message: error?.message || 'Creator Studio action repair failed',
-      data: { scope: 'action', actionId: normalizedActionId },
-      now: () => failedAt
-    })
-    error.run = failedRun
-    throw error
-  } finally {
-    stopLeaseHeartbeat()
-  }
-}
-
-const runFullPetIdentityRepair = async ({
-  dataDir,
-  runId,
-  now = () => new Date().toISOString()
-}) => {
-  const run = readRun({ dataDir, runId })
-  assertRepairableFullPetRun({ run, operation: 'identity repair' })
-  const repairStartedAt = now()
-  const evidenceArchive = archiveRepairEvidence({
-    dataDir,
-    run,
-    scope: 'identity',
-    archivedAt: repairStartedAt
-  })
-  invalidateAllActionCheckpoints({
-    dataDir,
-    runId,
-    reason: 'identity-repair',
-    now
-  })
-  const resetRun = {
-    ...createRepairBaseRun({ run, preserveGeneratedImage: false }),
-    updatedAt: repairStartedAt,
-    backendStatus: createBackendStatus({
-      backend: PROVIDER_BACKEND,
-      state: 'idle',
-      message: 'Canonical identity invalidated for regeneration',
-      updatedAt: repairStartedAt
-    })
-  }
-  writeRun({ dataDir, run: resetRun })
-  appendRunLog({
-    dataDir,
-    runId,
-    level: 'info',
-    event: 'repair.identity.started',
-    message: 'Identity-scoped repair invalidated all dependent actions',
-    data: { scope: 'identity', evidenceArchive },
-    now: () => repairStartedAt
-  })
-  const output = await runGenerationStep({ dataDir, runId, now })
-  appendRunLog({
-    dataDir,
-    runId,
-    level: 'info',
-    event: 'repair.identity.completed',
-    message: 'Identity-scoped repair completed and requires full visual review',
-    data: { scope: 'identity' },
-    now
-  })
-  return {
-    ...output,
-    repair: { scope: 'identity', actionId: '', evidenceArchive }
-  }
 }
 
 const runQualityFirstIdentityStage = async ({
@@ -771,12 +537,23 @@ const runQualityFirstActionRepair = async ({
     }
     const idleOk = normalizedActionId === 'idle' ? result?.ok === true : actionResults.idle?.ok === true
     const packageResult = idleOk ? await runtime.finalizePackage({ run, canonical, profile, actionResults }) : null
+    if (idleOk && (!packageResult || typeof packageResult !== 'object' || !packageResult.artifacts || typeof packageResult.artifacts !== 'object')) {
+      const error = new Error('Quality-first final package artifacts are missing')
+      error.code = 'quality_first_final_package_missing'
+      throw error
+    }
+    const { artifacts: packageArtifacts, ...publicPackageResult } = packageResult && typeof packageResult === 'object'
+      ? packageResult
+      : {}
     const recovery = !idleOk && typeof runtime.createRecoveryBundle === 'function'
       ? await runtime.createRecoveryBundle({ run, actionResults, reason: 'idle_generation_failed' })
       : null
     const status = idleOk ? 'ready_for_review' : 'recovery-required'
     const completedRun = {
       ...generatingRun,
+      ...(packageArtifacts && typeof packageArtifacts === 'object'
+        ? { artifacts: { ...(generatingRun.artifacts || {}), ...packageArtifacts } }
+        : {}),
       status,
       currentStep: status === 'ready_for_review' ? 'review' : 'recovery',
       reviewStatus: status === 'ready_for_review' ? 'pending' : 'recovery-required',
@@ -786,7 +563,7 @@ const runQualityFirstActionRepair = async ({
         ...run.qualityFirst,
         phase: status === 'ready_for_review' ? 'ready_for_review' : 'recovery-required',
         actionResults,
-        ...(packageResult ? { package: packageResult } : {}),
+        ...(packageResult ? { package: publicPackageResult } : {}),
         ...(recovery ? { recovery } : {}),
         nextAction: status === 'ready_for_review' ? 'human-review' : 'export-recovery-bundle'
       }
@@ -967,8 +744,6 @@ module.exports = {
   acceptQualityFirstCanonicalIdentity,
   buildHostGeneratedActionOutput,
   persistGeneratedImageAttempt,
-  runFullPetActionRepair,
-  runFullPetIdentityRepair,
   runGenerationStep,
   runQualityFirstActionRepair,
   runQualityFirstIdentityRetry,

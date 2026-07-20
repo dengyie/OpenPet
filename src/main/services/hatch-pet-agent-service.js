@@ -9,7 +9,14 @@ const {
   validateHatchPetDecision
 } = require('./hatch-pet-agent-contracts')
 const { createHatchPetAgentStore } = require('./hatch-pet-agent-store')
-const { createBudgetLedger, reserveEvaluatorCall, reservePlannerCall } = require('./hatch-pet-agent-budget-ledger')
+const {
+  createBudgetLedger,
+  createBudgetPublicView,
+  recordProviderCall: recordBudgetProviderCall,
+  reserveEvaluatorCall,
+  reservePlannerCall,
+  reserveProviderCall: reserveBudgetProviderCall
+} = require('./hatch-pet-agent-budget-ledger')
 const {
   DEFAULT_SPRITE_VISUAL_PROFILE,
   CANONICAL_COMPARISON_SCOPE,
@@ -86,7 +93,10 @@ const validateSpritePlanProposal = (value) => {
   assertExactKeys(value, ['schemaVersion', 'assetClass', 'actions'], 'top-level')
   if (value.schemaVersion !== 1) throw createInvalidSpritePlanError('schemaVersion must be 1')
   if (!['grounded-compact-character', 'grounded-elongated-character', 'floating-character'].includes(value.assetClass)) throw createInvalidSpritePlanError('assetClass is invalid')
-  if (!Array.isArray(value.actions) || !value.actions.length || value.actions.length > 8) throw createInvalidSpritePlanError('actions must contain 1 to 8 registered actions')
+  const requiredActionIds = Object.keys(SPRITE_PRESET_BY_ACTION)
+  if (!Array.isArray(value.actions) || value.actions.length !== requiredActionIds.length) {
+    throw createInvalidSpritePlanError('actions must contain all registered official actions')
+  }
   const seen = new Set()
   const actions = value.actions.map((action) => {
     assertExactKeys(action, ['actionId', 'motionPresetId', 'motionParameters'], 'action')
@@ -100,6 +110,7 @@ const validateSpritePlanProposal = (value) => {
     return Object.freeze({ actionId, motionPresetId: action.motionPresetId, motionParameters: Object.freeze({ ...action.motionParameters }) })
   })
   if (!seen.has('idle')) throw createInvalidSpritePlanError('idle action is required')
+  if (requiredActionIds.some((actionId) => !seen.has(actionId))) throw createInvalidSpritePlanError('actions must contain all registered official actions')
   return Object.freeze({ schemaVersion: 1, assetClass: value.assetClass, actions: Object.freeze(actions) })
 }
 
@@ -116,7 +127,7 @@ const createSpritePlanTool = () => ({
         assetClass: { type: 'string', enum: ['grounded-compact-character', 'grounded-elongated-character', 'floating-character'] },
         actions: {
           type: 'array',
-          minItems: 1,
+          minItems: Object.keys(SPRITE_PRESET_BY_ACTION).length,
           maxItems: 8,
           items: {
             type: 'object',
@@ -457,6 +468,8 @@ const createHatchPetAgentService = ({
       usage: Object.freeze({
         ...baseline.usage,
         providerCalls: Math.max(0, Math.min(baseline.limits.maxProviderCalls, Number(stored.usage.providerCalls) || 0)),
+        providerFailures: Math.max(0, Math.min(baseline.limits.maxProviderCalls, Number(stored.usage.providerFailures) || 0)),
+        lastProviderCode: normalizeText(stored.usage.lastProviderCode, 80),
         plannerCalls: Math.max(0, Math.min(baseline.limits.maxPlannerCalls, Number(stored.usage.plannerCalls) || 0)),
         evaluatorCalls: Math.max(0, Math.min(baseline.limits.maxEvaluatorCalls, Number(stored.usage.evaluatorCalls) || 0)),
         estimatedCost: Math.max(0, Number(stored.usage.estimatedCost) || 0),
@@ -480,6 +493,29 @@ const createHatchPetAgentService = ({
       try {
         if (fs.existsSync(temporaryPath)) fs.unlinkSync(temporaryPath)
       } catch (_) {}
+    }
+  }
+
+  const reserveProviderCall = ({ runId, timeoutMs } = {}) => {
+    const config = getStoredConfig()
+    const ledger = resolveBudgetLedger({ runId, limits: config.budgets })
+    const reservation = reserveBudgetProviderCall(ledger, { timeoutMs })
+    persistBudgetLedger({ runId, ledger: reservation.ledger })
+    return {
+      reservationId: reservation.reservationId,
+      budgetLedger: reservation.ledger,
+      budget: createBudgetPublicView(reservation.ledger)
+    }
+  }
+
+  const recordProviderCall = ({ runId, reservationId, budgetLedger, ok = false, code = '', estimatedCost = null } = {}) => {
+    const config = getStoredConfig()
+    const ledger = resolveBudgetLedger({ runId, supplied: budgetLedger, limits: config.budgets })
+    const recorded = recordBudgetProviderCall(ledger, reservationId, { ok, code, estimatedCost })
+    persistBudgetLedger({ runId, ledger: recorded })
+    return {
+      budgetLedger: recorded,
+      budget: createBudgetPublicView(recorded)
     }
   }
 
@@ -561,7 +597,7 @@ const createHatchPetAgentService = ({
           ].join(' ')
         }, {
           role: 'user',
-          content: JSON.stringify({ schemaVersion: 1, runId: normalizeText(runId, 128), userIntent: normalizeText(userIntent, 2000), requiredActionId: 'idle' })
+          content: JSON.stringify({ schemaVersion: 1, runId: normalizeText(runId, 128), userIntent: normalizeText(userIntent, 2000), requiredActionIds: Object.keys(SPRITE_PRESET_BY_ACTION) })
         }]
         ledger = reservePlannerCall(ledger)
         persistBudgetLedger({ runId, ledger })
@@ -823,6 +859,8 @@ const createHatchPetAgentService = ({
     createShadowDecision,
     evaluateSprite,
     planSprite,
+    recordProviderCall,
+    reserveProviderCall,
     getRunStatus
   }
 }

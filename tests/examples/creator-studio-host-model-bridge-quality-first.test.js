@@ -4,12 +4,15 @@ const assert = require('node:assert/strict')
 const {
   generateCanonicalCandidatePool,
   generateSelectedFullPetAction,
-  createQualityFirstRecoveryBundle
+  createQualityFirstRecoveryBundle,
+  evaluateQualityFirstFinalPackage
 } = require('../../examples/plugins/creator-studio/lib/host-model-bridge')
+const hostModelBridgeModule = require('../../examples/plugins/creator-studio/lib/host-model-bridge')
 
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
+const sharp = require('sharp')
 
 test('host canonical pool keeps paid duplicates and obtains three distinct candidates within four dispatches', async () => {
   const hashes = ['a'.repeat(64), 'a'.repeat(64), 'b'.repeat(64), 'c'.repeat(64)]
@@ -78,4 +81,69 @@ test('quality-first recovery bundle retains every run asset with relative paths 
   assert.ok(manifest.files.some((file) => file.relativePath.endsWith('/candidates/idle/raw.png')))
   assert.ok(manifest.files.some((file) => file.relativePath.endsWith('/prompts/idle.txt')))
   assert.doesNotMatch(JSON.stringify(manifest), /\/Users\/|\/tmp\//)
+})
+
+test('quality-first final package requires a passing code-owned visual gate over fixed package regions', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-quality-first-package-gate-'))
+  const runId = 'run-package-gate'
+  const runDir = path.join(dataDir, 'runs', runId)
+  fs.mkdirSync(path.join(runDir, 'quality-first', 'qa'), { recursive: true })
+  const paths = Object.fromEntries(['source', 'canonical', 'contact', 'atlas'].map((name) => [name, path.join(runDir, `${name}.png`)]))
+  await Promise.all(Object.values(paths).map((filePath, index) => sharp({
+    create: { width: 128, height: 128, channels: 4, background: { r: 40 + index * 30, g: 80, b: 160, alpha: 1 } }
+  }).png().toFile(filePath)))
+  const atlasQaPath = path.join(runDir, 'quality-first', 'qa', 'atlas-validation.json')
+  fs.writeFileSync(atlasQaPath, `${JSON.stringify({
+    ok: true,
+    visiblePixels: 100,
+    visualReview: { contactSheet: path.relative(dataDir, paths.contact).replace(/\\/g, '/') },
+    basicActions: { availableActionIds: ['idle'] }
+  })}\n`)
+  const requests = []
+  const accepted = await evaluateQualityFirstFinalPackage({
+    dataDir,
+    runId,
+    sourcePath: paths.source,
+    canonicalPath: paths.canonical,
+    spritesheetPath: paths.atlas,
+    atlasQaPath,
+    requestEvaluation: async (request) => {
+      requests.push(request)
+      return { gate: { ok: true, outcome: 'pass', failures: [] }, evidenceRelativePath: `runs/${runId}/evaluations/final-package.json` }
+    }
+  })
+  assert.equal(requests[0].scope, 'final-package')
+  assert.deepEqual(requests[0].board.regions.map((region) => region.regionId), ['source', 'canonical', 'action-review', 'atlas'])
+  assert.equal(accepted.gate.ok, true)
+  assert.match(accepted.boardRelativePath, /final-package-review-board\.png$/)
+
+  await assert.rejects(() => evaluateQualityFirstFinalPackage({
+    dataDir,
+    runId,
+    sourcePath: paths.source,
+    canonicalPath: paths.canonical,
+    spritesheetPath: paths.atlas,
+    atlasQaPath,
+    requestEvaluation: async () => ({ gate: { ok: false, outcome: 'repair', failures: ['visual-score-overall-below-minimum'] }, evidenceRelativePath: `runs/${runId}/evaluations/final-package.json` })
+  }), (error) => {
+    assert.equal(error.code, 'final_package_visual_gate_failed')
+    assert.match(error.message, /visual-score-overall-below-minimum/)
+    return true
+  })
+
+  const outsideCanonical = path.join(os.tmpdir(), `openpet-outside-canonical-${Date.now()}.png`)
+  await sharp({ create: { width: 8, height: 8, channels: 4, background: '#fff' } }).png().toFile(outsideCanonical)
+  await assert.rejects(() => evaluateQualityFirstFinalPackage({
+    dataDir,
+    runId,
+    sourcePath: paths.source,
+    canonicalPath: outsideCanonical,
+    spritesheetPath: paths.atlas,
+    atlasQaPath,
+    requestEvaluation: async () => ({ gate: { ok: true, outcome: 'pass', failures: [] } })
+  }), /canonical.*inside the Creator Studio data directory/i)
+})
+
+test('host model bridge no longer exports the removed legacy full-pet repair entry point', () => {
+  assert.equal(Object.hasOwn(hostModelBridgeModule, 'regenerateFullPetActionsViaHostModelBridge'), false)
 })

@@ -12,6 +12,7 @@ const { processSpriteSheet } = require('./sprite-frame-processor')
 const { createCharacterScaleProfile, measureBodyMask } = require('./character-scale-profile')
 const { analyzeSpriteCandidate } = require('./sprite-candidate-qa')
 const { createSpriteImageDescriptors } = require('./sprite-image-descriptor')
+const { createFinalPackageEvaluatorBoard } = require('../../../../src/main/services/hatch-pet-sprite-review-board')
 const {
   buildActionSpriteReferenceBoard,
   buildAnchorReferenceBoard
@@ -49,6 +50,7 @@ const {
   sanitizeNearTransparentPixels
 } = require('./edge-background-cutout')
 const { buildRealAtlasFromGeneratedImage, validateGeneratedImageOutput } = require('./real-atlas-builder')
+const { createCreatorStudioMetadata, sha256, writeZip } = require('./fake-hatch-pet')
 const { loadPetGenerationGovernance } = require('./pet-generation-governance')
 const {
   createQualityProfileEvidence,
@@ -458,6 +460,99 @@ const requestHatchPetSpriteEvaluation = async ({ runId, scope, board, qa, budget
   return response.result
 }
 
+const resolveQualityFirstDataPath = ({ dataDir, relativePath, label }) => {
+  const normalized = String(relativePath || '').trim().replace(/\\/g, '/')
+  if (!normalized || normalized.startsWith('/') || /^[a-zA-Z]:\//.test(normalized) || normalized.split('/').includes('..')) {
+    throw new Error(`${label} path is invalid`)
+  }
+  const root = path.resolve(dataDir)
+  const target = path.resolve(root, normalized)
+  const relative = path.relative(root, target)
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative) || !fs.existsSync(target) || !fs.statSync(target).isFile()) {
+    throw new Error(`${label} must stay inside the Creator Studio data directory`)
+  }
+  return target
+}
+
+const resolveQualityFirstInputPath = ({ dataDir, filePath, label }) => {
+  const root = fs.realpathSync.native(path.resolve(dataDir))
+  const target = path.resolve(String(filePath || ''))
+  if (!fs.existsSync(target) || !fs.statSync(target).isFile()) throw new Error(`${label} is missing`)
+  const realTarget = fs.realpathSync.native(target)
+  const relative = path.relative(root, realTarget)
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error(`${label} must stay inside the Creator Studio data directory`)
+  }
+  return realTarget
+}
+
+const evaluateQualityFirstFinalPackage = async ({
+  dataDir,
+  runId,
+  sourcePath,
+  canonicalPath,
+  spritesheetPath,
+  atlasQaPath,
+  requestEvaluation = requestHatchPetSpriteEvaluation
+} = {}) => {
+  const safeSourcePath = resolveQualityFirstInputPath({ dataDir, filePath: sourcePath, label: 'Quality-first source' })
+  const safeCanonicalPath = resolveQualityFirstInputPath({ dataDir, filePath: canonicalPath, label: 'Quality-first canonical' })
+  const safeSpritesheetPath = resolveQualityFirstInputPath({ dataDir, filePath: spritesheetPath, label: 'Quality-first atlas' })
+  const safeAtlasQaPath = resolveQualityFirstInputPath({ dataDir, filePath: atlasQaPath, label: 'Quality-first atlas QA' })
+  const atlasQa = JSON.parse(fs.readFileSync(safeAtlasQaPath, 'utf8'))
+  if (atlasQa?.ok !== true) {
+    const error = new Error('Quality-first final package requires passing atlas QA')
+    error.code = 'final_package_atlas_qa_failed'
+    throw error
+  }
+  const actionReviewPath = resolveQualityFirstDataPath({
+    dataDir,
+    relativePath: atlasQa?.visualReview?.contactSheet,
+    label: 'Quality-first action review'
+  })
+  const outputPath = path.join(dataDir, 'runs', String(runId || ''), 'evaluations', 'final-package-review-board.png')
+  const board = await createFinalPackageEvaluatorBoard({
+    sourcePath: safeSourcePath,
+    canonicalPath: safeCanonicalPath,
+    actionReviewPath,
+    atlasPath: safeSpritesheetPath,
+    outputPath
+  })
+  const evaluated = await requestEvaluation({
+    runId,
+    scope: 'final-package',
+    board: {
+      relativePath: path.relative(dataDir, board.path).replace(/\\/g, '/'),
+      sha256: board.sha256,
+      regions: board.regions
+    },
+    qa: {
+      ok: true,
+      failures: [],
+      metrics: {
+        atlasVisiblePixels: Math.max(0, Number(atlasQa.visiblePixels) || 0),
+        availableActionCount: Array.isArray(atlasQa?.basicActions?.availableActionIds)
+          ? atlasQa.basicActions.availableActionIds.length
+          : 0
+      }
+    }
+  })
+  if (evaluated?.gate?.ok !== true) {
+    const failures = Array.isArray(evaluated?.gate?.failures) ? evaluated.gate.failures.map(String).slice(0, 32) : ['final-package-visual-gate-failed']
+    const error = new Error(`Quality-first final package visual gate failed: ${failures.join(', ')}`)
+    error.code = 'final_package_visual_gate_failed'
+    error.gate = evaluated?.gate || null
+    error.evidenceRelativePath = String(evaluated?.evidenceRelativePath || '')
+    throw error
+  }
+  return {
+    gate: evaluated.gate,
+    evidenceRelativePath: String(evaluated.evidenceRelativePath || '').replace(/\\/g, '/'),
+    boardRelativePath: path.relative(dataDir, board.path).replace(/\\/g, '/'),
+    boardSha256: board.sha256
+  }
+}
+
 const createDefaultConditioningSummary = ({ model, referenceImages = [], promptCompiler = null }) => {
   assertExactlyOneProviderReferenceImage(referenceImages)
   return {
@@ -670,6 +765,7 @@ const resolveCompiledPromptConstraints = (promptBuild = {}) => ({
 const callHostImageGenerate = ({ prompt, promptCompiler, requestedTimeoutMs, referenceImages, runId, dataRelativeDir, model, constraints = DEFAULT_CONSTRAINTS }) => {
   assertExactlyOneProviderReferenceImage(referenceImages)
   return callBridge('/creator/model-image-generate', {
+    runId: String(runId || ''),
     model,
     prompt,
     promptCompiler,
@@ -4785,24 +4881,87 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
         }))
       }))
     if (!officialRows.some((row) => row.actionId === 'idle')) return null
-    const generatedImage = {
+    const atlasGenerationResult = {
       outputs: [{ dataRelativePath: canonical.relativePath }]
     }
     const outputDir = path.join(dataDir, `runs/${run.runId}/quality-first/package`)
     const qaDir = path.join(dataDir, `runs/${run.runId}/quality-first/qa`)
     const packaged = await buildRealAtlasFromGeneratedImage({
       dataDir,
-      generationResult: generatedImage,
+      generationResult: atlasGenerationResult,
       outputDir,
       qaDir,
       officialRows,
       qualityProfile
     })
+    const visualEvaluation = await evaluateQualityFirstFinalPackage({
+      dataDir,
+      runId: run.runId,
+      sourcePath: sourceReference.path,
+      canonicalPath: path.join(dataDir, canonical.relativePath),
+      spritesheetPath: packaged.spritesheetPath,
+      atlasQaPath: packaged.atlasQaPath
+    })
+    const generatedImage = {
+      ok: true,
+      backend: PROVIDER_BACKEND,
+      provider: String(settings.provider || 'openai-compatible'),
+      model: String(canonical.model || settings.model || ''),
+      generatedAt: new Date().toISOString(),
+      conditioning: {
+        mode: 'image-edit',
+        endpoint: '/images/edits',
+        referenceImageCount: 1,
+        requestedOutputCount: 1
+      },
+      outputs: [{
+        dataRelativePath: canonical.relativePath,
+        mimeType: 'image/png',
+        sha256: canonical.sha256
+      }]
+    }
+    const creatorStudio = createCreatorStudioMetadata(run)
+    const petJsonPath = path.join(outputDir, 'pet.json')
+    fs.writeFileSync(petJsonPath, `${JSON.stringify({
+      id: run.petId,
+      displayName: run.input?.petName || run.petId,
+      description: run.input?.prompt || `A generated pet named ${run.input?.petName || run.petId}.`,
+      spritesheetPath: 'spritesheet.webp',
+      requiredActionIds: packaged.basicActions?.requiredRealActionIds || ['idle'],
+      availableActionIds: packaged.basicActions?.availableActionIds || ['idle'],
+      omittedActionIds: packaged.basicActions?.omittedActionIds || [],
+      actionAvailability: packaged.basicActions?.actionAvailability || {},
+      ...(creatorStudio ? { creatorStudio } : {}),
+      generatedImage,
+      imageGeneration: {
+        backend: PROVIDER_BACKEND,
+        provider: generatedImage.provider,
+        model: generatedImage.model,
+        generatedAt: generatedImage.generatedAt,
+        pipeline: 'quality-first-v1'
+      }
+    }, null, 2)}\n`)
+    const bundlePath = path.join(outputDir, `${run.petId}.codex-pet.zip`)
+    writeZip(outputDir, bundlePath)
     return {
       spritesheetRelativePath: path.relative(dataDir, packaged.spritesheetPath).replace(/\\/g, '/'),
       atlasQaRelativePath: path.relative(dataDir, packaged.atlasQaPath).replace(/\\/g, '/'),
+      sourceQaRelativePath: path.relative(dataDir, packaged.sourceQaPath).replace(/\\/g, '/'),
+      petJsonRelativePath: path.relative(dataDir, petJsonPath).replace(/\\/g, '/'),
+      bundleRelativePath: path.relative(dataDir, bundlePath).replace(/\\/g, '/'),
       basicActions: packaged.basicActions,
-      spritesheetSha256: sha256File(packaged.spritesheetPath)
+      spritesheetSha256: sha256File(packaged.spritesheetPath),
+      bundleSha256: sha256(bundlePath),
+      visualEvaluation,
+      artifacts: {
+        outputDir,
+        petJson: petJsonPath,
+        spritesheet: packaged.spritesheetPath,
+        bundle: bundlePath,
+        qa: packaged.atlasQaPath,
+        sourceImageQa: packaged.sourceQaPath,
+        generatedImage
+      }
     }
   }
   const persistScaleProfile = async ({ profile }) => {
@@ -4864,92 +5023,6 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
     persistActionResult,
     finalizePackage,
     persistScaleProfile
-  }
-}
-
-const regenerateFullPetActionsViaHostModelBridge = async ({ dataDir, run, actionIds }) => {
-  if (!isFullPetRun(run)) throw new Error('Creator Studio scoped action repair requires a full-pet run')
-  if (!process.env.OPENPET_BRIDGE_URL || !process.env.OPENPET_BRIDGE_TOKEN) {
-    const { BackendUnavailableError } = require('./backend-adapters')
-    throw new BackendUnavailableError({
-      backend: PROVIDER_BACKEND,
-      message: 'Provider backend is not configured. Configure model settings before repairing pet actions.'
-    })
-  }
-  const previousGenerationResult = run?.artifacts?.generatedImage
-  if (!previousGenerationResult || typeof previousGenerationResult !== 'object') {
-    throw new Error('Creator Studio scoped action repair requires existing generated image provenance')
-  }
-  const settings = await readHostModelSettings()
-  const governance = loadPetGenerationGovernance()
-  const providerArtApprovals = loadConfiguredProviderArtApprovals()
-  const modelSnapshot = createModelSnapshot({ backend: PROVIDER_BACKEND, settings })
-  const requestedTimeoutMs = Math.max(Number(settings.timeoutMs) || 0, CREATOR_PROVIDER_MIN_TIMEOUT_MS)
-  const originalReferenceImage = resolveOriginalReferenceImage({ dataDir, run })
-  const originalReferenceImages = isUsableLocalReferenceImage({ dataDir, referenceImage: originalReferenceImage })
-    ? [originalReferenceImage]
-    : []
-  const baseOutputs = Array.isArray(previousGenerationResult.outputs)
-    ? previousGenerationResult.outputs
-    : []
-  const actionIdentityContext = await createFullPetActionIdentityContext({
-    dataDir,
-    run,
-    baseOutputs,
-    originalReferenceImages,
-    qualityProfile: governance.qualityProfile,
-    qualityGuidance: governance.qualityGuidance
-  })
-  assertExactlyOneProviderReferenceImage(actionIdentityContext.referenceImages)
-  const repaired = await generateFullPetBasicActionSources({
-    dataDir,
-    run,
-    settings,
-    selectedModel: modelSnapshot.model,
-    requestedTimeoutMs,
-    referenceImages: actionIdentityContext.referenceImages,
-    qualityReferenceImages: actionIdentityContext.qualityReferenceImages,
-    generationDeadlineMs: Date.now() + FULL_PET_WORKFLOW_MAX_DURATION_MS,
-    qualityProfile: governance.qualityProfile,
-    qualityGuidance: governance.qualityGuidance,
-    requestedActionIds: actionIds
-  })
-  const { failure: _discardedFailure, ...previous } = previousGenerationResult
-  const generationStages = [
-    ...(Array.isArray(previous.generationStages) ? previous.generationStages : []),
-    ...(Array.isArray(repaired.generationStages) ? repaired.generationStages : [])
-  ]
-  const artReadiness = resolveProviderArtReadinessForModels({
-    settings,
-    models: getSuccessfulGenerationModels({
-      primaryModel: previous.model,
-      stages: generationStages
-    }),
-    governance,
-    approvals: providerArtApprovals
-  })
-  return {
-    ...previous,
-    ok: true,
-    backend: PROVIDER_BACKEND,
-    provider: String(settings.provider || 'openai-compatible'),
-    model: modelSnapshot.model,
-    modelSnapshot,
-    generatedAt: new Date().toISOString(),
-    qualityGovernance: governance.evidence,
-    artReadiness,
-    actionIdentityReference: actionIdentityContext.evidence,
-    outputs: baseOutputs,
-    officialRows: repaired.officialRows,
-    basicActionGeneration: repaired.basicActionGeneration,
-    actionAvailability: repaired.actionAvailability,
-    availableActionIds: repaired.availableActionIds,
-    omittedActionIds: repaired.omittedActionIds,
-    keyframes: [
-      ...(Array.isArray(previous.keyframes) ? previous.keyframes : []),
-      ...(Array.isArray(repaired.keyframes) ? repaired.keyframes : [])
-    ],
-    generationStages
   }
 }
 
@@ -5379,117 +5452,7 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
     ...(anchorGeneration ? { anchorGeneration } : {})
   }
 
-  if (!isFullPetRun(run)) return result
-
-  await validateGeneratedImageOutput({
-    dataDir,
-    generationResult: result
-  })
-  const baseOutputs = Array.isArray(result.outputs) ? result.outputs : []
-  const actionIdentityContext = await createFullPetActionIdentityContext({
-    dataDir,
-    run,
-    baseOutputs,
-    originalReferenceImages,
-    qualityProfile,
-    qualityGuidance
-  })
-  assertExactlyOneProviderReferenceImage(actionIdentityContext.referenceImages)
-  let fullPetBasicActionSources
-  try {
-    fullPetBasicActionSources = await generateFullPetBasicActionSources({
-      dataDir,
-      run,
-      settings,
-      selectedModel,
-      requestedTimeoutMs,
-      referenceImages: actionIdentityContext.referenceImages,
-      qualityReferenceImages: actionIdentityContext.qualityReferenceImages,
-      generationDeadlineMs,
-      qualityProfile,
-      qualityGuidance
-    })
-  } catch (error) {
-    const partialSources = error?.partialActionSources || {
-      officialRows: { version: 1, mode: 'official-full-pet-provider-rows', rows: [] },
-      basicActionGeneration: { attemptedActionIds: [], attempts: [] },
-      keyframes: [],
-      generationStages: []
-    }
-    const partialGenerationStages = [
-      ...(Array.isArray(result.generationStages) ? result.generationStages : []),
-      ...(Array.isArray(partialSources.generationStages) ? partialSources.generationStages : [])
-    ]
-    error.partialGenerationResult = {
-      ...result,
-      artReadiness: resolveProviderArtReadinessForModels({
-        settings,
-        models: getSuccessfulGenerationModels({
-          primaryModel: selectedModel,
-          stages: partialGenerationStages
-        }),
-        governance,
-        approvals: providerArtApprovals
-      }),
-      outputs: baseOutputs,
-      actionIdentityReference: actionIdentityContext.evidence,
-      officialRows: partialSources.officialRows,
-      basicActionGeneration: partialSources.basicActionGeneration,
-      keyframes: Array.isArray(partialSources.keyframes) ? partialSources.keyframes : [],
-      generationStages: partialGenerationStages
-    }
-    throw error
-  }
-  const generatedOfficialRows = Array.isArray(fullPetBasicActionSources.officialRows?.rows)
-    ? fullPetBasicActionSources.officialRows.rows
-    : []
-  const failedRequiredRowAttempts = Array.isArray(fullPetBasicActionSources.basicActionGeneration?.attempts)
-    ? fullPetBasicActionSources.basicActionGeneration.attempts.filter((attempt) => (
-        !attempt.ok && REQUIRED_REAL_FULL_PET_ACTION_IDS.includes(attempt.actionId)
-      ))
-    : []
-  const fullPetResult = {
-    ...result,
-    outputs: baseOutputs,
-    actionIdentityReference: actionIdentityContext.evidence,
-    officialRows: fullPetBasicActionSources.officialRows,
-    basicActionGeneration: fullPetBasicActionSources.basicActionGeneration,
-    actionAvailability: fullPetBasicActionSources.actionAvailability,
-    availableActionIds: fullPetBasicActionSources.availableActionIds,
-    omittedActionIds: fullPetBasicActionSources.omittedActionIds,
-    keyframes: Array.isArray(fullPetBasicActionSources.keyframes) ? fullPetBasicActionSources.keyframes : [],
-    generationStages: [
-      ...(Array.isArray(result.generationStages) ? result.generationStages : []),
-      ...(Array.isArray(fullPetBasicActionSources.generationStages) ? fullPetBasicActionSources.generationStages : [])
-    ]
-  }
-  fullPetResult.artReadiness = resolveProviderArtReadinessForModels({
-    settings,
-    models: getSuccessfulGenerationModels({
-      primaryModel: selectedModel,
-      stages: fullPetResult.generationStages
-    }),
-    governance,
-    approvals: providerArtApprovals
-  })
-  if (
-    REQUIRED_REAL_FULL_PET_ACTION_IDS.some((actionId) => (
-      !generatedOfficialRows.some((row) => row?.actionId === actionId)
-    )) ||
-    failedRequiredRowAttempts.length > 0
-  ) {
-    const missingActionIds = REQUIRED_REAL_FULL_PET_ACTION_IDS.filter((actionId) => (
-      !generatedOfficialRows.some((row) => row?.actionId === actionId)
-    ))
-    const failedActionIds = failedRequiredRowAttempts.map((attempt) => attempt.actionId).filter(Boolean)
-    const error = new Error(
-      `Creator Studio full-pet official row generation failed; missing or failed rows: ${[...new Set([...missingActionIds, ...failedActionIds])].join(', ')}`
-    )
-    error.partialGenerationResult = fullPetResult
-    throw error
-  }
-
-  return fullPetResult
+  return result
 }
 
 module.exports = {
@@ -5521,8 +5484,8 @@ module.exports = {
   generateSelectedFullPetAction,
   createQualityFirstRecoveryBundle,
   createQualityFirstHostRuntime,
+  evaluateQualityFirstFinalPackage,
   generateViaHostModelBridge,
-  regenerateFullPetActionsViaHostModelBridge,
   requestHatchPetSpriteEvaluation,
   requestHatchPetSpritePlan,
   resolveRequiredRunReferenceImages,

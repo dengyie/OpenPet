@@ -8,6 +8,7 @@ const sharp = require('sharp')
 const {
   createActionEvaluatorBoard,
   createCanonicalEvaluatorBoard,
+  createFinalPackageEvaluatorBoard,
   validateEvaluationRegions
 } = require('../../src/main/services/hatch-pet-sprite-review-board')
 
@@ -55,6 +56,31 @@ test('action evaluator board uses fixed top references and lower 4x2 frame grid'
   assert.equal(result.regions.filter((region) => region.role === 'candidate-frame').length, 8)
   assert.equal(result.regions.find((region) => region.regionId === 'frame-1').x, 0)
   assert.equal(result.regions.find((region) => region.regionId === 'frame-8').y, 1024)
+})
+
+test('final package evaluator board keeps source, canonical, action review, and atlas in fixed regions', async () => {
+  const dir = createTempDir()
+  const inputs = Object.fromEntries(['source', 'canonical', 'actions', 'atlas'].map((name, index) => [name, path.join(dir, `${name}.png`)]))
+  await Promise.all(Object.values(inputs).map((filePath, index) => writeColor(filePath, { r: 30 + index * 40, g: 80, b: 180, alpha: 1 })))
+
+  const result = await createFinalPackageEvaluatorBoard({
+    sourcePath: inputs.source,
+    canonicalPath: inputs.canonical,
+    actionReviewPath: inputs.actions,
+    atlasPath: inputs.atlas,
+    outputPath: path.join(dir, 'final-package-review.png')
+  })
+
+  const metadata = await sharp(result.path).metadata()
+  assert.equal(metadata.width, 2048)
+  assert.equal(metadata.height, 1536)
+  assert.deepEqual(result.regions.map((region) => region.regionId), ['source', 'canonical', 'action-review', 'atlas'])
+  assert.deepEqual(result.regions.map((region) => [region.x, region.y, region.width, region.height]), [
+    [0, 0, 512, 512],
+    [512, 0, 512, 512],
+    [1024, 0, 1024, 512],
+    [0, 512, 2048, 1024]
+  ])
 })
 
 test('evaluation evidence rejects unknown review-board region ids', () => {

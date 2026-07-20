@@ -106,6 +106,17 @@ const createActionEvaluatorBoard = async ({ sourcePath, canonicalPath, adjacentP
   return writeBoard({ width: 2048, height: 1536, outputPath, rendered })
 }
 
+const createFinalPackageEvaluatorBoard = async ({ sourcePath, canonicalPath, actionReviewPath, atlasPath, outputPath }) => {
+  const definitions = [
+    { sourcePath, region: { regionId: 'source', role: 'source-identity', x: 0, y: 0, width: 512, height: 512 } },
+    { sourcePath: canonicalPath, region: { regionId: 'canonical', role: 'canonical-identity', x: 512, y: 0, width: 512, height: 512 } },
+    { sourcePath: actionReviewPath, region: { regionId: 'action-review', role: 'action-contact-sheet', x: 1024, y: 0, width: 1024, height: 512 } },
+    { sourcePath: atlasPath, region: { regionId: 'atlas', role: 'final-atlas', x: 0, y: 512, width: 2048, height: 1024 } }
+  ]
+  const rendered = await Promise.all(definitions.map(renderRegion))
+  return writeBoard({ width: 2048, height: 1536, outputPath, rendered })
+}
+
 const validateEvaluationRegions = ({ evaluation = {}, regions = [] } = {}) => {
   const allowed = new Set(regions.map((region) => String(region.regionId || '')).filter(Boolean))
   const defects = Array.isArray(evaluation.defects) ? evaluation.defects : []
@@ -121,5 +132,6 @@ const validateEvaluationRegions = ({ evaluation = {}, regions = [] } = {}) => {
 module.exports = {
   createActionEvaluatorBoard,
   createCanonicalEvaluatorBoard,
+  createFinalPackageEvaluatorBoard,
   validateEvaluationRegions
 }

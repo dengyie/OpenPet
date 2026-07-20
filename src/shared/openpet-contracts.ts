@@ -2167,6 +2167,31 @@ export interface CreatorQualityFirstProgressViewState {
   eligibleCandidateCount: number
   currentAction: string
   nextAction: string
+  budget: {
+    limits: {
+      providerCalls: number
+      plannerCalls: number
+      evaluatorCalls: number
+      elapsedMs: number
+      estimatedCost: number | null
+    }
+    usage: {
+      providerCalls: number
+      providerFailures: number
+      plannerCalls: number
+      evaluatorCalls: number
+      elapsedMs: number
+      estimatedCost: number
+      costKnown: boolean
+      lastProviderCode: string
+    }
+    remaining: {
+      providerCalls: number
+      plannerCalls: number
+      evaluatorCalls: number
+      elapsedMs: number
+    }
+  } | null
   identityReview: CreatorIdentityReviewViewState
   recovery: {
     reason: string

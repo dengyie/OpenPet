@@ -145,10 +145,20 @@ test('sprite evaluation repairs a provider response that omits the required tool
 const validSpritePlanProposal = () => ({
   schemaVersion: 1,
   assetClass: 'grounded-compact-character',
-  actions: [
-    { actionId: 'idle', motionPresetId: 'idle-subtle-loop-v1', motionParameters: { intensity: 'subtle', leadSide: 'viewer-left' } },
-    { actionId: 'running-right', motionPresetId: 'running-right-gait-v1', motionParameters: { intensity: 'normal', leadSide: 'viewer-left' } }
-  ]
+  actions: Object.entries({
+    idle: 'idle-subtle-loop-v1',
+    'running-right': 'running-right-gait-v1',
+    waving: 'waving-four-phase-v1',
+    jumping: 'jumping-five-phase-v1',
+    failed: 'failed-eight-phase-v1',
+    waiting: 'waiting-six-phase-v1',
+    running: 'working-six-phase-v1',
+    review: 'review-six-phase-v1'
+  }).map(([actionId, motionPresetId]) => ({
+    actionId,
+    motionPresetId,
+    motionParameters: { intensity: actionId === 'idle' ? 'subtle' : 'normal', leadSide: 'viewer-left' }
+  }))
 })
 
 test('sprite planning returns only registered morphology, presets, and bounded enums', async () => {
@@ -159,11 +169,21 @@ test('sprite planning returns only registered morphology, presets, and bounded e
     budgetLedger: createBudgetLedger({ startedAtMs: Date.now() })
   })
   assert.equal(result.proposal.assetClass, 'grounded-compact-character')
-  assert.deepEqual(result.proposal.actions.map((action) => action.actionId), ['idle', 'running-right'])
+  assert.deepEqual(result.proposal.actions.map((action) => action.actionId), ['idle', 'running-right', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review'])
   assert.equal(result.budgetLedger.usage.plannerCalls, 1)
   const serialized = JSON.stringify(h.calls[0])
   assert.equal(serialized.includes('framePoses'), false)
   assert.equal(serialized.includes('threshold'), false)
+})
+
+test('sprite planning rejects a partial official action plan', async () => {
+  const partial = { ...validSpritePlanProposal(), actions: validSpritePlanProposal().actions.slice(0, 2) }
+  const h = createHarness({ completions: [
+    { arguments: partial, provider: 'p', model: 'm', elapsedMs: 1 },
+    { arguments: partial, provider: 'p', model: 'm', elapsedMs: 1 }
+  ] })
+  await assert.rejects(() => h.service.planSprite({ runId: 'run-partial-plan', userIntent: 'full pet' }), /all registered official actions/i)
+  assert.equal(h.calls.length, 2)
 })
 
 test('sprite planning repairs one invalid proposal and rejects free-form or mismatched preset fields', async () => {
@@ -187,4 +207,34 @@ test('sprite planning persists host-owned budget usage across separate bridge ca
   assert.equal(second.budgetLedger.usage.plannerCalls, 2)
   const stored = JSON.parse(fs.readFileSync(path.join(h.dataDir, 'runs/run-persisted-budget/budgets/ledger.json'), 'utf8'))
   assert.equal(stored.usage.plannerCalls, 2)
+})
+
+test('host-owned provider reservations persist every image HTTP attempt including failures', () => {
+  const h = createHarness()
+  const first = h.service.reserveProviderCall({ runId: 'run-provider-budget', timeoutMs: 480000 })
+  const failed = h.service.recordProviderCall({
+    runId: 'run-provider-budget',
+    reservationId: first.reservationId,
+    budgetLedger: first.budgetLedger,
+    ok: false,
+    code: 'http-524'
+  })
+  const second = h.service.reserveProviderCall({ runId: 'run-provider-budget', timeoutMs: 352000 })
+  const succeeded = h.service.recordProviderCall({
+    runId: 'run-provider-budget',
+    reservationId: second.reservationId,
+    budgetLedger: second.budgetLedger,
+    ok: true,
+    code: 'ok',
+    estimatedCost: 0.08
+  })
+
+  assert.equal(failed.budgetLedger.usage.providerCalls, 1)
+  assert.equal(failed.budgetLedger.usage.providerFailures, 1)
+  assert.equal(succeeded.budgetLedger.usage.providerCalls, 2)
+  assert.equal(succeeded.budgetLedger.usage.providerFailures, 1)
+  assert.equal(succeeded.budgetLedger.usage.estimatedCost, 0.08)
+  const stored = JSON.parse(fs.readFileSync(path.join(h.dataDir, 'runs/run-provider-budget/budgets/ledger.json'), 'utf8'))
+  assert.equal(stored.usage.providerCalls, 2)
+  assert.deepEqual(stored.reservations, {})
 })

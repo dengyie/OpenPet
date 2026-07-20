@@ -11,6 +11,7 @@ const {
   runQualityFirstIdentityStage,
   runGenerationStep
 } = require('../../examples/plugins/creator-studio/lib/backend-runner')
+const backendRunnerModule = require('../../examples/plugins/creator-studio/lib/backend-runner')
 const { createRun, readRun, readRunLogs, writeRun } = require('../../examples/plugins/creator-studio/lib/run-store')
 
 const createDataDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-quality-first-backend-'))
@@ -60,6 +61,12 @@ test('quality-first action repair reruns only the requested action and preserves
   } })
   const profile = { version: 1, hash: 'p'.repeat(64) }
   fs.writeFileSync(path.join(dataDir, 'runs', created.runId, 'character-scale-profile.json'), `${JSON.stringify(profile)}\n`)
+  const paidCandidatePath = path.join(dataDir, 'runs', created.runId, 'candidates', 'waving', 'candidate-old', 'raw', 'sheet.png')
+  const paidPromptPath = path.join(dataDir, 'runs', created.runId, 'prompts', 'quality-first', 'waving-candidate-old.txt')
+  fs.mkdirSync(path.dirname(paidCandidatePath), { recursive: true })
+  fs.mkdirSync(path.dirname(paidPromptPath), { recursive: true })
+  fs.writeFileSync(paidCandidatePath, 'paid-provider-output')
+  fs.writeFileSync(paidPromptPath, 'provider-neutral prompt')
   const calls = []
   const runtime = {
     runAction: async ({ actionId, canonical: actualCanonical, profile: actualProfile }) => {
@@ -67,7 +74,14 @@ test('quality-first action repair reruns only the requested action and preserves
       return { ok: true, actionId, selectedCandidateId: 'waving-new', candidates: [] }
     },
     persistActionResult: async () => {},
-    finalizePackage: async () => ({ spritesheetRelativePath: `runs/${created.runId}/quality-first/package/spritesheet.webp` })
+    finalizePackage: async () => ({
+      spritesheetRelativePath: `runs/${created.runId}/quality-first/package/spritesheet.webp`,
+      artifacts: {
+        outputDir: path.join(dataDir, 'runs', created.runId, 'quality-first', 'package'),
+        petJson: path.join(dataDir, 'runs', created.runId, 'quality-first', 'package', 'pet.json'),
+        spritesheet: path.join(dataDir, 'runs', created.runId, 'quality-first', 'package', 'spritesheet.webp')
+      }
+    })
   }
   const result = await runQualityFirstActionRepair({
     dataDir,
@@ -82,6 +96,10 @@ test('quality-first action repair reruns only the requested action and preserves
   assert.equal(result.run.qualityFirst.actionResults.waving.ok, true)
   assert.equal(result.run.qualityFirst.actionResults.idle.ok, true)
   assert.equal(result.run.qualityFirst.package.spritesheetRelativePath.endsWith('spritesheet.webp'), true)
+  assert.equal(result.run.artifacts.spritesheet.endsWith('spritesheet.webp'), true)
+  assert.equal(Object.hasOwn(result.run.qualityFirst.package, 'artifacts'), false)
+  assert.equal(fs.existsSync(path.join(dataDir, result.repair.evidenceArchive, 'candidates', 'waving', 'candidate-old', 'raw', 'sheet.png')), true)
+  assert.equal(fs.existsSync(path.join(dataDir, result.repair.evidenceArchive, 'prompts', 'quality-first', 'waving-candidate-old.txt')), true)
 })
 
 test('quality-first identity retry archives paid candidates and returns to identity review', async () => {
@@ -121,4 +139,42 @@ test('provider full-pet execution rejects the removed legacy keyframe pipeline',
     assert.equal(error.code, 'legacy_full_pet_pipeline_removed')
     return true
   })
+})
+
+test('backend runner no longer exports legacy full-pet repair entry points', () => {
+  assert.equal(Object.hasOwn(backendRunnerModule, 'runFullPetActionRepair'), false)
+  assert.equal(Object.hasOwn(backendRunnerModule, 'runFullPetIdentityRepair'), false)
+})
+
+test('quality-first action repair fails closed when final package artifacts cannot be rebuilt', async () => {
+  const dataDir = createDataDir()
+  const created = createRun({
+    dataDir,
+    input: { petName: 'Quality Pet', backend: 'provider', generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1', actions: [{ actionId: 'idle', name: 'Idle', frameCount: 6 }], questions: [] } }
+  })
+  const canonical = { candidateId: 'canonical-1', eligible: true, sha256: 'a'.repeat(64), relativePath: `runs/${created.runId}/canonical.png` }
+  writeRun({ dataDir, run: {
+    ...created,
+    status: 'ready_for_review',
+    taskStatus: 'confirmed',
+    generationTask: { ...created.generationTask, pipeline: 'quality-first-v1' },
+    qualityFirst: { phase: 'ready_for_review', acceptedCanonical: canonical, actionResults: { idle: { ok: true }, waving: { ok: false } } }
+  } })
+  const profile = { version: 1, hash: 'p'.repeat(64) }
+  await assert.rejects(() => runQualityFirstActionRepair({
+    dataDir,
+    runId: created.runId,
+    actionId: 'waving',
+    runtime: {
+      runAction: async () => ({ ok: true, actionId: 'waving', selectedCandidateId: 'new', candidates: [] }),
+      persistActionResult: async () => {},
+      finalizePackage: async () => null
+    },
+    plan: { hash: 'plan' },
+    profile
+  }), (error) => {
+    assert.equal(error.code, 'quality_first_final_package_missing')
+    return true
+  })
+  assert.equal(readRun({ dataDir, runId: created.runId }).status, 'failed')
 })
