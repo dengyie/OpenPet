@@ -129,6 +129,15 @@ test('evaluation evidence is atomically stored under dataDir with a relative pat
   assert.throws(() => recordSpriteEvaluation({ dataDir, runId: '../escape', scope: 'canonical', evaluation: canonicalEvaluation() }), /runId is invalid/)
 })
 
+test('evaluation evidence uses board-bound ids so candidates never overwrite each other', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-sprite-evaluation-candidates-'))
+  const first = recordSpriteEvaluation({ dataDir, runId: 'run-1', scope: 'grounded-action', evidenceId: 'a'.repeat(64), evaluation: canonicalEvaluation() })
+  const second = recordSpriteEvaluation({ dataDir, runId: 'run-1', scope: 'grounded-action', evidenceId: 'b'.repeat(64), evaluation: canonicalEvaluation() })
+  assert.notEqual(first, second)
+  assert.equal(fs.existsSync(path.join(dataDir, first)), true)
+  assert.equal(fs.existsSync(path.join(dataDir, second)), true)
+})
+
 test('canonical comparison validates one score record per candidate region and gates each candidate', () => {
   const regions = [
     ...REGIONS,

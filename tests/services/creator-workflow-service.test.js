@@ -1844,6 +1844,32 @@ test('creator workflow exports only a hash-verified recovery bundle inside the r
   assert.doesNotMatch(JSON.stringify(result), new RegExp(pluginDataDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
 })
 
+test('quality-first identity retry returns to awaiting identity review instead of generic review', async () => {
+  const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-retry-identity-review-'))
+  const runId = 'run-retry-identity-review'
+  fs.mkdirSync(path.join(pluginDataDir, 'runs', runId), { recursive: true })
+  fs.writeFileSync(path.join(pluginDataDir, 'runs', runId, 'run.json'), `${JSON.stringify({
+    runId,
+    status: 'awaiting_identity_review',
+    currentStep: 'identity-review',
+    generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1' },
+    qualityFirst: { phase: 'awaiting_identity_review', canonicalCandidates: [] }
+  })}\n`)
+  const service = createCreatorWorkflowService({
+    pluginService: {
+      listPlugins: () => [createPluginView()],
+      getPluginCreatorDataDir: () => pluginDataDir,
+      runCommand: async (_pluginId, commandId) => ({ commandId, result: { message: 'retry ready', run: { runId, status: 'awaiting_identity_review', qualityFirst: { phase: 'awaiting_identity_review' } } } })
+    },
+    imageGenerationModelService: { checkHealth: async () => ({ ok: true }), getConfig: () => ({ provider: 'openai-compatible', model: 'gpt-image-2' }) },
+    actionService: { getConfig: () => ({ actions: [] }), acceptTriggerProposalItem: () => ({ animations: {} }) },
+    creatorReferenceService: { getReference: () => null, bindReference: async () => ({ replaced: false, reference: null }), copyReferenceIntoRun: () => ({}) }
+  })
+  const result = await service.retryFullPetIdentity({ runId })
+  assert.equal(result.state, 'awaiting-identity-review')
+  assert.equal(result.code, 'identity_review_required')
+})
+
 test('creator workflow service imports available actions as partial pack when idle failed frames are absent', async () => {
   const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-partial-import-'))
   const runId = 'run-partial-import'

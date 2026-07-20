@@ -217,6 +217,7 @@ test('creator studio example manifest declares hybrid creator workflow entries',
     'answer-question',
     'confirm-task',
     'run-step',
+    'accept-identity',
     'retry-action',
     'retry-identity',
     'approve-run',
@@ -233,7 +234,7 @@ test('full-pet command watchdogs outlive the bounded generation workflow', () =>
   const timeouts = Object.fromEntries(manifest.entries.commands.map((command) => [command.id, command.timeoutMs]))
 
   assert.equal(FULL_PET_WORKFLOW_MAX_DURATION_MS, 12 * 60 * 60 * 1000)
-  for (const commandId of ['run-step', 'retry-action', 'retry-identity']) {
+  for (const commandId of ['run-step', 'accept-identity', 'retry-action', 'retry-identity']) {
     assert.equal(timeouts[commandId], FULL_PET_COMMAND_TIMEOUT_MS)
     assert.ok(timeouts[commandId] > FULL_PET_WORKFLOW_MAX_DURATION_MS)
   }

@@ -345,7 +345,7 @@ const createSpriteEvaluatorRequest = ({ scope, board, qa = {}, profile, repairRe
   }
 }
 
-const recordSpriteEvaluation = ({ dataDir, runId, scope, evaluation } = {}) => {
+const recordSpriteEvaluation = ({ dataDir, runId, scope, evidenceId = '', evaluation } = {}) => {
   const root = path.resolve(String(dataDir || ''))
   if (!root) throw new Error('Sprite evaluation dataDir is required')
   const normalizedRunId = String(runId || '').trim()
@@ -353,7 +353,11 @@ const recordSpriteEvaluation = ({ dataDir, runId, scope, evaluation } = {}) => {
   const normalizedScope = String(scope || '').trim() === CANONICAL_COMPARISON_SCOPE
     ? CANONICAL_COMPARISON_SCOPE
     : requireScope(scope)
-  const relativePath = path.join('runs', normalizedRunId, 'evaluations', `${normalizedScope}.json`).replace(/\\/g, '/')
+  const normalizedEvidenceId = String(evidenceId || '').trim().toLowerCase()
+  if (normalizedEvidenceId && !/^[a-f0-9]{12,64}$/.test(normalizedEvidenceId)) throw new Error('Sprite evaluation evidenceId is invalid')
+  const relativePath = normalizedEvidenceId
+    ? path.join('runs', normalizedRunId, 'evaluations', normalizedScope, `${normalizedEvidenceId}.json`).replace(/\\/g, '/')
+    : path.join('runs', normalizedRunId, 'evaluations', `${normalizedScope}.json`).replace(/\\/g, '/')
   const targetPath = path.resolve(root, relativePath)
   if (!targetPath.startsWith(`${root}${path.sep}`)) throw new Error('Sprite evaluation path escaped dataDir')
   const source = isPlainObject(evaluation) ? evaluation : {}

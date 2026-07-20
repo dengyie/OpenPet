@@ -3,10 +3,11 @@ const fs = require('fs')
 const path = require('path')
 const { appendRunLog, listRuns, readRun, readRunLogs, updateRunStatus } = require('../lib/run-store')
 const {
-  runFullPetActionRepair,
-  runFullPetIdentityRepair,
-  runGenerationStep
+  runGenerationStep,
+  runQualityFirstActionRepair,
+  runQualityFirstIdentityRetry
 } = require('../lib/backend-runner')
+const { createQualityFirstHostRuntime } = require('../lib/host-model-bridge')
 const { repairActionFrameFromGeneratedImage } = require('../lib/action-frame-builder')
 const { assertRunActionFrameQaPassed } = require('../lib/action-frame-qa')
 const { assertRunFullPetQaPassed } = require('../lib/full-pet-qa')
@@ -1921,11 +1922,14 @@ const handlePost = async ({ request, response, dataDir, url }) => {
 
     const retryActionMatch = url.pathname.match(/^\/api\/runs\/([^/]+)\/actions\/([^/]+)\/retry$/)
     if (retryActionMatch) {
-      const output = await runFullPetActionRepair({
-        dataDir,
-        runId: decodeURIComponent(retryActionMatch[1]),
-        actionId: decodeURIComponent(retryActionMatch[2])
-      })
+      const runId = decodeURIComponent(retryActionMatch[1])
+      const actionId = decodeURIComponent(retryActionMatch[2])
+      const run = readRun({ dataDir, runId })
+      if (run.generationTask?.pipeline !== 'quality-first-v1') throw new Error('Legacy full-pet action repair has been removed')
+      const plan = JSON.parse(fs.readFileSync(path.join(dataDir, 'runs', runId, 'sprite-plan.json'), 'utf8'))
+      const profile = JSON.parse(fs.readFileSync(path.join(dataDir, 'runs', runId, 'character-scale-profile.json'), 'utf8'))
+      const runtime = await createQualityFirstHostRuntime({ dataDir, run, planOverride: plan })
+      const output = await runQualityFirstActionRepair({ dataDir, runId, actionId, runtime, plan, profile })
       sendJson(response, 200, {
         ok: true,
         run: createPublicRun({ dataDir, run: output.run }),
@@ -1939,10 +1943,12 @@ const handlePost = async ({ request, response, dataDir, url }) => {
 
     const retryIdentityMatch = url.pathname.match(/^\/api\/runs\/([^/]+)\/identity\/retry$/)
     if (retryIdentityMatch) {
-      const output = await runFullPetIdentityRepair({
-        dataDir,
-        runId: decodeURIComponent(retryIdentityMatch[1])
-      })
+      const runId = decodeURIComponent(retryIdentityMatch[1])
+      const run = readRun({ dataDir, runId })
+      if (run.generationTask?.pipeline !== 'quality-first-v1') throw new Error('Legacy full-pet identity repair has been removed')
+      const plan = JSON.parse(fs.readFileSync(path.join(dataDir, 'runs', runId, 'sprite-plan.json'), 'utf8'))
+      const runtime = await createQualityFirstHostRuntime({ dataDir, run, planOverride: plan })
+      const output = await runQualityFirstIdentityRetry({ dataDir, runId, orchestrator: runtime.orchestrator, plan, sourceReference: runtime.sourceReference })
       sendJson(response, 200, {
         ok: true,
         run: createPublicRun({ dataDir, run: output.run }),

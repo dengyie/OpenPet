@@ -1,6 +1,5 @@
 const { runCommand } = require('../lib/command-io')
-const { runFullPetIdentityRepair } = require('../lib/backend-runner')
-const { runQualityFirstIdentityStage } = require('../lib/backend-runner')
+const { runQualityFirstIdentityRetry } = require('../lib/backend-runner')
 const { createQualityFirstHostRuntime } = require('../lib/host-model-bridge')
 const { recoverStaleGeneratingRuns, readRun, resolveRunId } = require('../lib/run-store')
 const fs = require('node:fs')
@@ -15,25 +14,18 @@ runCommand(async (context) => {
     description: 'failed or reviewable full-pet'
   })
   const run = readRun({ dataDir: process.env.OPENPET_DATA_DIR, runId })
-  let output
-  if (run.generationTask?.pipeline === 'quality-first-v1') {
-    const planPath = path.join(process.env.OPENPET_DATA_DIR, 'runs', runId, 'sprite-plan.json')
-    if (!fs.existsSync(planPath)) throw new Error('Quality-first sprite plan is missing')
-    const plan = JSON.parse(fs.readFileSync(planPath, 'utf8'))
-    const runtime = await createQualityFirstHostRuntime({ dataDir: process.env.OPENPET_DATA_DIR, run, planOverride: plan })
-    output = await runQualityFirstIdentityStage({
-      dataDir: process.env.OPENPET_DATA_DIR,
-      runId,
-      orchestrator: runtime.orchestrator,
-      plan,
-      sourceReference: runtime.sourceReference
-    })
-  } else {
-    output = await runFullPetIdentityRepair({
-      dataDir: process.env.OPENPET_DATA_DIR,
-      runId
-    })
-  }
+  if (run.generationTask?.pipeline !== 'quality-first-v1') throw new Error('Legacy full-pet identity repair has been removed')
+  const planPath = path.join(process.env.OPENPET_DATA_DIR, 'runs', runId, 'sprite-plan.json')
+  if (!fs.existsSync(planPath)) throw new Error('Quality-first sprite plan is missing')
+  const plan = JSON.parse(fs.readFileSync(planPath, 'utf8'))
+  const runtime = await createQualityFirstHostRuntime({ dataDir: process.env.OPENPET_DATA_DIR, run, planOverride: plan })
+  const output = await runQualityFirstIdentityRetry({
+    dataDir: process.env.OPENPET_DATA_DIR,
+    runId,
+    orchestrator: runtime.orchestrator,
+    plan,
+    sourceReference: runtime.sourceReference
+  })
   return {
     message: `Regenerated canonical identity for ${runId}`,
     run: output.run,

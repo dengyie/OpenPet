@@ -4805,46 +4805,66 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
       spritesheetSha256: sha256File(packaged.spritesheetPath)
     }
   }
+  const persistScaleProfile = async ({ profile }) => {
+    const relativePath = `runs/${run.runId}/character-scale-profile.json`
+    writeJsonFile(path.join(dataDir, relativePath), profile)
+    return { relativePath, hash: String(profile?.hash || '') }
+  }
+  const mirrorRunningLeft = async ({ source }) => {
+    const selected = source?.selectedCandidate
+    const sourceFrames = Array.isArray(selected?.processed?.frames) ? selected.processed.frames : []
+    const outputDir = path.join(dataDir, `runs/${run.runId}/candidates/running-left/mirror`)
+    fs.mkdirSync(outputDir, { recursive: true })
+    const mirroredFrames = []
+    for (const [index, frame] of sourceFrames.entries()) {
+      const outputPath = path.join(outputDir, `${String(index + 1).padStart(2, '0')}.png`)
+      await sharp(frame.path).flop().png().toFile(outputPath)
+      mirroredFrames.push({ ...frame, path: outputPath, index })
+    }
+    return {
+      ok: mirroredFrames.length === sourceFrames.length && mirroredFrames.length > 0,
+      actionId: 'running-left',
+      mirroredFrom: 'running-right',
+      selectedCandidateId: `${source.selectedCandidateId || 'running-right'}-mirror`,
+      selectedCandidate: {
+        model: selected?.model || '',
+        processed: { frames: mirroredFrames },
+        qa: { ok: mirroredFrames.length > 0, failures: [] },
+        gate: { ok: mirroredFrames.length > 0, outcome: 'pass', failures: [] }
+      },
+      candidates: []
+    }
+  }
+  const createRecoveryBundle = ({ run: recoveryRun, actionResults, reason }) => createQualityFirstRecoveryBundle({
+    dataDir,
+    run: recoveryRun,
+    actionResults,
+    reason
+  })
   const orchestrator = createQualityFirstFullPetOrchestrator({
     generateCanonicalCandidatePool: canonicalPool,
     runQualityFirstAction: runAction,
     createCharacterScaleProfile: async ({ canonical, idle }) => createCharacterScaleProfile({ canonicalMetrics: canonical.canonicalMetrics, idleMetrics: idle.selectedCandidate?.processed?.metrics?.frames || [], characterClass: plan.character.assetClass, anchorPolicy: 'compact-contact-root-v1', canonicalMasterSha256: canonical.sha256, idleCheckpointSha256: idle.selectedCandidateId, processorVersion: 1 }),
-    mirrorRunningLeft: async ({ source, profile }) => {
-      const selected = source?.selectedCandidate
-      const sourceFrames = Array.isArray(selected?.processed?.frames) ? selected.processed.frames : []
-      const outputDir = path.join(dataDir, `runs/${run.runId}/candidates/running-left/mirror`)
-      fs.mkdirSync(outputDir, { recursive: true })
-      const mirroredFrames = []
-      for (const [index, frame] of sourceFrames.entries()) {
-        const outputPath = path.join(outputDir, `${String(index + 1).padStart(2, '0')}.png`)
-        await sharp(frame.path).flop().png().toFile(outputPath)
-        mirroredFrames.push({ ...frame, path: outputPath, index })
-      }
-      return {
-        ok: mirroredFrames.length === sourceFrames.length && mirroredFrames.length > 0,
-        actionId: 'running-left',
-        mirroredFrom: 'running-right',
-        selectedCandidateId: `${source.selectedCandidateId || 'running-right'}-mirror`,
-        selectedCandidate: {
-          model: selected?.model || '',
-          processed: { frames: mirroredFrames },
-          qa: { ok: mirroredFrames.length > 0, failures: [] },
-          gate: { ok: mirroredFrames.length > 0, outcome: 'pass', failures: [] }
-        },
-        candidates: []
-      }
-    },
+    mirrorRunningLeft,
     persistActionResult,
+    persistScaleProfile,
     finalizePackage,
-    createRecoveryBundle: ({ run: recoveryRun, actionResults, reason }) => createQualityFirstRecoveryBundle({
-      dataDir,
-      run: recoveryRun,
-      actionResults,
-      reason
-    }),
+    createRecoveryBundle,
     now: () => new Date().toISOString()
   })
-  return { plan, planResult, orchestrator, sourceReference, planRelativePath }
+  return {
+    plan,
+    planResult,
+    orchestrator,
+    sourceReference,
+    planRelativePath,
+    runAction,
+    mirrorRunningLeft,
+    createRecoveryBundle,
+    persistActionResult,
+    finalizePackage,
+    persistScaleProfile
+  }
 }
 
 const regenerateFullPetActionsViaHostModelBridge = async ({ dataDir, run, actionIds }) => {
@@ -4935,6 +4955,11 @@ const regenerateFullPetActionsViaHostModelBridge = async ({ dataDir, run, action
 
 const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
   const normalizedBackend = normalizeCreatorBackend(backend, FIXTURE_BACKEND)
+  if (isFullPetRun(run)) {
+    const error = new Error('Creator Studio legacy full-pet host generation has been removed; use quality-first-v1 orchestration')
+    error.code = 'legacy_full_pet_pipeline_removed'
+    throw error
+  }
   if (!process.env.OPENPET_BRIDGE_URL || !process.env.OPENPET_BRIDGE_TOKEN) {
     const { BackendUnavailableError } = require('./backend-adapters')
     throw new BackendUnavailableError({

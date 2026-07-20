@@ -54,6 +54,7 @@ const createQualityFirstFullPetOrchestrator = ({
   createCharacterScaleProfile,
   mirrorRunningLeft,
   persistActionResult = async () => {},
+  persistScaleProfile = async () => {},
   finalizePackage = async () => null,
   createRecoveryBundle = async () => null,
   now = () => new Date().toISOString()
@@ -118,6 +119,7 @@ const createQualityFirstFullPetOrchestrator = ({
       }
     }
     const profile = await createCharacterScaleProfile({ canonical: candidate, idle })
+    await persistScaleProfile({ profile, canonical: candidate, idle })
     await persistActionResult({ actionId: 'idle', result: idle, canonical: candidate, profile })
     actionResults.idle = { ...publicActionResult(idle), scaleProfileHash: profile.hash }
     const requestedActions = unique(actions.length ? actions : ACTION_ORDER)

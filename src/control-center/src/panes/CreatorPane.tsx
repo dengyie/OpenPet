@@ -552,7 +552,7 @@ const ResultCard = ({
 }) => {
   const tone = ['completed', 'review-required'].includes(result.state)
     ? 'ok'
-    : result.state === 'preview-ready' || result.state === 'generating'
+    : result.state === 'preview-ready' || result.state === 'generating' || result.state === 'awaiting-identity-review'
       ? ''
       : 'error'
   const progress = result.diagnostics?.progress || null
@@ -619,6 +619,15 @@ const ResultCard = ({
             data-testid="creator-export-recovery"
           >
             验证并导出资产恢复包
+          </button>
+          <button
+            type="button"
+            className="ghost"
+            disabled={running}
+            onClick={onRetryFullPetIdentity}
+            data-testid="creator-retry-identity-from-recovery"
+          >
+            重新生成身份候选
           </button>
         </div>
       ) : null}

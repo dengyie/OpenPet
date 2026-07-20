@@ -339,7 +339,14 @@ const archiveRepairEvidence = ({ dataDir, run, scope, actionId = '', archivedAt 
         'keyframes',
         'prompts',
         path.join('frames', 'base'),
-        'official-row-frames'
+        'official-row-frames',
+        'candidates',
+        'candidate-archives',
+        'evaluations',
+        'quality-first',
+        'recovery',
+        'character-scale-profile.json',
+        'sprite-plan.json'
       ]
     : [
         path.join('keyframes', 'actions', `${actionId}-start-keyframe`),
@@ -606,6 +613,42 @@ const runQualityFirstIdentityStage = async ({
   }
 }
 
+const runQualityFirstIdentityRetry = async ({
+  dataDir,
+  runId,
+  orchestrator,
+  plan,
+  sourceReference = null,
+  now = () => new Date().toISOString()
+} = {}) => {
+  const run = readRun({ dataDir, runId })
+  if (run.generationTask?.pipeline !== 'quality-first-v1' || run.generationTask?.mode !== 'full-pet') {
+    throw new Error('Quality-first identity retry requires a quality-first full-pet run')
+  }
+  const startedAt = now()
+  const evidenceArchive = archiveRepairEvidence({ dataDir, run, scope: 'identity', archivedAt: startedAt })
+  invalidateAllActionCheckpoints({ dataDir, runId, reason: 'quality-first-identity-retry', now })
+  const { qualityFirst: _qualityFirst, generationLease: _generationLease, ...baseRun } = run
+  writeRun({
+    dataDir,
+    run: {
+      ...baseRun,
+      status: 'confirmed',
+      currentStep: 'confirmed',
+      reviewStatus: 'pending',
+      importStatus: 'not-imported',
+      error: '',
+      updatedAt: startedAt,
+      backendStatus: createBackendStatus({ backend: PROVIDER_BACKEND, state: 'idle', message: 'Canonical identity candidates archived for regeneration', updatedAt: startedAt })
+    }
+  })
+  const output = await runQualityFirstIdentityStage({ dataDir, runId, orchestrator, plan, sourceReference, now })
+  return {
+    ...output,
+    repair: { scope: 'identity', actionId: '', evidenceArchive }
+  }
+}
+
 const acceptQualityFirstCanonicalIdentity = async ({
   dataDir,
   runId,
@@ -655,6 +698,110 @@ const acceptQualityFirstCanonicalIdentity = async ({
   }
 }
 
+const createQualityFirstActionResultView = (result) => ({
+  ok: result?.ok === true,
+  actionId: String(result?.actionId || ''),
+  disposition: String(result?.disposition || ''),
+  selectedCandidateId: String(result?.selectedCandidateId || ''),
+  failureCode: String(result?.failureCode || ''),
+  candidates: Array.isArray(result?.candidates) ? result.candidates.map((candidate) => ({
+    candidateId: String(candidate?.candidateId || ''),
+    attemptKind: String(candidate?.attemptKind || ''),
+    ok: candidate?.qa?.ok === true && candidate?.gate?.ok === true,
+    failureCodes: [...new Set([...(candidate?.qa?.failures || []), ...(candidate?.gate?.failures || []), ...(candidate?.failureCodes || [])])].map(String).slice(0, 32),
+    score: Number(candidate?.evaluation?.scores?.overall) || 0,
+    candidateRecordRelativePath: String(candidate?.candidateRecordRelativePath || '').replace(/\\/g, '/')
+  })) : []
+})
+
+const runQualityFirstActionRepair = async ({
+  dataDir,
+  runId,
+  actionId,
+  runtime,
+  plan,
+  profile,
+  now = () => new Date().toISOString()
+} = {}) => {
+  if (!runtime?.runAction || !runtime?.persistActionResult || !runtime?.finalizePackage) {
+    throw new Error('Quality-first action repair requires a complete host runtime')
+  }
+  const run = readRun({ dataDir, runId })
+  const normalizedActionId = String(actionId || '').trim()
+  if (run.generationTask?.pipeline !== 'quality-first-v1' || run.generationTask?.mode !== 'full-pet') {
+    throw new Error('Quality-first action repair requires a quality-first full-pet run')
+  }
+  if (!GENERATED_FULL_PET_ACTION_IDS.includes(normalizedActionId)) {
+    throw new Error(normalizedActionId === 'running-left'
+      ? 'Creator Studio running-left repair must regenerate running-right and derive its mirror'
+      : `Creator Studio cannot repair unknown generated action: ${normalizedActionId || '(missing)'}`)
+  }
+  const canonical = run.qualityFirst?.acceptedCanonical
+  if (!canonical?.candidateId || !canonical?.sha256 || !profile?.hash) {
+    throw new Error('Quality-first action repair requires accepted canonical identity and scale profile')
+  }
+  const startedAt = now()
+  const evidenceArchive = archiveRepairEvidence({ dataDir, run, scope: 'action', actionId: normalizedActionId, archivedAt: startedAt })
+  invalidateActionCheckpoint({ dataDir, runId, actionId: normalizedActionId, reason: 'quality-first-action-repair', now })
+  if (normalizedActionId === 'running-right') {
+    invalidateActionCheckpoint({ dataDir, runId, actionId: 'running-left', reason: 'quality-first-running-mirror-repair', now })
+  }
+  const lease = createGenerationLease({ commandId: 'retry-action', startedAt, leaseId: `${runId}-retry-action-${startedAt}` })
+  const generatingRun = {
+    ...run,
+    status: 'generating',
+    currentStep: normalizedActionId,
+    generationLease: lease,
+    backendStatus: createBackendStatus({ backend: PROVIDER_BACKEND, state: 'running', message: `Regenerating ${normalizedActionId}`, updatedAt: startedAt })
+  }
+  writeRun({ dataDir, run: generatingRun })
+  const stopLeaseHeartbeat = createGenerationLeaseHeartbeat({ dataDir, runId, leaseId: lease.leaseId, now })
+  try {
+    const result = await runtime.runAction({ actionId: normalizedActionId, canonical, profile, plan })
+    await runtime.persistActionResult({ actionId: normalizedActionId, result, canonical, profile })
+    const actionResults = {
+      ...(run.qualityFirst?.actionResults || {}),
+      [normalizedActionId]: createQualityFirstActionResultView(result)
+    }
+    if (normalizedActionId === 'running-right' && result?.ok === true) {
+      if (typeof runtime.mirrorRunningLeft !== 'function') throw new Error('Quality-first running-right repair requires mirror runtime')
+      const mirrored = await runtime.mirrorRunningLeft({ source: result, profile, canonical })
+      await runtime.persistActionResult({ actionId: 'running-left', result: mirrored, canonical, profile })
+      actionResults['running-left'] = createQualityFirstActionResultView(mirrored)
+    }
+    const idleOk = normalizedActionId === 'idle' ? result?.ok === true : actionResults.idle?.ok === true
+    const packageResult = idleOk ? await runtime.finalizePackage({ run, canonical, profile, actionResults }) : null
+    const recovery = !idleOk && typeof runtime.createRecoveryBundle === 'function'
+      ? await runtime.createRecoveryBundle({ run, actionResults, reason: 'idle_generation_failed' })
+      : null
+    const status = idleOk ? 'ready_for_review' : 'recovery-required'
+    const completedRun = {
+      ...generatingRun,
+      status,
+      currentStep: status === 'ready_for_review' ? 'review' : 'recovery',
+      reviewStatus: status === 'ready_for_review' ? 'pending' : 'recovery-required',
+      generationLease: undefined,
+      backendStatus: createBackendStatus({ backend: PROVIDER_BACKEND, state: status === 'ready_for_review' ? 'ready' : 'recovery-required', message: status === 'ready_for_review' ? `Action ${normalizedActionId} repaired` : 'Idle recovery required', updatedAt: now() }),
+      qualityFirst: {
+        ...run.qualityFirst,
+        phase: status === 'ready_for_review' ? 'ready_for_review' : 'recovery-required',
+        actionResults,
+        ...(packageResult ? { package: packageResult } : {}),
+        ...(recovery ? { recovery } : {}),
+        nextAction: status === 'ready_for_review' ? 'human-review' : 'export-recovery-bundle'
+      }
+    }
+    writeRun({ dataDir, run: completedRun })
+    appendRunLog({ dataDir, runId, event: 'quality-first.action.repaired', message: `Quality-first action ${normalizedActionId} repair completed`, data: { actionId: normalizedActionId, evidenceArchive }, now })
+    return { outputDir: '', bundlePath: '', sha256: '', run: completedRun, repair: { scope: 'action', actionId: normalizedActionId, evidenceArchive } }
+  } catch (error) {
+    updateRunStatus({ dataDir, runId, status: 'failed', patch: { generationLease: undefined, error: error.message, backendStatus: createBackendStatus({ backend: PROVIDER_BACKEND, state: 'failed', message: error.message, updatedAt: now() }) }, now })
+    throw error
+  } finally {
+    stopLeaseHeartbeat()
+  }
+}
+
 const runGenerationStep = async ({ dataDir, runId, now = () => new Date().toISOString() }) => {
   const run = readRun({ dataDir, runId })
   const backend = normalizeCreatorBackend(run.backend || run.input?.backend, FIXTURE_BACKEND)
@@ -662,6 +809,12 @@ const runGenerationStep = async ({ dataDir, runId, now = () => new Date().toISOS
     const error = new Error(`Creator Studio run is already generating: ${runId}`)
     error.statusCode = 409
     error.run = run
+    throw error
+  }
+  if (backend === PROVIDER_BACKEND && run.generationTask?.mode === 'full-pet' && run.generationTask?.pipeline !== 'quality-first-v1') {
+    const error = new Error('Creator Studio legacy full-pet keyframe pipeline has been removed; create a quality-first-v1 run')
+    error.code = 'legacy_full_pet_pipeline_removed'
+    error.statusCode = 409
     throw error
   }
   if (backend === PROVIDER_BACKEND && run.generationTask?.mode === 'full-pet' && run.generationTask?.pipeline === 'quality-first-v1') {
@@ -817,5 +970,7 @@ module.exports = {
   runFullPetActionRepair,
   runFullPetIdentityRepair,
   runGenerationStep,
+  runQualityFirstActionRepair,
+  runQualityFirstIdentityRetry,
   runQualityFirstIdentityStage
 }

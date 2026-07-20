@@ -2424,6 +2424,8 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
     }, async () => {
       assertPluginReady()
       const pluginDataDir = pluginService.getPluginCreatorDataDir(CREATOR_STUDIO_PLUGIN_ID)
+      updateWorkflowProgress({ runId: normalizedRunId, commandId, message: label })
+      startProgressPolling()
       const commandResult = await pluginService.runCommand(CREATOR_STUDIO_PLUGIN_ID, commandId, {
         runId: normalizedRunId,
         ...(normalizedActionId ? { actionId: normalizedActionId } : {})
@@ -2432,16 +2434,36 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
       if (!run?.runId) throw new Error('Creator Studio repair did not return a run')
       const coverage = readBasicActionCoverage({ pluginDataDir, runId: run.runId })
       const { basicActions } = resolveOfficialActionCoverage(coverage)
+      const identityReviewPending = commandId === CREATOR_STUDIO_RETRY_IDENTITY_COMMAND_ID && (
+        normalizeText(run.status) === 'awaiting_identity_review' ||
+        normalizeText(run.qualityFirst?.phase) === 'awaiting_identity_review'
+      )
+      const recoveryRequired = normalizeText(run.status) === 'recovery-required' || normalizeText(run.qualityFirst?.phase) === 'recovery-required'
+      const state = identityReviewPending
+        ? 'awaiting-identity-review'
+        : recoveryRequired
+          ? 'recovery-required'
+          : 'review-required'
+      const code = identityReviewPending
+        ? 'identity_review_required'
+        : recoveryRequired
+          ? 'idle_recovery_required'
+          : commandId === CREATOR_STUDIO_RETRY_ACTION_COMMAND_ID
+            ? 'action_repair_review_required'
+            : 'identity_repair_review_required'
+      const message = identityReviewPending
+        ? `Canonical identity 候选已重新生成，请选择一个可用候选继续 run ${run.runId}`
+        : recoveryRequired
+          ? `idle 仍未通过质量门；已保留资产，请导出恢复包或重新生成身份 run ${run.runId}`
+          : commandId === CREATOR_STUDIO_RETRY_ACTION_COMMAND_ID
+            ? `动作 ${normalizedActionId} 已重新生成，请在 Creator Studio 复查 run ${run.runId}`
+            : `Canonical identity 已重新生成，请在 Creator Studio 复查全部动作 run ${run.runId}`
       return createWorkflowResult({
-        state: 'review-required',
-        code: commandId === CREATOR_STUDIO_RETRY_ACTION_COMMAND_ID
-          ? 'action_repair_review_required'
-          : 'identity_repair_review_required',
-        message: commandId === CREATOR_STUDIO_RETRY_ACTION_COMMAND_ID
-          ? `动作 ${normalizedActionId} 已重新生成，请在 Creator Studio 复查 run ${run.runId}`
-          : `Canonical identity 已重新生成，请在 Creator Studio 复查全部动作 run ${run.runId}`,
+        state,
+        code,
+        message,
         run: createRunView({
-          state: 'review-required',
+          state,
           mode: 'full-pet',
           runId: run.runId,
           commandId,
@@ -2490,6 +2512,12 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
     }, async () => {
       assertPluginReady()
       const pluginDataDir = pluginService.getPluginCreatorDataDir(CREATOR_STUDIO_PLUGIN_ID)
+      updateWorkflowProgress({
+        runId: normalizedRunId,
+        commandId: CREATOR_STUDIO_ACCEPT_IDENTITY_COMMAND_ID,
+        message: `身份候选 ${normalizedCandidateId} 已接受，正在生成 idle 与后续动作`
+      })
+      startProgressPolling()
       const commandResult = await pluginService.runCommand(
         CREATOR_STUDIO_PLUGIN_ID,
         CREATOR_STUDIO_ACCEPT_IDENTITY_COMMAND_ID,
