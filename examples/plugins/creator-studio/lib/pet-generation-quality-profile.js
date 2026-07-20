@@ -3,6 +3,7 @@ const path = require('node:path')
 
 const QUALITY_PROFILE_VERSION = 1
 const DEFAULT_QUALITY_PROFILE_ID = 'pet-generation-default-v1'
+const QUALITY_FIRST_QUALITY_PROFILE_ID = 'pet-generation-default-v2'
 
 const deepFreeze = (value) => {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value
@@ -37,6 +38,64 @@ const DEFAULT_QUALITY_PROFILE = deepFreeze({
     minActionAnchorScore: 50,
     minActionKeyframeScore: 30,
     maxIdentityMeanRgbDistance: 120
+  }
+})
+
+const QUALITY_FIRST_QUALITY_PROFILE = deepFreeze({
+  version: 2,
+  id: QUALITY_FIRST_QUALITY_PROFILE_ID,
+  sourceDatasetId: '',
+  reviewEvidenceRelativePath: '',
+  identity: {
+    maxDescriptorDistance: 90,
+    maxMeanRgbDistance: 120,
+    minCanonicalScore: 88
+  },
+  groundedCompact: {
+    maxBodyScaleCv: 0.08,
+    maxAnchorYStd: 0.05,
+    maxCrossActionScaleDrift: 0.08,
+    maxEdgeContactFrames: 0,
+    maxPasteClampedFrames: 0
+  },
+  groundedElongated: {
+    maxBodyScaleCv: 0.1,
+    maxContactBandStd: 0.07,
+    maxCrossActionScaleDrift: 0.1,
+    maxEdgeContactFrames: 0,
+    maxPasteClampedFrames: 0
+  },
+  floating: {
+    maxBodyScaleCv: 0.1,
+    maxCoreCentroidStd: 0.08,
+    maxCrossActionScaleDrift: 0.1,
+    maxEdgeContactFrames: 0,
+    maxPasteClampedFrames: 0
+  },
+  airborne: {
+    maxBodyScaleCv: 0.1,
+    maxHorizontalRootDrift: 0.08,
+    maxCrossActionScaleDrift: 0.1,
+    maxEdgeContactFrames: 0,
+    maxPasteClampedFrames: 0
+  },
+  crossAction: {
+    maxScaleDrift: 0.08,
+    maxIdentityDescriptorDistance: 90,
+    maxAdjacentActionScaleDrift: 0.08
+  },
+  atlas: {
+    maxEmptyRequiredRows: 0,
+    maxEdgeContactFrames: 0,
+    maxPasteClampedFrames: 0,
+    minRequiredActionCoverage: 1
+  },
+  visual: {
+    confidence: 0.8,
+    canonical: { identity: 90, silhouette: 85, smallScale: 82, completeness: 95, style: 85, overall: 88 },
+    groundedAction: { identity: 88, actionReadability: 85, crossFrame: 85, crossAction: 85, smallScale: 80, style: 85, overall: 86 },
+    airborneAction: { identity: 88, actionReadability: 88, crossFrame: 85, crossAction: 85, smallScale: 80, style: 85, overall: 86 },
+    finalPackage: { identity: 88, actionDistinctness: 85, crossAction: 88, smallScale: 80, style: 85, overall: 88 }
   }
 })
 
@@ -101,6 +160,7 @@ const normalizeThresholdGroup = ({ groupName, value }) => {
 }
 
 const getDefaultQualityProfile = () => DEFAULT_QUALITY_PROFILE
+const getQualityFirstQualityProfile = () => QUALITY_FIRST_QUALITY_PROFILE
 
 const loadQualityProfile = ({ profilePath = '', humanRegistry = null } = {}) => {
   const requestedPath = normalizeText(profilePath)
@@ -149,9 +209,11 @@ const createQualityProfileEvidence = (profile = DEFAULT_QUALITY_PROFILE) => Obje
 
 module.exports = {
   DEFAULT_QUALITY_PROFILE_ID,
+  QUALITY_FIRST_QUALITY_PROFILE_ID,
   PROFILE_LIMITS,
   QUALITY_PROFILE_VERSION,
   createQualityProfileEvidence,
   getDefaultQualityProfile,
+  getQualityFirstQualityProfile,
   loadQualityProfile
 }

@@ -206,19 +206,19 @@ Commit: `git add examples/plugins/creator-studio/lib/character-anchor-grid.js ex
 - `processSpriteSheet({ inputPath, outputDir, layout, profile, actionPolicy }) -> { frames, processedSheet, contactSheet, gif, metrics, hashes }`
 - `analyzeSpriteCandidate({ actionId, frames, rawMetrics, profile, qualityProfile, evaluatorEvidence }) -> candidateQa`
 
-- [ ] **Step 1: Write failing metric and contamination tests**
+- [x] **Step 1: Write failing metric and contamination tests**
 
 Cover disconnected canonical tail/ear/accessory preservation, detached particle rejection, edge touch, paste clamp, empty cells, profile CV, compact baseline, elongated contact band, floating centroid, and jumping trajectory. Include fixtures where the largest component is not the full identity.
 
-- [ ] **Step 2: Run focused suites and verify RED**
+- [x] **Step 2: Run focused suites and verify RED**
 
-- [ ] **Step 3: Implement the processor**
+- [x] **Step 3: Implement the processor**
 
 Split exact cells, threshold alpha at 8, find 8-neighbor components, build the `reference-guided-body-v1` union using the canonical core/satellite rules, record unmatched components before removing residual noise, calculate distance-transform P75 thickness, normalized height/width/area, morphology-specific root, and raw pre-normalization drift. Apply one sheet-level scale, then one anchor translation per frame, and reject any clamp.
 
 Extend quality profile v2 with `identity`, `groundedCompact`, `groundedElongated`, `floating`, `airborne`, `crossAction`, `atlas`, and `visual` groups. Preserve exact dataset binding and safe evidence paths.
 
-- [ ] **Step 4: Run focused suites and commit**
+- [x] **Step 4: Run focused suites and commit**
 
 Commit: `git add examples/plugins/creator-studio/lib/character-scale-profile.js examples/plugins/creator-studio/lib/sprite-frame-processor.js examples/plugins/creator-studio/lib/sprite-candidate-qa.js examples/plugins/creator-studio/lib/pet-generation-quality-profile.js tests/examples/creator-studio-character-scale-profile.test.js tests/examples/creator-studio-sprite-frame-processor.test.js tests/examples/creator-studio-sprite-candidate-qa.test.js && git commit -m "feat add reference guided sprite processing and scale QA"`
 
