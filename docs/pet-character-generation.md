@@ -37,6 +37,8 @@ source image
   -> remaining action candidate pools
   -> deterministic running-left mirror
   -> package/atlas QA
+  -> fixed source/canonical/contact-sheet/atlas evaluator board
+  -> code-owned final-package visual gate
   -> ready_for_review
   -> explicit human approval
   -> explicit import
@@ -101,6 +103,8 @@ The Hatch Pet model proposes a strict plan. Code accepts only registered:
 
 Code expands each preset into the complete immutable frame plan and hashes it. Unknown fields, free-form poses, wrong frame counts, unknown actions, and invalid layouts are rejected.
 
+The production planner must return the complete generated-action set (`idle`, `running-right`, `waving`, `jumping`, `failed`, `waiting`, `running`, and `review`) exactly once. `running-left` remains code-derived and is never a planner or Provider job.
+
 Default worst-case limits are:
 
 ```text
@@ -113,7 +117,7 @@ command watchdog                43,500,000 ms
 same-model transport retry      at most one within the operation deadline
 ```
 
-Planner and evaluator usage is host-owned and persisted under `runs/<runId>/budgets/ledger.json`. Plugin-supplied ledgers are not trusted.
+Planner, evaluator, and image Provider HTTP usage is host-owned and persisted under `runs/<runId>/budgets/ledger.json`. Every image bridge call reserves before dispatch and records success or failure afterward, so a same-model 524/transport retry consumes a second Provider-call slot. The Create diagnostics expose only sanitized limits, usage, failures, and remaining counts; plugin-supplied ledgers are not trusted.
 
 ## 6. Canonical identity pool
 
@@ -180,6 +184,19 @@ unused cells                fully transparent
 
 The accepted idle result locks `character-scale-profile.json`. All later compatible actions bind to the plan hash, canonical hash, scale-profile hash, processor version, and quality-profile hash.
 
+Finalization first builds the real atlas and deterministic contact-sheet/GIF evidence. It then composes one fixed 2048x1536 review board containing source identity, accepted canonical identity, action contact sheet, and final atlas. The Hatch Pet evaluator scores the `final-package` schema, and code reapplies immutable package thresholds. A missing package, failed atlas QA, failed package visual gate, unsafe evidence path, or incomplete idle checkpoint fails closed before approval.
+
+After that gate passes, quality-first finalization publishes the existing import contract without a compatibility bypass:
+
+- `run.artifacts.outputDir`;
+- `run.artifacts.petJson`;
+- `run.artifacts.spritesheet`;
+- `run.artifacts.bundle`;
+- `run.artifacts.qa` and `run.artifacts.sourceImageQa`;
+- canonical `run.artifacts.generatedImage` provenance whose source path and hash match the source-QA evidence.
+
+`approve-run` and `import-approved-pet` therefore continue to enforce atlas dimensions, visible pixels, source and atlas hashes, required idle coverage, manifest presence, and pack inspection.
+
 ## 9. Official actions and partial results
 
 | Row | Action | Frames | Policy |
@@ -211,11 +228,13 @@ Identity retry:
 
 Action retry:
 
-- archives the requested action evidence;
+- archives the requested action raw candidates, candidate records, processed frames, reference boards, prompts, evaluator evidence, packaged frames, and prior package evidence;
 - invalidates only that action, plus `running-left` when repairing `running-right`;
 - reuses the accepted canonical identity and locked scale profile;
 - regenerates only the requested action candidate pool;
 - rebuilds package evidence.
+
+When a reason-directed repair moves the initial candidate revision, every candidate record path is rewritten to the immutable archive location before the repair candidate is persisted. Paid evidence links therefore do not point at a directory that has been moved or overwritten.
 
 Idle failure writes `runs/<runId>/recovery/recovery.json`. The manifest lists every retained run file using only safe relative paths, sha256, and byte size. Creator service verifies the manifest's own hash before exposing it as an exportable recovery bundle.
 

@@ -301,17 +301,17 @@ Commit: `git add examples/plugins/creator-studio/lib/sprite-candidate-store.js e
 - `recoverStaleGeneratingRun(...) -> run`
 - `createCreatorProgressView(run) -> renderer-safe progress`
 
-- [ ] **Step 1: Write failing orchestration tests**
+- [x] **Step 1: Write failing orchestration tests**
 
 Assert no action Provider call before identity acceptance; accepted idle locks the profile before the next action; optional action failure preserves later actions; idle failure produces recovery-only status; stale run recovery retains candidates/checkpoints; running-left never dispatches independently.
 
-- [ ] **Step 2: Run focused suites and verify RED**
+- [x] **Step 2: Run focused suites and verify RED**
 
-- [ ] **Step 3: Implement the new host path**
+- [x] **Step 3: Implement the new host path**
 
 Reduce `host-model-bridge.js` to source validation, model selection, Provider invocation, evidence, and calls into the focused runners. Use one action reference board per creative request. Keep exact-one-reference and actual-output-count gates at the host boundary. Add durable `awaiting_identity_review`, identity acceptance/retry, idle-first queue, profile lock, action checkpoints, repair archives, lease heartbeat, stale recovery, and partial/recovery result classification.
 
-- [ ] **Step 4: Run focused orchestration suites and commit**
+- [x] **Step 4: Run focused orchestration suites and commit**
 
 Commit: `git add examples/plugins/creator-studio/lib/host-model-bridge.js examples/plugins/creator-studio/lib/backend-runner.js examples/plugins/creator-studio/lib/run-store.js src/main/services/hatch-pet-agent-service.js src/main/services/creator-workflow-service.js tests/examples/creator-studio-host-model-bridge.test.js tests/examples/creator-studio-backend-runner-anchor-artifacts.test.js tests/services/creator-workflow-service.test.js && git commit -m "feat route creator workflow through quality first pipeline"`
 
@@ -336,17 +336,17 @@ Commit: `git add examples/plugins/creator-studio/lib/host-model-bridge.js exampl
 - API `acceptCreatorIdentity`, `retryCreatorIdentity`, `exportCreatorRecoveryBundle`
 - Public views never include absolute paths, secrets, raw Provider payloads, or unbounded prompt text.
 
-- [ ] **Step 1: Write failing UI contract tests**
+- [x] **Step 1: Write failing UI contract tests**
 
 Assert the Create pane renders `awaiting_identity_review`, candidate cards, scores, reject reasons, accept/retry controls, action progress, failed assets, recovery export, and explicit non-previewable/importable messages.
 
-- [ ] **Step 2: Run focused UI contract tests and verify RED**
+- [x] **Step 2: Run focused UI contract tests and verify RED**
 
-- [ ] **Step 3: Implement contracts, IPC, preload, hook, and pane**
+- [x] **Step 3: Implement contracts, IPC, preload, hook, and pane**
 
 Identity acceptance must require candidate hash equality and an eligible candidate. Buttons must report disabled reasons. Progress must show the current stage, action, candidate count, attempt count, selected model, failure code, next action, and retained assets. The review bench must keep failed raw/clean/processed assets visible.
 
-- [ ] **Step 4: Run focused UI tests and commit**
+- [x] **Step 4: Run focused UI tests and commit**
 
 Commit: `git add src/shared/openpet-contracts.ts src/shared/ipc-channels.js src/shared/ipc-channels.ts src/main/ipc/register-creator-ipc.js control-center-preload.js src/control-center/src/hooks/useCreatorPane.ts src/control-center/src/panes/CreatorPane.tsx src/control-center/src/styles.css tests/control-center/creator-pane-copy.test.js tests/control-center/creator-pane-quality-review.test.js && git commit -m "feat expose quality first creator review workflow"`
 
@@ -366,17 +366,17 @@ Commit: `git add src/shared/openpet-contracts.ts src/shared/ipc-channels.js src/
 - Production full-pet generation has exactly one path: plan -> canonical candidates -> identity review -> anchor grid -> idle/profile -> action candidates -> atlas review.
 - No production caller remains for separate action start/peak keyframe generation.
 
-- [ ] **Step 1: Write caller-absence and live-doc tests**
+- [x] **Step 1: Write caller-absence and live-doc tests**
 
 Assert the new production path is selected, obsolete keyframe commands cannot be dispatched, and current docs describe the mandatory identity review, budgets, evidence, and failure behavior.
 
-- [ ] **Step 2: Run the affected suites and verify RED where old callers remain**
+- [x] **Step 2: Run the affected suites and verify RED where old callers remain**
 
-- [ ] **Step 3: Remove only proven-dead branches**
+- [x] **Step 3: Remove only proven-dead branches**
 
 Search `rg` for every removed export and role string. Migrate unrelated single-action callers before deletion. Remove obsolete tests and fixtures only when their target behavior is represented by new candidate/processor tests. Do not delete a module merely because its old name appears in the design.
 
-- [ ] **Step 4: Update `docs/pet-character-generation.md` and commit**
+- [x] **Step 4: Update `docs/pet-character-generation.md` and commit**
 
 Commit: `git add -u examples/plugins/creator-studio docs/pet-character-generation.md tests/examples && git commit -m "refactor remove obsolete creator generation path"`
 
@@ -387,27 +387,27 @@ Commit: `git add -u examples/plugins/creator-studio docs/pet-character-generatio
 - Create: `docs/superpowers/plans/2026-07-20-quality-first-sprite-generation-test-handoff.md`
 - Create/modify: focused test reports only; no real Provider secrets or image outputs in this branch.
 
-- [ ] **Step 1: Run focused development verification**
+- [x] **Step 1: Run focused development verification**
 
 Run the focused suites introduced by Tasks 1-9 and `git diff --check`. Do not run real Provider generation or visual inspection.
 
-- [ ] **Step 2: Record exact known gaps**
+- [x] **Step 2: Record exact known gaps**
 
 The handoff must state that repository-wide `npm run check:syntax`, `npm run test:core`, `npm run test:control-center`, and `npm run test:core:all` belong to the independent test task, as do real Provider request evidence, candidate visual comparison, GIF/contact-sheet/atlas review, human identity approval rehearsal, partial import, and recovery export.
 
-- [ ] **Step 3: Commit the handoff**
+- [x] **Step 3: Commit the handoff**
 
 Commit: `git add docs/superpowers/plans/2026-07-20-quality-first-sprite-generation-test-handoff.md docs/superpowers/plans/2026-07-20-quality-first-sprite-generation-pipeline.md && git commit -m "docs hand off quality first sprite verification"`
 
 ## Self-Review Checklist
 
-- [ ] Every spec section maps to one or more tasks above.
-- [ ] Budget arithmetic is implemented and tested before any Provider path changes.
-- [ ] No planner free text reaches the image compiler.
-- [ ] No action generation occurs before canonical identity acceptance.
-- [ ] Visual model recommendations are always recomputed by code thresholds.
-- [ ] Raw component failures cannot be hidden by cleanup.
-- [ ] Every accepted action is bound to plan, canonical, scale profile, processor, and quality-profile hashes.
-- [ ] Failed and paid assets remain reviewable and exportable.
-- [ ] The old path is removed only after a caller search and focused regression coverage.
-- [ ] Real Provider and visual verification remain in the independent test handoff.
+- [x] Every spec section maps to one or more tasks above.
+- [x] Budget arithmetic is implemented and tested before any Provider path changes.
+- [x] No planner free text reaches the image compiler.
+- [x] No action generation occurs before canonical identity acceptance.
+- [x] Visual model recommendations are always recomputed by code thresholds.
+- [x] Raw component failures cannot be hidden by cleanup.
+- [x] Every accepted action is bound to plan, canonical, scale profile, processor, and quality-profile hashes.
+- [x] Failed and paid assets remain reviewable and exportable.
+- [x] The old path is removed only after a caller search and focused regression coverage.
+- [x] Real Provider and visual verification remain in the independent test handoff.
