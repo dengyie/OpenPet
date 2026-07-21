@@ -520,6 +520,7 @@ const ResultCard = ({
   running,
   previewing,
   dashboardAvailable,
+  dashboardReady,
   openingDashboard,
   onPreviewResult,
   onRestoreClickAction,
@@ -537,6 +538,7 @@ const ResultCard = ({
   running: boolean
   previewing: boolean
   dashboardAvailable: boolean
+  dashboardReady: boolean
   openingDashboard: boolean
   onPreviewResult: () => void | Promise<void>
   onRestoreClickAction: () => void | Promise<void>
@@ -774,7 +776,7 @@ const ResultCard = ({
             </button>
           ) : null}
           <button type="button" className="ghost" disabled={openingDashboard} onClick={onOpenCreatorStudioDetails}>
-            {openingDashboard ? '打开中' : '打开 Creator Studio 详情'}
+            {openingDashboard ? '启动并打开中' : (dashboardReady ? '打开 Creator Studio 详情' : '启动并打开 Creator Studio 详情')}
           </button>
           {repairableActionIds.map((actionId) => (
             <button
@@ -1052,6 +1054,7 @@ export function CreatorPane({
           running={running}
           previewing={previewing}
           dashboardAvailable={creatorState.dashboard.available}
+          dashboardReady={creatorStudioReady}
           openingDashboard={openingDashboard}
           onPreviewResult={onPreviewResult}
           onRestoreClickAction={onRestoreClickAction}

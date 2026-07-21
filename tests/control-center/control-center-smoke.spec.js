@@ -2698,7 +2698,7 @@ test.describe('Control Center smoke', () => {
     await expect(page.locator('.plugin-log-row', { hasText: 'Dashboard opened' })).toContainText('openpet.creator-studio')
   })
 
-  test('guides users to start the Creator Studio service before opening its dashboard in the demo API', async ({ page }) => {
+  test('starts the Creator Studio service and opens its dashboard from the details action', async ({ page }) => {
     await page.addInitScript(() => {
       window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
         plugins: [
@@ -2753,16 +2753,11 @@ test.describe('Control Center smoke', () => {
     const serviceControl = pluginRow.locator('.plugin-service-control', { hasText: 'Creator Studio Service' })
 
     await expect(serviceControl).toContainText('Service status: stopped')
-    await pluginRow.getByRole('button', { name: '查看任务详情' }).click()
-    await expect(page.locator('.status-line')).toContainText('请先启动 Creator Studio Service，再打开 Creator Studio Dashboard')
-    await expect(page.locator('.plugin-log-row', { hasText: 'Dashboard opened' })).toHaveCount(0)
-
-    await serviceControl.getByRole('button', { name: 'Start Creator Studio Service' }).click()
-    await expect(page.locator('.status-line')).toContainText('Service 已启动')
+    await pluginRow.getByRole('button', { name: '启动并查看任务详情' }).click()
+    await expect(page.locator('.status-line')).toContainText('Creator Studio Service 已启动，Dashboard 已打开')
     await expect(serviceControl).toContainText('Service status: running')
-
-    await pluginRow.getByRole('button', { name: '查看任务详情' }).click()
-    await expect(page.locator('.status-line')).toContainText('Dashboard 已打开')
+    await expect(page.locator('.plugin-log-row', { hasText: 'Service started' })).toContainText('service:studio')
+    await expect(page.locator('.plugin-log-row', { hasText: 'Service health healthy' })).toContainText('service:studio')
     await expect(page.locator('.plugin-log-row', { hasText: 'Dashboard opened' })).toContainText('dashboard:main')
   })
 

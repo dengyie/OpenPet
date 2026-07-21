@@ -32,12 +32,12 @@ test('creator pane renders workflow stage and action progress feedback', () => {
   assert.match(source, /阶段：/)
 })
 
-test('creator pane hook gives explicit feedback for non-previewable states and stopped dashboard service', () => {
+test('creator pane hook gives explicit feedback and starts a stopped dashboard service before opening details', () => {
   const hookPath = path.resolve(__dirname, '../../src/control-center/src/hooks/useCreatorPane.ts')
   const source = fs.readFileSync(hookPath, 'utf-8')
-  assert.match(source, /当前状态不可预览/)
- assert.match(source, /serviceStatus !== 'running'/)
- assert.match(source, /请先启动 Creator Studio Service/)
+ assert.match(source, /当前状态不可预览/)
+ assert.match(source, /ensureCreatorStudioServiceReady/)
+ assert.match(source, /Creator Studio Service 已启动，已打开详情/)
  assert.match(source, /setInterval/)
   assert.match(source, /lastRun\.diagnostics/)
 })

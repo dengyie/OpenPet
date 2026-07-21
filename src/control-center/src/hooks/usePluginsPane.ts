@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { controlCenterAPI as api } from '../api/control-center-api'
 import { downloadTextFile } from '../lib/download'
+import { ensureCreatorStudioServiceReady } from '../lib/creator-studio-dashboard'
 import { messageFromError } from '../lib/errors'
 import { toCommandResultPreview } from '../lib/plugin-command-result.mjs'
 import type {
@@ -361,18 +362,36 @@ export function usePluginsPane() {
   }
 
   const onOpenDashboard = async (pluginId: string, dashboardId: string, options?: PluginDashboardOpenOptions) => {
-    if (pluginId === CREATOR_STUDIO_PLUGIN_ID) {
-      const plugin = findPluginById(plugins, pluginId)
-      const runtimeStatus = getPluginServiceRuntimeStatus(plugin, CREATOR_STUDIO_SERVICE_ID)
-      if (runtimeStatus !== 'running') {
-        setStatus('请先启动 Creator Studio Service，再打开 Creator Studio Dashboard')
-        return
-      }
-    }
     const dashboardKey = `${pluginId}:${dashboardId}`
     setOpeningDashboard(dashboardKey)
     setStatus('')
     try {
+      let creatorStudioServiceStarted = false
+      if (pluginId === CREATOR_STUDIO_PLUGIN_ID) {
+        const plugin = findPluginById(plugins, pluginId)
+        if (!plugin) throw new Error('未找到 Creator Studio 插件')
+        const readiness = await ensureCreatorStudioServiceReady({
+          api,
+          pluginId,
+          serviceId: CREATOR_STUDIO_SERVICE_ID,
+          serviceStatus: getPluginServiceRuntimeStatus(plugin, CREATOR_STUDIO_SERVICE_ID),
+          onProgress: setStatus,
+          onRuntime: (runtime) => setPlugins((currentPlugins) => currentPlugins.map((candidate) => (
+            candidate.id === pluginId
+              ? {
+                  ...candidate,
+                  entries: {
+                    ...candidate.entries,
+                    services: (candidate.entries?.services || []).map((service) => (
+                      service.id === CREATOR_STUDIO_SERVICE_ID ? { ...service, runtime } : service
+                    ))
+                  }
+                }
+              : candidate
+          )))
+        })
+        creatorStudioServiceStarted = readiness.started
+      }
       const shouldOpenCreatorStudioRun = pluginId === CREATOR_STUDIO_PLUGIN_ID &&
         dashboardId === 'main' &&
         Boolean(creatorStudioLastRunId)
@@ -393,15 +412,17 @@ export function usePluginsPane() {
         dashboardId,
         mergedOptions
       )
-      await refreshLogs()
+      await Promise.allSettled([refreshPlugins(), refreshLogs()])
       setStatus(
-        opensAgentAwarenessDetails
+        creatorStudioServiceStarted
+          ? 'Creator Studio Service 已启动，Dashboard 已打开'
+          : opensAgentAwarenessDetails
           ? 'Codex 详情已打开'
           : (shouldOpenCreatorStudioRun ? `Dashboard 已打开 · run ${creatorStudioLastRunId}` : 'Dashboard 已打开')
       )
     } catch (error) {
       setStatus(messageFromError(error, 'Dashboard 打开失败'))
-      await refreshLogs()
+      await Promise.allSettled([refreshPlugins(), refreshLogs()])
     } finally {
       setOpeningDashboard('')
     }

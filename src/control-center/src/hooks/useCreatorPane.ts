@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { controlCenterAPI as api } from '../api/control-center-api'
 import { cloneCreatorState, defaultCreatorState } from '../lib/defaults'
+import { ensureCreatorStudioServiceReady } from '../lib/creator-studio-dashboard'
 import { messageFromError } from '../lib/errors'
 import type {
   CreatorStateViewState,
@@ -217,18 +218,31 @@ export function useCreatorPane(active: boolean) {
       setStatus(dashboard.reason || 'Creator Studio 不可用')
       return
     }
-    if (dashboard.serviceStatus !== 'running') {
-      setStatus(dashboard.reason || '请先启动 Creator Studio Service（Plugins），再打开详情页。当前详情服务未运行。')
-      return
-    }
     setOpeningDashboard(true)
     try {
+      const readiness = await ensureCreatorStudioServiceReady({
+        api,
+        pluginId: dashboard.pluginId,
+        serviceId: 'studio',
+        serviceStatus: dashboard.serviceStatus,
+        onProgress: setStatus,
+        onRuntime: (runtime) => setCreatorState((current) => ({
+          ...current,
+          dashboard: {
+            ...current.dashboard,
+            serviceStatus: runtime.status,
+            reason: runtime.status === 'running' ? '' : current.dashboard.reason
+          }
+        }))
+      })
       await api.openPluginDashboard(
         dashboard.pluginId,
         dashboard.dashboardId,
         runId ? { query: { runId } } : undefined
       )
-      setStatus(runId ? `已打开 Creator Studio · run ${runId}` : '已打开 Creator Studio')
+      setStatus(readiness.started
+        ? (runId ? `Creator Studio Service 已启动，已打开详情 · run ${runId}` : 'Creator Studio Service 已启动，已打开详情')
+        : (runId ? `已打开 Creator Studio · run ${runId}` : '已打开 Creator Studio'))
     } catch (error) {
       setStatus(messageFromError(error, 'Creator Studio 打开失败'))
     } finally {

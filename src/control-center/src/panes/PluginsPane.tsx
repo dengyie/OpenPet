@@ -27,6 +27,7 @@ interface PluginConfigField {
 
 const IM_GATEWAY_PLUGIN_ID = 'openpet.im-gateway'
 const IM_GATEWAY_SERVICE_ID = 'im-gateway'
+const CREATOR_STUDIO_SERVICE_ID = 'studio'
 const ACTIVE_SERVICE_STATUSES = new Set(['starting', 'running', 'stopping'])
 
 export interface PluginsPaneProps {
@@ -391,7 +392,11 @@ export function PluginsPane({ plugins, logs, logsPage, filters, status, runningC
                       disabled={!plugin.enabled || plugin.blockStatus?.blocked || openingDashboard === `${plugin.id}:main`}
                       onClick={() => onOpenDashboard(plugin.id, 'main')}
                     >
-                      查看任务详情
+                      {openingDashboard === `${plugin.id}:main`
+                        ? (getPluginService(plugin, CREATOR_STUDIO_SERVICE_ID)?.runtime?.status === 'running' ? '打开中' : '启动并打开中')
+                        : getPluginService(plugin, CREATOR_STUDIO_SERVICE_ID)?.runtime?.status === 'running'
+                          ? '查看任务详情'
+                          : '启动并查看任务详情'}
                     </button>
                   </div>
                   <div className="field-note">
