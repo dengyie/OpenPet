@@ -3145,7 +3145,7 @@ test.describe('Control Center smoke', () => {
     await expect(pluginRow).not.toContainText('最近命令结果')
   })
 
-  test('runs the host-owned Creator Studio generation flow to explicit human review in the demo API', async ({ page }) => {
+  test('runs the host-owned Creator Studio generation flow without starting the optional details service', async ({ page }) => {
     await page.addInitScript(() => {
       window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
         imageGenerationConfig: {
@@ -3194,10 +3194,10 @@ test.describe('Control Center smoke', () => {
                   cwd: '.',
                   health: { type: 'http', url: 'http://127.0.0.1:8794/health' },
                   runtime: {
-                    status: 'running',
-                    pid: 4321,
-                    startedAt: '2026-06-29T10:00:00.000Z',
-                    health: { status: 'healthy', url: 'http://127.0.0.1:8794/health' }
+                    status: 'stopped',
+                    pid: null,
+                    startedAt: '',
+                    health: { status: 'unknown', url: 'http://127.0.0.1:8794/health' }
                   }
                 }
               ],
@@ -3226,6 +3226,7 @@ test.describe('Control Center smoke', () => {
     await expect(pluginRow).toContainText('run-step · exit 0')
     await expect(pluginRow).toContainText('run-demo-action-123')
     await expect(pluginRow).toContainText('ready_for_review')
+    await expect(pluginRow).toContainText('Service status: stopped')
     await expect(pluginRow).not.toContainText('已导入动作')
     await expect(pluginRow).not.toContainText('入队状态')
   })

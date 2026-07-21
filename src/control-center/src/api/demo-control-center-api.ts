@@ -1377,11 +1377,6 @@ const createDemoCreatorStudioDefaultFlowResult = async (prompt: string): Promise
   if (plugin.requiresNativeExecution && !plugin.nativeExecutionApproved) {
     throw new Error('Plugin native execution is not approved. Enable native process execution for this plugin in the Control Center before running its commands, services, or setup.')
   }
-  const runtimeStatus = plugin.entries?.services?.find((service) => service.id === 'studio')?.runtime?.status || 'stopped'
-  if (runtimeStatus !== 'running') {
-    throw new Error('请先启动 Creator Studio Service，再开始生成')
-  }
-
   const health = await demoApi.checkImageGenerationHealth({})
   if (!health?.ok) {
     return {

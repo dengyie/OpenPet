@@ -302,11 +302,6 @@ export function usePluginsPane() {
       setStatus('Plugin native execution is not approved. Enable native process execution for this plugin in the Control Center before running its commands, services, or setup.')
       return
     }
-    const runtimeStatus = getPluginServiceRuntimeStatus(plugin, CREATOR_STUDIO_SERVICE_ID)
-    if (runtimeStatus !== 'running') {
-      setStatus('请先启动 Creator Studio Service，再开始生成')
-      return
-    }
     const prompt = String(creatorStudioPromptDraft || '').trim()
     if (!prompt) {
       setStatus('请先输入 Creator Studio 请求')
