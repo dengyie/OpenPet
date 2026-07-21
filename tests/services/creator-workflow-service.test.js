@@ -46,6 +46,7 @@ const createPluginView = ({
 
 const createHealthCoordinationFixture = ({
   checkHealth = async () => ({ ok: true, code: 'provider_healthy', message: 'ready' }),
+  getHealthCacheRevision = () => 0,
   getConfig = () => ({
     provider: 'openai-compatible',
     baseUrl: 'https://images.example.test/v1',
@@ -88,7 +89,7 @@ const createHealthCoordinationFixture = ({
         return runCommand(...args)
       }
     },
-    imageGenerationModelService: { checkHealth, getConfig },
+    imageGenerationModelService: { checkHealth, getConfig, getHealthCacheRevision },
     actionService: {
       getConfig: () => ({ defaultAction: 'idle', clickAction: 'wave', actions: [{ id: 'idle' }, { id: 'wave' }] }),
       acceptTriggerProposalItem: () => ({ animations: { defaultAction: 'idle', clickAction: 'wave', actions: [{ id: 'idle' }, { id: 'wave' }] } })
@@ -494,6 +495,28 @@ test('creator health cache expires and configuration changes invalidate it', asy
   now += 30000
   await service.getState()
   assert.equal(calls, 3)
+})
+
+test('creator invalidates a successful health result when Provider credentials change at the same secret ref', async () => {
+  let credentialRevision = 0
+  let calls = 0
+  const { service } = createHealthCoordinationFixture({
+    getHealthCacheRevision: () => credentialRevision,
+    checkHealth: async () => {
+      calls += 1
+      return calls === 1
+        ? { ok: true, code: 'provider_healthy', message: 'ready' }
+        : { ok: false, code: 'missing_api_key', message: 'Image generation API key is missing' }
+    }
+  })
+
+  assert.equal((await service.getState()).provider.ready, true)
+  credentialRevision += 1
+  const nextState = await service.getState()
+
+  assert.equal(calls, 2)
+  assert.equal(nextState.provider.ready, false)
+  assert.equal(nextState.provider.code, 'missing_api_key')
 })
 
 test('creator does not cache a health timeout as a successful result', async () => {

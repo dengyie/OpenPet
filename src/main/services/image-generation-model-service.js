@@ -743,6 +743,7 @@ const createImageGenerationModelService = ({
   if (!secretService) throw new Error('secretService is required')
 
   let activeProviderJobs = 0
+  let healthCacheRevision = 0
   const queuedProviderJobs = []
 
   const getStoredConfig = () => normalizeConfig(settingsService.get().models?.imageGeneration)
@@ -893,6 +894,8 @@ const createImageGenerationModelService = ({
     }
   }
 
+  const getHealthCacheRevision = () => healthCacheRevision
+
   const saveConfig = (partialConfig) => {
     assertProviderConfigPayload(partialConfig, 'Image Provider')
     const current = getStoredConfig()
@@ -939,6 +942,7 @@ const createImageGenerationModelService = ({
     next.modelCatalog = currentState.modelCatalog
     next.baseUrl = assertProviderBaseUrl(next.baseUrl)
     saveStoredConfig(next)
+    healthCacheRevision += 1
     recordLog({
       scope: 'image-generation-settings',
       level: 'info',
@@ -969,6 +973,7 @@ const createImageGenerationModelService = ({
       value,
       label: 'Image API Key'
     })
+    healthCacheRevision += 1
     recordLog({
       scope: 'image-generation-settings',
       level: 'info',
@@ -999,6 +1004,7 @@ const createImageGenerationModelService = ({
     const config = getStoredConfig()
     const requestId = idFactory()
     secretService.deleteSecret(config.apiKeyRef)
+    healthCacheRevision += 1
     recordLog({
       scope: 'image-generation-settings',
       level: 'info',
@@ -1857,6 +1863,7 @@ const createImageGenerationModelService = ({
 
   return {
     getConfig,
+    getHealthCacheRevision,
     saveConfig,
     saveProviderApiKey,
     clearProviderApiKey,

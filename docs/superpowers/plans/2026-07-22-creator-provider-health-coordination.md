@@ -14,6 +14,7 @@
 - Cache only successful Creator health results for 30000 ms.
 - Concurrent calls for the same Provider configuration share one in-flight health promise.
 - A configuration-key change bypasses and replaces the prior key's cached result.
+- Saving or clearing Provider settings or credentials changes a main-process-only health-cache revision, so a replacement key cannot reuse success associated with the same `apiKeyRef`.
 - Health failures and timeouts are never cached as success.
 - The real image generation request remains authoritative after preflight.
 - Do not change Creator Studio Service readiness or expose secrets.
@@ -122,6 +123,8 @@ const createProviderHealthKey = (config = {}) => JSON.stringify([
   normalizeText(config.project)
 ])
 ```
+
+Append the image-generation service's main-process-only health-cache revision to this key. Increment that revision only after successful Provider settings, key-save, or key-clear mutations. Do not expose the credential value or a secret-derived fingerprint in renderer configuration.
 
 Keep `providerHealthCache = null` and `providerHealthInFlight = null` inside the service closure.
 

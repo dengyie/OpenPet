@@ -14,7 +14,7 @@ Prevent transient or concurrent `/models` latency from falsely disabling Create 
 
 - Increase the default Creator health deadline from 3000 ms to 10000 ms.
 - Cache only successful Creator health results for 30000 ms.
-- Key cached and in-flight health state by the current Provider configuration: provider, normalized base URL, model, API key reference, organization, and project.
+- Key cached and in-flight health state by the current Provider configuration: provider, normalized base URL, model, API key reference, organization, project, and a main-process-only revision that changes when Provider settings or credentials are saved or cleared.
 - Concurrent calls for the same key share one in-flight health promise.
 - A configuration-key change bypasses and replaces the prior key's cached result.
 - Health failures and timeouts are never cached as success.
@@ -31,6 +31,8 @@ The Creator workflow service will maintain:
 - one successful health cache record `{ key, result, expiresAt }`;
 - one in-flight record `{ key, promise }`;
 - an injected clock for deterministic expiry tests.
+
+The image-generation service owns the monotonic health-cache revision because the credential value is intentionally absent from renderer-safe configuration. This invalidates Creator health state even when a replacement API key reuses the same owner-controlled `apiKeyRef`, without exposing a secret or secret-derived fingerprint.
 
 `getProviderHealth()` will compute the current configuration key, return a fresh matching success, join a matching in-flight request, or start one new check. Completion stores a success only when the current configuration key still matches. The in-flight record is cleared only by the promise that installed it.
 
@@ -53,10 +55,11 @@ Focused service tests will prove:
 2. A successful `getState()` followed by generation within 30 seconds does not issue a second preflight request.
 3. Cache expiry triggers a new health check.
 4. Provider configuration change invalidates both success reuse and same-key assumptions.
-5. A timeout or failed result is not cached as success.
-6. The default Creator call passes 10000 ms to the image service.
-7. A stalled image service still returns bounded `health_check_timeout` through the outer watchdog.
-8. Existing Provider, Creator workflow, syntax/type/build, and Control Center regressions remain green.
+5. Saving or clearing Provider credentials invalidates a successful result even though `apiKeyRef` is unchanged.
+6. A timeout or failed result is not cached as success.
+7. The default Creator call passes 10000 ms to the image service.
+8. A stalled image service still returns bounded `health_check_timeout` through the outer watchdog.
+9. Existing Provider, Creator workflow, syntax/type/build, and Control Center regressions remain green.
 
 No real Provider request or image generation is required for this coordination fix.
 

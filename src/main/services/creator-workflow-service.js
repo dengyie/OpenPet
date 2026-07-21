@@ -27,13 +27,14 @@ const CREATOR_PROVIDER_HEALTH_CACHE_TTL_MS = 30000
 
 const normalizeText = (value) => String(value || '').trim()
 
-const createProviderHealthKey = (config = {}) => JSON.stringify([
+const createProviderHealthKey = (config = {}, revision = '') => JSON.stringify([
   normalizeText(config.provider),
   normalizeText(config.baseUrl).replace(/\/+$/, ''),
   normalizeText(config.model),
   normalizeText(config.apiKeyRef),
   normalizeText(config.organization),
-  normalizeText(config.project)
+  normalizeText(config.project),
+  normalizeText(revision)
 ])
 
 const normalizeSafeRelativePath = (value) => {
@@ -1838,8 +1839,13 @@ const createCreatorWorkflowService = ({
 
   const getPluginState = () => findPluginById(pluginService.listPlugins(), CREATOR_STUDIO_PLUGIN_ID)
 
+  const getProviderHealthKey = () => createProviderHealthKey(
+    imageGenerationModelService.getConfig(),
+    imageGenerationModelService.getHealthCacheRevision?.()
+  )
+
   const getProviderHealth = async ({ retryConfigChange = true } = {}) => {
-    const configKey = createProviderHealthKey(imageGenerationModelService.getConfig())
+    const configKey = getProviderHealthKey()
     if (
       providerHealthCache?.key === configKey &&
       providerHealthCache.expiresAt > nowMs()
@@ -1867,7 +1873,7 @@ const createCreatorWorkflowService = ({
           message
         }
       }
-      const currentConfigKey = createProviderHealthKey(imageGenerationModelService.getConfig())
+      const currentConfigKey = getProviderHealthKey()
       if (currentConfigKey !== configKey) {
         if (retryConfigChange) return getProviderHealth({ retryConfigChange: false })
         return {

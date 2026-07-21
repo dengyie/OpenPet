@@ -385,13 +385,16 @@ test('image generation model service saves and clears provider api keys through 
     appLogService: { record: (entry) => logs.push(entry) }
   })
 
+  const initialRevision = service.getHealthCacheRevision()
   const saved = service.saveProviderApiKey('sk-demo-1234')
   assert.equal(saved.hasApiKey, true)
   assert.equal(saved.apiKeyPreview, '••••1234')
+  assert.equal(service.getHealthCacheRevision(), initialRevision + 1)
 
   const cleared = service.clearProviderApiKey()
   assert.equal(cleared.hasApiKey, false)
   assert.equal(cleared.apiKeyPreview, '')
+  assert.equal(service.getHealthCacheRevision(), initialRevision + 2)
   assert.deepEqual(logs.map((entry) => entry.event), [
     'imageGeneration.settings.api-key.saved',
     'imageGeneration.settings.api-key.cleared'
