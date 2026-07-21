@@ -4,6 +4,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 
 const creatorPanePath = path.resolve(__dirname, '../../src/control-center/src/panes/CreatorPane.tsx')
+const creatorPaneHookPath = path.resolve(__dirname, '../../src/control-center/src/hooks/useCreatorPane.ts')
 const demoControlCenterApiPath = path.resolve(__dirname, '../../src/control-center/src/api/demo-control-center-api.ts')
 
 test('creator pane copy explains internal anchor preparation instead of rejecting composite-board wording', () => {
@@ -90,11 +91,22 @@ test('demo partial import falls back to the module-level creator last run', () =
 })
 
 test('creator pane hook loads asset previews on demand and marks prompt copy state', () => {
-  const hookPath = path.resolve(__dirname, '../../src/control-center/src/hooks/useCreatorPane.ts')
-  const source = fs.readFileSync(hookPath, 'utf-8')
+  const source = fs.readFileSync(creatorPaneHookPath, 'utf-8')
   assert.match(source, /getCreatorAssetPreview/)
   assert.match(source, /onLoadAssetPreview/)
   assert.match(source, /setCopiedPromptKey/)
   assert.match(source, /预览仅支持已导入动作/)
   assert.match(source, /已复制/)
+})
+
+test('creator pane explains every disabled generation prerequisite', () => {
+  const pane = fs.readFileSync(creatorPanePath, 'utf-8')
+  const hook = fs.readFileSync(creatorPaneHookPath, 'utf-8')
+  assert.match(hook, /newCharacterBlockers/)
+  assert.match(hook, /existingActionBlockers/)
+  assert.match(pane, /creator-new-character-readiness/)
+  assert.match(pane, /creator-existing-action-readiness/)
+  assert.match(pane, /aria-describedby=/)
+  assert.match(pane, /aria-live="polite"/)
+  assert.match(pane, /还需完成/)
 })

@@ -338,6 +338,25 @@ test.describe('Control Center smoke', () => {
     await expect(page.locator('.creator-pane')).toContainText('上传的图片仍是身份最高优先级')
   })
 
+  test('explains why Generate Character is disabled and clears each resolved prerequisite', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Create' }).click()
+
+    const generate = page.getByTestId('creator-generate-new-character')
+    const readiness = page.locator('#creator-new-character-readiness')
+    await expect(generate).toBeDisabled()
+    await expect(readiness).toContainText('填写角色名称')
+    await expect(readiness).toContainText('选择参考图')
+
+    await page.getByLabel('Character name').fill('Readiness Cat')
+    await expect(readiness).not.toContainText('填写角色名称')
+    await expect(readiness).toContainText('选择参考图')
+
+    await page.getByTestId('creator-new-reference-input').click()
+    await expect(generate).toBeEnabled()
+    await expect(readiness).toContainText('已满足生成条件，可以开始生成。')
+  })
+
   test('blocks multi-view reference material in the demo Create flow with explicit guidance', async ({ page }) => {
     await page.addInitScript(() => {
       window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({

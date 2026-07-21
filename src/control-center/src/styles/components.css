@@ -136,6 +136,21 @@
   line-height: var(--op-line-height-relaxed);
 }
 
+.creator-readiness {
+  display: block;
+  margin-top: var(--op-space-1);
+  font-size: var(--op-font-size-md);
+  line-height: var(--op-line-height-relaxed);
+}
+
+.creator-readiness.error {
+  color: var(--op-color-danger);
+}
+
+.creator-readiness.success {
+  color: var(--op-color-success);
+}
+
 /* ── 输入控件 ─────────────────────────────────── */
 
 .range {

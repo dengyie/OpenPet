@@ -36,6 +36,8 @@ export interface CreatorPaneProps {
   result: CreatorWorkflowResult | null
   creatorStudioReady: boolean
   creatorStudioMessage: string
+  newCharacterBlockers: string[]
+  existingActionBlockers: string[]
   canGenerateNewCharacter: boolean
   canGenerateExistingAction: boolean
   onChangeMode: (mode: CreatorPaneMode) => void
@@ -823,6 +825,8 @@ export function CreatorPane({
   result,
   creatorStudioReady,
   creatorStudioMessage,
+  newCharacterBlockers,
+  existingActionBlockers,
   canGenerateNewCharacter,
   canGenerateExistingAction,
   onChangeMode,
@@ -950,9 +954,20 @@ export function CreatorPane({
               disabled={!canGenerateNewCharacter}
               onClick={onGenerateNewCharacter}
               data-testid="creator-generate-new-character"
+              aria-describedby="creator-new-character-readiness"
             >
               {running && mode === 'new-character' ? 'Generating' : 'Generate Character'}
             </button>
+            <span
+              id="creator-new-character-readiness"
+              className={`creator-readiness ${newCharacterBlockers.length ? 'error' : 'success'}`}
+              role="status"
+              aria-live="polite"
+            >
+              {newCharacterBlockers.length
+                ? `还需完成：${newCharacterBlockers.join('、')}`
+                : '已满足生成条件，可以开始生成。'}
+            </span>
             <span className="field-note">提交后 Host 会完成生成并停在人工复查；批准、导入和激活需要分别明确执行。</span>
           </div>
         </div>
@@ -1040,9 +1055,20 @@ export function CreatorPane({
               disabled={!canGenerateExistingAction}
               onClick={onGenerateExistingAction}
               data-testid="creator-generate-existing-action"
+              aria-describedby="creator-existing-action-readiness"
             >
               {running && mode === 'existing-character' ? 'Generating' : 'Generate Action'}
             </button>
+            <span
+              id="creator-existing-action-readiness"
+              className={`creator-readiness ${existingActionBlockers.length ? 'error' : 'success'}`}
+              role="status"
+              aria-live="polite"
+            >
+              {existingActionBlockers.length
+                ? `还需完成：${existingActionBlockers.join('、')}`
+                : '已满足生成条件，可以开始生成。'}
+            </span>
             <span className="field-note">默认主路径不会中途打断，除非 Provider 未就绪或导入失败。</span>
           </div>
         </div>

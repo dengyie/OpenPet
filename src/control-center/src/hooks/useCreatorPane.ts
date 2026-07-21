@@ -440,20 +440,25 @@ export function useCreatorPane(active: boolean) {
   const creatorStudioMessage = creatorState.dashboard.reason || (
     creatorStudioPluginReady ? '' : '请先启用 Creator Studio 插件。'
   )
-  const canGenerateNewCharacter = creatorState.provider.ready &&
-    creatorStudioPluginReady &&
-    !running &&
-    newCharacterDraft.characterName.trim().length > 0 &&
-    newCharacterDraft.referenceImageToken.trim().length > 0
-  const canGenerateExistingAction = creatorState.provider.ready &&
-    creatorStudioPluginReady &&
-    !running &&
-    existingActionDraft.actionName.trim().length > 0 &&
-    existingActionDraft.motionPrompt.trim().length > 0 &&
-    (
-      existingActionDraft.referenceImageToken.trim().length > 0 ||
-      hasStoredEditableReference
-    )
+  const newCharacterBlockers = [
+    ...(!creatorState.provider.ready ? ['图片 Provider 未就绪'] : []),
+    ...(!creatorStudioPluginReady ? ['Creator Studio 插件未就绪'] : []),
+    ...(newCharacterDraft.characterName.trim().length === 0 ? ['填写角色名称'] : []),
+    ...(newCharacterDraft.referenceImageToken.trim().length === 0 ? ['选择参考图'] : []),
+    ...(running ? ['当前已有生成任务进行中'] : [])
+  ]
+  const existingActionBlockers = [
+    ...(!creatorState.provider.ready ? ['图片 Provider 未就绪'] : []),
+    ...(!creatorStudioPluginReady ? ['Creator Studio 插件未就绪'] : []),
+    ...(existingActionDraft.actionName.trim().length === 0 ? ['填写动作名称'] : []),
+    ...(existingActionDraft.motionPrompt.trim().length === 0 ? ['填写动作描述'] : []),
+    ...(!existingActionDraft.referenceImageToken.trim() && !hasStoredEditableReference
+      ? ['选择参考图或绑定已有角色参考图']
+      : []),
+    ...(running ? ['当前已有生成任务进行中'] : [])
+  ]
+  const canGenerateNewCharacter = newCharacterBlockers.length === 0
+  const canGenerateExistingAction = existingActionBlockers.length === 0
 
   const selectReference = async (applyDraft: (draft: SelectedReferenceDraft) => void, errorFallback: string) => {
     try {
@@ -481,6 +486,8 @@ export function useCreatorPane(active: boolean) {
     result,
     creatorStudioReady,
     creatorStudioMessage,
+    newCharacterBlockers,
+    existingActionBlockers,
     canGenerateNewCharacter,
     canGenerateExistingAction,
     onChangeMode: setMode,
