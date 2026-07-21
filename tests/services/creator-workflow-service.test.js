@@ -44,6 +44,65 @@ const createPluginView = ({
   }
 })
 
+const createHealthCoordinationFixture = ({
+  checkHealth = async () => ({ ok: true, code: 'provider_healthy', message: 'ready' }),
+  getConfig = () => ({
+    provider: 'openai-compatible',
+    baseUrl: 'https://images.example.test/v1',
+    model: 'gpt-image-2',
+    apiKeyRef: 'secret:model.image.openai.apiKey'
+  }),
+  runCommand = async (_pluginId, commandId) => ({
+    commandId,
+    result: {
+      ok: true,
+      message: commandId,
+      run: {
+        runId: 'run-health',
+        taskStatus: commandId === 'draft-task' ? 'ready_for_confirmation' : 'confirmed',
+        status: commandId === 'run-step' ? 'ready_for_review' : 'draft'
+      }
+    }
+  }),
+  nowMs = () => Date.now()
+} = {}) => {
+  const reference = {
+    targetType: EDITABLE_TARGET_TYPE,
+    targetId: EDITABLE_TARGET_ID,
+    assetPath: '/tmp/reference.png',
+    assetUrl: 'file:///tmp/reference.png',
+    fileName: 'reference.png',
+    width: 256,
+    height: 256,
+    contentHash: 'health-reference',
+    createdAt: '2026-07-22T00:00:00.000Z',
+    updatedAt: '2026-07-22T00:00:00.000Z'
+  }
+  const commandCalls = []
+  const service = createCreatorWorkflowService({
+    pluginService: {
+      listPlugins: () => [createPluginView()],
+      getPluginCreatorDataDir: () => '/tmp/openpet-health-coordination',
+      runCommand: async (...args) => {
+        commandCalls.push(args)
+        return runCommand(...args)
+      }
+    },
+    imageGenerationModelService: { checkHealth, getConfig },
+    actionService: {
+      getConfig: () => ({ defaultAction: 'idle', clickAction: 'wave', actions: [{ id: 'idle' }, { id: 'wave' }] }),
+      acceptTriggerProposalItem: () => ({ animations: { defaultAction: 'idle', clickAction: 'wave', actions: [{ id: 'idle' }, { id: 'wave' }] } })
+    },
+    creatorReferenceService: {
+      getReference: () => reference,
+      bindReference: async () => ({ replaced: false, reference }),
+      copyReferenceIntoRun: () => ({})
+    },
+    nowMs
+  })
+  return { service, commandCalls }
+}
+
 const createFixedWorkflowHarness = ({ createShadowDecision } = {}) => {
   const commandCalls = []
   const logs = []
@@ -369,6 +428,148 @@ test('creator workflow service getState falls back quickly when provider health 
   assert.equal(result.ok, true)
   assert.equal(result.provider.ready, false)
   assert.equal(result.provider.code, 'health_check_timeout')
+})
+
+test('creator health checks coalesce concurrent getState calls', async () => {
+  let resolveHealth
+  let calls = 0
+  const health = new Promise((resolve) => { resolveHealth = resolve })
+  const { service } = createHealthCoordinationFixture({
+    checkHealth: () => {
+      calls += 1
+      return health
+    }
+  })
+
+  const first = service.getState()
+  const second = service.getState()
+  assert.equal(calls, 1)
+  resolveHealth({ ok: true, code: 'provider_healthy', message: 'ready' })
+  assert.equal((await first).provider.ready, true)
+  assert.equal((await second).provider.ready, true)
+})
+
+test('creator reuses a recent successful health result for generation preflight', async () => {
+  let calls = 0
+  const { service } = createHealthCoordinationFixture({
+    checkHealth: async () => {
+      calls += 1
+      return { ok: true, code: 'provider_healthy', message: 'ready' }
+    }
+  })
+
+  await service.getState()
+  const result = await service.generateExistingAction({
+    actionName: 'spin',
+    motionPrompt: 'spin',
+    referenceImageToken: 'token-reference'
+  })
+  assert.equal(result.state, 'review-required')
+  assert.equal(calls, 1)
+})
+
+test('creator health cache expires and configuration changes invalidate it', async () => {
+  let now = 1000
+  let model = 'gpt-image-2'
+  let calls = 0
+  const { service } = createHealthCoordinationFixture({
+    nowMs: () => now,
+    getConfig: () => ({
+      provider: 'openai-compatible',
+      baseUrl: 'https://images.example.test/v1',
+      model,
+      apiKeyRef: 'secret:model.image.openai.apiKey'
+    }),
+    checkHealth: async () => {
+      calls += 1
+      return { ok: true, code: 'provider_healthy', message: 'ready' }
+    }
+  })
+
+  await service.getState()
+  now += 29999
+  await service.getState()
+  model = 'gpt-image-1.5'
+  await service.getState()
+  now += 30000
+  await service.getState()
+  assert.equal(calls, 3)
+})
+
+test('creator does not cache a health timeout as a successful result', async () => {
+  let calls = 0
+  const { service } = createHealthCoordinationFixture({
+    checkHealth: async () => {
+      calls += 1
+      return { ok: false, code: 'health_check_timeout', message: 'timed out' }
+    }
+  })
+
+  assert.equal((await service.getState()).provider.ready, false)
+  assert.equal((await service.getState()).provider.ready, false)
+  assert.equal(calls, 2)
+})
+
+test('creator reports health timeout as temporary latency instead of missing configuration', async () => {
+  const { service, commandCalls } = createHealthCoordinationFixture({
+    checkHealth: async () => ({
+      ok: false,
+      code: 'health_check_timeout',
+      message: 'Image Provider health check timed out after 10000ms'
+    })
+  })
+
+  const result = await service.generateExistingAction({
+    actionName: 'spin',
+    motionPrompt: 'spin',
+    referenceImageToken: 'token-reference'
+  })
+  assert.equal(result.state, 'provider-not-ready')
+  assert.equal(result.code, 'health_check_timeout')
+  assert.match(result.message, /响应较慢|检查超时/)
+  assert.doesNotMatch(result.message, /配置并保存可用模型/)
+  assert.equal(commandCalls.length, 0)
+})
+
+test('creator uses a widened default health timeout for Provider probes', async () => {
+  let options = null
+  const { service } = createHealthCoordinationFixture({
+    checkHealth: async (nextOptions) => {
+      options = nextOptions
+      return { ok: true, code: 'provider_healthy', message: 'ready' }
+    }
+  })
+
+  await service.getState()
+  assert.equal(options.timeoutMs, 10000)
+})
+
+test('creator does not combine an old-config health result with a changed Provider config', async () => {
+  let model = 'gpt-image-2'
+  let calls = 0
+  let resolveFirst
+  const firstHealth = new Promise((resolve) => { resolveFirst = resolve })
+  const { service } = createHealthCoordinationFixture({
+    getConfig: () => ({
+      provider: 'openai-compatible',
+      baseUrl: 'https://images.example.test/v1',
+      model,
+      apiKeyRef: 'secret:model.image.openai.apiKey'
+    }),
+    checkHealth: async () => {
+      calls += 1
+      if (calls === 1) return firstHealth
+      return { ok: true, code: 'provider_healthy', message: 'ready' }
+    }
+  })
+
+  const statePromise = service.getState()
+  model = 'gpt-image-1.5'
+  resolveFirst({ ok: true, code: 'provider_healthy', message: 'old config ready' })
+  const state = await statePromise
+  assert.equal(calls, 2)
+  assert.equal(state.provider.model, 'gpt-image-1.5')
+  assert.equal(state.provider.ready, true)
 })
 
 test('creator workflow service stops existing-action generation for human review without auto-approve or import', async () => {

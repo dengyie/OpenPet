@@ -850,6 +850,7 @@ export function CreatorPane({
   copiedPromptKey
 }: CreatorPaneProps) {
   const providerReady = creatorState.provider.ready
+  const providerCheckDelayed = !providerReady && creatorState.provider.code === 'health_check_timeout'
   const hasEditableReference = Boolean(creatorState.editableReference)
 
   return (
@@ -880,10 +881,12 @@ export function CreatorPane({
       </header>
 
       <div className={`provider-feedback ${providerReady ? 'ok' : 'error'}`} data-testid="creator-provider-status">
-        <strong>{providerReady ? 'Image Provider ready' : 'Image Provider not ready'}</strong>
+        <strong>{providerReady ? 'Image Provider ready' : (providerCheckDelayed ? 'Image Provider check delayed' : 'Image Provider not ready')}</strong>
         <span>{creatorState.provider.message || (providerReady ? '当前 Provider 可用于 Create 主路径。' : '请先到 AI -> 模型 Provider -> 图片模型 保存可用模型。')}</span>
         {!providerReady ? (
-          <span>Go to AI -&gt; 模型 Provider -&gt; 图片模型, save a working model, then return to Create.</span>
+          <span>{providerCheckDelayed
+            ? 'Provider 响应较慢，当前检查已超时；这不代表配置或图片模型失效，请稍后重新进入 Create 或再次生成。'
+            : 'Go to AI -> 模型 Provider -> 图片模型, save a working model, then return to Create.'}</span>
         ) : null}
         <div className="creator-result-grid">
           <span><strong>Provider</strong> {creatorState.provider.provider || 'openai-compatible'}</span>

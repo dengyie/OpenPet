@@ -440,15 +440,18 @@ export function useCreatorPane(active: boolean) {
   const creatorStudioMessage = creatorState.dashboard.reason || (
     creatorStudioPluginReady ? '' : '请先启用 Creator Studio 插件。'
   )
+  const providerBlocker = creatorState.provider.code === 'health_check_timeout'
+    ? '图片 Provider 检查超时，请稍后重试'
+    : '图片 Provider 未就绪'
   const newCharacterBlockers = [
-    ...(!creatorState.provider.ready ? ['图片 Provider 未就绪'] : []),
+    ...(!creatorState.provider.ready ? [providerBlocker] : []),
     ...(!creatorStudioPluginReady ? ['Creator Studio 插件未就绪'] : []),
     ...(newCharacterDraft.characterName.trim().length === 0 ? ['填写角色名称'] : []),
     ...(newCharacterDraft.referenceImageToken.trim().length === 0 ? ['选择参考图'] : []),
     ...(running ? ['当前已有生成任务进行中'] : [])
   ]
   const existingActionBlockers = [
-    ...(!creatorState.provider.ready ? ['图片 Provider 未就绪'] : []),
+    ...(!creatorState.provider.ready ? [providerBlocker] : []),
     ...(!creatorStudioPluginReady ? ['Creator Studio 插件未就绪'] : []),
     ...(existingActionDraft.actionName.trim().length === 0 ? ['填写动作名称'] : []),
     ...(existingActionDraft.motionPrompt.trim().length === 0 ? ['填写动作描述'] : []),

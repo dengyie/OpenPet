@@ -110,3 +110,12 @@ test('creator pane explains every disabled generation prerequisite', () => {
   assert.match(pane, /aria-live="polite"/)
   assert.match(pane, /还需完成/)
 })
+
+test('creator pane distinguishes a slow Provider probe from missing configuration guidance', () => {
+  const source = fs.readFileSync(creatorPanePath, 'utf-8')
+  const hook = fs.readFileSync(creatorPaneHookPath, 'utf-8')
+  assert.match(source, /health_check_timeout/)
+  assert.match(source, /Image Provider check delayed/)
+  assert.match(source, /Provider 响应较慢/)
+  assert.match(hook, /图片 Provider 检查超时，请稍后重试/)
+})

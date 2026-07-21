@@ -22,9 +22,19 @@ const EDITABLE_TARGET_NAME = 'Current Editable Character'
 const SAFE_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9:_-]*$/
 const SAFE_RUN_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/
 const SAFE_PATH_SEGMENT_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/
-const DEFAULT_PROVIDER_HEALTH_TIMEOUT_MS = 3000
+const DEFAULT_PROVIDER_HEALTH_TIMEOUT_MS = 10000
+const CREATOR_PROVIDER_HEALTH_CACHE_TTL_MS = 30000
 
 const normalizeText = (value) => String(value || '').trim()
+
+const createProviderHealthKey = (config = {}) => JSON.stringify([
+  normalizeText(config.provider),
+  normalizeText(config.baseUrl).replace(/\/+$/, ''),
+  normalizeText(config.model),
+  normalizeText(config.apiKeyRef),
+  normalizeText(config.organization),
+  normalizeText(config.project)
+])
 
 const normalizeSafeRelativePath = (value) => {
   const normalized = normalizeText(value).replace(/\\/g, '/')
@@ -232,6 +242,18 @@ const createCreatorProviderReadiness = ({ config = {}, health = {} }) => {
     code: normalizeText(health?.code) || 'provider_healthy',
     message: normalizeText(health?.message) || 'Image Provider is reachable'
   }
+}
+
+const createProviderBlockedMessage = (readiness = {}) => {
+  const code = normalizeText(readiness.code)
+  if (code === 'no_verified_creator_image_model') return normalizeText(readiness.message)
+  if (code === 'health_check_timeout') {
+    return '图片 Provider 响应较慢，健康检查已超时；这不代表配置或图片模型失效，请稍后重试'
+  }
+  if (code === 'provider_config_changed') {
+    return '图片 Provider 配置刚刚发生变化，请重新发起生成'
+  }
+  return '请先到 AI -> 模型 Provider -> 图片模型 配置并保存可用模型，然后再使用生成流程'
 }
 
 const createRunView = ({
@@ -1780,6 +1802,7 @@ const createCreatorWorkflowService = ({
   hatchPetAgentService = null,
   appLogService = null,
   providerHealthTimeoutMs = DEFAULT_PROVIDER_HEALTH_TIMEOUT_MS,
+  nowMs = () => Date.now(),
   idFactory = () => crypto.randomUUID()
 }) => {
   if (!pluginService?.listPlugins || !pluginService?.runCommand || !pluginService?.getPluginCreatorDataDir) {
@@ -1798,6 +1821,8 @@ const createCreatorWorkflowService = ({
   let lastRun = null
   let activeWorkflow = null
   let progressPollTimer = null
+  let providerHealthCache = null
+  let providerHealthInFlight = null
 
   const recordLog = (entry) => {
     try {
@@ -1813,21 +1838,59 @@ const createCreatorWorkflowService = ({
 
   const getPluginState = () => findPluginById(pluginService.listPlugins(), CREATOR_STUDIO_PLUGIN_ID)
 
-  const getProviderHealth = async () => {
-    try {
-      return await withTimeout(
-        imageGenerationModelService.checkHealth({ timeoutMs: providerHealthTimeoutMs }),
-        providerHealthTimeoutMs,
-        `Image Provider health check timed out after ${providerHealthTimeoutMs}ms`
-      )
-    } catch (error) {
-      const message = normalizeText(error?.message || 'Provider health check failed')
-      const isTimeout = /timed out/i.test(message)
-      return {
-        ok: false,
-        code: isTimeout ? 'health_check_timeout' : 'health_check_failed',
-        message
+  const getProviderHealth = async ({ retryConfigChange = true } = {}) => {
+    const configKey = createProviderHealthKey(imageGenerationModelService.getConfig())
+    if (
+      providerHealthCache?.key === configKey &&
+      providerHealthCache.expiresAt > nowMs()
+    ) {
+      return providerHealthCache.result
+    }
+    if (providerHealthInFlight?.key === configKey) {
+      return providerHealthInFlight.promise
+    }
+
+    const promise = (async () => {
+      let result
+      try {
+        result = await withTimeout(
+          imageGenerationModelService.checkHealth({ timeoutMs: providerHealthTimeoutMs }),
+          providerHealthTimeoutMs,
+          `Image Provider health check timed out after ${providerHealthTimeoutMs}ms`
+        )
+      } catch (error) {
+        const message = normalizeText(error?.message || 'Provider health check failed')
+        const isTimeout = /timed out/i.test(message)
+        result = {
+          ok: false,
+          code: isTimeout ? 'health_check_timeout' : 'health_check_failed',
+          message
+        }
       }
+      const currentConfigKey = createProviderHealthKey(imageGenerationModelService.getConfig())
+      if (currentConfigKey !== configKey) {
+        if (retryConfigChange) return getProviderHealth({ retryConfigChange: false })
+        return {
+          ok: false,
+          code: 'provider_config_changed',
+          message: 'Image Provider configuration changed during the health check; retry the request'
+        }
+      }
+      if (result?.ok === true) {
+        providerHealthCache = {
+          key: configKey,
+          result,
+          expiresAt: nowMs() + CREATOR_PROVIDER_HEALTH_CACHE_TTL_MS
+        }
+      }
+      return result
+    })()
+    const inFlight = { key: configKey, promise }
+    providerHealthInFlight = inFlight
+    try {
+      return await promise
+    } finally {
+      if (providerHealthInFlight === inFlight) providerHealthInFlight = null
     }
   }
 
@@ -2038,9 +2101,7 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
       const result = createWorkflowResult({
         state: 'provider-not-ready',
         code: normalizeText(providerReadiness.code) || 'provider_not_ready',
-        message: providerReadiness.code === 'no_verified_creator_image_model'
-          ? providerReadiness.message
-          : '请先到 AI -> 模型 Provider -> 图片模型 配置并保存可用模型，然后再使用生成流程'
+        message: createProviderBlockedMessage(providerReadiness)
       })
       setLastRun(result.run)
       return result
