@@ -162,3 +162,41 @@ test('app log service does not reread the full log for every append below the co
   assert.equal(logReadCount <= 1, true)
   assert.equal(service.read().length, 100)
 })
+
+test('app log service retains critical workflow entries ahead of debug noise during compaction', () => {
+  const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-app-logs-'))
+  const service = createAppLogService({ logDir, maxEntries: 5 })
+
+  service.record({ level: 'error', scope: 'creator-workflow', event: 'creator.workflow.failed', details: { runId: 'run-critical' } })
+  for (let index = 0; index < 12; index += 1) {
+    service.record({ level: 'debug', scope: 'pet-renderer', event: 'pet.pointer.diagnostic', details: { index } })
+  }
+
+  const entries = service.read()
+  assert.equal(entries.some((entry) => entry.event === 'creator.workflow.failed'), true)
+  assert.equal(entries.length <= 5, true)
+})
+
+test('app log service keeps the previous JSONL intact when atomic compaction fails', () => {
+  const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-app-logs-'))
+  const service = createAppLogService({ logDir, maxEntries: 3 })
+  for (let index = 0; index < 3; index += 1) {
+    service.record({ event: `before-${index}` })
+  }
+
+  const originalRenameSync = fs.renameSync
+  fs.renameSync = (source, destination) => {
+    if (destination === service.logPath) throw new Error('simulated atomic rename failure')
+    return originalRenameSync(source, destination)
+  }
+  try {
+    assert.throws(() => service.record({ event: 'compaction-trigger' }), /atomic rename failure/)
+  } finally {
+    fs.renameSync = originalRenameSync
+  }
+
+  const rawLines = fs.readFileSync(service.logPath, 'utf8').trim().split('\n')
+  const parsed = rawLines.map((line) => JSON.parse(line))
+  assert.equal(parsed.some((entry) => entry.event === 'before-0'), true)
+  assert.equal(service.read().some((entry) => entry.event === 'before-1'), true)
+})

@@ -33,6 +33,7 @@ const MAX_DETAIL_STRING_CHARS = 500
 const MAX_DETAIL_DEPTH = 4
 const MAX_DETAIL_ARRAY_ITEMS = 20
 const REDACTED_VALUE = '[redacted]'
+const DEBUG_LEVEL = 'debug'
 
 const SECRET_VALUE_PATTERNS = [
   /\bsk-[A-Za-z0-9_-]{12,}\b/i,
@@ -112,6 +113,22 @@ const normalizeEntry = ({ entry, clock, idFactory }) => ({
   details: sanitizeDetails(entry.details)
 })
 
+const retainLogEntries = (entries, maxEntries) => {
+  if (maxEntries <= 0 || entries.length <= maxEntries) return entries
+  const indexed = entries.map((entry, index) => ({ entry, index }))
+  const important = indexed.filter(({ entry }) => entry.level !== DEBUG_LEVEL)
+  const debug = indexed.filter(({ entry }) => entry.level === DEBUG_LEVEL)
+  const retainedImportant = important.length > maxEntries
+    ? important.slice(-maxEntries)
+    : important
+  const remaining = Math.max(0, maxEntries - retainedImportant.length)
+  const retained = [
+    ...retainedImportant,
+    ...debug.slice(-remaining)
+  ].sort((left, right) => left.index - right.index)
+  return retained.map(({ entry }) => entry)
+}
+
 const createAppLogService = ({ logDir, logFileName = 'openpet-app.jsonl', maxEntries = 1000, clock = () => new Date(), idFactory = () => crypto.randomUUID() }) => {
   if (!logDir) throw new Error('logDir is required')
   const logPath = path.join(logDir, logFileName)
@@ -135,8 +152,25 @@ const createAppLogService = ({ logDir, logFileName = 'openpet-app.jsonl', maxEnt
   }
 
   const compact = () => {
-    const entries = read({ limit: maxEntries })
-    fs.writeFileSync(logPath, `${entries.map((entry) => JSON.stringify(entry)).join('\n')}\n`, 'utf-8')
+    const entries = retainLogEntries(read({ limit: maxEntries + 1 }), maxEntries)
+    const serialized = `${entries.map((entry) => JSON.stringify(entry)).join('\n')}\n`
+    const temporaryPath = `${logPath}.tmp-${process.pid}-${Date.now()}-${crypto.randomBytes(6).toString('hex')}`
+    let descriptor = null
+    try {
+      descriptor = fs.openSync(temporaryPath, 'w', 0o600)
+      fs.writeFileSync(descriptor, serialized, 'utf-8')
+      fs.fsyncSync?.(descriptor)
+      fs.closeSync(descriptor)
+      descriptor = null
+      fs.renameSync(temporaryPath, logPath)
+    } finally {
+      if (descriptor != null) {
+        try { fs.closeSync(descriptor) } catch (_) {}
+      }
+      try {
+        if (fs.existsSync(temporaryPath)) fs.unlinkSync(temporaryPath)
+      } catch (_) {}
+    }
     entryCount = entries.length
   }
 
