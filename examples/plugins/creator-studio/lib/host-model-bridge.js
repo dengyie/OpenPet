@@ -1,4 +1,5 @@
 const { callBridge } = require('./bridge-client')
+const { appendRunLog } = require('./run-store')
 const { FULL_PET_WORKFLOW_MAX_DURATION_MS } = require('./full-pet-workflow-contract')
 const { areSpriteCandidatesDuplicates, runQualityFirstAction } = require('./quality-first-action-runner')
 const { archiveCandidateRevision, writeCandidateRecord } = require('./sprite-candidate-store')
@@ -575,7 +576,9 @@ const createGenerationAttemptRecord = ({
   error = '',
   timeoutMs = 0,
   referenceImages = [],
-  durationMs = 0
+  durationMs = 0,
+  requestId = '',
+  traceContext = null
 }) => ({
   model: normalizeModelName(model),
   ok: Boolean(ok),
@@ -583,6 +586,13 @@ const createGenerationAttemptRecord = ({
   durationMs: Math.max(0, Number(durationMs) || 0),
   referenceImageCount: Array.isArray(referenceImages) ? referenceImages.length : 0,
   referenceRoles: listReferenceRoles(referenceImages),
+  ...(requestId ? { requestId: createSafeFileSegment(requestId, '') } : {}),
+  ...(traceContext && typeof traceContext === 'object' ? { traceContext: {
+    runId: createSafeFileSegment(traceContext.runId, ''),
+    actionId: createSafeFileSegment(traceContext.actionId, ''),
+    stage: createSafeFileSegment(traceContext.stage, ''),
+    candidateId: createSafeFileSegment(traceContext.candidateId, '')
+  } } : {}),
   ...(error ? { error: String(error).slice(0, 240) } : {})
 })
 
@@ -604,6 +614,9 @@ const createProviderGenerationStage = ({
   qualityProfile = null
 }) => {
   const referenceRoles = listReferenceRoles(referenceImages)
+  const requestIds = Array.isArray(modelAttempts)
+    ? [...new Set(modelAttempts.map((attempt) => String(attempt?.requestId || '')).filter(Boolean))]
+    : []
   return {
     stage,
     ...(actionId ? { actionId } : {}),
@@ -614,6 +627,7 @@ const createProviderGenerationStage = ({
     durationMs: Math.max(0, Number(durationMs) || 0),
     model: normalizeModelName(model),
     modelAttempts: Array.isArray(modelAttempts) ? modelAttempts : [],
+    requestIds,
     outputRelativePath: createSafeRelativePath(outputRelativePath),
     promptRelativePath: createSafeRelativePath(promptRelativePath),
     outputCount: Math.max(0, Number(outputCount) || 0),
@@ -651,12 +665,17 @@ const callHostImageGenerate = ({
   requestedTimeoutMs,
   referenceImages,
   runId,
+  traceContext = null,
   dataRelativeDir,
   constraints = DEFAULT_CONSTRAINTS
 }) => {
   assertExactlyOneProviderReferenceImage(referenceImages)
   return callBridge('/creator/model-image-generate', {
     runId: String(runId || ''),
+    traceContext: {
+      ...(traceContext && typeof traceContext === 'object' ? traceContext : {}),
+      runId: String(runId || '')
+    },
     expectedModel,
     prompt,
     promptCompiler,
@@ -683,6 +702,7 @@ const generateWithModelFallback = async ({
   requestedTimeoutMs,
   referenceImages,
   runId,
+  traceContext = null,
   dataRelativeDir,
   preferredModel,
   buildPromptForModel = null,
@@ -718,6 +738,7 @@ const generateWithModelFallback = async ({
       requestedTimeoutMs: effectiveTimeoutMs,
       referenceImages,
       runId,
+      traceContext,
       dataRelativeDir,
       constraints: primaryVariant.constraints
     })
@@ -729,7 +750,9 @@ const generateWithModelFallback = async ({
           error: attempt?.error,
           timeoutMs: attempt?.timeoutMs,
           referenceImages,
-          durationMs: attempt?.durationMs
+          durationMs: attempt?.durationMs,
+          requestId: attempt?.requestId || response?.result?.requestId,
+          traceContext: attempt?.traceContext || response?.result?.traceContext || traceContext
         }))
       : []
     return {
@@ -740,7 +763,9 @@ const generateWithModelFallback = async ({
         ok: true,
         timeoutMs: effectiveTimeoutMs,
         referenceImages,
-        durationMs: Date.now() - startedAtMs
+        durationMs: Date.now() - startedAtMs,
+        requestId: response?.result?.requestId,
+        traceContext: response?.result?.traceContext || traceContext
       })]
     }
   } catch (error) {
@@ -751,7 +776,9 @@ const generateWithModelFallback = async ({
         error: error?.message || error,
         timeoutMs: effectiveTimeoutMs,
         referenceImages,
-        durationMs: Date.now() - startedAtMs
+        durationMs: Date.now() - startedAtMs,
+        requestId: error?.requestId,
+        traceContext
       })]
     }
     throw error
@@ -1464,6 +1491,7 @@ const generateActionKeyframe = async ({
       requestedTimeoutMs: stageTimeoutMs,
       referenceImages,
       runId: run.runId,
+      traceContext: { runId: run.runId, actionId, stage: stageName },
       dataRelativeDir: path.join(
         'runs',
         run.runId,
@@ -1892,6 +1920,7 @@ const generateKeyframeActionSpriteRow = async ({
       requestedTimeoutMs: finalStageTimeoutMs,
       referenceImages: [conditioningBoardReferenceImage],
       runId: run.runId,
+      traceContext: { runId: run.runId, actionId, stage: 'action-sprite-row' },
       dataRelativeDir: path.join('runs', run.runId, 'frames', 'base', `${actionId}-keyframe-row`).replace(/\\/g, '/')
     })
     const outputs = filterExistingGeneratedOutputs({
@@ -2260,6 +2289,7 @@ const generateAnchorReferences = async ({
       requestedTimeoutMs,
       referenceImages: [compositeReferenceImage],
       runId: run.runId,
+      traceContext: { runId: run.runId, stage: 'character-anchor' },
       dataRelativeDir: path.join('runs', run.runId, 'anchors', 'character-anchor').replace(/\\/g, '/')
     })
     const characterOutput = getFirstExistingOutput({ dataDir, response: characterAttempt.response })
@@ -2353,6 +2383,7 @@ const generateAnchorReferences = async ({
           requestedTimeoutMs,
           referenceImages: [actionReferenceImage],
           runId: run.runId,
+          traceContext: { runId: run.runId, actionId, stage: 'action-anchor' },
           dataRelativeDir: path.join('runs', run.runId, 'anchors', 'actions', `${actionId}-anchor`).replace(/\\/g, '/')
         })
         actionOutput = getFirstExistingOutput({ dataDir, response: actionAttempt.response })
@@ -2750,6 +2781,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
         requestedTimeoutMs: Math.max(Number(settings.timeoutMs) || 0, CREATOR_PROVIDER_MIN_TIMEOUT_MS),
         referenceImages: [sourceReference],
         runId: run.runId,
+        traceContext: { runId: run.runId, stage: 'canonical-candidate', candidateId },
         dataRelativeDir: `runs/${run.runId}/candidates/canonical/${candidateId}/raw`
       })
       const outputs = Array.isArray(generated.response?.result?.outputs) ? generated.response.result.outputs : []
@@ -2774,10 +2806,13 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
         descriptors,
         artifacts: [{ role: 'raw-canonical', path: outputPath, sha256 }],
         provider: generated.response?.provider || settings.provider,
+        requestId: generated.response?.result?.requestId || generated.attempts?.at(-1)?.requestId || '',
+        traceContext: generated.response?.result?.traceContext || { runId: run.runId, stage: 'canonical-candidate', candidateId },
         modelAttempts: generated.attempts,
         failureCodes: eligible ? [] : [cutout.failureCondition || 'canonical-technical-qa-failed']
       }
     } catch (error) {
+      const modelAttempts = Array.isArray(error?.modelAttempts) ? error.modelAttempts.slice(0, 16) : []
       return {
         candidateId,
         sha256: '',
@@ -2785,22 +2820,27 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
         score: 0,
         promptRelativePath,
         descriptors: { perceptualHash: candidateId, identityDescriptor: [0], alphaMaskDescriptor: [0] },
-        failureCodes: [String(error?.message || 'canonical-generation-failed').slice(0, 160)]
+        requestId: String(modelAttempts.at(-1)?.requestId || ''),
+        traceContext: { runId: run.runId, stage: 'canonical-candidate', candidateId },
+        modelAttempts,
+        failureCodes: [String(error?.code || 'canonical-generation-failed').replace(/[^A-Za-z0-9:_-]/g, '_').slice(0, 120)]
       }
     }
   }
   const persistCanonicalCandidate = async (candidate) => {
-    if (!candidate.path) return
+    const artifacts = candidate.path
+      ? collectQualityFirstCandidateArtifacts({
+          dataDir,
+          candidate: { ...candidate, artifacts: [{ role: 'raw-canonical', path: candidate.path, sha256: candidate.sha256 }] }
+        })
+      : []
     const record = writeCandidateRecord({
       dataDir,
       runId: run.runId,
       scope: 'canonical',
       candidate: {
         ...candidate,
-        artifacts: collectQualityFirstCandidateArtifacts({
-          dataDir,
-          candidate: { ...candidate, artifacts: [{ role: 'raw-canonical', path: candidate.path, sha256: candidate.sha256 }] }
-        })
+        ...(artifacts.length ? { artifacts } : {})
       }
     })
     candidate.candidateRecordRelativePath = record.relativePath
@@ -2917,12 +2957,12 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
         const promptRelativePath = `runs/${run.runId}/prompts/quality-first/${actionId}-${candidateId}.txt`
         fs.mkdirSync(path.dirname(path.join(dataDir, promptRelativePath)), { recursive: true })
         fs.writeFileSync(path.join(dataDir, promptRelativePath), `${compiled.prompt}\n`)
-        const generated = await generateWithModelFallback({ settings, preferredModel: String(settings.model || ''), prompt: compiled.prompt, promptCompiler: compiled.promptCompiler, buildPromptForModel, constraints: resolveCompiledPromptConstraints(compiled), requestedTimeoutMs: Math.max(Number(settings.timeoutMs) || 0, CREATOR_PROVIDER_MIN_TIMEOUT_MS), referenceImages: [{ ...sourceReference, path: boardPath, relativePath: boardRelativePath, role: 'action-reference-board' }], runId: run.runId, dataRelativeDir: `runs/${run.runId}/candidates/${actionId}/${candidateId}/raw` })
+        const generated = await generateWithModelFallback({ settings, preferredModel: String(settings.model || ''), prompt: compiled.prompt, promptCompiler: compiled.promptCompiler, buildPromptForModel, constraints: resolveCompiledPromptConstraints(compiled), requestedTimeoutMs: Math.max(Number(settings.timeoutMs) || 0, CREATOR_PROVIDER_MIN_TIMEOUT_MS), referenceImages: [{ ...sourceReference, path: boardPath, relativePath: boardRelativePath, role: 'action-reference-board' }], runId: run.runId, traceContext: { runId: run.runId, actionId, stage: 'action-candidate', candidateId }, dataRelativeDir: `runs/${run.runId}/candidates/${actionId}/${candidateId}/raw` })
         const output = generated.response?.result?.outputs?.length === 1 ? generated.response.result.outputs[0] : null
         if (!output) throw new Error('action candidate requires exactly one Provider output')
         const rawPath = path.join(dataDir, output.dataRelativePath)
         const outputDir = path.join(dataDir, `runs/${run.runId}/candidates/${actionId}/${candidateId}/processed`)
-        return { candidateId, rawPath, promptRelativePath, model: generated.selectedModel, sha256: sha256File(rawPath), descriptors: await createSpriteImageDescriptors({ imagePath: rawPath }), actionPolicy: { anchorPolicy: action.anchorPolicy }, outputDir }
+        return { candidateId, rawPath, promptRelativePath, model: generated.selectedModel, requestId: generated.response?.result?.requestId || generated.attempts?.at(-1)?.requestId || '', traceContext: generated.response?.result?.traceContext || { runId: run.runId, actionId, stage: 'action-candidate', candidateId }, modelAttempts: generated.attempts, sha256: sha256File(rawPath), descriptors: await createSpriteImageDescriptors({ imagePath: rawPath }), actionPolicy: { anchorPolicy: action.anchorPolicy }, outputDir }
       },
       processCandidate: async (candidate) => {
         const processed = await processSpriteSheet({ inputPath: candidate.rawPath, outputDir: candidate.outputDir, layout: action.layout, profile: actionProfile, actionPolicy: { ...action, actionId } })
@@ -2955,6 +2995,12 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
     const actionPolicy = plan.actions.find((entry) => entry.actionId === actionId)
     const officialRow = getOfficialFullPetRow(actionId)
     const selected = result?.selectedCandidate
+    const candidateEvidence = [selected, ...(Array.isArray(result?.candidates) ? result.candidates : [])].filter((candidate) => candidate && typeof candidate === 'object')
+    const requestIds = [...new Set(candidateEvidence.flatMap((candidate) => [
+      candidate.requestId,
+      ...(Array.isArray(candidate.modelAttempts) ? candidate.modelAttempts.map((attempt) => attempt?.requestId) : [])
+    ]).map(String).filter((value) => value && value !== 'undefined'))].slice(0, 16)
+    const modelAttempts = candidateEvidence.flatMap((candidate) => Array.isArray(candidate.modelAttempts) ? candidate.modelAttempts : []).slice(0, 16)
     const frames = Array.isArray(selected?.processed?.frames) ? selected.processed.frames : []
     const safeFrames = frames.filter((frame) => frame?.path && fs.existsSync(frame.path))
     const packageFrameDir = path.join(dataDir, `runs/${run.runId}/quality-first/frames/${actionId}`)
@@ -2982,6 +3028,14 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
       ok: result?.ok === true && safeFrames.length > 0,
       outputCount: safeFrames.length,
       model: selected?.model || '',
+      requestIds,
+      ...(modelAttempts.length ? { modelAttempts } : {}),
+      generationStages: [{
+        actionId,
+        stage: 'action-candidate',
+        ok: result?.ok === true,
+        requestIds
+      }],
       failureConditions: result?.ok === true ? [] : [String(result?.failureCode || 'action_quality_gate_failed')],
       error: result?.ok === true ? '' : String(result?.failureCode || 'action_quality_gate_failed'),
       bindings: {
@@ -3161,6 +3215,31 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
     persistScaleProfile,
     finalizePackage,
     createRecoveryBundle,
+    recordEvent: ({ scope, status, actionId, candidateCount, failureCode }) => {
+      if (scope !== 'action') return
+      const safeActionId = String(actionId || '').replace(/[^A-Za-z0-9:_-]/g, '_').slice(0, 120)
+      const event = `quality-first.action.${status}`
+      try {
+        appendRunLog({
+          dataDir,
+          runId: run.runId,
+          level: status === 'failed' ? 'error' : 'info',
+          event,
+          message: status === 'started'
+            ? `Quality-first action ${safeActionId} generation started`
+            : status === 'completed'
+              ? `Quality-first action ${safeActionId} generation completed`
+              : `Quality-first action ${safeActionId} generation failed`,
+          data: {
+            actionId: safeActionId,
+            ...(Number.isInteger(candidateCount) ? { candidateCount } : {}),
+            ...(status === 'failed' ? { failureCode: String(failureCode || 'action_quality_gate_failed').replace(/[^A-Za-z0-9:_-]/g, '_').slice(0, 120) } : {})
+          }
+        })
+      } catch (_) {
+        // Diagnostics are supplementary evidence; a journal write failure must not abort generation.
+      }
+    },
     now: () => new Date().toISOString()
   })
   return {
@@ -3461,6 +3540,7 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
       requestedTimeoutMs: baseStageTimeoutMs,
       referenceImages,
       runId: run.runId,
+      traceContext: { runId: run.runId, actionId: firstActionForReference?.actionId || '', stage: 'final-image' },
       dataRelativeDir: `runs/${run.runId}/frames/base`
     })
     response = generationAttempt.response

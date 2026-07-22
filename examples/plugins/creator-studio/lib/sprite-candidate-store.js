@@ -32,6 +32,20 @@ const writeAtomic = (filePath, value) => {
   }
 }
 const sanitizeFailures = (value) => Array.isArray(value) ? value.slice(0, 32).map((entry) => String(entry).slice(0, 120)) : []
+const sanitizeTraceId = (value) => {
+  const normalized = String(value || '').trim()
+  return /^[A-Za-z0-9][A-Za-z0-9:_-]{0,127}$/.test(normalized) ? normalized : ''
+}
+const sanitizeTraceContext = (value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const trace = Object.fromEntries([
+    ['runId', sanitizeTraceId(value.runId)],
+    ['actionId', sanitizeTraceId(value.actionId)],
+    ['stage', sanitizeTraceId(value.stage)],
+    ['candidateId', sanitizeTraceId(value.candidateId)]
+  ].filter(([, entry]) => entry))
+  return Object.keys(trace).length ? trace : undefined
+}
 const sanitizeQuality = (value) => {
   if (!value || typeof value !== 'object') return undefined
   return {
@@ -74,6 +88,8 @@ const sanitizeCandidate = ({ dataDir, candidate }) => {
     dispatchIndex: Number.isInteger(source.dispatchIndex) ? source.dispatchIndex : 0,
     provider: String(source.provider || '').slice(0, 160),
     model: String(source.model || '').slice(0, 160),
+    ...(sanitizeTraceId(source.requestId) ? { requestId: sanitizeTraceId(source.requestId) } : {}),
+    ...(sanitizeTraceContext(source.traceContext) ? { traceContext: sanitizeTraceContext(source.traceContext) } : {}),
     ...(source.identityDistance == null ? {} : { identityDistance: Number(source.identityDistance) || 0 }),
     ...(descriptors ? { descriptors } : {}),
     ...(source.duplicateOfCandidateId ? { duplicateOfCandidateId: String(source.duplicateOfCandidateId).slice(0, 128) } : {}),

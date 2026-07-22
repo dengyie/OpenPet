@@ -7,6 +7,8 @@ const path = require('node:path')
 const {
   GENERATION_COMMAND_TERMINATED_REASON,
   createRun,
+  appendRunLog,
+  readRunLogs,
   readRun,
   recoverStaleGeneratingRuns,
   resolveRunId,
@@ -89,4 +91,18 @@ test('fresh generation leases are not recovered while their command is active', 
     now: () => '2026-07-15T00:06:00.000Z'
   }), [])
   assert.equal(readRun({ dataDir, runId: run.runId }).status, 'generating')
+})
+
+test('run journal preserves valid events and reports malformed JSONL lines', () => {
+  const dataDir = makeDataDir()
+  const run = createRun({ dataDir, input: { petName: 'Journal Cat' } })
+  appendRunLog({ dataDir, runId: run.runId, event: 'quality-first.action.started', data: { actionId: 'waving' } })
+  fs.appendFileSync(path.join(dataDir, 'runs', run.runId, 'logs', 'events.jsonl'), '{"truncated":')
+
+  const logs = readRunLogs({ dataDir, runId: run.runId })
+
+  assert.equal(logs[0].event, 'quality-first.action.started')
+  assert.equal(logs.at(-1).event, 'run.log-corrupt-line')
+  assert.equal(logs.at(-1).data.lineNumber, 2)
+  assert.equal(JSON.stringify(logs).includes('{"truncated"'), false)
 })

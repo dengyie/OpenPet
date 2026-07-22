@@ -38,7 +38,38 @@ test('backend persists awaiting identity review and resumes only after exact acc
   const accepted = await acceptQualityFirstCanonicalIdentity({ dataDir, runId: created.runId, candidateId: 'c1', expectedHash: 'a'.repeat(64), orchestrator, plan: { hash: 'plan' }, actions: ['idle'] })
   assert.equal(accepted.run.status, 'ready_for_review')
   assert.deepEqual(calls, [{ candidateId: 'c1', sha256: 'a'.repeat(64) }])
-  assert.deepEqual(readRunLogs({ dataDir, runId: created.runId }).map((entry) => entry.event), ['quality-first.identity.started', 'quality-first.identity.awaiting-review', 'quality-first.identity.accepted'])
+  assert.deepEqual(readRunLogs({ dataDir, runId: created.runId }).map((entry) => entry.event), [
+    'quality-first.identity.started',
+    'quality-first.identity.completed',
+    'quality-first.identity.awaiting-review',
+    'quality-first.identity.accepted'
+  ])
+})
+
+test('backend records identity failure with a bounded reason code', async () => {
+  const dataDir = createDataDir()
+  const created = createRun({
+    dataDir,
+    input: { petName: 'Failed Identity Pet', backend: 'provider', generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1', actions: [{ actionId: 'idle', name: 'Idle', frameCount: 6 }], questions: [] } }
+  })
+  writeRun({ dataDir, run: { ...created, status: 'confirmed', taskStatus: 'confirmed' } })
+  const error = new Error('private provider detail /Users/mango/source.png')
+  error.code = 'canonical_pool_failed'
+
+  await assert.rejects(() => runQualityFirstIdentityStage({
+    dataDir,
+    runId: created.runId,
+    orchestrator: { start: async () => { throw error } },
+    plan: { hash: 'plan' }
+  }), /private provider detail/)
+
+  const events = readRunLogs({ dataDir, runId: created.runId })
+  assert.deepEqual(events.map((entry) => entry.event), [
+    'quality-first.identity.started',
+    'quality-first.identity.failed'
+  ])
+  assert.deepEqual(events[1].data, { failureCode: 'canonical_pool_failed' })
+  assert.doesNotMatch(JSON.stringify(events[1]), /\/Users\/|private provider detail/)
 })
 
 test('backend preserves the latest accepted identity state when action generation fails', async () => {
@@ -89,6 +120,10 @@ test('backend preserves the latest accepted identity state when action generatio
   assert.equal(failed.qualityFirst.acceptedCanonical.candidateId, canonical.candidateId)
   assert.equal(failed.qualityFirst.scaleProfileHash, 'p'.repeat(64))
   assert.equal(failed.qualityFirst.actionResults.idle.ok, true)
+  const failureEvent = readRunLogs({ dataDir, runId: created.runId }).at(-1)
+  assert.equal(failureEvent.event, 'quality-first.actions.failed')
+  assert.equal(failureEvent.data.failureCode, 'action_generation_error')
+  assert.doesNotMatch(JSON.stringify(failureEvent), /\/Users\/|provider prompt|api[_-]?key/i)
 })
 
 test('quality-first action repair reruns only the requested action and preserves accepted identity', async () => {
@@ -150,6 +185,10 @@ test('quality-first action repair reruns only the requested action and preserves
   assert.equal(Object.hasOwn(result.run.qualityFirst.package, 'artifacts'), false)
   assert.equal(fs.existsSync(path.join(dataDir, result.repair.evidenceArchive, 'candidates', 'waving', 'candidate-old', 'raw', 'sheet.png')), true)
   assert.equal(fs.existsSync(path.join(dataDir, result.repair.evidenceArchive, 'prompts', 'quality-first', 'waving-candidate-old.txt')), true)
+  assert.deepEqual(readRunLogs({ dataDir, runId: created.runId }).map((entry) => entry.event), [
+    'quality-first.action.repair-started',
+    'quality-first.action.repaired'
+  ])
 })
 
 test('quality-first identity retry archives paid candidates and returns to identity review', async () => {
@@ -227,4 +266,8 @@ test('quality-first action repair fails closed when final package artifacts cann
     return true
   })
   assert.equal(readRun({ dataDir, runId: created.runId }).status, 'failed')
+  assert.deepEqual(readRunLogs({ dataDir, runId: created.runId }).map((entry) => entry.event), [
+    'quality-first.action.repair-started',
+    'quality-first.action.repair-failed'
+  ])
 })

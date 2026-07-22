@@ -4,7 +4,7 @@ const assert = require('node:assert/strict')
 const { createQualityFirstFullPetOrchestrator } = require('../../examples/plugins/creator-studio/lib/quality-first-full-pet-orchestrator')
 
 const createHarness = ({ idleOk = true, finalizePackage = async () => ({ spritesheetRelativePath: 'runs/run-1/quality-first/package/spritesheet.webp', artifacts: { outputDir: '/data/runs/run-1/quality-first/package' } }) } = {}) => {
-  const calls = { canonical: 0, actions: [], mirrors: 0, recovery: 0 }
+  const calls = { canonical: 0, actions: [], mirrors: 0, recovery: 0, events: [] }
   const orchestrator = createQualityFirstFullPetOrchestrator({
     generateCanonicalCandidatePool: async () => {
       calls.canonical += 1
@@ -31,6 +31,7 @@ const createHarness = ({ idleOk = true, finalizePackage = async () => ({ sprites
       return { relativePath: 'runs/run-1/recovery/recovery.json' }
     },
     finalizePackage,
+    recordEvent: (event) => calls.events.push(event),
     now: () => '2026-07-20T12:00:00.000Z'
   })
   return { orchestrator, calls }
@@ -61,6 +62,14 @@ test('canonical acceptance runs idle first, locks scale profile, continues optio
   assert.equal(h.calls.mirrors, 1)
   assert.deepEqual(run.qualityFirst.omittedActionIds, ['waving'])
   assert.equal(run.qualityFirst.scaleProfileHash, 'p'.repeat(64))
+  assert.deepEqual(h.calls.events.filter((entry) => entry.scope === 'action').map((entry) => [entry.actionId, entry.status]), [
+    ['idle', 'started'],
+    ['idle', 'completed'],
+    ['running-right', 'started'],
+    ['running-right', 'completed'],
+    ['waving', 'started'],
+    ['waving', 'failed']
+  ])
 })
 
 test('canonical acceptance publishes finalized package artifacts for the existing approval and import contract', async () => {
@@ -147,6 +156,7 @@ test('canonical acceptance fails closed when final package artifacts are missing
 
 test('canonical acceptance durably publishes identity, profile, and completed actions before later failure', async () => {
   const snapshots = []
+  const events = []
   const orchestrator = createQualityFirstFullPetOrchestrator({
     generateCanonicalCandidatePool: async () => ({
       dispatchCount: 3,
@@ -161,7 +171,8 @@ test('canonical acceptance durably publishes identity, profile, and completed ac
       return { ok: true, actionId, selectedCandidateId: `${actionId}-candidate` }
     },
     createCharacterScaleProfile: async () => ({ hash: 'p'.repeat(64) }),
-    finalizePackage: async () => ({ artifacts: { outputDir: '/data/package' } })
+    finalizePackage: async () => ({ artifacts: { outputDir: '/data/package' } }),
+    recordEvent: (event) => events.push(event)
   })
   const pending = await orchestrator.start({ run: { runId: 'run-1' }, plan: { hash: 'plan-hash' } })
 
@@ -181,4 +192,12 @@ test('canonical acceptance durably publishes identity, profile, and completed ac
   assert.equal(latest.qualityFirst.actionResults.idle.ok, true)
   assert.equal(latest.qualityFirst.actionResults['running-right'].ok, true)
   assert.equal(latest.qualityFirst.nextAction, 'waving')
+  assert.deepEqual(events.at(-1), {
+    scope: 'action',
+    status: 'failed',
+    runId: 'run-1',
+    actionId: 'waving',
+    failureCode: 'action_generation_error',
+    message: 'waving provider failed'
+  })
 })

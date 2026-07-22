@@ -57,6 +57,7 @@ const createQualityFirstFullPetOrchestrator = ({
   persistScaleProfile = async () => {},
   finalizePackage = async () => null,
   createRecoveryBundle = async () => null,
+  recordEvent = () => {},
   now = () => new Date().toISOString()
 } = {}) => {
   if (typeof generateCanonicalCandidatePool !== 'function' || typeof runQualityFirstAction !== 'function' || typeof createCharacterScaleProfile !== 'function') {
@@ -64,8 +65,16 @@ const createQualityFirstFullPetOrchestrator = ({
   }
 
   const start = async ({ run, plan, sourceReference } = {}) => {
-    const pool = await generateCanonicalCandidatePool({ run, plan, sourceReference })
+    recordEvent({ scope: 'identity', status: 'started', runId: normalizeId(run?.runId) })
+    let pool
+    try {
+      pool = await generateCanonicalCandidatePool({ run, plan, sourceReference })
+    } catch (error) {
+      recordEvent({ scope: 'identity', status: 'failed', runId: normalizeId(run?.runId), failureCode: String(error?.code || 'identity_generation_error'), message: String(error?.message || error).slice(0, 240) })
+      throw error
+    }
     const candidates = assertCanonicalPool(pool)
+    recordEvent({ scope: 'identity', status: 'completed', runId: normalizeId(run?.runId), candidateCount: candidates.length })
     const startedAt = now()
     return {
       ...run,
@@ -105,7 +114,18 @@ const createQualityFirstFullPetOrchestrator = ({
       }
     }
     await persistRunState(acceptedRun)
-    const idle = await runQualityFirstAction({ actionId: 'idle', plan, canonical: candidate })
+    const runActionWithEvents = async ({ actionId, profile = null }) => {
+      recordEvent({ scope: 'action', status: 'started', runId: normalizeId(run?.runId), actionId })
+      try {
+        const result = await runQualityFirstAction({ actionId, plan, canonical: candidate, profile })
+        recordEvent({ scope: 'action', status: result?.ok === true ? 'completed' : 'failed', runId: normalizeId(run?.runId), actionId, candidateCount: Array.isArray(result?.candidates) ? result.candidates.length : 0, ...(result?.ok === true ? {} : { failureCode: String(result?.failureCode || 'action_quality_gate_failed'), message: String(result?.failureCode || 'action quality gate failed') }) })
+        return result
+      } catch (error) {
+        recordEvent({ scope: 'action', status: 'failed', runId: normalizeId(run?.runId), actionId, failureCode: String(error?.code || 'action_generation_error'), message: String(error?.message || error).slice(0, 240) })
+        throw error
+      }
+    }
+    const idle = await runActionWithEvents({ actionId: 'idle' })
     await persistActionResult({ actionId: 'idle', result: idle, canonical: candidate, profile: null })
     const actionResults = { idle: publicActionResult(idle) }
     let durableRun = {
@@ -153,7 +173,7 @@ const createQualityFirstFullPetOrchestrator = ({
         qualityFirst: { ...durableRun.qualityFirst, actionResults, nextAction: actionId }
       }
       await persistRunState(durableRun)
-      const result = await runQualityFirstAction({ actionId, plan, canonical: candidate, profile })
+      const result = await runActionWithEvents({ actionId, profile })
       await persistActionResult({ actionId, result, canonical: candidate, profile })
       actionResults[actionId] = publicActionResult(result)
       if (actionId === 'running-right' && result?.ok && typeof mirrorRunningLeft === 'function') {

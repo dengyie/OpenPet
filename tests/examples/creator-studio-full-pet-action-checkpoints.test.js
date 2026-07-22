@@ -22,8 +22,9 @@ const createSuccessfulResult = ({ dataDir, runId, actionId = 'idle' }) => {
     ok: true,
     outputCount: 1,
     model: 'pet-model',
-    modelAttempts: [{ model: 'pet-model', ok: true }],
-    generationStages: [{ actionId, stage: 'final-image', ok: true }],
+    requestIds: ['provider-request-1'],
+    modelAttempts: [{ model: 'pet-model', ok: true, requestId: 'provider-request-1' }],
+    generationStages: [{ actionId, stage: 'final-image', ok: true, requestIds: ['provider-request-1'] }],
     keyframes: [{ actionId, keyframeRole: 'start', quality: { ok: true, score: 80 } }],
     row: {
       actionId,
@@ -57,6 +58,7 @@ test('action checkpoint round-trips a successful row using data-relative hashed 
   const stored = readActionCheckpoints({ dataDir, runId })
   assert.equal(stored.actions.idle.row.frames[0].relativePath.startsWith('runs/'), true)
   assert.match(stored.actions.idle.row.frames[0].sha256, /^[a-f0-9]{64}$/)
+  assert.deepEqual(stored.actions.idle.requestIds, ['provider-request-1'])
   assert.equal(JSON.stringify(stored).includes(dataDir), false)
 
   const reusable = resolveReusableActionResult({ dataDir, runId, actionId: 'idle' })
@@ -99,6 +101,22 @@ test('action checkpoint preserves failure evidence but never reuses failed outpu
   const stored = readActionCheckpoints({ dataDir, runId })
   assert.deepEqual(stored.actions.waving.failureConditions, ['identity-descriptor-distance-high'])
   assert.equal(resolveReusableActionResult({ dataDir, runId, actionId: 'waving' }), null)
+})
+
+test('action checkpoint drops unsafe or oversized Provider request ids', () => {
+  const dataDir = makeDataDir()
+  const runId = 'run-checkpoint-request-ids'
+  writeActionCheckpoint({
+    dataDir,
+    runId,
+    result: {
+      actionId: 'idle',
+      ok: false,
+      outputCount: 0,
+      requestIds: ['provider-request-1', '/tmp/provider.log', 'x'.repeat(129), 'provider-request-1']
+    }
+  })
+  assert.deepEqual(readActionCheckpoints({ dataDir, runId }).actions.idle.requestIds, ['provider-request-1'])
 })
 
 test('action checkpoint rejects frame paths outside the Creator Studio data directory', () => {

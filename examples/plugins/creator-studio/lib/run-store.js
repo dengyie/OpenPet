@@ -382,10 +382,31 @@ const appendRunLog = ({ dataDir, runId, level = 'info', event, message = '', dat
 const readRunLogs = ({ dataDir, runId }) => {
   const logPath = getRunLogPath({ dataDir, runId })
   if (!fs.existsSync(logPath)) return []
-  return fs.readFileSync(logPath, 'utf-8')
+  const entries = []
+  const malformedLines = []
+  fs.readFileSync(logPath, 'utf-8')
     .split(/\r?\n/)
-    .filter(Boolean)
-    .map((line) => JSON.parse(line))
+    .forEach((line, index) => {
+      if (!line.trim()) return
+      try {
+        entries.push(JSON.parse(line))
+      } catch (_) {
+        malformedLines.push(index + 1)
+      }
+    })
+  if (malformedLines.length) {
+    entries.push({
+      timestamp: new Date().toISOString(),
+      level: 'error',
+      event: 'run.log-corrupt-line',
+      message: 'Creator Studio run journal contained malformed lines',
+      data: {
+        lineNumber: malformedLines[0],
+        malformedLineCount: malformedLines.length
+      }
+    })
+  }
+  return entries
 }
 
 const writeRun = ({ dataDir, run }) => {

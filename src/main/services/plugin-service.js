@@ -445,6 +445,20 @@ const toSafeProposalSegment = (value, fallback = 'unknown') => {
   return normalized || fallback
 }
 
+const normalizeCreatorImageTraceContext = ({ runId, traceContext = {} } = {}) => {
+  const normalizedRunId = String(runId || '').trim()
+  const safeTraceId = (value) => {
+    const normalized = String(value || '').trim()
+    return /^[A-Za-z0-9][A-Za-z0-9:_-]{0,127}$/.test(normalized) ? normalized : ''
+  }
+  return Object.fromEntries([
+    ['runId', safeTraceId(normalizedRunId)],
+    ['actionId', safeTraceId(traceContext?.actionId)],
+    ['stage', safeTraceId(traceContext?.stage)],
+    ['candidateId', safeTraceId(traceContext?.candidateId)]
+  ].filter(([, value]) => value))
+}
+
 const assertStorageValueSize = (value) => {
   const byteSize = getJsonByteSize(value)
   if (byteSize > MAX_PLUGIN_STORAGE_VALUE_BYTES) {
@@ -932,6 +946,10 @@ const createPluginService = ({ settingsService, petService, actionService, actio
         })
       }
       const runId = String(rawRunId || '').trim()
+      providerPayload.traceContext = normalizeCreatorImageTraceContext({
+        runId,
+        traceContext: payload.traceContext
+      })
       const canAccountProviderCall = Boolean(
         plugin.manifest.id === CREATOR_STUDIO_PLUGIN_ID &&
         runId &&

@@ -53,13 +53,30 @@ const runQualityFirstAction = async ({
     const dispatchIndex = dispatches.length + 1
     const assignedCandidateId = `candidate-${dispatchIndex}`
     await reserveCreativeDispatch({ actionId, attemptKind, candidateId: assignedCandidateId, dispatchIndex })
-    const generated = await generateCandidate({
-      actionId,
-      attemptKind,
-      candidateId: assignedCandidateId,
-      dispatchIndex,
-      failureCodes: repairCodes.slice()
-    })
+    let generated
+    try {
+      generated = await generateCandidate({
+        actionId,
+        attemptKind,
+        candidateId: assignedCandidateId,
+        dispatchIndex,
+        failureCodes: repairCodes.slice()
+      })
+    } catch (error) {
+      const modelAttempts = Array.isArray(error?.modelAttempts) ? error.modelAttempts.slice(0, 16) : []
+      const failedCandidate = {
+        candidateId: assignedCandidateId,
+        actionId,
+        attemptKind,
+        dispatchIndex,
+        requestId: String(modelAttempts.at(-1)?.requestId || ''),
+        modelAttempts,
+        failureCodes: ['provider-generation-failed']
+      }
+      dispatches.push(failedCandidate)
+      allCandidates.push(failedCandidate)
+      return failedCandidate
+    }
     if (!generated) throw new Error(`Quality-first action ${actionId} returned an invalid candidate`)
     const requestedCandidateId = String(generated.candidateId || assignedCandidateId)
     const candidateId = dispatches.some((entry) => entry.candidateId === requestedCandidateId)

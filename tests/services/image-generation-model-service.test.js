@@ -948,6 +948,38 @@ test('image generation model service writes reference-conditioned outputs under 
   assert.equal(JSON.stringify(logs).includes(dataDir), false)
 })
 
+test('image generation preserves bounded Creator trace context in request evidence', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-trace-'))
+  const logs = []
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings()),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-trace-1234', label: 'Image API Key' }
+    }),
+    appLogService: { record: (entry) => logs.push(entry) },
+    idFactory: () => 'img-trace-request',
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: [{ b64_json: Buffer.from('trace-image').toString('base64') }] })
+    })
+  })
+
+  const traceContext = { runId: 'run-trace', actionId: 'waving', stage: 'action-candidate', candidateId: 'candidate-2' }
+  const result = await service.generateImage({
+    prompt: 'trace-safe prompt',
+    traceContext,
+    referenceImages: createReferenceImages(dataDir),
+    output: { dataDir, dataRelativeDir: 'runs/run-trace/candidates/waving/candidate-2/raw' },
+    constraints: { width: 1024, height: 1024, transparent: true }
+  })
+
+  assert.deepEqual(result.traceContext, traceContext)
+  assert.equal(logs.every((entry) => entry.details.traceContext?.runId === 'run-trace'), true)
+  assert.equal(logs.every((entry) => entry.details.traceContext?.actionId === 'waving'), true)
+  assert.equal(JSON.stringify(logs).includes('trace-safe prompt'), false)
+})
+
 test('image generation model service does not request transparency from unregistered models', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-'))
   const requests = []
@@ -1940,6 +1972,7 @@ test('image generation model service rejects provider outputs with missing image
   await assert.rejects(
     () => service.generateImage({
       prompt: 'private detailed custom pet prompt',
+      traceContext: { runId: 'run-missing-bytes', actionId: 'idle', stage: 'action-candidate', candidateId: 'candidate-1' },
       referenceImages: createReferenceImages(dataDir),
       output: {
         dataDir,
@@ -1962,6 +1995,7 @@ test('image generation model service rejects provider outputs with missing image
   ])
   assert.equal(logs[2].details.errorCode, 'provider_invalid_response')
   assert.equal(logs[2].details.outputCount, 0)
+  assert.deepEqual(logs[2].details.traceContext, { runId: 'run-missing-bytes', actionId: 'idle', stage: 'action-candidate', candidateId: 'candidate-1' })
   assert.equal(JSON.stringify(logs).includes('sk-test-secret'), false)
   assert.equal(JSON.stringify(logs).includes('private detailed custom pet prompt'), false)
 })

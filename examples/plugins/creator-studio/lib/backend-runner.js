@@ -38,6 +38,14 @@ const createBackendStatus = ({ backend, state, message = '', updatedAt }) => ({
   updatedAt
 })
 
+const appendDiagnosticRunLog = (entry) => {
+  try {
+    return appendRunLog(entry)
+  } catch (_) {
+    return null
+  }
+}
+
 const assertTaskReadyForGeneration = (run) => {
   if (!run.generationTask) return
   if (!run.taskStatus || run.taskStatus === 'confirmed') return
@@ -369,9 +377,11 @@ const runQualityFirstIdentityStage = async ({
       backendStatus: createBackendStatus({ backend: PROVIDER_BACKEND, state: 'awaiting-review', message: 'Canonical identity review required', updatedAt: now() })
     }
     writeRun({ dataDir, run: persisted })
-    appendRunLog({ dataDir, runId, event: 'quality-first.identity.awaiting-review', message: 'Canonical identity candidates require human selection', now })
+    appendDiagnosticRunLog({ dataDir, runId, event: 'quality-first.identity.completed', message: 'Canonical identity candidate generation completed', data: { candidateCount: Array.isArray(persisted.qualityFirst?.canonicalCandidates) ? persisted.qualityFirst.canonicalCandidates.length : 0 }, now })
+    appendDiagnosticRunLog({ dataDir, runId, event: 'quality-first.identity.awaiting-review', message: 'Canonical identity candidates require human selection', now })
     return { outputDir: '', bundlePath: '', sha256: '', run: persisted }
   } catch (error) {
+    appendDiagnosticRunLog({ dataDir, runId, level: 'error', event: 'quality-first.identity.failed', message: 'Canonical identity candidate generation failed', data: { failureCode: String(error?.code || 'identity_generation_error').replace(/[^A-Za-z0-9:_-]/g, '_').slice(0, 120) }, now })
     updateRunStatus({ dataDir, runId, status: 'failed', patch: { generationLease: undefined, error: error.message, backendStatus: createBackendStatus({ backend: PROVIDER_BACKEND, state: 'failed', message: error.message, updatedAt: now() }) }, now })
     throw error
   } finally {
@@ -464,9 +474,10 @@ const acceptQualityFirstCanonicalIdentity = async ({
       backendStatus: createBackendStatus({ backend: PROVIDER_BACKEND, state: completedRun.status === 'ready_for_review' ? 'ready' : 'recovery-required', message: completedRun.status === 'ready_for_review' ? 'Quality-first actions ready for review' : 'Asset recovery required', updatedAt: now() })
     }
     writeRun({ dataDir, run: persisted })
-    appendRunLog({ dataDir, runId, event: 'quality-first.identity.accepted', message: 'Canonical identity accepted and dependent action stage completed', data: { candidateId: String(candidateId) }, now })
+    appendDiagnosticRunLog({ dataDir, runId, event: 'quality-first.identity.accepted', message: 'Canonical identity accepted and dependent action stage completed', data: { candidateId: String(candidateId) }, now })
     return { outputDir: '', bundlePath: '', sha256: '', run: persisted }
   } catch (error) {
+    appendDiagnosticRunLog({ dataDir, runId, level: 'error', event: 'quality-first.actions.failed', message: 'Quality-first action generation failed', data: { failureCode: String(error?.code || 'action_generation_error').replace(/[^A-Za-z0-9:_-]/g, '_').slice(0, 120) }, now })
     updateRunStatus({ dataDir, runId, status: 'failed', patch: { generationLease: undefined, error: error.message, backendStatus: createBackendStatus({ backend: PROVIDER_BACKEND, state: 'failed', message: error.message, updatedAt: now() }) }, now })
     throw error
   } finally {
@@ -532,6 +543,7 @@ const runQualityFirstActionRepair = async ({
   }
   writeRun({ dataDir, run: generatingRun })
   const stopLeaseHeartbeat = createGenerationLeaseHeartbeat({ dataDir, runId, leaseId: lease.leaseId, now })
+  appendDiagnosticRunLog({ dataDir, runId, event: 'quality-first.action.repair-started', message: `Quality-first action ${normalizedActionId} repair started`, data: { actionId: normalizedActionId }, now })
   try {
     const result = await runtime.runAction({ actionId: normalizedActionId, canonical, profile, plan })
     await runtime.persistActionResult({ actionId: normalizedActionId, result, canonical, profile })
@@ -579,9 +591,10 @@ const runQualityFirstActionRepair = async ({
       }
     }
     writeRun({ dataDir, run: completedRun })
-    appendRunLog({ dataDir, runId, event: 'quality-first.action.repaired', message: `Quality-first action ${normalizedActionId} repair completed`, data: { actionId: normalizedActionId, evidenceArchive }, now })
+    appendDiagnosticRunLog({ dataDir, runId, event: 'quality-first.action.repaired', message: `Quality-first action ${normalizedActionId} repair completed`, data: { actionId: normalizedActionId, evidenceArchive }, now })
     return { outputDir: '', bundlePath: '', sha256: '', run: completedRun, repair: { scope: 'action', actionId: normalizedActionId, evidenceArchive } }
   } catch (error) {
+    appendDiagnosticRunLog({ dataDir, runId, level: 'error', event: 'quality-first.action.repair-failed', message: `Quality-first action ${normalizedActionId} repair failed`, data: { actionId: normalizedActionId, failureCode: String(error?.code || 'action_repair_failed').replace(/[^A-Za-z0-9:_-]/g, '_').slice(0, 120) }, now })
     updateRunStatus({ dataDir, runId, status: 'failed', patch: { generationLease: undefined, error: error.message, backendStatus: createBackendStatus({ backend: PROVIDER_BACKEND, state: 'failed', message: error.message, updatedAt: now() }) }, now })
     throw error
   } finally {

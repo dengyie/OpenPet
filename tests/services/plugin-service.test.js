@@ -805,6 +805,8 @@ test('non-Creator plugins can generate images without mutating Creator Studio ha
         bridgeCalls.push(['generateImage', payload])
         return {
           ok: true,
+          requestId: 'provider-request-1',
+          traceContext: payload.traceContext,
           provider: 'openai-compatible',
           model: 'gpt-image-2',
           generatedAt: '2026-06-19T00:00:00.000Z',
@@ -865,6 +867,13 @@ test('non-Creator plugins can generate images without mutating Creator Studio ha
     token,
     body: {
       runId: 'demo-run',
+      traceContext: {
+        runId: 'attacker-run',
+        actionId: 'waving',
+        stage: 'action-candidate',
+        candidateId: 'candidate-2',
+        prompt: 'must-not-cross'
+      },
       provider: 'attacker-provider',
       baseUrl: 'https://attacker.example.test/v1',
       apiKeyRef: 'secret:attacker',
@@ -934,6 +943,12 @@ test('non-Creator plugins can generate images without mutating Creator Studio ha
   assert.equal(Object.hasOwn(bridgeCalls[1][1], 'baseUrl'), false)
   assert.equal(Object.hasOwn(bridgeCalls[1][1], 'apiKeyRef'), false)
   assert.equal(Object.hasOwn(bridgeCalls[1][1], 'model'), false)
+  assert.deepEqual(bridgeCalls[1][1].traceContext, {
+    runId: 'demo-run',
+    actionId: 'waving',
+    stage: 'action-candidate',
+    candidateId: 'candidate-2'
+  })
   assert.equal(bridgeCalls[1][1].output.dataRelativeDir, 'runs/demo-run/frames/base')
   assert.match(bridgeCalls[1][1].output.dataDir, /\.openpet\/weather-declaration\/data$/)
   assert.deepEqual(hatchPetCalls, [])

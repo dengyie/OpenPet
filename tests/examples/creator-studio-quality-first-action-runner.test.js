@@ -193,3 +193,31 @@ test('runner retains a candidate when processing throws and continues comparing 
   assert.equal(persisted.find((candidate) => candidate.candidateId === 'broken').qa.failures.includes('candidate-processing-failed'), true)
   assert.deepEqual(evaluated, ['healthy'])
 })
+
+test('runner retains a failed Provider dispatch with request evidence and continues bounded generation', async () => {
+  const persisted = []
+  let dispatchCount = 0
+  const result = await runQualityFirstAction({
+    context: { actionId: 'waving' },
+    reserveCreativeDispatch: () => {},
+    generateCandidate: async () => {
+      dispatchCount += 1
+      if (dispatchCount === 1) {
+        const error = new Error('Provider transport failed')
+        error.code = 'provider_transport_failed'
+        error.modelAttempts = [{ model: 'gpt-image-2', ok: false, requestId: 'provider-request-failed-1' }]
+        throw error
+      }
+      return { candidateId: `candidate-${dispatchCount}`, descriptors: descriptors(dispatchCount === 2 ? 'ffff' : '0f0f', dispatchCount) }
+    },
+    processCandidate: async () => ({ qa: { ok: true, failures: [] } }),
+    evaluateCandidate: async () => ({ evaluation: { scores: { overall: 95 } }, gate: { ok: true, outcome: 'pass', failures: [] } }),
+    persistCandidate: (candidate) => persisted.push(candidate)
+  })
+  assert.equal(result.ok, true)
+  const failed = persisted.find((candidate) => candidate.candidateId === 'candidate-1')
+  assert.equal(failed.failureCodes.includes('provider-generation-failed'), true)
+  assert.equal(failed.requestId, 'provider-request-failed-1')
+  assert.deepEqual(failed.modelAttempts, [{ model: 'gpt-image-2', ok: false, requestId: 'provider-request-failed-1' }])
+  assert.equal(dispatchCount, 3)
+})

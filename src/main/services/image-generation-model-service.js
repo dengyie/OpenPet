@@ -33,9 +33,25 @@ const DEFAULT_GPT_IMAGE_2_QUALITY = 'high'
 const REQUESTED_PROVIDER_OUTPUT_COUNT = 1
 const VERIFIED_CREATOR_WORKFLOW_IMAGE_MODELS = Object.freeze(['gpt-image-2', 'gpt-image-1', 'gpt-image-1.5'])
 const DIRECT_TRANSPARENT_IMAGE_MODELS = new Set(['gpt-image-1', 'gpt-image-1.5'])
+const SAFE_TRACE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9:_-]{0,127}$/
 
 const normalizeImageModelCapabilityKey = (value) => String(value || '').trim().toLowerCase()
 const isGptImage2Model = (value) => normalizeImageModelCapabilityKey(value) === 'gpt-image-2'
+
+const normalizeTraceId = (value) => {
+  const normalized = String(value || '').trim()
+  return SAFE_TRACE_ID_PATTERN.test(normalized) ? normalized : ''
+}
+
+const normalizeImageTraceContext = (value = {}) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return Object.fromEntries([
+    ['runId', normalizeTraceId(value.runId)],
+    ['actionId', normalizeTraceId(value.actionId)],
+    ['stage', normalizeTraceId(value.stage)],
+    ['candidateId', normalizeTraceId(value.candidateId)]
+  ].filter(([, entry]) => entry))
+}
 
 const isPlainObject = (value) => value && typeof value === 'object' && !Array.isArray(value)
 
@@ -692,11 +708,13 @@ const normalizeProviderPromptVariants = ({ variants, prompt, promptCompiler, con
   return normalized
 }
 
-const createProviderModelAttempt = ({ model, ok, timeoutMs, durationMs, error = '' }) => ({
+const createProviderModelAttempt = ({ model, ok, timeoutMs, durationMs, error = '', requestId = '', traceContext = null }) => ({
   model: sanitizeModelId(model),
   ok: Boolean(ok),
   timeoutMs: Math.max(0, Number(timeoutMs) || 0),
   durationMs: Math.max(0, Number(durationMs) || 0),
+  ...(requestId ? { requestId: normalizeTraceId(requestId) } : {}),
+  ...(traceContext && Object.keys(traceContext).length ? { traceContext } : {}),
   ...(error ? { error: sanitizeLogText(error, { maxChars: 240 }) } : {})
 })
 
@@ -1319,8 +1337,16 @@ const createImageGenerationModelService = ({
     }
   }
 
-  const generateProviderImage = async ({ config, prompt, promptCompiler = null, targetDir, relativeDir, constraints, requestId, timeoutMs: timeoutOverrideMs, referenceImages = [] }) => {
+  const generateProviderImage = async ({ config, prompt, promptCompiler = null, targetDir, relativeDir, constraints, requestId, timeoutMs: timeoutOverrideMs, referenceImages = [], traceContext = null }) => {
     assertExactlyOneReferenceImage(referenceImages)
+    const normalizedTraceContext = normalizeImageTraceContext(traceContext)
+    const recordProviderLog = (entry) => recordLog({
+      ...entry,
+      details: {
+        ...(entry.details || {}),
+        traceContext: normalizedTraceContext
+      }
+    })
     const runtimeConfig = resolveImageRuntimeConfig(config)
     const apiKey = secretService.getSecretValue(runtimeConfig.apiKeyRef)
     if (!apiKey) throw new Error('Image generation API key is missing')
@@ -1338,7 +1364,7 @@ const createImageGenerationModelService = ({
       model: runtimeConfig.model,
       promptCompiler
     })
-    recordLog({
+    recordProviderLog({
       level: 'info',
       event: 'imageGeneration.provider.request.started',
       message: 'Image Provider request started',
@@ -1375,7 +1401,7 @@ const createImageGenerationModelService = ({
     let requestAttempt = 0
     const canRetryWithinBudget = () => requestAttempt < 2 && Date.now() < requestDeadlineMs
     const recordTransientRetry = ({ status = 0, error = null }) => {
-      recordLog({
+      recordProviderLog({
         level: 'warn',
         event: 'imageGeneration.provider.request.retrying',
         message: 'Image Provider request will retry after a transient failure',
@@ -1442,7 +1468,7 @@ const createImageGenerationModelService = ({
           continue
         }
         const isTimeout = /timed out/i.test(String(error?.message || ''))
-        recordLog({
+        recordProviderLog({
           level: 'error',
           event: 'imageGeneration.provider.request.failed',
           message: 'Image Provider request failed',
@@ -1483,7 +1509,7 @@ const createImageGenerationModelService = ({
     if (!response?.ok) {
       const status = response?.status || 'error'
       const errorMessage = 'Image Provider returned an error response'
-      recordLog({
+      recordProviderLog({
         level: 'error',
         event: 'imageGeneration.provider.request.failed',
         message: 'Image Provider request failed',
@@ -1517,7 +1543,7 @@ const createImageGenerationModelService = ({
       const businessError = extractProviderBusinessError(body)
       if (businessError) {
         const errorMessage = 'Image Provider returned a business error'
-        recordLog({
+        recordProviderLog({
           level: 'error',
           event: 'imageGeneration.provider.request.failed',
           message: 'Image Provider returned a business error',
@@ -1546,7 +1572,7 @@ const createImageGenerationModelService = ({
         })
         throw new Error(errorMessage)
       }
-      recordLog({
+      recordProviderLog({
         level: 'error',
         event: 'imageGeneration.provider.request.failed',
         message: 'Image Provider returned no outputs',
@@ -1591,7 +1617,7 @@ const createImageGenerationModelService = ({
         }
       })
     } catch (error) {
-      recordLog({
+      recordProviderLog({
         level: 'error',
         event: 'imageGeneration.provider.request.failed',
         message: 'Image Provider returned invalid image bytes',
@@ -1621,7 +1647,7 @@ const createImageGenerationModelService = ({
       throw error
     }
 
-    recordLog({
+    recordProviderLog({
       level: 'info',
       event: 'imageGeneration.provider.request.completed',
       message: 'Image Provider request completed',
@@ -1650,6 +1676,7 @@ const createImageGenerationModelService = ({
     return {
       ok: true,
       requestId,
+      traceContext: normalizedTraceContext,
       provider: runtimeConfig.provider,
       model: runtimeConfig.model,
       generatedAt: now().toISOString(),
@@ -1694,8 +1721,17 @@ const createImageGenerationModelService = ({
       output,
       constraints,
       timeoutMs,
+      traceContext,
       referenceImages = []
     } = request
+    const normalizedTraceContext = normalizeImageTraceContext(traceContext)
+    const recordRequestLog = (entry) => recordLog({
+      ...entry,
+      details: {
+        ...(entry.details || {}),
+        traceContext: normalizedTraceContext
+      }
+    })
     const expectedModelKey = normalizeImageModelCapabilityKey(expectedModel)
     const configuredModelKey = normalizeImageModelCapabilityKey(config.model)
     if (expectedModelKey && expectedModelKey !== configuredModelKey) {
@@ -1739,7 +1775,7 @@ const createImageGenerationModelService = ({
       dataRelativeDir: output?.dataRelativeDir
     })
 
-    recordLog({
+    recordRequestLog({
       level: 'info',
       event: 'imageGeneration.request.started',
       message: 'Image generation request started',
@@ -1787,13 +1823,16 @@ const createImageGenerationModelService = ({
             constraints: variant.constraints,
             requestId,
             timeoutMs: remainingTimeoutMs,
-            referenceImages: normalizedReferenceImages
+            referenceImages: normalizedReferenceImages,
+            traceContext: normalizedTraceContext
           })
           modelAttempts.push(createProviderModelAttempt({
             model: variant.model,
             ok: true,
             timeoutMs: remainingTimeoutMs,
-            durationMs: Date.now() - attemptStartedMs
+            durationMs: Date.now() - attemptStartedMs,
+            requestId,
+            traceContext: normalizedTraceContext
           }))
           break
         } catch (error) {
@@ -1802,7 +1841,9 @@ const createImageGenerationModelService = ({
             ok: false,
             timeoutMs: remainingTimeoutMs,
             durationMs: Date.now() - attemptStartedMs,
-            error: error?.message || error
+            error: error?.message || error,
+            requestId,
+            traceContext: normalizedTraceContext
           }))
           const hasFallback = index < candidateVariants.length - 1 && Date.now() < deadlineMs
           if (!hasFallback || !shouldTryFallbackImageModel(error)) {
@@ -1813,7 +1854,7 @@ const createImageGenerationModelService = ({
       }
       if (!result) throw new Error('Image Provider generation exhausted all Host model candidates')
       result.modelAttempts = modelAttempts
-      recordLog({
+      recordRequestLog({
         level: 'info',
         event: 'imageGeneration.request.completed',
         message: 'Image generation request completed',
@@ -1835,7 +1876,7 @@ const createImageGenerationModelService = ({
       })
       return result
     } catch (error) {
-      recordLog({
+      recordRequestLog({
         level: 'error',
         event: 'imageGeneration.request.failed',
         message: 'Image generation request failed',

@@ -29,6 +29,8 @@ test('candidate store writes atomic hash-verified relative asset records', () =>
       dispatchIndex: 1,
       provider: 'openai-compatible',
       model: 'image-model',
+      requestId: 'provider-request-1',
+      traceContext: { runId: 'run-1', actionId: 'waving', stage: 'action-candidate', candidateId: 'candidate-1' },
       artifacts: [{ role: 'raw-sheet', path: assetPath, sha256: sha256(assetPath) }],
       qa: { ok: false, failures: ['cell-edge-contact'] },
       gate: { ok: false, outcome: 'repair', failures: ['visual-score-overall-below-minimum'] },
@@ -39,6 +41,8 @@ test('candidate store writes atomic hash-verified relative asset records', () =>
   assert.equal(record.relativePath, 'runs/run-1/candidates/action-waving/candidate-1/candidate.json')
   assert.equal(record.candidate.artifacts[0].relativePath, 'runs/run-1/raw.png')
   assert.equal(record.candidate.gate.outcome, 'repair')
+  assert.equal(record.candidate.requestId, 'provider-request-1')
+  assert.equal(record.candidate.traceContext.actionId, 'waving')
   const stored = fs.readFileSync(path.join(dataDir, record.relativePath), 'utf8')
   assert.equal(stored.includes(dataDir), false)
   assert.equal(stored.includes('sk-private'), false)

@@ -3,6 +3,7 @@ const path = require('node:path')
 const crypto = require('node:crypto')
 
 const CHECKPOINT_VERSION = 1
+const SAFE_REQUEST_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9:_-]{0,127}$/
 
 const checkpointPath = ({ dataDir, runId }) => path.join(dataDir, 'runs', runId, 'full-pet-action-checkpoints.json')
 
@@ -25,12 +26,16 @@ const ensureDataRelativePath = (dataDir, filePath) => {
 }
 
 const sha256File = (filePath) => crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex')
+const normalizeRequestIds = (value) => Array.isArray(value)
+  ? [...new Set(value.map((entry) => String(entry || '').trim()).filter((entry) => SAFE_REQUEST_ID_PATTERN.test(entry)))].slice(0, 16)
+  : []
 
 const normalizeResult = ({ dataDir, result }) => {
   const normalized = {
     actionId: result.actionId,
     ok: result.ok === true,
     outputCount: Number(result.outputCount || 0),
+    ...(Array.isArray(result.requestIds) ? { requestIds: normalizeRequestIds(result.requestIds) } : {}),
     ...(result.model ? { model: result.model } : {}),
     ...(Array.isArray(result.modelAttempts) ? { modelAttempts: result.modelAttempts } : {}),
     ...(Array.isArray(result.failureConditions) ? { failureConditions: result.failureConditions } : {}),

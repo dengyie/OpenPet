@@ -159,13 +159,52 @@ test('quality-first host runtime reuses a five-way-bound action checkpoint witho
       run: { runId, input: { referenceImage: { relativePath: sourceRelativePath } } },
       planOverride: plan
     })
-    await assert.rejects(() => corruptedRuntime.runAction({ actionId: 'idle', canonical }), /OpenPet bridge is not available/)
+    const failed = await corruptedRuntime.runAction({ actionId: 'idle', canonical })
+    assert.equal(failed.ok, false)
+    assert.equal(failed.failureCode, 'action_candidate_diversity_insufficient')
   } finally {
     if (previousUrl == null) delete process.env.OPENPET_BRIDGE_URL
     else process.env.OPENPET_BRIDGE_URL = previousUrl
     if (previousToken == null) delete process.env.OPENPET_BRIDGE_TOKEN
     else process.env.OPENPET_BRIDGE_TOKEN = previousToken
   }
+})
+
+test('quality-first host runtime persists Provider request ids for failed action candidates', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-quality-first-failed-evidence-'))
+  const runId = 'run-failed-evidence'
+  const sourceRelativePath = `runs/${runId}/inputs/reference.png`
+  fs.mkdirSync(path.dirname(path.join(dataDir, sourceRelativePath)), { recursive: true })
+  await sharp({ create: { width: 192, height: 208, channels: 4, background: { r: 80, g: 120, b: 160, alpha: 1 } } }).png().toFile(path.join(dataDir, sourceRelativePath))
+  const plan = createSpriteAssetPlan({
+    version: 1,
+    revision: 1,
+    character: { assetClass: 'grounded-compact-character' },
+    actions: [{ actionId: 'idle' }]
+  })
+  const runtime = await createQualityFirstHostRuntime({
+    dataDir,
+    run: { runId, input: { referenceImage: { relativePath: sourceRelativePath } } },
+    planOverride: plan
+  })
+  await runtime.persistActionResult({
+    actionId: 'idle',
+    canonical: { sha256: 'a'.repeat(64) },
+    profile: { hash: 'p'.repeat(64) },
+    result: {
+      ok: false,
+      actionId: 'idle',
+      failureCode: 'quality_gate_failed',
+      candidates: [{
+        candidateId: 'candidate-1',
+        requestId: 'provider-request-failed-1',
+        modelAttempts: [{ model: 'gpt-image-2', ok: true, requestId: 'provider-request-failed-1' }]
+      }]
+    }
+  })
+  const checkpoint = readActionCheckpoints({ dataDir, runId }).actions.idle
+  assert.deepEqual(checkpoint.requestIds, ['provider-request-failed-1'])
+  assert.deepEqual(checkpoint.generationStages[0].requestIds, ['provider-request-failed-1'])
 })
 
 test('quality-first recovery bundle retains every run asset with relative paths and hashes', async () => {
