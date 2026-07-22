@@ -340,6 +340,48 @@ const createHatchPetAgentService = ({
     }
   }
 
+  const getGenerationReadiness = () => {
+    const aiConfig = getStoredAiConfig()
+    const stored = getStoredConfig(aiConfig)
+    const effective = getEffectiveCompletionConfig(aiConfig)
+    const base = {
+      enabled: stored.enabled === true,
+      configSource: normalizeText(effective.source, 80),
+      provider: normalizeText(effective.provider, 160),
+      model: normalizeText(effective.model, 160)
+    }
+    if (!base.enabled) {
+      return {
+        ok: false,
+        code: 'hatch_pet_disabled',
+        message: 'Hatch-pet Agent 未启用',
+        ...base
+      }
+    }
+    if (!base.provider || !base.model) {
+      return {
+        ok: false,
+        code: 'hatch_pet_model_missing',
+        message: 'Hatch-pet Agent 的 Provider 或模型未配置',
+        ...base
+      }
+    }
+    if (!hasEffectiveApiKey(effective)) {
+      return {
+        ok: false,
+        code: 'hatch_pet_api_key_missing',
+        message: 'Hatch-pet Agent 的有效模型 API key 未配置',
+        ...base
+      }
+    }
+    return {
+      ok: true,
+      code: 'hatch_pet_ready',
+      message: 'Hatch-pet Agent 配置已就绪',
+      ...base
+    }
+  }
+
   const saveConfig = (partialConfig = {}) => {
     settingsService.update((settings) => {
       const currentAi = isPlainObject(settings.ai) ? settings.ai : {}
@@ -441,6 +483,20 @@ const createHatchPetAgentService = ({
         model: completionConfig.model,
         elapsedMs: Date.now() - startedAt
       }
+    }
+  }
+
+  const checkGenerationCapability = async () => {
+    const readiness = getGenerationReadiness()
+    if (!readiness.ok) return readiness
+    const capability = await checkCapability()
+    return {
+      ...readiness,
+      ...capability,
+      enabled: readiness.enabled,
+      configSource: readiness.configSource,
+      provider: normalizeText(capability.provider || readiness.provider, 160),
+      model: normalizeText(capability.model || readiness.model, 160)
     }
   }
 
@@ -871,10 +927,12 @@ const createHatchPetAgentService = ({
 
   return {
     getConfig,
+    getGenerationReadiness,
     saveConfig,
     saveApiKey,
     clearApiKey,
     checkCapability,
+    checkGenerationCapability,
     createShadowDecision,
     evaluateSprite,
     planSprite,

@@ -16,14 +16,15 @@ const createHarness = ({ enabled = true, configMode = 'follow-chat', completions
   const calls = []
   const dataDir = suppliedDataDir || fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-hatch-service-'))
   const queue = [...completions]
+  let secretReads = 0
   const service = createHatchPetAgentService({
     aiService: { completeStructuredTool: async (request) => { calls.push(request); const next = queue.shift(); if (next instanceof Error) throw next; return next } },
     settingsService: { get: () => settings, update: (updater) => { settings = updater(settings); return settings } },
-    secretService: { getSecretValue: () => secret, setSecret: () => {}, deleteSecret: () => {} },
+    secretService: { getSecretValue: () => { secretReads += 1; return secret }, setSecret: () => {}, deleteSecret: () => {} },
     pluginService: { getPluginCreatorDataDir: () => dataDir },
     idFactory: () => 'decision-1', now: () => '2026-07-15T00:00:00.000Z'
   })
-  return { service, calls, dataDir, getSettings: () => settings }
+  return { service, calls, dataDir, getSettings: () => settings, getSecretReads: () => secretReads }
 }
 
 test('disabled hatch-pet performs no model work and creates no run artifacts', async () => {
@@ -32,6 +33,58 @@ test('disabled hatch-pet performs no model work and creates no run artifacts', a
   assert.equal(result.status, 'disabled')
   assert.equal(h.calls.length, 0)
   assert.equal(fs.existsSync(path.join(h.dataDir, 'runs')), false)
+})
+
+test('generation readiness rejects a disabled hatch-pet agent without model work', async () => {
+  const h = createHarness({ enabled: false })
+
+  assert.deepEqual(h.service.getGenerationReadiness(), {
+    ok: false,
+    code: 'hatch_pet_disabled',
+    message: 'Hatch-pet Agent 未启用',
+    enabled: false,
+    configSource: 'chat-fallback',
+    provider: 'openai-compatible',
+    model: 'chat-model'
+  })
+  assert.deepEqual(await h.service.checkGenerationCapability(), h.service.getGenerationReadiness())
+  assert.equal(h.calls.length, 0)
+  assert.equal(h.getSecretReads(), 0)
+})
+
+test('generation readiness rejects a missing effective hatch-pet key', async () => {
+  const h = createHarness({ secret: '' })
+  const readiness = h.service.getGenerationReadiness()
+
+  assert.equal(readiness.ok, false)
+  assert.equal(readiness.code, 'hatch_pet_api_key_missing')
+  assert.equal(readiness.enabled, true)
+  assert.equal(readiness.configSource, 'chat-fallback')
+  assert.equal(readiness.provider, 'openai-compatible')
+  assert.equal(readiness.model, 'chat-model')
+  assert.equal(h.calls.length, 0)
+})
+
+test('generation capability probes the configured follow-chat model only after static readiness passes', async () => {
+  const h = createHarness({
+    completions: [{
+      arguments: { schemaVersion: 1, supported: true },
+      provider: 'openai-compatible',
+      model: 'chat-model',
+      elapsedMs: 4
+    }]
+  })
+
+  const readiness = h.service.getGenerationReadiness()
+  assert.equal(readiness.ok, true)
+  assert.equal(readiness.code, 'hatch_pet_ready')
+
+  const capability = await h.service.checkGenerationCapability()
+  assert.equal(capability.ok, true)
+  assert.equal(capability.code, 'ok')
+  assert.equal(capability.provider, 'openai-compatible')
+  assert.equal(capability.model, 'chat-model')
+  assert.equal(h.calls.length, 1)
 })
 
 test('shadow planning is stateless text-only and preserves ordinary chat state', async () => {

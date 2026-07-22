@@ -347,8 +347,17 @@ test.describe('Control Center smoke', () => {
     await expect(generate).toBeDisabled()
     await expect(readiness).toContainText('填写角色名称')
     await expect(readiness).toContainText('选择参考图')
+    await expect(readiness).toContainText('Hatch-pet Agent 未启用')
+
+    await page.getByRole('button', { name: 'AI' }).click()
+    await page.getByLabel('聊天 API Key').fill('demo-readiness-key')
+    await page.getByRole('button', { name: '保存聊天密钥' }).click()
+    await page.getByRole('switch', { name: 'Enable Hatch Pet Agent' }).click()
+    await page.getByRole('button', { name: '保存 Agent 配置' }).click()
+    await page.getByRole('button', { name: 'Create' }).click()
 
     await page.getByLabel('Character name').fill('Readiness Cat')
+    await expect(readiness).not.toContainText('Hatch-pet Agent 未启用')
     await expect(readiness).not.toContainText('填写角色名称')
     await expect(readiness).toContainText('选择参考图')
 
@@ -360,7 +369,9 @@ test.describe('Control Center smoke', () => {
   test('blocks multi-view reference material in the demo Create flow with explicit guidance', async ({ page }) => {
     await page.addInitScript(() => {
       window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
-        creatorReferencePickerPath: '/demo/creator/全面.png'
+        creatorReferencePickerPath: '/demo/creator/全面.png',
+        aiConfig: { hasApiKey: true },
+        hatchPetAgentConfig: { enabled: true, configMode: 'follow-chat' }
       }))
     })
 

@@ -67,6 +67,7 @@ const formatWorkflowState = (state: CreatorWorkflowResult['state']) => {
   if (state === 'awaiting-identity-review') return '等待身份确认'
   if (state === 'recovery-required') return '需要资产恢复'
   if (state === 'provider-not-ready') return 'Provider 未就绪'
+  if (state === 'hatch-pet-not-ready') return '生成前置检查失败'
   if (state === 'review-required') return '需要复查'
   if (state === 'preview-ready') return '预览就绪'
   if (state === 'import-failed') return '导入失败'
@@ -696,6 +697,11 @@ const ResultCard = ({
       {result.state === 'generating' ? (
         <span className="creator-result-cta">生成进行中，下方会同步阶段与动作成败。</span>
       ) : null}
+      {result.state === 'hatch-pet-not-ready' ? (
+        <span className="creator-result-cta" data-testid="creator-guide-hatch-pet-preflight">
+          未创建生成任务，也未产生图片费用。请到 AI -&gt; Hatch Pet Agent 修复配置或 capability 检查后重试。
+        </span>
+      ) : null}
       {result.state === 'review-required' ? (
         <span className="creator-result-cta" data-testid="creator-guide-review">
           建议：先导入可用动作 → 审查坏资产（对照参考身份/失败帧）→ 一键重生成红项。桌宠预览仅在动作已导入后可用。
@@ -851,6 +857,7 @@ export function CreatorPane({
 }: CreatorPaneProps) {
   const providerReady = creatorState.provider.ready
   const providerCheckDelayed = !providerReady && creatorState.provider.code === 'health_check_timeout'
+  const hatchPetReady = creatorState.hatchPetAgent.ok
   const hasEditableReference = Boolean(creatorState.editableReference)
 
   return (
@@ -894,6 +901,24 @@ export function CreatorPane({
           <span><strong>Code</strong> {creatorState.provider.code || '-'}</span>
         </div>
       </div>
+
+      {mode === 'new-character' ? (
+        <div className={`provider-feedback ${hatchPetReady ? 'ok' : 'error'}`} data-testid="creator-hatch-pet-readiness">
+          <strong>{hatchPetReady ? 'Hatch Pet Agent ready' : 'Hatch Pet Agent not ready'}</strong>
+          <span>{creatorState.hatchPetAgent.message || (hatchPetReady
+            ? '质量优先角色规划与评价模型已就绪。'
+            : '请到 AI -> Hatch Pet Agent 开启并保存可用配置。')}</span>
+          {!hatchPetReady ? (
+            <span>生成角色需要 Hatch Pet Agent；请到 AI -&gt; Hatch Pet Agent 开启 Agent，并确认 Follow chat 或 Dedicated 模型支持结构化工具。单动作生成不依赖此项。</span>
+          ) : null}
+          <div className="creator-result-grid">
+            <span><strong>Config</strong> {creatorState.hatchPetAgent.configSource || '-'}</span>
+            <span><strong>Provider</strong> {creatorState.hatchPetAgent.provider || '-'}</span>
+            <span><strong>Model</strong> {creatorState.hatchPetAgent.model || '-'}</span>
+            <span><strong>Code</strong> {creatorState.hatchPetAgent.code || '-'}</span>
+          </div>
+        </div>
+      ) : null}
 
       {!creatorStudioReady ? (
         <div className={`provider-feedback ${creatorState.dashboard.available ? '' : 'error'}`.trim()} data-testid="creator-workflow-status">

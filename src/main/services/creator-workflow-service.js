@@ -216,6 +216,16 @@ const createProviderView = ({ config = {}, health = {} }) => {
   }
 }
 
+const createHatchPetReadinessView = (readiness = {}) => ({
+  ok: readiness?.ok === true,
+  code: normalizeText(readiness?.code).slice(0, 80),
+  message: normalizeText(readiness?.message).slice(0, 240),
+  enabled: readiness?.enabled === true,
+  configSource: normalizeText(readiness?.configSource).slice(0, 80),
+  provider: normalizeText(readiness?.provider).slice(0, 160),
+  model: normalizeText(readiness?.model).slice(0, 160)
+})
+
 const getCreatorVerifiedModels = (config = {}) => {
   const policy = config?.creatorWorkflowModelPolicy
   if (!policy || !Array.isArray(policy.verifiedModels)) return null
@@ -255,6 +265,23 @@ const createProviderBlockedMessage = (readiness = {}) => {
     return '图片 Provider 配置刚刚发生变化，请重新发起生成'
   }
   return '请先到 AI -> 模型 Provider -> 图片模型 配置并保存可用模型，然后再使用生成流程'
+}
+
+const createHatchPetBlockedMessage = (readiness = {}) => {
+  const code = normalizeText(readiness.code)
+  if (code === 'hatch_pet_disabled') {
+    return '请先到 AI -> Hatch Pet Agent 开启 Agent 并保存配置，然后再生成角色'
+  }
+  if (code === 'hatch_pet_api_key_missing') {
+    return 'Hatch Pet Agent 的有效模型 API key 未配置；请到 AI -> Hatch Pet Agent 保存 Follow chat 或 Dedicated 模型配置'
+  }
+  if (code === 'hatch_pet_model_missing') {
+    return 'Hatch Pet Agent 的 Provider 或模型未配置；请到 AI -> Hatch Pet Agent 完成配置'
+  }
+  if (code === 'hatch_pet_service_unavailable') {
+    return 'Hatch Pet Agent 服务不可用，请重启 OpenPet 后再试'
+  }
+  return normalizeText(readiness.message) || 'Hatch Pet Agent 尚未通过生成前置检查，请到 AI -> Hatch Pet Agent 查看配置'
 }
 
 const createRunView = ({
@@ -313,12 +340,16 @@ const createWorkflowResult = ({
   failedActionIds = null,
   omittedActionIds = null,
   degradedActionIds = null,
-  importNotes = ''
+  importNotes = '',
+  hatchPetAgent = null
 }) => finalizeWorkflowResult({
   ok: true,
   state,
   code: normalizeText(code),
   message: normalizeText(message),
+  hatchPetAgent: hatchPetAgent && typeof hatchPetAgent === 'object'
+    ? createHatchPetReadinessView(hatchPetAgent)
+    : null,
   run,
   reference,
   activePet,
@@ -1900,6 +1931,48 @@ const createCreatorWorkflowService = ({
     }
   }
 
+  const getHatchPetStaticReadiness = () => {
+    if (!hatchPetAgentService || typeof hatchPetAgentService.getGenerationReadiness !== 'function') {
+      return {
+        ok: false,
+        code: 'hatch_pet_service_unavailable',
+        message: 'Hatch Pet Agent readiness is unavailable'
+      }
+    }
+    try {
+      return hatchPetAgentService.getGenerationReadiness()
+    } catch (error) {
+      return {
+        ok: false,
+        code: 'hatch_pet_service_unavailable',
+        message: normalizeText(error?.message || 'Hatch Pet Agent readiness check failed')
+      }
+    }
+  }
+
+  const checkHatchPetGenerationCapability = async () => {
+    const staticReadiness = getHatchPetStaticReadiness()
+    if (!staticReadiness || staticReadiness.ok !== true) return staticReadiness
+    if (typeof hatchPetAgentService.checkGenerationCapability !== 'function') {
+      return {
+        ...staticReadiness,
+        ok: false,
+        code: 'hatch_pet_service_unavailable',
+        message: 'Hatch Pet Agent capability check is unavailable'
+      }
+    }
+    try {
+      return await hatchPetAgentService.checkGenerationCapability()
+    } catch (error) {
+      return {
+        ...staticReadiness,
+        ok: false,
+        code: 'hatch_pet_capability_check_failed',
+        message: normalizeText(error?.message || 'Hatch Pet Agent capability check failed')
+      }
+    }
+  }
+
   const getState = async () => {
     const plugin = getPluginState()
     const health = await getProviderHealth()
@@ -1910,6 +1983,7 @@ const createCreatorWorkflowService = ({
         config,
         health
       }),
+      hatchPetAgent: createHatchPetReadinessView(getHatchPetStaticReadiness()),
       editableTarget: createEditableTargetView(actionService.getConfig()),
       editableReference: creatorReferenceService.getReference({
         targetType: EDITABLE_TARGET_TYPE,
@@ -2069,17 +2143,13 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
     task,
     payload,
     referenceTarget,
+    prepareReference = null,
     isFullPet = false
   }) => {
     const requestId = idFactory()
     const startedAt = Date.now()
     const plugin = assertPluginReady()
-    const health = await getProviderHealth()
     const providerConfig = imageGenerationModelService.getConfig()
-    const providerReadiness = createCreatorProviderReadiness({
-      config: providerConfig,
-      health
-    })
     recordLog({
       level: 'info',
       event: 'creator.workflow.started',
@@ -2091,6 +2161,35 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
         providerModel: normalizeText(providerConfig?.model),
         serviceStatus: getPluginServiceRuntimeStatus(plugin, CREATOR_STUDIO_SERVICE_ID)
       }
+    })
+
+    const hatchPetStaticReadiness = isFullPet ? getHatchPetStaticReadiness() : null
+    if (isFullPet && hatchPetStaticReadiness?.ok !== true) {
+      recordLog({
+        level: 'error',
+        event: 'creator.workflow.blocked',
+        message: 'Creator workflow blocked by Hatch-pet Agent readiness',
+        details: {
+          requestId,
+          mode,
+          hatchPetCode: normalizeText(hatchPetStaticReadiness.code),
+          hatchPetMessage: sanitizeLogText(createHatchPetBlockedMessage(hatchPetStaticReadiness), { maxChars: 240 })
+        }
+      })
+      const result = createWorkflowResult({
+        state: 'hatch-pet-not-ready',
+        code: normalizeText(hatchPetStaticReadiness.code) || 'hatch_pet_not_ready',
+        message: createHatchPetBlockedMessage(hatchPetStaticReadiness),
+        hatchPetAgent: hatchPetStaticReadiness
+      })
+      setLastRun(result.run)
+      return result
+    }
+
+    const health = await getProviderHealth()
+    const providerReadiness = createCreatorProviderReadiness({
+      config: providerConfig,
+      health
     })
     if (!providerReadiness.ok) {
       recordLog({
@@ -2111,6 +2210,41 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
       })
       setLastRun(result.run)
       return result
+    }
+
+    const hatchPetCapability = isFullPet ? await checkHatchPetGenerationCapability() : null
+    if (isFullPet && hatchPetCapability?.ok !== true) {
+      recordLog({
+        level: 'error',
+        event: 'creator.workflow.blocked',
+        message: 'Creator workflow blocked by Hatch-pet Agent capability',
+        details: {
+          requestId,
+          mode,
+          hatchPetCode: normalizeText(hatchPetCapability.code),
+          hatchPetMessage: sanitizeLogText(hatchPetCapability.message || '', { maxChars: 240 })
+        }
+      })
+      const result = createWorkflowResult({
+        state: 'hatch-pet-not-ready',
+        code: normalizeText(hatchPetCapability.code) || 'hatch_pet_capability_unavailable',
+        message: createHatchPetBlockedMessage(hatchPetCapability),
+        hatchPetAgent: hatchPetCapability
+      })
+      setLastRun(result.run)
+      return result
+    }
+
+    if (typeof prepareReference === 'function') {
+      try {
+        await prepareReference()
+      } catch (error) {
+        return createWorkflowResult({
+          state: 'missing-input',
+          code: 'invalid_reference_image',
+          message: error?.message || '参考图片不可用'
+        })
+      }
     }
 
     const pluginDataDir = pluginService.getPluginCreatorDataDir(CREATOR_STUDIO_PLUGIN_ID)
@@ -2435,11 +2569,6 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
         if (inspection && inspection.defaultPathEligible === false) {
           return createUnsupportedReferenceImageResult(inspection.message)
         }
-        await creatorReferenceService.bindReference({
-          targetType: 'pet-pack',
-          targetId: petId,
-          referenceToken: normalizedReferenceImageToken
-        })
       } catch (error) {
         return createWorkflowResult({
           state: 'missing-input',
@@ -2460,6 +2589,11 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
           targetType: 'pet-pack',
           targetId: petId
         },
+        prepareReference: () => creatorReferenceService.bindReference({
+          targetType: 'pet-pack',
+          targetId: petId,
+          referenceToken: normalizedReferenceImageToken
+        }),
         isFullPet: true
       })
     })

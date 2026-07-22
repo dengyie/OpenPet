@@ -1903,6 +1903,16 @@ export interface CreatorProviderStateViewState {
   model: string
 }
 
+export interface CreatorHatchPetReadinessViewState {
+  ok: boolean
+  code: string
+  message: string
+  enabled: boolean
+  configSource: string
+  provider: string
+  model: string
+}
+
 export interface CreatorDashboardAvailabilityViewState {
   available: boolean
   pluginId: string
@@ -1914,6 +1924,7 @@ export interface CreatorDashboardAvailabilityViewState {
 export type CreatorWorkflowState =
   | 'missing-input'
   | 'provider-not-ready'
+  | 'hatch-pet-not-ready'
   | 'generating'
   | 'awaiting-identity-review'
   | 'recovery-required'
@@ -1976,6 +1987,7 @@ export interface CreatorBasicActionCoverageViewState {
 
 export interface CreatorStateViewState extends OkResponse {
   provider: CreatorProviderStateViewState
+  hatchPetAgent: CreatorHatchPetReadinessViewState
   editableTarget: CreatorEditableTargetViewState
   editableReference: CreatorReferenceViewState | null
   lastRun: CreatorLastRunViewState | null
@@ -2252,6 +2264,7 @@ export interface CreatorWorkflowResult extends OkResponse {
   state: CreatorWorkflowState
   code: string
   message: string
+  hatchPetAgent?: CreatorHatchPetReadinessViewState | null
   run: CreatorLastRunViewState | null
   reference?: CreatorReferenceViewState | null
   activePet?: PetPackSummary | null

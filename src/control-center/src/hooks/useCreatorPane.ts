@@ -79,6 +79,7 @@ const formatWorkflowStateFallback = (state: CreatorWorkflowResult['state'] | str
   if (state === 'completed') return '已完成'
   if (state === 'generating') return '进行中'
   if (state === 'provider-not-ready') return 'Provider 未就绪'
+  if (state === 'hatch-pet-not-ready') return '生成前置检查失败'
   if (state === 'review-required') return '需要复查'
   if (state === 'preview-ready') return '预览就绪'
   if (state === 'import-failed') return '导入失败'
@@ -443,8 +444,12 @@ export function useCreatorPane(active: boolean) {
   const providerBlocker = creatorState.provider.code === 'health_check_timeout'
     ? '图片 Provider 检查超时，请稍后重试'
     : '图片 Provider 未就绪'
+  const hatchPetBlocker = creatorState.hatchPetAgent.message
+    ? `${creatorState.hatchPetAgent.message}（请到 AI -> Hatch Pet Agent 检查并保存配置）`
+    : 'Hatch Pet Agent 未就绪（请到 AI -> Hatch Pet Agent 检查并保存配置）'
   const newCharacterBlockers = [
     ...(!creatorState.provider.ready ? [providerBlocker] : []),
+    ...(!creatorState.hatchPetAgent.ok ? [hatchPetBlocker] : []),
     ...(!creatorStudioPluginReady ? ['Creator Studio 插件未就绪'] : []),
     ...(newCharacterDraft.characterName.trim().length === 0 ? ['填写角色名称'] : []),
     ...(newCharacterDraft.referenceImageToken.trim().length === 0 ? ['选择参考图'] : []),

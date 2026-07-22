@@ -15,13 +15,13 @@ test('creator pane copy explains internal anchor preparation instead of rejectin
   assert.match(source, /上传的图片仍是身份最高优先级/)
 })
 
-test('creator pane exposes only bounded hatch-pet shadow fields and non-authoritative copy', () => {
+test('creator pane exposes only bounded hatch-pet diagnostics fields', () => {
   const source = fs.readFileSync(creatorPanePath, 'utf-8')
   assert.match(source, /hatchPetAgent\.mode/)
   assert.match(source, /hatchPetAgent\.status/)
   assert.match(source, /hatchPetAgent\.decision/)
   assert.match(source, /hatchPetAgent\.decisionId/)
-  assert.doesNotMatch(source, /hatchPetAgent\.(raw|message|path|output)/)
+  assert.doesNotMatch(source, /hatchPetAgent\.(raw|path|output)/)
 })
 
 test('creator pane renders workflow stage and action progress feedback', () => {
@@ -118,4 +118,17 @@ test('creator pane distinguishes a slow Provider probe from missing configuratio
   assert.match(source, /Image Provider check delayed/)
   assert.match(source, /Provider 响应较慢/)
   assert.match(hook, /图片 Provider 检查超时，请稍后重试/)
+})
+
+test('creator pane blocks only full-pet creation on Hatch-pet readiness with actionable guidance', () => {
+  const pane = fs.readFileSync(creatorPanePath, 'utf-8')
+  const hook = fs.readFileSync(creatorPaneHookPath, 'utf-8')
+
+  assert.match(pane, /creator-hatch-pet-readiness/)
+  assert.match(pane, /Hatch Pet Agent not ready/)
+  assert.match(pane, /单动作生成不依赖此项/)
+  assert.match(pane, /未创建生成任务，也未产生图片费用/)
+  assert.match(hook, /!creatorState\.hatchPetAgent\.ok/)
+  assert.match(hook, /newCharacterBlockers/)
+  assert.doesNotMatch(hook, /existingActionBlockers[\s\S]{0,300}!creatorState\.hatchPetAgent\.ok/)
 })

@@ -24,6 +24,27 @@ const OFFICIAL_FULL_PET_ACTION_IDS = [
   'review'
 ]
 
+const createReadyHatchPetAgentService = () => ({
+  getGenerationReadiness: () => ({
+    ok: true,
+    code: 'hatch_pet_ready',
+    message: 'ready',
+    enabled: true,
+    configSource: 'chat-fallback',
+    provider: 'openai-compatible',
+    model: 'chat-model'
+  }),
+  checkGenerationCapability: async () => ({
+    ok: true,
+    code: 'ok',
+    message: 'capable',
+    enabled: true,
+    configSource: 'chat-fallback',
+    provider: 'openai-compatible',
+    model: 'chat-model'
+  })
+})
+
 const createPluginView = ({
   enabled = true,
   runnable = true,
@@ -65,6 +86,7 @@ const createHealthCoordinationFixture = ({
       }
     }
   }),
+  hatchPetAgentService = createReadyHatchPetAgentService(),
   nowMs = () => Date.now()
 } = {}) => {
   const reference = {
@@ -80,6 +102,7 @@ const createHealthCoordinationFixture = ({
     updatedAt: '2026-07-22T00:00:00.000Z'
   }
   const commandCalls = []
+  const referenceBindCalls = []
   const service = createCreatorWorkflowService({
     pluginService: {
       listPlugins: () => [createPluginView()],
@@ -96,12 +119,16 @@ const createHealthCoordinationFixture = ({
     },
     creatorReferenceService: {
       getReference: () => reference,
-      bindReference: async () => ({ replaced: false, reference }),
+      bindReference: async (payload) => {
+        referenceBindCalls.push(payload)
+        return { replaced: false, reference }
+      },
       copyReferenceIntoRun: () => ({})
     },
+    hatchPetAgentService,
     nowMs
   })
-  return { service, commandCalls }
+  return { service, commandCalls, referenceBindCalls }
 }
 
 const createFixedWorkflowHarness = ({ createShadowDecision } = {}) => {
@@ -160,7 +187,11 @@ const createFixedWorkflowHarness = ({ createShadowDecision } = {}) => {
       bindReference: async () => ({ replaced: false, reference }),
       copyReferenceIntoRun: () => ({})
     },
-    hatchPetAgentService: { createShadowDecision },
+    hatchPetAgentService: {
+      getGenerationReadiness: () => ({ ok: true, code: 'hatch_pet_ready', message: 'ready' }),
+      checkGenerationCapability: async () => ({ ok: true, code: 'ok', message: 'capable' }),
+      createShadowDecision
+    },
     appLogService: { record: (entry) => logs.push(entry) },
     idFactory: () => 'shadow-workflow-request'
   })
@@ -552,6 +583,119 @@ test('creator reports health timeout as temporary latency instead of missing con
   assert.match(result.message, /响应较慢|检查超时/)
   assert.doesNotMatch(result.message, /配置并保存可用模型/)
   assert.equal(commandCalls.length, 0)
+})
+
+test('creator blocks a disabled Hatch-pet Agent before drafting a full-pet run', async () => {
+  let capabilityChecks = 0
+  const { service, commandCalls, referenceBindCalls } = createHealthCoordinationFixture({
+    hatchPetAgentService: {
+      getGenerationReadiness: () => ({
+        ok: false,
+        code: 'hatch_pet_disabled',
+        message: 'Hatch-pet Agent 未启用',
+        enabled: false,
+        configSource: 'chat-fallback',
+        provider: 'openai-compatible',
+        model: 'chat-model'
+      }),
+      checkGenerationCapability: async () => {
+        capabilityChecks += 1
+        return { ok: true, code: 'ok', message: 'capable' }
+      }
+    }
+  })
+
+  const result = await service.generateNewCharacter({
+    characterName: 'Blocked Pet',
+    referenceImageToken: 'token-reference'
+  })
+
+  assert.equal(result.state, 'hatch-pet-not-ready')
+  assert.equal(result.code, 'hatch_pet_disabled')
+  assert.match(result.message, /开启 Agent/)
+  assert.equal(capabilityChecks, 0)
+  assert.deepEqual(commandCalls, [])
+  assert.deepEqual(referenceBindCalls, [])
+})
+
+test('creator blocks a failed Hatch-pet capability probe before drafting a full-pet run', async () => {
+  let capabilityChecks = 0
+  const { service, commandCalls, referenceBindCalls } = createHealthCoordinationFixture({
+    hatchPetAgentService: {
+      getGenerationReadiness: () => ({
+        ok: true,
+        code: 'hatch_pet_ready',
+        message: 'ready',
+        enabled: true,
+        configSource: 'chat-fallback',
+        provider: 'openai-compatible',
+        model: 'chat-model'
+      }),
+      checkGenerationCapability: async () => {
+        capabilityChecks += 1
+        return {
+          ok: false,
+          code: 'structured_tool_not_supported',
+          message: 'Configured model did not confirm structured tool capability',
+          enabled: true,
+          configSource: 'chat-fallback',
+          provider: 'openai-compatible',
+          model: 'chat-model'
+        }
+      }
+    }
+  })
+
+  const result = await service.generateNewCharacter({
+    characterName: 'Unsupported Planner Pet',
+    referenceImageToken: 'token-reference'
+  })
+
+  assert.equal(result.state, 'hatch-pet-not-ready')
+  assert.equal(result.code, 'structured_tool_not_supported')
+  assert.equal(capabilityChecks, 1)
+  assert.deepEqual(commandCalls, [])
+  assert.deepEqual(referenceBindCalls, [])
+})
+
+test('creator drafts a full-pet run only after the Hatch-pet capability probe passes', async () => {
+  let capabilityChecks = 0
+  const { service, commandCalls, referenceBindCalls } = createHealthCoordinationFixture({
+    hatchPetAgentService: {
+      getGenerationReadiness: () => ({ ok: true, code: 'hatch_pet_ready', message: 'ready' }),
+      checkGenerationCapability: async () => {
+        capabilityChecks += 1
+        return { ok: true, code: 'ok', message: 'capable' }
+      }
+    }
+  })
+
+  const result = await service.generateNewCharacter({
+    characterName: 'Ready Pet',
+    referenceImageToken: 'token-reference'
+  })
+
+  assert.equal(result.state, 'preview-ready')
+  assert.equal(capabilityChecks, 1)
+  assert.deepEqual(commandCalls.map((call) => call[1]), ['draft-task', 'confirm-task', 'run-step'])
+  assert.equal(referenceBindCalls.length, 1)
+})
+
+test('creator keeps single-action generation available when Hatch-pet Agent is disabled', async () => {
+  const { service, commandCalls } = createHealthCoordinationFixture({
+    hatchPetAgentService: {
+      getGenerationReadiness: () => ({ ok: false, code: 'hatch_pet_disabled', message: 'disabled' })
+    }
+  })
+
+  const result = await service.generateExistingAction({
+    actionName: 'spin',
+    motionPrompt: 'spin',
+    referenceImageToken: 'token-reference'
+  })
+
+  assert.equal(result.state, 'review-required')
+  assert.deepEqual(commandCalls.map((call) => call[1]), ['draft-task', 'confirm-task', 'run-step'])
 })
 
 test('creator uses a widened default health timeout for Provider probes', async () => {
@@ -1083,7 +1227,8 @@ test('creator workflow service returns preview-ready for new-character output wi
         copyCalls.push(payload)
         return {}
       }
-    }
+    },
+    hatchPetAgentService: createReadyHatchPetAgentService()
   })
 
   const result = await service.generateNewCharacter({
@@ -1218,7 +1363,8 @@ test('creator workflow service forwards official row coverage without leaking ab
       getReference: () => null,
       bindReference: async () => ({ replaced: false, reference: { targetType: 'pet-pack', targetId: 'official-cat' } }),
       copyReferenceIntoRun: () => ({})
-    }
+    },
+    hatchPetAgentService: createReadyHatchPetAgentService()
   })
 
   const result = await service.generateNewCharacter({
@@ -1783,7 +1929,8 @@ test('creator workflow progress polling attaches diagnostics onto lastRun during
       bindReference: async () => ({ replaced: true, reference: { fileName: 'ref.png', updatedAt: '2026-07-19T00:00:00.000Z' } }),
       copyReferenceIntoRun: () => ({}),
       inspectApprovedSource: async () => ({ defaultPathEligible: true })
-    }
+    },
+    hatchPetAgentService: createReadyHatchPetAgentService()
   })
 
   const pending = service.generateNewCharacter({

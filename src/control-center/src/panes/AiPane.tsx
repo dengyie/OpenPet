@@ -1606,14 +1606,14 @@ export function AiPane({
 
       <CollapsibleAiSection
         title="Hatch Pet Agent"
-        note="配置 Creator workflow 的只读 Shadow 建议记录、独立模型和安全预算"
+        note="配置质量优先角色生成所需的规划、评价模型和安全预算"
         defaultOpen
       >
         <div className="provider-capability-card provider-capability-body" data-testid="hatch-pet-agent-card">
           <div className="provider-card-header">
             <div>
               <h3>Hatch Pet Agent</h3>
-              <p>Shadow mode records bounded suggestions for diagnostics and does not alter generation, approval, import, or activation.</p>
+              <p>质量优先角色生成会在创建 run 前检查此模型的结构化工具能力，并用它规划角色和评价候选；关闭或未就绪时不会启动角色生成。人工审批、导入和激活仍由用户明确执行。</p>
             </div>
             <div className="provider-card-actions">
               <button type="button" className="primary" onClick={onSaveHatchPetAgentConfig} disabled={saving || !hatchPetAgentConfigDirty}>
@@ -1636,7 +1636,7 @@ export function AiPane({
             <div className="field-row">
               <div>
                 <div className="field-label">Enabled</div>
-                <div className="field-note">关闭时 Creator workflow 不请求或记录 Hatch Pet Agent shadow decision。</div>
+                <div className="field-note">关闭时质量优先角色生成会在创建 run 前停止；单动作生成仍可独立使用。</div>
               </div>
               <Toggle
                 ariaLabel="Enable Hatch Pet Agent"

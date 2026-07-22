@@ -1832,6 +1832,24 @@ const createDemoHatchPetAgentDiagnostics = (runId: string, decision: string) => 
   }
 }
 
+const createDemoHatchPetReadiness = () => {
+  const config = cloneDemoHatchPetAgentConfig(
+    demoState.hatchPetAgentConfig,
+    demoState.hatchPetAgentHasDedicatedApiKey,
+    demoState.aiConfig
+  )
+  const base = {
+    enabled: config.enabled,
+    configSource: config.configSource,
+    provider: config.effectiveProvider,
+    model: config.effectiveModel
+  }
+  if (!config.enabled) return { ok: false, code: 'hatch_pet_disabled', message: 'Hatch-pet Agent 未启用', ...base }
+  if (!config.effectiveProvider || !config.effectiveModel) return { ok: false, code: 'hatch_pet_model_missing', message: 'Hatch-pet Agent 的 Provider 或模型未配置', ...base }
+  if (!config.hasApiKey) return { ok: false, code: 'hatch_pet_api_key_missing', message: 'Hatch-pet Agent 的有效模型 API key 未配置', ...base }
+  return { ok: true, code: 'hatch_pet_ready', message: 'Hatch-pet Agent 配置已就绪', ...base }
+}
+
 const createDemoCreatorDiagnostics = (runId: string, decision: string) => ({
   runStatus: 'completed',
   currentStep: 'complete',
@@ -1921,6 +1939,7 @@ const createDemoCreatorState = (): CreatorStateViewState => {
       provider: demoState.imageGenerationConfig.provider,
       model: demoState.imageGenerationConfig.model
     },
+    hatchPetAgent: createDemoHatchPetReadiness(),
     editableTarget,
     editableReference,
     lastRun: demoCreatorLastRun,
@@ -4043,16 +4062,31 @@ export const demoControlCenterAPI: ControlCenterApi = {
   pickCreatorReferenceImage: async (): Promise<CreatorReferencePickerResult> => approveDemoCreatorReference(demoState.creatorReferencePickerPath || defaultDemoCreatorReferencePickerPath),
   bindCreatorReference: async ({ targetType, targetId, referenceToken }) => bindDemoCreatorReference({ targetType, targetId, referenceToken }),
   generateCreatorNewCharacter: async (payload: CreatorGenerateNewCharacterRequest): Promise<CreatorWorkflowResult> => {
+    const normalizedReferenceToken = String(payload.referenceImageToken || '').trim()
+    const pendingSourcePath = demoCreatorReferenceSelections.get(normalizedReferenceToken) || ''
+    if (!pendingSourcePath) throw new Error('Demo creator reference token is invalid or already used')
     const targetId = `demo-pack:${String(payload.characterName || 'new-character').trim() || 'new-character'}`
-    const sourcePath = consumeDemoCreatorReferenceSourcePath(payload.referenceImageToken)
     const reference = createDemoCreatorReferenceFromSourcePath({
       targetType: 'pet-pack',
       targetId,
-      sourcePath
+      sourcePath: pendingSourcePath
     })
-    if (isUnsupportedDemoDefaultPathReference(sourcePath) || isUnsupportedDemoDefaultPathReference(reference.fileName)) {
+    if (isUnsupportedDemoDefaultPathReference(pendingSourcePath) || isUnsupportedDemoDefaultPathReference(reference.fileName)) {
       return createUnsupportedDemoCreatorWorkflowResult({ reference })
     }
+    const hatchPetAgent = createDemoHatchPetReadiness()
+    if (!hatchPetAgent.ok) {
+      return {
+        ok: true,
+        state: 'hatch-pet-not-ready',
+        code: hatchPetAgent.code,
+        message: `${hatchPetAgent.message}；请到 AI -> Hatch Pet Agent 完成配置`,
+        run: null,
+        hatchPetAgent
+      }
+    }
+    const sourcePath = consumeDemoCreatorReferenceSourcePath(payload.referenceImageToken)
+    if (sourcePath !== pendingSourcePath) throw new Error('Demo creator reference changed before generation')
     demoCreatorReferences.set(getDemoCreatorReferenceKey('pet-pack', targetId), reference)
     const run = completeDemoCreatorRun({
       state: 'completed',

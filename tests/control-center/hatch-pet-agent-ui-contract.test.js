@@ -13,9 +13,11 @@ test('control center preload exposes exactly six hatch-pet methods through IPC',
   assert.equal((source.match(/HATCH_PET_AGENT_[A-Z_]+:/g) || []).length, 6)
 })
 
-test('AiPane presents fixed shadow settings, budgets, identity checkpoint, and secret reference without secret values', () => {
+test('AiPane presents quality-first Hatch-pet readiness, budgets, identity checkpoint, and secret reference without secret values', () => {
   const source = read('src/control-center/src/panes/AiPane.tsx')
-  assert.match(source, /Shadow mode records bounded suggestions for diagnostics and does not alter generation, approval, import, or activation/)
+  assert.match(source, /质量优先角色生成会在创建 run 前检查此模型的结构化工具能力/)
+  assert.match(source, /关闭或未就绪时不会启动角色生成/)
+  assert.match(source, /人工审批、导入和激活仍由用户明确执行/)
   assert.match(source, /value="Shadow"/)
   assert.match(source, /maxIdentityRegenerations/)
   assert.match(source, /maxActionAttemptsPerAction/)

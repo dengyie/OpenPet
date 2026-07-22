@@ -337,6 +337,15 @@ export const defaultCreatorState = {
     provider: '',
     model: ''
   },
+  hatchPetAgent: {
+    ok: false,
+    code: 'hatch_pet_service_unavailable',
+    message: 'Hatch Pet Agent 服务不可用',
+    enabled: false,
+    configSource: '',
+    provider: '',
+    model: ''
+  },
   editableTarget: {
     targetType: 'editable-action-host',
     targetId: 'legacy-editable-host',
@@ -649,6 +658,10 @@ export const cloneCreatorState = (
   provider: {
     ...defaultCreatorState.provider,
     ...(state?.provider || {})
+  },
+  hatchPetAgent: {
+    ...defaultCreatorState.hatchPetAgent,
+    ...(state?.hatchPetAgent || {})
   },
   editableTarget: {
     ...defaultCreatorState.editableTarget,

@@ -1,6 +1,6 @@
 # Pet Character And Action Generation
 
-> Updated: 2026-07-20
+> Updated: 2026-07-22
 > Owner: `codex/dev8`
 > Status: quality-first replacement implemented; focused development checks passed; independent Provider and visual verification pending
 
@@ -54,6 +54,19 @@ Public Create states include:
 - `completed`: an explicit import completed.
 
 The Create pane polls durable run/checkpoint state during identity acceptance and repairs. It shows stage, current action, candidate counts, pass/fail/omitted state, reason codes, retained assets, prompt evidence, and the next legal user action.
+
+### 2.1 Generation readiness gate
+
+Before a full-pet run is drafted, the Host must establish both of these independent prerequisites:
+
+1. the configured image Provider is healthy and has an eligible image model;
+2. Hatch Pet Agent is enabled, has an effective saved key and model, and passes the bounded structured-tool capability probe.
+
+Static Hatch Pet readiness is exposed to Create using only `ok`, `code`, `message`, `enabled`, `configSource`, `provider`, and `model`. The renderer uses the same snapshot to disable Generate Character and names the exact AI settings destination. The Host repeats the check authoritatively on click; renderer state is never trusted as permission to start.
+
+If either Hatch Pet check fails, the workflow returns `hatch-pet-not-ready` before `draft-task`. It must not create or confirm a run, dispatch an image request, consume a reference token, or report the failure as human review. A capability failure is a generation preflight failure and tells the user to repair the Agent configuration before retrying.
+
+This gate applies to the quality-first full-pet path because its planner and evaluators are required dependencies. The separate legacy single-action path does not call those components and remains available when Hatch Pet Agent is disabled. No path auto-enables the Agent or silently changes the user's model configuration.
 
 ## 3. Entry-point cutover
 
