@@ -10,7 +10,7 @@ const {
   createCanonicalEvaluatorBoard,
   createFinalPackageEvaluatorBoard,
   validateEvaluationRegions
-} = require('../../src/main/services/hatch-pet-sprite-review-board')
+} = require('../../examples/plugins/creator-studio/lib/hatch-pet-sprite-review-board')
 
 const createTempDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-review-board-'))
 const writeColor = (outputPath, color) => sharp({ create: { width: 256, height: 256, channels: 4, background: color } }).png().toFile(outputPath)

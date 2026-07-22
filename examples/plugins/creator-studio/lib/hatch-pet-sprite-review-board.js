@@ -3,7 +3,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const sharp = require('sharp')
 
-const { getSpriteLayout } = require('../../../examples/plugins/creator-studio/lib/action-sheet-layout')
+const { getSpriteLayout } = require('./action-sheet-layout')
 
 const sha256File = (filePath) => crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex')
 

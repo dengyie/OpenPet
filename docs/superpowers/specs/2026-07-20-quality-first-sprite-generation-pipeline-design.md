@@ -840,7 +840,7 @@ Paid assets are retained by default. The run store tracks byte usage before ever
 | `examples/plugins/creator-studio/lib/sprite-candidate-store.js` | Candidate artifacts, hashes, immutable result records, archive/revision handling |
 | `examples/plugins/creator-studio/lib/quality-first-action-runner.js` | Two-candidate pool, repair candidate, selection, checkpoint result |
 | `src/main/services/hatch-pet-sprite-evaluator.js` | One-board visual evaluation schema and validation |
-| `src/main/services/hatch-pet-sprite-review-board.js` | Fixed 2048-pixel evaluator-board geometry, region metadata, hashes, and region-bound output validation |
+| `examples/plugins/creator-studio/lib/hatch-pet-sprite-review-board.js` | Fixed 2048-pixel evaluator-board geometry, region metadata, hashes, and region-bound output validation |
 
 ### 18.2 Existing modules to modify
 

@@ -38,7 +38,7 @@
 | `examples/plugins/creator-studio/lib/action-sheet-layout.js` | Fixed grid mapping, unused cells, square character canvas contract |
 | `examples/plugins/creator-studio/lib/character-anchor-grid.js` | Deterministic repeated canonical anchor sheets |
 | `examples/plugins/creator-studio/lib/action-reference-board.js` | One 1536x1024 Provider conditioning board |
-| `src/main/services/hatch-pet-sprite-review-board.js` | Fixed evaluator boards, region metadata, region-bound output |
+| `examples/plugins/creator-studio/lib/hatch-pet-sprite-review-board.js` | Fixed evaluator boards, region metadata, region-bound output |
 | `examples/plugins/creator-studio/lib/sprite-frame-processor.js` | Exact split, alpha cleanup, reference-guided components, uniform scale/anchor |
 | `examples/plugins/creator-studio/lib/character-scale-profile.js` | Morphology-specific measurements and immutable cross-action profile |
 | `examples/plugins/creator-studio/lib/sprite-candidate-qa.js` | Candidate technical, identity, motion, scale, and semantic checks |
@@ -163,7 +163,7 @@ Run the three focused suites again; expected PASS. Commit: `git add examples/plu
 **Files:**
 - Create: `examples/plugins/creator-studio/lib/character-anchor-grid.js`
 - Create: `examples/plugins/creator-studio/lib/action-reference-board.js`
-- Create: `src/main/services/hatch-pet-sprite-review-board.js`
+- Create: `examples/plugins/creator-studio/lib/hatch-pet-sprite-review-board.js`
 - Test: `tests/examples/creator-studio-character-anchor-grid.test.js`
 - Test: `tests/examples/creator-studio-action-reference-board.test.js`
 - Test: `tests/services/hatch-pet-sprite-review-board.test.js`
@@ -187,7 +187,7 @@ Anchor grids repeat the accepted master into used cells without labels. Provider
 
 - [x] **Step 4: Run focused suites and commit**
 
-Commit: `git add examples/plugins/creator-studio/lib/character-anchor-grid.js examples/plugins/creator-studio/lib/action-reference-board.js src/main/services/hatch-pet-sprite-review-board.js tests/examples/creator-studio-character-anchor-grid.test.js tests/examples/creator-studio-action-reference-board.test.js tests/services/hatch-pet-sprite-review-board.test.js && git commit -m "feat add deterministic sprite reference boards"`
+Commit: `git add examples/plugins/creator-studio/lib/character-anchor-grid.js examples/plugins/creator-studio/lib/action-reference-board.js examples/plugins/creator-studio/lib/hatch-pet-sprite-review-board.js tests/examples/creator-studio-character-anchor-grid.test.js tests/examples/creator-studio-action-reference-board.test.js tests/services/hatch-pet-sprite-review-board.test.js && git commit -m "feat add deterministic sprite reference boards"`
 
 ## Task 4: Implement Reference-Guided Processing And Scale Profiles
 

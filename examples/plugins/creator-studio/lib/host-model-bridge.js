@@ -13,7 +13,11 @@ const { processSpriteSheet } = require('./sprite-frame-processor')
 const { createCharacterScaleProfile, measureBodyMask } = require('./character-scale-profile')
 const { analyzeSpriteCandidate } = require('./sprite-candidate-qa')
 const { createSpriteImageDescriptors } = require('./sprite-image-descriptor')
-const { createFinalPackageEvaluatorBoard } = require('../../../../src/main/services/hatch-pet-sprite-review-board')
+const {
+  createActionEvaluatorBoard,
+  createCanonicalEvaluatorBoard,
+  createFinalPackageEvaluatorBoard
+} = require('./hatch-pet-sprite-review-board')
 const {
   buildActionSpriteReferenceBoard,
   buildAnchorReferenceBoard
@@ -2853,7 +2857,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
     const eligible = pool.candidates.filter((candidate) => candidate.eligible === true)
     if (eligible.length !== 3) return pool
     const evaluatorBoardPath = path.join(dataDir, `runs/${run.runId}/evaluations/canonical-comparison-board.png`)
-    const board = await require('../../../../src/main/services/hatch-pet-sprite-review-board').createCanonicalEvaluatorBoard({
+    const board = await createCanonicalEvaluatorBoard({
       sourcePath: sourceReference.path,
       candidates: eligible,
       outputPath: evaluatorBoardPath
@@ -2971,7 +2975,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
       },
       evaluateCandidate: async (candidate) => {
         const evaluatorBoardPath = path.join(candidate.outputDir, 'evaluator-board.png')
-        const board = await require('../../../../src/main/services/hatch-pet-sprite-review-board').createActionEvaluatorBoard({ sourcePath: sourceReference.path, canonicalPath, candidateFrames: candidate.processed.frames, outputPath: evaluatorBoardPath })
+        const board = await createActionEvaluatorBoard({ sourcePath: sourceReference.path, canonicalPath, candidateFrames: candidate.processed.frames, outputPath: evaluatorBoardPath })
         const evaluation = await requestHatchPetSpriteEvaluation({ runId: run.runId, scope: actionId === 'jumping' ? 'airborne-action' : 'grounded-action', board: { relativePath: path.relative(dataDir, board.path).replace(/\\/g, '/'), sha256: board.sha256, regions: board.regions }, qa: candidate.qa })
         return { evaluation: evaluation.evaluation, gate: evaluation.gate, evaluationEvidenceRelativePath: evaluation.evidenceRelativePath }
       },
