@@ -1,6 +1,6 @@
 # Pet Character And Action Generation
 
-> Updated: 2026-07-22
+> Updated: 2026-07-24
 > Owner: `codex/dev8`
 > Status: quality-first replacement implemented; focused development checks passed; independent Provider and visual verification pending
 
@@ -65,6 +65,8 @@ Before a full-pet run is drafted, the Host must establish both of these independ
 Static Hatch Pet readiness is exposed to Create using only `ok`, `code`, `message`, `enabled`, `configSource`, `provider`, and `model`. The renderer uses the same snapshot to disable Generate Character and names the exact AI settings destination. The Host repeats the check authoritatively on click; renderer state is never trusted as permission to start.
 
 If either Hatch Pet check fails, the workflow returns `hatch-pet-not-ready` before `draft-task`. It must not create or confirm a run, dispatch an image request, consume a reference token, or report the failure as human review. A capability failure is a generation preflight failure and tells the user to repair the Agent configuration before retrying.
+
+The structured-tool capability probe allows 60 seconds per call. A timeout, transport interruption, HTTP 408, or Provider 5xx response receives at most one immediate retry with the same configured model and the same request contract. Other 4xx responses and structurally valid `supported=false` results are not retried. Both attempts failing remains an explicit preflight failure.
 
 This gate applies to the quality-first full-pet path because its planner and evaluators are required dependencies. The separate legacy single-action path does not call those components and remains available when Hatch Pet Agent is disabled. No path auto-enables the Agent or silently changes the user's model configuration.
 
@@ -131,6 +133,8 @@ same-model transport retry      at most one within the operation deadline
 ```
 
 Planner, evaluator, and image Provider HTTP usage is host-owned and persisted under `runs/<runId>/budgets/ledger.json`. Every image bridge call reserves before dispatch and records success or failure afterward, so a same-model 524/transport retry consumes a second Provider-call slot. The Create diagnostics expose only sanitized limits, usage, failures, and remaining counts; plugin-supplied ledgers are not trusted.
+
+Sprite visual evaluation allows 120 seconds per model call because its single review board may be several megabytes. `maxEvaluationAttemptsPerArtifact` is the total call limit for one artifact (default 2, configurable from 1 through 3). Within that limit, a timeout, transport interruption, HTTP 408, or Provider 5xx response may retry with the same model and unchanged request; every attempt consumes an evaluator-call slot. Invalid structured output still receives at most one repair request, even when the artifact limit is 3. Non-transient 4xx responses are never retried, and exhausting the attempt limit fails closed without weakening the visual gate.
 
 ## 6. Canonical identity pool
 

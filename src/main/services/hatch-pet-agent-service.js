@@ -34,6 +34,8 @@ const HATCH_PET_API_KEY_REF = 'ai.hatch-pet'
 const HATCH_PET_DECISION_TOOL_NAME = 'hatch_pet_decision'
 const HATCH_PET_CAPABILITY_TOOL_NAME = 'hatch_pet_capability_check'
 const HATCH_PET_SPRITE_PLAN_TOOL_NAME = 'hatch_pet_sprite_plan'
+const HATCH_PET_CAPABILITY_TIMEOUT_MS = 60000
+const HATCH_PET_CAPABILITY_ATTEMPT_LIMIT = 2
 const SPRITE_PRESET_BY_ACTION = Object.freeze({
   idle: 'idle-subtle-loop-v1',
   'running-right': 'running-right-gait-v1',
@@ -73,6 +75,36 @@ const isInvalidSpriteEvaluationError = (error) => {
     /^Invalid sprite evaluation:/.test(message) ||
     message === 'AI provider did not return required tool call: hatch_pet_sprite_evaluation' ||
     message === 'AI provider returned invalid tool arguments for hatch_pet_sprite_evaluation'
+}
+
+const TRANSIENT_STRUCTURED_PROVIDER_CODES = new Set([
+  'ECONNABORTED',
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'EHOSTUNREACH',
+  'ENETDOWN',
+  'ENETUNREACH',
+  'EPIPE',
+  'ETIMEDOUT',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_SOCKET'
+])
+
+const isTransientStructuredProviderError = (error) => {
+  if (error?.name === 'TimeoutError') return true
+  const providerStatus = Number(error?.providerStatus)
+  if (Number.isFinite(providerStatus) && providerStatus > 0) {
+    return providerStatus === 408 || (providerStatus >= 500 && providerStatus <= 599)
+  }
+  const transportCode = String(error?.cause?.code || error?.code || '').trim().toUpperCase()
+  if (TRANSIENT_STRUCTURED_PROVIDER_CODES.has(transportCode)) return true
+  const message = String(error?.message || error || '').trim().toLowerCase()
+  return message.includes('fetch failed') ||
+    message.includes('connection reset') ||
+    message.includes('socket closed') ||
+    message.includes('network connection') ||
+    message.includes('timed out')
 }
 
 const createInvalidSpritePlanError = (message) => {
@@ -450,40 +482,61 @@ const createHatchPetAgentService = ({
   const checkCapability = async () => {
     const completionConfig = getEffectiveCompletionConfig()
     const startedAt = Date.now()
-    try {
-      const result = await aiService.completeStructuredTool({
-        configOverride: completionConfig,
-        timeoutMs: 30000,
-        messages: [
-          {
-            role: 'system',
-            content: 'Return the required hatch_pet_capability_check tool call with supported=true and schemaVersion=1.'
-          },
-          { role: 'user', content: 'Check structured hatch-pet tool capability.' }
-        ],
-        tool: createCapabilityTool()
-      })
-      const supported = result.arguments?.supported === true && result.arguments?.schemaVersion === 1
-      return {
-        ok: supported,
-        code: supported ? 'ok' : 'structured_tool_not_supported',
-        message: supported
-          ? 'Hatch-pet structured tool capability is available'
-          : 'Configured model did not confirm structured tool capability',
-        provider: result.provider,
-        model: result.model,
-        elapsedMs: result.elapsedMs
-      }
-    } catch (error) {
-      return {
-        ok: false,
-        code: 'capability_check_failed',
-        message: sanitizeErrorMessage(error),
-        provider: completionConfig.provider,
-        model: completionConfig.model,
-        elapsedMs: Date.now() - startedAt
+    const request = {
+      configOverride: completionConfig,
+      timeoutMs: HATCH_PET_CAPABILITY_TIMEOUT_MS,
+      messages: [
+        {
+          role: 'system',
+          content: 'Return the required hatch_pet_capability_check tool call with supported=true and schemaVersion=1.'
+        },
+        { role: 'user', content: 'Check structured hatch-pet tool capability.' }
+      ],
+      tool: createCapabilityTool()
+    }
+    for (let attempt = 1; attempt <= HATCH_PET_CAPABILITY_ATTEMPT_LIMIT; attempt += 1) {
+      try {
+        const result = await aiService.completeStructuredTool(request)
+        const supported = result.arguments?.supported === true && result.arguments?.schemaVersion === 1
+        return {
+          ok: supported,
+          code: supported ? 'ok' : 'structured_tool_not_supported',
+          message: supported
+            ? 'Hatch-pet structured tool capability is available'
+            : 'Configured model did not confirm structured tool capability',
+          provider: result.provider,
+          model: result.model,
+          elapsedMs: Date.now() - startedAt
+        }
+      } catch (error) {
+        if (attempt < HATCH_PET_CAPABILITY_ATTEMPT_LIMIT && isTransientStructuredProviderError(error)) {
+          recordLog({
+            level: 'warn',
+            event: 'hatch-pet.capability.retrying',
+            message: 'Retrying transient Hatch-pet capability failure',
+            details: {
+              attempt,
+              maxAttempts: HATCH_PET_CAPABILITY_ATTEMPT_LIMIT,
+              provider: normalizeText(completionConfig.provider, 160),
+              model: normalizeText(completionConfig.model, 160),
+              errorName: normalizeText(error?.name, 80),
+              providerStatus: Math.max(0, Number(error?.providerStatus) || 0),
+              providerCode: normalizeText(error?.providerCode || error?.cause?.code || error?.code, 80)
+            }
+          })
+          continue
+        }
+        return {
+          ok: false,
+          code: 'capability_check_failed',
+          message: sanitizeErrorMessage(error),
+          provider: completionConfig.provider,
+          model: completionConfig.model,
+          elapsedMs: Date.now() - startedAt
+        }
       }
     }
+    throw new Error('Hatch-pet capability check exhausted its attempts')
   }
 
   const checkGenerationCapability = async () => {
@@ -606,7 +659,10 @@ const createHatchPetAgentService = ({
     const effectiveProfile = profile || DEFAULT_SPRITE_VISUAL_PROFILE
     let ledger = resolveBudgetLedger({ runId, supplied: budgetLedger, limits: config.budgets })
     let repairReason = ''
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+    let invalidRepairUsed = false
+    let transientRetryUsed = false
+    const attemptLimit = config.budgets.maxEvaluationAttemptsPerArtifact
+    for (let attempt = 0; attempt < attemptLimit; attempt += 1) {
       let request
       try {
         request = createSpriteEvaluatorRequest({ scope, board: { ...board, path: boardPath }, qa, profile: effectiveProfile, repairReason })
@@ -644,11 +700,34 @@ const createHatchPetAgentService = ({
           budgetLedger: ledger
         }
       } catch (error) {
-        if (!isInvalidSpriteEvaluationError(error) || attempt === 1) {
-          error.budgetLedger = ledger
-          throw error
+        const canRetry = attempt + 1 < attemptLimit
+        if (isInvalidSpriteEvaluationError(error) && canRetry && !invalidRepairUsed) {
+          invalidRepairUsed = true
+          repairReason = error.message
+          continue
         }
-        repairReason = error.message
+        if (isTransientStructuredProviderError(error) && canRetry && !transientRetryUsed) {
+          transientRetryUsed = true
+          recordLog({
+            level: 'warn',
+            event: 'hatch-pet.evaluation.retrying',
+            message: 'Retrying transient Hatch-pet sprite evaluation failure',
+            details: {
+              runId: normalizeText(runId, 128),
+              scope: normalizeText(scope, 80),
+              attempt: attempt + 1,
+              maxAttempts: attemptLimit,
+              provider: normalizeText(completionConfig.provider, 160),
+              model: normalizeText(completionConfig.model, 160),
+              errorName: normalizeText(error?.name, 80),
+              providerStatus: Math.max(0, Number(error?.providerStatus) || 0),
+              providerCode: normalizeText(error?.providerCode || error?.cause?.code || error?.code, 80)
+            }
+          })
+          continue
+        }
+        error.budgetLedger = ledger
+        throw error
       }
     }
     throw new Error('Sprite evaluator exhausted its repair attempts')

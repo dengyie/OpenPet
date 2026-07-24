@@ -341,7 +341,7 @@ const createSpriteEvaluatorRequest = ({ scope, board, qa = {}, profile, repairRe
       }
     ],
     tool: normalizedScope === CANONICAL_COMPARISON_SCOPE ? createCanonicalComparisonTool() : createTool(normalizedScope),
-    timeoutMs: 60000
+    timeoutMs: 120000
   }
 }
 

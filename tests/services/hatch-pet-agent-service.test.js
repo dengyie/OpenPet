@@ -11,9 +11,10 @@ const { getQualityFirstQualityProfile } = require('../../examples/plugins/creato
 
 const validDecision = (decision = 'generate-identity') => ({ schemaVersion: 1, decision, scope: {}, reasonCodes: ['ready'], confidence: 0.8 })
 
-const createHarness = ({ enabled = true, configMode = 'follow-chat', completions = [], secret = 'sk-host-owned', dataDir: suppliedDataDir = '' } = {}) => {
-  let settings = { ai: { provider: 'openai-compatible', baseUrl: 'https://chat.test/v1', model: 'chat-model', apiKeyRef: 'ai.default', conversations: { untouched: [{ role: 'user', content: 'keep' }] }, memory: { enabled: true }, behavior: { enabled: true }, hatchPet: { enabled, configMode, provider: 'openai-compatible', baseUrl: 'https://dedicated.test/v1', model: 'planner', apiKeyRef: 'wrong-ref' } } }
+const createHarness = ({ enabled = true, configMode = 'follow-chat', completions = [], secret = 'sk-host-owned', dataDir: suppliedDataDir = '', budgets = {} } = {}) => {
+  let settings = { ai: { provider: 'openai-compatible', baseUrl: 'https://chat.test/v1', model: 'chat-model', apiKeyRef: 'ai.default', conversations: { untouched: [{ role: 'user', content: 'keep' }] }, memory: { enabled: true }, behavior: { enabled: true }, hatchPet: { enabled, configMode, provider: 'openai-compatible', baseUrl: 'https://dedicated.test/v1', model: 'planner', apiKeyRef: 'wrong-ref', budgets } } }
   const calls = []
+  const logs = []
   const dataDir = suppliedDataDir || fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-hatch-service-'))
   const queue = [...completions]
   let secretReads = 0
@@ -22,9 +23,10 @@ const createHarness = ({ enabled = true, configMode = 'follow-chat', completions
     settingsService: { get: () => settings, update: (updater) => { settings = updater(settings); return settings } },
     secretService: { getSecretValue: () => { secretReads += 1; return secret }, setSecret: () => {}, deleteSecret: () => {} },
     pluginService: { getPluginCreatorDataDir: () => dataDir },
+    appLogService: { record: (entry) => logs.push(entry) },
     idFactory: () => 'decision-1', now: () => '2026-07-15T00:00:00.000Z'
   })
-  return { service, calls, dataDir, getSettings: () => settings, getSecretReads: () => secretReads }
+  return { service, calls, logs, dataDir, getSettings: () => settings, getSecretReads: () => secretReads }
 }
 
 test('disabled hatch-pet performs no model work and creates no run artifacts', async () => {
@@ -84,6 +86,44 @@ test('generation capability probes the configured follow-chat model only after s
   assert.equal(capability.code, 'ok')
   assert.equal(capability.provider, 'openai-compatible')
   assert.equal(capability.model, 'chat-model')
+  assert.equal(h.calls.length, 1)
+})
+
+test('generation capability retries one same-model timeout before succeeding', async () => {
+  const timeout = Object.assign(new Error('AI provider request timed out'), { name: 'TimeoutError' })
+  const h = createHarness({
+    completions: [timeout, {
+      arguments: { schemaVersion: 1, supported: true },
+      provider: 'openai-compatible',
+      model: 'chat-model',
+      elapsedMs: 4
+    }]
+  })
+
+  const capability = await h.service.checkGenerationCapability()
+
+  assert.equal(capability.ok, true)
+  assert.equal(h.calls.length, 2)
+  assert.equal(h.calls[0].timeoutMs, 60000)
+  assert.deepEqual(h.calls[1], h.calls[0])
+  assert.equal(h.logs.some((entry) => entry.event === 'hatch-pet.capability.retrying' && entry.details?.attempt === 1), true)
+})
+
+test('generation capability does not retry a non-transient provider 4xx even when its message resembles a timeout', async () => {
+  const badRequest = Object.assign(new Error('Invalid request timed out upstream'), { providerStatus: 400, providerCode: 'invalid_request' })
+  const h = createHarness({
+    completions: [badRequest, {
+      arguments: { schemaVersion: 1, supported: true },
+      provider: 'openai-compatible',
+      model: 'chat-model',
+      elapsedMs: 4
+    }]
+  })
+
+  const capability = await h.service.checkGenerationCapability()
+
+  assert.equal(capability.ok, false)
+  assert.equal(capability.code, 'capability_check_failed')
   assert.equal(h.calls.length, 1)
 })
 
@@ -155,8 +195,138 @@ test('sprite evaluation uses one local review board and records a code-owned gat
   assert.equal(result.gate.ok, true)
   assert.equal(result.budgetLedger.usage.evaluatorCalls, 1)
   assert.equal(h.calls.length, 1)
+  assert.equal(h.calls[0].timeoutMs, 120000)
   assert.equal(JSON.stringify(h.calls[0]).includes(boardPath), false)
   assert.equal(fs.existsSync(path.join(h.dataDir, result.evidenceRelativePath)), true)
+})
+
+test('sprite evaluation retries one same-model timeout and preserves the request contract', async () => {
+  const timeout = Object.assign(new Error('AI provider request timed out'), { name: 'TimeoutError' })
+  const valid = {
+    arguments: { schemaVersion: 1, recommendation: 'pass', confidence: 0.95, scores: { identity: 96, silhouette: 94, smallScale: 90, completeness: 98, style: 92, overall: 94 }, defects: [] },
+    provider: 'openai-compatible',
+    model: 'chat-model',
+    elapsedMs: 10
+  }
+  const h = createHarness({ completions: [timeout, valid] })
+  const boardPath = path.join(h.dataDir, 'board.png')
+  await sharp({ create: { width: 8, height: 8, channels: 4, background: '#fff' } }).png().toFile(boardPath)
+
+  const result = await h.service.evaluateSprite({
+    runId: 'run-timeout-retry-evaluation',
+    scope: 'canonical',
+    board: { path: boardPath, sha256: 'a'.repeat(64), regions: [{ regionId: 'source' }, { regionId: 'candidate-1' }] },
+    qa: { ok: true, failures: [], metrics: {} },
+    profile: getQualityFirstQualityProfile(),
+    budgetLedger: createBudgetLedger({ startedAtMs: Date.now() })
+  })
+
+  assert.equal(result.gate.outcome, 'pass')
+  assert.equal(h.calls.length, 2)
+  assert.equal(result.budgetLedger.usage.evaluatorCalls, 2)
+  assert.deepEqual(h.calls[1], h.calls[0])
+  assert.equal(h.logs.some((entry) => entry.event === 'hatch-pet.evaluation.retrying' && entry.details?.runId === 'run-timeout-retry-evaluation'), true)
+})
+
+test('sprite evaluation respects a one-attempt artifact budget for transient failures', async () => {
+  const timeout = Object.assign(new Error('AI provider request timed out'), { name: 'TimeoutError' })
+  const h = createHarness({
+    budgets: { maxEvaluationAttemptsPerArtifact: 1 },
+    completions: [timeout, {
+      arguments: { schemaVersion: 1, recommendation: 'pass', confidence: 0.95, scores: { identity: 96, silhouette: 94, smallScale: 90, completeness: 98, style: 92, overall: 94 }, defects: [] },
+      provider: 'openai-compatible',
+      model: 'chat-model',
+      elapsedMs: 10
+    }]
+  })
+  const boardPath = path.join(h.dataDir, 'board.png')
+  await sharp({ create: { width: 8, height: 8, channels: 4, background: '#fff' } }).png().toFile(boardPath)
+
+  await assert.rejects(
+    h.service.evaluateSprite({
+      runId: 'run-one-attempt-evaluation',
+      scope: 'canonical',
+      board: { path: boardPath, sha256: 'a'.repeat(64), regions: [{ regionId: 'source' }, { regionId: 'candidate-1' }] },
+      qa: { ok: true, failures: [], metrics: {} },
+      profile: getQualityFirstQualityProfile(),
+      budgetLedger: createBudgetLedger({ startedAtMs: Date.now() })
+    }),
+    (error) => error?.name === 'TimeoutError'
+  )
+  assert.equal(h.calls.length, 1)
+})
+
+test('sprite evaluation retries one transient provider 524 response', async () => {
+  const unavailable = Object.assign(new Error('AI provider is temporarily unavailable'), { providerStatus: 524 })
+  const valid = {
+    arguments: { schemaVersion: 1, recommendation: 'pass', confidence: 0.95, scores: { identity: 96, silhouette: 94, smallScale: 90, completeness: 98, style: 92, overall: 94 }, defects: [] },
+    provider: 'openai-compatible',
+    model: 'chat-model',
+    elapsedMs: 10
+  }
+  const h = createHarness({ completions: [unavailable, valid] })
+  const boardPath = path.join(h.dataDir, 'board.png')
+  await sharp({ create: { width: 8, height: 8, channels: 4, background: '#fff' } }).png().toFile(boardPath)
+
+  const result = await h.service.evaluateSprite({
+    runId: 'run-524-retry-evaluation',
+    scope: 'canonical',
+    board: { path: boardPath, sha256: 'a'.repeat(64), regions: [{ regionId: 'source' }, { regionId: 'candidate-1' }] },
+    qa: { ok: true, failures: [], metrics: {} },
+    profile: getQualityFirstQualityProfile(),
+    budgetLedger: createBudgetLedger({ startedAtMs: Date.now() })
+  })
+
+  assert.equal(result.gate.outcome, 'pass')
+  assert.equal(h.calls.length, 2)
+  assert.deepEqual(h.calls[1], h.calls[0])
+})
+
+test('sprite evaluation permits only one transient retry even when the artifact budget allows three calls', async () => {
+  const firstTimeout = Object.assign(new Error('AI provider request timed out'), { name: 'TimeoutError' })
+  const secondTimeout = Object.assign(new Error('AI provider request timed out'), { name: 'TimeoutError' })
+  const valid = {
+    arguments: { schemaVersion: 1, recommendation: 'pass', confidence: 0.95, scores: { identity: 96, silhouette: 94, smallScale: 90, completeness: 98, style: 92, overall: 94 }, defects: [] },
+    provider: 'openai-compatible',
+    model: 'chat-model',
+    elapsedMs: 10
+  }
+  const h = createHarness({ budgets: { maxEvaluationAttemptsPerArtifact: 3 }, completions: [firstTimeout, secondTimeout, valid] })
+  const boardPath = path.join(h.dataDir, 'board.png')
+  await sharp({ create: { width: 8, height: 8, channels: 4, background: '#fff' } }).png().toFile(boardPath)
+
+  await assert.rejects(
+    h.service.evaluateSprite({
+      runId: 'run-one-transient-retry-only',
+      scope: 'canonical',
+      board: { path: boardPath, sha256: 'a'.repeat(64), regions: [{ regionId: 'source' }, { regionId: 'candidate-1' }] },
+      qa: { ok: true, failures: [], metrics: {} },
+      profile: getQualityFirstQualityProfile(),
+      budgetLedger: createBudgetLedger({ startedAtMs: Date.now() })
+    }),
+    (error) => error?.name === 'TimeoutError'
+  )
+  assert.equal(h.calls.length, 2)
+})
+
+test('sprite evaluation does not retry a non-transient provider 4xx even when its message resembles a timeout', async () => {
+  const badRequest = Object.assign(new Error('Invalid request timed out upstream'), { providerStatus: 400, providerCode: 'invalid_request' })
+  const h = createHarness({ completions: [badRequest] })
+  const boardPath = path.join(h.dataDir, 'board.png')
+  await sharp({ create: { width: 8, height: 8, channels: 4, background: '#fff' } }).png().toFile(boardPath)
+
+  await assert.rejects(
+    h.service.evaluateSprite({
+      runId: 'run-4xx-evaluation',
+      scope: 'canonical',
+      board: { path: boardPath, sha256: 'a'.repeat(64), regions: [{ regionId: 'source' }, { regionId: 'candidate-1' }] },
+      qa: { ok: true, failures: [], metrics: {} },
+      profile: getQualityFirstQualityProfile(),
+      budgetLedger: createBudgetLedger({ startedAtMs: Date.now() })
+    }),
+    (error) => error?.providerStatus === 400
+  )
+  assert.equal(h.calls.length, 1)
 })
 
 test('sprite evaluation allows exactly one invalid-output repair and charges both calls', async () => {
@@ -176,6 +346,27 @@ test('sprite evaluation allows exactly one invalid-output repair and charges bot
   assert.equal(h.calls.length, 2)
   assert.equal(result.budgetLedger.usage.evaluatorCalls, 2)
   assert.match(h.calls[1].messages[0].content, /previous evaluation was invalid/i)
+})
+
+test('sprite evaluation still stops after a second invalid output when the artifact budget allows three calls', async () => {
+  const invalid = { arguments: { schemaVersion: 1, recommendation: 'pass', confidence: 0.95, scores: {}, defects: [] }, provider: 'p', model: 'm', elapsedMs: 1 }
+  const valid = { arguments: { schemaVersion: 1, recommendation: 'pass', confidence: 0.95, scores: { identity: 96, silhouette: 94, smallScale: 90, completeness: 98, style: 92, overall: 94 }, defects: [] }, provider: 'p', model: 'm', elapsedMs: 1 }
+  const h = createHarness({ budgets: { maxEvaluationAttemptsPerArtifact: 3 }, completions: [invalid, invalid, valid] })
+  const boardPath = path.join(h.dataDir, 'board.png')
+  await sharp({ create: { width: 8, height: 8, channels: 4, background: '#fff' } }).png().toFile(boardPath)
+
+  await assert.rejects(
+    h.service.evaluateSprite({
+      runId: 'run-invalid-twice-three-call-budget',
+      scope: 'canonical',
+      board: { path: boardPath, sha256: 'a'.repeat(64), regions: [{ regionId: 'source' }, { regionId: 'candidate-1' }] },
+      qa: { ok: true, failures: [], metrics: {} },
+      profile: getQualityFirstQualityProfile(),
+      budgetLedger: createBudgetLedger({ startedAtMs: Date.now() })
+    }),
+    /Invalid sprite evaluation/
+  )
+  assert.equal(h.calls.length, 2)
 })
 
 test('sprite evaluation repairs a provider response that omits the required tool call', async () => {
