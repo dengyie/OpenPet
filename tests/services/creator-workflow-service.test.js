@@ -12,6 +12,7 @@ const {
   EDITABLE_TARGET_TYPE,
   createCreatorWorkflowService
 } = require('../../src/main/services/creator-workflow-service')
+const { readRun } = require('../../examples/plugins/creator-studio/lib/run-store')
 
 const OFFICIAL_FULL_PET_ACTION_IDS = [
   'idle',
@@ -1037,6 +1038,144 @@ test('creator workflow service surfaces failed run diagnostics from Creator Stud
   assert.equal(result.diagnostics.failedAt, '2026-07-02T10:20:00.000Z')
   assert.equal(result.diagnostics.failureReason, 'Provider queue overloaded')
   assert.equal(result.diagnostics.conditioning.endpoint, '/images/edits')
+})
+
+test('creator workflow service settles a fresh generating lease after the active command stops', async () => {
+  const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-stale-command-'))
+  const logs = []
+  const runId = 'run-stale-command'
+  const runDir = path.join(pluginDataDir, 'runs', runId)
+  fs.mkdirSync(runDir, { recursive: true })
+  const reference = {
+    targetType: EDITABLE_TARGET_TYPE,
+    targetId: EDITABLE_TARGET_ID,
+    fileName: 'reference.png',
+    width: 512,
+    height: 512,
+    contentHash: 'hash'
+  }
+  const service = createCreatorWorkflowService({
+    pluginService: {
+      listPlugins: () => [createPluginView({ serviceStatus: 'stopped' })],
+      getPluginCreatorDataDir: () => pluginDataDir,
+      runCommand: async (_pluginId, commandId) => {
+        if (commandId === 'draft-task') {
+          return {
+            commandId,
+            result: { ok: true, run: { runId, status: 'draft', taskStatus: 'confirmed' } }
+          }
+        }
+        if (commandId === 'run-step') {
+          fs.writeFileSync(path.join(runDir, 'run.json'), `${JSON.stringify({
+            runId,
+            status: 'generating',
+            taskStatus: 'confirmed',
+            currentStep: 'canonical-candidates',
+            backend: 'provider',
+            backendStatus: { backend: 'provider', state: 'running', message: 'Generating canonical identity candidates' },
+            generationLease: {
+              commandId: 'quality-first-identity',
+              leaseId: 'stale-command-lease',
+              startedAt: '2026-07-25T00:05:30.000Z',
+              heartbeatAt: '2026-07-25T00:05:59.000Z'
+            }
+          }, null, 2)}\n`)
+          throw new Error('Command stopped')
+        }
+        throw new Error(`Unexpected command: ${commandId}`)
+      }
+    },
+    imageGenerationModelService: {
+      checkHealth: async () => ({ ok: true, code: 'provider_healthy', message: 'ok' }),
+      getConfig: () => ({ provider: 'openai-compatible', model: 'gpt-image-2' })
+    },
+    actionService: {
+      getConfig: () => ({ defaultAction: 'idle', clickAction: 'wave', actions: [{ id: 'idle' }, { id: 'wave' }] }),
+      acceptTriggerProposalItem: () => ({ animations: { clickAction: 'wave' } })
+    },
+    creatorReferenceService: {
+      getReference: () => reference,
+      bindReference: async () => ({ replaced: false, reference }),
+      copyReferenceIntoRun: () => ({})
+    },
+    appLogService: { record: (entry) => logs.push(entry) },
+    nowMs: () => Date.parse('2026-07-25T00:06:00.000Z')
+  })
+
+  const result = await service.generateExistingAction({ actionName: 'spin', motionPrompt: 'spin' })
+
+  assert.equal(result.state, 'review-required')
+  assert.equal(result.diagnostics.runStatus, 'failed')
+  assert.equal(result.diagnostics.failureReason, 'generation-command-terminated')
+  assert.equal(readRun({ dataDir: pluginDataDir, runId }).status, 'failed')
+  assert.equal(logs.at(-1).event, 'creator.workflow.failed')
+  assert.equal(logs.at(-1).details.lastCommandId, 'run-step')
+})
+
+test('creator workflow state polling reuses the preflight health result while generation is active', async () => {
+  const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-health-poll-'))
+  let now = 0
+  let healthCalls = 0
+  let releaseGenerate
+  const generateGate = new Promise((resolve) => { releaseGenerate = resolve })
+  let runStepStarted
+  const runStepGate = new Promise((resolve) => { runStepStarted = resolve })
+  const reference = {
+    targetType: EDITABLE_TARGET_TYPE,
+    targetId: EDITABLE_TARGET_ID,
+    fileName: 'reference.png',
+    width: 512,
+    height: 512,
+    contentHash: 'hash'
+  }
+  const service = createCreatorWorkflowService({
+    pluginService: {
+      listPlugins: () => [createPluginView({ serviceStatus: 'stopped' })],
+      getPluginCreatorDataDir: () => pluginDataDir,
+      runCommand: async (_pluginId, commandId) => {
+        if (commandId === 'draft-task') {
+          return { commandId, result: { ok: true, run: { runId: 'run-health-poll', status: 'draft', taskStatus: 'confirmed' } } }
+        }
+        if (commandId === 'run-step') {
+          runStepStarted()
+          await generateGate
+          return { commandId, result: { ok: true, run: { runId: 'run-health-poll', status: 'ready_for_review', taskStatus: 'confirmed', currentStep: 'review' } } }
+        }
+        throw new Error(`Unexpected command: ${commandId}`)
+      }
+    },
+    imageGenerationModelService: {
+      checkHealth: async () => {
+        healthCalls += 1
+        return { ok: true, code: 'provider_healthy', message: 'ok' }
+      },
+      getConfig: () => ({ provider: 'openai-compatible', model: 'gpt-image-2' })
+    },
+    actionService: {
+      getConfig: () => ({ defaultAction: 'idle', clickAction: 'wave', actions: [{ id: 'idle' }, { id: 'wave' }] }),
+      acceptTriggerProposalItem: () => ({ animations: { clickAction: 'wave' } })
+    },
+    creatorReferenceService: {
+      getReference: () => reference,
+      bindReference: async () => ({ replaced: false, reference }),
+      copyReferenceIntoRun: () => ({})
+    },
+    nowMs: () => now
+  })
+
+  const pending = service.generateExistingAction({ actionName: 'spin', motionPrompt: 'spin' })
+  await runStepGate
+  assert.equal(healthCalls, 1)
+  now = 31000
+  await service.getState()
+  await service.getState()
+  assert.equal(healthCalls, 1)
+
+  releaseGenerate()
+  await pending
+  now = 62000
+  await service.getState()
+  assert.equal(healthCalls, 2)
 })
 
 test('creator workflow service failure logs do not include raw prompt or file-path error text', async () => {
@@ -2153,6 +2292,25 @@ test('creator workflow diagnostics expose a failed identity pool without absolut
   const candidatePath = path.join(runDir, 'candidates', 'canonical', 'canonical-1', 'raw', '0001.png')
   fs.mkdirSync(path.dirname(candidatePath), { recursive: true })
   fs.writeFileSync(candidatePath, 'png')
+  const candidateRecordRelativePath = `runs/${runId}/candidates/canonical/canonical-1/candidate.json`
+  fs.writeFileSync(path.join(pluginDataDir, candidateRecordRelativePath), `${JSON.stringify({
+    version: 1,
+    runId,
+    scope: 'canonical',
+    candidate: {
+      candidateId: 'canonical-1',
+      failureCodes: ['provider_http_error'],
+      modelAttempts: [{
+        model: 'gpt-image-2',
+        ok: false,
+        errorCode: 'provider_http_error',
+        httpStatus: 524,
+        timeoutMs: 120000,
+        durationMs: 119000,
+        requestId: 'request-524'
+      }]
+    }
+  }, null, 2)}\n`)
   fs.writeFileSync(path.join(runDir, 'run.json'), `${JSON.stringify({
     runId,
     status: 'failed',
@@ -2173,6 +2331,7 @@ test('creator workflow diagnostics expose a failed identity pool without absolut
         disposition: 'unusable',
         sha256: 'a'.repeat(64),
         relativePath: `runs/${runId}/candidates/canonical/canonical-1/raw/0001.png`,
+        candidateRecordRelativePath,
         attemptKind: 'initial',
         diversityProfileId: 'identity-faithful-balanced-v1',
         failureCodes: ['identity-gate-failed'],
@@ -2205,6 +2364,15 @@ test('creator workflow diagnostics expose a failed identity pool without absolut
   assert.equal(qualityFirst.nextAction, 'retry-identity')
   assert.equal(qualityFirst.identityReview.status, 'failed')
   assert.equal(qualityFirst.identityReview.candidates[0].previewable, true)
+  assert.deepEqual(qualityFirst.identityReview.candidates[0].modelAttempts, [{
+    model: 'gpt-image-2',
+    ok: false,
+    errorCode: 'provider_http_error',
+    httpStatus: 524,
+    timeoutMs: 120000,
+    durationMs: 119000,
+    requestId: 'request-524'
+  }])
   assert.equal(qualityFirst.identityReview.candidates[1].relativePath, '')
   assert.equal(qualityFirst.identityReview.candidates[1].duplicateOfCandidateId, 'canonical-1')
   assert.equal(qualityFirst.identityReview.candidates[1].attemptKind, 'duplicate-replacement')

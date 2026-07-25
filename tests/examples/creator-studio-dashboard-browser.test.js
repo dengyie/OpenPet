@@ -45,6 +45,43 @@ const writeSolidPng = async (targetPath, { width, height, background }) => {
   }).png().toFile(targetPath)
 }
 
+test('creator studio run reads recover stale generating leases before returning state', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-stale-read-'))
+  const run = createRun({
+    dataDir,
+    input: { petName: 'Stale Pet', backend: 'provider' },
+    now: () => '2026-07-25T00:00:00.000Z'
+  })
+  writeRun({
+    dataDir,
+    run: {
+      ...run,
+      status: 'generating',
+      taskStatus: 'confirmed',
+      currentStep: 'canonical-candidates',
+      updatedAt: '2026-07-25T00:00:00.000Z',
+      backendStatus: { backend: 'provider', state: 'running', message: 'Generating canonical identity candidates' },
+      generationLease: {
+        commandId: 'quality-first-identity',
+        leaseId: 'stale-lease',
+        startedAt: '2026-07-25T00:00:00.000Z',
+        heartbeatAt: '2026-07-25T00:00:00.000Z'
+      }
+    }
+  })
+  const server = await openDashboardServer(dataDir)
+  try {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/runs`)
+    const body = await response.json()
+    const returned = body.runs.find((entry) => entry.runId === run.runId)
+    assert.equal(returned.status, 'failed')
+    assert.equal(returned.error, 'generation-command-terminated')
+    assert.equal(readRun({ dataDir, runId: run.runId }).status, 'failed')
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
 const writeTransparentActionSheetPng = async (targetPath, {
   columns = 4,
   rows = 3,

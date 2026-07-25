@@ -1,7 +1,7 @@
 const http = require('http')
 const fs = require('fs')
 const path = require('path')
-const { appendRunLog, listRuns, readRun, readRunLogs, updateRunStatus } = require('../lib/run-store')
+const { appendRunLog, listRuns, readRun, readRunLogs, recoverStaleGeneratingRuns, updateRunStatus } = require('../lib/run-store')
 const {
   runGenerationStep,
   runQualityFirstActionRepair,
@@ -2091,6 +2091,7 @@ const createCreatorStudioServer = ({ dataDir, dashboardPath }) => http.createSer
     if (await handlePost({ request, response, dataDir, url })) return
   }
   if (url.pathname === '/api/runs') {
+    recoverStaleGeneratingRuns({ dataDir })
     sendJson(response, 200, {
       ok: true,
       runs: listRuns({ dataDir }).map((run) => createPublicRun({ dataDir, run, developerMode: isDeveloperMode(url) }))
@@ -2100,6 +2101,7 @@ const createCreatorStudioServer = ({ dataDir, dashboardPath }) => http.createSer
 
   const runMatch = url.pathname.match(/^\/api\/runs\/([^/]+)(\/logs)?$/)
   if (runMatch) {
+    recoverStaleGeneratingRuns({ dataDir })
     const runId = decodeURIComponent(runMatch[1])
     try {
       if (runMatch[2] === '/logs') {

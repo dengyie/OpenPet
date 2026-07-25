@@ -49,6 +49,43 @@ test('candidate store writes atomic hash-verified relative asset records', () =>
   assert.equal(fs.readdirSync(path.dirname(path.join(dataDir, record.relativePath))).some((name) => name.includes('.tmp-')), false)
 })
 
+test('candidate store preserves bounded provider failure attempts without persisting secrets', () => {
+  const dataDir = createDataDir()
+  const record = writeCandidateRecord({
+    dataDir,
+    runId: 'run-provider-failure',
+    scope: 'canonical',
+    candidate: {
+      candidateId: 'canonical-1',
+      failureCodes: ['provider_http_error'],
+      modelAttempts: [{
+        model: 'gpt-image-2',
+        ok: false,
+        errorCode: 'provider_http_error',
+        httpStatus: 524,
+        timeoutMs: 120000,
+        durationMs: 119500,
+        requestId: 'provider-request-524',
+        traceContext: { runId: 'run-provider-failure', stage: 'canonical-candidate', candidateId: 'canonical-1' },
+        secret: 'sk-must-not-persist'
+      }]
+    }
+  })
+
+  assert.deepEqual(record.candidate.modelAttempts, [{
+    model: 'gpt-image-2',
+    ok: false,
+    errorCode: 'provider_http_error',
+    httpStatus: 524,
+    timeoutMs: 120000,
+    durationMs: 119500,
+    requestId: 'provider-request-524',
+    traceContext: { runId: 'run-provider-failure', stage: 'canonical-candidate', candidateId: 'canonical-1' }
+  }])
+  const stored = fs.readFileSync(path.join(dataDir, record.relativePath), 'utf8')
+  assert.equal(stored.includes('sk-must-not-persist'), false)
+})
+
 test('candidate store rejects escaping assets and hash mismatches', () => {
   const dataDir = createDataDir()
   const outside = path.join(os.tmpdir(), `outside-${Date.now()}.png`)

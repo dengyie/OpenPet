@@ -187,6 +187,54 @@ test('plugin command bridge server maps handler permission errors to 403 and bad
   server.close()
 })
 
+test('plugin command bridge server returns bounded structured provider attempt diagnostics', async () => {
+  const runtimes = new Map()
+  const server = createPluginCommandBridgeServer({ commandBridgeRuntimes: runtimes })
+  await server.ensureStarted()
+  const baseUrl = server.createBridgeBaseUrl({
+    pluginId: 'weather-declaration',
+    commandId: 'announce',
+    runId: 'run-provider-error'
+  })
+  runtimes.set(createPluginBridgeKey('weather-declaration', 'announce', 'run-provider-error'), {
+    status: 'running',
+    token: 'secret-token',
+    handlers: {
+      petSay: async () => {
+        const error = new Error('Image Provider generation failed with HTTP 524')
+        error.code = 'provider_http_error'
+        error.modelAttempts = [{
+          model: 'gpt-image-2',
+          ok: false,
+          errorCode: 'provider_http_error',
+          httpStatus: 524,
+          timeoutMs: 120000,
+          durationMs: 119000,
+          requestId: 'request-524',
+          secret: 'sk-must-not-cross-bridge'
+        }]
+        throw error
+      }
+    }
+  })
+
+  const response = await requestJson(`${baseUrl}/pet/say`, { token: 'secret-token', body: { text: 'hello' } })
+
+  assert.equal(response.statusCode, 400)
+  assert.equal(response.body.errorCode, 'provider_http_error')
+  assert.deepEqual(response.body.errorDetails.modelAttempts, [{
+    model: 'gpt-image-2',
+    ok: false,
+    errorCode: 'provider_http_error',
+    httpStatus: 524,
+    timeoutMs: 120000,
+    durationMs: 119000,
+    requestId: 'request-524'
+  }])
+  assert.equal(JSON.stringify(response.body).includes('sk-must-not-cross-bridge'), false)
+  server.close()
+})
+
 test('plugin command bridge server preserves UTF-8 characters split across HTTP chunks', async () => {
   const runtimes = new Map()
   const receivedPayloads = []

@@ -79,6 +79,28 @@ const createClientDisconnectedError = () => {
   return error
 }
 
+const sanitizeBridgeTraceId = (value) => {
+  const normalized = String(value || '').trim()
+  return /^[A-Za-z0-9][A-Za-z0-9:_-]{0,127}$/.test(normalized) ? normalized : ''
+}
+
+const sanitizeBridgeModelAttempts = (value) => Array.isArray(value)
+  ? value.slice(0, 16).map((attempt) => {
+      const errorCode = String(attempt?.errorCode || '').trim()
+      const httpStatus = Math.max(0, Math.min(599, Number(attempt?.httpStatus) || 0))
+      const requestId = sanitizeBridgeTraceId(attempt?.requestId)
+      return {
+        model: String(attempt?.model || '').trim().slice(0, 160),
+        ok: attempt?.ok === true,
+        ...(errorCode && /^[a-z0-9][a-z0-9_]{0,79}$/.test(errorCode) ? { errorCode } : {}),
+        ...(httpStatus ? { httpStatus } : {}),
+        timeoutMs: Math.max(0, Number(attempt?.timeoutMs) || 0),
+        durationMs: Math.max(0, Number(attempt?.durationMs) || 0),
+        ...(requestId ? { requestId } : {})
+      }
+    })
+  : []
+
 const createPluginRuntimeBridgeServer = ({
   appendLog = () => {},
   bridgeRuntimes,
@@ -164,10 +186,12 @@ const createPluginRuntimeBridgeServer = ({
     } catch (error) {
       const statusCode = /does not have/.test(String(error.message || '')) ? 403 : 400
       const errorCode = String(error?.code || '').trim()
+      const modelAttempts = sanitizeBridgeModelAttempts(error?.modelAttempts)
       sendJson(response, statusCode, {
         ok: false,
         error: error.message || 'Bridge request failed',
-        ...(/^[a-z0-9][a-z0-9_]{0,79}$/.test(errorCode) ? { errorCode } : {})
+        ...(/^[a-z0-9][a-z0-9_]{0,79}$/.test(errorCode) ? { errorCode } : {}),
+        ...(modelAttempts.length ? { errorDetails: { modelAttempts } } : {})
       })
     }
   }

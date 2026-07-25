@@ -708,11 +708,13 @@ const normalizeProviderPromptVariants = ({ variants, prompt, promptCompiler, con
   return normalized
 }
 
-const createProviderModelAttempt = ({ model, ok, timeoutMs, durationMs, error = '', requestId = '', traceContext = null }) => ({
+const createProviderModelAttempt = ({ model, ok, timeoutMs, durationMs, error = '', errorCode = '', httpStatus = 0, requestId = '', traceContext = null }) => ({
   model: sanitizeModelId(model),
   ok: Boolean(ok),
   timeoutMs: Math.max(0, Number(timeoutMs) || 0),
   durationMs: Math.max(0, Number(durationMs) || 0),
+  ...(errorCode ? { errorCode: String(errorCode).slice(0, 80) } : {}),
+  ...(Number(httpStatus) > 0 ? { httpStatus: Math.min(599, Number(httpStatus)) } : {}),
   ...(requestId ? { requestId: normalizeTraceId(requestId) } : {}),
   ...(traceContext && Object.keys(traceContext).length ? { traceContext } : {}),
   ...(error ? { error: sanitizeLogText(error, { maxChars: 240 }) } : {})
@@ -1495,9 +1497,12 @@ const createImageGenerationModelService = ({
             errorMessage: sanitizeLogText(error?.message || error, { maxChars: 240 })
           }
         })
-        throw new Error(isTimeout
+        const providerError = new Error(isTimeout
           ? `Image Provider generation timed out after ${timeoutMs}ms`
           : 'Image Provider request failed')
+        providerError.code = isTimeout ? 'provider_timeout' : 'provider_request_error'
+        providerError.cause = error
+        throw providerError
       }
       if (!response?.ok && isTransientProviderHttpStatus(response?.status) && canRetryWithinBudget()) {
         cancelProviderResponseBody(response)
@@ -1535,7 +1540,10 @@ const createImageGenerationModelService = ({
           errorMessage: sanitizeLogText(errorMessage, { maxChars: 240 })
         }
       })
-      throw new Error(`Image Provider generation failed with HTTP ${status}`)
+      const providerError = new Error(`Image Provider generation failed with HTTP ${status}`)
+      providerError.code = 'provider_http_error'
+      providerError.httpStatus = Number(response?.status) || 0
+      throw providerError
     }
     const body = responseBody
     const items = Array.isArray(body?.data) ? body.data : []
@@ -1842,6 +1850,8 @@ const createImageGenerationModelService = ({
             timeoutMs: remainingTimeoutMs,
             durationMs: Date.now() - attemptStartedMs,
             error: error?.message || error,
+            errorCode: error?.code,
+            httpStatus: error?.httpStatus,
             requestId,
             traceContext: normalizedTraceContext
           }))

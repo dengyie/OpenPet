@@ -293,6 +293,52 @@ const createGenerationLeaseHeartbeat = ({ dataDir, runId, leaseId, now = () => n
   return () => clearInterval(interval)
 }
 
+const settleTerminatedGeneratingRun = ({ dataDir, run, recoveredAt, event }) => {
+  const lease = run.generationLease
+  const { generationLease: _generationLease, ...runWithoutLease } = run
+  const recoveredRun = {
+    ...runWithoutLease,
+    status: 'failed',
+    currentStep: 'generate',
+    updatedAt: recoveredAt,
+    backendStatus: {
+      ...(run.backendStatus || {}),
+      backend: run.backendStatus?.backend || run.backend || run.input?.backend || '',
+      state: 'failed',
+      message: GENERATION_COMMAND_TERMINATED_REASON,
+      updatedAt: recoveredAt
+    },
+    error: GENERATION_COMMAND_TERMINATED_REASON
+  }
+  writeRun({ dataDir, run: recoveredRun })
+  appendRunLog({
+    dataDir,
+    runId: run.runId,
+    level: 'error',
+    event,
+    message: GENERATION_COMMAND_TERMINATED_REASON,
+    data: { commandId: String(lease?.commandId || ''), leaseId: String(lease?.leaseId || '') },
+    now: () => recoveredAt
+  })
+  return recoveredRun
+}
+
+const failGeneratingRunAfterCommandTermination = ({ dataDir, runId, now = () => new Date().toISOString() }) => {
+  let run
+  try {
+    run = readRun({ dataDir, runId })
+  } catch (_) {
+    return null
+  }
+  if (run.status !== 'generating') return run
+  return settleTerminatedGeneratingRun({
+    dataDir,
+    run,
+    recoveredAt: now(),
+    event: 'generate.command-terminated'
+  })
+}
+
 const recoverStaleGeneratingRuns = ({ dataDir, now = () => new Date().toISOString() }) => {
   const recoveredRunIds = []
   const recoveredAt = now()
@@ -303,30 +349,11 @@ const recoverStaleGeneratingRuns = ({ dataDir, now = () => new Date().toISOStrin
     const referenceAt = lease?.heartbeatAt || run.updatedAt || run.createdAt
     const staleAfterMs = lease ? GENERATION_LEASE_STALE_AFTER_MS : FULL_PET_COMMAND_TIMEOUT_MS
     if (!recoveredAtMs || recoveredAtMs - toTimestampMs(referenceAt) < staleAfterMs) continue
-    const { generationLease: _generationLease, ...runWithoutLease } = run
-    const recoveredRun = {
-      ...runWithoutLease,
-      status: 'failed',
-      currentStep: 'generate',
-      updatedAt: recoveredAt,
-      backendStatus: {
-        ...(run.backendStatus || {}),
-        backend: run.backendStatus?.backend || run.backend || run.input?.backend || '',
-        state: 'failed',
-        message: GENERATION_COMMAND_TERMINATED_REASON,
-        updatedAt: recoveredAt
-      },
-      error: GENERATION_COMMAND_TERMINATED_REASON
-    }
-    writeRun({ dataDir, run: recoveredRun })
-    appendRunLog({
+    settleTerminatedGeneratingRun({
       dataDir,
-      runId: run.runId,
-      level: 'error',
-      event: 'generate.recovered-stale-command',
-      message: GENERATION_COMMAND_TERMINATED_REASON,
-      data: { commandId: String(lease?.commandId || ''), leaseId: String(lease?.leaseId || '') },
-      now: () => recoveredAt
+      run,
+      recoveredAt,
+      event: 'generate.recovered-stale-command'
     })
     recoveredRunIds.push(run.runId)
   }
@@ -445,6 +472,7 @@ module.exports = {
   createGenerationLease,
   createGenerationLeaseHeartbeat,
   createRun,
+  failGeneratingRunAfterCommandTermination,
   GENERATION_COMMAND_TERMINATED_REASON,
   getRunDir,
   listRuns,

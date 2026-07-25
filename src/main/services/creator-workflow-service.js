@@ -4,6 +4,9 @@ const path = require('path')
 const { CODEX_ROWS } = require('../pet-pack/codex-pet')
 const { sanitizeLogText } = require('./log-safety')
 const { inferAnimationType } = require('../../../examples/plugins/creator-studio/lib/action-semantics')
+const {
+  failGeneratingRunAfterCommandTermination
+} = require('../../../examples/plugins/creator-studio/lib/run-store')
 
 const CREATOR_STUDIO_PLUGIN_ID = 'openpet.creator-studio'
 const CREATOR_STUDIO_SERVICE_ID = 'studio'
@@ -1518,7 +1521,40 @@ const createActionProgressViews = ({ checkpoints = null, runStatus = '', current
   })
 }
 
+const createQualityFirstModelAttemptViews = (value) => Array.isArray(value)
+  ? value.slice(0, 16).map((attempt) => {
+      const errorCode = normalizeText(attempt?.errorCode)
+      const httpStatus = Math.max(0, Math.min(599, Number(attempt?.httpStatus) || 0))
+      const requestId = normalizeText(attempt?.requestId)
+      return {
+        model: normalizeText(attempt?.model).slice(0, 160),
+        ok: attempt?.ok === true,
+        ...(SAFE_ID_PATTERN.test(errorCode) ? { errorCode: errorCode.slice(0, 80) } : {}),
+        ...(httpStatus ? { httpStatus } : {}),
+        timeoutMs: Math.max(0, Number(attempt?.timeoutMs) || 0),
+        durationMs: Math.max(0, Number(attempt?.durationMs) || 0),
+        ...(SAFE_ID_PATTERN.test(requestId) ? { requestId: requestId.slice(0, 128) } : {})
+      }
+    })
+  : []
+
 const createQualityFirstCandidateView = ({ candidate = {}, pluginDataDir = '', runId = '' } = {}) => {
+  const safeRun = getSafeCreatorRunDir({ pluginDataDir, runId, requireExisting: true })
+  const candidateRecordRelativePath = normalizeSafeRelativePath(candidate.candidateRecordRelativePath)
+  const candidateRecordPath = candidateRecordRelativePath && isRunRelativePath({ runId, relativePath: candidateRecordRelativePath })
+    ? path.resolve(pluginDataDir, candidateRecordRelativePath)
+    : ''
+  const candidateRecord = candidateRecordPath && safeRun && isPathInsideDirectory({
+    rootPath: safeRun.runDir,
+    targetPath: candidateRecordPath,
+    requireExisting: true
+  })
+    ? readJsonIfExists(candidateRecordPath, null)
+    : null
+  const persistedCandidate = isPlainObject(candidateRecord?.candidate) && normalizeText(candidateRecord.candidate.candidateId) === normalizeText(candidate.candidateId)
+    ? candidateRecord.candidate
+    : null
+  const candidateViewSource = persistedCandidate ? { ...persistedCandidate, ...candidate } : candidate
   const relativePath = normalizeSafeRelativePath(candidate.relativePath)
   const promptRelativePath = normalizeSafeRelativePath(candidate.promptRelativePath)
   const safeAssetPath = relativePath && isRunRelativePath({ runId, relativePath }) ? relativePath : ''
@@ -1526,7 +1562,6 @@ const createQualityFirstCandidateView = ({ candidate = {}, pluginDataDir = '', r
     ? promptRelativePath
     : ''
   const absolutePath = safeAssetPath && pluginDataDir ? path.resolve(pluginDataDir, safeAssetPath) : ''
-  const safeRun = getSafeCreatorRunDir({ pluginDataDir, runId, requireExisting: true })
   const previewable = Boolean(
     safeAssetPath &&
     safeRun &&
@@ -1558,17 +1593,21 @@ const createQualityFirstCandidateView = ({ candidate = {}, pluginDataDir = '', r
       : (candidate.eligible === true ? (candidate.duplicateOfCandidateId ? 'duplicate-alternate' : 'alternate') : 'unusable'),
     sha256: normalizeText(candidate.sha256).slice(0, 128),
     score: Number.isFinite(Number(candidate.score)) ? Number(candidate.score) : null,
-    model: normalizeText(candidate.model).slice(0, 160),
+    model: normalizeText(candidateViewSource.model).slice(0, 160),
     relativePath: safeAssetPath,
     promptRelativePath: safePromptPath,
     previewable,
-    failureCodes: createUniqueTextList(candidate.failureCodes).slice(0, 12),
+    failureCodes: createUniqueTextList([
+      ...(Array.isArray(persistedCandidate?.failureCodes) ? persistedCandidate.failureCodes : []),
+      ...(Array.isArray(candidate?.failureCodes) ? candidate.failureCodes : [])
+    ]).slice(0, 12),
     attemptKind: normalizeText(candidate.attemptKind).slice(0, 80),
     diversityProfileId: normalizeText(candidate.diversityProfileId).slice(0, 120),
     duplicateOfCandidateId: normalizeText(candidate.duplicateOfCandidateId).slice(0, 128),
     artifacts,
     canonicalMetrics: isPlainObject(candidate.canonicalMetrics) ? candidate.canonicalMetrics : null,
-    descriptors: isPlainObject(candidate.descriptors) ? candidate.descriptors : null
+    descriptors: isPlainObject(candidate.descriptors) ? candidate.descriptors : null,
+    modelAttempts: createQualityFirstModelAttemptViews(candidateViewSource.modelAttempts)
   }
 }
 
@@ -2141,6 +2180,14 @@ const createCreatorWorkflowService = ({
     }
   }
 
+  const getProviderHealthForState = async () => {
+    const configKey = getProviderHealthKey()
+    if (activeWorkflow && providerHealthCache?.key === configKey) {
+      return providerHealthCache.result
+    }
+    return getProviderHealth()
+  }
+
   const checkHatchPetGenerationCapability = async () => {
     const staticReadiness = getHatchPetStaticReadiness()
     if (!staticReadiness || staticReadiness.ok !== true) return staticReadiness
@@ -2166,7 +2213,7 @@ const createCreatorWorkflowService = ({
 
   const getState = async () => {
     const plugin = getPluginState()
-    const health = await getProviderHealth()
+    const health = await getProviderHealthForState()
     const config = imageGenerationModelService.getConfig()
     return {
       ok: true,
@@ -2442,6 +2489,7 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
     const commandId = resolveCommandId(plugin)
     let runId = ''
     let lastCommandResult = null
+    let activeCommandId = commandId
     let hatchPetAgentShadow = null
     const createHatchPetAgentDiagnostics = () => hatchPetAgentShadow
       ? {
@@ -2452,7 +2500,14 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
           decisionId: normalizeText(hatchPetAgentShadow.decisionId).slice(0, 128)
         }
       : null
-    const getWorkflowDiagnostics = () => {
+    const getWorkflowDiagnostics = ({ settleTerminatedCommand = false } = {}) => {
+      if (settleTerminatedCommand && runId) {
+        failGeneratingRunAfterCommandTermination({
+          dataDir: pluginDataDir,
+          runId,
+          now: () => new Date(nowMs()).toISOString()
+        })
+      }
       const diagnostics = readWorkflowDiagnostics({ pluginDataDir, runId })
       if (!runId) return diagnostics
       return {
@@ -2478,6 +2533,7 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
     }
 
     try {
+      activeCommandId = commandId
       const drafted = await pluginService.runCommand(CREATOR_STUDIO_PLUGIN_ID, commandId, {
         ...payload,
         generationTask: task,
@@ -2542,6 +2598,7 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
 
       let run = draftRun
       if (normalizeText(run?.taskStatus) !== 'confirmed') {
+        activeCommandId = CREATOR_STUDIO_CONFIRM_COMMAND_ID
         const confirmed = await pluginService.runCommand(CREATOR_STUDIO_PLUGIN_ID, CREATOR_STUDIO_CONFIRM_COMMAND_ID, { runId })
         lastCommandResult = confirmed
         run = getCreatorStudioRun(confirmed)
@@ -2553,6 +2610,7 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
         })
       }
 
+      activeCommandId = CREATOR_STUDIO_GENERATE_COMMAND_ID
       const generated = await pluginService.runCommand(CREATOR_STUDIO_PLUGIN_ID, CREATOR_STUDIO_GENERATE_COMMAND_ID, { runId })
       lastCommandResult = generated
       run = getCreatorStudioRun(generated)
@@ -2692,7 +2750,7 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
           requestId,
           mode,
           runId,
-          lastCommandId: normalizeText(lastCommandResult?.commandId),
+          lastCommandId: normalizeText(activeCommandId || lastCommandResult?.commandId),
           errorName: normalizeText(error?.name),
           errorCode: normalizeText(error?.code),
           errorMessage: sanitizeLogText(error?.message || '', { maxChars: 240 }),
@@ -2721,12 +2779,12 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
               state: 'review-required',
               mode,
               runId,
-              commandId: lastCommandResult?.commandId,
+              commandId: activeCommandId || lastCommandResult?.commandId,
               message: error.message || getCommandMessage(lastCommandResult, 'Workflow failed')
             })
           : null,
         reference: creatorReferenceService.getReference(referenceTarget),
-        diagnostics: getWorkflowDiagnostics()
+        diagnostics: getWorkflowDiagnostics({ settleTerminatedCommand: true })
       })
       setLastRun(result.run)
       return result

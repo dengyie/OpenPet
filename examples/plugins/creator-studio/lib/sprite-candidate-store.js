@@ -64,6 +64,21 @@ const sanitizeGate = (value) => {
     ...(value.error ? { error: String(value.error).replace(/\s+/g, ' ').slice(0, 240) } : {})
   }
 }
+const sanitizeModelAttempts = (value) => Array.isArray(value) ? value.slice(0, 16).map((attempt) => {
+  const errorCode = String(attempt?.errorCode || '').trim()
+  const httpStatus = Math.max(0, Math.min(599, Number(attempt?.httpStatus) || 0))
+  const requestId = sanitizeTraceId(attempt?.requestId)
+  return {
+    model: String(attempt?.model || '').trim().slice(0, 160),
+    ok: attempt?.ok === true,
+    ...(errorCode && /^[a-z0-9][a-z0-9_]{0,79}$/.test(errorCode) ? { errorCode } : {}),
+    ...(httpStatus ? { httpStatus } : {}),
+    timeoutMs: Math.max(0, Number(attempt?.timeoutMs) || 0),
+    durationMs: Math.max(0, Number(attempt?.durationMs) || 0),
+    ...(requestId ? { requestId } : {}),
+    ...(sanitizeTraceContext(attempt?.traceContext) ? { traceContext: sanitizeTraceContext(attempt.traceContext) } : {})
+  }
+}) : []
 const sanitizeCandidate = ({ dataDir, candidate }) => {
   const source = candidate && typeof candidate === 'object' ? candidate : {}
   const artifacts = Array.isArray(source.artifacts) ? source.artifacts.map((artifact) => {
@@ -82,6 +97,7 @@ const sanitizeCandidate = ({ dataDir, candidate }) => {
     alphaMaskDescriptor: Array.isArray(source.descriptors.alphaMaskDescriptor) ? source.descriptors.alphaMaskDescriptor.filter((value) => Number.isFinite(value)).slice(0, 64) : [],
     meanColorDescriptor: Array.isArray(source.descriptors.meanColorDescriptor) ? source.descriptors.meanColorDescriptor.filter((value) => Number.isFinite(value)).slice(0, 8) : []
   } : undefined
+  const modelAttempts = sanitizeModelAttempts(source.modelAttempts)
   return {
     candidateId: normalizeSegment(source.candidateId, 'candidateId'),
     attemptKind: ['initial', 'duplicate-replacement', 'repair'].includes(source.attemptKind) ? source.attemptKind : 'initial',
@@ -97,6 +113,7 @@ const sanitizeCandidate = ({ dataDir, candidate }) => {
     ...(sanitizeQuality(source.qa) ? { qa: sanitizeQuality(source.qa) } : {}),
     ...(sanitizeGate(source.gate) ? { gate: sanitizeGate(source.gate) } : {}),
     ...(source.failureCodes ? { failureCodes: sanitizeFailures(source.failureCodes) } : {}),
+    ...(modelAttempts.length ? { modelAttempts } : {}),
     ...(source.evaluation && typeof source.evaluation === 'object' ? { evaluation: {
       recommendation: String(source.evaluation.recommendation || '').slice(0, 32),
       confidence: Number(source.evaluation.confidence) || 0,

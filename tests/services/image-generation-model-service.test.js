@@ -1613,7 +1613,14 @@ test('image generation model service does not retry non-transient provider HTTP 
       height: 1024,
       transparent: true
     }
-  }), /HTTP 400/)
+  }), (error) => {
+    assert.match(error.message, /HTTP 400/)
+    assert.equal(error.code, 'provider_http_error')
+    assert.equal(error.httpStatus, 400)
+    assert.equal(error.modelAttempts[0].errorCode, 'provider_http_error')
+    assert.equal(error.modelAttempts[0].httpStatus, 400)
+    return true
+  })
 
   assert.equal(calls, 1)
 })

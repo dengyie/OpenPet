@@ -68,9 +68,14 @@ const DEFAULT_CONSTRAINTS = {
   transparent: true
 }
 
-const CREATOR_PROVIDER_MIN_TIMEOUT_MS = 300000
+const CREATOR_PROVIDER_DEFAULT_TIMEOUT_MS = 120000
 const PROMPT_PREVIEW_MAX_LENGTH = 8000
 const DIRECT_SOURCE_ACTION_ANCHOR_CANDIDATE_COUNT = 3
+
+const resolveCreatorProviderTimeout = (value) => Math.max(
+  1000,
+  Number(value) || CREATOR_PROVIDER_DEFAULT_TIMEOUT_MS
+)
 
 const ACTION_ANCHOR_CANDIDATE_VARIANTS = Object.freeze([
   {
@@ -529,7 +534,7 @@ const sumAttemptDurationsMs = (attempts = []) => attempts.reduce((total, attempt
 ), 0)
 
 const resolveGenerationStageTimeout = ({ requestedTimeoutMs, deadlineMs = 0, nowMs = Date.now() }) => {
-  const requested = Math.max(1, Number(requestedTimeoutMs) || CREATOR_PROVIDER_MIN_TIMEOUT_MS)
+  const requested = Math.max(1, Number(requestedTimeoutMs) || CREATOR_PROVIDER_DEFAULT_TIMEOUT_MS)
   if (!deadlineMs) return requested
   const remainingMs = Math.floor(Number(deadlineMs) - Number(nowMs))
   if (remainingMs <= 0) {
@@ -714,7 +719,7 @@ const generateWithModelFallback = async ({
 }) => {
   assertExactlyOneProviderReferenceImage(referenceImages)
   const startedAtMs = Date.now()
-  const effectiveTimeoutMs = Math.max(1, Number(requestedTimeoutMs) || CREATOR_PROVIDER_MIN_TIMEOUT_MS)
+  const effectiveTimeoutMs = Math.max(1, Number(requestedTimeoutMs) || CREATOR_PROVIDER_DEFAULT_TIMEOUT_MS)
   const candidateModels = buildHostPromptCandidateModels({ settings, preferredModel })
   const promptVariants = candidateModels.map((model, index) => {
     const promptBuild = typeof buildPromptForModel === 'function'
@@ -774,16 +779,18 @@ const generateWithModelFallback = async ({
     }
   } catch (error) {
     if (error && typeof error === 'object') {
-      error.modelAttempts = [createGenerationAttemptRecord({
-        model: preferredModel,
-        ok: false,
-        error: error?.message || error,
-        timeoutMs: effectiveTimeoutMs,
-        referenceImages,
-        durationMs: Date.now() - startedAtMs,
-        requestId: error?.requestId,
-        traceContext
-      })]
+      if (!Array.isArray(error.modelAttempts) || error.modelAttempts.length === 0) {
+        error.modelAttempts = [createGenerationAttemptRecord({
+          model: preferredModel,
+          ok: false,
+          error: error?.message || error,
+          timeoutMs: effectiveTimeoutMs,
+          referenceImages,
+          durationMs: Date.now() - startedAtMs,
+          requestId: error?.requestId,
+          traceContext
+        })]
+      }
     }
     throw error
   }
@@ -1474,7 +1481,7 @@ const generateActionKeyframe = async ({
     ).replace(/\\/g, '/'),
     prompt: promptBuild.prompt
   })
-  let stageTimeoutMs = Math.max(1, Number(requestedTimeoutMs) || CREATOR_PROVIDER_MIN_TIMEOUT_MS)
+  let stageTimeoutMs = Math.max(1, Number(requestedTimeoutMs) || CREATOR_PROVIDER_DEFAULT_TIMEOUT_MS)
   let attempt = null
   let materializedOutput = null
   let quality = null
@@ -1910,7 +1917,7 @@ const generateKeyframeActionSpriteRow = async ({
     relativePath: path.join('runs', run.runId, 'prompts', 'keyframes', 'actions', `${actionId}-sprite-row.md`).replace(/\\/g, '/'),
     prompt: promptBuild.prompt
   })
-  let finalStageTimeoutMs = Math.max(1, Number(requestedTimeoutMs) || CREATOR_PROVIDER_MIN_TIMEOUT_MS)
+  let finalStageTimeoutMs = Math.max(1, Number(requestedTimeoutMs) || CREATOR_PROVIDER_DEFAULT_TIMEOUT_MS)
   let providerOutputCount = 0
   try {
     finalStageTimeoutMs = resolveGenerationStageTimeout({ requestedTimeoutMs, deadlineMs: generationDeadlineMs })
@@ -2874,7 +2881,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
         promptCompiler: compiled.promptCompiler,
         buildPromptForModel,
         constraints: resolveCompiledPromptConstraints(compiled),
-        requestedTimeoutMs: Math.max(Number(settings.timeoutMs) || 0, CREATOR_PROVIDER_MIN_TIMEOUT_MS),
+        requestedTimeoutMs: resolveCreatorProviderTimeout(settings.timeoutMs),
         referenceImages: [sourceReference],
         runId: run.runId,
         traceContext: { runId: run.runId, stage: 'canonical-candidate', candidateId },
@@ -3024,7 +3031,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
         const promptRelativePath = `runs/${run.runId}/prompts/quality-first/${actionId}-${candidateId}.txt`
         fs.mkdirSync(path.dirname(path.join(dataDir, promptRelativePath)), { recursive: true })
         fs.writeFileSync(path.join(dataDir, promptRelativePath), `${compiled.prompt}\n`)
-        const generated = await generateWithModelFallback({ settings, preferredModel: String(settings.model || ''), prompt: compiled.prompt, promptCompiler: compiled.promptCompiler, buildPromptForModel, constraints: resolveCompiledPromptConstraints(compiled), requestedTimeoutMs: Math.max(Number(settings.timeoutMs) || 0, CREATOR_PROVIDER_MIN_TIMEOUT_MS), referenceImages: [{ ...sourceReference, path: boardPath, relativePath: boardRelativePath, role: 'action-reference-board' }], runId: run.runId, traceContext: { runId: run.runId, actionId, stage: 'action-candidate', candidateId }, dataRelativeDir: `runs/${run.runId}/candidates/${actionId}/${candidateId}/raw` })
+        const generated = await generateWithModelFallback({ settings, preferredModel: String(settings.model || ''), prompt: compiled.prompt, promptCompiler: compiled.promptCompiler, buildPromptForModel, constraints: resolveCompiledPromptConstraints(compiled), requestedTimeoutMs: resolveCreatorProviderTimeout(settings.timeoutMs), referenceImages: [{ ...sourceReference, path: boardPath, relativePath: boardRelativePath, role: 'action-reference-board' }], runId: run.runId, traceContext: { runId: run.runId, actionId, stage: 'action-candidate', candidateId }, dataRelativeDir: `runs/${run.runId}/candidates/${actionId}/${candidateId}/raw` })
         const output = generated.response?.result?.outputs?.length === 1 ? generated.response.result.outputs[0] : null
         if (!output) throw new Error('action candidate requires exactly one Provider output')
         const rawPath = path.join(dataDir, output.dataRelativePath)
@@ -3355,7 +3362,7 @@ const generateViaHostModelBridge = async ({ backend, run, dataDir }) => {
     governance,
     approvals: providerArtApprovals
   })
-  const requestedTimeoutMs = Math.max(Number(settings.timeoutMs) || 0, CREATOR_PROVIDER_MIN_TIMEOUT_MS)
+  const requestedTimeoutMs = resolveCreatorProviderTimeout(settings.timeoutMs)
   const originalReferenceImage = resolveOriginalReferenceImage({ dataDir, run })
   const originalReferenceImages = isUsableLocalReferenceImage({ dataDir, referenceImage: originalReferenceImage })
     ? [originalReferenceImage]
@@ -3711,6 +3718,7 @@ module.exports = {
     createQualityFirstHostRuntime,
     requestHatchPetSpriteEvaluation,
     requestHatchPetSpritePlan,
+    resolveCreatorProviderTimeout,
     resolveProviderArtReadinessForModels,
     resolveGenerationStageTimeout,
     scoreActionAnchorMetrics,

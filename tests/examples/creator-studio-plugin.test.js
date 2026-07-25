@@ -1534,7 +1534,7 @@ test('creator studio run-step command uses host bridge for provider generation w
     assert.match(requests[3].payload.prompt, /exactly 12 complete full-body character frames/i)
     assert.deepEqual(requests[3].payload.referenceImages.map((reference) => reference.role), ['keyframe-action-reference-board'])
     assert.equal(requests[3].payload.prompt.includes('bridge-token'), false)
-    assert.equal(requests[3].payload.timeoutMs, 300000)
+    assert.equal(requests[3].payload.timeoutMs, 120000)
     assert.deepEqual(run.modelSnapshot, {
       backend: 'provider',
       provider: 'openai-compatible',

@@ -20,6 +20,11 @@ test('host model bridge clamps provider stages to the remaining workflow budget'
   }), /exceeded the full-pet workflow time budget/i)
 })
 
+test('host model bridge preserves the configured 120 second provider timeout', () => {
+  assert.equal(__testInternals.resolveCreatorProviderTimeout(120000), 120000)
+  assert.equal(__testInternals.resolveCreatorProviderTimeout(0), 120000)
+})
+
 test('host model bridge rejects the removed legacy full-pet entry point', async () => {
   await assert.rejects(() => generateViaHostModelBridge({
     backend: 'provider',
@@ -63,6 +68,56 @@ test('host model bridge delegates transient retry policy to the Host without res
   assert.deepEqual(failure.modelAttempts.map((attempt) => ({ model: attempt.model, ok: attempt.ok })), [
     { model: 'gpt-image-2', ok: false }
   ])
+})
+
+test('host model bridge preserves structured Host model failure attempts', async () => {
+  const hostFailure = new Error('Image Provider generation failed with HTTP 524')
+  hostFailure.code = 'provider_http_error'
+  hostFailure.modelAttempts = [{
+    model: 'gpt-image-2',
+    ok: false,
+    errorCode: 'provider_http_error',
+    httpStatus: 524,
+    timeoutMs: 120000,
+    durationMs: 119000,
+    requestId: 'request-524'
+  }, {
+    model: 'gpt-image-1',
+    ok: false,
+    errorCode: 'provider_timeout',
+    httpStatus: 0,
+    timeoutMs: 45000,
+    durationMs: 45000,
+    requestId: 'request-timeout'
+  }]
+
+  await assert.rejects(() => __testInternals.generateWithModelFallback({
+    prompt: 'keep identity',
+    requestedTimeoutMs: 120000,
+    referenceImages: [{ role: 'canonical-reference' }],
+    settings: { creatorWorkflowModelPolicy: { verifiedModels: ['gpt-image-2'], fallbackModels: [] } },
+    preferredModel: 'gpt-image-2',
+    callHostImageGenerateImpl: async () => { throw hostFailure }
+  }), (error) => {
+    assert.equal(error.code, 'provider_http_error')
+    assert.deepEqual(error.modelAttempts.map((attempt) => ({
+      model: attempt.model,
+      errorCode: attempt.errorCode,
+      httpStatus: attempt.httpStatus,
+      requestId: attempt.requestId
+    })), [{
+      model: 'gpt-image-2',
+      errorCode: 'provider_http_error',
+      httpStatus: 524,
+      requestId: 'request-524'
+    }, {
+      model: 'gpt-image-1',
+      errorCode: 'provider_timeout',
+      httpStatus: 0,
+      requestId: 'request-timeout'
+    }])
+    return true
+  })
 })
 
 test('host model bridge sends model-matched prompt variants for Host fallback', async () => {
