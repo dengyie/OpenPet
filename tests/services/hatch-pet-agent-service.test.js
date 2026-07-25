@@ -11,8 +11,8 @@ const { getQualityFirstQualityProfile } = require('../../examples/plugins/creato
 
 const validDecision = (decision = 'generate-identity') => ({ schemaVersion: 1, decision, scope: {}, reasonCodes: ['ready'], confidence: 0.8 })
 
-const createHarness = ({ enabled = true, configMode = 'follow-chat', completions = [], secret = 'sk-host-owned', dataDir: suppliedDataDir = '', budgets = {} } = {}) => {
-  let settings = { ai: { provider: 'openai-compatible', baseUrl: 'https://chat.test/v1', model: 'chat-model', apiKeyRef: 'ai.default', conversations: { untouched: [{ role: 'user', content: 'keep' }] }, memory: { enabled: true }, behavior: { enabled: true }, hatchPet: { enabled, configMode, provider: 'openai-compatible', baseUrl: 'https://dedicated.test/v1', model: 'planner', apiKeyRef: 'wrong-ref', budgets } } }
+const createHarness = ({ enabled = true, configMode = 'follow-chat', requireIdentityReviewBeforeActions = false, completions = [], secret = 'sk-host-owned', dataDir: suppliedDataDir = '', budgets = {} } = {}) => {
+  let settings = { ai: { provider: 'openai-compatible', baseUrl: 'https://chat.test/v1', model: 'chat-model', apiKeyRef: 'ai.default', conversations: { untouched: [{ role: 'user', content: 'keep' }] }, memory: { enabled: true }, behavior: { enabled: true }, hatchPet: { enabled, configMode, provider: 'openai-compatible', baseUrl: 'https://dedicated.test/v1', model: 'planner', apiKeyRef: 'wrong-ref', requireIdentityReviewBeforeActions, budgets } } }
   const calls = []
   const logs = []
   const dataDir = suppliedDataDir || fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-hatch-service-'))
@@ -414,10 +414,20 @@ test('sprite planning returns only registered morphology, presets, and bounded e
   })
   assert.equal(result.proposal.assetClass, 'grounded-compact-character')
   assert.deepEqual(result.proposal.actions.map((action) => action.actionId), ['idle', 'running-right', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review'])
+  assert.equal(result.requireIdentityReviewBeforeActions, false)
   assert.equal(result.budgetLedger.usage.plannerCalls, 1)
   const serialized = JSON.stringify(h.calls[0])
   assert.equal(serialized.includes('framePoses'), false)
   assert.equal(serialized.includes('threshold'), false)
+})
+
+test('sprite planning exposes an explicit identity-review pause to the Creator runtime', async () => {
+  const h = createHarness({
+    requireIdentityReviewBeforeActions: true,
+    completions: [{ arguments: validSpritePlanProposal(), provider: 'p', model: 'm', elapsedMs: 1 }]
+  })
+  const result = await h.service.planSprite({ runId: 'run-plan-review', userIntent: 'pet' })
+  assert.equal(result.requireIdentityReviewBeforeActions, true)
 })
 
 test('sprite planning rejects a partial official action plan', async () => {

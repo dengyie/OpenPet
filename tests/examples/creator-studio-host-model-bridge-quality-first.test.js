@@ -19,7 +19,7 @@ const os = require('node:os')
 const path = require('node:path')
 const sharp = require('sharp')
 
-test('host canonical pool keeps paid duplicates and obtains three distinct candidates within four dispatches', async () => {
+test('host canonical pool keeps paid duplicates quality-eligible while tracking diversity separately', async () => {
   const hashes = ['a'.repeat(64), 'a'.repeat(64), 'b'.repeat(64), 'c'.repeat(64)]
   const persisted = []
   const pool = await generateCanonicalCandidatePool({
@@ -28,9 +28,48 @@ test('host canonical pool keeps paid duplicates and obtains three distinct candi
   })
   assert.equal(pool.dispatchCount, 4)
   assert.equal(pool.distinctEligibleCount, 3)
-  assert.equal(pool.candidates[1].eligible, false)
-  assert.ok(pool.candidates[1].failureCodes.includes('canonical-candidate-duplicate'))
+  assert.equal(pool.candidates[1].eligible, true)
+  assert.equal(pool.candidates[1].technicalEligible, true)
+  assert.equal(pool.candidates[1].diversityStatus, 'duplicate')
+  assert.equal(pool.candidates[1].duplicateOfCandidateId, 'canonical-1')
+  assert.equal(pool.candidates[1].failureCodes.includes('canonical-candidate-duplicate'), false)
   assert.equal(persisted.length, 4)
+})
+
+test('host canonical pool assigns an identity-safe duplicate-replacement strategy to dispatch four', async () => {
+  const hashes = ['a'.repeat(64), 'a'.repeat(64), 'b'.repeat(64), 'c'.repeat(64)]
+  const requests = []
+  const pool = await generateCanonicalCandidatePool({
+    generateCandidate: async (request) => {
+      requests.push(request)
+      return { candidateId: request.candidateId, sha256: hashes[request.dispatchIndex - 1], eligible: true }
+    }
+  })
+
+  assert.equal(pool.distinctEligibleCount, 3)
+  assert.deepEqual(requests.map(({ attemptKind }) => attemptKind), ['initial', 'initial', 'initial', 'duplicate-replacement'])
+  assert.deepEqual(requests.map(({ diversityProfileId }) => diversityProfileId), [
+    'identity-faithful-balanced-v1',
+    'silhouette-readability-v1',
+    'small-scale-detail-v1',
+    'identity-safe-alternate-neutral-v1'
+  ])
+  assert.equal(pool.candidates[3].attemptKind, 'duplicate-replacement')
+  assert.equal(pool.candidates[3].diversityProfileId, 'identity-safe-alternate-neutral-v1')
+})
+
+test('identity-safe canonical replacement requests visible neutral variation without weakening identity locks', () => {
+  assert.equal(typeof hostModelBridgeModule.__testInternals.createCanonicalRequestedChanges, 'function')
+  const requestedChanges = hostModelBridgeModule.__testInternals.createCanonicalRequestedChanges('identity-safe-alternate-neutral-v1')
+  const text = requestedChanges.join(' ')
+
+  assert.match(text, /exact referenced identity/i)
+  assert.match(text, /limb separation/i)
+  assert.match(text, /head angle/i)
+  assert.match(text, /calm neutral/i)
+  assert.match(text, /no action gesture/i)
+  assert.match(text, /do not change.*view|view.*do not change/i)
+  assert.match(text, /do not change.*style|style.*do not change/i)
 })
 
 test('host canonical pool rejects perceptual duplicates even when encoded hashes differ', async () => {
@@ -45,8 +84,65 @@ test('host canonical pool rejects perceptual duplicates even when encoded hashes
   })
   assert.equal(pool.dispatchCount, 4)
   assert.equal(pool.distinctEligibleCount, 3)
-  assert.equal(pool.candidates[1].eligible, false)
+  assert.equal(pool.candidates[1].eligible, true)
+  assert.equal(pool.candidates[1].diversityStatus, 'duplicate')
   assert.equal(pool.candidates[1].duplicateOfCandidateId, 'canonical-1')
+})
+
+test('host evaluates duplicate canonical outputs as paid candidates and keeps every passing result selectable', async () => {
+  assert.equal(typeof hostModelBridgeModule.__testInternals.evaluateCanonicalCandidatePool, 'function')
+  const persisted = []
+  const boardCandidateIds = []
+  const pool = await hostModelBridgeModule.__testInternals.evaluateCanonicalCandidatePool({
+    pool: {
+      version: 1,
+      dispatchCount: 3,
+      distinctEligibleCount: 1,
+      candidates: [
+        { candidateId: 'canonical-1', path: '/data/canonical-1.png', sha256: 'a'.repeat(64), eligible: true, technicalEligible: true, failureCodes: [] },
+        { candidateId: 'canonical-2', path: '/data/canonical-2.png', sha256: 'b'.repeat(64), eligible: true, technicalEligible: true, duplicateOfCandidateId: 'canonical-1', diversityStatus: 'duplicate', failureCodes: [] },
+        { candidateId: 'canonical-3', sha256: '', eligible: false, technicalEligible: false, failureCodes: ['canonical-generation-failed'] }
+      ]
+    },
+    dataDir: '/data',
+    runId: 'run-1',
+    sourcePath: '/data/source.png',
+    createBoard: async ({ candidates }) => {
+      boardCandidateIds.push(...candidates.map((candidate) => candidate.candidateId))
+      return {
+        path: '/data/board.png',
+        sha256: 'f'.repeat(64),
+        regions: [
+          { regionId: 'source', role: 'source-identity' },
+          ...candidates.map((candidate) => ({ regionId: candidate.candidateId, role: 'canonical-candidate' }))
+        ]
+      }
+    },
+    requestEvaluation: async () => ({
+      evaluation: {
+        candidates: [
+          { candidateId: 'canonical-1', scores: { identity: 96, overall: 95 } },
+          { candidateId: 'canonical-2', scores: { identity: 95, overall: 94 } }
+        ]
+      },
+      gate: {
+        candidateGates: {
+          'canonical-1': { ok: true, outcome: 'pass', failures: [] },
+          'canonical-2': { ok: true, outcome: 'pass', failures: [] }
+        }
+      },
+      evidenceRelativePath: 'runs/run-1/evaluations/canonical.json'
+    }),
+    persistCandidate: async (candidate) => persisted.push(structuredClone(candidate))
+  })
+
+  assert.deepEqual(boardCandidateIds, ['canonical-1', 'canonical-2'])
+  assert.equal(pool.passingCandidateCount, 2)
+  assert.equal(pool.candidates[0].eligible, true)
+  assert.equal(pool.candidates[1].eligible, true)
+  assert.equal(pool.candidates[1].diversityStatus, 'duplicate')
+  assert.equal(pool.candidates[2].eligible, false)
+  assert.equal(persisted.length, 2)
 })
 
 test('host selected action delegates to the bounded quality-first runner', async () => {

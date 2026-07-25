@@ -2003,7 +2003,10 @@ const getDemoActivePetSummary = () => {
         version: activePack.version,
         source: activePack.source,
         active: activePack.active,
-        rootPath: activePack.rootPath
+        rootPath: activePack.rootPath,
+        actionCount: activePack.actionCount,
+        defaultAction: activePack.defaultAction,
+        clickAction: activePack.clickAction
       }
     : null
 }

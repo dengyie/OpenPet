@@ -233,6 +233,10 @@ const AssetReviewBench = ({
   const assets = actionAssets.length
     ? actionAssets
     : actions.flatMap((action) => action.assets || [])
+  const archivedProcessAssets = processAssets.filter((asset) => asset.role === 'repair-archive')
+  const archivedPromptAssets = archivedProcessAssets.filter((asset) => asset.kind === 'prompt' && asset.promptText)
+  const archivedVisualAssets = archivedProcessAssets.filter((asset) => asset.kind !== 'prompt')
+  const currentProcessAssets = processAssets.filter((asset) => asset.role !== 'repair-archive')
   if (!actions.length && !assets.length && !processAssets.length) return null
 
   return (
@@ -241,12 +245,12 @@ const AssetReviewBench = ({
       <span className="field-note" data-testid="creator-asset-review-guide">
         推荐流程：先导入可用动作 → 在此审查坏资产（对照参考身份/失败帧）→ 一键重生成红项。
       </span>
-      {processAssets.length ? (
+      {currentProcessAssets.length ? (
         <div className="creator-process-assets" data-testid="creator-process-assets">
           <strong>过程资产</strong>
           <span className="field-note">anchor / conditioning board / sprite sheet 在失败时也会保留，可按需加载大图。</span>
           <div className="creator-asset-thumbs">
-            {processAssets.map((asset) => (
+            {currentProcessAssets.map((asset) => (
               <LazyAssetThumb
                 key={`process-${asset.kind}-${asset.relativePath}`}
                 asset={asset}
@@ -255,6 +259,40 @@ const AssetReviewBench = ({
               />
             ))}
           </div>
+        </div>
+      ) : null}
+      {archivedProcessAssets.length ? (
+        <div className="creator-process-assets creator-repair-assets" data-testid="creator-repair-assets">
+          <strong>历史重试资产（付费产物）</strong>
+          <span className="field-note">这些资产来自之前的 Provider 调用，重新生成不会删除；请对照它们查看为什么失败。</span>
+          {archivedVisualAssets.length ? <div className="creator-asset-thumbs">
+            {archivedVisualAssets.map((asset) => (
+              <LazyAssetThumb
+                key={`repair-${asset.kind}-${asset.relativePath}`}
+                asset={asset}
+                actionId={asset.actionId || 'process'}
+                onLoadAssetPreview={onLoadAssetPreview}
+              />
+            ))}
+          </div> : null}
+          {archivedPromptAssets.map((asset) => {
+            const copyKey = `repair:${asset.relativePath}`
+            return (
+              <div className="creator-repair-prompt" key={copyKey}>
+                <details data-testid={`creator-repair-prompt-${asset.actionId}`}>
+                  <summary>查看历史提示词 · {asset.actionId}</summary>
+                  <pre className="creator-prompt-pre">{asset.promptText}</pre>
+                </details>
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => onCopyText?.(asset.promptText || '', `${asset.actionId} 历史提示词`, copyKey)}
+                >
+                  {copiedPromptKey === copyKey ? '已复制' : '复制历史提示词'}
+                </button>
+              </div>
+            )
+          })}
         </div>
       ) : null}
       <div className="creator-asset-review-list">
@@ -453,20 +491,27 @@ const IdentityReviewPanel = ({
   const qualityFirst = progress.qualityFirst
   const identityReview = qualityFirst?.identityReview
   if (!qualityFirst || !identityReview) return null
+  const identityGenerationFailed = qualityFirst.phase === 'identity-generation-failed'
+  const acceptancePending = qualityFirst.phase === 'awaiting_identity_review'
+  const automaticallySelected = identityReview.status === 'selected'
   return (
     <div className="creator-identity-review" data-testid="creator-identity-review">
       <div className="creator-identity-review-header">
         <div>
-          <strong>选择 canonical identity</strong>
-          <span>动作生成尚未开始。请选择最符合参考图身份、比例和渲染风格的可用候选。</span>
+          <strong>{identityGenerationFailed ? '身份候选生成失败' : (automaticallySelected ? 'Canonical identity 已自动选定' : '选择 canonical identity')}</strong>
+          <span>{identityGenerationFailed
+            ? `本次 ${qualityFirst.dispatchCount} 张付费候选均已保留，但没有候选通过身份、完整性、构图和背景质量门。请检查具体失败原因后重新生成身份候选。`
+            : automaticallySelected
+              ? '系统已按质量分、身份分和稳定候选 ID 选定唯一 anchor；其他付费候选仍作为可检查的备用资产保留。'
+              : '动作生成尚未开始。请选择最符合参考图身份、比例和渲染风格的可用候选。'}</span>
         </div>
-        <span>{qualityFirst.eligibleCandidateCount}/{qualityFirst.candidateCount} 可用</span>
+        <span>{`${qualityFirst.passingCandidateCount}/${qualityFirst.candidateCount} 通过质量门`}</span>
       </div>
       <div className="creator-canonical-candidates" data-testid="canonical-candidates">
         {identityReview.candidates.map((candidate) => (
           <div
             key={candidate.candidateId}
-            className={`creator-canonical-candidate ${candidate.eligible ? 'ok' : 'error'}`.trim()}
+            className={`creator-canonical-candidate ${candidate.disposition === 'unusable' ? 'error' : 'ok'} ${candidate.disposition}`.trim()}
             data-testid={`creator-canonical-candidate-${candidate.candidateId}`}
           >
             {candidate.relativePath ? (
@@ -484,21 +529,34 @@ const IdentityReviewPanel = ({
             ) : <span className="creator-candidate-preview-missing">候选图不可预览</span>}
             <div className="creator-candidate-details">
               <strong>{candidate.candidateId}</strong>
-              <span>{candidate.eligible ? '通过技术门' : '不可接受'}</span>
+              <span>{candidate.disposition === 'selected-anchor'
+                ? '已选为唯一 canonical anchor'
+                : candidate.disposition === 'duplicate-alternate'
+                  ? '质量通过 · 视觉重复备用候选'
+                  : candidate.disposition === 'alternate'
+                    ? '质量通过 · 备用候选'
+                    : '未通过质量门'}</span>
               {typeof candidate.score === 'number' ? <span>综合分 {candidate.score}</span> : null}
               {candidate.model ? <span>模型 {candidate.model}</span> : null}
               <code title={candidate.sha256}>sha256 {candidate.sha256.slice(0, 12)}…</code>
               {candidate.failureCodes.length ? (
                 <span className="creator-candidate-failures">坏在哪：{candidate.failureCodes.join('、')}</span>
               ) : null}
+              {candidate.duplicateOfCandidateId ? (
+                <span>与 {candidate.duplicateOfCandidateId} 视觉重复；资产仍保留，不视为坏图</span>
+              ) : null}
             </div>
             <button
               type="button"
               className="primary"
-              disabled={running || !candidate.eligible || !candidate.sha256}
+              disabled={running || !acceptancePending || !candidate.eligible || !candidate.sha256}
               onClick={() => onAcceptCreatorIdentity(candidate.candidateId, candidate.sha256)}
               data-testid={`creator-accept-identity-${candidate.candidateId}`}
-              title={candidate.eligible ? '接受此身份候选并开始 idle 生成' : '该候选未通过质量门'}
+              title={!acceptancePending
+                ? '当前使用自动选择或已完成身份选择，无需再次接受候选'
+                : candidate.eligible
+                  ? '接受此身份候选并开始 idle 生成'
+                  : '该候选未通过质量门'}
             >
               接受此身份候选
             </button>
@@ -592,7 +650,18 @@ const ResultCard = ({
   const canImportAvailable = result.run?.mode === 'full-pet' &&
     availableActionIds.length > 0 &&
     ['review-required', 'preview-ready', 'import-failed'].includes(String(result.state))
-  const canPreview = result.state === 'completed' || Boolean(result.importedAction) || Boolean(result.activePet)
+  const previewActionId = String(
+    result.clickAction ||
+    result.importedAction?.actionId ||
+    result.activePet?.clickAction ||
+    result.activePet?.defaultAction ||
+    ''
+  ).trim()
+  const canPreview = Boolean(previewActionId) && (
+    result.state === 'completed' ||
+    Boolean(result.importedAction) ||
+    Boolean(result.activePet)
+  )
 
   return (
     <div className={`provider-feedback ${tone}`.trim()} data-testid="creator-result">
@@ -602,7 +671,7 @@ const ResultCard = ({
         <span data-testid="creator-result-phase">阶段：{progress.phaseLabel}</span>
       ) : null}
       {progress ? <WorkflowProgressPanel progress={progress} /> : null}
-      {progress?.qualityFirst?.phase === 'awaiting_identity_review' ? (
+      {progress?.qualityFirst?.identityReview?.candidates.length ? (
         <IdentityReviewPanel
           progress={progress}
           running={running}
@@ -692,7 +761,9 @@ const ResultCard = ({
         </div>
       ) : null}
       {result.state === 'completed' ? (
-        <span className="creator-result-cta">可以立即预览，或直接点击桌宠验证动作。</span>
+        <span className="creator-result-cta">
+          {canPreview ? '可以立即预览，或直接点击桌宠验证动作。' : '生成已完成，但当前没有可播放的已导入动作；请先完成动作导入。'}
+        </span>
       ) : null}
       {result.state === 'generating' ? (
         <span className="creator-result-cta">生成进行中，下方会同步阶段与动作成败。</span>

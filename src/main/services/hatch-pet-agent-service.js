@@ -758,6 +758,7 @@ const createHatchPetAgentService = ({
         const completion = await aiService.completeStructuredTool({ messages, tool: createSpritePlanTool(), configOverride: completionConfig, timeoutMs: 60000 })
         return {
           proposal: validateSpritePlanProposal(completion.arguments),
+          requireIdentityReviewBeforeActions: config.requireIdentityReviewBeforeActions === true,
           provider: completion.provider,
           model: completion.model,
           budgetLedger: ledger

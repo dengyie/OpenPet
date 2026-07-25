@@ -15,9 +15,9 @@ const {
 const createTempDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-review-board-'))
 const writeColor = (outputPath, color) => sharp({ create: { width: 256, height: 256, channels: 4, background: color } }).png().toFile(outputPath)
 
-test('canonical evaluator board gives source and three candidates fixed quadrants', async () => {
+test('canonical evaluator board keeps source and up to four paid candidates in fixed quality-review cells', async () => {
   const dir = createTempDir()
-  const paths = ['source', 'a', 'b', 'c'].map((name) => path.join(dir, `${name}.png`))
+  const paths = ['source', 'a', 'b', 'c', 'd'].map((name) => path.join(dir, `${name}.png`))
   await Promise.all(paths.map((filePath, index) => writeColor(filePath, { r: 50 + index * 40, g: 20, b: 200, alpha: 1 })))
   const result = await createCanonicalEvaluatorBoard({
     sourcePath: paths[0],
@@ -26,10 +26,10 @@ test('canonical evaluator board gives source and three candidates fixed quadrant
   })
 
   const metadata = await sharp(result.path).metadata()
-  assert.equal(metadata.width, 2048)
+  assert.equal(metadata.width, 3072)
   assert.equal(metadata.height, 2048)
-  assert.deepEqual(result.regions.map((region) => region.regionId), ['source', 'candidate-1', 'candidate-2', 'candidate-3'])
-  assert.equal(new Set(result.regions.map((region) => region.sourceSha256)).size, 4)
+  assert.deepEqual(result.regions.map((region) => region.regionId), ['source', 'candidate-1', 'candidate-2', 'candidate-3', 'candidate-4'])
+  assert.equal(new Set(result.regions.map((region) => region.sourceSha256)).size, 5)
 })
 
 test('action evaluator board uses fixed top references and lower 4x2 frame grid', async () => {

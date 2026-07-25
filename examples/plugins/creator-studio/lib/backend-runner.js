@@ -349,6 +349,8 @@ const runQualityFirstIdentityStage = async ({
   orchestrator,
   plan,
   sourceReference = null,
+  actions = [],
+  requireIdentityReviewBeforeActions = false,
   now = () => new Date().toISOString()
 } = {}) => {
   if (!orchestrator?.start) throw new Error('Quality-first identity stage requires an orchestrator')
@@ -370,19 +372,92 @@ const runQualityFirstIdentityStage = async ({
   appendRunLog({ dataDir, runId, event: 'quality-first.identity.started', message: 'Canonical identity candidate generation started', now: () => startedAt })
   const stopLeaseHeartbeat = createGenerationLeaseHeartbeat({ dataDir, runId, leaseId: lease.leaseId, now })
   try {
-    const next = await orchestrator.start({ run: generatingRun, plan, sourceReference })
+    const requestedActions = Array.isArray(actions) && actions.length
+      ? actions
+      : (Array.isArray(plan?.actions) ? plan.actions.map((action) => action?.actionId).filter(Boolean) : [])
+    const next = await orchestrator.start({
+      run: generatingRun,
+      plan,
+      sourceReference,
+      actions: requestedActions,
+      requireIdentityReviewBeforeActions: requireIdentityReviewBeforeActions === true,
+      persistRunState: async (nextRun) => {
+        if (!nextRun || String(nextRun.runId || '') !== runId) throw new Error('Quality-first durable run state is invalid')
+        writeRun({ dataDir, run: nextRun })
+      }
+    })
     const { generationLease: _generationLease, ...pendingRun } = next
+    const awaitingIdentityReview = pendingRun.status === 'awaiting_identity_review'
+    const readyForReview = pendingRun.status === 'ready_for_review'
     const persisted = {
       ...pendingRun,
-      backendStatus: createBackendStatus({ backend: PROVIDER_BACKEND, state: 'awaiting-review', message: 'Canonical identity review required', updatedAt: now() })
+      backendStatus: createBackendStatus({
+        backend: PROVIDER_BACKEND,
+        state: awaitingIdentityReview ? 'awaiting-review' : (readyForReview ? 'ready' : 'recovery-required'),
+        message: awaitingIdentityReview
+          ? 'Canonical identity review required'
+          : (readyForReview ? 'Quality-first actions ready for review' : 'Asset recovery required'),
+        updatedAt: now()
+      })
     }
     writeRun({ dataDir, run: persisted })
     appendDiagnosticRunLog({ dataDir, runId, event: 'quality-first.identity.completed', message: 'Canonical identity candidate generation completed', data: { candidateCount: Array.isArray(persisted.qualityFirst?.canonicalCandidates) ? persisted.qualityFirst.canonicalCandidates.length : 0 }, now })
-    appendDiagnosticRunLog({ dataDir, runId, event: 'quality-first.identity.awaiting-review', message: 'Canonical identity candidates require human selection', now })
+    if (awaitingIdentityReview) {
+      appendDiagnosticRunLog({ dataDir, runId, event: 'quality-first.identity.awaiting-review', message: 'Canonical identity candidates require human selection', now })
+    } else {
+      appendDiagnosticRunLog({
+        dataDir,
+        runId,
+        event: 'quality-first.identity.selected',
+        message: 'Canonical identity selected and action generation continued',
+        data: { candidateId: String(persisted.qualityFirst?.acceptedCanonical?.candidateId || '').slice(0, 128) },
+        now
+      })
+    }
     return { outputDir: '', bundlePath: '', sha256: '', run: persisted }
   } catch (error) {
-    appendDiagnosticRunLog({ dataDir, runId, level: 'error', event: 'quality-first.identity.failed', message: 'Canonical identity candidate generation failed', data: { failureCode: String(error?.code || 'identity_generation_error').replace(/[^A-Za-z0-9:_-]/g, '_').slice(0, 120) }, now })
-    updateRunStatus({ dataDir, runId, status: 'failed', patch: { generationLease: undefined, error: error.message, backendStatus: createBackendStatus({ backend: PROVIDER_BACKEND, state: 'failed', message: error.message, updatedAt: now() }) }, now })
+    const latestRun = readRun({ dataDir, runId })
+    const identityWasSelected = Boolean(latestRun?.qualityFirst?.acceptedCanonical) || ['generating-idle', 'generating-actions', 'ready_for_review', 'recovery-required'].includes(String(latestRun?.qualityFirst?.phase || ''))
+    appendDiagnosticRunLog({
+      dataDir,
+      runId,
+      level: 'error',
+      event: identityWasSelected ? 'quality-first.actions.failed' : 'quality-first.identity.failed',
+      message: identityWasSelected ? 'Quality-first action generation failed' : 'Canonical identity candidate generation failed',
+      data: { failureCode: String(error?.code || (identityWasSelected ? 'action_generation_error' : 'identity_generation_error')).replace(/[^A-Za-z0-9:_-]/g, '_').slice(0, 120) },
+      now
+    })
+    const canonicalPool = error?.code === 'canonical_identity_candidates_unusable' && Array.isArray(error?.canonicalPool?.candidates)
+      ? error.canonicalPool
+      : null
+    updateRunStatus({
+      dataDir,
+      runId,
+      status: 'failed',
+      patch: {
+        generationLease: undefined,
+        error: error.message,
+        backendStatus: createBackendStatus({ backend: PROVIDER_BACKEND, state: 'failed', message: error.message, updatedAt: now() }),
+        ...(canonicalPool
+          ? {
+              qualityFirst: {
+                version: 1,
+                phase: 'identity-generation-failed',
+                planHash: String(plan?.hash || '').slice(0, 128),
+                canonicalCandidates: canonicalPool.candidates,
+                acceptedCanonical: null,
+                actionResults: {},
+                dispatchCount: Math.max(0, Math.min(4, Number(canonicalPool.dispatchCount) || canonicalPool.candidates.length)),
+                passingCandidateCount: Math.max(0, Number(canonicalPool.passingCandidateCount) || 0),
+                requireIdentityReviewBeforeActions: requireIdentityReviewBeforeActions === true,
+                failureCode: 'canonical_identity_candidates_unusable',
+                nextAction: 'retry-identity'
+              }
+            }
+          : {})
+      },
+      now
+    })
     throw error
   } finally {
     stopLeaseHeartbeat()
@@ -395,6 +470,8 @@ const runQualityFirstIdentityRetry = async ({
   orchestrator,
   plan,
   sourceReference = null,
+  actions = [],
+  requireIdentityReviewBeforeActions,
   now = () => new Date().toISOString()
 } = {}) => {
   const run = readRun({ dataDir, runId })
@@ -418,7 +495,18 @@ const runQualityFirstIdentityRetry = async ({
       backendStatus: createBackendStatus({ backend: PROVIDER_BACKEND, state: 'idle', message: 'Canonical identity candidates archived for regeneration', updatedAt: startedAt })
     }
   })
-  const output = await runQualityFirstIdentityStage({ dataDir, runId, orchestrator, plan, sourceReference, now })
+  const output = await runQualityFirstIdentityStage({
+    dataDir,
+    runId,
+    orchestrator,
+    plan,
+    sourceReference,
+    actions,
+    requireIdentityReviewBeforeActions: typeof requireIdentityReviewBeforeActions === 'boolean'
+      ? requireIdentityReviewBeforeActions
+      : run.qualityFirst?.requireIdentityReviewBeforeActions === true,
+    now
+  })
   return {
     ...output,
     repair: { scope: 'identity', actionId: '', evidenceArchive }
@@ -625,6 +713,8 @@ const runGenerationStep = async ({ dataDir, runId, now = () => new Date().toISOS
       orchestrator: runtime.orchestrator,
       plan: runtime.plan,
       sourceReference: runtime.sourceReference,
+      actions: runtime.plan.actions.map((action) => action.actionId),
+      requireIdentityReviewBeforeActions: runtime.requireIdentityReviewBeforeActions,
       now
     })
   }

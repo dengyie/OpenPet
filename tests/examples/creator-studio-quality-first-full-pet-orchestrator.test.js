@@ -4,7 +4,7 @@ const assert = require('node:assert/strict')
 const { createQualityFirstFullPetOrchestrator } = require('../../examples/plugins/creator-studio/lib/quality-first-full-pet-orchestrator')
 
 const createHarness = ({ idleOk = true, finalizePackage = async () => ({ spritesheetRelativePath: 'runs/run-1/quality-first/package/spritesheet.webp', artifacts: { outputDir: '/data/runs/run-1/quality-first/package' } }) } = {}) => {
-  const calls = { canonical: 0, actions: [], mirrors: 0, recovery: 0, events: [] }
+  const calls = { canonical: 0, actions: [], actionCanonicals: [], mirrors: 0, recovery: 0, events: [] }
   const orchestrator = createQualityFirstFullPetOrchestrator({
     generateCanonicalCandidatePool: async () => {
       calls.canonical += 1
@@ -17,8 +17,9 @@ const createHarness = ({ idleOk = true, finalizePackage = async () => ({ sprites
         ]
       }
     },
-    runQualityFirstAction: async ({ actionId }) => {
+    runQualityFirstAction: async ({ actionId, canonical }) => {
       calls.actions.push(actionId)
+      calls.actionCanonicals.push(canonical?.candidateId || '')
       return { ok: actionId === 'idle' ? idleOk : actionId !== 'waving', actionId, selectedCandidateId: `${actionId}-candidate` }
     },
     createCharacterScaleProfile: async () => ({ hash: 'p'.repeat(64) }),
@@ -37,9 +38,27 @@ const createHarness = ({ idleOk = true, finalizePackage = async () => ({ sprites
   return { orchestrator, calls }
 }
 
+test('default start deterministically selects the best passing canonical and continues to final human review', async () => {
+  const h = createHarness()
+  const run = await h.orchestrator.start({
+    run: { runId: 'run-1', status: 'generating' },
+    plan: { hash: 'plan-hash' },
+    sourceReference: { relativePath: 'inputs/ref.png' },
+    actions: ['idle'],
+    requireIdentityReviewBeforeActions: false
+  })
+
+  assert.equal(run.status, 'ready_for_review')
+  assert.equal(run.qualityFirst.phase, 'ready_for_review')
+  assert.equal(run.qualityFirst.acceptedCanonical.candidateId, 'canonical-2')
+  assert.equal(run.qualityFirst.canonicalCandidates.find((candidate) => candidate.candidateId === 'canonical-2').disposition, 'selected-anchor')
+  assert.deepEqual(h.calls.actions, ['idle'])
+  assert.deepEqual(h.calls.actionCanonicals, ['canonical-2'])
+})
+
 test('start generates canonical candidates and blocks all action generation until identity acceptance', async () => {
   const h = createHarness()
-  const run = await h.orchestrator.start({ run: { runId: 'run-1', status: 'generating' }, plan: { hash: 'plan-hash' }, sourceReference: { relativePath: 'inputs/ref.png' } })
+  const run = await h.orchestrator.start({ run: { runId: 'run-1', status: 'generating' }, plan: { hash: 'plan-hash' }, sourceReference: { relativePath: 'inputs/ref.png' }, requireIdentityReviewBeforeActions: true })
   assert.equal(run.status, 'awaiting_identity_review')
   assert.equal(run.qualityFirst.phase, 'awaiting_identity_review')
   assert.equal(h.calls.canonical, 1)
@@ -48,7 +67,7 @@ test('start generates canonical candidates and blocks all action generation unti
 
 test('canonical acceptance runs idle first, locks scale profile, continues optional actions, and mirrors running-left', async () => {
   const h = createHarness()
-  const pending = await h.orchestrator.start({ run: { runId: 'run-1' }, plan: { hash: 'plan-hash' } })
+  const pending = await h.orchestrator.start({ run: { runId: 'run-1' }, plan: { hash: 'plan-hash' }, requireIdentityReviewBeforeActions: true })
   const run = await h.orchestrator.acceptCanonicalIdentity({
     run: pending,
     candidateId: 'canonical-2',
@@ -100,7 +119,7 @@ test('canonical acceptance publishes finalized package artifacts for the existin
       artifacts
     })
   })
-  const pending = await h.orchestrator.start({ run: { runId: 'run-1', artifacts: { retained: true } }, plan: { hash: 'plan-hash' } })
+  const pending = await h.orchestrator.start({ run: { runId: 'run-1', artifacts: { retained: true } }, plan: { hash: 'plan-hash' }, requireIdentityReviewBeforeActions: true })
   const run = await h.orchestrator.acceptCanonicalIdentity({
     run: pending,
     candidateId: 'canonical-1',
@@ -116,7 +135,7 @@ test('canonical acceptance publishes finalized package artifacts for the existin
 
 test('idle failure produces recovery-required state and never runs optional actions', async () => {
   const h = createHarness({ idleOk: false })
-  const pending = await h.orchestrator.start({ run: { runId: 'run-1' }, plan: { hash: 'plan-hash' } })
+  const pending = await h.orchestrator.start({ run: { runId: 'run-1' }, plan: { hash: 'plan-hash' }, requireIdentityReviewBeforeActions: true })
   const run = await h.orchestrator.acceptCanonicalIdentity({ run: pending, candidateId: 'canonical-1', sha256: 'a'.repeat(64), actions: ['idle', 'waving'] })
   assert.equal(run.status, 'recovery-required')
   assert.equal(run.qualityFirst.nextAction, 'export-recovery-bundle')
@@ -126,22 +145,100 @@ test('idle failure produces recovery-required state and never runs optional acti
 
 test('identity acceptance requires an eligible candidate and exact hash', async () => {
   const h = createHarness()
-  const pending = await h.orchestrator.start({ run: { runId: 'run-1' }, plan: { hash: 'plan-hash' } })
+  const pending = await h.orchestrator.start({ run: { runId: 'run-1' }, plan: { hash: 'plan-hash' }, requireIdentityReviewBeforeActions: true })
   await assert.rejects(() => h.orchestrator.acceptCanonicalIdentity({ run: pending, candidateId: 'canonical-2', sha256: 'wrong' }), /not eligible or hash/i)
 })
 
-test('canonical pool rejects fewer than three distinct eligible candidates', async () => {
+test('one passing canonical continues even when the other paid candidates are duplicates or unusable', async () => {
   const orchestrator = createQualityFirstFullPetOrchestrator({
-    generateCanonicalCandidatePool: async () => ({ dispatchCount: 4, candidates: [{ candidateId: 'one', eligible: true, sha256: 'same' }] }),
+    generateCanonicalCandidatePool: async () => ({
+      dispatchCount: 4,
+      candidates: [
+        {
+          candidateId: 'canonical-1',
+          eligible: true,
+          sha256: 'a'.repeat(64),
+          score: 95,
+          relativePath: 'runs/run-1/candidates/canonical/canonical-1/raw/0001.png',
+          attemptKind: 'initial',
+          diversityProfileId: 'identity-faithful-balanced-v1',
+          promptText: 'secret prompt must not escape'
+        },
+        {
+          candidateId: 'canonical-2',
+          eligible: true,
+          sha256: 'b'.repeat(64),
+          score: 94,
+          relativePath: 'runs/run-1/candidates/canonical/canonical-2/raw/0001.png',
+          attemptKind: 'duplicate-replacement',
+          diversityProfileId: 'identity-safe-alternate-neutral-v1',
+          duplicateOfCandidateId: 'canonical-1',
+          previewDataUrl: 'data:image/png;base64,secret'
+        },
+        {
+          candidateId: 'canonical-3',
+          eligible: false,
+          sha256: 'c'.repeat(64),
+          relativePath: '/Users/mango/private.png',
+          failureCodes: ['identity-gate-failed']
+        }
+      ]
+    }),
+    runQualityFirstAction: async ({ actionId, canonical }) => ({ ok: true, actionId, selectedCandidateId: `${canonical.candidateId}-${actionId}` }),
+    createCharacterScaleProfile: async () => ({ hash: 'hash' }),
+    finalizePackage: async () => ({ artifacts: { outputDir: '/data/package' } })
+  })
+
+  const run = await orchestrator.start({
+    run: { runId: 'run-1' },
+    plan: { hash: 'plan-hash' },
+    actions: ['idle'],
+    requireIdentityReviewBeforeActions: false
+  })
+
+  assert.equal(run.status, 'ready_for_review')
+  assert.equal(run.qualityFirst.acceptedCanonical.candidateId, 'canonical-1')
+  assert.equal(run.qualityFirst.canonicalCandidates[0].disposition, 'selected-anchor')
+  assert.equal(run.qualityFirst.canonicalCandidates[1].eligible, true)
+  assert.equal(run.qualityFirst.canonicalCandidates[1].disposition, 'duplicate-alternate')
+  assert.equal(run.qualityFirst.canonicalCandidates[1].duplicateOfCandidateId, 'canonical-1')
+  assert.equal(run.qualityFirst.canonicalCandidates[2].disposition, 'unusable')
+  assert.equal(run.qualityFirst.canonicalCandidates[2].relativePath, undefined)
+  assert.equal(Object.hasOwn(run.qualityFirst.canonicalCandidates[0], 'promptText'), false)
+  assert.doesNotMatch(JSON.stringify(run.qualityFirst), /\/Users\/|data:image|secret prompt/i)
+})
+
+test('canonical generation fails only when no candidate passes the quality gates', async () => {
+  const orchestrator = createQualityFirstFullPetOrchestrator({
+    generateCanonicalCandidatePool: async () => ({
+      dispatchCount: 4,
+      candidates: [
+        { candidateId: 'canonical-1', eligible: false, sha256: 'a'.repeat(64), failureCodes: ['identity-gate-failed'], relativePath: 'runs/run-1/candidates/canonical/canonical-1/raw.png' },
+        { candidateId: 'canonical-2', eligible: false, sha256: 'b'.repeat(64), failureCodes: ['incomplete-subject'], relativePath: '/Users/mango/private.png', promptText: 'secret' }
+      ]
+    }),
     runQualityFirstAction: async () => ({ ok: true }),
     createCharacterScaleProfile: async () => ({ hash: 'hash' })
   })
-  await assert.rejects(() => orchestrator.start({ run: { runId: 'run-1' }, plan: {} }), /canonical_candidate_diversity_insufficient/)
+
+  await assert.rejects(
+    () => orchestrator.start({ run: { runId: 'run-1' }, plan: { hash: 'plan-hash' }, requireIdentityReviewBeforeActions: false }),
+    (error) => {
+      assert.equal(error.code, 'canonical_identity_candidates_unusable')
+      assert.equal(error.canonicalPool.dispatchCount, 4)
+      assert.equal(error.canonicalPool.passingCandidateCount, 0)
+      assert.equal(error.canonicalPool.candidates.length, 2)
+      assert.equal(error.canonicalPool.candidates[0].relativePath, 'runs/run-1/candidates/canonical/canonical-1/raw.png')
+      assert.equal(error.canonicalPool.candidates[1].relativePath, undefined)
+      assert.doesNotMatch(JSON.stringify(error.canonicalPool), /\/Users\/|secret/i)
+      return true
+    }
+  )
 })
 
 test('canonical acceptance fails closed when final package artifacts are missing', async () => {
   const h = createHarness({ finalizePackage: async () => null })
-  const pending = await h.orchestrator.start({ run: { runId: 'run-1' }, plan: { hash: 'plan-hash' } })
+  const pending = await h.orchestrator.start({ run: { runId: 'run-1' }, plan: { hash: 'plan-hash' }, requireIdentityReviewBeforeActions: true })
   await assert.rejects(() => h.orchestrator.acceptCanonicalIdentity({
     run: pending,
     candidateId: 'canonical-1',
@@ -174,7 +271,7 @@ test('canonical acceptance durably publishes identity, profile, and completed ac
     finalizePackage: async () => ({ artifacts: { outputDir: '/data/package' } }),
     recordEvent: (event) => events.push(event)
   })
-  const pending = await orchestrator.start({ run: { runId: 'run-1' }, plan: { hash: 'plan-hash' } })
+  const pending = await orchestrator.start({ run: { runId: 'run-1' }, plan: { hash: 'plan-hash' }, requireIdentityReviewBeforeActions: true })
 
   await assert.rejects(() => orchestrator.acceptCanonicalIdentity({
     run: pending,

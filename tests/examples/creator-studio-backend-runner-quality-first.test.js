@@ -32,7 +32,7 @@ test('backend persists awaiting identity review and resumes only after exact acc
       return { ...run, status: 'ready_for_review', currentStep: 'review', qualityFirst: { ...run.qualityFirst, phase: 'ready_for_review' } }
     }
   }
-  const pending = await runQualityFirstIdentityStage({ dataDir, runId: created.runId, orchestrator, plan: { hash: 'plan' } })
+  const pending = await runQualityFirstIdentityStage({ dataDir, runId: created.runId, orchestrator, plan: { hash: 'plan' }, requireIdentityReviewBeforeActions: true })
   assert.equal(pending.run.status, 'awaiting_identity_review')
   assert.equal(readRun({ dataDir, runId: created.runId }).qualityFirst.phase, 'awaiting_identity_review')
   const accepted = await acceptQualityFirstCanonicalIdentity({ dataDir, runId: created.runId, candidateId: 'c1', expectedHash: 'a'.repeat(64), orchestrator, plan: { hash: 'plan' }, actions: ['idle'] })
@@ -44,6 +44,101 @@ test('backend persists awaiting identity review and resumes only after exact acc
     'quality-first.identity.awaiting-review',
     'quality-first.identity.accepted'
   ])
+})
+
+test('backend defaults to the selected canonical and completes actions without a mid-run identity pause', async () => {
+  const dataDir = createDataDir()
+  const created = createRun({
+    dataDir,
+    input: { petName: 'Automatic Identity Pet', backend: 'provider', generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1', actions: [{ actionId: 'idle', name: 'Idle', frameCount: 6 }], questions: [] } }
+  })
+  writeRun({ dataDir, run: { ...created, status: 'confirmed', taskStatus: 'confirmed' } })
+  const calls = []
+  const orchestrator = {
+    start: async ({ run, actions, requireIdentityReviewBeforeActions, persistRunState }) => {
+      calls.push({ actions, requireIdentityReviewBeforeActions })
+      const generating = {
+        ...run,
+        status: 'generating',
+        currentStep: 'idle',
+        qualityFirst: {
+          phase: 'generating-idle',
+          requireIdentityReviewBeforeActions: false,
+          acceptedCanonical: { candidateId: 'canonical-1', sha256: 'a'.repeat(64) },
+          canonicalCandidates: [{ candidateId: 'canonical-1', eligible: true, disposition: 'selected-anchor', sha256: 'a'.repeat(64) }]
+        }
+      }
+      await persistRunState(generating)
+      return {
+        ...generating,
+        status: 'ready_for_review',
+        currentStep: 'review',
+        qualityFirst: { ...generating.qualityFirst, phase: 'ready_for_review', nextAction: 'human-review' }
+      }
+    }
+  }
+
+  const output = await runQualityFirstIdentityStage({
+    dataDir,
+    runId: created.runId,
+    orchestrator,
+    plan: { hash: 'plan', actions: [{ actionId: 'idle' }] },
+    actions: ['idle'],
+    requireIdentityReviewBeforeActions: false
+  })
+
+  assert.equal(output.run.status, 'ready_for_review')
+  assert.equal(output.run.backendStatus.state, 'ready')
+  assert.deepEqual(calls, [{ actions: ['idle'], requireIdentityReviewBeforeActions: false }])
+  assert.equal(readRun({ dataDir, runId: created.runId }).qualityFirst.acceptedCanonical.candidateId, 'canonical-1')
+  assert.deepEqual(readRunLogs({ dataDir, runId: created.runId }).map((entry) => entry.event), [
+    'quality-first.identity.started',
+    'quality-first.identity.completed',
+    'quality-first.identity.selected'
+  ])
+})
+
+test('backend classifies an automatic post-selection failure as an action failure and preserves the selected anchor', async () => {
+  const dataDir = createDataDir()
+  const created = createRun({
+    dataDir,
+    input: { petName: 'Automatic Failure Pet', backend: 'provider', generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1', actions: [{ actionId: 'idle', name: 'Idle', frameCount: 6 }], questions: [] } }
+  })
+  writeRun({ dataDir, run: { ...created, status: 'confirmed', taskStatus: 'confirmed' } })
+  const canonical = { candidateId: 'canonical-1', eligible: true, disposition: 'selected-anchor', sha256: 'a'.repeat(64) }
+  const error = new Error('waving provider failed')
+  error.code = 'action_generation_error'
+  const orchestrator = {
+    start: async ({ run, persistRunState }) => {
+      await persistRunState({
+        ...run,
+        status: 'generating',
+        currentStep: 'waving',
+        qualityFirst: {
+          phase: 'generating-actions',
+          canonicalCandidates: [canonical],
+          acceptedCanonical: canonical,
+          actionResults: { idle: { ok: true } },
+          nextAction: 'waving'
+        }
+      })
+      throw error
+    }
+  }
+
+  await assert.rejects(() => runQualityFirstIdentityStage({
+    dataDir,
+    runId: created.runId,
+    orchestrator,
+    plan: { hash: 'plan', actions: [{ actionId: 'idle' }] },
+    requireIdentityReviewBeforeActions: false
+  }), /waving provider failed/)
+
+  const failed = readRun({ dataDir, runId: created.runId })
+  assert.equal(failed.status, 'failed')
+  assert.equal(failed.qualityFirst.phase, 'generating-actions')
+  assert.equal(failed.qualityFirst.acceptedCanonical.candidateId, 'canonical-1')
+  assert.equal(readRunLogs({ dataDir, runId: created.runId }).at(-1).event, 'quality-first.actions.failed')
 })
 
 test('backend records identity failure with a bounded reason code', async () => {
@@ -70,6 +165,59 @@ test('backend records identity failure with a bounded reason code', async () => 
   ])
   assert.deepEqual(events[1].data, { failureCode: 'canonical_pool_failed' })
   assert.doesNotMatch(JSON.stringify(events[1]), /\/Users\/|private provider detail/)
+})
+
+test('identity stage preserves an unusable canonical pool for review and retry', async () => {
+  const dataDir = createDataDir()
+  const created = createRun({
+    dataDir,
+    input: { petName: 'Retained Identity Pet', backend: 'provider', generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1', actions: [{ actionId: 'idle', name: 'Idle', frameCount: 6 }], questions: [] } }
+  })
+  writeRun({ dataDir, run: { ...created, status: 'confirmed', taskStatus: 'confirmed' } })
+  const error = new Error('canonical_identity_candidates_unusable')
+  error.code = 'canonical_identity_candidates_unusable'
+  error.canonicalPool = {
+    dispatchCount: 4,
+    passingCandidateCount: 0,
+    candidates: [{
+      candidateId: 'canonical-1',
+      eligible: false,
+      sha256: 'a'.repeat(64),
+      relativePath: `runs/${created.runId}/candidates/canonical/canonical-1/raw/0001.png`,
+      attemptKind: 'initial',
+      diversityProfileId: 'identity-faithful-balanced-v1',
+      disposition: 'unusable',
+      failureCodes: ['identity-gate-failed']
+    }, {
+      candidateId: 'canonical-2',
+      eligible: false,
+      sha256: 'b'.repeat(64),
+      attemptKind: 'duplicate-replacement',
+      diversityProfileId: 'identity-safe-alternate-neutral-v1',
+      duplicateOfCandidateId: 'canonical-1',
+      disposition: 'unusable',
+      failureCodes: ['incomplete-subject']
+    }]
+  }
+
+  await assert.rejects(() => runQualityFirstIdentityStage({
+    dataDir,
+    runId: created.runId,
+    orchestrator: { start: async () => { throw error } },
+    plan: { hash: 'plan-hash' }
+  }), /canonical_identity_candidates_unusable/)
+
+  const failed = readRun({ dataDir, runId: created.runId })
+  assert.equal(failed.status, 'failed')
+  assert.equal(failed.currentStep, 'canonical-candidates')
+  assert.equal(Object.hasOwn(failed, 'generationLease'), false)
+  assert.equal(failed.qualityFirst.phase, 'identity-generation-failed')
+  assert.equal(failed.qualityFirst.planHash, 'plan-hash')
+  assert.equal(failed.qualityFirst.failureCode, 'canonical_identity_candidates_unusable')
+  assert.equal(failed.qualityFirst.nextAction, 'retry-identity')
+  assert.equal(failed.qualityFirst.passingCandidateCount, 0)
+  assert.equal(failed.qualityFirst.canonicalCandidates.length, 2)
+  assert.equal(failed.qualityFirst.canonicalCandidates[1].duplicateOfCandidateId, 'canonical-1')
 })
 
 test('backend preserves the latest accepted identity state when action generation fails', async () => {

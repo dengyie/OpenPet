@@ -436,6 +436,10 @@ const createWorkflowResult = ({
         label: normalizeText(asset?.label).slice(0, 80),
         role: normalizeText(asset?.role).slice(0, 80),
         previewable: Boolean(asset?.previewable),
+        ...(asset?.promptText ? { promptText: String(asset.promptText).slice(0, PROMPT_TEXT_MAX_CHARS) } : {}),
+        ...(normalizeSafeRelativePath(asset?.promptRelativePath)
+          ? { promptRelativePath: normalizeSafeRelativePath(asset.promptRelativePath) }
+          : {}),
         failureEvidence: asset?.failureEvidence && typeof asset.failureEvidence === 'object'
           ? describeFailureEvidence(asset.failureEvidence)
           : null
@@ -458,7 +462,11 @@ const createWorkflowResult = ({
       : []),
   omittedActionIds: Array.isArray(omittedActionIds)
     ? omittedActionIds.map(normalizeText).filter(Boolean)
-    : [],
+    : (Array.isArray(diagnostics?.progress?.omittedActionIds)
+        ? diagnostics.progress.omittedActionIds.map(normalizeText).filter(Boolean)
+        : (Array.isArray(diagnostics?.progress?.failedActionIds)
+            ? diagnostics.progress.failedActionIds.map(normalizeText).filter(Boolean)
+            : [])),
   degradedActionIds: Array.isArray(degradedActionIds)
     ? degradedActionIds.map(normalizeText).filter(Boolean)
     : [],
@@ -577,8 +585,11 @@ const MIME_BY_EXT = Object.freeze({
   '.gif': 'image/gif'
 })
 
-const IMAGE_PREVIEW_MAX_BYTES = 1_500_000
+const IMAGE_PREVIEW_INLINE_MAX_BYTES = 1_500_000
+const IMAGE_PREVIEW_SOURCE_MAX_BYTES = 25_000_000
 const PROMPT_TEXT_MAX_CHARS = 12000
+// Covers the 72-call run budget plus raw, processed, frame, GIF, and review artifacts per call.
+const PROCESS_ASSET_SCAN_MAX_FILES = 2048
 
 const FAILURE_CODE_PLAIN_MESSAGES = Object.freeze({
   'identity-descriptor-distance-high': '角色身份特征偏离参考太多（轮廓/五官/配色不一致）',
@@ -647,7 +658,7 @@ const canPreviewImageFile = (absolutePath) => {
   try {
     if (!absolutePath || !fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isFile()) return false
     const size = fs.statSync(absolutePath).size
-    if (!Number.isFinite(size) || size <= 0 || size > IMAGE_PREVIEW_MAX_BYTES) return false
+    if (!Number.isFinite(size) || size <= 0 || size > IMAGE_PREVIEW_SOURCE_MAX_BYTES) return false
     const ext = path.extname(absolutePath).toLowerCase()
     return Boolean(MIME_BY_EXT[ext])
   } catch (_) {
@@ -683,11 +694,36 @@ const fileToPreviewDataUrl = (absolutePath) => {
   try {
     if (!absolutePath || !fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isFile()) return ''
     const size = fs.statSync(absolutePath).size
-    if (!Number.isFinite(size) || size <= 0 || size > IMAGE_PREVIEW_MAX_BYTES) return ''
+    if (!Number.isFinite(size) || size <= 0 || size > IMAGE_PREVIEW_INLINE_MAX_BYTES) return ''
     const ext = path.extname(absolutePath).toLowerCase()
     const mime = MIME_BY_EXT[ext]
     if (!mime) return ''
     return `data:${mime};base64,${fs.readFileSync(absolutePath).toString('base64')}`
+  } catch (_) {
+    return ''
+  }
+}
+
+const createAssetPreviewDataUrl = async (absolutePath) => {
+  if (!canPreviewImageFile(absolutePath)) return ''
+  const inline = fileToPreviewDataUrl(absolutePath)
+  if (inline) return inline
+  try {
+    const sharp = require('sharp')
+    const render = async ({ width, quality }) => sharp(absolutePath, {
+      animated: false,
+      limitInputPixels: 40_000_000
+    })
+      .rotate()
+      .resize({ width, height: width, fit: 'inside', withoutEnlargement: true })
+      .webp({ quality, effort: 4 })
+      .toBuffer()
+    let preview = await render({ width: 768, quality: 82 })
+    if (preview.length > IMAGE_PREVIEW_INLINE_MAX_BYTES) {
+      preview = await render({ width: 512, quality: 70 })
+    }
+    if (!preview.length || preview.length > IMAGE_PREVIEW_INLINE_MAX_BYTES) return ''
+    return `data:image/webp;base64,${preview.toString('base64')}`
   } catch (_) {
     return ''
   }
@@ -725,6 +761,32 @@ const listImageFilesRecursive = (dirPath, limit = 24) => {
       if (!entry.isFile()) continue
       const ext = path.extname(entry.name).toLowerCase()
       if (!MIME_BY_EXT[ext]) continue
+      results.push(full)
+    }
+  }
+  return results.sort()
+}
+
+const listPromptFilesRecursive = (dirPath, limit = 256) => {
+  const results = []
+  if (!dirPath || !fs.existsSync(dirPath)) return results
+  const stack = [dirPath]
+  while (stack.length && results.length < limit) {
+    const current = stack.pop()
+    let entries = []
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true })
+    } catch (_) {
+      continue
+    }
+    for (const entry of entries) {
+      if (results.length >= limit) break
+      const full = path.join(current, entry.name)
+      if (entry.isDirectory()) {
+        stack.push(full)
+        continue
+      }
+      if (!entry.isFile() || !/\.(txt|md)$/i.test(entry.name)) continue
       results.push(full)
     }
   }
@@ -769,7 +831,15 @@ const collectProcessAssetsForRun = ({ pluginDataDir, runId, includePreviews = fa
   const processAssets = []
   const seen = new Set()
 
-  const add = ({ absolutePath, kind, label, role = '', actionId = 'process' }) => {
+  const add = ({
+    absolutePath,
+    kind,
+    label,
+    role = '',
+    actionId = 'process',
+    promptText = '',
+    promptRelativePath = ''
+  }) => {
     if (!absolutePath || !fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isFile()) return
     const relative = toRunRelativePath({ pluginDataDir, runId: normalizedRunId, absolutePath })
     if (!relative || seen.has(relative)) return
@@ -784,6 +854,8 @@ const collectProcessAssetsForRun = ({ pluginDataDir, runId, includePreviews = fa
       role: normalizeText(role).slice(0, 80),
       previewable,
       ...(previewDataUrl ? { previewDataUrl } : {}),
+      ...(promptText ? { promptText } : {}),
+      ...(promptRelativePath ? { promptRelativePath } : {}),
       failureEvidence: null
     })
   }
@@ -832,7 +904,7 @@ const collectProcessAssetsForRun = ({ pluginDataDir, runId, includePreviews = fa
   }
 
   const qualityCandidateDir = path.join(runDir, 'candidates')
-  for (const absolute of listImageFilesRecursive(qualityCandidateDir, 128)) {
+  for (const absolute of listImageFilesRecursive(qualityCandidateDir, PROCESS_ASSET_SCAN_MAX_FILES)) {
     const relativeToCandidates = path.relative(qualityCandidateDir, absolute).split(path.sep)
     const scope = normalizeText(relativeToCandidates[0])
     const actionId = scope.startsWith('action-') ? scope.slice('action-'.length) : scope
@@ -857,8 +929,66 @@ const collectProcessAssetsForRun = ({ pluginDataDir, runId, includePreviews = fa
     })
   }
 
+  const repairRoot = path.join(runDir, 'repairs')
+  if (fs.existsSync(repairRoot)) {
+    let repairEntries = []
+    try {
+      repairEntries = fs.readdirSync(repairRoot, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .sort((left, right) => left.name.localeCompare(right.name))
+    } catch (_) {}
+    for (const repairEntry of repairEntries) {
+      const archiveId = normalizeText(repairEntry.name).slice(0, 120)
+      for (const candidateDirName of ['candidates', 'candidate-archives']) {
+        const archivedCandidateRoot = path.join(repairRoot, repairEntry.name, candidateDirName)
+        for (const absolute of listImageFilesRecursive(archivedCandidateRoot, PROCESS_ASSET_SCAN_MAX_FILES)) {
+          const relativeParts = path.relative(archivedCandidateRoot, absolute).split(path.sep)
+          const scope = normalizeText(relativeParts[0])
+          const scopedActionId = scope === 'canonical'
+            ? 'identity'
+            : scope.startsWith('action-')
+              ? scope.slice('action-'.length)
+              : scope
+          const actionId = isSafePathSegment(scopedActionId) ? scopedActionId : 'process'
+          const identityAsset = actionId === 'identity'
+          add({
+            absolutePath: absolute,
+            kind: 'process',
+            label: identityAsset
+              ? `历史身份候选 · ${archiveId}`
+              : `历史 ${actionId} 付费候选 · ${archiveId}`,
+            role: 'repair-archive',
+            actionId
+          })
+        }
+      }
+      const archivedPromptRoot = path.join(repairRoot, repairEntry.name, 'prompts')
+      for (const absolute of listPromptFilesRecursive(archivedPromptRoot, 256)) {
+        const base = path.basename(absolute, path.extname(absolute))
+        const candidateMatch = base.match(/^([a-z0-9][a-z0-9._-]*?)-candidate(?:-|$)/i)
+        const normalizedBase = normalizeText(candidateMatch?.[1] || base)
+        const scopedActionId = /^canonical(?:-|$)/i.test(base) ? 'identity' : normalizedBase
+        const actionId = isSafePathSegment(scopedActionId) ? scopedActionId : 'process'
+        const promptRelativePath = toRunRelativePath({ pluginDataDir, runId: normalizedRunId, absolutePath: absolute })
+        const promptText = readPromptTextIfExists(absolute)
+        if (!promptRelativePath || !promptText) continue
+        add({
+          absolutePath: absolute,
+          kind: 'prompt',
+          label: actionId === 'identity'
+            ? `历史身份提示词 · ${archiveId}`
+            : `历史 ${actionId} 提示词 · ${archiveId}`,
+          role: 'repair-archive',
+          actionId,
+          promptText,
+          promptRelativePath
+        })
+      }
+    }
+  }
+
   const qualityPackageDir = path.join(runDir, 'quality-first')
-  for (const absolute of listImageFilesRecursive(qualityPackageDir, 32)) {
+  for (const absolute of listImageFilesRecursive(qualityPackageDir, PROCESS_ASSET_SCAN_MAX_FILES)) {
     const base = path.basename(absolute).toLowerCase()
     add({
       absolutePath: absolute,
@@ -1422,6 +1552,10 @@ const createQualityFirstCandidateView = ({ candidate = {}, pluginDataDir = '', r
   return {
     candidateId: normalizeText(candidate.candidateId),
     eligible: candidate.eligible === true,
+    technicalEligible: candidate.technicalEligible !== false,
+    disposition: ['selected-anchor', 'alternate', 'duplicate-alternate', 'unusable'].includes(normalizeText(candidate.disposition))
+      ? normalizeText(candidate.disposition)
+      : (candidate.eligible === true ? (candidate.duplicateOfCandidateId ? 'duplicate-alternate' : 'alternate') : 'unusable'),
     sha256: normalizeText(candidate.sha256).slice(0, 128),
     score: Number.isFinite(Number(candidate.score)) ? Number(candidate.score) : null,
     model: normalizeText(candidate.model).slice(0, 160),
@@ -1429,6 +1563,9 @@ const createQualityFirstCandidateView = ({ candidate = {}, pluginDataDir = '', r
     promptRelativePath: safePromptPath,
     previewable,
     failureCodes: createUniqueTextList(candidate.failureCodes).slice(0, 12),
+    attemptKind: normalizeText(candidate.attemptKind).slice(0, 80),
+    diversityProfileId: normalizeText(candidate.diversityProfileId).slice(0, 120),
+    duplicateOfCandidateId: normalizeText(candidate.duplicateOfCandidateId).slice(0, 128),
     artifacts,
     canonicalMetrics: isPlainObject(candidate.canonicalMetrics) ? candidate.canonicalMetrics : null,
     descriptors: isPlainObject(candidate.descriptors) ? candidate.descriptors : null
@@ -1481,7 +1618,7 @@ const createQualityFirstIdentityReviewView = ({ run = null, pluginDataDir = '' }
       .filter((candidate) => candidate.candidateId)
     : []
   const phase = normalizeText(qualityFirst.phase)
-  const selectedCandidateId = normalizeText(qualityFirst.selectedCandidateId || qualityFirst.acceptedCanonical?.candidateId)
+  const selectedCandidateId = normalizeText(qualityFirst.selectedCandidateId || qualityFirst.selectedCanonical?.candidateId || qualityFirst.acceptedCanonical?.candidateId)
   const acceptedCandidateId = normalizeText(qualityFirst.acceptedCanonical?.candidateId)
   const acceptedSha256 = normalizeText(qualityFirst.acceptedCanonical?.sha256).slice(0, 128)
   const nextAction = normalizeText(qualityFirst.nextAction)
@@ -1491,11 +1628,21 @@ const createQualityFirstIdentityReviewView = ({ run = null, pluginDataDir = '' }
     planHash: normalizeText(qualityFirst.planHash).slice(0, 128),
     candidateCount: candidates.length,
     eligibleCandidateCount: candidates.filter((candidate) => candidate.eligible).length,
+    dispatchCount: Math.max(0, Math.trunc(Number(qualityFirst.dispatchCount) || candidates.length)),
+    passingCandidateCount: Math.max(0, Math.trunc(Number(qualityFirst.passingCandidateCount) || candidates.filter((candidate) => candidate.eligible).length)),
+    requireIdentityReviewBeforeActions: qualityFirst.requireIdentityReviewBeforeActions === true,
+    failureCode: normalizeText(qualityFirst.failureCode).slice(0, 120),
     currentAction: normalizeText(run?.currentStep),
     nextAction,
     budget: createQualityFirstBudgetView({ pluginDataDir, runId }),
     identityReview: {
-      status: phase === 'awaiting_identity_review' ? 'pending' : (acceptedCandidateId ? 'accepted' : 'unavailable'),
+      status: phase === 'awaiting_identity_review'
+        ? 'pending'
+        : phase === 'identity-generation-failed'
+          ? 'failed'
+          : (acceptedCandidateId
+              ? (qualityFirst.requireIdentityReviewBeforeActions === true ? 'accepted' : 'selected')
+              : 'unavailable'),
       candidates,
       selectedCandidateId,
       acceptedCandidateId,
@@ -1526,6 +1673,22 @@ const createQualityFirstIdentityReviewView = ({ run = null, pluginDataDir = '' }
   }
 }
 
+const createRunFailureReason = (run = {}) => {
+  const status = normalizeText(run?.status)
+  const backendState = normalizeText(run?.backendStatus?.state)
+  const generatedFailure = run?.artifacts?.generatedImage?.failure?.message
+  const rawFailure = generatedFailure || run?.error || (
+    status === 'failed' || backendState === 'failed'
+      ? run?.backendStatus?.message
+      : ''
+  )
+  const normalizedFailure = normalizeText(rawFailure)
+  if (normalizedFailure !== 'canonical_identity_candidates_unusable') {
+    return sanitizeProgressReason(normalizedFailure)
+  }
+  return sanitizeProgressReason('没有身份候选通过身份、完整性、构图和背景质量门；全部付费候选已保留，可检查失败原因后重新生成身份候选')
+}
+
 const createWorkflowProgressView = ({
   run = null,
   checkpoints = null,
@@ -1537,9 +1700,7 @@ const createWorkflowProgressView = ({
   const currentStep = normalizeText(run.currentStep)
   const reviewStatus = normalizeText(run.reviewStatus)
   const importStatus = normalizeText(run.importStatus)
-  const failureReason = sanitizeProgressReason(
-    run?.artifacts?.generatedImage?.failure?.message || run?.error || run?.backendStatus?.message
-  )
+  const failureReason = createRunFailureReason(run)
   const stages = createStageViews({
     runStatus,
     taskStatus,
@@ -1589,10 +1750,30 @@ const createWorkflowProgressView = ({
         : {})
     })
   }
-  const actions = OFFICIAL_PROGRESS_ACTION_IDS
+  let actions = OFFICIAL_PROGRESS_ACTION_IDS
     .map((actionId) => actionsById.get(actionId))
     .filter(Boolean)
     .concat([...actionsById.values()].filter((action) => !OFFICIAL_PROGRESS_ACTION_IDS.includes(action.actionId)))
+  const hasPersistedImportOutcome = runStatus === 'imported' && Array.isArray(run.availableActionIds)
+  const persistedAvailableSet = new Set(hasPersistedImportOutcome ? createUniqueTextList(run.availableActionIds) : [])
+  const persistedFailedSet = new Set(hasPersistedImportOutcome ? createUniqueTextList(run.failedActionIds) : [])
+  if (hasPersistedImportOutcome) {
+    actions = actions.map((action) => {
+      const failedDuringImport = persistedFailedSet.has(action.actionId)
+      return {
+        ...action,
+        importable: persistedAvailableSet.has(action.actionId) && !failedDuringImport,
+        ...(failedDuringImport
+          ? {
+              status: 'failed',
+              reason: action.status === 'failed' && action.reason
+                ? action.reason
+                : '导入时发现动作帧缺失或无效，未作为质量通过动作导入'
+            }
+          : {})
+      }
+    })
+  }
   const activeStage = stages.find((stage) => stage.status === 'active')
     || stages.find((stage) => stage.status === 'failed')
     || stages.find((stage) => stage.status === 'completed')
@@ -1604,6 +1785,8 @@ const createWorkflowProgressView = ({
   let summary = ''
   if (qualityFirst?.phase === 'awaiting_identity_review') {
     summary = `等待人工确认 canonical identity（${qualityFirst.eligibleCandidateCount}/${qualityFirst.candidateCount} 个候选可用）`
+  } else if (qualityFirst?.phase === 'identity-generation-failed') {
+    summary = failureReason || '身份候选生成失败：没有候选通过完整质量门，全部付费资产已保留'
   } else if (qualityFirst?.phase === 'recovery-required') {
     summary = 'idle 未通过质量门，已保留资产并生成恢复包；请导出恢复包或重新生成身份'
   } else if (failureReason && runStatus === 'failed') {
@@ -1632,9 +1815,13 @@ const createWorkflowProgressView = ({
     summary = activeStage ? ('当前阶段：' + activeStage.label) : '生成进度更新中'
   }
 
-  const importableActionIds = actions.filter((action) => action.importable).map((action) => action.actionId)
+  const importableActionIds = hasPersistedImportOutcome
+    ? [...persistedAvailableSet]
+    : actions.filter((action) => action.importable).map((action) => action.actionId)
   const availableActionIds = importableActionIds.slice()
-  const failedActionIds = failedActions.map((action) => action.actionId)
+  const failedActionIds = hasPersistedImportOutcome
+    ? [...persistedFailedSet]
+    : failedActions.map((action) => action.actionId)
   const completeness = availableActionIds.length === 0
     ? 'none'
     : (failedActionIds.length > 0 || availableActionIds.length < OFFICIAL_PROGRESS_ACTION_IDS.length)
@@ -1645,9 +1832,11 @@ const createWorkflowProgressView = ({
     phase: qualityFirst?.phase || normalizeText(activeStage?.id) || 'generate',
     phaseLabel: qualityFirst?.phase === 'awaiting_identity_review'
       ? '身份候选审查'
-      : qualityFirst?.phase === 'recovery-required'
-        ? '资产恢复'
-        : normalizeText(activeStage?.label) || '生成资源',
+      : qualityFirst?.phase === 'identity-generation-failed'
+        ? '身份候选生成失败'
+        : qualityFirst?.phase === 'recovery-required'
+          ? '资产恢复'
+          : normalizeText(activeStage?.label) || '生成资源',
     summary: sanitizeProgressReason(summary) || '生成进度更新中',
     stages,
     actions,
@@ -1679,7 +1868,7 @@ const readWorkflowDiagnostics = ({ pluginDataDir, runId }) => {
       : null
     const outputCount = Array.isArray(generatedImage?.outputs) ? generatedImage.outputs.length : 0
     const checkpoints = readJsonIfExists(path.join(runDir, 'full-pet-action-checkpoints.json'), null)
-    const failureReason = normalizeText(generatedImage?.failure?.message || run?.error || run?.backendStatus?.message)
+    const failureReason = createRunFailureReason(run)
     return {
       runStatus: normalizeText(run?.status),
       currentStep: normalizeText(run?.currentStep),
@@ -1789,15 +1978,17 @@ const finalizeWorkflowResult = (result) => {
           ? result.processAssets
           : (Array.isArray(progress.processAssets) ? progress.processAssets : []),
         completeness: result.completeness || progress.completeness || '',
-        availableActionIds: Array.isArray(result.availableActionIds) && result.availableActionIds.length
+        availableActionIds: Array.isArray(result.availableActionIds)
           ? result.availableActionIds
           : (Array.isArray(progress.availableActionIds) ? progress.availableActionIds : []),
-        failedActionIds: Array.isArray(result.failedActionIds) && result.failedActionIds.length
+        failedActionIds: Array.isArray(result.failedActionIds)
           ? result.failedActionIds
           : (Array.isArray(progress.failedActionIds) ? progress.failedActionIds : []),
-        omittedActionIds: Array.isArray(result.omittedActionIds) && result.omittedActionIds.length
+        omittedActionIds: Array.isArray(result.omittedActionIds)
           ? result.omittedActionIds
-          : (Array.isArray(progress.failedActionIds) ? progress.failedActionIds : []),
+          : (Array.isArray(progress.omittedActionIds)
+              ? progress.omittedActionIds
+              : (Array.isArray(progress.failedActionIds) ? progress.failedActionIds : [])),
         importNotes: result.importNotes || ''
       }
     : result
@@ -2963,8 +3154,8 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
         availableSet.delete('running-left')
       }
       availableActionIds = [...availableSet]
-      const failedActionIds = createUniqueTextList(progress?.failedActionIds || assetBundle.failedActionIds)
-      const omittedActionIds = createUniqueTextList([
+      let failedActionIds = createUniqueTextList(progress?.failedActionIds || assetBundle.failedActionIds)
+      let omittedActionIds = createUniqueTextList([
         ...failedActionIds,
         ...OFFICIAL_PROGRESS_ACTION_IDS.filter((actionId) => !availableSet.has(actionId))
       ])
@@ -3082,36 +3273,92 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
 
         const partialRoot = path.join(runDir, 'partial-import')
         const framesRoot = path.join(partialRoot, 'frames')
+        const spritesRoot = path.join(partialRoot, 'sprites')
         fs.rmSync(partialRoot, { recursive: true, force: true })
         fs.mkdirSync(framesRoot, { recursive: true })
+        fs.mkdirSync(spritesRoot, { recursive: true })
 
-        const actions = []
-        for (const actionId of availableActionIds) {
-          if (!isSafePathSegment(actionId)) continue
-          const framePaths = collectFramePathsForAction(actionId)
-          if (framePaths.length === 0) continue
-          const actionDir = path.join(framesRoot, actionId)
-          fs.mkdirSync(actionDir, { recursive: true })
-          framePaths.forEach((sourcePath, index) => {
-            const ext = path.extname(sourcePath) || '.png'
-            fs.copyFileSync(sourcePath, path.join(actionDir, `${String(index + 1).padStart(2, '0')}${ext}`))
-          })
-          const files = fs.readdirSync(actionDir).filter((name) => !name.startsWith('.')).sort()
-          if (!files.length) continue
-          actions.push({
-            id: actionId,
-            label: actionId,
-            kind: actionId === 'idle' ? 'state' : 'action',
-            loop: actionId === 'idle' || actionId.startsWith('running'),
-            frameCount: files.length,
-            frameMs: 100,
-            frameWidth: 192,
-            frameHeight: 208,
-            frameRow: 0,
-            frameColumn: 0,
-            sprite: path.posix.join('frames', actionId, files[0])
+        let actions = []
+        const firstFramePathByActionId = new Map()
+        const partialCompositionFailedActionIds = []
+        const { processActionFolder } = require('./sprite-generator')
+        const markPartialCompositionFailure = (actionId, error = null) => {
+          const safeActionId = isSafePathSegment(actionId) ? actionId : 'invalid-action'
+          if (!partialCompositionFailedActionIds.includes(safeActionId)) {
+            partialCompositionFailedActionIds.push(safeActionId)
+          }
+          recordLog({
+            level: 'warn',
+            event: 'creator.workflow.partial-action-skipped',
+            message: 'Creator partial import skipped an invalid action asset',
+            details: {
+              runId: normalizedRunId,
+              actionId: safeActionId,
+              errorMessage: sanitizeLogText(error?.message || 'frame composition failed', { maxChars: 160 })
+            }
           })
         }
+        for (const actionId of availableActionIds) {
+          if (!isSafePathSegment(actionId)) {
+            markPartialCompositionFailure(actionId)
+            continue
+          }
+          const framePaths = collectFramePathsForAction(actionId)
+          if (framePaths.length === 0) {
+            markPartialCompositionFailure(actionId)
+            continue
+          }
+          const actionDir = path.join(framesRoot, actionId)
+          try {
+            fs.mkdirSync(actionDir, { recursive: true })
+            framePaths.forEach((sourcePath, index) => {
+              const ext = path.extname(sourcePath) || '.png'
+              fs.copyFileSync(sourcePath, path.join(actionDir, `${String(index + 1).padStart(2, '0')}${ext}`))
+            })
+            const files = fs.readdirSync(actionDir).filter((name) => !name.startsWith('.')).sort()
+            if (!files.length) {
+              markPartialCompositionFailure(actionId)
+              continue
+            }
+            firstFramePathByActionId.set(actionId, path.join(actionDir, files[0]))
+            const generatedAction = await processActionFolder({
+              folderEntry: { name: actionId },
+              framesRoot,
+              spritesDir: spritesRoot,
+              labels: { [actionId]: actionId },
+              logger: { log: () => {}, warn: () => {} },
+              spriteRelativeDir: 'sprites'
+            })
+            if (!generatedAction) {
+              markPartialCompositionFailure(actionId)
+              continue
+            }
+            actions.push({
+              ...generatedAction,
+              kind: actionId === 'idle' ? 'state' : 'action',
+              loop: actionId === 'idle' || actionId.startsWith('running'),
+              frameMs: 100,
+              frameRow: 0,
+              frameColumn: 0
+            })
+          } catch (error) {
+            fs.rmSync(actionDir, { recursive: true, force: true })
+            fs.rmSync(path.join(spritesRoot, `${actionId}.png`), { force: true })
+            firstFramePathByActionId.delete(actionId)
+            markPartialCompositionFailure(actionId, error)
+          }
+        }
+
+        const hasRunningRight = actions.some((action) => action.id === 'running-right')
+        const hasRunningLeft = actions.some((action) => action.id === 'running-left')
+        if (hasRunningRight !== hasRunningLeft) {
+          actions = actions.filter((action) => !['running-right', 'running-left'].includes(action.id))
+          markPartialCompositionFailure('running-right')
+          markPartialCompositionFailure('running-left')
+        }
+        availableActionIds = createUniqueTextList(actions.map((action) => action.id))
+        failedActionIds = createUniqueTextList([...failedActionIds, ...partialCompositionFailedActionIds])
+        omittedActionIds = createUniqueTextList([...omittedActionIds, ...partialCompositionFailedActionIds])
 
         if (!actions.some((action) => action.id === 'idle')) {
           const donor = actions[0]
@@ -3140,26 +3387,33 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
           }
           const idleDir = path.join(framesRoot, 'idle')
           fs.mkdirSync(idleDir, { recursive: true })
-          const donorPath = path.join(partialRoot, donor.sprite)
+          const donorPath = firstFramePathByActionId.get(donor.id)
+          if (!donorPath) throw new Error(`Partial import donor frame is missing: ${donor.id}`)
           const idleName = '01' + path.extname(donorPath)
           fs.copyFileSync(donorPath, path.join(idleDir, idleName))
+          const generatedIdle = await processActionFolder({
+            folderEntry: { name: 'idle' },
+            framesRoot,
+            spritesDir: spritesRoot,
+            labels: { idle: 'idle' },
+            logger: { log: () => {}, warn: () => {} },
+            spriteRelativeDir: 'sprites'
+          })
+          if (!generatedIdle) throw new Error('Partial import idle placeholder could not be generated')
           actions.unshift({
-            id: 'idle',
-            label: 'idle',
+            ...generatedIdle,
             kind: 'state',
             loop: true,
-            frameCount: 1,
             frameMs: 100,
-            frameWidth: donor.frameWidth,
-            frameHeight: donor.frameHeight,
             frameRow: 0,
-            frameColumn: 0,
-            sprite: path.posix.join('frames', 'idle', idleName)
+            frameColumn: 0
           })
           if (!availableActionIds.includes('idle')) availableActionIds.unshift('idle')
           degradedActionIds.push('idle')
           defaultActionNote = 'idle 原生成失败，已用其他可用动作帧降级作为 defaultAction=idle（静帧占位），请尽快重生成 idle。'
         }
+
+        availableActionIds = createUniqueTextList(actions.map((action) => action.id))
 
         const petId = normalizeText(run?.petId) || slugify(run?.input?.petName || normalizedRunId)
         const displayName = normalizeText(run?.input?.petName) || petId
@@ -3354,7 +3608,7 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
           previewDataUrl: ''
         }
       }
-      const previewDataUrl = fileToPreviewDataUrl(resolved)
+      const previewDataUrl = await createAssetPreviewDataUrl(resolved)
       if (!previewDataUrl) {
         return {
           ok: false,

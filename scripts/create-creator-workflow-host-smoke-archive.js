@@ -110,8 +110,15 @@ const sanitizeReferenceImageSummary = (value) => {
 }
 
 const sanitizeSourceSessionDir = (sessionDir) => {
-  const relative = toPosixPath(path.relative(process.cwd(), String(sessionDir || '').trim()))
+  const source = toPosixPath(String(sessionDir || '').trim())
+  const relative = toPosixPath(path.relative(process.cwd(), source))
   if (relative && !relative.startsWith('../') && !path.isAbsolute(relative)) return sanitizeText(relative, 240)
+  const marker = 'release/creator-workflow-host-smoke/'
+  const markerIndex = source.lastIndexOf(marker)
+  if (markerIndex >= 0) {
+    const sessionId = sanitizeText(source.slice(markerIndex + marker.length).split('/')[0], 80)
+    if (/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(sessionId)) return `${marker}${sessionId}`
+  }
   return 'release/creator-workflow-host-smoke/<session>'
 }
 

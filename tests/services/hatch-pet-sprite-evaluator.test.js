@@ -3,6 +3,7 @@ const os = require('node:os')
 const path = require('node:path')
 const test = require('node:test')
 const assert = require('node:assert/strict')
+const sharp = require('sharp')
 
 const { getQualityFirstQualityProfile } = require('../../examples/plugins/creator-studio/lib/pet-generation-quality-profile')
 const {
@@ -138,7 +139,7 @@ test('evaluation evidence uses board-bound ids so candidates never overwrite eac
   assert.equal(fs.existsSync(path.join(dataDir, second)), true)
 })
 
-test('canonical comparison validates one score record per candidate region and gates each candidate', () => {
+test('canonical comparison accepts one to four candidate records and passes when any candidate passes', () => {
   const regions = [
     ...REGIONS,
     { regionId: 'candidate-2', role: 'canonical-candidate' },
@@ -155,10 +156,18 @@ test('canonical comparison validates one score record per candidate region and g
     }))
   }, { regions })
   const result = evaluateCanonicalComparisonGate({ evaluation, profile: getQualityFirstQualityProfile(), regions })
-  assert.equal(result.ok, false)
+  assert.equal(result.ok, true)
   assert.equal(result.candidateGates['candidate-1'].ok, true)
   assert.equal(result.candidateGates['candidate-2'].ok, false)
   assert.ok(result.candidateGates['candidate-2'].failures.includes('visual-score-overall-below-minimum'))
+
+  const singleRegions = REGIONS
+  const single = validateCanonicalComparisonEvaluation({
+    schemaVersion: 1,
+    recommendation: 'pass',
+    candidates: [{ candidateId: 'candidate-1', confidence: 0.95, scores: canonicalScores({ overall: 94 }), defects: [] }]
+  }, { regions: singleRegions })
+  assert.equal(evaluateCanonicalComparisonGate({ evaluation: single, profile: getQualityFirstQualityProfile(), regions: singleRegions }).ok, true)
   assert.throws(() => validateCanonicalComparisonEvaluation({
     schemaVersion: 1,
     recommendation: 'pass',
@@ -168,4 +177,43 @@ test('canonical comparison validates one score record per candidate region and g
       evaluation.candidates[2]
     ]
   }, { regions }), /unknown canonical candidate region/)
+})
+
+test('canonical evaluator tool schema requires exactly the candidate regions on the attached board', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-canonical-tool-schema-'))
+  const boardPath = path.join(dataDir, 'board.png')
+  await sharp({ create: { width: 8, height: 8, channels: 4, background: '#fff' } }).png().toFile(boardPath)
+  const regions = [
+    { regionId: 'source', role: 'source-identity' },
+    ...[1, 2, 3, 4].map((index) => ({ regionId: `candidate-${index}`, role: 'canonical-candidate' }))
+  ]
+  const request = createSpriteEvaluatorRequest({
+    scope: 'canonical-comparison',
+    board: { path: boardPath, sha256: 'a'.repeat(64), regions },
+    qa: { ok: true, failures: [], metrics: {} },
+    profile: getQualityFirstQualityProfile()
+  })
+  const candidatesSchema = request.tool.function.parameters.properties.candidates
+  assert.equal(candidatesSchema.minItems, 4)
+  assert.equal(candidatesSchema.maxItems, 4)
+  assert.match(request.tool.function.description, /four canonical sprite candidates/i)
+})
+
+test('canonical evaluation evidence retains all four paid candidate score records', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-canonical-evidence-four-'))
+  const candidates = [1, 2, 3, 4].map((index) => ({
+    candidateId: `candidate-${index}`,
+    confidence: 0.95,
+    scores: canonicalScores({ overall: 90 + index }),
+    defects: []
+  }))
+  const relativePath = recordSpriteEvaluation({
+    dataDir,
+    runId: 'run-four',
+    scope: 'canonical-comparison',
+    evidenceId: 'a'.repeat(64),
+    evaluation: { schemaVersion: 1, recommendation: 'pass', candidates }
+  })
+  const stored = JSON.parse(fs.readFileSync(path.join(dataDir, relativePath), 'utf8'))
+  assert.equal(stored.evaluation.candidates.length, 4)
 })

@@ -3,6 +3,7 @@ const assert = require('node:assert/strict')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
+const sharp = require('sharp')
 
 const {
   __testInternals,
@@ -2071,18 +2072,22 @@ test('creator workflow diagnostics expose renderer-safe quality-first identity c
   })}\n`)
   fs.writeFileSync(path.join(runDir, 'run.json'), `${JSON.stringify({
     runId,
-    status: 'awaiting_identity_review',
-    currentStep: 'identity-review',
-    reviewStatus: 'identity-pending',
+    status: 'ready_for_review',
+    currentStep: 'review',
+    reviewStatus: 'pending',
     generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1' },
     qualityFirst: {
       version: 1,
-      phase: 'awaiting_identity_review',
+      phase: 'ready_for_review',
       planHash: 'p'.repeat(64),
-      nextAction: 'accept-canonical-identity',
+      nextAction: 'human-review',
+      requireIdentityReviewBeforeActions: false,
+      selectedCanonical: { candidateId: 'canonical-1', sha256: 'a'.repeat(64) },
+      acceptedCanonical: { candidateId: 'canonical-1', sha256: 'a'.repeat(64) },
       canonicalCandidates: [{
         candidateId: 'canonical-1',
         eligible: true,
+        disposition: 'selected-anchor',
         sha256: 'a'.repeat(64),
         score: 94,
         model: 'gpt-image-2',
@@ -2091,27 +2096,121 @@ test('creator workflow diagnostics expose renderer-safe quality-first identity c
         failureCodes: []
       }, {
         candidateId: 'canonical-2',
-        eligible: false,
+        eligible: true,
+        disposition: 'duplicate-alternate',
         sha256: 'b'.repeat(64),
         score: 58,
         relativePath: '/Users/private/should-not-leak.png',
-        failureCodes: ['canonical-edge-touch']
+        duplicateOfCandidateId: 'canonical-1',
+        failureCodes: []
       }]
     }
   }, null, 2)}\n`)
 
   const diagnostics = __testInternals.readWorkflowDiagnostics({ pluginDataDir, runId })
-  assert.equal(diagnostics.progress.phase, 'awaiting_identity_review')
-  assert.equal(diagnostics.progress.qualityFirst.phase, 'awaiting_identity_review')
-  assert.equal(diagnostics.progress.qualityFirst.nextAction, 'accept-canonical-identity')
+  assert.equal(diagnostics.progress.phase, 'ready_for_review')
+  assert.equal(diagnostics.progress.qualityFirst.phase, 'ready_for_review')
+  assert.equal(diagnostics.progress.qualityFirst.nextAction, 'human-review')
+  assert.equal(diagnostics.progress.qualityFirst.identityReview.status, 'selected')
+  assert.equal(diagnostics.progress.qualityFirst.identityReview.selectedCandidateId, 'canonical-1')
   assert.equal(diagnostics.progress.qualityFirst.identityReview.candidates.length, 2)
   assert.equal(diagnostics.progress.qualityFirst.identityReview.candidates[0].previewable, true)
+  assert.equal(diagnostics.progress.qualityFirst.identityReview.candidates[0].disposition, 'selected-anchor')
+  assert.equal(diagnostics.progress.qualityFirst.identityReview.candidates[1].disposition, 'duplicate-alternate')
   assert.equal(diagnostics.progress.qualityFirst.identityReview.candidates[1].relativePath, '')
   assert.equal(diagnostics.progress.qualityFirst.budget.usage.providerCalls, 5)
   assert.equal(diagnostics.progress.qualityFirst.budget.usage.providerFailures, 1)
   assert.equal(diagnostics.progress.qualityFirst.budget.remaining.providerCalls, 67)
   assert.equal(diagnostics.progress.qualityFirst.budget.remaining.evaluatorCalls, 65)
   assert.doesNotMatch(JSON.stringify(diagnostics), /\/Users\/private/)
+})
+
+test('creator workflow diagnostics do not treat a running backend message as a failure reason', () => {
+  const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-running-message-'))
+  const runId = 'run-running-message'
+  const runDir = path.join(pluginDataDir, 'runs', runId)
+  fs.mkdirSync(runDir, { recursive: true })
+  fs.writeFileSync(path.join(runDir, 'run.json'), `${JSON.stringify({
+    runId,
+    status: 'generating',
+    taskStatus: 'confirmed',
+    currentStep: 'canonical-candidates',
+    backendStatus: { state: 'running', message: 'Generating canonical identity candidates' }
+  }, null, 2)}\n`)
+
+  const diagnostics = __testInternals.readWorkflowDiagnostics({ pluginDataDir, runId })
+
+  assert.equal(diagnostics.runStatus, 'generating')
+  assert.equal(diagnostics.failureReason, '')
+  assert.equal(diagnostics.progress.failureReason, '')
+  assert.doesNotMatch(diagnostics.progress.summary, /生成失败|失败原因/)
+})
+
+test('creator workflow diagnostics expose a failed identity pool without absolute paths or prompt bodies', () => {
+  const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-failed-identity-pool-'))
+  const runId = 'run-failed-identity-pool'
+  const runDir = path.join(pluginDataDir, 'runs', runId)
+  const candidatePath = path.join(runDir, 'candidates', 'canonical', 'canonical-1', 'raw', '0001.png')
+  fs.mkdirSync(path.dirname(candidatePath), { recursive: true })
+  fs.writeFileSync(candidatePath, 'png')
+  fs.writeFileSync(path.join(runDir, 'run.json'), `${JSON.stringify({
+    runId,
+    status: 'failed',
+    taskStatus: 'confirmed',
+    currentStep: 'canonical-candidates',
+    error: 'canonical_identity_candidates_unusable',
+    backendStatus: { state: 'failed', message: 'canonical_identity_candidates_unusable' },
+    qualityFirst: {
+      version: 1,
+      phase: 'identity-generation-failed',
+      failureCode: 'canonical_identity_candidates_unusable',
+      dispatchCount: 4,
+      passingCandidateCount: 0,
+      nextAction: 'retry-identity',
+      canonicalCandidates: [{
+        candidateId: 'canonical-1',
+        eligible: false,
+        disposition: 'unusable',
+        sha256: 'a'.repeat(64),
+        relativePath: `runs/${runId}/candidates/canonical/canonical-1/raw/0001.png`,
+        attemptKind: 'initial',
+        diversityProfileId: 'identity-faithful-balanced-v1',
+        failureCodes: ['identity-gate-failed'],
+        promptText: 'secret prompt body'
+      }, {
+        candidateId: 'canonical-2',
+        eligible: false,
+        disposition: 'unusable',
+        sha256: 'b'.repeat(64),
+        relativePath: '/Users/mango/private.png',
+        attemptKind: 'duplicate-replacement',
+        diversityProfileId: 'identity-safe-alternate-neutral-v1',
+        duplicateOfCandidateId: 'canonical-1',
+        failureCodes: ['incomplete-subject'],
+        previewDataUrl: 'data:image/png;base64,secret'
+      }]
+    }
+  }, null, 2)}\n`)
+
+  const diagnostics = __testInternals.readWorkflowDiagnostics({ pluginDataDir, runId })
+  const qualityFirst = diagnostics.progress.qualityFirst
+
+  assert.equal(diagnostics.runStatus, 'failed')
+  assert.match(diagnostics.failureReason, /没有|0 个|不可用/)
+  assert.match(diagnostics.failureReason, /身份候选|canonical identity/i)
+  assert.equal(qualityFirst.phase, 'identity-generation-failed')
+  assert.equal(qualityFirst.failureCode, 'canonical_identity_candidates_unusable')
+  assert.equal(qualityFirst.dispatchCount, 4)
+  assert.equal(qualityFirst.passingCandidateCount, 0)
+  assert.equal(qualityFirst.nextAction, 'retry-identity')
+  assert.equal(qualityFirst.identityReview.status, 'failed')
+  assert.equal(qualityFirst.identityReview.candidates[0].previewable, true)
+  assert.equal(qualityFirst.identityReview.candidates[1].relativePath, '')
+  assert.equal(qualityFirst.identityReview.candidates[1].duplicateOfCandidateId, 'canonical-1')
+  assert.equal(qualityFirst.identityReview.candidates[1].attemptKind, 'duplicate-replacement')
+  assert.equal(qualityFirst.identityReview.candidates[1].diversityProfileId, 'identity-safe-alternate-neutral-v1')
+  assert.match(diagnostics.progress.summary, /没有|0 个|不可用/)
+  assert.doesNotMatch(JSON.stringify(diagnostics), /\/Users\/mango|data:image|secret prompt body/i)
 })
 
 test('creator workflow accepts an eligible canonical identity through an exact hash-bound command', async () => {
@@ -2284,14 +2383,22 @@ test('creator workflow service imports available actions as partial pack when id
   const runDir = path.join(pluginDataDir, 'runs', runId)
   const rightDir = path.join(runDir, 'official-row-frames', 'running-right')
   const leftDir = path.join(runDir, 'official-row-frames', 'running-left')
+  const wavingDir = path.join(runDir, 'official-row-frames', 'waving')
+  const archivedPromptDir = path.join(runDir, 'repairs', '2026-07-25-action-waving', 'prompts', 'quality-first')
   fs.mkdirSync(rightDir, { recursive: true })
   fs.mkdirSync(leftDir, { recursive: true })
+  fs.mkdirSync(wavingDir, { recursive: true })
+  fs.mkdirSync(archivedPromptDir, { recursive: true })
   const png = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
     'base64'
   )
   fs.writeFileSync(path.join(rightDir, '01.png'), png)
+  fs.writeFileSync(path.join(rightDir, '02.png'), png)
   fs.writeFileSync(path.join(leftDir, '01.png'), png)
+  fs.writeFileSync(path.join(leftDir, '02.png'), png)
+  fs.writeFileSync(path.join(wavingDir, '01.png'), 'not-an-image')
+  fs.writeFileSync(path.join(archivedPromptDir, 'waving-candidate-old.txt'), 'Archived waving repair prompt.\n')
   fs.writeFileSync(path.join(runDir, 'run.json'), `${JSON.stringify({
     runId,
     petId: 'partial-cat',
@@ -2321,7 +2428,10 @@ test('creator workflow service imports available actions as partial pack when id
         ok: true,
         row: {
           quality: 'row-real',
-          frames: [{ relativePath: `runs/${runId}/official-row-frames/running-right/01.png`, sha256: 'r' }]
+          frames: [
+            { relativePath: `runs/${runId}/official-row-frames/running-right/01.png`, sha256: 'r1' },
+            { relativePath: `runs/${runId}/official-row-frames/running-right/02.png`, sha256: 'r2' }
+          ]
         }
       },
       'running-left': {
@@ -2329,7 +2439,18 @@ test('creator workflow service imports available actions as partial pack when id
         ok: true,
         row: {
           quality: 'approved-mirror',
-          frames: [{ relativePath: `runs/${runId}/official-row-frames/running-left/01.png`, sha256: 'l' }]
+          frames: [
+            { relativePath: `runs/${runId}/official-row-frames/running-left/01.png`, sha256: 'l1' },
+            { relativePath: `runs/${runId}/official-row-frames/running-left/02.png`, sha256: 'l2' }
+          ]
+        }
+      },
+      waving: {
+        actionId: 'waving',
+        ok: true,
+        row: {
+          quality: 'row-real',
+          frames: [{ relativePath: `runs/${runId}/official-row-frames/waving/01.png`, sha256: 'corrupt' }]
         }
       }
     }
@@ -2337,6 +2458,7 @@ test('creator workflow service imports available actions as partial pack when id
 
   const importedPacks = []
   let inspectedManifest = null
+  let inspectedSourcePath = ''
   const service = createCreatorWorkflowService({
     pluginService: {
       listPlugins: () => ([{ id: 'openpet.creator-studio', enabled: true, runnable: true, commands: [{ id: 'draft-task' }] }]),
@@ -2358,6 +2480,7 @@ test('creator workflow service imports available actions as partial pack when id
     },
     petPackService: {
       inspectPackSource: (sourcePath) => {
+        inspectedSourcePath = sourcePath
         assert.equal(fs.existsSync(path.join(sourcePath, 'pet.json')), true)
         const manifest = JSON.parse(fs.readFileSync(path.join(sourcePath, 'pet.json'), 'utf-8'))
         inspectedManifest = manifest
@@ -2387,14 +2510,69 @@ test('creator workflow service imports available actions as partial pack when id
   assert.equal(result.completeness, 'partial')
   assert.equal(result.availableActionIds.includes('idle'), true)
   assert.equal(result.availableActionIds.includes('running-right'), true)
+  assert.equal(result.availableActionIds.includes('waving'), false)
+  assert.equal(result.failedActionIds.includes('waving'), true)
+  assert.equal(result.omittedActionIds.includes('waving'), true)
+  assert.equal(inspectedManifest.actions.some((action) => action.id === 'waving'), false)
+  const wavingProgress = result.diagnostics.progress.actions.find((action) => action.actionId === 'waving')
+  assert.equal(wavingProgress.status, 'failed')
+  assert.equal(wavingProgress.importable, false)
+  assert.equal(result.diagnostics.progress.availableActionIds.includes('waving'), false)
+  assert.equal(result.diagnostics.progress.failedActionIds.includes('waving'), true)
   assert.equal(result.failedActionIds.includes('idle') || result.importNotes.includes('idle'), true)
+  const archivedPrompt = result.processAssets.find((asset) => asset.kind === 'prompt' && asset.actionId === 'waving')
+  assert.equal(archivedPrompt.promptText, 'Archived waving repair prompt.')
+  assert.match(archivedPrompt.promptRelativePath, /^runs\/run-partial-import\/repairs\//)
   assert.equal(inspectedManifest.actionAvailability.idle.available, false)
   assert.equal(inspectedManifest.actionAvailability.idle.quality, 'placeholder')
   assert.match(inspectedManifest.actionAvailability.idle.reason, /placeholder|fallback/i)
   assert.deepEqual(inspectedManifest.creatorStudio.degradedActionIds, ['idle'])
+  for (const actionId of ['running-right', 'running-left']) {
+    const action = inspectedManifest.actions.find((item) => item.id === actionId)
+    assert.equal(action.frameCount, 2)
+    assert.match(action.sprite, /^sprites\/.+\.png$/)
+    const metadata = await sharp(path.join(inspectedSourcePath, action.sprite)).metadata()
+    assert.equal(metadata.width, action.frameWidth * action.frameCount)
+    assert.equal(metadata.height, action.frameHeight)
+  }
   assert.equal(result.run.importedPackId, 'partial-cat')
   assert.equal(importedPacks.length, 1)
   assert.equal(JSON.stringify(result).includes(pluginDataDir), false)
+
+  fs.writeFileSync(path.join(runDir, 'run.json'), `${JSON.stringify({
+    runId,
+    petId: 'partial-cat',
+    input: { petName: 'Partial Cat', prompt: 'demo' },
+    status: 'failed',
+    taskStatus: 'confirmed',
+    currentStep: 'generate',
+    reviewStatus: 'pending',
+    importStatus: 'not-imported',
+    backend: 'provider',
+    error: 'all remaining assets are corrupt'
+  }, null, 2)}\n`)
+  fs.writeFileSync(path.join(runDir, 'full-pet-action-checkpoints.json'), `${JSON.stringify({
+    version: 1,
+    runId,
+    actions: {
+      idle: { actionId: 'idle', ok: false, error: 'row_identity_shape_drift' },
+      waving: {
+        actionId: 'waving',
+        ok: true,
+        row: {
+          quality: 'row-real',
+          frames: [{ relativePath: `runs/${runId}/official-row-frames/waving/01.png`, sha256: 'corrupt' }]
+        }
+      }
+    }
+  }, null, 2)}\n`)
+
+  const noValidFrames = await service.importAvailableActions({ runId, activate: true })
+  assert.equal(noValidFrames.state, 'review-required')
+  assert.equal(noValidFrames.code, 'no_importable_action_frames')
+  assert.deepEqual(noValidFrames.availableActionIds, [])
+  assert.equal(noValidFrames.failedActionIds.includes('waving'), true)
+  assert.equal(noValidFrames.omittedActionIds.includes('waving'), true)
 })
 
 test('creator workflow diagnostics keep process assets without embedding preview data urls by default', () => {
@@ -2473,6 +2651,91 @@ test('creator workflow diagnostics keep process assets without embedding preview
   assert.equal(waving.assets.some((asset) => asset.previewDataUrl), false)
 })
 
+test('creator workflow diagnostics keep archived paid retry assets visible after replacement generation', () => {
+  const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-retry-assets-'))
+  const runId = 'run-retry-assets'
+  const runDir = path.join(pluginDataDir, 'runs', runId)
+  const identityArchive = path.join(runDir, 'repairs', '2026-07-25-identity', 'candidates', 'canonical', 'canonical-old')
+  const actionArchive = path.join(runDir, 'repairs', '2026-07-25-action-waving', 'candidates', 'action-waving', 'candidate-old', 'raw')
+  const promptArchive = path.join(runDir, 'repairs', '2026-07-25-action-waving', 'prompts', 'quality-first')
+  fs.mkdirSync(identityArchive, { recursive: true })
+  fs.mkdirSync(actionArchive, { recursive: true })
+  fs.mkdirSync(promptArchive, { recursive: true })
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64'
+  )
+  fs.writeFileSync(path.join(identityArchive, 'raw.png'), png)
+  fs.writeFileSync(path.join(actionArchive, 'sheet.png'), png)
+  fs.writeFileSync(path.join(promptArchive, 'waving-candidate-old.txt'), 'Draw the archived waving candidate.\n')
+  fs.writeFileSync(path.join(runDir, 'run.json'), JSON.stringify({
+    runId,
+    status: 'failed',
+    taskStatus: 'confirmed',
+    currentStep: 'generate',
+    reviewStatus: 'pending',
+    importStatus: 'not-imported',
+    backend: 'provider',
+    error: 'retry failed'
+  }, null, 2) + '\n')
+
+  const diagnostics = __testInternals.readWorkflowDiagnostics({ pluginDataDir, runId })
+  const archived = diagnostics.progress.processAssets.filter((asset) => asset.role === 'repair-archive' && asset.kind !== 'prompt')
+  assert.deepEqual(
+    archived.map((asset) => asset.relativePath).sort(),
+    [
+      `runs/${runId}/repairs/2026-07-25-action-waving/candidates/action-waving/candidate-old/raw/sheet.png`,
+      `runs/${runId}/repairs/2026-07-25-identity/candidates/canonical/canonical-old/raw.png`
+    ]
+  )
+  assert.equal(archived.filter((asset) => asset.kind !== 'prompt').every((asset) => asset.previewable), true)
+  assert.equal(archived.some((asset) => asset.actionId === 'waving'), true)
+  assert.equal(JSON.stringify(archived).includes(pluginDataDir), false)
+  const archivedPrompts = diagnostics.progress.processAssets.filter((asset) => asset.kind === 'prompt' && asset.role === 'repair-archive')
+  assert.equal(archivedPrompts.length, 1)
+  assert.equal(archivedPrompts[0].actionId, 'waving')
+  assert.equal(archivedPrompts[0].promptText, 'Draw the archived waving candidate.')
+  assert.match(archivedPrompts[0].promptRelativePath, /^runs\/run-retry-assets\/repairs\//)
+})
+
+test('creator workflow diagnostics do not truncate current or archived candidate assets within the run budget', () => {
+  const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-candidate-volume-'))
+  const runId = 'run-candidate-volume'
+  const runDir = path.join(pluginDataDir, 'runs', runId)
+  const currentDir = path.join(runDir, 'candidates', 'action-waving', 'candidate-1', 'processed', 'frames')
+  const archivedDir = path.join(runDir, 'repairs', '2026-07-25-action-waving', 'candidates', 'action-waving', 'candidate-1', 'processed', 'frames')
+  fs.mkdirSync(currentDir, { recursive: true })
+  fs.mkdirSync(archivedDir, { recursive: true })
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64'
+  )
+  for (let index = 1; index <= 300; index += 1) {
+    const fileName = `${String(index).padStart(3, '0')}.png`
+    fs.writeFileSync(path.join(currentDir, fileName), png)
+    fs.writeFileSync(path.join(archivedDir, fileName), png)
+  }
+  fs.writeFileSync(path.join(runDir, 'run.json'), JSON.stringify({
+    runId,
+    status: 'failed',
+    taskStatus: 'confirmed',
+    currentStep: 'generate',
+    reviewStatus: 'pending',
+    importStatus: 'not-imported',
+    backend: 'provider',
+    error: 'waving failed'
+  }, null, 2) + '\n')
+
+  const diagnostics = __testInternals.readWorkflowDiagnostics({ pluginDataDir, runId })
+  const current = diagnostics.progress.processAssets.filter((asset) => asset.role === 'processed-candidate')
+  const archived = diagnostics.progress.processAssets.filter((asset) => asset.role === 'repair-archive')
+
+  assert.equal(current.length, 300)
+  assert.equal(archived.length, 300)
+  assert.equal(current.every((asset) => asset.actionId === 'waving' && asset.previewable), true)
+  assert.equal(archived.every((asset) => asset.actionId === 'waving' && asset.previewable), true)
+})
+
 test('creator workflow asset preview loads on demand and rejects path escape', async () => {
   const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-asset-preview-'))
   const runId = 'run-preview-on-demand'
@@ -2520,6 +2783,56 @@ test('creator workflow asset preview loads on demand and rejects path escape', a
   const outside = await service.getAssetPreview({ runId, relativePath: 'runs/other/01.png' })
   assert.equal(outside.ok, false)
   assert.equal(JSON.stringify(okPreview).includes(pluginDataDir), false)
+})
+
+test('creator workflow creates a bounded on-demand preview for a large paid image asset', async () => {
+  const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-large-preview-'))
+  const runId = 'run-large-preview'
+  const runDir = path.join(pluginDataDir, 'runs', runId)
+  const candidateDir = path.join(runDir, 'candidates', 'canonical', 'canonical-1', 'raw')
+  fs.mkdirSync(candidateDir, { recursive: true })
+  const width = 900
+  const height = 900
+  const pixels = Buffer.alloc(width * height * 4)
+  for (let index = 0; index < pixels.length; index += 4) {
+    const value = (index * 31 + Math.floor(index / 7) * 17) % 256
+    pixels[index] = value
+    pixels[index + 1] = (value * 3 + 19) % 256
+    pixels[index + 2] = (value * 7 + 43) % 256
+    pixels[index + 3] = 255
+  }
+  const imagePath = path.join(candidateDir, 'large.png')
+  await sharp(pixels, { raw: { width, height, channels: 4 } }).png({ compressionLevel: 0 }).toFile(imagePath)
+  assert.ok(fs.statSync(imagePath).size > 1_500_000)
+  fs.writeFileSync(path.join(runDir, 'run.json'), JSON.stringify({ runId, status: 'failed' }, null, 2) + '\n')
+
+  const service = createCreatorWorkflowService({
+    pluginService: {
+      listPlugins: () => ([{ id: 'openpet.creator-studio', enabled: true, runnable: true, commands: [{ id: 'draft-task' }] }]),
+      runCommand: async () => ({ ok: true }),
+      getPluginCreatorDataDir: () => pluginDataDir
+    },
+    imageGenerationModelService: {
+      checkHealth: async () => ({ ok: true, code: 'provider_healthy', message: 'ok' }),
+      getConfig: () => ({ provider: 'openai-compatible', model: 'gpt-image-2', creatorWorkflowModelPolicy: { verifiedModels: ['gpt-image-2'] } })
+    },
+    actionService: {
+      getConfig: () => ({ defaultAction: 'idle', clickAction: 'waving', actions: [] }),
+      acceptTriggerProposalItem: () => ({})
+    },
+    creatorReferenceService: {
+      getReference: () => null,
+      bindReference: async () => ({ replaced: false, reference: null }),
+      copyReferenceIntoRun: () => ({})
+    }
+  })
+
+  const relativePath = `runs/${runId}/candidates/canonical/canonical-1/raw/large.png`
+  const preview = await service.getAssetPreview({ runId, relativePath })
+  assert.equal(preview.ok, true)
+  assert.match(preview.previewDataUrl, /^data:image\/webp;base64,/)
+  assert.ok(Buffer.from(preview.previewDataUrl.split(',')[1], 'base64').length < 1_500_000)
+  assert.equal(JSON.stringify(preview).includes(pluginDataDir), false)
 })
 
 test('creator workflow rejects unsafe run ids before reading outside the creator data boundary', () => {

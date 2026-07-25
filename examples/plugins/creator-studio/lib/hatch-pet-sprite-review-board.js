@@ -63,17 +63,34 @@ const writeBoard = async ({ width, height, outputPath, rendered }) => {
 }
 
 const createCanonicalEvaluatorBoard = async ({ sourcePath, candidates = [], outputPath }) => {
-  if (!Array.isArray(candidates) || candidates.length !== 3) {
-    throw new Error('Canonical evaluator board requires exactly three candidates')
+  if (!Array.isArray(candidates) || candidates.length < 1 || candidates.length > 4) {
+    throw new Error('Canonical evaluator board requires one to four candidates')
   }
-  const definitions = [
-    { sourcePath, region: { regionId: 'source', role: 'source-identity', x: 0, y: 0, width: 1024, height: 1024 } },
-    { sourcePath: candidates[0].path, region: { regionId: String(candidates[0].candidateId), role: 'canonical-candidate', x: 1024, y: 0, width: 1024, height: 1024 } },
-    { sourcePath: candidates[1].path, region: { regionId: String(candidates[1].candidateId), role: 'canonical-candidate', x: 0, y: 1024, width: 1024, height: 1024 } },
-    { sourcePath: candidates[2].path, region: { regionId: String(candidates[2].candidateId), role: 'canonical-candidate', x: 1024, y: 1024, width: 1024, height: 1024 } }
+  const cells = [
+    { x: 0, y: 0 },
+    { x: 1024, y: 0 },
+    { x: 2048, y: 0 },
+    { x: 0, y: 1024 },
+    { x: 1024, y: 1024 }
   ]
+  const definitions = [{
+    sourcePath,
+    region: { regionId: 'source', role: 'source-identity', ...cells[0], width: 1024, height: 1024 }
+  }]
+  candidates.forEach((candidate, index) => {
+    definitions.push({
+      sourcePath: candidate.path,
+      region: {
+        regionId: String(candidate.candidateId),
+        role: 'canonical-candidate',
+        ...cells[index + 1],
+        width: 1024,
+        height: 1024
+      }
+    })
+  })
   const rendered = await Promise.all(definitions.map(renderRegion))
-  return writeBoard({ width: 2048, height: 2048, outputPath, rendered })
+  return writeBoard({ width: 3072, height: 2048, outputPath, rendered })
 }
 
 const createActionEvaluatorBoard = async ({ sourcePath, canonicalPath, adjacentPath = '', candidateFrames = [], outputPath }) => {

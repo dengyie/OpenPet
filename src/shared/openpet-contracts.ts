@@ -2147,6 +2147,8 @@ export interface CreatorActionAttemptViewState {
 export interface CreatorCanonicalCandidateViewState {
   candidateId: string
   eligible: boolean
+  technicalEligible: boolean
+  disposition: 'selected-anchor' | 'alternate' | 'duplicate-alternate' | 'unusable'
   sha256: string
   score: number | null
   model: string
@@ -2154,6 +2156,9 @@ export interface CreatorCanonicalCandidateViewState {
   promptRelativePath: string
   previewable: boolean
   failureCodes: string[]
+  attemptKind?: string
+  diversityProfileId?: string
+  duplicateOfCandidateId?: string
   artifacts: Array<{
     role: string
     relativePath: string
@@ -2164,7 +2169,7 @@ export interface CreatorCanonicalCandidateViewState {
 }
 
 export interface CreatorIdentityReviewViewState {
-  status: 'pending' | 'accepted' | 'unavailable'
+  status: 'pending' | 'selected' | 'accepted' | 'failed' | 'unavailable'
   candidates: CreatorCanonicalCandidateViewState[]
   selectedCandidateId: string
   acceptedCandidateId: string
@@ -2177,6 +2182,10 @@ export interface CreatorQualityFirstProgressViewState {
   planHash: string
   candidateCount: number
   eligibleCandidateCount: number
+  dispatchCount: number
+  passingCandidateCount: number
+  requireIdentityReviewBeforeActions: boolean
+  failureCode: string
   currentAction: string
   nextAction: string
   budget: {

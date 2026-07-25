@@ -5,31 +5,79 @@ const normalizeId = (value) => String(value || '').trim()
 const hash = (value) => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex')
 const unique = (values = []) => [...new Set((Array.isArray(values) ? values : []).filter(Boolean).map(normalizeId))]
 
-const assertCanonicalPool = (pool) => {
-  const candidates = Array.isArray(pool?.candidates) ? pool.candidates : []
-  const eligible = candidates.filter((candidate) => candidate?.eligible === true)
-  const distinctHashes = new Set(eligible.map((candidate) => String(candidate.sha256 || candidate.candidateId || '')))
-  if (eligible.length < 3 || distinctHashes.size < 3 || Number(pool?.dispatchCount || 0) > 4) {
-    const error = new Error('canonical_candidate_diversity_insufficient')
-    error.code = 'canonical_candidate_diversity_insufficient'
-    throw error
-  }
-  return candidates.map((candidate) => ({
+const normalizeSafeRelativePath = (value) => {
+  const normalized = String(value || '').trim().replace(/\\/g, '/')
+  if (!normalized || normalized.startsWith('/') || /^[a-z][a-z0-9+.-]*:/i.test(normalized)) return ''
+  if (normalized.split('/').some((segment) => segment === '..')) return ''
+  return normalized
+}
+
+const publicCanonicalCandidate = (candidate = {}) => {
+  const relativePath = normalizeSafeRelativePath(candidate.relativePath)
+  const promptRelativePath = normalizeSafeRelativePath(candidate.promptRelativePath)
+  const candidateRecordRelativePath = normalizeSafeRelativePath(candidate.candidateRecordRelativePath)
+  const evaluationEvidenceRelativePath = normalizeSafeRelativePath(candidate.evaluationEvidenceRelativePath)
+  return {
     candidateId: normalizeId(candidate.candidateId),
     eligible: candidate.eligible === true,
-    sha256: String(candidate.sha256 || ''),
+    sha256: String(candidate.sha256 || '').slice(0, 128),
     score: Number(candidate.score) || 0,
-    failureCodes: unique(candidate.failureCodes),
-    ...(candidate.relativePath ? { relativePath: String(candidate.relativePath).replace(/\\/g, '/') } : {}),
-    ...(candidate.promptRelativePath ? { promptRelativePath: String(candidate.promptRelativePath).replace(/\\/g, '/') } : {}),
+    disposition: String(candidate.disposition || ''),
+    technicalEligible: candidate.technicalEligible !== false,
+    failureCodes: unique(candidate.failureCodes).slice(0, 32),
+    ...(candidate.attemptKind ? { attemptKind: String(candidate.attemptKind).slice(0, 80) } : {}),
+    ...(candidate.diversityProfileId ? { diversityProfileId: String(candidate.diversityProfileId).slice(0, 120) } : {}),
+    ...(candidate.duplicateOfCandidateId ? { duplicateOfCandidateId: normalizeId(candidate.duplicateOfCandidateId).slice(0, 128) } : {}),
+    ...(candidate.duplicateOfSha256 ? { duplicateOfSha256: String(candidate.duplicateOfSha256).slice(0, 128) } : {}),
+    ...(relativePath ? { relativePath } : {}),
+    ...(promptRelativePath ? { promptRelativePath } : {}),
     ...(candidate.model ? { model: String(candidate.model).slice(0, 160) } : {}),
-    ...(candidate.candidateRecordRelativePath ? { candidateRecordRelativePath: String(candidate.candidateRecordRelativePath).replace(/\\/g, '/') } : {}),
+    ...(candidateRecordRelativePath ? { candidateRecordRelativePath } : {}),
     ...(candidate.canonicalMetrics ? { canonicalMetrics: candidate.canonicalMetrics } : {}),
     ...(candidate.descriptors ? { descriptors: candidate.descriptors } : {}),
     ...(candidate.evaluation ? { evaluation: candidate.evaluation } : {}),
     ...(candidate.gate ? { gate: candidate.gate } : {}),
-    ...(candidate.evaluationEvidenceRelativePath ? { evaluationEvidenceRelativePath: String(candidate.evaluationEvidenceRelativePath).replace(/\\/g, '/') } : {})
+    ...(evaluationEvidenceRelativePath ? { evaluationEvidenceRelativePath } : {})
+  }
+}
+
+const assertCanonicalPool = (pool) => {
+  const candidates = Array.isArray(pool?.candidates) ? pool.candidates : []
+  const publicCandidates = candidates.map(publicCanonicalCandidate)
+  const passingCandidates = publicCandidates.filter((candidate) => candidate.eligible === true && candidate.sha256)
+  if (passingCandidates.length === 0 || Number(pool?.dispatchCount || 0) > 4) {
+    const error = new Error('canonical_identity_candidates_unusable')
+    error.code = 'canonical_identity_candidates_unusable'
+    error.canonicalPool = {
+      dispatchCount: Math.max(0, Math.min(4, Number(pool?.dispatchCount) || candidates.length)),
+      passingCandidateCount: 0,
+      candidates: publicCandidates.map((candidate) => ({ ...candidate, disposition: 'unusable' }))
+    }
+    throw error
+  }
+  const ranked = [...passingCandidates].sort((left, right) => {
+    const scoreDifference = (Number(right.score) || 0) - (Number(left.score) || 0)
+    if (scoreDifference) return scoreDifference
+    const identityDifference = (Number(right.evaluation?.scores?.identity) || 0) - (Number(left.evaluation?.scores?.identity) || 0)
+    if (identityDifference) return identityDifference
+    return left.candidateId.localeCompare(right.candidateId)
+  })
+  const selectedCandidateId = ranked[0].candidateId
+  const normalizedCandidates = publicCandidates.map((candidate) => ({
+    ...candidate,
+    disposition: candidate.eligible !== true
+      ? 'unusable'
+      : candidate.candidateId === selectedCandidateId
+        ? 'selected-anchor'
+        : candidate.duplicateOfCandidateId
+          ? 'duplicate-alternate'
+          : 'alternate'
   }))
+  return {
+    candidates: normalizedCandidates,
+    selectedCanonical: normalizedCandidates.find((candidate) => candidate.candidateId === selectedCandidateId),
+    passingCandidateCount: passingCandidates.length
+  }
 }
 
 const publicActionResult = (result) => ({
@@ -64,7 +112,14 @@ const createQualityFirstFullPetOrchestrator = ({
     throw new Error('Quality-first full-pet orchestrator requires canonical, action, and scale-profile callbacks')
   }
 
-  const start = async ({ run, plan, sourceReference } = {}) => {
+  const start = async ({
+    run,
+    plan,
+    sourceReference,
+    actions = [],
+    requireIdentityReviewBeforeActions = false,
+    persistRunState = async () => {}
+  } = {}) => {
     recordEvent({ scope: 'identity', status: 'started', runId: normalizeId(run?.runId) })
     let pool
     try {
@@ -73,32 +128,52 @@ const createQualityFirstFullPetOrchestrator = ({
       recordEvent({ scope: 'identity', status: 'failed', runId: normalizeId(run?.runId), failureCode: String(error?.code || 'identity_generation_error'), message: String(error?.message || error).slice(0, 240) })
       throw error
     }
-    const candidates = assertCanonicalPool(pool)
+    const selection = assertCanonicalPool(pool)
+    const candidates = selection.candidates
     recordEvent({ scope: 'identity', status: 'completed', runId: normalizeId(run?.runId), candidateCount: candidates.length })
     const startedAt = now()
-    return {
+    const selectedRun = {
       ...run,
-      status: 'awaiting_identity_review',
-      currentStep: 'identity-review',
+      status: requireIdentityReviewBeforeActions ? 'awaiting_identity_review' : 'generating',
+      currentStep: requireIdentityReviewBeforeActions ? 'identity-review' : 'idle',
       updatedAt: startedAt,
-      reviewStatus: 'identity-pending',
+      reviewStatus: requireIdentityReviewBeforeActions ? 'identity-pending' : 'pending',
       qualityFirst: {
         version: 1,
-        phase: 'awaiting_identity_review',
+        phase: requireIdentityReviewBeforeActions ? 'awaiting_identity_review' : 'canonical-selected',
         planHash: String(plan?.hash || hash(plan || {})),
         canonicalCandidates: candidates,
-        acceptedCanonical: null,
+        selectedCanonical: selection.selectedCanonical,
+        acceptedCanonical: requireIdentityReviewBeforeActions ? null : selection.selectedCanonical,
         actionResults: {},
-        nextAction: 'accept-canonical-identity'
+        passingCandidateCount: selection.passingCandidateCount,
+        requireIdentityReviewBeforeActions: requireIdentityReviewBeforeActions === true,
+        nextAction: requireIdentityReviewBeforeActions ? 'accept-canonical-identity' : 'generate-idle'
       }
     }
+    if (requireIdentityReviewBeforeActions) return selectedRun
+    return continueWithCanonicalIdentity({
+      run: selectedRun,
+      candidate: selection.selectedCanonical,
+      plan,
+      actions,
+      persistRunState
+    })
   }
 
-  const acceptCanonicalIdentity = async ({ run, candidateId, sha256, plan, actions = [], persistRunState = async () => {} } = {}) => {
-    const state = run?.qualityFirst
-    if (!state || state.phase !== 'awaiting_identity_review') throw new Error('Canonical identity review is not pending')
-    const candidate = state.canonicalCandidates.find((entry) => entry.candidateId === normalizeId(candidateId))
-    if (!candidate || candidate.eligible !== true || candidate.sha256 !== String(sha256 || '')) throw new Error('Canonical identity candidate is not eligible or hash does not match')
+  const continueWithCanonicalIdentity = async ({ run, candidate, plan, actions = [], persistRunState = async () => {} } = {}) => {
+    const state = run?.qualityFirst || {}
+    const canonicalCandidates = Array.isArray(state.canonicalCandidates)
+      ? state.canonicalCandidates.map((entry) => ({
+          ...entry,
+          disposition: entry.candidateId === candidate.candidateId
+            ? 'selected-anchor'
+            : entry.eligible === true
+              ? (entry.duplicateOfCandidateId ? 'duplicate-alternate' : 'alternate')
+              : 'unusable'
+        }))
+      : []
+    const selectedCandidate = canonicalCandidates.find((entry) => entry.candidateId === candidate.candidateId) || candidate
     const acceptedAt = now()
     const acceptedRun = {
       ...run,
@@ -109,7 +184,9 @@ const createQualityFirstFullPetOrchestrator = ({
       qualityFirst: {
         ...state,
         phase: 'generating-idle',
-        acceptedCanonical: candidate,
+        canonicalCandidates,
+        selectedCanonical: selectedCandidate,
+        acceptedCanonical: selectedCandidate,
         nextAction: 'generate-idle'
       }
     }
@@ -117,7 +194,7 @@ const createQualityFirstFullPetOrchestrator = ({
     const runActionWithEvents = async ({ actionId, profile = null }) => {
       recordEvent({ scope: 'action', status: 'started', runId: normalizeId(run?.runId), actionId })
       try {
-        const result = await runQualityFirstAction({ actionId, plan, canonical: candidate, profile })
+        const result = await runQualityFirstAction({ actionId, plan, canonical: selectedCandidate, profile })
         recordEvent({ scope: 'action', status: result?.ok === true ? 'completed' : 'failed', runId: normalizeId(run?.runId), actionId, candidateCount: Array.isArray(result?.candidates) ? result.candidates.length : 0, ...(result?.ok === true ? {} : { failureCode: String(result?.failureCode || 'action_quality_gate_failed'), message: String(result?.failureCode || 'action quality gate failed') }) })
         return result
       } catch (error) {
@@ -126,7 +203,7 @@ const createQualityFirstFullPetOrchestrator = ({
       }
     }
     const idle = await runActionWithEvents({ actionId: 'idle' })
-    await persistActionResult({ actionId: 'idle', result: idle, canonical: candidate, profile: null })
+    await persistActionResult({ actionId: 'idle', result: idle, canonical: selectedCandidate, profile: null })
     const actionResults = { idle: publicActionResult(idle) }
     let durableRun = {
       ...acceptedRun,
@@ -146,9 +223,9 @@ const createQualityFirstFullPetOrchestrator = ({
       await persistRunState(durableRun)
       return durableRun
     }
-    const profile = await createCharacterScaleProfile({ canonical: candidate, idle })
-    await persistScaleProfile({ profile, canonical: candidate, idle })
-    await persistActionResult({ actionId: 'idle', result: idle, canonical: candidate, profile })
+    const profile = await createCharacterScaleProfile({ canonical: selectedCandidate, idle })
+    await persistScaleProfile({ profile, canonical: selectedCandidate, idle })
+    await persistActionResult({ actionId: 'idle', result: idle, canonical: selectedCandidate, profile })
     actionResults.idle = { ...publicActionResult(idle), scaleProfileHash: profile.hash }
     const requestedActions = unique(actions.length ? actions : ACTION_ORDER)
     const orderedActions = ACTION_ORDER.filter((actionId) => requestedActions.includes(actionId) && actionId !== 'idle')
@@ -174,11 +251,11 @@ const createQualityFirstFullPetOrchestrator = ({
       }
       await persistRunState(durableRun)
       const result = await runActionWithEvents({ actionId, profile })
-      await persistActionResult({ actionId, result, canonical: candidate, profile })
+      await persistActionResult({ actionId, result, canonical: selectedCandidate, profile })
       actionResults[actionId] = publicActionResult(result)
       if (actionId === 'running-right' && result?.ok && typeof mirrorRunningLeft === 'function') {
-        const mirrored = await mirrorRunningLeft({ source: result, profile, canonical: candidate })
-        await persistActionResult({ actionId: 'running-left', result: mirrored, canonical: candidate, profile })
+        const mirrored = await mirrorRunningLeft({ source: result, profile, canonical: selectedCandidate })
+        await persistActionResult({ actionId: 'running-left', result: mirrored, canonical: selectedCandidate, profile })
         actionResults['running-left'] = publicActionResult(mirrored)
       }
       const nextAction = orderedActions.slice(actionIndex + 1).find((entry) => entry !== 'running-left') || 'finalize-package'
@@ -193,7 +270,7 @@ const createQualityFirstFullPetOrchestrator = ({
     const failedOptional = Object.entries(actionResults)
       .filter(([actionId, result]) => actionId !== 'idle' && result?.ok !== true)
       .map(([actionId]) => actionId)
-    const packageResult = await finalizePackage({ run: durableRun, canonical: candidate, profile, actionResults })
+    const packageResult = await finalizePackage({ run: durableRun, canonical: selectedCandidate, profile, actionResults })
     if (!packageResult || typeof packageResult !== 'object' || !packageResult.artifacts || typeof packageResult.artifacts !== 'object') {
       const error = new Error('Quality-first final package artifacts are missing')
       error.code = 'quality_first_final_package_missing'
@@ -221,6 +298,14 @@ const createQualityFirstFullPetOrchestrator = ({
         nextAction: 'human-review'
       }
     }
+  }
+
+  const acceptCanonicalIdentity = async ({ run, candidateId, sha256, plan, actions = [], persistRunState = async () => {} } = {}) => {
+    const state = run?.qualityFirst
+    if (!state || state.phase !== 'awaiting_identity_review') throw new Error('Canonical identity review is not pending')
+    const candidate = state.canonicalCandidates.find((entry) => entry.candidateId === normalizeId(candidateId))
+    if (!candidate || candidate.eligible !== true || candidate.sha256 !== String(sha256 || '')) throw new Error('Canonical identity candidate is not eligible or hash does not match')
+    return continueWithCanonicalIdentity({ run, candidate, plan, actions, persistRunState })
   }
 
   return { start, acceptCanonicalIdentity }

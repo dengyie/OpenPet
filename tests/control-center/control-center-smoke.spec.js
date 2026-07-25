@@ -366,6 +366,26 @@ test.describe('Control Center smoke', () => {
     await expect(readiness).toContainText('已满足生成条件，可以开始生成。')
   })
 
+  test('previews the imported action after a completed demo character generation', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
+        aiConfig: { hasApiKey: true },
+        hatchPetAgentConfig: { enabled: true, configMode: 'follow-chat' }
+      }))
+    })
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Create' }).click()
+    await page.getByLabel('Character name').fill('Preview Contract Cat')
+    await page.getByTestId('creator-new-reference-input').click()
+    await page.getByTestId('creator-generate-new-character').click()
+
+    const result = page.getByTestId('creator-result')
+    await expect(result).toContainText('Imported demo character Preview Contract Cat')
+    await page.getByTestId('creator-preview-result').click()
+    await expect(page.getByTestId('creator-status-line')).toContainText('已预览动作 wave')
+  })
+
   test('blocks multi-view reference material in the demo Create flow with explicit guidance', async ({ page }) => {
     await page.addInitScript(() => {
       window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({

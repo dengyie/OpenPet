@@ -82,7 +82,7 @@ test('ai service exposes config without secret values', () => {
       model: 'gpt-4o-mini',
       apiKeyRef: 'ai.hatch-pet',
       systemPromptVersion: 1,
-      requireIdentityReviewBeforeActions: true,
+      requireIdentityReviewBeforeActions: false,
       budgets: {
         maxIdentityRegenerations: 1,
         maxActionAttemptsPerAction: 3,

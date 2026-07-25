@@ -11,16 +11,18 @@ const {
   validateHatchPetDecision
 } = require('../../src/main/services/hatch-pet-agent-contracts')
 
-test('quality-first hatch-pet contracts expose production mode and mandatory identity review', () => {
+test('quality-first hatch-pet contracts default to final review and preserve an explicit identity-review choice', () => {
   assert.equal(HATCH_PET_EXECUTION_MODES.has('production'), true)
-  assert.equal(DEFAULT_HATCH_PET_AGENT_CONFIG.requireIdentityReviewBeforeActions, true)
+  assert.equal(DEFAULT_HATCH_PET_AGENT_CONFIG.requireIdentityReviewBeforeActions, false)
   assert.equal(DEFAULT_HATCH_PET_BUDGETS.maxPlannerCalls, 34)
   assert.equal(DEFAULT_HATCH_PET_BUDGETS.maxEvaluatorCalls, 68)
   assert.equal(DEFAULT_HATCH_PET_BUDGETS.maxProviderCalls, 72)
   assert.equal(DEFAULT_HATCH_PET_BUDGETS.maxElapsedMs, 43_200_000)
   const production = normalizeHatchPetAgentConfig({ enabled: true, executionMode: 'production' })
   assert.equal(production.executionMode, 'production')
-  assert.equal(production.requireIdentityReviewBeforeActions, true)
+  assert.equal(production.requireIdentityReviewBeforeActions, false)
+  assert.equal(normalizeHatchPetAgentConfig({ requireIdentityReviewBeforeActions: true }).requireIdentityReviewBeforeActions, true)
+  assert.equal(normalizeHatchPetAgentConfig({ requireIdentityReviewBeforeActions: false }).requireIdentityReviewBeforeActions, false)
 })
 
 test('hatch-pet contracts default disabled and fixed shadow while clamping budgets', () => {

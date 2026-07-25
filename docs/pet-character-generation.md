@@ -1,6 +1,6 @@
 # Pet Character And Action Generation
 
-> Updated: 2026-07-24
+> Updated: 2026-07-25
 > Owner: `codex/dev8`
 > Status: quality-first replacement implemented; focused development checks passed; independent Provider and visual verification pending
 
@@ -10,7 +10,7 @@ This document is the current implementation contract for generating an OpenPet c
 
 The normal Create flow produces:
 
-- one source-faithful canonical character selected by a human;
+- one source-faithful canonical character selected deterministically from candidates that pass the immutable quality gates, with an optional pre-action human identity checkpoint;
 - a required `idle` action and any optional actions that independently pass unchanged quality gates;
 - retained raw, processed, prompt, evaluator, contact-sheet, GIF, checkpoint, and package evidence;
 - a partial or complete official atlas that never substitutes copied idle art for a failed action;
@@ -18,7 +18,9 @@ The normal Create flow produces:
 
 Visual quality and identity consistency take priority over latency and cost. Automated code and model evaluation may reject or request repair, but may not grant artistic approval, import a pack, activate a pack, or weaken a threshold.
 
-This branch does not claim `production-art-ready`. Real Provider requests, visual inspection, human identity selection rehearsal, GIF/contact-sheet/atlas review, and final import/activation checks belong to the independent test task.
+Official-quality output requires a source-faithful canonical character plus action-specific Provider generation. Base-image transforms or transform-only frames are preview fallbacks, not official-quality action rows.
+
+This branch does not claim `production-art-ready`. Real Provider requests, visual inspection, optional identity-checkpoint rehearsal, GIF/contact-sheet/atlas review, and final import/activation checks belong to the independent test task.
 
 ## 2. Production state machine
 
@@ -30,8 +32,8 @@ source image
   -> deterministic candidate QA
   -> one canonical comparison evaluator board
   -> code-owned per-candidate visual gates
-  -> awaiting_identity_review
-  -> exact candidateId + sha256 human acceptance
+  -> deterministic unique canonical anchor selection
+  -> optional awaiting_identity_review when requireIdentityReviewBeforeActions=true
   -> idle candidate pool
   -> lock character scale profile
   -> remaining action candidate pools
@@ -48,7 +50,7 @@ source image
 Public Create states include:
 
 - `generating`: planning, candidate generation, processing, evaluation, or packaging is active;
-- `awaiting-identity-review`: canonical candidates are visible and no action request has started;
+- `awaiting-identity-review`: optional configured checkpoint; canonical candidates are visible and no action request has started;
 - `recovery-required`: required idle failed; paid assets are retained but no runnable pet may be imported;
 - `review-required`: the accepted action/package result is ready for human review;
 - `completed`: an explicit import completed.
@@ -77,7 +79,7 @@ All production full-pet entry points stamp or require `pipeline: quality-first-v
 - Create → New Character;
 - conversational Creator Studio full-pet drafting;
 - `run-step` for Provider-backed full-pet runs;
-- `accept-identity`;
+- optional `accept-identity` when the saved Hatch Pet setting requires a pre-action identity checkpoint;
 - `retry-identity`;
 - `retry-action`;
 - Creator Studio dashboard identity/action repair routes.
@@ -86,7 +88,7 @@ A Provider-backed full-pet run that requests `legacy-keyframe-v1` fails with `le
 
 ## 4. Non-negotiable Provider contract
 
-Every creative image request:
+The workflow accepts exactly one source image. Every creative image request:
 
 1. uses `/images/edits`;
 2. carries exactly one validated local reference image;
@@ -95,6 +97,8 @@ Every creative image request:
 5. fails closed on zero or multiple returned outputs;
 6. writes every returned paid output before downstream validation;
 7. uses a Provider-neutral prompt compiled from typed code-owned fields.
+
+Each request therefore carries at most one image attachment. When several visual cues are needed, code must compose them into one local composite reference board before the request; it must not send multiple attachments.
 
 The upstream prompt contains no OpenPet terminology, run/action IDs, internal reference roles, filesystem paths, credentials, transport instructions, or unrestricted planner prose. It describes only:
 
@@ -138,31 +142,39 @@ Sprite visual evaluation allows 120 seconds per model call because its single re
 
 ## 6. Canonical identity pool
 
-Canonical generation requests three distinct eligible candidates and permits at most four dispatches when one is a duplicate. Registered diversity strategies may emphasize balanced fidelity, silhouette readability, or small-scale detail, but may not change identity, viewpoint, proportions, palette, accessories, or rendering medium.
+Canonical generation makes three initial paid dispatches and permits a fourth dispatch when the initial pool contains a duplicate or technical generation failure. Registered diversity strategies may emphasize balanced fidelity, silhouette readability, or small-scale detail, but may not change identity, viewpoint, proportions, palette, accessories, or rendering medium.
 
-Candidate distinctness uses actual image content:
+The first three dispatches use the registered balanced-fidelity, silhouette-readability, and small-scale-detail strategies. If those calls produce fewer than three distinct eligible candidates, dispatch four is an explicit `duplicate-replacement` using `identity-safe-alternate-neutral-v1`; it requests a visibly different calm neutral presentation through small source-compatible limb separation and a subtle natural head angle while preserving identity, proportions, markings, accessories, view, palette, lighting, and rendering style. It is not allowed to repeat the first prompt, introduce an action gesture, or weaken the duplicate gate.
+
+Candidate distinctness uses actual image content as ranking and review evidence:
 
 - 64-bit perceptual hash;
 - 8x8 alpha-mask descriptor;
 - normalized silhouette/centroid and three-band color identity descriptor;
 - mean-color descriptor.
 
-Encoded-file hashes or candidate names are not used as visual proxies. Perceptually duplicate outputs remain retained as paid evidence but do not count toward the three-candidate pool.
+Encoded-file hashes or candidate names are not used as visual proxies. Perceptually duplicate outputs remain retained as paid evidence. A duplicate is not automatically a bad asset and does not lose quality eligibility merely because its presentation resembles another candidate.
 
-Exactly three eligible candidates are composed with the source into one 2048x2048 canonical comparison board. The evaluator returns one strict score record per candidate region. Code independently applies immutable canonical thresholds to every candidate. An overall model recommendation cannot turn a failing candidate into a passing candidate.
+Every technically usable paid candidate, including duplicates, is composed with the source into one fixed 3072x2048 canonical comparison board. The board supports one through four candidate regions. The evaluator returns one strict score record per candidate region. Code independently reapplies identity, silhouette, small-scale, completeness, style, confidence, and overall thresholds to each candidate. An overall model recommendation cannot turn a failing candidate into a passing candidate.
 
-The run then enters `awaiting_identity_review`. Candidate cards show:
+At least one candidate passing all candidate-level quality gates is sufficient. Passing candidates are ranked deterministically by overall score, then identity score, then stable candidate ID. The winner becomes the unique `selected-anchor`; other passing candidates remain `alternate` or `duplicate-alternate`, and failed candidates remain `unusable`. All downstream anchor grids, action reference boards, checkpoints, package hashes, and action Provider requests bind only to that selected anchor.
+
+Only when no candidate passes does the run fail closed with `canonical_identity_candidates_unusable` and phase `identity-generation-failed`. Create exposes every retained paid candidate, its safe relative asset path, disposition, duplicate binding, evaluator evidence, and failure codes. The next legal recovery action is `retry-identity`, which archives the existing evidence before generating a new pool. A running backend progress message is never presented as a failure reason.
+
+By default `requireIdentityReviewBeforeActions=false`, so the selected anchor immediately continues into `idle` and the only mandatory human art boundary is the final review. When the setting is explicitly enabled, the run enters `awaiting_identity_review` and exact `runId + candidateId + sha256` acceptance is required before action generation.
+
+Candidate cards show:
 
 - 128-pixel preview access;
 - candidate ID and exact sha256 binding;
 - eligibility, score, model, and failure codes;
 - safe relative evidence paths.
 
-Accepting a candidate requires exact `runId + candidateId + sha256` equality. No action Provider request is legal before acceptance.
+No action Provider request is legal before deterministic selection or, when configured, exact human identity acceptance.
 
 ## 7. Action generation
 
-After identity acceptance, `idle` runs first. Every action uses:
+After canonical selection (and optional identity acceptance), `idle` runs first. Every action uses:
 
 - one 1536x1024 action reference board containing the repeated canonical anchor grid and source detail;
 - a square 1024x1024 Provider canvas;
@@ -173,9 +185,9 @@ After identity acceptance, `idle` runs first. Every action uses:
 
 Candidate generation, deterministic processing, code QA, visual evaluation, and persistence are isolated steps. Processing or evaluation failure on one candidate does not hide that candidate or prevent comparison with the other candidate.
 
-The selected candidate must pass both deterministic QA and the code-owned evaluator gate. Selection uses evaluator overall score, then identity distance, then a stable candidate ID tie-breaker. A single surviving candidate is never accepted when the two-distinct-candidate contract was not met.
+The selected action candidate must pass both deterministic QA and the code-owned evaluator gate. Selection uses evaluator overall score, then identity distance, then a stable candidate ID tie-breaker. Failed paid action candidates remain visible; an optional action may be omitted, but a low-quality candidate must never be relabeled as passed.
 
-`running-left` is never generated independently. It is a deterministic framewise horizontal mirror of an accepted `running-right` result, receives its own checkpoint and official-row QA, and is invalidated whenever `running-right` is repaired.
+`running-right` and `running-left` form an atomic pair. `running-left` is never generated independently: it is a deterministic framewise horizontal mirror of an accepted `running-right` result, receives its own checkpoint and official-row QA, and is invalidated whenever `running-right` is repaired. The workflow does not issue a separate Provider request for `running-left`.
 
 ## 8. Processing, scale, and package geometry
 
@@ -230,6 +242,10 @@ After that gate passes, quality-first finalization publishes the existing import
 
 An optional failure is recorded as omitted and does not block later actions. The atlas keeps the corresponding row transparent. Partial import is legal only when a real accepted idle checkpoint exists.
 
+`idle` is the only required action. A missing optional action is acceptable and appears in `omittedActionIds`; every real completed row appears in `availableActionIds`. A low-quality action must not be accepted merely to make the package look complete.
+
+The landed official full-pet row package counts only `row-real` Provider output and an `approved-mirror` derived from an accepted directional row as official coverage. Deterministic packaging is implemented, but real Provider row generation and human visual review remain required before any art-readiness claim.
+
 If idle fails, generation stops in `recovery-required`. It does not create an idle placeholder or a misleading runnable pet.
 
 ## 10. Evidence, retries, and recovery
@@ -241,7 +257,7 @@ Identity retry:
 - archives the prior run, candidates, prompts, evaluations, quality-first package, scale profile, and checkpoints;
 - invalidates all dependent action checkpoints;
 - preserves paid evidence;
-- generates a new canonical pool and returns to identity review.
+- generates a new canonical pool, deterministically selects the best passing anchor, and continues automatically unless the saved optional identity checkpoint is enabled.
 
 Action retry:
 
@@ -261,8 +277,8 @@ No renderer-facing view includes absolute paths, secrets, raw Provider payloads,
 
 The model and deterministic gates may only propose, score, reject, omit, or request repair. Human actions remain explicit:
 
-1. select canonical identity;
-2. inspect accepted and rejected action assets;
+1. optionally select canonical identity when the pre-action checkpoint is enabled;
+2. inspect the selected anchor, alternates, unusable candidates, and action assets;
 3. approve the final art result;
 4. import the pack;
 5. optionally activate it.
@@ -271,7 +287,7 @@ The product is personal software, but hash binding and durable evidence still pr
 
 ## 12. Verification boundary
 
-Focused development tests cover strict planning, budgets, reference boards, processing, scale profiles, candidate diversity, canonical comparison schema, code-owned gates, action orchestration, identity pause, repairs, recovery manifests, renderer-safe diagnostics, IPC, and Create UI contracts.
+Focused development tests cover strict planning, budgets, reference boards, processing, scale profiles, diversity evidence, one-to-four-candidate comparison schema, deterministic anchor selection, optional identity pause, code-owned gates, action orchestration, repairs, recovery manifests, renderer-safe diagnostics, IPC, and Create UI contracts.
 
 The independent test task must still run:
 
@@ -280,10 +296,12 @@ The independent test task must still run:
 - `npm run test:control-center`;
 - `npm run test:core:all`;
 - real Provider evidence confirming one reference and `n=1` for every request;
-- canonical candidate visual comparison and human selection;
+- canonical candidate visual comparison and selected-anchor inspection;
 - full action contact-sheet/GIF/atlas inspection;
 - identity/action retry rehearsal;
 - partial import and recovery export;
 - explicit approval, import, and activation.
 
 Until those checks pass on the final integrated commit, the correct status is **implemented but independently unverified**.
+
+Archived host-path evidence remains available at `docs/release-evidence/creator-workflow-host-smoke/2026-07-04T21-38-29-834Z-dev8-acceptance/` and `docs/release-evidence/creator-workflow-host-smoke/2026-07-04T21-56-30-104Z-main-acceptance/`. It proves the historical host request path, not production art quality or the newly changed canonical-selection behavior.

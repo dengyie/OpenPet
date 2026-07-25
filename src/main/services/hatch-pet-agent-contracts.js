@@ -18,7 +18,7 @@ const DEFAULT_HATCH_PET_AGENT_CONFIG = Object.freeze({
   model: 'gpt-4o-mini',
   apiKeyRef: 'ai.hatch-pet',
   systemPromptVersion: 1,
-  requireIdentityReviewBeforeActions: true,
+  requireIdentityReviewBeforeActions: false,
   budgets: DEFAULT_HATCH_PET_BUDGETS
 })
 
@@ -158,7 +158,7 @@ const normalizeHatchPetAgentConfig = (value = {}) => {
     model: normalizeText(source.model, DEFAULT_HATCH_PET_AGENT_CONFIG.model),
     apiKeyRef: normalizeText(source.apiKeyRef, DEFAULT_HATCH_PET_AGENT_CONFIG.apiKeyRef),
     systemPromptVersion: clampInteger(source.systemPromptVersion, 1, 1, 20),
-    requireIdentityReviewBeforeActions: true,
+    requireIdentityReviewBeforeActions: source.requireIdentityReviewBeforeActions === true,
     budgets: normalizeHatchPetBudgets(source.budgets)
   }
 }

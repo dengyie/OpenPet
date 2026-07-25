@@ -16,12 +16,38 @@ test('creator pane renders the mandatory canonical identity review contract', ()
   assert.match(source, /重新生成身份候选|retryCreatorIdentity/)
 })
 
+test('creator pane renders selected, duplicate-alternate, and unusable paid identity assets with retry guidance', () => {
+  const source = read('src/control-center/src/panes/CreatorPane.tsx')
+  assert.match(source, /identity-generation-failed/)
+  assert.match(source, /身份候选生成失败/)
+  assert.match(source, /passingCandidateCount/)
+  assert.match(source, /selected-anchor/)
+  assert.match(source, /duplicate-alternate/)
+  assert.match(source, /unusable/)
+  assert.match(source, /duplicateOfCandidateId/)
+  assert.match(source, /付费|已保留/)
+  assert.match(source, /acceptancePending/)
+  assert.match(source, /重新生成身份候选/)
+  assert.match(source, /creator-retry-identity-candidates/)
+})
+
 test('creator pane exposes recovery bundle guidance for idle failure', () => {
   const source = read('src/control-center/src/panes/CreatorPane.tsx')
   assert.match(source, /recovery-required/)
   assert.match(source, /creator-export-recovery/)
   assert.match(source, /资产恢复包|恢复包/)
   assert.match(source, /保留|付费资产|坏资产/)
+})
+
+test('creator pane gives archived paid retry assets their own review surface', () => {
+  const source = read('src/control-center/src/panes/CreatorPane.tsx')
+  assert.match(source, /repair-archive/)
+  assert.match(source, /creator-repair-assets/)
+  assert.match(source, /历史重试资产|历史付费产物/)
+  assert.match(source, /archivedPromptAssets/)
+  assert.match(source, /查看历史提示词/)
+  assert.match(source, /复制历史提示词/)
+  assert.match(source, /重新生成|资产审查台/)
 })
 
 test('identity acceptance is hash-bound through shared API and IPC', () => {

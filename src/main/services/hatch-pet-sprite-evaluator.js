@@ -104,8 +104,8 @@ const validateCanonicalComparisonEvaluation = (value, { regions = [] } = {}) => 
   if (!RECOMMENDATIONS.includes(value.recommendation)) throw createInvalidError('recommendation is invalid')
   const candidateRegions = regions.filter((region) => region?.role === 'canonical-candidate')
   const allowed = new Set(candidateRegions.map((region) => String(region.regionId || '')).filter(Boolean))
-  if (!Array.isArray(value.candidates) || value.candidates.length !== allowed.size || allowed.size !== 3) {
-    throw createInvalidError('canonical comparison requires exactly one record for each of three candidate regions')
+  if (!Array.isArray(value.candidates) || value.candidates.length !== allowed.size || allowed.size < 1 || allowed.size > 4) {
+    throw createInvalidError('canonical comparison requires exactly one record for each of one to four candidate regions')
   }
   const seen = new Set()
   const candidates = value.candidates.map((candidate) => {
@@ -189,12 +189,14 @@ const evaluateCanonicalComparisonGate = ({ evaluation, profile, regions = [] } =
   const failures = Object.entries(candidateGates)
     .filter(([, gate]) => gate.ok !== true)
     .flatMap(([candidateId, gate]) => gate.failures.map((failure) => `${candidateId}:${failure}`))
+  const passingCandidateCount = Object.values(candidateGates).filter((gate) => gate.ok === true).length
   return deepFreeze({
     version: 1,
     scope: CANONICAL_COMPARISON_SCOPE,
-    ok: failures.length === 0 && Object.keys(candidateGates).length === 3,
-    outcome: failures.length === 0 && Object.keys(candidateGates).length === 3 ? 'pass' : 'repair',
+    ok: passingCandidateCount > 0,
+    outcome: passingCandidateCount > 0 ? 'pass' : 'repair',
     failures,
+    passingCandidateCount,
     candidateGates
   })
 }
@@ -240,14 +242,16 @@ const createTool = (scope) => {
   }
 }
 
-const createCanonicalComparisonTool = () => {
+const createCanonicalComparisonTool = (candidateCount) => {
+  const normalizedCandidateCount = Math.min(4, Math.max(1, Math.trunc(Number(candidateCount) || 1)))
+  const candidateCountLabel = ['one', 'two', 'three', 'four'][normalizedCandidateCount - 1]
   const canonicalScoreNames = EVALUATION_SCOPES.canonical.scores
   const scoreProperties = Object.fromEntries(canonicalScoreNames.map((score) => [score, { type: 'number', minimum: 0, maximum: 100 }]))
   return {
     type: 'function',
     function: {
       name: EVALUATOR_TOOL_NAME,
-      description: 'Compare exactly three canonical sprite candidates against the source region and score each candidate region separately.',
+      description: `Compare exactly ${candidateCountLabel} canonical sprite candidates against the source region and score each candidate region separately.`,
       parameters: {
         type: 'object',
         additionalProperties: false,
@@ -256,8 +260,8 @@ const createCanonicalComparisonTool = () => {
           recommendation: { type: 'string', enum: RECOMMENDATIONS },
           candidates: {
             type: 'array',
-            minItems: 3,
-            maxItems: 3,
+            minItems: normalizedCandidateCount,
+            maxItems: normalizedCandidateCount,
             items: {
               type: 'object',
               additionalProperties: false,
@@ -340,7 +344,9 @@ const createSpriteEvaluatorRequest = ({ scope, board, qa = {}, profile, repairRe
         ]
       }
     ],
-    tool: normalizedScope === CANONICAL_COMPARISON_SCOPE ? createCanonicalComparisonTool() : createTool(normalizedScope),
+    tool: normalizedScope === CANONICAL_COMPARISON_SCOPE
+      ? createCanonicalComparisonTool(regionSummary.filter((region) => region.role === 'canonical-candidate').length)
+      : createTool(normalizedScope),
     timeoutMs: 120000
   }
 }
@@ -382,7 +388,7 @@ const recordSpriteEvaluation = ({ dataDir, runId, scope, evidenceId = '', evalua
       ? source.boardSha256
       : undefined,
     candidates: Array.isArray(source.candidates)
-      ? source.candidates.slice(0, 3).map((candidate) => ({
+      ? source.candidates.slice(0, 4).map((candidate) => ({
           candidateId: String(candidate?.candidateId || '').slice(0, 128),
           confidence: Number(candidate?.confidence) || 0,
           scores: isPlainObject(candidate?.scores) ? candidate.scores : {},

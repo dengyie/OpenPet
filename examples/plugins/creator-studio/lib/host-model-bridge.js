@@ -2611,8 +2611,24 @@ const hasAnchorEligibleRunReference = (run = {}) => {
 const CANONICAL_DIVERSITY_PROFILES = Object.freeze([
   'identity-faithful-balanced-v1',
   'silhouette-readability-v1',
-  'small-scale-detail-v1'
+  'small-scale-detail-v1',
+  'identity-safe-alternate-neutral-v1'
 ])
+
+const createCanonicalRequestedChanges = (diversityProfileId) => {
+  if (diversityProfileId === 'silhouette-readability-v1') {
+    return ['preserve the exact source identity while keeping the full-body silhouette readable at small runtime size']
+  }
+  if (diversityProfileId === 'small-scale-detail-v1') {
+    return ['preserve the source-authentic high-value markings and distinguishing details at small runtime size']
+  }
+  if (diversityProfileId === 'identity-safe-alternate-neutral-v1') {
+    return [
+      'preserve the exact referenced identity, proportions, markings, accessories, palette, rendering medium, and subject lighting while creating a visibly different calm neutral presentation with small source-compatible limb separation, a subtle natural head angle, and a clean readable silhouette; use no action gesture or redesigned expression, do not change the view or hide identity-bearing features, and do not change the rendering style'
+    ]
+  }
+  return ['preserve the exact source identity and rendering style with balanced full-body framing']
+}
 
 const createQualityFirstRecoveryBundle = async ({ dataDir, run, actionResults = {}, reason = 'idle_generation_failed' } = {}) => {
   const root = path.resolve(String(dataDir || ''))
@@ -2679,10 +2695,12 @@ const generateCanonicalCandidatePool = async ({
   const distinctCandidates = []
   const limit = Math.min(4, Math.max(3, Number(maxDispatches) || 4))
   for (let dispatchIndex = 1; dispatchIndex <= limit && distinctCandidates.length < 3; dispatchIndex += 1) {
-    const diversityProfileId = CANONICAL_DIVERSITY_PROFILES[(dispatchIndex - 1) % CANONICAL_DIVERSITY_PROFILES.length]
+    const diversityProfileId = CANONICAL_DIVERSITY_PROFILES[Math.min(dispatchIndex - 1, CANONICAL_DIVERSITY_PROFILES.length - 1)]
+    const attemptKind = dispatchIndex <= 3 ? 'initial' : 'duplicate-replacement'
     const generated = await generateCandidate({
       candidateId: `canonical-${dispatchIndex}`,
       dispatchIndex,
+      attemptKind,
       diversityProfileId
     })
     const sha256 = String(generated?.sha256 || '')
@@ -2695,23 +2713,97 @@ const generateCanonicalCandidatePool = async ({
       })
     ))
     const duplicate = Boolean(duplicateOf)
+    const technicalEligible = generated?.eligible === true
     const candidate = {
       ...generated,
       candidateId: String(generated?.candidateId || `canonical-${dispatchIndex}`),
       dispatchIndex,
+      attemptKind,
       diversityProfileId,
-      eligible: generated?.eligible === true && !duplicate,
+      technicalEligible,
+      eligible: technicalEligible,
+      diversityStatus: duplicate ? 'duplicate' : 'distinct',
+      failureCodes: Array.isArray(generated?.failureCodes) ? [...new Set(generated.failureCodes)] : [],
       ...(duplicate ? {
         duplicateOfCandidateId: duplicateOf.candidateId,
-        duplicateOfSha256: duplicateOf.sha256,
-        failureCodes: [...new Set([...(generated?.failureCodes || []), 'canonical-candidate-duplicate'])]
+        duplicateOfSha256: duplicateOf.sha256
       } : {})
     }
     candidates.push(candidate)
-    if (candidate.eligible && sha256) distinctCandidates.push(candidate)
+    if (candidate.eligible && !duplicate && sha256) distinctCandidates.push(candidate)
     await persistCandidate(candidate)
   }
   return { version: 1, dispatchCount: candidates.length, distinctEligibleCount: distinctCandidates.length, candidates }
+}
+
+const evaluateCanonicalCandidatePool = async ({
+  pool,
+  dataDir,
+  runId,
+  sourcePath,
+  createBoard = createCanonicalEvaluatorBoard,
+  requestEvaluation = requestHatchPetSpriteEvaluation,
+  persistCandidate = async () => {}
+} = {}) => {
+  const candidates = Array.isArray(pool?.candidates) ? pool.candidates : []
+  const evaluable = candidates.filter((candidate) => (
+    candidate?.technicalEligible !== false &&
+    candidate?.eligible === true &&
+    candidate?.path &&
+    candidate?.sha256
+  ))
+  if (evaluable.length === 0) {
+    return {
+      ...pool,
+      passingCandidateCount: 0,
+      candidates: candidates.map((candidate) => ({ ...candidate, eligible: false, disposition: 'unusable' }))
+    }
+  }
+  const evaluatorBoardPath = path.join(dataDir, `runs/${runId}/evaluations/canonical-comparison-board.png`)
+  const board = await createBoard({ sourcePath, candidates: evaluable, outputPath: evaluatorBoardPath })
+  const evaluation = await requestEvaluation({
+    runId,
+    scope: 'canonical-comparison',
+    board: {
+      relativePath: path.relative(dataDir, board.path).replace(/\\/g, '/'),
+      sha256: board.sha256,
+      regions: board.regions
+    },
+    qa: {
+      ok: true,
+      failures: [],
+      metrics: {
+        candidateCount: evaluable.length,
+        distinctCandidateCount: Math.max(0, Number(pool?.distinctEligibleCount) || 0)
+      }
+    }
+  })
+  for (const candidate of evaluable) {
+    const candidateEvaluation = evaluation.evaluation?.candidates?.find((entry) => entry.candidateId === candidate.candidateId)
+    const candidateGate = evaluation.gate?.candidateGates?.[candidate.candidateId]
+    candidate.evaluation = candidateEvaluation || null
+    candidate.gate = candidateGate || { ok: false, outcome: 'cannot-evaluate', failures: ['canonical-comparison-result-missing'] }
+    candidate.eligible = candidate.gate.ok === true
+    candidate.score = Number(candidateEvaluation?.scores?.overall) || 0
+    candidate.failureCodes = [...new Set([...(candidate.failureCodes || []), ...(candidate.gate.failures || [])])]
+    candidate.disposition = candidate.eligible
+      ? (candidate.duplicateOfCandidateId ? 'duplicate-alternate' : 'alternate')
+      : 'unusable'
+    candidate.evaluationEvidenceRelativePath = evaluation.evidenceRelativePath
+    await persistCandidate(candidate)
+  }
+  const normalizedCandidates = candidates.map((candidate) => (
+    evaluable.includes(candidate)
+      ? candidate
+      : { ...candidate, eligible: false, disposition: 'unusable' }
+  ))
+  return {
+    ...pool,
+    passingCandidateCount: normalizedCandidates.filter((candidate) => candidate.eligible === true).length,
+    candidates: normalizedCandidates,
+    evaluationEvidenceRelativePath: evaluation.evidenceRelativePath,
+    evaluatorBoardRelativePath: path.relative(dataDir, board.path).replace(/\\/g, '/')
+  }
 }
 
 const generateSelectedFullPetAction = (options = {}) => runQualityFirstAction(options)
@@ -2722,7 +2814,11 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
   if (!isUsableLocalReferenceImage({ dataDir, referenceImage: sourceReference })) {
     throw createProviderReferenceContractError('reference_image_required', 'Quality-first generation requires one usable local reference image')
   }
-  const planResult = planOverride ? { proposal: null, budgetLedger: null } : await requestHatchPetSpritePlan({
+  const planResult = planOverride ? {
+    proposal: null,
+    budgetLedger: null,
+    requireIdentityReviewBeforeActions: run?.qualityFirst?.requireIdentityReviewBeforeActions === true
+  } : await requestHatchPetSpritePlan({
     runId: run.runId,
     userIntent: run.input?.originalPrompt || run.input?.prompt || ''
   })
@@ -2760,11 +2856,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
       referenceRole: sourceReference.role,
       subject: { count: 1, framing: 'full-body', targetOccupancyPercent: 72, safePaddingPercent: 12, rootAnchor: 'lower-center' },
       strategyId: diversityProfileId,
-      requestedChanges: diversityProfileId === 'silhouette-readability-v1'
-        ? ['preserve the exact source identity while keeping the full-body silhouette readable at small runtime size']
-        : diversityProfileId === 'small-scale-detail-v1'
-          ? ['preserve the source-authentic high-value markings and distinguishing details at small runtime size']
-          : ['preserve the exact source identity and rendering style with balanced full-body framing']
+      requestedChanges: createCanonicalRequestedChanges(diversityProfileId)
     })
     const buildPromptForModel = (model) => {
       const compiled = compileProviderImagePrompt({ task, model })
@@ -2854,42 +2946,13 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
       generateCandidate: generateCanonicalCandidate,
       persistCandidate: persistCanonicalCandidate
     })
-    const eligible = pool.candidates.filter((candidate) => candidate.eligible === true)
-    if (eligible.length !== 3) return pool
-    const evaluatorBoardPath = path.join(dataDir, `runs/${run.runId}/evaluations/canonical-comparison-board.png`)
-    const board = await createCanonicalEvaluatorBoard({
-      sourcePath: sourceReference.path,
-      candidates: eligible,
-      outputPath: evaluatorBoardPath
-    })
-    const evaluation = await requestHatchPetSpriteEvaluation({
+    return evaluateCanonicalCandidatePool({
+      pool,
+      dataDir,
       runId: run.runId,
-      scope: 'canonical-comparison',
-      board: {
-        relativePath: path.relative(dataDir, board.path).replace(/\\/g, '/'),
-        sha256: board.sha256,
-        regions: board.regions
-      },
-      qa: { ok: true, failures: [], metrics: { distinctEligibleCount: eligible.length } }
+      sourcePath: sourceReference.path,
+      persistCandidate: persistCanonicalCandidate
     })
-    for (const candidate of pool.candidates) {
-      if (!candidate.eligible) continue
-      const candidateEvaluation = evaluation.evaluation?.candidates?.find((entry) => entry.candidateId === candidate.candidateId)
-      const candidateGate = evaluation.gate?.candidateGates?.[candidate.candidateId]
-      candidate.evaluation = candidateEvaluation || null
-      candidate.gate = candidateGate || { ok: false, outcome: 'cannot-evaluate', failures: ['canonical-comparison-result-missing'] }
-      candidate.eligible = candidate.gate.ok === true
-      candidate.score = Number(candidateEvaluation?.scores?.overall) || 0
-      candidate.failureCodes = [...new Set([...(candidate.failureCodes || []), ...(candidate.gate.failures || [])])]
-      candidate.evaluationEvidenceRelativePath = evaluation.evidenceRelativePath
-      await persistCanonicalCandidate(candidate)
-    }
-    return {
-      ...pool,
-      distinctEligibleCount: pool.candidates.filter((candidate) => candidate.eligible === true).length,
-      evaluationEvidenceRelativePath: evaluation.evidenceRelativePath,
-      evaluatorBoardRelativePath: path.relative(dataDir, board.path).replace(/\\/g, '/')
-    }
   }
   const runAction = async ({ actionId, canonical, profile }) => {
     const action = plan.actions.find((entry) => entry.actionId === actionId)
@@ -3249,6 +3312,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
   return {
     plan,
     planResult,
+    requireIdentityReviewBeforeActions: planResult.requireIdentityReviewBeforeActions === true,
     orchestrator,
     sourceReference,
     planRelativePath,
@@ -3633,6 +3697,8 @@ module.exports = {
     assertExactlyOneProviderReferenceImage,
     createFullPetActionIdentityContext,
     collectQualityFirstCandidateArtifacts,
+    createCanonicalRequestedChanges,
+    evaluateCanonicalCandidatePool,
     createSoftIdentityRetryRequestedChanges,
     generateActionKeyframe,
     generateWithModelFallback,

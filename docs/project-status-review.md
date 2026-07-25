@@ -41,7 +41,9 @@ Current common provider presets such as OpenRouter and Together remain endpoint 
 ## Main Remaining Gaps
 
 1. Real passing macOS evidence must still be archived through the release evidence flow; the current public `v1.0.1-rc.3` macOS assets and the imported workflow artifact now both archive failing signed-readiness evidence and therefore do not satisfy that gate.
+   The current-parser rerun is archived at `docs/release-evidence/macos-release-evidence-archive/2026-07-06T17-32-13Z-v1.0.1-rc.3-authenticated-artifact-current-parser-rerun/` and classifies codesign, Gatekeeper, and notarization as failures.
 2. Real signed Windows smoke evidence must exist before support claims move; the reconstructed Windows smoke archive only removes bookkeeping gaps and does not replace observed clean-machine validation.
+   The public release metadata snapshot at `docs/release-evidence/release-public-assets/2026-07-06T15-57-51Z-v1.0.1-rc.3-public-release-metadata.json` records the Windows assets as unsigned.
 3. Packaged native picker evidence still needs real archived runs; the historical launched packaged runtime report at `docs/release-evidence/packaged-runtime/2026-06-16T14-52-13-074Z-darwin-arm64/` still shows pending picker-link checks, `plugin-picker-evidence-linked` pending, `pet-picker-evidence-linked` pending, and `invalid-package-feedback` blocked, the current `rc.3` packaged-runtime pending report at `docs/release-evidence/packaged-runtime/2026-07-06T17-00-00Z-darwin-arm64-authenticated-artifact/` leaves every runtime check pending while also recording the current broken signature text, and the reconstructed Windows picker archive remains structure-only.
 4. The extension ecosystem still needs a compatible third-party package path backed by evidence rather than intent; the newest GitHub-topic, npm-package, and direct GitHub code-search reruns still found only adjacent or incompatible sources.
 
