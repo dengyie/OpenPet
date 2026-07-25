@@ -33,6 +33,16 @@ test('creator pane renders workflow stage and action progress feedback', () => {
   assert.match(source, /阶段：/)
 })
 
+test('creator pane renders safe Provider attempt diagnostics for failed paid candidates', () => {
+  const source = fs.readFileSync(creatorPanePath, 'utf-8')
+
+  assert.match(source, /candidate\.modelAttempts/)
+  assert.match(source, /Provider 请求记录/)
+  assert.match(source, /HTTP \{attempt\.httpStatus\}/)
+  assert.match(source, /上游网关在请求时限内未返回/)
+  assert.match(source, /requestId/)
+})
+
 test('creator pane hook gives explicit feedback and starts a stopped dashboard service before opening details', () => {
   const hookPath = path.resolve(__dirname, '../../src/control-center/src/hooks/useCreatorPane.ts')
   const source = fs.readFileSync(hookPath, 'utf-8')

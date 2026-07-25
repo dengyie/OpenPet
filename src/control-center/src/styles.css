@@ -2957,6 +2957,26 @@
   color: var(--op-color-danger) !important;
 }
 
+.creator-provider-attempts,
+.creator-provider-attempts > div {
+  display: grid;
+  gap: 3px;
+}
+
+.creator-provider-attempts {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--op-color-border-strong);
+}
+
+.creator-provider-attempts > div.error span:first-child {
+  color: var(--op-color-danger);
+}
+
+.creator-provider-attempts > div.ok span:first-child {
+  color: var(--op-color-success);
+}
+
 .creator-candidate-preview-missing {
   display: grid;
   min-height: 120px;

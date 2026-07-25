@@ -542,6 +542,27 @@ const IdentityReviewPanel = ({
               {candidate.failureCodes.length ? (
                 <span className="creator-candidate-failures">坏在哪：{candidate.failureCodes.join('、')}</span>
               ) : null}
+              {candidate.modelAttempts.length ? (
+                <div className="creator-provider-attempts" data-testid={`creator-provider-attempts-${candidate.candidateId}`}>
+                  <strong>Provider 请求记录</strong>
+                  {candidate.modelAttempts.map((attempt, index) => (
+                    <div key={`${attempt.model}-${attempt.requestId || index}`} className={attempt.ok ? 'ok' : 'error'}>
+                      <span>
+                        {attempt.ok ? '成功' : '失败'} · {attempt.model || '未记录模型'}
+                        {attempt.httpStatus ? <> · HTTP {attempt.httpStatus}</> : null}
+                        {attempt.errorCode ? <> · {attempt.errorCode}</> : null}
+                        {attempt.durationMs ? <> · {(attempt.durationMs / 1000).toFixed(1)} 秒</> : null}
+                      </span>
+                      {attempt.httpStatus === 524 ? (
+                        <span>上游网关在请求时限内未返回；即使上游稍后完成，OpenPet 也没有收到可导入的图片，请重新生成该候选。</span>
+                      ) : attempt.errorCode === 'provider_timeout' ? (
+                        <span>图片请求达到 {Math.round(attempt.timeoutMs / 1000)} 秒总时限后停止等待，请重新生成该候选。</span>
+                      ) : null}
+                      {attempt.requestId ? <code title={attempt.requestId}>requestId {attempt.requestId}</code> : null}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
               {candidate.duplicateOfCandidateId ? (
                 <span>与 {candidate.duplicateOfCandidateId} 视觉重复；资产仍保留，不视为坏图</span>
               ) : null}

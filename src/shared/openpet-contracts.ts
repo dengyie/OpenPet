@@ -2144,6 +2144,16 @@ export interface CreatorActionAttemptViewState {
   failureEvidence?: CreatorActionFailureEvidenceViewState[]
 }
 
+export interface CreatorProviderModelAttemptViewState {
+  model: string
+  ok: boolean
+  errorCode?: string
+  httpStatus?: number
+  timeoutMs: number
+  durationMs: number
+  requestId?: string
+}
+
 export interface CreatorCanonicalCandidateViewState {
   candidateId: string
   eligible: boolean
@@ -2166,6 +2176,7 @@ export interface CreatorCanonicalCandidateViewState {
   }>
   canonicalMetrics: JsonObject | null
   descriptors: JsonObject | null
+  modelAttempts: CreatorProviderModelAttemptViewState[]
 }
 
 export interface CreatorIdentityReviewViewState {
