@@ -17,25 +17,34 @@ const createMockWebContents = () => {
   }
 }
 
-test('navigation lock blocks remote navigations but allows bundled file content', () => {
+test('navigation lock only allows the configured entry document', () => {
   const wc = createMockWebContents()
-  applyNavigationLock({ webContents: wc })
+  applyNavigationLock(
+    { webContents: wc },
+    '/app/dist/control-center/index.html'
+  )
 
   const blocked = []
-  const remoteUrls = [
+  const blockedUrls = [
     'http://evil.example.com/',
     'https://evil.example.com/x',
-    'javascript:alert(1)'
+    'javascript:alert(1)',
+    'file:///tmp/attacker-controlled.html',
+    'file:///app/index.html'
   ]
-  for (const url of remoteUrls) {
+  for (const url of blockedUrls) {
     const event = { preventDefault: () => blocked.push(url) }
     wc.emit('will-navigate', event, url)
   }
-  assert.deepEqual(blocked, remoteUrls)
+  assert.deepEqual(blocked, blockedUrls)
 
   const allowed = []
-  const event = { preventDefault: () => allowed.push('blocked') }
-  wc.emit('will-navigate', event, 'file:///app/dist/control-center/index.html')
+  for (const url of [
+    'file:///app/dist/control-center/index.html',
+    'file:///app/dist/control-center/index.html?tab=ai#provider'
+  ]) {
+    wc.emit('will-navigate', { preventDefault: () => allowed.push(url) }, url)
+  }
   assert.deepEqual(allowed, [])
 })
 
@@ -45,7 +54,7 @@ test('navigation lock blocks remote navigations but allows bundled file content'
 // 本窗口的 preload 桥。
 test('navigation lock blocks data: navigations from the renderer', () => {
   const wc = createMockWebContents()
-  applyNavigationLock({ webContents: wc })
+  applyNavigationLock({ webContents: wc }, '/app/index.html')
 
   const blocked = []
   const dataUrls = [
@@ -58,9 +67,22 @@ test('navigation lock blocks data: navigations from the renderer', () => {
   assert.deepEqual(blocked, dataUrls)
 })
 
-test('navigation lock denies all window.open and webview attachment', () => {
+test('navigation lock fails closed when no entry document is configured', () => {
+  const { pathToFileURL } = require('node:url')
   const wc = createMockWebContents()
   applyNavigationLock({ webContents: wc })
+
+  let blocked = false
+  wc.emit('will-navigate', {
+    preventDefault: () => { blocked = true }
+  }, pathToFileURL(process.cwd()).toString())
+
+  assert.equal(blocked, true)
+})
+
+test('navigation lock denies all window.open and webview attachment', () => {
+  const wc = createMockWebContents()
+  applyNavigationLock({ webContents: wc }, '/app/index.html')
 
   assert.deepEqual(wc.callOpen(), { action: 'deny' })
 

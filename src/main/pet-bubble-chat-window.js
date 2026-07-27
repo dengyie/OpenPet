@@ -4,6 +4,7 @@ const { IPC } = require('../shared/ipc-channels')
 const { PET_VIEWPORT, applyNavigationLock } = require('./window')
 
 const projectRoot = path.join(__dirname, '..', '..')
+const PET_BUBBLE_CHAT_ENTRY_PATH = path.join(projectRoot, 'src', 'main', 'pet-bubble-chat', 'index.html')
 const DEFAULT_BUBBLE_WIDTH = 340
 const DEFAULT_BUBBLE_HEIGHT = 260
 const MIN_BUBBLE_HEIGHT = 176
@@ -834,7 +835,7 @@ const createPetBubbleChatWindowManager = ({
       }
     })
     // 气泡窗同样挂着 preload 桥：不锁导航，一次渲染进程注入就能把窗口导到远端页面并接管桥。
-    applyNavigationLock(bubbleWindow)
+    applyNavigationLock(bubbleWindow, PET_BUBBLE_CHAT_ENTRY_PATH)
     bubbleWindow.setVisibleOnAllWorkspaces?.(true, { visibleOnFullScreen: true })
     bubbleWindow.setAlwaysOnTop?.(true, BUBBLE_ALWAYS_ON_TOP_LEVEL)
     applyHitTestMode(false)
@@ -884,7 +885,7 @@ const createPetBubbleChatWindowManager = ({
       patchState({ visible: false, hasWindow: false })
     })
     bubbleWindow.once?.('ready-to-show', () => sendStateChanged())
-    Promise.resolve(bubbleWindow.loadFile?.(path.join(projectRoot, 'src', 'main', 'pet-bubble-chat', 'index.html'))).catch((error) => {
+    Promise.resolve(bubbleWindow.loadFile?.(PET_BUBBLE_CHAT_ENTRY_PATH)).catch((error) => {
       if (bubbleWindow && !bubbleWindow.isDestroyed?.()) {
         bubbleWindow.loadURL?.(`data:text/html;charset=utf-8,${encodeURIComponent(`<!doctype html><title>OpenPet Bubble Chat</title><body>${error.message}</body>`)}`)
       }

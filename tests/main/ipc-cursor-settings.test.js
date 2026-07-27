@@ -486,6 +486,157 @@ test('settings:get repairs legacy custom cursor records so size controls can use
   assert.equal(result.customCursors[0].sizePercent, 150)
 })
 
+test('settings:get cursor repair preserves edits made to the same cursor while repair is pending', async () => {
+  const ipcMain = createIpcMainStub()
+  let releaseRepair
+  let markRepairStarted
+  const repairStarted = new Promise((resolve) => { markRepairStarted = resolve })
+  let currentSettings = {
+    ...createCursorSettingsFixture(),
+    selectedCursorId: 'custom-pending',
+    customCursors: [{
+      id: 'custom-pending',
+      type: 'custom',
+      source: 'uploaded',
+      name: 'Before repair',
+      assetPath: '/tmp/pending.png',
+      assetUrl: 'file:///tmp/pending.png',
+      fileName: 'pending.png',
+      width: 0,
+      height: 0,
+      byteSize: 123,
+      hotspotX: 0,
+      hotspotY: 0,
+      createdAt: '2026-07-02T00:00:00.000Z',
+      sizePercent: 100,
+      baseWidth: 0,
+      baseHeight: 0,
+      baseHotspotX: 0,
+      baseHotspotY: 0
+    }]
+  }
+  const petService = createCursorPetService(currentSettings, (settings) => {
+    currentSettings = settings
+  })
+
+  registerIpcHandlers(createRequiredServices({
+    ipcMainService: ipcMain,
+    petService,
+    cursorAssetService: {
+      repairCursor: async () => {
+        markRepairStarted()
+        return await new Promise((resolve) => { releaseRepair = resolve })
+      }
+    }
+  }))
+
+  const pendingGet = ipcMain.handlers.get(IPC.SETTINGS_GET)()
+  await repairStarted
+  petService.updateSettings((latest) => ({
+    ...latest,
+    customCursors: latest.customCursors.map((cursor) => cursor.id === 'custom-pending'
+      ? { ...cursor, name: 'Edited while repairing', sizePercent: 200 }
+      : cursor)
+  }))
+  releaseRepair({
+    enabled: true,
+    assetPath: '/tmp/repaired.png',
+    assetUrl: 'file:///tmp/repaired.png',
+    fileName: 'repaired.png',
+    width: 64,
+    height: 64,
+    hotspotX: 16,
+    hotspotY: 12
+  })
+
+  const result = await pendingGet
+  const repaired = result.customCursors.find((cursor) => cursor.id === 'custom-pending')
+  assert.equal(repaired.name, 'Edited while repairing')
+  assert.equal(repaired.sizePercent, 200)
+  assert.equal(repaired.baseWidth, 64)
+  assert.equal(repaired.baseHeight, 64)
+  assert.equal(repaired.width, 128)
+  assert.equal(repaired.height, 128)
+  assert.equal(repaired.hotspotX, 32)
+  assert.equal(repaired.hotspotY, 24)
+})
+
+test('settings:get cursor repair does not overwrite a replacement asset with stale repair output', async () => {
+  const ipcMain = createIpcMainStub()
+  let releaseRepair
+  let markRepairStarted
+  const repairStarted = new Promise((resolve) => { markRepairStarted = resolve })
+  const petService = createCursorPetService({
+    ...createCursorSettingsFixture(),
+    selectedCursorId: 'custom-pending',
+    customCursors: [{
+      id: 'custom-pending',
+      type: 'custom',
+      source: 'uploaded',
+      name: 'Original asset',
+      assetPath: '/tmp/original.png',
+      assetUrl: 'file:///tmp/original.png',
+      fileName: 'original.png',
+      width: 0,
+      height: 0,
+      byteSize: 123,
+      hotspotX: 0,
+      hotspotY: 0,
+      createdAt: '2026-07-02T00:00:00.000Z',
+      sizePercent: 100,
+      baseWidth: 0,
+      baseHeight: 0,
+      baseHotspotX: 0,
+      baseHotspotY: 0
+    }]
+  })
+
+  registerIpcHandlers(createRequiredServices({
+    ipcMainService: ipcMain,
+    petService,
+    cursorAssetService: {
+      repairCursor: async () => {
+        markRepairStarted()
+        return await new Promise((resolve) => { releaseRepair = resolve })
+      }
+    }
+  }))
+
+  const pendingGet = ipcMain.handlers.get(IPC.SETTINGS_GET)()
+  await repairStarted
+  petService.updateSettings((latest) => ({
+    ...latest,
+    customCursors: latest.customCursors.map((cursor) => cursor.id === 'custom-pending'
+      ? {
+          ...cursor,
+          name: 'Replacement asset',
+          assetPath: '/tmp/replacement.png',
+          assetUrl: 'file:///tmp/replacement.png',
+          fileName: 'replacement.png'
+        }
+      : cursor)
+  }))
+  releaseRepair({
+    enabled: true,
+    assetPath: '/tmp/stale-repair.png',
+    assetUrl: 'file:///tmp/stale-repair.png',
+    fileName: 'stale-repair.png',
+    width: 64,
+    height: 64,
+    hotspotX: 16,
+    hotspotY: 12
+  })
+
+  const result = await pendingGet
+  const replacement = result.customCursors.find((cursor) => cursor.id === 'custom-pending')
+  assert.equal(replacement.name, 'Replacement asset')
+  assert.equal(replacement.assetPath, '/tmp/replacement.png')
+  assert.equal(replacement.assetUrl, 'file:///tmp/replacement.png')
+  assert.equal(replacement.fileName, 'replacement.png')
+  assert.equal(replacement.width, 0)
+  assert.equal(replacement.height, 0)
+})
+
 test('settings:get repairs malformed built-in cursor overrides from the built-in catalog without file repair', async () => {
   const ipcMain = createIpcMainStub()
   let repairCursorCalls = 0

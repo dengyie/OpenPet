@@ -66,6 +66,42 @@ const hasCustomCursorRecordChanged = (before, after) => (
     .some((key) => before?.[key] !== after?.[key])
 )
 
+const hasSameCursorRepairSource = (before, latest) => (
+  ['id', 'source', 'assetPath', 'assetUrl', 'fileName']
+    .every((key) => before?.[key] === latest?.[key])
+)
+
+const mergeCursorRepairIntoLatest = ({ before, repaired, latest }) => {
+  const normalizedBefore = normalizeCustomCursorRecord(before)
+  const normalizedRepaired = normalizeCustomCursorRecord(repaired)
+  const normalizedLatest = normalizeCustomCursorRecord(latest)
+  if (!normalizedBefore || !normalizedRepaired || !normalizedLatest) return normalizedLatest || latest
+  if (!hasIncompleteCustomCursorMetrics(normalizedLatest)) return normalizedLatest
+  if (!hasSameCursorRepairSource(normalizedBefore, normalizedLatest)) return normalizedLatest
+
+  const baseWidth = normalizedRepaired.baseWidth || normalizedRepaired.width
+  const baseHeight = normalizedRepaired.baseHeight || normalizedRepaired.height
+  const baseHotspotX = normalizedRepaired.baseHotspotX ?? normalizedRepaired.hotspotX
+  const baseHotspotY = normalizedRepaired.baseHotspotY ?? normalizedRepaired.hotspotY
+  const repairedBaseRecord = normalizeCustomCursorRecord({
+    ...normalizedLatest,
+    assetPath: normalizedRepaired.assetPath,
+    assetUrl: normalizedRepaired.assetUrl,
+    fileName: normalizedRepaired.fileName,
+    width: baseWidth,
+    height: baseHeight,
+    hotspotX: baseHotspotX,
+    hotspotY: baseHotspotY,
+    baseWidth,
+    baseHeight,
+    baseHotspotX,
+    baseHotspotY,
+    sizePercent: 100
+  })
+  if (!repairedBaseRecord) return normalizedLatest
+  return resizeCustomCursorRecord(repairedBaseRecord, normalizedLatest.sizePercent) || repairedBaseRecord
+}
+
 const registerSettingsIpc = ({
   ipcMainService,
   petService,
@@ -121,10 +157,18 @@ const registerSettingsIpc = ({
 
     // 修复期间可能有并发写入：通过原子读改写按 id 回填修复结果，
     // 而不是用修复前的快照整体覆盖。
-    const repairedById = new Map(repairedCustomCursors.map((cursor) => [cursor.id, cursor]))
+    const repairedById = new Map(repairedCustomCursors
+      .map((cursor, index) => ({ before: currentCustomCursors[index], repaired: cursor }))
+      .filter(({ before, repaired }) => hasCustomCursorRecordChanged(before, repaired))
+      .map((repair) => [repair.before.id, repair]))
     const repairedSettings = petService.updateSettings((latestSettings) => {
       const latestCursors = normalizeCustomCursorCollection(latestSettings.customCursors)
-        .map((cursor) => repairedById.get(cursor.id) || cursor)
+        .map((cursor) => {
+          const repair = repairedById.get(cursor.id)
+          return repair
+            ? mergeCursorRepairIntoLatest({ ...repair, latest: cursor })
+            : cursor
+        })
       const cursorState = normalizeCursorSettingsState({
         selectedCursorId: latestSettings.selectedCursorId,
         customCursors: latestCursors,

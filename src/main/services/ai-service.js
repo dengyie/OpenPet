@@ -521,8 +521,10 @@ const parseOpenAiStreamLine = (line) => {
   try {
     parsed = JSON.parse(payload)
   } catch (_) {
-    // 流被截断时 flush 出的末帧可能是不完整 JSON，按无效行跳过而不是让整轮对话失败。
-    return null
+    // A malformed data frame means the streamed reply is incomplete. Treating
+    // it as an ignorable line would let later frames finalize a reply with
+    // silently missing content.
+    throw createProviderResponseParseError()
   }
   const choice = Array.isArray(parsed.choices) ? parsed.choices[0] : null
   return {

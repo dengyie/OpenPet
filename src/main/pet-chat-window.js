@@ -4,6 +4,7 @@ const { IPC } = require('../shared/ipc-channels')
 const { applyNavigationLock } = require('./window')
 
 const projectRoot = path.join(__dirname, '..', '..')
+const PET_CHAT_ENTRY_PATH = path.join(projectRoot, 'src', 'main', 'pet-chat', 'index.html')
 const DEFAULT_CHAT_WIDTH = 360
 const DEFAULT_CHAT_HEIGHT = 500
 const MIN_CHAT_WIDTH = 320
@@ -277,7 +278,7 @@ const createPetChatWindowManager = ({
     })
 
     // 扩展聊天窗挂着 preload 桥：不锁导航，一次渲染进程注入就能把窗口导到远端页面并接管桥。
-    applyNavigationLock(chatWindow)
+    applyNavigationLock(chatWindow, PET_CHAT_ENTRY_PATH)
     chatWindow.setVisibleOnAllWorkspaces?.(true, { visibleOnFullScreen: true })
     chatWindow.on?.('move', () => saveBounds({ source: 'move' }))
     chatWindow.on?.('resize', () => saveBounds({ source: 'resize' }))
@@ -295,7 +296,7 @@ const createPetChatWindowManager = ({
       bringToFront()
       sendStateChanged()
     })
-    Promise.resolve(chatWindow.loadFile?.(path.join(projectRoot, 'src', 'main', 'pet-chat', 'index.html'))).catch((error) => {
+    Promise.resolve(chatWindow.loadFile?.(PET_CHAT_ENTRY_PATH)).catch((error) => {
       if (chatWindow && !chatWindow.isDestroyed?.()) {
         chatWindow.loadURL?.(`data:text/html;charset=utf-8,${encodeURIComponent(`<!doctype html><title>OpenPet Extended Chat</title><body style="font-family: sans-serif; padding: 16px;">扩展聊天面板加载失败：${error.message}</body>`)}`)
       }

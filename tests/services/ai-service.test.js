@@ -2160,8 +2160,9 @@ test('ai service streamComplete parses OpenAI-compatible SSE deltas', async () =
   assert.equal(result.finishReason, 'stop')
 })
 
-test('ai service streamComplete tolerates a truncated trailing SSE frame', async () => {
-  // 连接中断时缓冲区里可能残留半帧 JSON；flush 这半帧不应让整轮流式对话报错。
+test('ai service streamComplete rejects a truncated trailing SSE frame', async () => {
+  // 已输出部分文本不代表响应完整。连接在 JSON 半帧处结束时必须失败，
+  // 否则 AI Talk 会把残缺回复当成完整 assistant 消息持久化。
   const chunks = [
     'data: {"choices":[{"delta":{"content":"Hel"},"finish_reason":null}]}\n\n',
     'data: {"choices":[{"delta":{"content":"lo"},"finish_reason":null}]}\n\n',
@@ -2195,14 +2196,56 @@ test('ai service streamComplete tolerates a truncated trailing SSE frame', async
     })
   })
 
-  const result = await service.streamComplete({
-    requestId: 'stream-truncated-1',
-    messages: [{ role: 'user', content: 'Say hello' }]
+  await assert.rejects(
+    service.streamComplete({
+      requestId: 'stream-truncated-1',
+      messages: [{ role: 'user', content: 'Say hello' }]
+    }),
+    { name: 'ProviderResponseParseError' }
+  )
+})
+
+test('ai service streamComplete rejects a malformed complete SSE frame instead of dropping content', async () => {
+  const chunks = [
+    'data: {"choices":[{"delta":{"content":"A"},"finish_reason":null}]}\n',
+    'data: {"choices":[{"delta":{"content":"DROPPED"}\n',
+    'data: {"choices":[{"delta":{"content":"C"},"finish_reason":"stop"}]}\n',
+    'data: [DONE]\n'
+  ]
+  const body = new ReadableStream({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(new TextEncoder().encode(chunk))
+      controller.close()
+    }
+  })
+  const deltas = []
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://stream.example.test/v1',
+        model: 'stream-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    fetchImpl: async () => ({ ok: true, status: 200, body })
   })
 
-  assert.equal(result.reply, 'Hello')
-  assert.equal(result.streaming, true)
-  assert.equal(result.chunkCount, 2)
+  await assert.rejects(
+    service.streamComplete({
+      requestId: 'stream-malformed-middle-1',
+      messages: [{ role: 'user', content: 'Say hello' }],
+      onDelta: (delta) => deltas.push(delta)
+    }),
+    { name: 'ProviderResponseParseError' }
+  )
+  assert.deepEqual(deltas, ['A'])
 })
 
 test('ai service streamComplete parses a successful non-stream JSON response without retrying', async () => {

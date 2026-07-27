@@ -3,8 +3,11 @@
  */
 const path = require('path')
 const electron = require('electron')
+const { fileURLToPath } = require('url')
 
 const projectRoot = path.join(__dirname, '..', '..')
+const PET_ENTRY_PATH = path.join(projectRoot, 'index.html')
+const CONTROL_CENTER_ENTRY_PATH = path.join(projectRoot, 'dist', 'control-center', 'index.html')
 const BASE_WIDTH = 300
 const BASE_HEIGHT = 300
 const PET_BASE_SCALE = 0.5
@@ -102,7 +105,7 @@ const applyPetViewport = (petWindow, viewport) => {
   resizeWindowAroundBottomCenter(petWindow, width, height)
 }
 
-const loadPetWindow = (petWindow) => petWindow.loadFile(path.join(projectRoot, 'index.html'))
+const loadPetWindow = (petWindow) => petWindow.loadFile(PET_ENTRY_PATH)
 
 const bringWindowToFront = (win, app = electron.app) => {
   if (!win || win.isDestroyed?.()) return
@@ -116,21 +119,36 @@ const bringWindowToFront = (win, app = electron.app) => {
 // Lock a window to its bundled local content. Renderer XSS or a stray link must
 // not be able to navigate the window to remote content — that would hand the
 // attacker the preload bridge (plugin management, local HTTP token, secrets UI).
-// Only file:// (bundled app) is allowed; every other navigation or window.open
-// is blocked. External links must go through shell.openExternal in the main
-// process, never in-window.
+// Only the window's configured entry document is allowed; trusting the whole
+// file: scheme would let attacker-controlled local HTML inherit the preload
+// bridge. Query and hash changes on the same document remain allowed.
 //
 // data: is deliberately NOT allowed. The build-missing fallbacks do load
 // data:text/html, but always via main-process loadURL, which never emits
 // will-navigate — so blocking the scheme here costs nothing and stops a
 // renderer from navigating itself into an attacker-authored document that
 // would still carry this window's preload bridge.
-const applyNavigationLock = (win) => {
+const normalizeNavigationFilePath = (value, { url = false } = {}) => {
+  if (!value) return ''
+  try {
+    const filePath = url ? fileURLToPath(new URL(value)) : path.resolve(String(value || ''))
+    const normalized = path.normalize(filePath)
+    return process.platform === 'win32' ? normalized.toLowerCase() : normalized
+  } catch (_) {
+    return ''
+  }
+}
+
+const applyNavigationLock = (win, allowedEntryPath) => {
   const contents = win?.webContents
   if (!contents || typeof contents.on !== 'function') return win
+  const allowedFilePath = normalizeNavigationFilePath(allowedEntryPath)
   const isAllowedTarget = (rawUrl) => {
     try {
-      return new URL(rawUrl).protocol === 'file:'
+      const target = new URL(rawUrl)
+      return target.protocol === 'file:' &&
+        Boolean(allowedFilePath) &&
+        normalizeNavigationFilePath(target, { url: true }) === allowedFilePath
     } catch (_) {
       return false
     }
@@ -169,7 +187,7 @@ const createWindow = ({ load = true, BrowserWindow = electron.BrowserWindow, scr
     workArea.y + workArea.height - BASE_HEIGHT - 40
   )
   petWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-  applyNavigationLock(petWindow)
+  applyNavigationLock(petWindow, PET_ENTRY_PATH)
   if (load) loadPetWindow(petWindow)
 
   return petWindow
@@ -216,8 +234,8 @@ const createSettingsWindow = (petWindow, { BrowserWindow = electron.BrowserWindo
     maxSettingsY
   )
   settingsWindow.setPosition(Math.round(settingsX), Math.round(settingsY))
-  applyNavigationLock(settingsWindow)
-  settingsWindow.loadFile(path.join(projectRoot, 'dist', 'control-center', 'index.html')).catch((error) => {
+  applyNavigationLock(settingsWindow, CONTROL_CENTER_ENTRY_PATH)
+  settingsWindow.loadFile(CONTROL_CENTER_ENTRY_PATH).catch((error) => {
     settingsWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<!doctype html><title>OpenPet Control Center</title><body style="font-family: system-ui; padding: 24px;"><h1>Control Center build missing</h1><p>${error.message}</p></body>`)}`)
   })
 
