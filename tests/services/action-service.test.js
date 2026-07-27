@@ -261,6 +261,7 @@ test('action service rejects invalid creator action mutations before apply', () 
   assert.equal(validation.ok, false)
   assert.match(validation.errors.join('\n'), /defaultAction/)
   assert.match(validation.errors.join('\n'), /safe id/)
+  assert.match(validation.errors.join('\n'), /frameMs must be an integer between 16 and 5000/)
   assert.throws(
     () => service.applyCreatorActionMutation({
       defaultAction: 'missing',
@@ -268,6 +269,70 @@ test('action service rejects invalid creator action mutations before apply', () 
     }),
     /Creator action mutation is invalid/
   )
+})
+
+test('action service rejects creator frameMs outside the pet-pack timing bounds', () => {
+  const service = createActionService({
+    projectRoot: '/app/openpet',
+    loadLegacyAnimations: () => ({
+      defaultAction: 'idle',
+      clickAction: 'idle',
+      actions: [
+        {
+          id: 'idle',
+          label: 'Idle',
+          kind: 'idle',
+          loop: true,
+          frameCount: 16,
+          frameMs: 95,
+          frameWidth: 191,
+          frameHeight: 453,
+          sprite: 'cat_anime/sprites/idle.png'
+        }
+      ]
+    }),
+    saveLegacyAnimations: () => {
+      throw new Error('should not save out-of-range frameMs')
+    }
+  })
+
+  const tooSlow = service.validateCreatorActionMutation({
+    defaultAction: 'idle',
+    actions: [
+      {
+        id: 'idle',
+        label: 'Idle',
+        kind: 'idle',
+        loop: true,
+        frameCount: 16,
+        frameMs: 6000,
+        frameWidth: 191,
+        frameHeight: 453,
+        sprite: 'cat_anime/sprites/idle.png'
+      }
+    ]
+  })
+  assert.equal(tooSlow.ok, false)
+  assert.match(tooSlow.errors.join('\n'), /frameMs must be an integer between 16 and 5000/)
+
+  const tooFast = service.validateCreatorActionMutation({
+    defaultAction: 'idle',
+    actions: [
+      {
+        id: 'idle',
+        label: 'Idle',
+        kind: 'idle',
+        loop: true,
+        frameCount: 16,
+        frameMs: 1,
+        frameWidth: 191,
+        frameHeight: 453,
+        sprite: 'cat_anime/sprites/idle.png'
+      }
+    ]
+  })
+  assert.equal(tooFast.ok, false)
+  assert.match(tooFast.errors.join('\n'), /frameMs must be an integer between 16 and 5000/)
 })
 
 test('action service rejects duplicate creator action ids in a mutation payload', () => {

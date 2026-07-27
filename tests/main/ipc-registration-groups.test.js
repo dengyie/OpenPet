@@ -471,6 +471,50 @@ test('registerServiceIpc wires service status, token rotation, and config persis
   assert.ok(ipcMain.handlers.has(IPC.SERVICE_REVOKE_MCP_SESSIONS))
 })
 
+test('registerServiceIpc does not persist localHttp config when start fails', async () => {
+  const ipcMain = createIpcMainStub()
+  const savedSettings = []
+  const startedConfigs = []
+
+  registerServiceIpc({
+    ipcMainService: ipcMain,
+    petService: {
+      getSettings: () => ({ localHttp: { enabled: false, host: '127.0.0.1', port: 0, token: 'old-token' } }),
+      saveSettings: (settings) => {
+        savedSettings.push(settings)
+        return settings
+      }
+    },
+    localHttpService: {
+      getStatus: () => ({ enabled: false, host: '127.0.0.1', port: 0, mcp: { activeSessions: 0, sessionTtlMs: 1000 } }),
+      start: async (config) => {
+        startedConfigs.push(config)
+        throw new Error('Local HTTP service port must be between 0 and 65535')
+      },
+      stop: async () => {
+        throw new Error('stop should not run when enabling fails')
+      },
+      revokeMcpSessions: () => ({ activeSessions: 0, sessionTtlMs: 1000 })
+    },
+    normalizeLocalHttpConfig: (_current, next) => ({ host: '127.0.0.1', ...next }),
+    createLocalHttpToken: () => 'unused-token',
+    createServiceStatusView: (config, runtime) => ({ config, runtime })
+  })
+
+  await assert.rejects(
+    () => ipcMain.handlers.get(IPC.SERVICE_SAVE_CONFIG)(null, {
+      enabled: true,
+      port: 70000,
+      token: 'bad-port-token'
+    }),
+    /port must be between 0 and 65535/
+  )
+
+  assert.equal(startedConfigs.length, 1)
+  assert.equal(startedConfigs[0].port, 70000)
+  assert.deepEqual(savedSettings, [], 'failed start must not write enabled:true to settings')
+})
+
 test('registerCatalogIpc wires catalog install and blocklist handlers', async () => {
   const ipcMain = createIpcMainStub()
   const reloadCalls = []

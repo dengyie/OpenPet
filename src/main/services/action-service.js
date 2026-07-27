@@ -4,6 +4,10 @@ const { pathToFileURL } = require('url')
 
 const SAFE_ACTION_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/
 const SAFE_RELATIVE_SPRITE_PATTERN = /^[^/\\\0][^\\\0]*$/
+// 与 pet-pack/schema.js 的 MIN/MAX_FRAME_MS 对齐，避免 Creator 突变放行
+// 运行时动画根本无法正常播放的帧间隔。
+const MIN_FRAME_MS = 16
+const MAX_FRAME_MS = 5000
 
 const emptyConfig = {
   defaultAction: '',
@@ -61,7 +65,9 @@ const normalizeCreatorAction = (action = {}) => {
   const frameWidth = Number(action.frameWidth)
   const frameHeight = Number(action.frameHeight)
   if (!Number.isInteger(frameCount) || frameCount <= 0) throw new Error(`Creator action(${id}).frameCount must be a positive integer`)
-  if (!Number.isInteger(frameMs) || frameMs <= 0) throw new Error(`Creator action(${id}).frameMs must be a positive integer`)
+  if (!Number.isInteger(frameMs) || frameMs < MIN_FRAME_MS || frameMs > MAX_FRAME_MS) {
+    throw new Error(`Creator action(${id}).frameMs must be an integer between ${MIN_FRAME_MS} and ${MAX_FRAME_MS}`)
+  }
   if (!Number.isInteger(frameWidth) || frameWidth <= 0) throw new Error(`Creator action(${id}).frameWidth must be a positive integer`)
   if (!Number.isInteger(frameHeight) || frameHeight <= 0) throw new Error(`Creator action(${id}).frameHeight must be a positive integer`)
   const normalized = {
@@ -104,8 +110,8 @@ const collectCreatorActionValidationErrors = (action = {}) => {
   }
 
   const frameMs = Number(action.frameMs)
-  if (!Number.isInteger(frameMs) || frameMs <= 0) {
-    errors.push(`Creator action(${actionId}).frameMs must be a positive integer`)
+  if (!Number.isInteger(frameMs) || frameMs < MIN_FRAME_MS || frameMs > MAX_FRAME_MS) {
+    errors.push(`Creator action(${actionId}).frameMs must be an integer between ${MIN_FRAME_MS} and ${MAX_FRAME_MS}`)
   }
 
   const frameWidth = Number(action.frameWidth)
