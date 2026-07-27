@@ -1,10 +1,62 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const http = require('http')
+const net = require('net')
 
 const { createLocalHttpService } = require('../../src/main/services/local-http-service')
 
 const TEST_TOKEN = 'test-token'
+
+// 以原始 socket 手动切分请求体，用来复现 fetch 无法构造的分片边界。
+const postRawChunks = ({ host, port, path, chunks, token, contentLength }) => new Promise((resolve, reject) => {
+  const socket = net.connect(port, host, () => {
+    const declaredLength = contentLength ?? chunks.reduce((total, chunk) => total + Buffer.byteLength(chunk), 0)
+    socket.write([
+      `POST ${path} HTTP/1.1`,
+      `Host: ${host}:${port}`,
+      'Content-Type: application/json',
+      ...(token ? [`Authorization: Bearer ${token}`] : []),
+      `Content-Length: ${declaredLength}`,
+      'Connection: close',
+      '',
+      ''
+    ].join('\r\n'))
+    let index = 0
+    const writeNext = () => {
+      if (index >= chunks.length || socket.destroyed) return
+      const chunk = chunks[index]
+      index += 1
+      socket.write(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+      // 每片之间留一个事件循环间隔，确保服务端按独立 data 事件接收。
+      setTimeout(writeNext, 15)
+    }
+    writeNext()
+  })
+  const received = []
+  socket.on('data', (chunk) => received.push(chunk))
+  // 服务端拒绝超限请求时会主动断开连接，写入失败属于预期结果而不是测试错误。
+  socket.on('error', (error) => {
+    if (['EPIPE', 'ECONNRESET'].includes(error?.code)) return
+    reject(error)
+  })
+  socket.on('close', () => {
+    const raw = Buffer.concat(received).toString('utf8')
+    const separator = raw.indexOf('\r\n\r\n')
+    const head = separator === -1 ? raw : raw.slice(0, separator)
+    const rest = separator === -1 ? '' : raw.slice(separator + 4)
+    const statusMatch = head.match(/^HTTP\/1\.1 (\d{3})/)
+    const jsonStart = rest.indexOf('{')
+    let body = null
+    if (jsonStart !== -1) {
+      try {
+        body = JSON.parse(rest.slice(jsonStart, rest.lastIndexOf('}') + 1))
+      } catch (_) {
+        body = null
+      }
+    }
+    resolve({ status: statusMatch ? Number(statusMatch[1]) : 0, body })
+  })
+})
 
 const createSettingsService = (initialSettings = {}) => {
   let current = {
@@ -796,6 +848,78 @@ test('local http service logs mcp tool calls with tool-specific paths', async ()
     })
 
     assert.equal(service.getLogs({ query: 'openpet.say' }).some((log) => log.path === '/mcp/tools/call/openpet.say'), true)
+  } finally {
+    await service.stop()
+  }
+})
+
+test('local http service decodes multibyte bodies split across chunk boundaries', async () => {
+  const sayEvents = []
+  const service = createLocalHttpService({
+    petService: {
+      getSnapshot: () => ({}),
+      say: (payload) => {
+        sayEvents.push(payload)
+        return payload
+      }
+    }
+  })
+
+  try {
+    const started = await service.start({ enabled: true, host: '127.0.0.1', port: 0, token: TEST_TOKEN })
+    const payload = Buffer.from(JSON.stringify({ text: '小猫咪你好', ttlMs: 1200 }), 'utf8')
+    // 在 "小" 的 UTF-8 三字节序列中间切开，制造跨分片的多字节字符。
+    const splitAt = payload.indexOf(Buffer.from('小', 'utf8')) + 1
+    assert.equal(splitAt > 0, true, 'test fixture must split inside a multibyte character')
+
+    const result = await postRawChunks({
+      host: started.host,
+      port: started.port,
+      path: '/api/pet/say',
+      token: TEST_TOKEN,
+      chunks: [payload.subarray(0, splitAt), payload.subarray(splitAt)]
+    })
+
+    assert.equal(result.status, 200)
+    assert.equal(sayEvents.length, 1)
+    assert.equal(sayEvents[0].text, '小猫咪你好', 'chunk boundary must not corrupt multibyte text')
+    assert.equal(sayEvents[0].text.includes('�'), false, 'decoded text must not contain replacement characters')
+  } finally {
+    await service.stop()
+  }
+})
+
+test('local http service enforces the body limit in bytes rather than characters', async () => {
+  const sayEvents = []
+  const service = createLocalHttpService({
+    petService: {
+      getSnapshot: () => ({}),
+      say: (payload) => {
+        sayEvents.push(payload)
+        return payload
+      }
+    }
+  })
+
+  try {
+    const started = await service.start({ enabled: true, host: '127.0.0.1', port: 0, token: TEST_TOKEN })
+    // 每个字符 3 字节：字符数低于 1MiB 上限，字节数远超上限。
+    const oversized = Buffer.from(JSON.stringify({ text: '猫'.repeat(700 * 1024) }), 'utf8')
+    assert.equal(oversized.length > 1024 * 1024, true, 'fixture must exceed the byte limit')
+
+    const result = await postRawChunks({
+      host: started.host,
+      port: started.port,
+      path: '/api/pet/say',
+      token: TEST_TOKEN,
+      chunks: [oversized]
+    })
+
+    // 服务端在客户端还在上传时就拒绝，连接可能先被拆掉（status 0），
+    // 也可能来得及回写 400；两者都算拒绝，唯一不可接受的是请求被放行。
+    assert.notEqual(result.status, 200, 'oversized body must never succeed')
+    assert.equal([0, 400].includes(result.status), true, `unexpected status: ${result.status}`)
+    assert.deepEqual(sayEvents, [], 'oversized body must not reach pet service')
   } finally {
     await service.stop()
   }
