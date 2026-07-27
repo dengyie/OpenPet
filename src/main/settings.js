@@ -8,6 +8,7 @@
 const fs = require('fs')
 const path = require('path')
 const { app } = require('electron')
+const { writeJsonAtomic } = require('./json-file-utils')
 const { createDefaultCursorSettings } = require('./services/cursor-asset-service')
 const { SYSTEM_CURSOR_ID, normalizeCursorSettingsState } = require('../shared/cursor-library')
 
@@ -243,23 +244,6 @@ const readSettingsFile = (filePath) => {
   const settings = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
   if (!isPlainObject(settings)) throw new TypeError('OpenPet settings file must contain an object')
   return settings
-}
-
-const writeJsonAtomic = (filePath, value) => {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true })
-  const temporaryPath = `${filePath}.${process.pid}.${Date.now()}.tmp`
-  try {
-    fs.writeFileSync(temporaryPath, JSON.stringify(value, null, 2), {
-      encoding: 'utf-8',
-      flush: true
-    })
-    fs.renameSync(temporaryPath, filePath)
-  } catch (error) {
-    try {
-      fs.rmSync(temporaryPath, { force: true })
-    } catch (_) {}
-    throw error
-  }
 }
 
 /**

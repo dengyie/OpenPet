@@ -517,7 +517,13 @@ const parseOpenAiStreamLine = (line) => {
   if (!trimmed || !trimmed.startsWith('data:')) return null
   const payload = trimmed.slice(5).trim()
   if (!payload || payload === '[DONE]') return { done: true }
-  const parsed = JSON.parse(payload)
+  let parsed
+  try {
+    parsed = JSON.parse(payload)
+  } catch (_) {
+    // 流被截断时 flush 出的末帧可能是不完整 JSON，按无效行跳过而不是让整轮对话失败。
+    return null
+  }
   const choice = Array.isArray(parsed.choices) ? parsed.choices[0] : null
   return {
     delta: typeof choice?.delta?.content === 'string' ? choice.delta.content : '',

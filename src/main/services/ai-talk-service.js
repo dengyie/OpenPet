@@ -518,8 +518,6 @@ const getPetPackIdFromSessionId = (sessionId) => {
   return normalizeString(rest.join(':'))
 }
 
-const isControlCenterSessionId = (sessionId) => normalizeString(sessionId).startsWith('control-center:')
-
 const resolveTraceErrorCode = (error) => {
   if (error?.providerCode) return sanitizeDiagnosticText(error.providerCode)
   if (error?.providerStatus) return `provider_http_${Number(error.providerStatus) || 0}`

@@ -40,6 +40,9 @@ const createPetService = ({ eventBus, settingsService, actionService, appLogServ
 
   const saveSettings = (settings) => settingsService.save(settings)
 
+  // 原子读改写：updater 在保存时刻拿到最新快照，避免并发写互相覆盖。
+  const updateSettings = (updater) => settingsService.update(updater)
+
   const previewSettings = (settings) => settingsService.preview(settings)
 
   const getAction = (actionId) => actionService.getAction(actionId)
@@ -100,6 +103,7 @@ const createPetService = ({ eventBus, settingsService, actionService, appLogServ
     reloadAnimations,
     getSettings,
     saveSettings,
+    updateSettings,
     previewSettings,
     getAction,
     say,

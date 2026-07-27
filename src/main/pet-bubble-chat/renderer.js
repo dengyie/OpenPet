@@ -167,11 +167,6 @@ const isNearLatest = () => {
   return remaining <= 28
 }
 
-const isComposerTarget = (target) => {
-  if (!target || typeof target.closest !== 'function') return false
-  return Boolean(target.closest('#mini-input-form'))
-}
-
 const isBubbleDragTarget = (target) => {
   if (!target || typeof target.closest !== 'function') return false
   if (target.closest('#close-button, #new-message-button, textarea, button')) return false

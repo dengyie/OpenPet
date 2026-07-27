@@ -929,7 +929,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
       filters: [{ name: 'Pet Pack Package', extensions: ['zip'] }]
     })
     if (selected.canceled || !selected.filePaths[0]) return { canceled: true }
-    return { canceled: false, ...petPackService.inspectPackSource(selected.filePaths[0]) }
+    return { canceled: false, ...(await petPackService.inspectPackSource(selected.filePaths[0])) }
   })
 
   ipcMainService.handle(IPC.PET_PACKS_CLEAR_SELECTION, (_event, payload) => {

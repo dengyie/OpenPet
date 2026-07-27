@@ -119,20 +119,27 @@ const registerSettingsIpc = ({
     }
     if (changedCursorIds.length === 0) return currentSettings
 
-    const cursorState = normalizeCursorSettingsState({
-      selectedCursorId: currentSettings.selectedCursorId,
-      customCursors: repairedCustomCursors,
-      customCursor: currentSettings.customCursor,
-      hiddenCursorIds: currentSettings.hiddenCursorIds,
-      customCursorScope: currentSettings.customCursorScope
-    })
-    const repairedSettings = petService.saveSettings({
-      ...currentSettings,
-      selectedCursorId: cursorState.selectedCursorId,
-      customCursors: cursorState.customCursors,
-      customCursor: cursorState.customCursor,
-      hiddenCursorIds: cursorState.hiddenCursorIds,
-      customCursorScope: cursorState.customCursorScope
+    // 修复期间可能有并发写入：通过原子读改写按 id 回填修复结果，
+    // 而不是用修复前的快照整体覆盖。
+    const repairedById = new Map(repairedCustomCursors.map((cursor) => [cursor.id, cursor]))
+    const repairedSettings = petService.updateSettings((latestSettings) => {
+      const latestCursors = normalizeCustomCursorCollection(latestSettings.customCursors)
+        .map((cursor) => repairedById.get(cursor.id) || cursor)
+      const cursorState = normalizeCursorSettingsState({
+        selectedCursorId: latestSettings.selectedCursorId,
+        customCursors: latestCursors,
+        customCursor: latestSettings.customCursor,
+        hiddenCursorIds: latestSettings.hiddenCursorIds,
+        customCursorScope: latestSettings.customCursorScope
+      })
+      return {
+        ...latestSettings,
+        selectedCursorId: cursorState.selectedCursorId,
+        customCursors: cursorState.customCursors,
+        customCursor: cursorState.customCursor,
+        hiddenCursorIds: cursorState.hiddenCursorIds,
+        customCursorScope: cursorState.customCursorScope
+      }
     })
     sendToPetWindow(getPetWindow, IPC.SETTINGS_CHANGED, createPetRendererSettings(repairedSettings))
     recordAppLog({
@@ -207,22 +214,28 @@ const registerSettingsIpc = ({
   ipcMainService.handle(IPC.SETTINGS_SAVE, async (_event, settings) => {
     const petWindow = getPetWindow()
     const previousSettings = petService.getSettings()
-    const nextSettings = mergePetSettingsViewIntoHostSettings(petService.getSettings(), settings)
-    if (petMovementPolicy && petWindow && !petWindow.isDestroyed()) {
-      const behavior = petMovementPolicy.normalizePetBehaviorSettings(nextSettings.petBehavior)
-      const currentBehavior = petMovementPolicy.normalizePetBehaviorSettings(previousSettings.petBehavior)
-      const needsInitialHomeAnchor = behavior.home.enabled && !behavior.home.anchor
-      if (needsInitialHomeAnchor || (!currentBehavior.home.enabled && behavior.home.enabled)) {
-        behavior.home.anchor = petMovementPolicy.createHomeAnchorFromWindow({ windowBounds: petWindow.getBounds() })
+    // 合并逻辑封装为纯函数：先基于当前快照算出 provisional 结果用于系统指针同步，
+    // 真正落盘时在 updateSettings 内基于最新快照重算，避免 await 期间的并发写被旧快照覆盖。
+    const computeNextSettings = (currentSettings) => {
+      const nextSettings = mergePetSettingsViewIntoHostSettings(currentSettings, settings)
+      if (petMovementPolicy && petWindow && !petWindow.isDestroyed()) {
+        const behavior = petMovementPolicy.normalizePetBehaviorSettings(nextSettings.petBehavior)
+        const currentBehavior = petMovementPolicy.normalizePetBehaviorSettings(currentSettings.petBehavior)
+        const needsInitialHomeAnchor = behavior.home.enabled && !behavior.home.anchor
+        if (needsInitialHomeAnchor || (!currentBehavior.home.enabled && behavior.home.enabled)) {
+          behavior.home.anchor = petMovementPolicy.createHomeAnchorFromWindow({ windowBounds: petWindow.getBounds() })
+        }
+        nextSettings.petBehavior = behavior
       }
-      nextSettings.petBehavior = behavior
+      return nextSettings
     }
+    const provisionalSettings = computeNextSettings(previousSettings)
 
-    if (nextSettings.customCursorScope === 'system' && !systemCursorService?.sync) {
+    if (provisionalSettings.customCursorScope === 'system' && !systemCursorService?.sync) {
       throw new Error('Whole-computer cursor service is unavailable')
     }
     try {
-      await systemCursorService?.sync?.(nextSettings)
+      await systemCursorService?.sync?.(provisionalSettings)
     } catch (error) {
       recordAppLog({
         scope: 'system-cursor',
@@ -230,14 +243,14 @@ const registerSettingsIpc = ({
         actor: 'system',
         event: 'system-cursor.apply.failed',
         message: error?.message || 'Whole-computer cursor activation failed',
-        details: { requestedScope: nextSettings.customCursorScope }
+        details: { requestedScope: provisionalSettings.customCursorScope }
       })
       throw error
     }
 
     let savedSettings
     try {
-      savedSettings = petService.saveSettings(nextSettings)
+      savedSettings = petService.updateSettings(computeNextSettings)
     } catch (error) {
       try {
         await systemCursorService?.sync?.(previousSettings)

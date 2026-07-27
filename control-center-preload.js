@@ -9,6 +9,7 @@ const { contextBridge, ipcRenderer } = require('electron')
 const IPC = {
   SETTINGS_GET: 'settings:get',
   SETTINGS_SAVE: 'settings:save',
+  SETTINGS_CHANGED: 'settings:changed',
   SETTINGS_IMPORT_CURSOR: 'settings:import-cursor',
   SETTINGS_PREVIEW_SCALE: 'settings:preview-scale',
   SETTINGS_CLOSE: 'settings:close',
@@ -71,6 +72,7 @@ const IPC = {
   AI_BEHAVIOR_REPLAY_DECISION: 'ai-behavior:replay-decision',
   AI_BEHAVIOR_EXPORT_DIAGNOSTICS: 'ai-behavior:export-diagnostics',
   AI_BEHAVIOR_CLEAR_DECISIONS: 'ai-behavior:clear-decisions',
+  PET_PLAY_ACTION: 'pet:play-action',
   PET_BUBBLE_CHAT_OPEN: 'pet-bubble-chat:open',
   PET_CHAT_OPEN: 'pet-chat:open',
   PET_CHAT_GET_STATE: 'pet-chat:get-state',
@@ -160,18 +162,19 @@ contextBridge.exposeInMainWorld('controlCenterAPI', {
   importPetPack: (selectionId) => ipcRenderer.invoke(IPC.PET_PACKS_IMPORT, { selectionId }),
   exportPetPack: (packId) => ipcRenderer.invoke(IPC.PET_PACKS_EXPORT, { packId }),
   setActivePetPack: (packId) => ipcRenderer.invoke(IPC.PET_PACKS_SET_ACTIVE, { packId }),
+  // 主进程有两条活动宠物包变更通道（定向回执 PET_PACKS_ACTIVE_CHANGED 与
+  // 广播 CONTROL_CENTER_ACTIVE_PET_PACK_CHANGED），统一在此订阅，避免重复键覆盖。
   onActivePetPackChanged: (listener) => {
     if (typeof listener !== 'function') return () => {}
     const handler = (_event, payload) => listener(payload)
     ipcRenderer.on(IPC.PET_PACKS_ACTIVE_CHANGED, handler)
-    return () => ipcRenderer.removeListener(IPC.PET_PACKS_ACTIVE_CHANGED, handler)
+    ipcRenderer.on(IPC.CONTROL_CENTER_ACTIVE_PET_PACK_CHANGED, handler)
+    return () => {
+      ipcRenderer.removeListener(IPC.PET_PACKS_ACTIVE_CHANGED, handler)
+      ipcRenderer.removeListener(IPC.CONTROL_CENTER_ACTIVE_PET_PACK_CHANGED, handler)
+    }
   },
   removePetPack: (packId) => ipcRenderer.invoke(IPC.PET_PACKS_REMOVE, { packId }),
-  onActivePetPackChanged: (callback) => {
-    const handler = (_event, payload) => callback(payload)
-    ipcRenderer.on(IPC.CONTROL_CENTER_ACTIVE_PET_PACK_CHANGED, handler)
-    return () => ipcRenderer.removeListener(IPC.CONTROL_CENTER_ACTIVE_PET_PACK_CHANGED, handler)
-  },
   getAiConfig: () => ipcRenderer.invoke(IPC.AI_GET_CONFIG),
   saveAiConfig: (config) => ipcRenderer.invoke(IPC.AI_SAVE_CONFIG, config),
   saveAiApiKey: (apiKey) => ipcRenderer.invoke(IPC.AI_SAVE_API_KEY, apiKey),

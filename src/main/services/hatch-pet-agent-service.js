@@ -558,13 +558,17 @@ const createHatchPetAgentService = ({
     now
   })
 
-  const resolveBudgetLedger = ({ runId, supplied, limits }) => {
-    if (supplied) return supplied
+  const resolveBudgetLedger = ({ runId, supplied, limits, preferPersisted = false }) => {
+    if (supplied && !preferPersisted) return supplied
     const normalizedRunId = String(runId || '').trim()
-    if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(normalizedRunId)) throw new Error('Hatch-pet budget runId is invalid')
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(normalizedRunId)) {
+      // preferPersisted 只是"尽量用磁盘最新值"的优化，runId 不合法时退回调用方快照。
+      if (supplied) return supplied
+      throw new Error('Hatch-pet budget runId is invalid')
+    }
     const dataDir = pluginService.getPluginCreatorDataDir(CREATOR_STUDIO_PLUGIN_ID)
     const ledgerPath = path.join(dataDir, 'runs', normalizedRunId, 'budgets', 'ledger.json')
-    if (!fs.existsSync(ledgerPath)) return createBudgetLedger({ limits })
+    if (!fs.existsSync(ledgerPath)) return supplied || createBudgetLedger({ limits })
     let stored
     try {
       stored = JSON.parse(fs.readFileSync(ledgerPath, 'utf8'))
@@ -575,8 +579,33 @@ const createHatchPetAgentService = ({
       throw new Error('Hatch-pet budget ledger is invalid')
     }
     const baseline = createBudgetLedger({ limits, startedAtMs: stored.startedAtMs })
+    const restoredReservations = Object.freeze(Object.fromEntries(
+      Object.entries(stored.reservations)
+        .filter(([reservationId, reservation]) => (
+          /^provider-[1-9][0-9]*$/.test(reservationId) &&
+          reservation?.type === 'provider'
+        ))
+        .map(([reservationId, reservation]) => [reservationId, Object.freeze({
+          type: 'provider',
+          timeoutMs: Math.max(0, Number(reservation.timeoutMs) || 0),
+          reservedAtMs: Math.max(baseline.startedAtMs, Number(reservation.reservedAtMs) || baseline.startedAtMs)
+        })])
+    ))
+    const restoredUsageProviderCalls = Math.max(0, Math.min(baseline.limits.maxProviderCalls, Number(stored.usage.providerCalls) || 0))
+    // 恢复预约序号：优先用持久化值；旧账本没有该字段时，从已消耗计数 +
+    // 存活预约的最大序号推导，保证重启后新预约 ID 不复用。
+    const reservationIndices = Object.keys(restoredReservations)
+      .map((reservationId) => Number(reservationId.slice('provider-'.length)))
+      .filter(Number.isFinite)
+    const storedSequence = Number(stored.reservationSequence)
+    const restoredSequence = Math.max(
+      Number.isFinite(storedSequence) ? Math.max(0, Math.trunc(storedSequence)) : 0,
+      restoredUsageProviderCalls + reservationIndices.length,
+      ...(reservationIndices.length ? reservationIndices : [0])
+    )
     const restored = Object.freeze({
       ...baseline,
+      reservationSequence: restoredSequence,
       usage: Object.freeze({
         ...baseline.usage,
         providerCalls: Math.max(0, Math.min(baseline.limits.maxProviderCalls, Number(stored.usage.providerCalls) || 0)),
@@ -587,18 +616,7 @@ const createHatchPetAgentService = ({
         estimatedCost: Math.max(0, Number(stored.usage.estimatedCost) || 0),
         costKnown: stored.usage.costKnown !== false
       }),
-      reservations: Object.freeze(Object.fromEntries(
-        Object.entries(stored.reservations)
-          .filter(([reservationId, reservation]) => (
-            /^provider-[1-9][0-9]*$/.test(reservationId) &&
-            reservation?.type === 'provider'
-          ))
-          .map(([reservationId, reservation]) => [reservationId, Object.freeze({
-            type: 'provider',
-            timeoutMs: Math.max(0, Number(reservation.timeoutMs) || 0),
-            reservedAtMs: Math.max(baseline.startedAtMs, Number(reservation.reservedAtMs) || baseline.startedAtMs)
-          })])
-      ))
+      reservations: restoredReservations
     })
     return reconcileAbandonedProviderReservations(restored, {
       preserveReservationIds: Object.keys(restored.reservations).filter((reservationId) => liveProviderReservations.has(reservationKey(normalizedRunId, reservationId)))
@@ -637,7 +655,13 @@ const createHatchPetAgentService = ({
 
   const recordProviderCall = ({ runId, reservationId, budgetLedger, ok = false, code = '', estimatedCost = null } = {}) => {
     const config = getStoredConfig()
-    const ledger = resolveBudgetLedger({ runId, supplied: budgetLedger, limits: config.budgets })
+    // 结算以磁盘最新账本为准：预约到结算之间可能有 planner/evaluator 记账落盘，
+    // 直接持久化调用方在预约时刻的快照会覆盖这些增量。仅当磁盘账本已不含该
+    // 预约（如跨实例恢复）时才回退到调用方快照。
+    let ledger = resolveBudgetLedger({ runId, supplied: budgetLedger, limits: config.budgets, preferPersisted: true })
+    if (!ledger.reservations?.[reservationId] && budgetLedger?.reservations?.[reservationId]) {
+      ledger = budgetLedger
+    }
     liveProviderReservations.delete(reservationKey(runId, reservationId))
     const recorded = recordBudgetProviderCall(ledger, reservationId, { ok, code, estimatedCost })
     persistBudgetLedger({ runId, ledger: recorded })
@@ -666,7 +690,9 @@ const createHatchPetAgentService = ({
       let request
       try {
         request = createSpriteEvaluatorRequest({ scope, board: { ...board, path: boardPath }, qa, profile: effectiveProfile, repairReason })
-        ledger = reserveEvaluatorCall(ledger)
+        // 每次记账前重读磁盘账本：上一次 await 期间可能有 Provider 预约/结算落盘，
+        // 沿用循环外的内存快照会把这些增量写没。
+        ledger = reserveEvaluatorCall(resolveBudgetLedger({ runId, supplied: ledger, limits: config.budgets, preferPersisted: true }))
         persistBudgetLedger({ runId, ledger })
         const completion = await aiService.completeStructuredTool({
           ...request,
@@ -753,7 +779,8 @@ const createHatchPetAgentService = ({
           role: 'user',
           content: JSON.stringify({ schemaVersion: 1, runId: normalizeText(runId, 128), userIntent: normalizeText(userIntent, 2000), requiredActionIds: Object.keys(SPRITE_PRESET_BY_ACTION) })
         }]
-        ledger = reservePlannerCall(ledger)
+        // 同 evaluateSprite：重读磁盘账本后再记账，避免覆盖 await 期间的 Provider 记账。
+        ledger = reservePlannerCall(resolveBudgetLedger({ runId, supplied: ledger, limits: config.budgets, preferPersisted: true }))
         persistBudgetLedger({ runId, ledger })
         const completion = await aiService.completeStructuredTool({ messages, tool: createSpritePlanTool(), configOverride: completionConfig, timeoutMs: 60000 })
         return {
@@ -871,11 +898,21 @@ const createHatchPetAgentService = ({
         }
       })
 
+      // 影子 planner 的模型调用同样占用 planner 预算：不记账会让影子模式绕过
+      // 上限，与 planSprite / evaluateSprite 记在同一账本上才能反映真实用量。
+      // 每次调用前重读磁盘账本，避免覆盖 await 期间落盘的 Provider 记账。
+      const reserveShadowPlannerCall = () => {
+        const ledger = reservePlannerCall(resolveBudgetLedger({ runId, limits: config.budgets, preferPersisted: true }))
+        persistBudgetLedger({ runId, ledger })
+      }
+
       let requested
+      reserveShadowPlannerCall()
       try {
         requested = await requestDecision({ snapshot, legalDecisions, completionConfig })
       } catch (error) {
         if (!isInvalidModelDecisionError(error)) throw error
+        reserveShadowPlannerCall()
         requested = await requestDecision({
           snapshot,
           legalDecisions,
@@ -932,9 +969,12 @@ const createHatchPetAgentService = ({
         recordedAt: record.recordedAt
       }
     } catch (error) {
+      // 预算耗尽与模型返回非法是两类不同的失败：分开上报，运维才能区分
+      // "用满配额"和"模型不合规"。
+      const budgetCode = String(error?.code || '')
       const resultCode = isInvalidModelDecisionError(error)
         ? 'invalid_model_decision'
-        : 'hatch_pet_shadow_failed'
+        : (budgetCode.startsWith('hatch_pet_') && budgetCode.includes('budget') ? budgetCode : 'hatch_pet_shadow_failed')
       try {
         store?.appendDecision?.({
           runId,

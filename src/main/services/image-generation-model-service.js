@@ -307,13 +307,16 @@ const fetchWithTimeout = async ({
   }
 }
 
+// parsed 用于区分"provider 返回了合法的空模型列表"与"响应体解析失败"。
+// 两者都会得到空 body，但只有前者可以覆盖已保存的模型目录；解析失败时
+// 必须保留旧目录，否则一次坏响应就会把用户已发现的模型清空。
 const readOptionalJsonResponse = async (response, signal) => {
-  if (!response?.ok || typeof response.json !== 'function') return {}
+  if (!response?.ok || typeof response.json !== 'function') return { parsed: false, body: {} }
   try {
-    return await response.json()
+    return { parsed: true, body: await response.json() }
   } catch (error) {
     if (signal?.aborted) throw error
-    return {}
+    return { parsed: false, body: {} }
   }
 }
 
@@ -1111,7 +1114,7 @@ const createImageGenerationModelService = ({
       if (!apiKey) {
         return completeHealth({ ok: false, provider: config.provider, code: 'missing_api_key', message: 'Image generation API key is missing' })
       }
-      const { response, body } = await fetchWithTimeout({
+      const { response, body, bodyParsed } = await fetchWithTimeout({
         fetchImpl,
         url: `${baseUrl}/models`,
         timeoutMs,
@@ -1122,10 +1125,10 @@ const createImageGenerationModelService = ({
             Authorization: `Bearer ${apiKey}`
           }
         },
-        consumeResponse: async (response, signal) => ({
-          response,
-          body: await readOptionalJsonResponse(response, signal)
-        })
+        consumeResponse: async (response, signal) => {
+          const { parsed, body } = await readOptionalJsonResponse(response, signal)
+          return { response, body, bodyParsed: parsed }
+        }
       })
       const status = response?.status || 'error'
       if (!response?.ok) {
@@ -1154,6 +1157,22 @@ const createImageGenerationModelService = ({
             currentModelDiscovered: false
           },
           { status, modelsProbe: 'failed' }
+        )
+      }
+      if (!bodyParsed) {
+        // 响应体不可解析：探针视为不可用，保留已保存的模型目录，
+        // 否则一次坏响应会把用户已发现的模型清空。
+        return completeHealth(
+          {
+            ok: true,
+            provider: config.provider,
+            code: 'provider_reachable_models_unavailable',
+            message: 'Image Provider is reachable, but the optional /models probe returned an unreadable response',
+            modelsProbe: 'unavailable',
+            availableModels: [],
+            currentModelDiscovered: false
+          },
+          { status, modelsProbe: 'unavailable' }
         )
       }
       const availableModels = extractDiscoveredModels(body, { secrets: [apiKey] })
@@ -1267,7 +1286,7 @@ const createImageGenerationModelService = ({
           message: 'Image generation API key is missing'
         })
       }
-      const { response, body } = await fetchWithTimeout({
+      const { response, body, bodyParsed } = await fetchWithTimeout({
         fetchImpl,
         url: `${baseUrl}/models`,
         timeoutMs,
@@ -1278,10 +1297,10 @@ const createImageGenerationModelService = ({
             Authorization: `Bearer ${apiKey}`
           }
         },
-        consumeResponse: async (response, signal) => ({
-          response,
-          body: await readOptionalJsonResponse(response, signal)
-        })
+        consumeResponse: async (response, signal) => {
+          const { parsed, body } = await readOptionalJsonResponse(response, signal)
+          return { response, body, bodyParsed: parsed }
+        }
       })
       const status = response?.status || 'error'
       if (!response?.ok) {
@@ -1306,6 +1325,19 @@ const createImageGenerationModelService = ({
             message: `Image Provider responded with HTTP ${status}`
           },
           { status, modelsProbe: 'failed' }
+        )
+      }
+      if (!bodyParsed) {
+        // 同 checkHealth：解析失败不覆盖已保存的模型目录。
+        return completeDiscovery(
+          {
+            ok: true,
+            ...baseResult,
+            models: [],
+            code: 'provider_reachable_models_unavailable',
+            message: 'Image Provider is reachable, but the optional /models probe returned an unreadable response'
+          },
+          { status, modelsProbe: 'unavailable' }
         )
       }
       const discoveredModels = extractDiscoveredModels(body, { secrets: [apiKey] })
@@ -1512,6 +1544,8 @@ const createImageGenerationModelService = ({
       break
     }
     if (!response?.ok) {
+      // 非重试的失败响应同样要释放响应体，否则连接会一直挂在这里泄漏。
+      cancelProviderResponseBody(response)
       const status = response?.status || 'error'
       const errorMessage = 'Image Provider returned an error response'
       recordProviderLog({

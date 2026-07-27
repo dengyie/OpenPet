@@ -116,16 +116,21 @@ const bringWindowToFront = (win, app = electron.app) => {
 // Lock a window to its bundled local content. Renderer XSS or a stray link must
 // not be able to navigate the window to remote content — that would hand the
 // attacker the preload bridge (plugin management, local HTTP token, secrets UI).
-// Only file:// (bundled app) and data: (build-missing fallback) are allowed;
-// every other navigation or window.open is blocked. External links must go
-// through shell.openExternal in the main process, never in-window.
+// Only file:// (bundled app) is allowed; every other navigation or window.open
+// is blocked. External links must go through shell.openExternal in the main
+// process, never in-window.
+//
+// data: is deliberately NOT allowed. The build-missing fallbacks do load
+// data:text/html, but always via main-process loadURL, which never emits
+// will-navigate — so blocking the scheme here costs nothing and stops a
+// renderer from navigating itself into an attacker-authored document that
+// would still carry this window's preload bridge.
 const applyNavigationLock = (win) => {
   const contents = win?.webContents
   if (!contents || typeof contents.on !== 'function') return win
   const isAllowedTarget = (rawUrl) => {
     try {
-      const { protocol } = new URL(rawUrl)
-      return protocol === 'file:' || protocol === 'data:'
+      return new URL(rawUrl).protocol === 'file:'
     } catch (_) {
       return false
     }

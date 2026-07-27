@@ -282,6 +282,11 @@ const openMenuWindow = ({ session, items, layout, submenuKey = null }) => {
     if (parentWindow) parentWindow.contextMenuWindow = menuWindow
   }
 
+  // 菜单窗自带 will-navigate 协议处理（openpet-menu://），这里只补齐另外两个出口：
+  // window.open 与 webview 挂载都不应该存在于一个纯菜单窗口上。
+  menuWindow.webContents.setWindowOpenHandler?.(() => ({ action: 'deny' }))
+  menuWindow.webContents.on('will-attach-webview', (event) => event.preventDefault())
+
   menuWindow.webContents.on('will-navigate', (event, url) => {
     event.preventDefault()
     if (!url.startsWith('openpet-menu://')) return

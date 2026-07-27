@@ -3,6 +3,7 @@ const fs = require('fs')
 const path = require('path')
 const { CODEX_ROWS } = require('../pet-pack/codex-pet')
 const { sanitizeLogText } = require('./log-safety')
+const { writeJsonAtomic } = require('../json-file-utils')
 const { inferAnimationType } = require('../../../examples/plugins/creator-studio/lib/action-semantics')
 const {
   failGeneratingRunAfterCommandTermination
@@ -344,6 +345,7 @@ const createWorkflowResult = ({
   omittedActionIds = null,
   degradedActionIds = null,
   importNotes = '',
+  persistFailed = false,
   hatchPetAgent = null
 }) => finalizeWorkflowResult({
   ok: true,
@@ -473,7 +475,8 @@ const createWorkflowResult = ({
   degradedActionIds: Array.isArray(degradedActionIds)
     ? degradedActionIds.map(normalizeText).filter(Boolean)
     : [],
-  importNotes: normalizeText(importNotes).slice(0, 400)
+  importNotes: normalizeText(importNotes).slice(0, 400),
+  persistFailed: Boolean(persistFailed)
 })
 
 const readBasicActionCoverage = ({ pluginDataDir, runId }) => {
@@ -2034,27 +2037,6 @@ const finalizeWorkflowResult = (result) => {
   return stripPreviewDataUrlsFromValue(base)
 }
 
-const withActionAssetFields = (result, diagnostics = null) => {
-  const progress = diagnostics?.progress || result?.diagnostics?.progress || null
-  if (!progress) return result
-  return {
-    ...result,
-    actionAssets: Array.isArray(result.actionAssets) && result.actionAssets.length
-      ? result.actionAssets
-      : (Array.isArray(progress.actionAssets) ? progress.actionAssets : []),
-    completeness: result.completeness || progress.completeness || '',
-    availableActionIds: Array.isArray(result.availableActionIds) && result.availableActionIds.length
-      ? result.availableActionIds
-      : (Array.isArray(progress.availableActionIds) ? progress.availableActionIds : []),
-    failedActionIds: Array.isArray(result.failedActionIds) && result.failedActionIds.length
-      ? result.failedActionIds
-      : (Array.isArray(progress.failedActionIds) ? progress.failedActionIds : []),
-    omittedActionIds: Array.isArray(result.omittedActionIds) && result.omittedActionIds.length
-      ? result.omittedActionIds
-      : (Array.isArray(progress.failedActionIds) ? progress.failedActionIds : [])
-  }
-}
-
 const createCreatorWorkflowService = ({
   pluginService,
   imageGenerationModelService,
@@ -3509,10 +3491,41 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
             notes: defaultActionNote
           }
         }
-        fs.writeFileSync(path.join(partialRoot, 'pet.json'), `${JSON.stringify(manifest, null, 2)}\n`)
+        try {
+          writeJsonAtomic(path.join(partialRoot, 'pet.json'), manifest)
+        } catch (error) {
+          recordLog({
+            level: 'error',
+            message: 'Failed to persist pet.json during partial import',
+            error: error.message,
+            runId: normalizedRunId
+          })
+          return createWorkflowResult({
+            state: 'import-failed',
+            code: 'persist_failed',
+            message: `pet.json 写入失败：${error.message}`,
+            run: createRunView({
+              state: 'import-failed',
+              mode: 'full-pet',
+              runId: normalizedRunId,
+              commandId: 'import-available-actions',
+              message: `pet.json persist failed: ${error.message}`,
+              diagnostics
+            }),
+            diagnostics,
+            actionAssets: assetBundle.actionAssets,
+            processAssets: assetBundle.processAssets || [],
+            completeness: 'partial',
+            availableActionIds,
+            failedActionIds,
+            omittedActionIds,
+            importNotes: `pet.json 写入失败：${error.message}`,
+            persistFailed: true
+          })
+        }
         usedPartialComposer = true
 
-        const inspection = petPackService.inspectPackSource(partialRoot)
+        const inspection = await petPackService.inspectPackSource(partialRoot)
         if (!inspection?.valid || !inspection.selectionId) {
           const errors = Array.isArray(inspection?.errors) ? inspection.errors.join('; ') : 'partial pack inspection failed'
           return createWorkflowResult({
@@ -3549,9 +3562,10 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
         importMessage = `已导入可用动作（partial）：${availableActionIds.join(', ')}`
       }
 
+      let runPersistFailed = false
       try {
         const latest = readJsonIfExists(runPath, run) || run
-        fs.writeFileSync(runPath, `${JSON.stringify({
+        writeJsonAtomic(runPath, {
           ...latest,
           status: 'imported',
           importStatus: 'imported',
@@ -3565,14 +3579,24 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
           importNotes: defaultActionNote || (failedActionIds.length
             ? `已导入可用动作，失败动作未导入：${failedActionIds.join(', ')}`
             : '已导入全部可用动作')
-        }, null, 2)}\n`)
-      } catch (_) {}
+        })
+      } catch (error) {
+        runPersistFailed = true
+        recordLog({
+          level: 'error',
+          message: 'Failed to persist run.json after import',
+          error: error.message,
+          runId: normalizedRunId,
+          runPath
+        })
+      }
 
       const nextDiagnostics = readWorkflowDiagnostics({ pluginDataDir, runId: normalizedRunId })
       const notes = [
         failedActionIds.length ? `失败未导入：${failedActionIds.join(', ')}` : '',
         defaultActionNote,
-        usedPartialComposer ? '使用了可用动作 partial 包导入' : ''
+        usedPartialComposer ? '使用了可用动作 partial 包导入' : '',
+        runPersistFailed ? 'run.json 状态更新失败（导入已成功）' : ''
       ].filter(Boolean).join('；')
 
       return createWorkflowResult({
@@ -3598,7 +3622,8 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
         failedActionIds,
         omittedActionIds,
         degradedActionIds,
-        importNotes: notes
+        importNotes: notes,
+        persistFailed: runPersistFailed
       })
     })
   }

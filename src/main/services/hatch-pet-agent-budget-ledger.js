@@ -84,7 +84,10 @@ const createBudgetLedger = ({ limits = DEFAULT_LIMITS, startedAtMs, now = Date.n
       estimatedCost: 0,
       costKnown: true
     }),
-    reservations: Object.freeze({})
+    reservations: Object.freeze({}),
+    // 单调递增的预约序号，随账本持久化；避免用 usage+reservations 位置推导
+    // 预约 ID 在 reconcile/重启后发生复用。
+    reservationSequence: 0
   })
 }
 
@@ -112,10 +115,19 @@ const reserveProviderCall = (ledger, { timeoutMs, now = Date.now } = {}) => {
   if (ledger.usage.providerCalls + reservations.length >= ledger.limits.maxProviderCalls) {
     throw createBudgetError('hatch_pet_provider_call_budget_exhausted', 'Hatch-pet Provider-call budget is exhausted')
   }
-  const reservationId = `provider-${ledger.usage.providerCalls + reservations.length + 1}`
+  if (ledger.limits.maxEstimatedCost != null && ledger.usage.estimatedCost >= ledger.limits.maxEstimatedCost) {
+    throw createBudgetError('hatch_pet_cost_budget_exhausted', 'Hatch-pet estimated-cost budget is exhausted')
+  }
+  // 兼容旧账本（无 reservationSequence 字段）：从已消耗计数续起。
+  const sequence = toBoundedInteger(
+    ledger.reservationSequence,
+    ledger.usage.providerCalls + reservations.length
+  ) + 1
+  const reservationId = `provider-${sequence}`
   return {
     reservationId,
     ledger: updateLedger(ledger, {
+      reservationSequence: sequence,
       reservations: {
         ...ledger.reservations,
         [reservationId]: Object.freeze({
@@ -128,8 +140,10 @@ const reserveProviderCall = (ledger, { timeoutMs, now = Date.now } = {}) => {
   }
 }
 
+// 结算路径：只记录已发生调用的结果，不做准入断言。
+// 若在此处断言 elapsed 预算，超时后完成的调用将无法结算，预约永远悬挂，
+// 计数与真实消耗漂移（真实费用已产生但账本未入账）。
 const recordProviderCall = (ledger, reservationId, { ok = false, code = '', estimatedCost = null, now = Date.now } = {}) => {
-  assertElapsedBudget(ledger, now)
   const reservation = ledger.reservations[reservationId]
   if (!reservation || reservation.type !== 'provider') {
     throw createBudgetError('hatch_pet_budget_reservation_invalid', 'Provider-call reservation is invalid')
@@ -141,9 +155,7 @@ const recordProviderCall = (ledger, reservationId, { ok = false, code = '', esti
   const nextCost = Number.isFinite(numericCost)
     ? ledger.usage.estimatedCost + Math.max(0, numericCost)
     : ledger.usage.estimatedCost
-  if (ledger.limits.maxEstimatedCost != null && nextCost > ledger.limits.maxEstimatedCost) {
-    throw createBudgetError('hatch_pet_cost_budget_exhausted', 'Hatch-pet estimated-cost budget is exhausted')
-  }
+  // 费用即使超限也必须入账（真实开销已发生）；超限拦截在下一次 reserve 时生效。
   return updateLedger(ledger, {
     usage: {
       ...ledger.usage,

@@ -520,3 +520,93 @@ test('live provider reservations in the same service instance are not reconciled
   assert.equal(second.budgetLedger.usage.providerFailures, 0)
   assert.deepEqual(Object.keys(second.budgetLedger.reservations), ['provider-1', 'provider-2'])
 })
+
+test('planner repair accounting preserves provider entries recorded during the failed attempt', async () => {
+  let releaseFirstPlannerCall = () => {}
+  const firstPlannerCall = new Promise((resolve) => { releaseFirstPlannerCall = resolve })
+  const h = createHarness()
+  const dataDir = h.dataDir
+  const invalidProposal = { ...validSpritePlanProposal(), actions: [{ actionId: 'idle', motionPresetId: 'running-right-gait-v1', motionParameters: { intensity: 'normal', leadSide: 'viewer-left' }, framePoses: ['bad'] }] }
+  let plannerCallCount = 0
+  const service = createHatchPetAgentService({
+    aiService: {
+      // 第一次 planner 调用挂起，期间 Provider 预约与结算落盘；随后返回无效提案触发修复重试。
+      completeStructuredTool: async () => {
+        plannerCallCount += 1
+        if (plannerCallCount === 1) {
+          await firstPlannerCall
+          return { arguments: invalidProposal, provider: 'p', model: 'm', elapsedMs: 1 }
+        }
+        return { arguments: validSpritePlanProposal(), provider: 'p', model: 'm', elapsedMs: 1 }
+      }
+    },
+    settingsService: { get: () => h.getSettings(), update: (updater) => updater(h.getSettings()) },
+    secretService: { getSecretValue: () => 'sk-host-owned', setSecret: () => {}, deleteSecret: () => {} },
+    pluginService: { getPluginCreatorDataDir: () => dataDir },
+    appLogService: { record: () => {} },
+    idFactory: () => 'decision-1',
+    now: () => '2026-07-15T00:00:00.000Z'
+  })
+
+  const planning = service.planSprite({ runId: 'run-interleaved', userIntent: 'pet' })
+  await Promise.resolve()
+  const reservation = service.reserveProviderCall({ runId: 'run-interleaved', timeoutMs: 480000 })
+  service.recordProviderCall({
+    runId: 'run-interleaved',
+    reservationId: reservation.reservationId,
+    budgetLedger: reservation.budgetLedger,
+    ok: true,
+    code: 'ok',
+    estimatedCost: 0.05
+  })
+  releaseFirstPlannerCall()
+  const planned = await planning
+
+  // 旧实现下修复重试会用第一次 await 之前的快照记账，把 Provider 结算写没。
+  assert.equal(plannerCallCount, 2)
+  assert.equal(planned.budgetLedger.usage.plannerCalls, 2)
+  assert.equal(planned.budgetLedger.usage.providerCalls, 1)
+  const stored = JSON.parse(fs.readFileSync(path.join(dataDir, 'runs/run-interleaved/budgets/ledger.json'), 'utf8'))
+  assert.equal(stored.usage.plannerCalls, 2)
+  assert.equal(stored.usage.providerCalls, 1)
+  assert.equal(stored.usage.estimatedCost, 0.05)
+  assert.deepEqual(stored.reservations, {})
+})
+
+test('shadow planning charges the planner budget for every model call including repairs', async () => {
+  const h = createHarness({
+    budgets: { maxPlannerCalls: 3 },
+    completions: [
+      { arguments: { ...validDecision(), unknown: true }, provider: 'p', model: 'm', elapsedMs: 1 },
+      { arguments: validDecision(), provider: 'p', model: 'm', elapsedMs: 1 }
+    ]
+  })
+
+  const result = await h.service.createShadowDecision({ runId: 'run-shadow-budget', mode: 'full-pet', stage: 'planning' })
+
+  assert.equal(result.status, 'shadow-recorded')
+  assert.equal(h.calls.length, 2)
+  // 影子调用必须记账，否则影子模式可以无限绕过 planner 上限。
+  const stored = JSON.parse(fs.readFileSync(path.join(h.dataDir, 'runs/run-shadow-budget/budgets/ledger.json'), 'utf8'))
+  assert.equal(stored.usage.plannerCalls, 2)
+})
+
+test('shadow planning refuses model work once the planner budget is exhausted', async () => {
+  const h = createHarness({
+    budgets: { maxPlannerCalls: 1 },
+    completions: [
+      { arguments: validDecision(), provider: 'p', model: 'm', elapsedMs: 1 },
+      { arguments: validDecision(), provider: 'p', model: 'm', elapsedMs: 1 }
+    ]
+  })
+
+  const first = await h.service.createShadowDecision({ runId: 'run-shadow-exhausted', mode: 'full-pet', stage: 'planning' })
+  assert.equal(first.status, 'shadow-recorded')
+
+  const second = await h.service.createShadowDecision({ runId: 'run-shadow-exhausted', mode: 'full-pet', stage: 'planning' })
+
+  assert.equal(second.status, 'shadow-failed')
+  assert.equal(h.calls.length, 1)
+  const status = h.service.getRunStatus('run-shadow-exhausted')
+  assert.equal(status.state.failureCode, 'hatch_pet_planner_call_budget_exhausted')
+})

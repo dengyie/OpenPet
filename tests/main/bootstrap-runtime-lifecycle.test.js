@@ -44,7 +44,9 @@ test('runtime app lifecycle continues quit after plugin shutdown timeout', async
   })
   await delay(20)
 
-  assert.equal(PLUGIN_SHUTDOWN_TIMEOUT_MS, 2000)
+  // 必须大于 plugin-service stopAllServices 内部的 5000ms 等待，
+  // 否则应用会先于插件优雅关停退出。
+  assert.equal(PLUGIN_SHUTDOWN_TIMEOUT_MS, 6000)
   assert.equal(preventDefaultCalls, 1)
   assert.equal(triggerStopCalls, 1)
   assert.equal(pluginStopCalls, 1)

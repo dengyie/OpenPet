@@ -1,6 +1,7 @@
 const path = require('path')
 const electron = require('electron')
 const { IPC } = require('../shared/ipc-channels')
+const { applyNavigationLock } = require('./window')
 
 const projectRoot = path.join(__dirname, '..', '..')
 const DEFAULT_CHAT_WIDTH = 360
@@ -275,6 +276,8 @@ const createPetChatWindowManager = ({
       }
     })
 
+    // 扩展聊天窗挂着 preload 桥：不锁导航，一次渲染进程注入就能把窗口导到远端页面并接管桥。
+    applyNavigationLock(chatWindow)
     chatWindow.setVisibleOnAllWorkspaces?.(true, { visibleOnFullScreen: true })
     chatWindow.on?.('move', () => saveBounds({ source: 'move' }))
     chatWindow.on?.('resize', () => saveBounds({ source: 'resize' }))

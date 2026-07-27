@@ -178,15 +178,42 @@ const createImGatewayPhase2DemoPlugin = () => ({
   blockStatus: { blocked: false, reasons: [] }
 })
 
-test('control center API entrypoint lazy-loads demo fallback without installing it globally', async () => {
+// 桥缺失时，入口不能悄悄回退到 demo 假后端：那会让用户在一个永远同步不到主
+// 进程的状态上做修改。门禁 (import.meta.env.DEV) 在 Vite 之外恒为假，所以这里
+// 断言的就是生产行为——明确失败，且失败信息指向真正的原因（preload 桥没注入）。
+test('control center API entrypoint refuses the demo fallback outside a dev build', async () => {
   delete global.window.controlCenterAPI
   const { controlCenterAPI } = await import('../../src/control-center/src/api/control-center-api.ts')
 
   assert.equal(global.window.controlCenterAPI, undefined)
 
-  const settings = await controlCenterAPI.getSettings()
-  assert.equal(typeof settings.scale, 'number')
+  await assert.rejects(
+    controlCenterAPI.getSettings(),
+    /bridge is unavailable/,
+    'a missing preload bridge must surface as an explicit bridge error'
+  )
+
+  // 门禁不得把 demo API 装到 window 上——否则后续调用会静默"成功"。
   assert.equal(global.window.controlCenterAPI, undefined)
+})
+
+// 桥存在时入口必须直接转发到注入的 API，一个 IPC 调用都不能落到 demo 后端。
+test('control center API entrypoint forwards to the injected bridge when present', async () => {
+  const calls = []
+  global.window.controlCenterAPI = {
+    getSettings: (...args) => {
+      calls.push(['getSettings', args])
+      return Promise.resolve({ scale: 1.25 })
+    }
+  }
+  try {
+    const { controlCenterAPI } = await import('../../src/control-center/src/api/control-center-api.ts')
+    const settings = await controlCenterAPI.getSettings()
+    assert.equal(settings.scale, 1.25)
+    assert.deepEqual(calls, [['getSettings', []]])
+  } finally {
+    delete global.window.controlCenterAPI
+  }
 })
 
 test('demo API saves and returns settings from session-backed state', async () => {

@@ -1,7 +1,6 @@
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
-const crypto = require('crypto')
 const { spawn } = require('child_process')
 const { createServiceProcessTree } = require('./service-process-tree')
 const { normalizePluginManifest } = require('../plugins/manifest')
@@ -53,6 +52,8 @@ const MAX_PLUGIN_ASSET_IMPORT_TOTAL_PIXELS = 48 * 1000 * 1000
 const MAX_PLUGIN_ASSET_IMPORT_BYTES = 50 * 1024 * 1024
 const PLUGIN_SERVICE_HEALTH_TIMEOUT_MS = 3000
 const PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS = 1500
+// 需要覆盖单个运行时的 stop 宽限期（1500ms SIGTERM→SIGKILL）加上落盘余量。
+const PLUGIN_STOP_ALL_TIMEOUT_MS = 5000
 const MIN_PLUGIN_SERVICE_HEALTH_INTERVAL_MS = 15000
 const DEFAULT_PLUGIN_SERVICE_HEALTH_INTERVAL_MS = 30000
 const MAX_PLUGIN_SERVICE_HEALTH_INTERVAL_MS = 300000
@@ -873,7 +874,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
         ? resolvePluginDataPath(plugin.manifest, payload.dataRelativePath)
         : resolvePluginAssetPath(plugin.manifest, payload.relativePath)
       appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.pet-pack inspect-output invoked' })
-      return { ok: true, inspection: petPackService.inspectPackSource(sourcePath) }
+      return { ok: true, inspection: await petPackService.inspectPackSource(sourcePath) }
     },
     creatorPetPackImportOutput: async (payload = {}) => {
       assertPermission(plugin.manifest, 'pet-pack:import')
@@ -2393,10 +2394,6 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     for (const runtime of commandRuntimeRegistry.listRuntimes()) {
       stopPluginCommandRuntime(runtime.pluginId, runtime.commandId, runtime, { log: false })
     }
-    commandBridgeRuntimes.clear()
-    serviceBridgeRuntimes.clear()
-    commandBridgeServer.close()
-    serviceBridgeServer.close()
 
     const serviceWaiters = serviceRuntimeRegistry.listRuntimes()
       .filter((runtime) => runtime?.status === 'stopping' && runtime.stopCompleted instanceof Promise)
@@ -2408,14 +2405,21 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       ...commandWaiters
     ])
 
+    // 先等运行时退出、再关桥接服务器：优雅关停中的插件可能还要通过
+    // bridge 落盘最后的状态，提前 close 会让这些请求连接被拒。
     await Promise.race([
       waitForShutdown,
       new Promise((resolve) => {
-        const timeoutId = setTimeout(resolve, 2000)
+        const timeoutId = setTimeout(resolve, PLUGIN_STOP_ALL_TIMEOUT_MS)
         timeoutId?.unref?.()
         waitForShutdown.finally(() => clearTimeout(timeoutId))
       })
     ])
+
+    commandBridgeRuntimes.clear()
+    serviceBridgeRuntimes.clear()
+    commandBridgeServer.close()
+    serviceBridgeServer.close()
 
     return { ok: true }
   }

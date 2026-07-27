@@ -1,6 +1,6 @@
 const fs = require('fs')
-const path = require('path')
 const crypto = require('crypto')
+const { writeJsonAtomic } = require('../json-file-utils')
 
 const SCHEMA_VERSION = 1
 const DEFAULT_CONTEXT_POLICY = Object.freeze({
@@ -47,15 +47,6 @@ const createEmptyState = () => ({
 })
 
 const clone = (value) => JSON.parse(JSON.stringify(value))
-
-const ensureDirectory = (filePath) => fs.mkdirSync(path.dirname(filePath), { recursive: true })
-
-const writeJsonAtomic = (filePath, value) => {
-  ensureDirectory(filePath)
-  const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`
-  fs.writeFileSync(tempPath, `${JSON.stringify(value, null, 2)}\n`)
-  fs.renameSync(tempPath, filePath)
-}
 
 const backupCorruptStore = (storePath, now) => {
   if (!fs.existsSync(storePath)) return ''

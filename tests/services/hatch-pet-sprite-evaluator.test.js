@@ -179,6 +179,44 @@ test('canonical comparison accepts one to four candidate records and passes when
   }, { regions }), /unknown canonical candidate region/)
 })
 
+test('canonical comparison propagates cannot-evaluate and reject instead of always asking for repair', () => {
+  const regions = [...REGIONS, { regionId: 'candidate-2', role: 'canonical-candidate' }]
+  const profile = getQualityFirstQualityProfile()
+  const gateFor = (candidates) => evaluateCanonicalComparisonGate({
+    evaluation: validateCanonicalComparisonEvaluation({ schemaVersion: 1, recommendation: 'repair', candidates }, { regions }),
+    profile,
+    regions
+  })
+
+  const unreadable = gateFor(regions.slice(1).map((region) => ({
+    candidateId: region.regionId,
+    confidence: 0.95,
+    scores: canonicalScores(),
+    defects: [{ code: 'board-unreadable', severity: 'blocking', regionId: region.regionId }]
+  })))
+  assert.equal(unreadable.ok, false)
+  assert.equal(unreadable.outcome, 'cannot-evaluate')
+
+  const allBlocking = gateFor(regions.slice(1).map((region) => ({
+    candidateId: region.regionId,
+    confidence: 0.95,
+    scores: canonicalScores(),
+    defects: [{ code: 'incomplete-subject', severity: 'blocking', regionId: region.regionId }]
+  })))
+  assert.equal(allBlocking.outcome, 'reject')
+
+  const mixed = gateFor([
+    {
+      candidateId: 'candidate-1',
+      confidence: 0.95,
+      scores: canonicalScores(),
+      defects: [{ code: 'incomplete-subject', severity: 'blocking', regionId: 'candidate-1' }]
+    },
+    { candidateId: 'candidate-2', confidence: 0.95, scores: canonicalScores({ overall: 80 }), defects: [] }
+  ])
+  assert.equal(mixed.outcome, 'repair', 'a repairable candidate still keeps the board in the repair loop')
+})
+
 test('canonical evaluator tool schema requires exactly the candidate regions on the attached board', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-canonical-tool-schema-'))
   const boardPath = path.join(dataDir, 'board.png')

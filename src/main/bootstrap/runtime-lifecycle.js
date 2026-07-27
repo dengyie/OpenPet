@@ -1,6 +1,8 @@
 const { IPC } = require('../../shared/ipc-channels')
 
-const PLUGIN_SHUTDOWN_TIMEOUT_MS = 2000
+// 必须大于 plugin-service stopAllServices 内部的 5000ms 等待
+//（SIGTERM→SIGKILL 宽限期 + 落盘余量），否则应用先于插件优雅关停退出。
+const PLUGIN_SHUTDOWN_TIMEOUT_MS = 6000
 const noop = () => {}
 
 const registerRuntimeAppLifecycle = ({

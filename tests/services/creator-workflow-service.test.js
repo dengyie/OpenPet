@@ -2706,6 +2706,11 @@ test('creator workflow service imports available actions as partial pack when id
   assert.equal(result.run.importedPackId, 'partial-cat')
   assert.equal(importedPacks.length, 1)
   assert.equal(JSON.stringify(result).includes(pluginDataDir), false)
+  assert.equal(result.persistFailed, false)
+  const persistedRun = JSON.parse(fs.readFileSync(path.join(runDir, 'run.json'), 'utf-8'))
+  assert.equal(persistedRun.status, 'imported')
+  assert.equal(persistedRun.importStatus, 'imported')
+  assert.equal(persistedRun.importedPackId, 'partial-cat')
 
   fs.writeFileSync(path.join(runDir, 'run.json'), `${JSON.stringify({
     runId,
@@ -2741,6 +2746,106 @@ test('creator workflow service imports available actions as partial pack when id
   assert.deepEqual(noValidFrames.availableActionIds, [])
   assert.equal(noValidFrames.failedActionIds.includes('waving'), true)
   assert.equal(noValidFrames.omittedActionIds.includes('waving'), true)
+})
+
+test('creator workflow import surfaces run.json persist failure instead of swallowing it', async () => {
+  const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-persist-fail-'))
+  const runId = 'run-persist-fail'
+  const runDir = path.join(pluginDataDir, 'runs', runId)
+  const runPath = path.join(runDir, 'run.json')
+  const rightDir = path.join(runDir, 'official-row-frames', 'running-right')
+  const leftDir = path.join(runDir, 'official-row-frames', 'running-left')
+  const idleDir = path.join(runDir, 'official-row-frames', 'idle')
+  fs.mkdirSync(rightDir, { recursive: true })
+  fs.mkdirSync(leftDir, { recursive: true })
+  fs.mkdirSync(idleDir, { recursive: true })
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64'
+  )
+  fs.writeFileSync(path.join(rightDir, '01.png'), png)
+  fs.writeFileSync(path.join(leftDir, '01.png'), png)
+  fs.writeFileSync(path.join(idleDir, '01.png'), png)
+  fs.writeFileSync(runPath, `${JSON.stringify({
+    runId,
+    petId: 'persist-cat',
+    input: { petName: 'Persist Cat', prompt: 'demo' },
+    status: 'failed',
+    taskStatus: 'confirmed',
+    currentStep: 'generate',
+    reviewStatus: 'pending',
+    importStatus: 'not-imported',
+    backend: 'provider',
+    artifacts: {}
+  }, null, 2)}\n`)
+  fs.writeFileSync(path.join(runDir, 'full-pet-action-checkpoints.json'), `${JSON.stringify({
+    version: 1,
+    runId,
+    actions: {
+      idle: {
+        actionId: 'idle',
+        ok: true,
+        row: {
+          quality: 'row-real',
+          frames: [{ relativePath: `runs/${runId}/official-row-frames/idle/01.png`, sha256: 'i1' }]
+        }
+      },
+      'running-right': {
+        actionId: 'running-right',
+        ok: true,
+        row: {
+          quality: 'row-real',
+          frames: [{ relativePath: `runs/${runId}/official-row-frames/running-right/01.png`, sha256: 'r1' }]
+        }
+      },
+      'running-left': {
+        actionId: 'running-left',
+        ok: true,
+        row: {
+          quality: 'row-real',
+          frames: [{ relativePath: `runs/${runId}/official-row-frames/running-left/01.png`, sha256: 'l1' }]
+        }
+      }
+    }
+  }, null, 2)}\n`)
+
+  const service = createCreatorWorkflowService({
+    pluginService: {
+      listPlugins: () => ([{ id: 'openpet.creator-studio', enabled: true, runnable: true, commands: [{ id: 'draft-task' }] }]),
+      runCommand: async () => { throw new Error('should not need creator studio commands for partial import') },
+      getPluginCreatorDataDir: () => pluginDataDir
+    },
+    imageGenerationModelService: {
+      checkHealth: async () => ({ ok: true, code: 'provider_healthy', message: 'ok' }),
+      getConfig: () => ({ provider: 'openai-compatible', model: 'gpt-image-2', creatorWorkflowModelPolicy: { verifiedModels: ['gpt-image-2'] } })
+    },
+    actionService: {
+      getConfig: () => ({ defaultAction: 'idle', clickAction: 'waving', actions: [] }),
+      acceptTriggerProposalItem: () => ({})
+    },
+    creatorReferenceService: {
+      getReference: () => null,
+      bindReference: async () => ({ replaced: false, reference: null }),
+      copyReferenceIntoRun: () => ({})
+    },
+    petPackService: {
+      inspectPackSource: () => ({ selectionId: 'sel-persist', valid: true, errors: [], pack: { id: 'persist-cat' } }),
+      importPack: () => {
+        // 导入成功后、run.json 状态回写前，把 run.json 换成目录：
+        // 原子写的 rename 会失败，用于验证失败被上报而不是被吞掉。
+        fs.rmSync(runPath, { force: true })
+        fs.mkdirSync(runPath)
+        return { pack: { id: 'persist-cat', displayName: 'Persist Cat' } }
+      },
+      setActivePack: (packId) => ({ activePackId: packId, pack: { id: 'persist-cat' } })
+    }
+  })
+
+  const result = await service.importAvailableActions({ runId, activate: true })
+  assert.equal(result.state, 'completed')
+  assert.equal(result.persistFailed, true)
+  assert.match(result.importNotes, /run\.json/)
+  assert.equal(result.run.importedPackId, 'persist-cat')
 })
 
 test('creator workflow diagnostics keep process assets without embedding preview data urls by default', () => {

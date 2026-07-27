@@ -52,6 +52,7 @@ const runLocalPluginCommand = ({ plugin, sdk, commandId, payload, config, timeou
   const child = fork(runnerPath, [], createLocalPluginRunnerOptions(mainPath))
   let settled = false
   let stderr = ''
+  let stdout = ''
 
   const finish = (error, result) => {
     if (settled) return
@@ -66,6 +67,13 @@ const runLocalPluginCommand = ({ plugin, sdk, commandId, payload, config, timeou
   const timer = setTimeout(() => {
     finish(new Error(`Plugin command timed out after ${timeoutMs}ms`))
   }, timeoutMs)
+
+  // silent: true 会把 stdout/stderr 都接成管道。stderr 有消费者，stdout 没有——
+  // 插件只要往 stdout 写满管道缓冲区就会永久阻塞在 write 上，命令只能等超时。
+  // 这里把 stdout 也读掉（只保留末尾用于诊断），保证子进程永远不会被背压卡死。
+  child.stdout?.on('data', (chunk) => {
+    stdout = `${stdout}${chunk.toString('utf-8')}`.slice(-4096)
+  })
 
   child.stderr?.on('data', (chunk) => {
     stderr = `${stderr}${chunk.toString('utf-8')}`.slice(-4096)
@@ -104,7 +112,7 @@ const runLocalPluginCommand = ({ plugin, sdk, commandId, payload, config, timeou
   child.on('error', (error) => finish(error))
   child.on('exit', (code, signal) => {
     if (settled) return
-    const detail = stderr.trim() || (signal ? `signal ${signal}` : `exit code ${code}`)
+    const detail = stderr.trim() || stdout.trim() || (signal ? `signal ${signal}` : `exit code ${code}`)
     finish(new Error(`Plugin runner exited before completing command: ${detail}`))
   })
 })

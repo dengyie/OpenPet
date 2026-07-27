@@ -1,7 +1,7 @@
 const path = require('path')
 const electron = require('electron')
 const { IPC } = require('../shared/ipc-channels')
-const { PET_VIEWPORT } = require('./window')
+const { PET_VIEWPORT, applyNavigationLock } = require('./window')
 
 const projectRoot = path.join(__dirname, '..', '..')
 const DEFAULT_BUBBLE_WIDTH = 340
@@ -833,6 +833,8 @@ const createPetBubbleChatWindowManager = ({
         nodeIntegration: false
       }
     })
+    // 气泡窗同样挂着 preload 桥：不锁导航，一次渲染进程注入就能把窗口导到远端页面并接管桥。
+    applyNavigationLock(bubbleWindow)
     bubbleWindow.setVisibleOnAllWorkspaces?.(true, { visibleOnFullScreen: true })
     bubbleWindow.setAlwaysOnTop?.(true, BUBBLE_ALWAYS_ON_TOP_LEVEL)
     applyHitTestMode(false)

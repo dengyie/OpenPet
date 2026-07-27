@@ -2160,6 +2160,51 @@ test('ai service streamComplete parses OpenAI-compatible SSE deltas', async () =
   assert.equal(result.finishReason, 'stop')
 })
 
+test('ai service streamComplete tolerates a truncated trailing SSE frame', async () => {
+  // 连接中断时缓冲区里可能残留半帧 JSON；flush 这半帧不应让整轮流式对话报错。
+  const chunks = [
+    'data: {"choices":[{"delta":{"content":"Hel"},"finish_reason":null}]}\n\n',
+    'data: {"choices":[{"delta":{"content":"lo"},"finish_reason":null}]}\n\n',
+    'data: {"choices":[{"delta":{"content":" trunc'
+  ]
+  const body = new ReadableStream({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(new TextEncoder().encode(chunk))
+      controller.close()
+    }
+  })
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://stream.example.test/v1',
+        model: 'stream-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: ''
+      }
+    }),
+    secretService: {
+      getSecretValue: () => 'sk-test',
+      setSecret: () => {}
+    },
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      body
+    })
+  })
+
+  const result = await service.streamComplete({
+    requestId: 'stream-truncated-1',
+    messages: [{ role: 'user', content: 'Say hello' }]
+  })
+
+  assert.equal(result.reply, 'Hello')
+  assert.equal(result.streaming, true)
+  assert.equal(result.chunkCount, 2)
+})
+
 test('ai service streamComplete parses a successful non-stream JSON response without retrying', async () => {
   let callCount = 0
   const logs = []

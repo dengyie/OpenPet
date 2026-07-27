@@ -1,54 +1,23 @@
 const fs = require('fs')
-const os = require('os')
 const path = require('path')
 const crypto = require('crypto')
-const { execFile } = require('child_process')
-const { promisify } = require('util')
+const zipArchiveUtils = require('./zip-archive-utils')
 const { normalizePluginManifest, normalizeSignature } = require('../plugins/manifest')
 const { normalizeConfigSchema } = require('../plugins/config-schema')
 
 const PLUGIN_SELECTION_TTL_MS = 10 * 60 * 1000
-const SAFE_ZIP_ENTRY_PATTERN = /^[^/\\\0][^\\\0]*$/
-const DEFAULT_ZIP_LIMITS = {
-  maxEntries: 1000,
-  maxExpandedBytes: 100 * 1024 * 1024,
-  maxFileBytes: 25 * 1024 * 1024,
-  maxCompressionRatio: 100,
-  timeoutMs: 15000
-}
-const execFileAsync = promisify(execFile)
+// zip 安全策略统一由 zip-archive-utils 提供；这里只固定插件包的错误文案。
+const PLUGIN_ZIP_SUBJECT = 'Plugin package'
+const PLUGIN_FOLDER_SUBJECT = 'Plugin'
+const { DEFAULT_ZIP_LIMITS } = zipArchiveUtils
 
 const ensureDirectory = (dirPath) => fs.mkdirSync(dirPath, { recursive: true })
 
 const createSelectionId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
 
-const assertSafeZipEntry = (entryName) => {
-  if (
-    !SAFE_ZIP_ENTRY_PATTERN.test(entryName) ||
-    path.isAbsolute(entryName) ||
-    /^[a-zA-Z]:[\\/]/.test(entryName) ||
-    entryName.split('/').includes('..')
-  ) {
-    throw new Error('Plugin package contains unsafe paths')
-  }
-}
+const assertSafeZipEntry = (entryName) => zipArchiveUtils.assertSafeZipEntry(entryName, { subject: PLUGIN_ZIP_SUBJECT })
 
-const assertNoSymlinks = (rootPath) => {
-  if (fs.lstatSync(rootPath).isSymbolicLink()) {
-    throw new Error('Plugin folders must not contain symlinks')
-  }
-
-  const walk = (currentPath) => {
-    const entries = fs.readdirSync(currentPath, { withFileTypes: true })
-    for (const entry of entries) {
-      const entryPath = path.join(currentPath, entry.name)
-      const stats = fs.lstatSync(entryPath)
-      if (stats.isSymbolicLink()) throw new Error('Plugin folders must not contain symlinks')
-      if (stats.isDirectory()) walk(entryPath)
-    }
-  }
-  walk(rootPath)
-}
+const assertNoSymlinks = (rootPath) => zipArchiveUtils.assertNoSymlinks(rootPath, { subject: PLUGIN_FOLDER_SUBJECT })
 
 const assertInsideDirectory = (rootPath, targetPath, fieldName) => {
   const rootRealPath = fs.realpathSync(rootPath)
@@ -212,93 +181,18 @@ const getSignatureReview = (rootPath, manifest, fileHashes) => {
   }
 }
 
-const inspectZipArchive = async ({ zipPath, timeoutMs, signal }) => {
-  const options = { encoding: 'utf-8', timeout: timeoutMs, maxBuffer: 4 * 1024 * 1024, signal }
-  const [{ stdout: namesOutput }, { stdout: verboseOutput }] = await Promise.all([
-    execFileAsync('unzip', ['-Z1', zipPath], options),
-    execFileAsync('unzip', ['-Z', '-v', zipPath], options)
-  ])
-  const names = namesOutput.split(/\r?\n/).filter(Boolean)
-  const blocks = verboseOutput.split(/Central directory entry #\d+:/).slice(1)
-  if (blocks.length !== names.length) throw new Error('Plugin package metadata is inconsistent')
-  return names.map((name, index) => {
-    const block = blocks[index]
-    const compressedSize = Number(block.match(/^\s*compressed size:\s+(\d+) bytes/m)?.[1])
-    const uncompressedSize = Number(block.match(/^\s*uncompressed size:\s+(\d+) bytes/m)?.[1])
-    const unixAttributes = block.match(/^\s*Unix file attributes \([^)]*\):\s*(.+)$/m)?.[1] || ''
-    return {
-      name,
-      compressedSize,
-      uncompressedSize,
-      isLink: unixAttributes.trim().startsWith('l'),
-      encrypted: !/^\s*file security status:\s+not encrypted$/m.test(block)
-    }
-  })
-}
+const inspectZipArchive = (options) => zipArchiveUtils.inspectZipArchive({ ...options, subject: PLUGIN_ZIP_SUBJECT })
 
-const extractZipArchive = async ({ zipPath, destination, timeoutMs, signal }) => {
-  await execFileAsync('unzip', ['-qq', zipPath, '-d', destination], {
-    timeout: timeoutMs,
-    maxBuffer: 1024 * 1024,
-    signal
-  })
-}
+const extractZipArchive = zipArchiveUtils.extractZipArchive
 
-const assertArchiveLimits = (entries, limits) => {
-  if (entries.length > limits.maxEntries) throw new Error('Plugin package exceeds ZIP entry count limit')
-  let expandedBytes = 0
-  for (const entry of entries) {
-    assertSafeZipEntry(entry.name)
-    if (entry.isLink) throw new Error('Plugin package must not contain links')
-    if (entry.encrypted) throw new Error('Encrypted plugin packages are not supported')
-    if (!Number.isFinite(entry.uncompressedSize) || !Number.isFinite(entry.compressedSize)) {
-      throw new Error('Plugin package metadata is invalid')
-    }
-    if (entry.uncompressedSize > limits.maxFileBytes) throw new Error('Plugin package exceeds ZIP single file size limit')
-    expandedBytes += entry.uncompressedSize
-    if (expandedBytes > limits.maxExpandedBytes) throw new Error('Plugin package exceeds ZIP expanded size limit')
-    const ratio = entry.compressedSize > 0 ? entry.uncompressedSize / entry.compressedSize : (entry.uncompressedSize > 0 ? Infinity : 1)
-    if (ratio > limits.maxCompressionRatio) throw new Error('Plugin package exceeds ZIP compression ratio limit')
-  }
-}
-
-const runArchiveOperation = async (operation, timeoutMs) => {
-  const controller = new AbortController()
-  let timeoutId
-  const timeout = new Promise((resolve, reject) => {
-    timeoutId = setTimeout(() => {
-      controller.abort()
-      reject(new Error('Plugin package extraction timed out'))
-    }, timeoutMs)
-    timeoutId.unref?.()
-  })
-  try {
-    return await Promise.race([Promise.resolve().then(() => operation(controller.signal)), timeout])
-  } finally {
-    clearTimeout(timeoutId)
-  }
-}
-
-const extractZipToTemp = async (zipPath, { limits, inspectArchive, extractArchive }) => {
-  if (!fs.existsSync(zipPath)) throw new Error('Plugin package does not exist')
-  const entries = await runArchiveOperation(
-    (signal) => inspectArchive({ zipPath, timeoutMs: limits.timeoutMs, signal }),
-    limits.timeoutMs
-  )
-  assertArchiveLimits(entries, limits)
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-plugin-package-'))
-  try {
-    await runArchiveOperation(
-      (signal) => extractArchive({ zipPath, destination: tempRoot, timeoutMs: limits.timeoutMs, signal }),
-      limits.timeoutMs
-    )
-    assertNoSymlinks(tempRoot)
-    return tempRoot
-  } catch (error) {
-    fs.rmSync(tempRoot, { recursive: true, force: true })
-    throw error
-  }
-}
+const extractZipToTemp = (zipPath, { limits, inspectArchive, extractArchive }) => zipArchiveUtils.extractZipToTemp(zipPath, {
+  subject: PLUGIN_ZIP_SUBJECT,
+  folderSubject: PLUGIN_FOLDER_SUBJECT,
+  tempPrefix: 'openpet-plugin-package-',
+  limits,
+  inspectArchive,
+  extractArchive
+})
 
 const normalizeSourceRoot = (sourcePath, options = {}, archiveOptions) => {
   if (!sourcePath || typeof sourcePath !== 'string') throw new Error('Plugin source path is required')

@@ -2170,3 +2170,128 @@ test('image generation model service keeps the production provider timeout by de
   assert.equal(logs[1].event, 'imageGeneration.provider.request.started')
   assert.equal(logs[1].details.timeoutMs, 120000)
 })
+
+test('image generation health keeps the saved model catalog when a 200 response body is unparseable', async () => {
+  const savedCatalog = createSavedProviderModelCatalog({
+    capability: 'image',
+    provider: 'openai-compatible',
+    baseUrl: 'https://images.example.test/v1',
+    models: ['gpt-image-2', 'previously-discovered'],
+    fetchedAt: '2026-07-01T00:00:00.000Z'
+  })
+  const settingsService = createSettingsService(providerSettings({
+    baseUrl: 'https://images.example.test/v1',
+    modelCatalog: savedCatalog
+  }))
+  const service = createImageGenerationModelService({
+    settingsService,
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-image', label: 'Image API Key' }
+    }),
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => { throw new SyntaxError('Unexpected token < in JSON at position 0') }
+    })
+  })
+
+  const result = await service.checkHealth()
+
+  assert.equal(result.ok, true)
+  assert.equal(result.code, 'provider_reachable_models_unavailable')
+  assert.equal(result.modelsProbe, 'unavailable')
+  assert.deepEqual(
+    settingsService.get().models.imageGeneration.modelCatalog.models,
+    ['gpt-image-2', 'previously-discovered']
+  )
+})
+
+test('image generation model discovery keeps the saved model catalog when a 200 response body is unparseable', async () => {
+  const savedCatalog = createSavedProviderModelCatalog({
+    capability: 'image',
+    provider: 'openai-compatible',
+    baseUrl: 'https://images.example.test/v1',
+    models: ['gpt-image-2', 'previously-discovered'],
+    fetchedAt: '2026-07-01T00:00:00.000Z'
+  })
+  const settingsService = createSettingsService(providerSettings({
+    baseUrl: 'https://images.example.test/v1',
+    modelCatalog: savedCatalog
+  }))
+  const service = createImageGenerationModelService({
+    settingsService,
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-image', label: 'Image API Key' }
+    }),
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => { throw new SyntaxError('Unexpected end of JSON input') }
+    })
+  })
+
+  const result = await service.discoverModels()
+
+  assert.equal(result.code, 'provider_reachable_models_unavailable')
+  assert.deepEqual(
+    settingsService.get().models.imageGeneration.modelCatalog.models,
+    ['gpt-image-2', 'previously-discovered']
+  )
+})
+
+test('image generation health still persists an empty catalog when the provider genuinely reports no models', async () => {
+  const settingsService = createSettingsService(providerSettings({
+    baseUrl: 'https://images.example.test/v1',
+    modelCatalog: createSavedProviderModelCatalog({
+      capability: 'image',
+      provider: 'openai-compatible',
+      baseUrl: 'https://images.example.test/v1',
+      models: ['stale-model'],
+      fetchedAt: '2026-07-01T00:00:00.000Z'
+    })
+  }))
+  const service = createImageGenerationModelService({
+    settingsService,
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-image', label: 'Image API Key' }
+    }),
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ data: [] }) })
+  })
+
+  const result = await service.checkHealth()
+
+  assert.equal(result.ok, true)
+  assert.equal(result.code, 'provider_healthy')
+  assert.deepEqual(settingsService.get().models.imageGeneration.modelCatalog.models, [])
+})
+
+test('image generation releases the provider response body on a non-retryable error status', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-body-release-'))
+  let bodyCancelCount = 0
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings()),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-secret', label: 'Image API Key' }
+    }),
+    fetchImpl: async () => ({
+      ok: false,
+      status: 400,
+      body: { cancel: async () => { bodyCancelCount += 1 } },
+      json: async () => ({ error: { message: 'unsupported model' } })
+    }),
+    now: () => new Date('2026-06-19T00:00:00.000Z')
+  })
+
+  await assert.rejects(
+    () => service.generateImage({
+      prompt: 'prompt',
+      referenceImages: createReferenceImages(dataDir),
+      output: { dataDir, dataRelativeDir: 'runs/body-release/frames/base' },
+      constraints: { width: 1024, height: 1024, transparent: true }
+    }),
+    /HTTP 400/
+  )
+
+  // 400 不可重试：直接跳出循环时也必须释放响应体，否则连接泄漏。
+  assert.equal(bodyCancelCount, 1)
+})

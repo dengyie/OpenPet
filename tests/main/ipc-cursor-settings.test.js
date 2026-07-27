@@ -151,6 +151,11 @@ const createCursorSettingsFixture = ({ scope = 'openpet' } = {}) => ({
 
 const createCursorPetService = (initialSettings, onSave = () => {}) => {
   let currentSettings = initialSettings
+  const saveSettings = (settings) => {
+    onSave(settings)
+    currentSettings = settings
+    return currentSettings
+  }
   return {
     onSay: () => {},
     onAction: () => {},
@@ -160,11 +165,8 @@ const createCursorPetService = (initialSettings, onSave = () => {}) => {
     reloadAnimations: () => ({ actions: [] }),
     previewSettings: () => {},
     getSettings: () => currentSettings,
-    saveSettings: (settings) => {
-      onSave(settings)
-      currentSettings = settings
-      return currentSettings
-    },
+    saveSettings,
+    updateSettings: (updater) => saveSettings(updater(currentSettings)),
     say: (payload) => payload,
     playAction: (payload) => payload,
     setEvent: (payload) => payload
@@ -203,6 +205,40 @@ test('settings:save activates whole-computer cursor before persisting system sco
     active: true,
     helperPid: 88
   })
+})
+
+test('settings:save merges against the latest snapshot when saves overlap in flight', async () => {
+  const ipcMain = createIpcMainStub()
+  const petService = createCursorPetService(createCursorSettingsFixture())
+  let releaseFirstSync
+  let syncCalls = 0
+  const systemCursorService = {
+    // 第一次保存挂起在系统指针同步上，制造与第二次保存的交错窗口。
+    sync: () => {
+      syncCalls += 1
+      if (syncCalls === 1) return new Promise((resolve) => { releaseFirstSync = resolve })
+      return Promise.resolve()
+    },
+    getStatus: () => ({ supported: true, platform: 'darwin', active: false, helperPid: 0 })
+  }
+
+  registerIpcHandlers(createRequiredServices({
+    ipcMainService: ipcMain,
+    petService,
+    cursorAssetService: {},
+    systemCursorService
+  }))
+
+  const handler = ipcMain.handlers.get(IPC.SETTINGS_SAVE)
+  const firstSave = handler(null, { scale: 1.5 })
+  await handler(null, { walkSpeed: 3 })
+  releaseFirstSync()
+  await firstSave
+
+  // 旧实现基于 await 之前的快照整体覆盖，会把 walkSpeed 冲回 2。
+  const finalSettings = petService.getSettings()
+  assert.equal(finalSettings.scale, 1.5)
+  assert.equal(finalSettings.walkSpeed, 3)
 })
 
 test('settings:save leaves persisted scope unchanged when system cursor activation fails', async () => {
@@ -312,6 +348,10 @@ test('settings:save removes orphaned cursor assets after replacing a custom curs
         currentSettings = settings
         return currentSettings
       },
+      updateSettings: (updater) => {
+        currentSettings = updater(currentSettings)
+        return currentSettings
+      },
       say: (payload) => payload,
       playAction: (payload) => payload,
       setEvent: (payload) => payload
@@ -407,6 +447,11 @@ test('settings:get repairs legacy custom cursor records so size controls can use
       saveSettings: (settings) => {
         currentSettings = settings
         savedSettings = settings
+        return currentSettings
+      },
+      updateSettings: (updater) => {
+        currentSettings = updater(currentSettings)
+        savedSettings = currentSettings
         return currentSettings
       },
       say: (payload) => payload,
@@ -508,6 +553,11 @@ test('settings:get repairs malformed built-in cursor overrides from the built-in
         savedSettings = settings
         return currentSettings
       },
+      updateSettings: (updater) => {
+        currentSettings = updater(currentSettings)
+        savedSettings = currentSettings
+        return currentSettings
+      },
       say: (payload) => payload,
       playAction: (payload) => payload,
       setEvent: (payload) => payload
@@ -562,6 +612,7 @@ test('pet cursor focus request focuses the pet window only when it is unfocused'
       previewSettings: () => {},
       getSettings: () => ({}),
       saveSettings: (settings) => settings,
+      updateSettings: (updater) => updater({}),
       say: (payload) => payload,
       playAction: (payload) => payload,
       setEvent: (payload) => payload
@@ -602,6 +653,7 @@ test('settings:import-cursor only offers PNG and WEBP files in the picker', asyn
       previewSettings: () => {},
       getSettings: () => ({}),
       saveSettings: (settings) => settings,
+      updateSettings: (updater) => updater({}),
       say: (payload) => payload,
       playAction: (payload) => payload,
       setEvent: (payload) => payload
@@ -649,6 +701,7 @@ test('settings:preview-scale lets the renderer drive viewport resizing', () => {
       previewSettings: (settings) => previews.push(settings),
       getSettings: () => ({}),
       saveSettings: (settings) => settings,
+      updateSettings: (updater) => updater({}),
       say: (payload) => payload,
       playAction: (payload) => payload,
       setEvent: (payload) => payload
@@ -716,6 +769,10 @@ test('settings:save lets the renderer apply saved scale through the active viewp
       getSettings: () => currentSettings,
       saveSettings: (settings) => {
         currentSettings = settings
+        return currentSettings
+      },
+      updateSettings: (updater) => {
+        currentSettings = updater(currentSettings)
         return currentSettings
       },
       say: (payload) => payload,

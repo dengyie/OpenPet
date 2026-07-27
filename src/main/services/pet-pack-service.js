@@ -4,13 +4,17 @@ const os = require('os')
 const crypto = require('crypto')
 const { execFileSync } = require('child_process')
 const { pathToFileURL } = require('url')
+const zipArchiveUtils = require('./zip-archive-utils')
+const { writeJsonAtomic } = require('../json-file-utils')
 const { getLegacyPetAnimations, loadLegacyPetPack, loadPetPackFromDirectory } = require('../pet-pack/loader')
 const { normalizePetPackManifest } = require('../pet-pack/schema')
 
 const BUILT_IN_PACK_ID = 'legacy-cat'
 const DEFAULT_BUNDLED_PACKS_DIR = path.join(__dirname, '..', '..', '..', 'assets', 'pet-packs')
 const PET_PACK_SELECTION_TTL_MS = 10 * 60 * 1000
-const SAFE_ZIP_ENTRY_PATTERN = /^[^/\\\0][^\\\0]*$/
+// zip 安全策略（限制、超时、软链接/加密拒绝）与插件包共用 zip-archive-utils。
+const PET_PACK_ZIP_SUBJECT = 'Pet pack package'
+const PET_PACK_FOLDER_SUBJECT = 'Pet pack'
 const CREATOR_PACK_MANIFEST_FIELDS = new Set(['displayName', 'version', 'provenance'])
 const CREATOR_PACK_MANIFEST_PROVENANCE_FIELDS = new Set(['sourceUrl', 'assetAuthor', 'license', 'licenseUrl'])
 
@@ -39,9 +43,7 @@ const listFiles = (rootPath) => {
 
 const readJsonFile = (filePath) => JSON.parse(fs.readFileSync(filePath, 'utf-8'))
 
-const writeJsonFile = (filePath, value) => {
-  fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`)
-}
+const writeJsonFile = (filePath, value) => writeJsonAtomic(filePath, value)
 
 const getDirectoryPackageHash = (rootPath) => hashBuffer(Buffer.from(listFiles(rootPath).map((relativePath) => {
   const fileHash = hashBuffer(fs.readFileSync(path.join(rootPath, relativePath)))
@@ -95,27 +97,14 @@ const createVersionConflict = (manifest, installed = {}) => {
   }
 }
 
-const assertSafeZipEntry = (entryName) => {
-  if (
-    !SAFE_ZIP_ENTRY_PATTERN.test(entryName) ||
-    path.isAbsolute(entryName) ||
-    /^[a-zA-Z]:[\\/]/.test(entryName) ||
-    entryName.split('/').includes('..')
-  ) {
-    throw new Error('Pet pack package contains unsafe paths')
-  }
-}
-
-const extractZipToTemp = (zipPath) => {
-  if (!fs.existsSync(zipPath)) throw new Error('Pet pack package does not exist')
-  const entries = execFileSync('unzip', ['-Z1', zipPath], { encoding: 'utf-8' })
-    .split(/\r?\n/)
-    .filter(Boolean)
-  entries.forEach(assertSafeZipEntry)
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-pet-pack-zip-'))
-  execFileSync('unzip', ['-qq', zipPath, '-d', tempRoot])
-  return tempRoot
-}
+const extractZipToTemp = (zipPath, { limits, inspectArchive, extractArchive }) => zipArchiveUtils.extractZipToTemp(zipPath, {
+  subject: PET_PACK_ZIP_SUBJECT,
+  folderSubject: PET_PACK_FOLDER_SUBJECT,
+  tempPrefix: 'openpet-pet-pack-zip-',
+  limits,
+  inspectArchive,
+  extractArchive
+})
 
 const findPetPackRoot = (extractRoot) => {
   if (fs.existsSync(path.join(extractRoot, 'pet.json'))) return extractRoot
@@ -166,22 +155,7 @@ const assertInsideDirectory = (rootPath, targetPath, fieldName) => {
   }
 }
 
-const assertNoSymlinks = (rootPath) => {
-  if (fs.lstatSync(rootPath).isSymbolicLink()) {
-    throw new Error('Pet pack folders must not contain symlinks')
-  }
-
-  const walk = (currentPath) => {
-    const entries = fs.readdirSync(currentPath, { withFileTypes: true })
-    for (const entry of entries) {
-      const entryPath = path.join(currentPath, entry.name)
-      const stats = fs.lstatSync(entryPath)
-      if (stats.isSymbolicLink()) throw new Error('Pet pack folders must not contain symlinks')
-      if (stats.isDirectory()) walk(entryPath)
-    }
-  }
-  walk(rootPath)
-}
+const assertNoSymlinks = (rootPath) => zipArchiveUtils.assertNoSymlinks(rootPath, { subject: PET_PACK_FOLDER_SUBJECT })
 
 const validatePackFiles = (pack) => {
   for (const action of pack.manifest.actions) {
@@ -269,12 +243,16 @@ const createPetPackService = ({
   loadLegacyAnimations = getLegacyPetAnimations,
   now = () => new Date(),
   nowMs = () => Date.now(),
-  getPetPackBlockStatus = () => ({ blocked: false, reasons: [] })
+  getPetPackBlockStatus = () => ({ blocked: false, reasons: [] }),
+  zipLimits = {},
+  inspectArchive = zipArchiveUtils.inspectZipArchive,
+  extractArchive = zipArchiveUtils.extractZipArchive
 }) => {
   if (!settingsService) throw new Error('settingsService is required')
   if (!userPacksDir) throw new Error('userPacksDir is required')
 
   let pendingSelection = null
+  const limits = { ...zipArchiveUtils.DEFAULT_ZIP_LIMITS, ...zipLimits }
 
   const getSettings = () => normalizePetPackSettings(settingsService.get().petPacks)
 
@@ -470,7 +448,7 @@ const createPetPackService = ({
     pendingSelection = null
   }
 
-  const inspectPackSource = (sourcePath) => {
+  const inspectPackSource = async (sourcePath) => {
     const selectionId = createSelectionId()
     const result = {
       selectionId,
@@ -491,7 +469,7 @@ const createPetPackService = ({
         if (!fs.statSync(sourcePath).isFile() || !/\.zip$/i.test(sourcePath)) {
           throw new Error('Pet pack source must be a directory or zip package')
         }
-        sourceDir = extractZipToTemp(sourcePath)
+        sourceDir = await extractZipToTemp(sourcePath, { limits, inspectArchive, extractArchive })
         cleanupPath = sourceDir
         sourceType = 'zip'
       }
