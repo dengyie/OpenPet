@@ -270,13 +270,13 @@ Commit: `git add src/main/services/hatch-pet-sprite-evaluator.js src/main/servic
 
 - [x] **Step 1: Write failing candidate lifecycle tests**
 
-Cover two distinct candidates, duplicate replacement, one repair only, best passing selection, no singleton acceptance, atomic archives, safe paths, and checkpoint invalidation when plan/canonical/profile/processor hashes differ.
+Cover two distinct candidates, duplicate replacement, one repair only, best passing selection, degraded singleton acceptance, atomic archives, safe paths, and checkpoint invalidation when plan/canonical/profile/processor hashes differ.
 
 - [x] **Step 2: Run focused suites and verify RED**
 
 - [x] **Step 3: Implement bounded runner**
 
-The runner reserves a creative slot before every dispatch, preserves raw and processed artifacts for every candidate, performs duplicate detection before evaluation, evaluates both distinct initial candidates, selects only code-computed passing candidates, and records a fixed reason when the action is omitted or idle blocks the run. It emits `action_candidate_diversity_insufficient` when two distinct candidates cannot be obtained and never accepts the remaining singleton.
+The runner reserves a creative slot before every dispatch, preserves raw and processed artifacts for every candidate, records duplicate evidence before evaluation, evaluates every descriptor-complete paid candidate, and selects only code-computed passing candidates. It records `action_candidate_diversity_insufficient` as a non-blocking warning when comparison diversity is degraded and blocks or omits an action only when no candidate passes the quality gates.
 
 - [x] **Step 4: Run focused suites and commit**
 

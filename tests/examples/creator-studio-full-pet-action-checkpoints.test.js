@@ -24,6 +24,10 @@ const createSuccessfulResult = ({ dataDir, runId, actionId = 'idle' }) => {
     model: 'pet-model',
     requestIds: ['provider-request-1'],
     modelAttempts: [{ model: 'pet-model', ok: true, requestId: 'provider-request-1' }],
+    diversityStatus: 'degraded',
+    warningConditions: ['action_candidate_diversity_insufficient'],
+    distinctCandidateCount: 1,
+    evaluatedCandidateCount: 2,
     generationStages: [{ actionId, stage: 'final-image', ok: true, requestIds: ['provider-request-1'] }],
     keyframes: [{ actionId, keyframeRole: 'start', quality: { ok: true, score: 80 } }],
     row: {
@@ -59,6 +63,10 @@ test('action checkpoint round-trips a successful row using data-relative hashed 
   assert.equal(stored.actions.idle.row.frames[0].relativePath.startsWith('runs/'), true)
   assert.match(stored.actions.idle.row.frames[0].sha256, /^[a-f0-9]{64}$/)
   assert.deepEqual(stored.actions.idle.requestIds, ['provider-request-1'])
+  assert.equal(stored.actions.idle.diversityStatus, 'degraded')
+  assert.deepEqual(stored.actions.idle.warningConditions, ['action_candidate_diversity_insufficient'])
+  assert.equal(stored.actions.idle.distinctCandidateCount, 1)
+  assert.equal(stored.actions.idle.evaluatedCandidateCount, 2)
   assert.equal(JSON.stringify(stored).includes(dataDir), false)
 
   const reusable = resolveReusableActionResult({ dataDir, runId, actionId: 'idle' })

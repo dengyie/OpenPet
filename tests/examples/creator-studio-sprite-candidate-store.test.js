@@ -27,6 +27,7 @@ test('candidate store writes atomic hash-verified relative asset records', () =>
       candidateId: 'candidate-1',
       attemptKind: 'initial',
       dispatchIndex: 1,
+      strategyId: 'identity-strict-motion-v1',
       provider: 'openai-compatible',
       model: 'image-model',
       requestId: 'provider-request-1',
@@ -42,6 +43,7 @@ test('candidate store writes atomic hash-verified relative asset records', () =>
   assert.equal(record.candidate.artifacts[0].relativePath, 'runs/run-1/raw.png')
   assert.equal(record.candidate.gate.outcome, 'repair')
   assert.equal(record.candidate.requestId, 'provider-request-1')
+  assert.equal(record.candidate.strategyId, 'identity-strict-motion-v1')
   assert.equal(record.candidate.traceContext.actionId, 'waving')
   const stored = fs.readFileSync(path.join(dataDir, record.relativePath), 'utf8')
   assert.equal(stored.includes(dataDir), false)

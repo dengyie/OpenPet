@@ -80,19 +80,58 @@ test('runner assigns stable unique candidate ids before dispatching to the host 
   assert.equal(new Set(received.map((entry) => entry.candidateId)).size, 3)
 })
 
-test('runner replaces one duplicate and never accepts a singleton candidate pool', async () => {
+test('runner evaluates retained duplicates and accepts the best passing singleton pool with degraded diversity evidence', async () => {
   const h = createHarness({ generated: [
     { candidateId: 'candidate-1', descriptors: descriptors('0000', 0) },
     { candidateId: 'candidate-2', descriptors: descriptors('0000', 0) },
     { candidateId: 'candidate-3', descriptors: descriptors('0000', 0) }
   ] })
   const result = await runQualityFirstAction({ context: { actionId: 'waving' }, ...h.callbacks })
-  assert.equal(result.ok, false)
-  assert.equal(result.failureCode, 'action_candidate_diversity_insufficient')
-  assert.equal(result.disposition, 'omitted')
+  assert.equal(result.ok, true)
+  assert.equal(result.selectedCandidateId, 'candidate-1')
+  assert.equal(result.diversityStatus, 'degraded')
+  assert.deepEqual(result.warningCodes, ['action_candidate_diversity_insufficient'])
+  assert.equal(result.distinctCandidateCount, 1)
+  assert.equal(result.evaluatedCandidateCount, 3)
   assert.deepEqual(h.calls.generated.map((call) => call.attemptKind), ['initial', 'initial', 'duplicate-replacement'])
-  assert.equal(h.calls.evaluated.length, 0)
+  assert.deepEqual(h.calls.processed, ['candidate-1', 'candidate-2', 'candidate-3'])
+  assert.deepEqual(h.calls.evaluated, ['candidate-1', 'candidate-2', 'candidate-3'])
   assert.deepEqual(h.calls.persisted, ['candidate-1', 'candidate-2', 'candidate-3'])
+})
+
+test('runner reuses retained paid candidates after a completed duplicate replacement attempt', async () => {
+  const generated = []
+  const processed = []
+  const evaluated = []
+  const result = await runQualityFirstAction({
+    context: { actionId: 'idle' },
+    existingCandidates: [
+      { candidateId: 'candidate-1', attemptKind: 'initial', dispatchIndex: 1, descriptors: descriptors('0000', 0) },
+      { candidateId: 'candidate-2', attemptKind: 'initial', dispatchIndex: 2, descriptors: descriptors('0000', 0) },
+      { candidateId: 'candidate-3', attemptKind: 'duplicate-replacement', dispatchIndex: 3, failureCodes: ['provider-generation-failed'] }
+    ],
+    reserveCreativeDispatch: () => {},
+    generateCandidate: async (input) => {
+      generated.push(input)
+      throw new Error('retained candidates should be evaluated before another paid image request')
+    },
+    processCandidate: async (candidate) => {
+      processed.push(candidate.candidateId)
+      return { qa: { ok: true, failures: [] } }
+    },
+    evaluateCandidate: async (candidate) => {
+      evaluated.push(candidate.candidateId)
+      return { evaluation: { scores: { overall: candidate.candidateId === 'candidate-1' ? 95 : 90 } }, gate: { ok: true, outcome: 'pass', failures: [] } }
+    },
+    persistCandidate: () => {}
+  })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.selectedCandidateId, 'candidate-1')
+  assert.deepEqual(generated, [])
+  assert.deepEqual(processed, ['candidate-1', 'candidate-2'])
+  assert.deepEqual(evaluated, ['candidate-1', 'candidate-2'])
+  assert.equal(result.diversityStatus, 'degraded')
 })
 
 test('runner performs at most one reason-directed repair after both initial candidates fail', async () => {
@@ -180,7 +219,7 @@ test('runner retains a candidate when processing throws and continues comparing 
       ? { candidateId: 'broken', descriptors: descriptors('0000', 0) }
       : { candidateId: 'healthy', descriptors: descriptors('ffff', 2) },
     processCandidate: async (candidate) => {
-      if (candidate.candidateId === 'broken') throw new Error('processor failed')
+      if (candidate.candidateId.startsWith('broken')) throw new Error('processor failed')
       return { qa: { ok: true, failures: [] } }
     },
     evaluateCandidate: async (candidate) => {

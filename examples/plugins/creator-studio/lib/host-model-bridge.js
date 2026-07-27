@@ -574,6 +574,75 @@ const collectQualityFirstCandidateArtifacts = ({ dataDir, candidate = {} } = {})
   return artifacts
 }
 
+const loadRetainedQualityFirstActionCandidates = ({ dataDir, runId, actionId } = {}) => {
+  const normalizedRunId = String(runId || '').trim()
+  const normalizedActionId = String(actionId || '').trim()
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(normalizedRunId) || !/^[a-z0-9][a-z0-9-]{0,79}$/.test(normalizedActionId)) return []
+  const root = path.resolve(String(dataDir || ''))
+  const scopeRelativePath = path.join('runs', normalizedRunId, 'candidates', `action-${normalizedActionId}`).replace(/\\/g, '/')
+  const scopePath = path.resolve(root, scopeRelativePath)
+  if (!scopePath.startsWith(`${root}${path.sep}`) || !fs.existsSync(scopePath) || !fs.statSync(scopePath).isDirectory()) return []
+  const realRoot = fs.realpathSync.native(root)
+  const realScopePath = fs.realpathSync.native(scopePath)
+  const scopeFromRoot = path.relative(realRoot, realScopePath)
+  if (!scopeFromRoot || scopeFromRoot.startsWith('..') || path.isAbsolute(scopeFromRoot)) return []
+  const resolveArtifact = (artifact) => {
+    const relativePath = createSafeRelativePath(artifact?.relativePath)
+    if (!relativePath || !relativePath.startsWith(`runs/${normalizedRunId}/`)) return null
+    const absolutePath = path.resolve(root, relativePath)
+    const relativeToRoot = path.relative(root, absolutePath)
+    if (!relativeToRoot || relativeToRoot.startsWith('..') || path.isAbsolute(relativeToRoot) || !fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isFile()) return null
+    const realAbsolutePath = fs.realpathSync.native(absolutePath)
+    const realRelativeToRoot = path.relative(realRoot, realAbsolutePath)
+    if (!realRelativeToRoot || realRelativeToRoot.startsWith('..') || path.isAbsolute(realRelativeToRoot)) return null
+    const actualHash = sha256File(realAbsolutePath)
+    return actualHash === String(artifact?.sha256 || '').toLowerCase()
+      ? { absolutePath: realAbsolutePath, relativePath, sha256: actualHash }
+      : null
+  }
+  return fs.readdirSync(scopePath, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && !entry.isSymbolicLink() && /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/.test(entry.name))
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .map((entry, index) => {
+      try {
+        const recordRelativePath = path.join(scopeRelativePath, entry.name, 'candidate.json').replace(/\\/g, '/')
+        const record = JSON.parse(fs.readFileSync(path.join(root, recordRelativePath), 'utf8'))
+        const source = record?.candidate && typeof record.candidate === 'object' ? record.candidate : {}
+        const candidateId = String(source.candidateId || entry.name)
+        if (candidateId !== entry.name) return null
+        const artifacts = Array.isArray(source.artifacts) ? source.artifacts : []
+        const raw = resolveArtifact(artifacts.find((artifact) => artifact?.role === 'raw-sheet'))
+        const prompt = resolveArtifact(artifacts.find((artifact) => artifact?.role === 'prompt'))
+        const descriptors = raw && source.descriptors && typeof source.descriptors === 'object'
+          ? source.descriptors
+          : undefined
+        return {
+          candidateId,
+          attemptKind: ['initial', 'duplicate-replacement', 'repair'].includes(source.attemptKind) ? source.attemptKind : 'initial',
+          dispatchIndex: Number.isInteger(source.dispatchIndex) ? source.dispatchIndex : index + 1,
+          ...(source.strategyId ? { strategyId: String(source.strategyId).slice(0, 80) } : {}),
+          ...(source.model ? { model: String(source.model).slice(0, 160) } : {}),
+          ...(source.requestId ? { requestId: String(source.requestId).slice(0, 128) } : {}),
+          ...(source.traceContext && typeof source.traceContext === 'object' ? { traceContext: source.traceContext } : {}),
+          ...(Array.isArray(source.modelAttempts) ? { modelAttempts: source.modelAttempts.slice(0, 16) } : {}),
+          ...(Array.isArray(source.failureCodes) ? { failureCodes: source.failureCodes.map(String).slice(0, 32) } : {}),
+          ...(source.duplicateOfCandidateId ? { duplicateOfCandidateId: String(source.duplicateOfCandidateId).slice(0, 128) } : {}),
+          ...(descriptors ? { descriptors } : {}),
+          ...(raw ? {
+            rawPath: raw.absolutePath,
+            sha256: raw.sha256,
+            outputDir: path.join(root, `runs/${normalizedRunId}/candidates/${normalizedActionId}/${candidateId}/processed`)
+          } : {}),
+          ...(prompt ? { promptRelativePath: prompt.relativePath } : {}),
+          candidateRecordRelativePath: recordRelativePath
+        }
+      } catch (_) {
+        return null
+      }
+    })
+    .filter(Boolean)
+}
+
 const writeJsonFile = (filePath, value) => {
   fs.mkdirSync(path.dirname(filePath), { recursive: true })
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`)
@@ -2637,6 +2706,87 @@ const createCanonicalRequestedChanges = (diversityProfileId) => {
   return ['preserve the exact source identity and rendering style with balanced full-body framing']
 }
 
+const ACTION_CANDIDATE_PROMPT_STRATEGIES = Object.freeze({
+  identityStrict: Object.freeze({
+    id: 'identity-strict-motion-v1',
+    requestedChanges: Object.freeze([
+      'preserve the exact referenced identity, face, markings, proportions, palette, accessories, viewpoint, lighting, and rendering style while realizing every ordered motion beat'
+    ])
+  }),
+  motionClarity: Object.freeze({
+    id: 'motion-clarity-identity-locked-v1',
+    requestedChanges: Object.freeze([
+      'keep every referenced identity feature unchanged while making the ordered motion beats visibly distinct through clear silhouette separation and a stable lower-center body root'
+    ])
+  }),
+  duplicateReplacement: Object.freeze({
+    id: 'identity-safe-action-alternate-v1',
+    requestedChanges: Object.freeze([
+      'preserve the exact referenced identity, viewpoint, grid, proportions, palette, accessories, lighting, and rendering style while creating a visibly different action-correct realization through source-compatible limb phase and silhouette separation'
+    ])
+  })
+})
+
+const ACTION_REPAIR_REQUESTED_CHANGES = Object.freeze({
+  'identity-descriptor-distance-high': 'restore the exact referenced face, head, markings, proportions, palette, accessories, and silhouette in every frame',
+  'identity-drift': 'restore the exact referenced face, head, markings, proportions, palette, accessories, and silhouette in every frame',
+  'body-scale-profile-drift': 'keep standing-equivalent anatomy and camera distance equal to the reference across every frame',
+  'body-scale-variance-high': 'keep one consistent anatomical scale and camera distance across every frame',
+  'anchor-baseline-drift': 'keep the grounded lower-center body root and contact line fixed across every frame',
+  'cell-edge-contact': 'reduce pose extent without changing anatomical scale and leave clear cell padding around the complete body',
+  'paste-clamped': 'reduce pose extent without changing anatomical scale and keep the complete body inside every cell',
+  'empty-used-cell': 'place one complete full-body pose inside every required cell',
+  'incomplete-subject': 'restore the complete body and every referenced anatomy or accessory in every frame',
+  'action-semantic-missing': 'make every required ordered motion beat visibly readable without redesigning the character',
+  'jumping-trajectory-missing': 'show the required readable airborne path and landing progression across the ordered frames',
+  'loop-closure-drift': 'return the final pose naturally toward the first pose while keeping the intermediate motion distinct',
+  'detached-effect-contamination': 'remove trails, particles, floor marks, shadows, props, and detached visual effects',
+  'small-scale-unreadable': 'strengthen the referenced silhouette and identity-bearing details so every frame stays readable at small size',
+  'style-drift': 'restore the exact referenced rendering medium, surface treatment, subject lighting, and rendering style',
+  'visual-score-overall-below-minimum': 'strengthen identity fidelity, complete-body readability, and ordered action clarity without changing the design',
+  'visual-confidence-low': 'make the complete identity-preserving action result visually unambiguous in every required frame'
+})
+
+const resolveActionCandidatePromptStrategy = ({ attemptKind = 'initial', dispatchIndex = 1, failureCodes = [] } = {}) => {
+  if (attemptKind === 'duplicate-replacement') return ACTION_CANDIDATE_PROMPT_STRATEGIES.duplicateReplacement
+  if (attemptKind === 'repair') {
+    const requestedChange = (Array.isArray(failureCodes) ? failureCodes : [])
+      .map((code) => ACTION_REPAIR_REQUESTED_CHANGES[String(code || '')])
+      .find(Boolean)
+    return Object.freeze({
+      id: 'reason-directed-action-repair-v1',
+      requestedChanges: Object.freeze([
+        requestedChange || 'preserve every identity and layout constraint while correcting the visible action-sheet defect'
+      ])
+    })
+  }
+  return Number(dispatchIndex) === 1
+    ? ACTION_CANDIDATE_PROMPT_STRATEGIES.identityStrict
+    : ACTION_CANDIDATE_PROMPT_STRATEGIES.motionClarity
+}
+
+const createQualityFirstActionCandidateTask = ({ action, attemptKind = 'initial', dispatchIndex = 1, failureCodes = [] } = {}) => {
+  if (!action || typeof action !== 'object') throw new Error('Quality-first action candidate requires an action policy')
+  const strategy = resolveActionCandidatePromptStrategy({ attemptKind, dispatchIndex, failureCodes })
+  return createProviderImageTask({
+    taskType: 'action-frame-sheet',
+    stage: attemptKind === 'repair' ? 'repair' : 'final',
+    canvas: action.layout.canvas,
+    sheet: { frameCount: action.frameCount, columns: action.layout.columns, rows: action.layout.rows, readingOrder: 'left-to-right-top-to-bottom' },
+    referenceRole: 'action-reference-board',
+    subject: { count: 1, framing: 'full-body', targetOccupancyPercent: 72, safePaddingPercent: 10, rootAnchor: 'lower-center' },
+    action: { name: action.actionId, moment: action.framePlan.join('; '), movingParts: action.movingParts, lockedParts: action.fixedParts, loopIntent: 'closed loop', framePlan: action.framePlan },
+    strategyId: strategy.id,
+    requestedChanges: strategy.requestedChanges,
+    actionClass: action.actionClass,
+    anchorPolicy: action.anchorPolicy,
+    componentPolicy: action.componentPolicy,
+    effectPolicy: action.effectPolicy,
+    motionPresetId: action.motionPresetId,
+    framePlanVersion: action.framePlanVersion
+  })
+}
+
 const createQualityFirstRecoveryBundle = async ({ dataDir, run, actionResults = {}, reason = 'idle_generation_failed' } = {}) => {
   const root = path.resolve(String(dataDir || ''))
   const runId = String(run?.runId || '').trim()
@@ -2987,6 +3137,10 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
         actionId,
         disposition: 'accepted',
         checkpointReused: true,
+        diversityStatus: reusable.diversityStatus || 'sufficient',
+        warningCodes: Array.isArray(reusable.warningConditions) ? reusable.warningConditions : [],
+        distinctCandidateCount: Math.max(0, Number(reusable.distinctCandidateCount) || 0),
+        evaluatedCandidateCount: Math.max(0, Number(reusable.evaluatedCandidateCount) || 0),
         selectedCandidateId: `checkpoint-${actionId}`,
         selectedCandidate: {
           candidateId: `checkpoint-${actionId}`,
@@ -3004,24 +3158,22 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
     await createCharacterAnchorGrid({ masterPath: canonicalPath, layout: action.layout, outputPath: anchorPath, dataDir, planRevision: plan.revision })
     await createActionReferenceBoard({ anchorGridPath: anchorPath, sourceDetailPath: sourceReference.path, outputPath: boardPath, dataDir, metadata: { actionId, planHash: plan.hash } })
     const boardRelativePath = path.relative(dataDir, boardPath).replace(/\\/g, '/')
+    const retainedCandidates = run?.qualityFirst?.actionResults?.[actionId]?.failureCode === 'action_candidate_diversity_insufficient'
+      ? loadRetainedQualityFirstActionCandidates({ dataDir, runId: run.runId, actionId }).map((candidate) => ({
+          ...candidate,
+          actionPolicy: { anchorPolicy: action.anchorPolicy }
+        }))
+      : []
     const runner = await generateSelectedFullPetAction({
       context: { actionId, duplicateThresholds: { perceptualHashDistance: 4, identityDescriptorDistance: 0.08, alphaMaskDistance: 0.08 } },
+      existingCandidates: retainedCandidates,
       reserveCreativeDispatch: async () => {},
-      generateCandidate: async ({ candidateId }) => {
-        const task = createProviderImageTask({
-          taskType: 'action-frame-sheet',
-          stage: 'final',
-          canvas: action.layout.canvas,
-          sheet: { frameCount: action.frameCount, columns: action.layout.columns, rows: action.layout.rows, readingOrder: 'left-to-right-top-to-bottom' },
-          referenceRole: 'action-reference-board',
-          subject: { count: 1, framing: 'full-body', targetOccupancyPercent: 72, safePaddingPercent: 10, rootAnchor: 'lower-center' },
-          action: { name: actionId, moment: action.framePlan.join('; '), movingParts: action.movingParts, lockedParts: action.fixedParts, loopIntent: 'closed loop', framePlan: action.framePlan },
-          actionClass: action.actionClass,
-          anchorPolicy: action.anchorPolicy,
-          componentPolicy: action.componentPolicy,
-          effectPolicy: action.effectPolicy,
-          motionPresetId: action.motionPresetId,
-          framePlanVersion: action.framePlanVersion
+      generateCandidate: async ({ candidateId, attemptKind, dispatchIndex, failureCodes }) => {
+        const task = createQualityFirstActionCandidateTask({
+          action: { ...action, actionId },
+          attemptKind,
+          dispatchIndex,
+          failureCodes
         })
         const buildPromptForModel = (model) => {
           const compiled = compileProviderImagePrompt({ task, model })
@@ -3036,7 +3188,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
         if (!output) throw new Error('action candidate requires exactly one Provider output')
         const rawPath = path.join(dataDir, output.dataRelativePath)
         const outputDir = path.join(dataDir, `runs/${run.runId}/candidates/${actionId}/${candidateId}/processed`)
-        return { candidateId, rawPath, promptRelativePath, model: generated.selectedModel, requestId: generated.response?.result?.requestId || generated.attempts?.at(-1)?.requestId || '', traceContext: generated.response?.result?.traceContext || { runId: run.runId, actionId, stage: 'action-candidate', candidateId }, modelAttempts: generated.attempts, sha256: sha256File(rawPath), descriptors: await createSpriteImageDescriptors({ imagePath: rawPath }), actionPolicy: { anchorPolicy: action.anchorPolicy }, outputDir }
+        return { candidateId, strategyId: task.strategyId, rawPath, promptRelativePath, model: generated.selectedModel, requestId: generated.response?.result?.requestId || generated.attempts?.at(-1)?.requestId || '', traceContext: generated.response?.result?.traceContext || { runId: run.runId, actionId, stage: 'action-candidate', candidateId }, modelAttempts: generated.attempts, sha256: sha256File(rawPath), descriptors: await createSpriteImageDescriptors({ imagePath: rawPath }), actionPolicy: { anchorPolicy: action.anchorPolicy }, outputDir }
       },
       processCandidate: async (candidate) => {
         const processed = await processSpriteSheet({ inputPath: candidate.rawPath, outputDir: candidate.outputDir, layout: action.layout, profile: actionProfile, actionPolicy: { ...action, actionId } })
@@ -3104,6 +3256,10 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
       model: selected?.model || '',
       requestIds,
       ...(modelAttempts.length ? { modelAttempts } : {}),
+      diversityStatus: result?.diversityStatus === 'degraded' ? 'degraded' : 'sufficient',
+      warningConditions: Array.isArray(result?.warningCodes) ? result.warningCodes : [],
+      distinctCandidateCount: Math.max(0, Number(result?.distinctCandidateCount) || 0),
+      evaluatedCandidateCount: Math.max(0, Number(result?.evaluatedCandidateCount) || 0),
       generationStages: [{
         actionId,
         stage: 'action-candidate',
@@ -3289,7 +3445,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
     persistScaleProfile,
     finalizePackage,
     createRecoveryBundle,
-    recordEvent: ({ scope, status, actionId, candidateCount, failureCode }) => {
+    recordEvent: ({ scope, status, actionId, candidateCount, failureCode, diversityStatus, warningCodes, distinctCandidateCount, evaluatedCandidateCount }) => {
       if (scope !== 'action') return
       const safeActionId = String(actionId || '').replace(/[^A-Za-z0-9:_-]/g, '_').slice(0, 120)
       const event = `quality-first.action.${status}`
@@ -3307,6 +3463,10 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
           data: {
             actionId: safeActionId,
             ...(Number.isInteger(candidateCount) ? { candidateCount } : {}),
+            ...(diversityStatus === 'degraded' || diversityStatus === 'sufficient' ? { diversityStatus } : {}),
+            ...(Array.isArray(warningCodes) && warningCodes.length ? { warningCodes: warningCodes.map(String).slice(0, 16) } : {}),
+            ...(Number.isFinite(distinctCandidateCount) ? { distinctCandidateCount: Math.max(0, Number(distinctCandidateCount)) } : {}),
+            ...(Number.isFinite(evaluatedCandidateCount) ? { evaluatedCandidateCount: Math.max(0, Number(evaluatedCandidateCount)) } : {}),
             ...(status === 'failed' ? { failureCode: String(failureCode || 'action_quality_gate_failed').replace(/[^A-Za-z0-9:_-]/g, '_').slice(0, 120) } : {})
           }
         })
@@ -3705,6 +3865,7 @@ module.exports = {
     createFullPetActionIdentityContext,
     collectQualityFirstCandidateArtifacts,
     createCanonicalRequestedChanges,
+    createQualityFirstActionCandidateTask,
     evaluateCanonicalCandidatePool,
     createSoftIdentityRetryRequestedChanges,
     generateActionKeyframe,
@@ -3713,6 +3874,7 @@ module.exports = {
     getSuccessfulGenerationModels,
     isSoftIdentityDescriptorRetryEligible,
     prepareGeneratedKeyframeOutput,
+    loadRetainedQualityFirstActionCandidates,
     generateCanonicalCandidatePool,
     generateSelectedFullPetAction,
     createQualityFirstHostRuntime,

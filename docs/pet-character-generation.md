@@ -179,13 +179,15 @@ After canonical selection (and optional identity acceptance), `idle` runs first.
 - one 1536x1024 action reference board containing the repeated canonical anchor grid and source detail;
 - a square 1024x1024 Provider canvas;
 - a fixed invisible multi-row layout;
-- two distinct initial candidates;
+- two strategy-distinct initial candidate requests;
 - at most one duplicate replacement;
 - at most one reason-directed repair candidate.
 
-Candidate generation, deterministic processing, code QA, visual evaluation, and persistence are isolated steps. Processing or evaluation failure on one candidate does not hide that candidate or prevent comparison with the other candidate.
+Candidate generation, deterministic processing, code QA, visual evaluation, and persistence are isolated steps. Processing or evaluation failure on one candidate does not hide that candidate or prevent comparison with the other candidate. Perceptual duplicates remain paid candidates and still enter processing and evaluation; diversity is comparison evidence, not a quality failure.
 
-The selected action candidate must pass both deterministic QA and the code-owned evaluator gate. Selection uses evaluator overall score, then identity distance, then a stable candidate ID tie-breaker. Failed paid action candidates remain visible; an optional action may be omitted, but a low-quality candidate must never be relabeled as passed.
+The selected action candidate must pass both deterministic QA and the code-owned evaluator gate. Selection uses evaluator overall score, then identity distance, then a stable candidate ID tie-breaker. At least one passing candidate is sufficient. When fewer than two candidates are perceptually distinct, the accepted result records `diversityStatus=degraded` and warning `action_candidate_diversity_insufficient`, but continues without weakening any quality threshold. Failed paid action candidates remain visible; an optional action may be omitted, but a low-quality candidate must never be relabeled as passed.
+
+An action retry following the former diversity hard gate reloads hash-verified retained candidate records and evaluates those paid raw sheets before issuing another image request. If the recovered `idle` candidate passes before a scale profile exists, the runtime reconstructs and persists `character-scale-profile.json`, reuses the new idle checkpoint, and resumes the remaining planned actions before final package generation.
 
 `running-right` and `running-left` form an atomic pair. `running-left` is never generated independently: it is a deterministic framewise horizontal mirror of an accepted `running-right` result, receives its own checkpoint and official-row QA, and is invalidated whenever `running-right` is repaired. The workflow does not issue a separate Provider request for `running-left`.
 

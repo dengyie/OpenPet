@@ -1927,7 +1927,9 @@ const handlePost = async ({ request, response, dataDir, url }) => {
       const run = readRun({ dataDir, runId })
       if (run.generationTask?.pipeline !== 'quality-first-v1') throw new Error('Legacy full-pet action repair has been removed')
       const plan = JSON.parse(fs.readFileSync(path.join(dataDir, 'runs', runId, 'sprite-plan.json'), 'utf8'))
-      const profile = JSON.parse(fs.readFileSync(path.join(dataDir, 'runs', runId, 'character-scale-profile.json'), 'utf8'))
+      const profilePath = path.join(dataDir, 'runs', runId, 'character-scale-profile.json')
+      if (actionId !== 'idle' && !fs.existsSync(profilePath)) throw new Error('Quality-first non-idle action repair requires a scale profile')
+      const profile = fs.existsSync(profilePath) ? JSON.parse(fs.readFileSync(profilePath, 'utf8')) : null
       const runtime = await createQualityFirstHostRuntime({ dataDir, run, planOverride: plan })
       const output = await runQualityFirstActionRepair({ dataDir, runId, actionId, runtime, plan, profile })
       sendJson(response, 200, {

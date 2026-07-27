@@ -579,6 +579,10 @@ const createQualityFirstActionResultView = (result) => ({
   disposition: String(result?.disposition || ''),
   selectedCandidateId: String(result?.selectedCandidateId || ''),
   failureCode: String(result?.failureCode || ''),
+  diversityStatus: result?.diversityStatus === 'degraded' ? 'degraded' : 'sufficient',
+  warningCodes: [...new Set((Array.isArray(result?.warningCodes) ? result.warningCodes : []).map(String))].slice(0, 16),
+  distinctCandidateCount: Math.max(0, Number(result?.distinctCandidateCount) || 0),
+  evaluatedCandidateCount: Math.max(0, Number(result?.evaluatedCandidateCount) || 0),
   candidates: Array.isArray(result?.candidates) ? result.candidates.map((candidate) => ({
     candidateId: String(candidate?.candidateId || ''),
     attemptKind: String(candidate?.attemptKind || ''),
@@ -612,8 +616,16 @@ const runQualityFirstActionRepair = async ({
       : `Creator Studio cannot repair unknown generated action: ${normalizedActionId || '(missing)'}`)
   }
   const canonical = run.qualityFirst?.acceptedCanonical
-  if (!canonical?.candidateId || !canonical?.sha256 || !profile?.hash) {
-    throw new Error('Quality-first action repair requires accepted canonical identity and scale profile')
+  if (!canonical?.candidateId || !canonical?.sha256) {
+    throw new Error('Quality-first action repair requires accepted canonical identity')
+  }
+  if (normalizedActionId !== 'idle' && !profile?.hash) {
+    throw new Error('Quality-first non-idle action repair requires a scale profile')
+  }
+  if (normalizedActionId === 'idle' && !profile?.hash && (
+    typeof runtime.createCharacterScaleProfile !== 'function' || typeof runtime.persistScaleProfile !== 'function'
+  )) {
+    throw new Error('Quality-first idle recovery requires scale-profile reconstruction support')
   }
   const startedAt = now()
   const evidenceArchive = archiveRepairEvidence({ dataDir, run, scope: 'action', actionId: normalizedActionId, archivedAt: startedAt })
@@ -633,20 +645,56 @@ const runQualityFirstActionRepair = async ({
   const stopLeaseHeartbeat = createGenerationLeaseHeartbeat({ dataDir, runId, leaseId: lease.leaseId, now })
   appendDiagnosticRunLog({ dataDir, runId, event: 'quality-first.action.repair-started', message: `Quality-first action ${normalizedActionId} repair started`, data: { actionId: normalizedActionId }, now })
   try {
-    const result = await runtime.runAction({ actionId: normalizedActionId, canonical, profile, plan })
-    await runtime.persistActionResult({ actionId: normalizedActionId, result, canonical, profile })
+    let effectiveProfile = profile
+    const result = await runtime.runAction({ actionId: normalizedActionId, canonical, profile: effectiveProfile, plan })
+    if (normalizedActionId === 'idle' && result?.ok === true && !effectiveProfile?.hash) {
+      effectiveProfile = await runtime.createCharacterScaleProfile({ canonical, idle: result })
+      if (!effectiveProfile?.hash) throw new Error('Quality-first idle recovery produced an invalid scale profile')
+      await runtime.persistScaleProfile({ profile: effectiveProfile, canonical, idle: result })
+    }
+    await runtime.persistActionResult({ actionId: normalizedActionId, result, canonical, profile: effectiveProfile })
     const actionResults = {
       ...(run.qualityFirst?.actionResults || {}),
       [normalizedActionId]: createQualityFirstActionResultView(result)
     }
+    if (
+      normalizedActionId === 'idle' &&
+      result?.ok === true &&
+      run.qualityFirst?.actionResults?.idle?.ok !== true &&
+      typeof runtime.orchestrator?.continueWithCanonicalIdentity === 'function'
+    ) {
+      const resumed = await runtime.orchestrator.continueWithCanonicalIdentity({
+        run: generatingRun,
+        candidate: canonical,
+        plan,
+        actions: Array.isArray(plan?.actions) ? plan.actions.map((entry) => String(entry?.actionId || '')).filter(Boolean) : ['idle'],
+        persistRunState: async (nextRun) => {
+          if (!nextRun || String(nextRun.runId || '') !== runId) throw new Error('Quality-first idle recovery produced an invalid durable run state')
+          writeRun({ dataDir, run: nextRun })
+        }
+      })
+      const { generationLease: _generationLease, ...completedRun } = resumed
+      const persisted = {
+        ...completedRun,
+        backendStatus: createBackendStatus({
+          backend: PROVIDER_BACKEND,
+          state: completedRun.status === 'ready_for_review' ? 'ready' : 'recovery-required',
+          message: completedRun.status === 'ready_for_review' ? 'Idle recovered and remaining actions completed' : 'Idle recovery still requires attention',
+          updatedAt: now()
+        })
+      }
+      writeRun({ dataDir, run: persisted })
+      appendDiagnosticRunLog({ dataDir, runId, event: 'quality-first.action.repaired', message: 'Quality-first idle recovery resumed the remaining action pipeline', data: { actionId: normalizedActionId, evidenceArchive }, now })
+      return { outputDir: '', bundlePath: '', sha256: '', run: persisted, repair: { scope: 'action', actionId: normalizedActionId, evidenceArchive } }
+    }
     if (normalizedActionId === 'running-right' && result?.ok === true) {
       if (typeof runtime.mirrorRunningLeft !== 'function') throw new Error('Quality-first running-right repair requires mirror runtime')
-      const mirrored = await runtime.mirrorRunningLeft({ source: result, profile, canonical })
-      await runtime.persistActionResult({ actionId: 'running-left', result: mirrored, canonical, profile })
+      const mirrored = await runtime.mirrorRunningLeft({ source: result, profile: effectiveProfile, canonical })
+      await runtime.persistActionResult({ actionId: 'running-left', result: mirrored, canonical, profile: effectiveProfile })
       actionResults['running-left'] = createQualityFirstActionResultView(mirrored)
     }
     const idleOk = normalizedActionId === 'idle' ? result?.ok === true : actionResults.idle?.ok === true
-    const packageResult = idleOk ? await runtime.finalizePackage({ run, canonical, profile, actionResults }) : null
+    const packageResult = idleOk ? await runtime.finalizePackage({ run, canonical, profile: effectiveProfile, actionResults }) : null
     if (idleOk && (!packageResult || typeof packageResult !== 'object' || !packageResult.artifacts || typeof packageResult.artifacts !== 'object')) {
       const error = new Error('Quality-first final package artifacts are missing')
       error.code = 'quality_first_final_package_missing'

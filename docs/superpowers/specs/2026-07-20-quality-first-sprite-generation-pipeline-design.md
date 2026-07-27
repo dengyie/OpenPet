@@ -435,16 +435,16 @@ For each generated action job:
 
 1. generate one `identity-strict-motion-v1` candidate and one `motion-clarity-identity-locked-v1` candidate as separate `n=1` requests;
 2. process both and run duplicate detection using the same perceptual-hash, alpha-mask, identity, and color descriptors as canonical selection;
-3. when an initial output is a duplicate, preserve it but generate at most one registered diversity replacement; a duplicate does not count toward the two effective candidates;
-4. evaluate two distinct candidates independently;
+3. when an initial output is a duplicate, preserve it but generate at most one registered diversity replacement;
+4. process and evaluate every descriptor-complete paid candidate independently, including duplicates;
 5. if at least one passes both gates, select the best passing candidate;
 6. if neither passes, compile one reason-directed repair prompt and generate one final candidate;
-7. accept the repair candidate only if it passes both gates and is not a duplicate of a rejected candidate;
+7. accept the repair candidate only if it passes both gates;
 8. otherwise block `idle` or omit the optional action.
 
-The pipeline does not stop after the first initial candidate passes. Comparing two distinct valid candidates is a deliberate quality-first requirement. If two distinct candidates cannot be obtained within the initial and one replacement dispatch, the action fails with `action_candidate_diversity_insufficient`; a passing but un-compared singleton is not accepted. The maximum remains four creative dispatches per action: two initial, one duplicate replacement, and one reason-directed repair.
+The pipeline does not stop after the first initial dispatch because it still attempts the registered comparison pool. Quality and diversity are independent: if fewer than two candidates are perceptually distinct but at least one candidate passes both gates, the best passing candidate is accepted with `diversityStatus=degraded` and warning `action_candidate_diversity_insufficient`. The action fails only when no evaluated candidate passes. The maximum remains four creative dispatches per action: two initial, one duplicate replacement, and one reason-directed repair.
 
-The two initial diversity profiles cannot weaken identity, scale, grid, anchor, transparency, or semantic contracts. They differ only in bounded emphasis: the first gives identity preservation the strongest wording order; the second gives the code-owned action phases and silhouette separation stronger wording while repeating the same identity locks. Profile IDs and hashes are recorded with every candidate.
+The two initial diversity profiles cannot weaken identity, scale, grid, anchor, transparency, or semantic contracts. They differ only in bounded emphasis: the first gives identity preservation the strongest wording order; the second gives the code-owned action phases and silhouette separation stronger wording while repeating the same identity locks. Duplicate replacement uses `identity-safe-action-alternate-v1`, and reason-directed repair uses `reason-directed-action-repair-v1` with only registered failure-code corrections. Profile IDs are recorded with every candidate.
 
 ### 10.2 Model selection
 
@@ -980,7 +980,7 @@ The redesign is complete only when all of the following are true:
 2. Every action is generated as the exact fixed multi-row grid and assembled deterministically into runtime rows.
 3. Every request carries one reference image and requests one output.
 4. Canonical identity is selected from three perceptually distinct, dual-gated candidates and explicitly accepted by a human before action generation.
-5. Every action compares two perceptually distinct initial candidates, permits at most one duplicate replacement and one reason-directed repair candidate, and never accepts an un-compared singleton.
+5. Every action attempts two strategy-distinct initial candidates, permits at most one duplicate replacement and one reason-directed repair candidate, evaluates every usable paid candidate, and may accept one passing candidate with explicit degraded-diversity evidence.
 6. Every accepted action is bound to the accepted canonical hash and shared scale-profile hash.
 7. Every action prompt uses a code-expanded versioned motion preset; planner-authored free-form frame text cannot reach the Provider.
 8. Visual pass/fail is recalculated by code from immutable per-dimension thresholds, confidence, defects, and region-bound evidence.

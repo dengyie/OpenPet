@@ -36,6 +36,7 @@ const runQualityFirstAction = async ({
   generateCandidate,
   processCandidate,
   evaluateCandidate,
+  existingCandidates = [],
   persistCandidate = () => {},
   archiveCandidateRevision = () => {}
 } = {}) => {
@@ -50,7 +51,7 @@ const runQualityFirstAction = async ({
   const dispatches = []
   const failureCodes = []
   const dispatch = async (attemptKind, repairCodes = []) => {
-    const dispatchIndex = dispatches.length + 1
+    const dispatchIndex = Math.max(0, ...dispatches.map((entry) => Number(entry.dispatchIndex) || 0)) + 1
     const assignedCandidateId = `candidate-${dispatchIndex}`
     await reserveCreativeDispatch({ actionId, attemptKind, candidateId: assignedCandidateId, dispatchIndex })
     let generated
@@ -101,23 +102,36 @@ const runQualityFirstAction = async ({
     return candidate
   }
 
-  await dispatch('initial')
-  await dispatch('initial')
-  if (distinctCandidates.length < 2) await dispatch('duplicate-replacement')
-  if (distinctCandidates.length < 2) {
-    for (const candidate of allCandidates) await persistCandidate(candidate)
-    return {
-      ok: false,
+  for (const [index, source] of (Array.isArray(existingCandidates) ? existingCandidates : []).entries()) {
+    if (!source || typeof source !== 'object') continue
+    const requestedCandidateId = String(source.candidateId || `candidate-${index + 1}`)
+    const candidateId = dispatches.some((entry) => entry.candidateId === requestedCandidateId)
+      ? `${requestedCandidateId}-${index + 1}`.slice(0, 128)
+      : requestedCandidateId
+    const candidate = {
+      ...source,
+      candidateId,
       actionId,
-      disposition: actionId === 'idle' ? 'blocked' : 'omitted',
-      failureCode: 'action_candidate_diversity_insufficient',
-      candidates: allCandidates,
-      selectedCandidateId: ''
+      attemptKind: ['initial', 'duplicate-replacement', 'repair'].includes(source.attemptKind) ? source.attemptKind : 'initial',
+      dispatchIndex: Number.isInteger(source.dispatchIndex) ? source.dispatchIndex : index + 1
     }
+    dispatches.push(candidate)
+    allCandidates.push(candidate)
+    if (!hasDescriptors(candidate)) continue
+    const duplicateOf = distinctCandidates.find((existing) => areSpriteCandidatesDuplicates(existing, candidate, thresholds))
+    if (duplicateOf) candidate.duplicateOfCandidateId = candidate.duplicateOfCandidateId || duplicateOf.candidateId
+    else distinctCandidates.push(candidate)
+  }
+
+  const existingInitialCount = dispatches.filter((candidate) => candidate.attemptKind === 'initial').length
+  for (let index = existingInitialCount; index < 2; index += 1) await dispatch('initial')
+  if (distinctCandidates.length < 2 && !dispatches.some((candidate) => candidate.attemptKind === 'duplicate-replacement')) {
+    await dispatch('duplicate-replacement')
   }
 
   const evaluatedCandidates = []
-  for (const candidate of distinctCandidates) {
+  const evaluateGeneratedCandidate = async (candidate) => {
+    if (!hasDescriptors(candidate) || candidate.invalidCandidate) return null
     let withQa
     try {
       const processed = await processCandidate(candidate)
@@ -135,7 +149,9 @@ const runQualityFirstAction = async ({
     failureCodes.push(...(withQa.gate?.failures || []))
     Object.assign(candidate, withQa)
     evaluatedCandidates.push(candidate)
+    return candidate
   }
+  for (const candidate of allCandidates) await evaluateGeneratedCandidate(candidate)
   for (const candidate of allCandidates) await persistCandidate(candidate)
   let selected = selectBestPassingCandidate({ candidates: evaluatedCandidates })
   if (!selected) {
@@ -151,28 +167,21 @@ const runQualityFirstAction = async ({
       }
     }
     const repair = await dispatch('repair', repairCodes)
-    if (!repair.duplicateOfCandidateId && !repair.invalidCandidate) {
-      try {
-        const processed = await processCandidate(repair)
-        Object.assign(repair, processed)
-      } catch (error) {
-        Object.assign(repair, { qa: { ok: false, failures: ['candidate-processing-failed'], error: errorSummary(error) } })
-      }
-      if (repair.qa?.ok === true) {
-        try {
-          Object.assign(repair, await evaluateCandidate(repair))
-        } catch (error) {
-          Object.assign(repair, { gate: { ok: false, outcome: 'cannot-evaluate', failures: ['candidate-evaluation-failed'], error: errorSummary(error) } })
-        }
-      }
-      failureCodes.push(...(repair.qa?.failures || []), ...(repair.gate?.failures || []))
-    }
+    await evaluateGeneratedCandidate(repair)
     await persistCandidate(repair)
-    selected = selectBestPassingCandidate({ candidates: [...evaluatedCandidates, repair] })
+    selected = selectBestPassingCandidate({ candidates: evaluatedCandidates })
+  }
+  const diversityStatus = distinctCandidates.length >= 2 ? 'sufficient' : 'degraded'
+  const warningCodes = diversityStatus === 'degraded' ? ['action_candidate_diversity_insufficient'] : []
+  const evidence = {
+    diversityStatus,
+    warningCodes,
+    distinctCandidateCount: distinctCandidates.length,
+    evaluatedCandidateCount: evaluatedCandidates.length
   }
   const result = selected
-    ? { ok: true, actionId, disposition: 'accepted', selectedCandidateId: selected.candidateId, selectedCandidate: selected, candidates: allCandidates }
-    : { ok: false, actionId, disposition: actionId === 'idle' ? 'blocked' : 'omitted', failureCode: 'action_quality_gate_failed', candidates: allCandidates, selectedCandidateId: '' }
+    ? { ok: true, actionId, disposition: 'accepted', selectedCandidateId: selected.candidateId, selectedCandidate: selected, candidates: allCandidates, ...evidence }
+    : { ok: false, actionId, disposition: actionId === 'idle' ? 'blocked' : 'omitted', failureCode: 'action_quality_gate_failed', candidates: allCandidates, selectedCandidateId: '', ...evidence }
   return result
 }
 

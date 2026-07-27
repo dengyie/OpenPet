@@ -18,9 +18,9 @@ runCommand(async (context) => {
   if (run.generationTask?.pipeline !== 'quality-first-v1') throw new Error('Legacy full-pet action repair has been removed')
   const planPath = path.join(process.env.OPENPET_DATA_DIR, 'runs', runId, 'sprite-plan.json')
   const profilePath = path.join(process.env.OPENPET_DATA_DIR, 'runs', runId, 'character-scale-profile.json')
-  if (!fs.existsSync(planPath) || !fs.existsSync(profilePath)) throw new Error('Quality-first action repair requires sprite plan and scale profile')
+  if (!fs.existsSync(planPath) || (actionId !== 'idle' && !fs.existsSync(profilePath))) throw new Error('Quality-first action repair requires a sprite plan and non-idle actions require a scale profile')
   const plan = JSON.parse(fs.readFileSync(planPath, 'utf8'))
-  const profile = JSON.parse(fs.readFileSync(profilePath, 'utf8'))
+  const profile = fs.existsSync(profilePath) ? JSON.parse(fs.readFileSync(profilePath, 'utf8')) : null
   const runtime = await createQualityFirstHostRuntime({ dataDir: process.env.OPENPET_DATA_DIR, run, planOverride: plan })
   const output = await runQualityFirstActionRepair({ dataDir: process.env.OPENPET_DATA_DIR, runId, actionId, runtime, plan, profile })
   return {

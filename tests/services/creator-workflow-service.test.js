@@ -2223,6 +2223,18 @@ test('creator workflow diagnostics expose renderer-safe quality-first identity c
       requireIdentityReviewBeforeActions: false,
       selectedCanonical: { candidateId: 'canonical-1', sha256: 'a'.repeat(64) },
       acceptedCanonical: { candidateId: 'canonical-1', sha256: 'a'.repeat(64) },
+      actionResults: {
+        idle: {
+          ok: true,
+          disposition: 'accepted',
+          selectedCandidateId: 'candidate-1',
+          diversityStatus: 'degraded',
+          warningCodes: ['action_candidate_diversity_insufficient'],
+          distinctCandidateCount: 1,
+          evaluatedCandidateCount: 2,
+          candidates: [{ candidateId: 'candidate-1' }, { candidateId: 'candidate-2' }]
+        }
+      },
       canonicalCandidates: [{
         candidateId: 'canonical-1',
         eligible: true,
@@ -2261,6 +2273,11 @@ test('creator workflow diagnostics expose renderer-safe quality-first identity c
   assert.equal(diagnostics.progress.qualityFirst.budget.usage.providerFailures, 1)
   assert.equal(diagnostics.progress.qualityFirst.budget.remaining.providerCalls, 67)
   assert.equal(diagnostics.progress.qualityFirst.budget.remaining.evaluatorCalls, 65)
+  assert.equal(diagnostics.progress.qualityFirst.actionResults.idle.ok, true)
+  assert.equal(diagnostics.progress.qualityFirst.actionResults.idle.diversityStatus, 'degraded')
+  assert.deepEqual(diagnostics.progress.qualityFirst.actionResults.idle.warningCodes, ['action_candidate_diversity_insufficient'])
+  assert.equal(diagnostics.progress.qualityFirst.actionResults.idle.distinctCandidateCount, 1)
+  assert.equal(diagnostics.progress.qualityFirst.actionResults.idle.evaluatedCandidateCount, 2)
   assert.doesNotMatch(JSON.stringify(diagnostics), /\/Users\/private/)
 })
 

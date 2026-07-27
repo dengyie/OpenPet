@@ -2235,6 +2235,10 @@ export interface CreatorQualityFirstProgressViewState {
     disposition: string
     selectedCandidateId: string
     failureCode: string
+    diversityStatus?: 'sufficient' | 'degraded'
+    warningCodes: string[]
+    distinctCandidateCount: number
+    evaluatedCandidateCount: number
     candidateCount: number
   }>
 }

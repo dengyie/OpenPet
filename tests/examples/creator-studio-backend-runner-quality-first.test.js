@@ -339,6 +339,79 @@ test('quality-first action repair reruns only the requested action and preserves
   ])
 })
 
+test('quality-first idle recovery can rebuild the missing scale profile from a retained passing candidate', async () => {
+  const dataDir = createDataDir()
+  const created = createRun({
+    dataDir,
+    input: { petName: 'Recovered Pet', backend: 'provider', generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1', actions: [{ actionId: 'idle', name: 'Idle', frameCount: 6 }], questions: [] } }
+  })
+  const canonical = { candidateId: 'canonical-1', eligible: true, sha256: 'a'.repeat(64), relativePath: `runs/${created.runId}/canonical.png` }
+  writeRun({ dataDir, run: {
+    ...created,
+    status: 'recovery-required',
+    taskStatus: 'confirmed',
+    generationTask: { ...created.generationTask, pipeline: 'quality-first-v1' },
+    qualityFirst: {
+      phase: 'recovery-required',
+      acceptedCanonical: canonical,
+      actionResults: { idle: { ok: false, failureCode: 'action_candidate_diversity_insufficient' } }
+    }
+  } })
+  const calls = []
+  const rebuiltProfile = { version: 1, hash: 'p'.repeat(64) }
+  const runtime = {
+    runAction: async ({ actionId, profile }) => {
+      calls.push(['run', actionId, profile])
+      return { ok: true, actionId, selectedCandidateId: 'candidate-1', selectedCandidate: { processed: { metrics: { frames: [] } } }, candidates: [] }
+    },
+    createCharacterScaleProfile: async ({ canonical: actualCanonical, idle }) => {
+      calls.push(['create-profile', actualCanonical.candidateId, idle.selectedCandidateId])
+      return rebuiltProfile
+    },
+    persistScaleProfile: async ({ profile }) => calls.push(['persist-profile', profile.hash]),
+    persistActionResult: async ({ profile }) => calls.push(['persist-action', profile.hash]),
+    orchestrator: {
+      continueWithCanonicalIdentity: async ({ candidate, actions }) => {
+        calls.push(['resume-actions', candidate.candidateId, actions.join(',')])
+        return {
+          ...readRun({ dataDir, runId: created.runId }),
+          status: 'ready_for_review',
+          currentStep: 'review',
+          qualityFirst: {
+            ...readRun({ dataDir, runId: created.runId }).qualityFirst,
+            phase: 'ready_for_review',
+            actionResults: { idle: { ok: true }, waving: { ok: true } },
+            nextAction: 'human-review'
+          },
+          artifacts: { outputDir: path.join(dataDir, 'runs', created.runId, 'quality-first', 'package') }
+        }
+      }
+    },
+    finalizePackage: async () => {
+      throw new Error('idle recovery should resume the remaining planned actions through the orchestrator')
+    }
+  }
+
+  const result = await runQualityFirstActionRepair({
+    dataDir,
+    runId: created.runId,
+    actionId: 'idle',
+    runtime,
+    plan: { hash: 'plan', actions: [{ actionId: 'idle' }, { actionId: 'waving' }] },
+    profile: null
+  })
+
+  assert.equal(result.run.status, 'ready_for_review')
+  assert.deepEqual(calls, [
+    ['run', 'idle', null],
+    ['create-profile', 'canonical-1', 'candidate-1'],
+    ['persist-profile', rebuiltProfile.hash],
+    ['persist-action', rebuiltProfile.hash],
+    ['resume-actions', 'canonical-1', 'idle,waving']
+  ])
+  assert.equal(result.run.qualityFirst.actionResults.waving.ok, true)
+})
+
 test('quality-first identity retry archives paid candidates and returns to identity review', async () => {
   const dataDir = createDataDir()
   const created = createRun({

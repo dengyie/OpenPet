@@ -1708,6 +1708,12 @@ const createQualityFirstIdentityReviewView = ({ run = null, pluginDataDir = '' }
             disposition: normalizeText(result?.disposition),
             selectedCandidateId: normalizeText(result?.selectedCandidateId),
             failureCode: normalizeText(result?.failureCode),
+            ...(normalizeText(result?.diversityStatus) === 'degraded' || normalizeText(result?.diversityStatus) === 'sufficient'
+              ? { diversityStatus: normalizeText(result.diversityStatus) }
+              : {}),
+            warningCodes: createUniqueTextList(Array.isArray(result?.warningCodes) ? result.warningCodes : []).slice(0, 16),
+            distinctCandidateCount: Math.max(0, Math.trunc(Number(result?.distinctCandidateCount) || 0)),
+            evaluatedCandidateCount: Math.max(0, Math.trunc(Number(result?.evaluatedCandidateCount) || 0)),
             candidateCount: Array.isArray(result?.candidates) ? result.candidates.length : 0
           }
         ]).filter(([actionId]) => actionId))

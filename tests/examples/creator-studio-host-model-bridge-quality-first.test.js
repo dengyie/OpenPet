@@ -11,6 +11,8 @@ const {
 } = require('../../examples/plugins/creator-studio/lib/host-model-bridge')
 const { readActionCheckpoints, writeActionCheckpoint } = require('../../examples/plugins/creator-studio/lib/full-pet-action-checkpoints')
 const { getQualityFirstQualityProfile } = require('../../examples/plugins/creator-studio/lib/pet-generation-quality-profile')
+const { compileProviderImagePrompt } = require('../../examples/plugins/creator-studio/lib/provider-image-prompt-compiler')
+const { writeCandidateRecord } = require('../../examples/plugins/creator-studio/lib/sprite-candidate-store')
 const { createSpriteAssetPlan } = require('../../examples/plugins/creator-studio/lib/sprite-asset-plan')
 const hostModelBridgeModule = require('../../examples/plugins/creator-studio/lib/host-model-bridge')
 
@@ -70,6 +72,58 @@ test('identity-safe canonical replacement requests visible neutral variation wit
   assert.match(text, /no action gesture/i)
   assert.match(text, /do not change.*view|view.*do not change/i)
   assert.match(text, /do not change.*style|style.*do not change/i)
+})
+
+test('quality-first action dispatches compile distinct registered prompt strategies', () => {
+  assert.equal(typeof hostModelBridgeModule.__testInternals.createQualityFirstActionCandidateTask, 'function')
+  const action = {
+    actionId: 'idle',
+    frameCount: 6,
+    layout: { canvas: { width: 1024, height: 1024 }, columns: 3, rows: 2 },
+    framePlan: ['neutral rest', 'small inhale', 'peak inhale', 'small exhale', 'near rest', 'neutral rest'],
+    movingParts: ['upper torso'],
+    fixedParts: ['body root'],
+    actionClass: 'grounded-subtle-loop',
+    anchorPolicy: 'compact-contact-root-v1',
+    componentPolicy: 'reference-guided-body-v1',
+    effectPolicy: 'forbid-detached-effects',
+    motionPresetId: 'idle-breath-v1',
+    framePlanVersion: 1
+  }
+  const requests = [
+    { attemptKind: 'initial', dispatchIndex: 1, failureCodes: [] },
+    { attemptKind: 'initial', dispatchIndex: 2, failureCodes: [] },
+    { attemptKind: 'duplicate-replacement', dispatchIndex: 3, failureCodes: [] },
+    { attemptKind: 'repair', dispatchIndex: 4, failureCodes: ['cell-edge-contact', 'unknown-private-code'] }
+  ]
+  const tasks = requests.map((request) => hostModelBridgeModule.__testInternals.createQualityFirstActionCandidateTask({ action, ...request }))
+  const prompts = tasks.map((task) => compileProviderImagePrompt({ task, model: 'gpt-image-2' }).text)
+
+  assert.deepEqual(tasks.map((task) => task.strategyId), [
+    'identity-strict-motion-v1',
+    'motion-clarity-identity-locked-v1',
+    'identity-safe-action-alternate-v1',
+    'reason-directed-action-repair-v1'
+  ])
+  assert.equal(new Set(prompts.map((prompt) => crypto.createHash('sha256').update(prompt).digest('hex'))).size, 4)
+  assert.match(prompts[2], /visibly different/i)
+  assert.match(prompts[3], /clear cell padding/i)
+  assert.doesNotMatch(prompts[3], /unknown-private-code|cell-edge-contact/i)
+
+  const repairCases = [
+    ['style-drift', /restore the exact referenced rendering medium/i],
+    ['jumping-trajectory-missing', /airborne path/i],
+    ['incomplete-subject', /complete body/i]
+  ]
+  for (const [failureCode, expected] of repairCases) {
+    const task = hostModelBridgeModule.__testInternals.createQualityFirstActionCandidateTask({
+      action,
+      attemptKind: 'repair',
+      dispatchIndex: 4,
+      failureCodes: [failureCode]
+    })
+    assert.match(compileProviderImagePrompt({ task, model: 'gpt-image-2' }).text, expected)
+  }
 })
 
 test('host canonical pool rejects perceptual duplicates even when encoded hashes differ', async () => {
@@ -191,6 +245,81 @@ test('quality-first candidate records include prompt and evaluator evidence arti
   assert.equal(artifacts.every((entry) => /^[a-f0-9]{64}$/.test(entry.sha256)), true)
 })
 
+test('host reloads retained paid action candidates for diversity-failure recovery', () => {
+  assert.equal(typeof hostModelBridgeModule.__testInternals.loadRetainedQualityFirstActionCandidates, 'function')
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-quality-first-retained-action-'))
+  const runId = 'run-retained-action'
+  const rawPath = path.join(dataDir, `runs/${runId}/candidates/idle/candidate-1/raw/0001.png`)
+  const promptPath = path.join(dataDir, `runs/${runId}/prompts/quality-first/idle-candidate-1.txt`)
+  fs.mkdirSync(path.dirname(rawPath), { recursive: true })
+  fs.mkdirSync(path.dirname(promptPath), { recursive: true })
+  fs.writeFileSync(rawPath, 'paid-sheet')
+  fs.writeFileSync(promptPath, 'visible prompt')
+  const fileHash = (filePath) => crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex')
+  writeCandidateRecord({
+    dataDir,
+    runId,
+    scope: 'action-idle',
+    candidate: {
+      candidateId: 'candidate-1',
+      attemptKind: 'initial',
+      dispatchIndex: 1,
+      strategyId: 'identity-strict-motion-v1',
+      model: 'gpt-image-2',
+      descriptors: { perceptualHash: '0000', identityDescriptor: [0, 0.1], alphaMaskDescriptor: [0, 0.2] },
+      artifacts: [
+        { role: 'raw-sheet', path: rawPath, sha256: fileHash(rawPath) },
+        { role: 'prompt', path: promptPath, sha256: fileHash(promptPath) }
+      ]
+    }
+  })
+  writeCandidateRecord({
+    dataDir,
+    runId,
+    scope: 'action-idle',
+    candidate: {
+      candidateId: 'candidate-2',
+      attemptKind: 'duplicate-replacement',
+      dispatchIndex: 2,
+      failureCodes: ['provider-generation-failed']
+    }
+  })
+  const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-quality-first-retained-outside-'))
+  const outsidePath = path.join(outsideDir, 'outside.png')
+  fs.writeFileSync(outsidePath, 'outside-paid-sheet')
+  const symlinkRelativePath = `runs/${runId}/candidates/idle/candidate-3/raw/0001.png`
+  const symlinkPath = path.join(dataDir, symlinkRelativePath)
+  fs.mkdirSync(path.dirname(symlinkPath), { recursive: true })
+  fs.symlinkSync(outsidePath, symlinkPath)
+  const escapedRecordDir = path.join(dataDir, `runs/${runId}/candidates/action-idle/candidate-3`)
+  fs.mkdirSync(escapedRecordDir, { recursive: true })
+  fs.writeFileSync(path.join(escapedRecordDir, 'candidate.json'), `${JSON.stringify({
+    version: 1,
+    runId,
+    scope: 'action-idle',
+    candidate: {
+      candidateId: 'candidate-3',
+      attemptKind: 'initial',
+      dispatchIndex: 3,
+      descriptors: { perceptualHash: 'ffff', identityDescriptor: [1, 1], alphaMaskDescriptor: [1, 1] },
+      artifacts: [{ role: 'raw-sheet', relativePath: symlinkRelativePath, sha256: fileHash(outsidePath) }]
+    }
+  }, null, 2)}\n`)
+
+  const candidates = hostModelBridgeModule.__testInternals.loadRetainedQualityFirstActionCandidates({ dataDir, runId, actionId: 'idle' })
+  assert.equal(candidates.length, 3)
+  assert.equal(candidates[0].candidateId, 'candidate-1')
+  assert.equal(candidates[0].rawPath, fs.realpathSync.native(rawPath))
+  assert.equal(candidates[0].promptRelativePath, `runs/${runId}/prompts/quality-first/idle-candidate-1.txt`)
+  assert.equal(candidates[0].strategyId, 'identity-strict-motion-v1')
+  assert.equal(candidates[1].candidateId, 'candidate-2')
+  assert.deepEqual(candidates[1].failureCodes, ['provider-generation-failed'])
+  assert.equal(candidates[1].rawPath, undefined)
+  assert.equal(candidates[2].candidateId, 'candidate-3')
+  assert.equal(candidates[2].rawPath, undefined)
+  assert.equal(candidates[2].descriptors, undefined)
+})
+
 test('quality-first host runtime reuses a five-way-bound action checkpoint without Provider generation', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-quality-first-resume-'))
   const runId = 'run-resume'
@@ -257,7 +386,9 @@ test('quality-first host runtime reuses a five-way-bound action checkpoint witho
     })
     const failed = await corruptedRuntime.runAction({ actionId: 'idle', canonical })
     assert.equal(failed.ok, false)
-    assert.equal(failed.failureCode, 'action_candidate_diversity_insufficient')
+    assert.equal(failed.failureCode, 'action_quality_gate_failed')
+    assert.equal(failed.diversityStatus, 'degraded')
+    assert.deepEqual(failed.warningCodes, ['action_candidate_diversity_insufficient'])
   } finally {
     if (previousUrl == null) delete process.env.OPENPET_BRIDGE_URL
     else process.env.OPENPET_BRIDGE_URL = previousUrl

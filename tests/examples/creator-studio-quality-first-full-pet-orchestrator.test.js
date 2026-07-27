@@ -208,6 +208,55 @@ test('one passing canonical continues even when the other paid candidates are du
   assert.doesNotMatch(JSON.stringify(run.qualityFirst), /\/Users\/|data:image|secret prompt/i)
 })
 
+test('successful action results retain degraded diversity evidence without becoming failures', async () => {
+  const events = []
+  const orchestrator = createQualityFirstFullPetOrchestrator({
+    generateCanonicalCandidatePool: async () => ({
+      dispatchCount: 1,
+      candidates: [{ candidateId: 'canonical-1', eligible: true, sha256: 'a'.repeat(64), score: 95 }]
+    }),
+    runQualityFirstAction: async ({ actionId }) => ({
+      ok: true,
+      actionId,
+      disposition: 'accepted',
+      selectedCandidateId: 'candidate-1',
+      diversityStatus: 'degraded',
+      warningCodes: ['action_candidate_diversity_insufficient'],
+      distinctCandidateCount: 1,
+      evaluatedCandidateCount: 2,
+      candidates: []
+    }),
+    createCharacterScaleProfile: async () => ({ hash: 'hash' }),
+    finalizePackage: async () => ({ artifacts: { outputDir: '/data/package' } }),
+    recordEvent: (event) => events.push(event)
+  })
+
+  const run = await orchestrator.start({
+    run: { runId: 'run-1' },
+    plan: { hash: 'plan-hash' },
+    actions: ['idle'],
+    requireIdentityReviewBeforeActions: false
+  })
+
+  assert.equal(run.status, 'ready_for_review')
+  assert.equal(run.qualityFirst.actionResults.idle.ok, true)
+  assert.equal(run.qualityFirst.actionResults.idle.diversityStatus, 'degraded')
+  assert.deepEqual(run.qualityFirst.actionResults.idle.warningCodes, ['action_candidate_diversity_insufficient'])
+  assert.equal(run.qualityFirst.actionResults.idle.distinctCandidateCount, 1)
+  assert.equal(run.qualityFirst.actionResults.idle.evaluatedCandidateCount, 2)
+  assert.deepEqual(events.find((event) => event.scope === 'action' && event.status === 'completed'), {
+    scope: 'action',
+    status: 'completed',
+    runId: 'run-1',
+    actionId: 'idle',
+    candidateCount: 0,
+    diversityStatus: 'degraded',
+    warningCodes: ['action_candidate_diversity_insufficient'],
+    distinctCandidateCount: 1,
+    evaluatedCandidateCount: 2
+  })
+})
+
 test('canonical generation fails only when no candidate passes the quality gates', async () => {
   const orchestrator = createQualityFirstFullPetOrchestrator({
     generateCanonicalCandidatePool: async () => ({

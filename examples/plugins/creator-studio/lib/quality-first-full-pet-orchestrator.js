@@ -86,6 +86,10 @@ const publicActionResult = (result) => ({
   disposition: String(result?.disposition || ''),
   selectedCandidateId: normalizeId(result?.selectedCandidateId),
   failureCode: String(result?.failureCode || ''),
+  diversityStatus: result?.diversityStatus === 'degraded' ? 'degraded' : 'sufficient',
+  warningCodes: unique(result?.warningCodes).slice(0, 16),
+  distinctCandidateCount: Math.max(0, Number(result?.distinctCandidateCount) || 0),
+  evaluatedCandidateCount: Math.max(0, Number(result?.evaluatedCandidateCount) || 0),
   candidates: Array.isArray(result?.candidates) ? result.candidates.map((candidate) => ({
     candidateId: normalizeId(candidate?.candidateId),
     attemptKind: String(candidate?.attemptKind || ''),
@@ -195,7 +199,18 @@ const createQualityFirstFullPetOrchestrator = ({
       recordEvent({ scope: 'action', status: 'started', runId: normalizeId(run?.runId), actionId })
       try {
         const result = await runQualityFirstAction({ actionId, plan, canonical: selectedCandidate, profile })
-        recordEvent({ scope: 'action', status: result?.ok === true ? 'completed' : 'failed', runId: normalizeId(run?.runId), actionId, candidateCount: Array.isArray(result?.candidates) ? result.candidates.length : 0, ...(result?.ok === true ? {} : { failureCode: String(result?.failureCode || 'action_quality_gate_failed'), message: String(result?.failureCode || 'action quality gate failed') }) })
+        recordEvent({
+          scope: 'action',
+          status: result?.ok === true ? 'completed' : 'failed',
+          runId: normalizeId(run?.runId),
+          actionId,
+          candidateCount: Array.isArray(result?.candidates) ? result.candidates.length : 0,
+          diversityStatus: result?.diversityStatus === 'degraded' ? 'degraded' : 'sufficient',
+          warningCodes: unique(result?.warningCodes).slice(0, 16),
+          distinctCandidateCount: Math.max(0, Number(result?.distinctCandidateCount) || 0),
+          evaluatedCandidateCount: Math.max(0, Number(result?.evaluatedCandidateCount) || 0),
+          ...(result?.ok === true ? {} : { failureCode: String(result?.failureCode || 'action_quality_gate_failed'), message: String(result?.failureCode || 'action quality gate failed') })
+        })
         return result
       } catch (error) {
         recordEvent({ scope: 'action', status: 'failed', runId: normalizeId(run?.runId), actionId, failureCode: String(error?.code || 'action_generation_error'), message: String(error?.message || error).slice(0, 240) })
@@ -308,7 +323,7 @@ const createQualityFirstFullPetOrchestrator = ({
     return continueWithCanonicalIdentity({ run, candidate, plan, actions, persistRunState })
   }
 
-  return { start, acceptCanonicalIdentity }
+  return { start, acceptCanonicalIdentity, continueWithCanonicalIdentity }
 }
 
 module.exports = {

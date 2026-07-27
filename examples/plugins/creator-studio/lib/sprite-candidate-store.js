@@ -36,6 +36,10 @@ const sanitizeTraceId = (value) => {
   const normalized = String(value || '').trim()
   return /^[A-Za-z0-9][A-Za-z0-9:_-]{0,127}$/.test(normalized) ? normalized : ''
 }
+const sanitizeStrategyId = (value) => {
+  const normalized = String(value || '').trim()
+  return /^[a-z0-9][a-z0-9-]{0,79}$/.test(normalized) ? normalized : ''
+}
 const sanitizeTraceContext = (value) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
   const trace = Object.fromEntries([
@@ -102,6 +106,7 @@ const sanitizeCandidate = ({ dataDir, candidate }) => {
     candidateId: normalizeSegment(source.candidateId, 'candidateId'),
     attemptKind: ['initial', 'duplicate-replacement', 'repair'].includes(source.attemptKind) ? source.attemptKind : 'initial',
     dispatchIndex: Number.isInteger(source.dispatchIndex) ? source.dispatchIndex : 0,
+    ...(sanitizeStrategyId(source.strategyId) ? { strategyId: sanitizeStrategyId(source.strategyId) } : {}),
     provider: String(source.provider || '').slice(0, 160),
     model: String(source.model || '').slice(0, 160),
     ...(sanitizeTraceId(source.requestId) ? { requestId: sanitizeTraceId(source.requestId) } : {}),
