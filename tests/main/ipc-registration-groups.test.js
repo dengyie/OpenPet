@@ -515,6 +515,46 @@ test('registerServiceIpc does not persist localHttp config when start fails', as
   assert.deepEqual(savedSettings, [], 'failed start must not write enabled:true to settings')
 })
 
+test('registerServiceIpc does not persist rotated token when start fails', async () => {
+  const ipcMain = createIpcMainStub()
+  const savedSettings = []
+  const startedConfigs = []
+
+  registerServiceIpc({
+    ipcMainService: ipcMain,
+    petService: {
+      getSettings: () => ({ localHttp: { enabled: true, host: '127.0.0.1', port: 8317, token: 'old-token' } }),
+      saveSettings: (settings) => {
+        savedSettings.push(settings)
+        return settings
+      }
+    },
+    localHttpService: {
+      getStatus: () => ({ enabled: true, host: '127.0.0.1', port: 8317, mcp: { activeSessions: 1, sessionTtlMs: 1000 } }),
+      start: async (config) => {
+        startedConfigs.push(config)
+        throw new Error('Local HTTP service failed to bind after token rotation')
+      },
+      stop: async () => {
+        throw new Error('stop should not run during rotation')
+      },
+      revokeMcpSessions: () => ({ activeSessions: 0, sessionTtlMs: 1000 })
+    },
+    normalizeLocalHttpConfig: (_current, next) => ({ host: '127.0.0.1', ...next }),
+    createLocalHttpToken: () => 'rotated-token',
+    createServiceStatusView: (config, runtime) => ({ config, runtime })
+  })
+
+  await assert.rejects(
+    () => ipcMain.handlers.get(IPC.SERVICE_ROTATE_TOKEN)(),
+    /failed to bind/
+  )
+
+  assert.equal(startedConfigs.length, 1)
+  assert.equal(startedConfigs[0].token, 'rotated-token')
+  assert.deepEqual(savedSettings, [], 'failed rotation must not persist the new token')
+})
+
 test('registerCatalogIpc wires catalog install and blocklist handlers', async () => {
   const ipcMain = createIpcMainStub()
   const reloadCalls = []

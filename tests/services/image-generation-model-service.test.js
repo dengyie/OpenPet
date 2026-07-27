@@ -1628,20 +1628,24 @@ test('image generation model service does not retry non-transient provider HTTP 
 test('image generation model service keeps a transient retry inside the original timeout budget', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-retry-budget-'))
   let calls = 0
+  let retryAbortMs = null
   const service = createImageGenerationModelService({
     settingsService: createSettingsService(providerSettings({ model: 'gpt-image-2' })),
     secretService: createSecretService({
       'secret:model.image.openai.apiKey': { value: 'sk-test-1234', label: 'Image API Key' }
     }),
-    providerGenerationTimeoutMs: 100,
+    providerGenerationTimeoutMs: 600,
     fetchImpl: async (_url, options) => {
       calls += 1
       if (calls === 1) {
-        await new Promise((resolve) => setTimeout(resolve, 60))
+        // 第一次尝试消耗掉预算的大部分，重试只能拿到剩余额度。
+        await new Promise((resolve) => setTimeout(resolve, 400))
         return { ok: false, status: 524, json: async () => ({}) }
       }
+      const retryStartedAt = Date.now()
       return await new Promise((_resolve, reject) => {
         options.signal.addEventListener('abort', () => {
+          retryAbortMs = Date.now() - retryStartedAt
           const error = new Error('aborted')
           error.name = 'AbortError'
           reject(error)
@@ -1663,11 +1667,13 @@ test('image generation model service keeps a transient retry inside the original
       height: 1024,
       transparent: true
     }
-  }), /timed out after 100ms/i)
+  }), /timed out after 600ms/i)
   const elapsedMs = Date.now() - startedAt
 
   assert.equal(calls, 2)
-  assert.equal(elapsedMs < 170, true, `retry exceeded total timeout budget: ${elapsedMs}ms`)
+  // 重试继承剩余预算（约 200ms），而不是重新拿到完整的 600ms。
+  assert.equal(retryAbortMs !== null && retryAbortMs < 400, true, `retry received a fresh timeout budget: ${retryAbortMs}ms`)
+  assert.equal(elapsedMs < 800, true, `retry exceeded total timeout budget: ${elapsedMs}ms`)
 })
 
 test('image generation model service enforces provider maxConcurrentJobs by queueing requests', async () => {
