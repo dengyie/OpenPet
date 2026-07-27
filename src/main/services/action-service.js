@@ -57,19 +57,24 @@ const normalizeRelativeSprite = (value, fieldName = 'action sprite') => {
   return normalized
 }
 
+const toCreatorPositiveInteger = (value, fieldName, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) => {
+  const number = Number(value)
+  if (!Number.isInteger(number) || number < min || number > max) {
+    throw new Error(`Creator ${fieldName} must be an integer between ${min} and ${max}`)
+  }
+  return number
+}
+
 const normalizeCreatorAction = (action = {}) => {
   const id = normalizeActionId(action.id, 'action id')
   const sprite = normalizeRelativeSprite(action.sprite, `action(${id}).sprite`)
-  const frameCount = Number(action.frameCount)
-  const frameMs = Number(action.frameMs)
-  const frameWidth = Number(action.frameWidth)
-  const frameHeight = Number(action.frameHeight)
-  if (!Number.isInteger(frameCount) || frameCount <= 0) throw new Error(`Creator action(${id}).frameCount must be a positive integer`)
-  if (!Number.isInteger(frameMs) || frameMs < MIN_FRAME_MS || frameMs > MAX_FRAME_MS) {
-    throw new Error(`Creator action(${id}).frameMs must be an integer between ${MIN_FRAME_MS} and ${MAX_FRAME_MS}`)
-  }
-  if (!Number.isInteger(frameWidth) || frameWidth <= 0) throw new Error(`Creator action(${id}).frameWidth must be a positive integer`)
-  if (!Number.isInteger(frameHeight) || frameHeight <= 0) throw new Error(`Creator action(${id}).frameHeight must be a positive integer`)
+  const frameCount = toCreatorPositiveInteger(action.frameCount, `action(${id}).frameCount`)
+  const frameMs = toCreatorPositiveInteger(action.frameMs, `action(${id}).frameMs`, {
+    min: MIN_FRAME_MS,
+    max: MAX_FRAME_MS
+  })
+  const frameWidth = toCreatorPositiveInteger(action.frameWidth, `action(${id}).frameWidth`)
+  const frameHeight = toCreatorPositiveInteger(action.frameHeight, `action(${id}).frameHeight`)
   const normalized = {
     id,
     label: action.label || id,
@@ -81,10 +86,32 @@ const normalizeCreatorAction = (action = {}) => {
     frameHeight,
     sprite
   }
-  if (Array.isArray(action.frameDurations)) normalized.frameDurations = action.frameDurations.slice()
-  if (action.atlas && typeof action.atlas === 'object' && !Array.isArray(action.atlas)) normalized.atlas = { ...action.atlas }
-  if (action.frameRow != null) normalized.frameRow = Number(action.frameRow)
-  if (action.frameColumn != null) normalized.frameColumn = Number(action.frameColumn)
+  if (Array.isArray(action.frameDurations)) {
+    if (action.frameDurations.length !== frameCount) {
+      throw new Error(`Creator action(${id}).frameDurations must match frameCount`)
+    }
+    normalized.frameDurations = action.frameDurations.map((duration, index) => (
+      toCreatorPositiveInteger(
+        duration,
+        `action(${id}).frameDurations[${index}]`,
+        { min: MIN_FRAME_MS, max: MAX_FRAME_MS }
+      )
+    ))
+  }
+  if (action.atlas && typeof action.atlas === 'object' && !Array.isArray(action.atlas)) {
+    normalized.atlas = {
+      columns: toCreatorPositiveInteger(action.atlas.columns, `action(${id}).atlas.columns`),
+      rows: toCreatorPositiveInteger(action.atlas.rows, `action(${id}).atlas.rows`),
+      width: toCreatorPositiveInteger(action.atlas.width, `action(${id}).atlas.width`),
+      height: toCreatorPositiveInteger(action.atlas.height, `action(${id}).atlas.height`)
+    }
+  }
+  if (action.frameRow != null) {
+    normalized.frameRow = toCreatorPositiveInteger(action.frameRow, `action(${id}).frameRow`, { min: 0 })
+  }
+  if (action.frameColumn != null) {
+    normalized.frameColumn = toCreatorPositiveInteger(action.frameColumn, `action(${id}).frameColumn`, { min: 0 })
+  }
   return normalized
 }
 
@@ -104,24 +131,80 @@ const collectCreatorActionValidationErrors = (action = {}) => {
     errors.push(error.message || 'Creator action sprite is invalid')
   }
 
-  const frameCount = Number(action.frameCount)
-  if (!Number.isInteger(frameCount) || frameCount <= 0) {
-    errors.push(`Creator action(${actionId}).frameCount must be a positive integer`)
+  try {
+    toCreatorPositiveInteger(action.frameCount, `action(${actionId}).frameCount`)
+  } catch (error) {
+    errors.push(error.message || `Creator action(${actionId}).frameCount is invalid`)
   }
 
-  const frameMs = Number(action.frameMs)
-  if (!Number.isInteger(frameMs) || frameMs < MIN_FRAME_MS || frameMs > MAX_FRAME_MS) {
-    errors.push(`Creator action(${actionId}).frameMs must be an integer between ${MIN_FRAME_MS} and ${MAX_FRAME_MS}`)
+  try {
+    toCreatorPositiveInteger(action.frameMs, `action(${actionId}).frameMs`, {
+      min: MIN_FRAME_MS,
+      max: MAX_FRAME_MS
+    })
+  } catch (error) {
+    errors.push(error.message || `Creator action(${actionId}).frameMs is invalid`)
   }
 
-  const frameWidth = Number(action.frameWidth)
-  if (!Number.isInteger(frameWidth) || frameWidth <= 0) {
-    errors.push(`Creator action(${actionId}).frameWidth must be a positive integer`)
+  try {
+    toCreatorPositiveInteger(action.frameWidth, `action(${actionId}).frameWidth`)
+  } catch (error) {
+    errors.push(error.message || `Creator action(${actionId}).frameWidth is invalid`)
   }
 
-  const frameHeight = Number(action.frameHeight)
-  if (!Number.isInteger(frameHeight) || frameHeight <= 0) {
-    errors.push(`Creator action(${actionId}).frameHeight must be a positive integer`)
+  try {
+    toCreatorPositiveInteger(action.frameHeight, `action(${actionId}).frameHeight`)
+  } catch (error) {
+    errors.push(error.message || `Creator action(${actionId}).frameHeight is invalid`)
+  }
+
+  if (Array.isArray(action.frameDurations)) {
+    const frameCount = Number(action.frameCount)
+    if (Number.isInteger(frameCount) && frameCount > 0 && action.frameDurations.length !== frameCount) {
+      errors.push(`Creator action(${actionId}).frameDurations must match frameCount`)
+    } else {
+      action.frameDurations.forEach((duration, index) => {
+        try {
+          toCreatorPositiveInteger(
+            duration,
+            `action(${actionId}).frameDurations[${index}]`,
+            { min: MIN_FRAME_MS, max: MAX_FRAME_MS }
+          )
+        } catch (error) {
+          errors.push(error.message || `Creator action(${actionId}).frameDurations[${index}] is invalid`)
+        }
+      })
+    }
+  }
+
+  if (action.atlas != null) {
+    if (!action.atlas || typeof action.atlas !== 'object' || Array.isArray(action.atlas)) {
+      errors.push(`Creator action(${actionId}).atlas must be an object`)
+    } else {
+      for (const field of ['columns', 'rows', 'width', 'height']) {
+        try {
+          toCreatorPositiveInteger(action.atlas[field], `action(${actionId}).atlas.${field}`)
+        } catch (error) {
+          errors.push(error.message || `Creator action(${actionId}).atlas.${field} is invalid`)
+        }
+      }
+    }
+  }
+
+  if (action.frameRow != null) {
+    try {
+      toCreatorPositiveInteger(action.frameRow, `action(${actionId}).frameRow`, { min: 0 })
+    } catch (error) {
+      errors.push(error.message || `Creator action(${actionId}).frameRow is invalid`)
+    }
+  }
+
+  if (action.frameColumn != null) {
+    try {
+      toCreatorPositiveInteger(action.frameColumn, `action(${actionId}).frameColumn`, { min: 0 })
+    } catch (error) {
+      errors.push(error.message || `Creator action(${actionId}).frameColumn is invalid`)
+    }
   }
 
   return errors

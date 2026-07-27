@@ -335,6 +335,120 @@ test('action service rejects creator frameMs outside the pet-pack timing bounds'
   assert.match(tooFast.errors.join('\n'), /frameMs must be an integer between 16 and 5000/)
 })
 
+test('action service rejects creator frameDurations that mismatch frameCount or timing bounds', () => {
+  const service = createActionService({
+    projectRoot: '/app/openpet',
+    loadLegacyAnimations: () => ({
+      defaultAction: 'idle',
+      clickAction: 'idle',
+      actions: [
+        {
+          id: 'idle',
+          label: 'Idle',
+          kind: 'idle',
+          loop: true,
+          frameCount: 2,
+          frameMs: 95,
+          frameWidth: 32,
+          frameHeight: 32,
+          sprite: 'cat_anime/sprites/idle.png'
+        }
+      ]
+    }),
+    saveLegacyAnimations: () => {
+      throw new Error('should not save invalid frameDurations')
+    }
+  })
+
+  const lengthMismatch = service.validateCreatorActionMutation({
+    defaultAction: 'idle',
+    actions: [
+      {
+        id: 'idle',
+        label: 'Idle',
+        kind: 'idle',
+        loop: true,
+        frameCount: 2,
+        frameMs: 95,
+        frameWidth: 32,
+        frameHeight: 32,
+        sprite: 'cat_anime/sprites/idle.png',
+        frameDurations: [100]
+      }
+    ]
+  })
+  assert.equal(lengthMismatch.ok, false)
+  assert.match(lengthMismatch.errors.join('\n'), /frameDurations must match frameCount/)
+
+  const outOfRange = service.validateCreatorActionMutation({
+    defaultAction: 'idle',
+    actions: [
+      {
+        id: 'idle',
+        label: 'Idle',
+        kind: 'idle',
+        loop: true,
+        frameCount: 2,
+        frameMs: 95,
+        frameWidth: 32,
+        frameHeight: 32,
+        sprite: 'cat_anime/sprites/idle.png',
+        frameDurations: [100, 6000]
+      }
+    ]
+  })
+  assert.equal(outOfRange.ok, false)
+  assert.match(outOfRange.errors.join('\n'), /frameDurations\[1\].*between 16 and 5000/)
+})
+
+test('action service rejects creator atlas metadata with non-positive dimensions', () => {
+  const service = createActionService({
+    projectRoot: '/app/openpet',
+    loadLegacyAnimations: () => ({
+      defaultAction: 'idle',
+      clickAction: 'idle',
+      actions: [
+        {
+          id: 'idle',
+          label: 'Idle',
+          kind: 'idle',
+          loop: true,
+          frameCount: 1,
+          frameMs: 100,
+          frameWidth: 32,
+          frameHeight: 32,
+          sprite: 'cat_anime/sprites/idle.png'
+        }
+      ]
+    }),
+    saveLegacyAnimations: () => {
+      throw new Error('should not save invalid atlas')
+    }
+  })
+
+  const invalidAtlas = service.validateCreatorActionMutation({
+    defaultAction: 'idle',
+    actions: [
+      {
+        id: 'idle',
+        label: 'Idle',
+        kind: 'idle',
+        loop: true,
+        frameCount: 1,
+        frameMs: 100,
+        frameWidth: 32,
+        frameHeight: 32,
+        sprite: 'cat_anime/sprites/idle.png',
+        atlas: { columns: 0, rows: 1, width: 32, height: 32 },
+        frameRow: -1
+      }
+    ]
+  })
+  assert.equal(invalidAtlas.ok, false)
+  assert.match(invalidAtlas.errors.join('\n'), /atlas\.columns/)
+  assert.match(invalidAtlas.errors.join('\n'), /frameRow/)
+})
+
 test('action service rejects duplicate creator action ids in a mutation payload', () => {
   const service = createActionService({
     projectRoot: '/app/openpet',
