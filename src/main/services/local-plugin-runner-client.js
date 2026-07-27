@@ -79,33 +79,71 @@ const runLocalPluginCommand = ({ plugin, sdk, commandId, payload, config, timeou
     stderr = `${stderr}${chunk.toString('utf-8')}`.slice(-4096)
   })
 
+  const sendSdkFailure = (id, error) => {
+    if (!child.connected) return
+    child.send({
+      type: 'sdk-result',
+      id,
+      ok: false,
+      error: error?.message || 'Plugin SDK call failed'
+    })
+  }
+
   child.on('message', (message) => {
     if (!message || typeof message !== 'object') return
     if (message.type === 'ready') {
+      // payload/config 必须在进沙箱前过 cloneJsonValue。序列化失败属于调用方错误，
+      // 要走 finish 拒绝，而不是让未捕获异常把主进程消息循环打穿。
+      let safePayload
+      let safeConfig
+      try {
+        safePayload = cloneJsonValue(payload, 'payload', { allowUndefined: true })
+        safeConfig = cloneJsonValue(config, 'config')
+      } catch (error) {
+        finish(error)
+        return
+      }
+      if (!child.connected) return
       child.send({
         type: 'run',
         mainPath,
         commandId,
-        payload: cloneJsonValue(payload, 'payload', { allowUndefined: true }),
-        config: cloneJsonValue(config, 'config')
+        payload: safePayload,
+        config: safeConfig
       })
       return
     }
     if (message.type === 'sdk-call') {
+      // SDK 返回值同样必须 JSON 化：host 对象一旦经 IPC 进沙箱，插件就能
+      // 通过 .constructor.constructor 逃逸。clone 失败时回 ok:false，让
+      // 沙箱侧 Promise reject，而不是在 then 回调里裸抛。
       handleLocalPluginSdkCall(sdk, message.operation, message.payload)
         .then((result) => {
-          if (child.connected) {
-            child.send({ type: 'sdk-result', id: message.id, ok: true, result: cloneJsonValue(result, 'result', { allowUndefined: true }) })
+          if (!child.connected) return
+          try {
+            child.send({
+              type: 'sdk-result',
+              id: message.id,
+              ok: true,
+              result: cloneJsonValue(result, 'result', { allowUndefined: true })
+            })
+          } catch (error) {
+            sendSdkFailure(message.id, error)
           }
         })
-        .catch((error) => {
-          if (child.connected) child.send({ type: 'sdk-result', id: message.id, ok: false, error: error.message || 'Plugin SDK call failed' })
-        })
+        .catch((error) => sendSdkFailure(message.id, error))
       return
     }
     if (message.type === 'result') {
-      if (message.ok) finish(null, cloneJsonValue(message.result, 'result', { allowUndefined: true }))
-      else finish(new Error(message.error || 'Plugin command failed'))
+      if (!message.ok) {
+        finish(new Error(message.error || 'Plugin command failed'))
+        return
+      }
+      try {
+        finish(null, cloneJsonValue(message.result, 'result', { allowUndefined: true }))
+      } catch (error) {
+        finish(error)
+      }
     }
   })
 
