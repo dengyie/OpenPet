@@ -1,5 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
+const crypto = require('crypto')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
@@ -2243,6 +2244,14 @@ test('creator workflow diagnostics expose renderer-safe quality-first identity c
       phase: 'ready_for_review',
       planHash: 'p'.repeat(64),
       nextAction: 'human-review',
+      package: {
+        visualEvaluation: {
+          recommended: false,
+          qualityWarningCodes: ['visual-score-overall-below-minimum'],
+          evidenceRelativePath: `runs/${runId}/evaluations/final-package.json`,
+          boardRelativePath: `runs/${runId}/evaluations/final-package-review-board.png`
+        }
+      },
       requireIdentityReviewBeforeActions: false,
       selectedCanonical: { candidateId: 'canonical-1', sha256: 'a'.repeat(64) },
       acceptedCanonical: { candidateId: 'canonical-1', sha256: 'a'.repeat(64) },
@@ -2303,6 +2312,9 @@ test('creator workflow diagnostics expose renderer-safe quality-first identity c
   assert.equal(diagnostics.progress.phase, 'ready_for_review')
   assert.equal(diagnostics.progress.qualityFirst.phase, 'ready_for_review')
   assert.equal(diagnostics.progress.qualityFirst.nextAction, 'human-review')
+  assert.equal(diagnostics.progress.qualityFirst.packageReview.recommended, false)
+  assert.deepEqual(diagnostics.progress.qualityFirst.packageReview.qualityWarningCodes, ['visual-score-overall-below-minimum'])
+  assert.equal(diagnostics.progress.qualityFirst.packageReview.evidenceRelativePath, `runs/${runId}/evaluations/final-package.json`)
   assert.equal(diagnostics.progress.qualityFirst.identityReview.status, 'selected')
   assert.equal(diagnostics.progress.qualityFirst.identityReview.selectedCandidateId, 'canonical-1')
   assert.equal(diagnostics.progress.qualityFirst.identityReview.candidates.length, 3)
@@ -2329,6 +2341,62 @@ test('creator workflow diagnostics expose renderer-safe quality-first identity c
   assert.equal(diagnostics.progress.qualityFirst.actionResults.idle.candidates[1].selectionState, 'selectable-with-warning')
   assert.equal(diagnostics.progress.qualityFirst.actionResults.idle.candidates[1].relativePath, `runs/${runId}/candidates/idle/candidate-2/raw/candidate.png`)
   assert.doesNotMatch(JSON.stringify(diagnostics), /\/Users\/private/)
+})
+
+test('creator workflow diagnostics reconstruct legacy action eligibility only from complete verified artifacts', () => {
+  const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-legacy-candidate-'))
+  const runId = 'run-legacy-candidate-review'
+  const runDir = path.join(pluginDataDir, 'runs', runId)
+  const createLegacyCandidate = ({ candidateId, complete }) => {
+    const roles = complete ? ['raw-sheet', 'processed-sheet', 'contact-sheet', 'gif'] : ['raw-sheet']
+    const artifacts = roles.map((role) => {
+      const relativePath = `runs/${runId}/candidates/waving/${candidateId}/${role}.${role === 'gif' ? 'gif' : 'png'}`
+      const bytes = Buffer.from(`${candidateId}:${role}`)
+      const absolutePath = path.join(pluginDataDir, relativePath)
+      fs.mkdirSync(path.dirname(absolutePath), { recursive: true })
+      fs.writeFileSync(absolutePath, bytes)
+      return { role, relativePath, sha256: crypto.createHash('sha256').update(bytes).digest('hex') }
+    })
+    const recordRelativePath = `runs/${runId}/candidates/action-waving/${candidateId}/candidate.json`
+    const recordPath = path.join(pluginDataDir, recordRelativePath)
+    fs.mkdirSync(path.dirname(recordPath), { recursive: true })
+    fs.writeFileSync(recordPath, `${JSON.stringify({
+      version: 1,
+      runId,
+      scope: 'action-waving',
+      candidate: {
+        candidateId,
+        sha256: artifacts[0].sha256,
+        eligible: true,
+        artifacts,
+        qa: { ok: true, failures: [] },
+        gate: { ok: false, outcome: 'reject', failures: ['visual-score-overall-below-minimum'] }
+      }
+    }, null, 2)}\n`)
+    return { candidateId, sha256: artifacts[0].sha256, candidateRecordRelativePath: recordRelativePath }
+  }
+  const complete = createLegacyCandidate({ candidateId: 'candidate-complete', complete: true })
+  const incomplete = createLegacyCandidate({ candidateId: 'candidate-incomplete', complete: false })
+  fs.writeFileSync(path.join(runDir, 'run.json'), `${JSON.stringify({
+    runId,
+    status: 'ready_for_review',
+    currentStep: 'review',
+    generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1' },
+    qualityFirst: {
+      phase: 'ready_for_review',
+      actionResults: {
+        waving: { ok: false, candidates: [complete, { ...incomplete, eligible: true }] }
+      }
+    }
+  }, null, 2)}\n`)
+
+  const candidates = __testInternals.readWorkflowDiagnostics({ pluginDataDir, runId })
+    .progress.qualityFirst.actionResults.waving.candidates
+  assert.equal(candidates[0].technicalEligible, true)
+  assert.equal(candidates[0].recommended, false)
+  assert.equal(candidates[0].selectionState, 'selectable-with-warning')
+  assert.equal(candidates[1].technicalEligible, false)
+  assert.equal(candidates[1].selectionState, 'technically-unusable')
 })
 
 test('creator workflow diagnostics do not treat a running backend message as a failure reason', () => {

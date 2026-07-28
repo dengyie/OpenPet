@@ -373,6 +373,7 @@ const evaluateQualityFirstFinalPackage = async ({
   canonicalPath,
   spritesheetPath,
   atlasQaPath,
+  allowVisualQualityWarnings = false,
   requestEvaluation = requestHatchPetSpriteEvaluation
 } = {}) => {
   const safeSourcePath = resolveQualityFirstInputPath({ dataDir, filePath: sourcePath, label: 'Quality-first source' })
@@ -419,6 +420,16 @@ const evaluateQualityFirstFinalPackage = async ({
   })
   if (evaluated?.gate?.ok !== true) {
     const failures = Array.isArray(evaluated?.gate?.failures) ? evaluated.gate.failures.map(String).slice(0, 32) : ['final-package-visual-gate-failed']
+    if (allowVisualQualityWarnings === true) {
+      return {
+        gate: evaluated?.gate || { ok: false, outcome: 'repair', failures },
+        recommended: false,
+        qualityWarningCodes: failures,
+        evidenceRelativePath: String(evaluated?.evidenceRelativePath || '').replace(/\\/g, '/'),
+        boardRelativePath: path.relative(dataDir, board.path).replace(/\\/g, '/'),
+        boardSha256: board.sha256
+      }
+    }
     const error = new Error(`Quality-first final package visual gate failed: ${failures.join(', ')}`)
     error.code = 'final_package_visual_gate_failed'
     error.gate = evaluated?.gate || null
@@ -427,6 +438,8 @@ const evaluateQualityFirstFinalPackage = async ({
   }
   return {
     gate: evaluated.gate,
+    recommended: true,
+    qualityWarningCodes: [],
     evidenceRelativePath: String(evaluated.evidenceRelativePath || '').replace(/\\/g, '/'),
     boardRelativePath: path.relative(dataDir, board.path).replace(/\\/g, '/'),
     boardSha256: board.sha256
@@ -3380,7 +3393,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
     }
     return writeActionCheckpoint({ dataDir, runId: run.runId, result: checkpointResult })
   }
-  const finalizePackage = async ({ canonical }) => {
+  const finalizePackage = async ({ canonical, actionResults = {} }) => {
     const checkpoints = readActionCheckpoints({ dataDir, runId: run.runId })
     const officialRows = Object.values(checkpoints.actions || {})
       .filter((entry) => entry?.ok === true && entry.row?.frames?.length)
@@ -3414,7 +3427,10 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
       sourcePath: sourceReference.path,
       canonicalPath: path.join(dataDir, canonical.relativePath),
       spritesheetPath: packaged.spritesheetPath,
-      atlasQaPath: packaged.atlasQaPath
+      atlasQaPath: packaged.atlasQaPath,
+      allowVisualQualityWarnings: canonical?.selection?.qualityOverride === true || Object.values(actionResults).some((result) => (
+        result?.selection?.qualityOverride === true || result?.selectedCandidate?.selection?.qualityOverride === true
+      ))
     })
     const generatedImage = {
       ok: true,

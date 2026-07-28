@@ -85,6 +85,39 @@ const assertRetainedCandidateAssetCurrent = ({ dataDir, runId, candidate }) => {
   }
 }
 
+const verifyRetainedCandidateArtifact = ({ dataDir, runId, artifact, label }) => {
+  const relativePath = String(artifact?.relativePath || '').trim().replace(/\\/g, '/')
+  const expectedHash = String(artifact?.sha256 || '').trim().toLowerCase()
+  if (!relativePath || !/^[a-f0-9]{64}$/.test(expectedHash)) {
+    throw createCandidateValidationError('candidate_technically_unusable', `${label} evidence is incomplete`)
+  }
+  assertRetainedCandidateAssetCurrent({
+    dataDir,
+    runId,
+    candidate: { relativePath, sha256: expectedHash }
+  })
+  return relativePath
+}
+
+const reconstructLegacyActionCandidateDecision = ({ dataDir, runId, candidate }) => {
+  const artifacts = Array.isArray(candidate?.artifacts) ? candidate.artifacts : []
+  const requiredRoles = ['raw-sheet', 'processed-sheet', 'contact-sheet', 'gif']
+  const artifactsByRole = new Map(artifacts.map((artifact) => [String(artifact?.role || ''), artifact]))
+  for (const role of requiredRoles) {
+    verifyRetainedCandidateArtifact({
+      dataDir,
+      runId,
+      artifact: artifactsByRole.get(role),
+      label: `Legacy candidate ${role}`
+    })
+  }
+  return normalizeStoredCandidateDecision({
+    ...candidate,
+    technicalEligible: true,
+    recommended: candidate?.eligible === true && candidate?.qa?.ok === true && candidate?.gate?.ok === true
+  })
+}
+
 const assertTaskReadyForGeneration = (run) => {
   if (!run.generationTask) return
   if (!run.taskStatus || run.taskStatus === 'confirmed') return
@@ -573,16 +606,23 @@ const acceptQualityFirstCanonicalIdentity = async ({
   if (!candidate) {
     throw new Error('Creator Studio canonical identity candidate or hash is invalid')
   }
-  const normalizedCandidate = normalizeStoredCandidateDecision(candidate)
+  const hasStoredTechnicalDecision = typeof candidate.technicalEligible === 'boolean'
+  if (!hasStoredTechnicalDecision) {
+    assertRetainedCandidateAssetCurrent({ dataDir, runId, candidate })
+  }
+  const normalizedCandidate = normalizeStoredCandidateDecision({
+    ...candidate,
+    ...(hasStoredTechnicalDecision ? {} : { technicalEligible: true })
+  })
   assertHumanCandidateSelection({
     candidate: normalizedCandidate,
     expectedHash,
     qualityOverride,
     acknowledgedWarningCodes
   })
-  if (candidate.relativePath) {
+  if (candidate.relativePath && hasStoredTechnicalDecision) {
     assertRetainedCandidateAssetCurrent({ dataDir, runId, candidate })
-  } else if (!normalizedCandidate.recommended) {
+  } else if (!candidate.relativePath) {
     throw createCandidateValidationError('candidate_asset_missing', 'Candidate asset path is required for a quality override')
   }
   const startedAt = now()
@@ -694,16 +734,20 @@ const loadRetainedActionCandidateForSelection = ({ dataDir, runId, actionId, can
     : null
   const rawRelativePath = String(rawArtifact?.relativePath || '').trim().replace(/\\/g, '/')
   const candidateHash = String(source.sha256 || rawArtifact?.sha256 || candidateView.sha256 || '').trim().toLowerCase()
-  const candidate = normalizeStoredCandidateDecision({
+  const storedCandidate = {
     ...source,
     sha256: candidateHash,
     relativePath: rawRelativePath,
     candidateRecordRelativePath: recordRelativePath
-  })
+  }
+  const hasStoredTechnicalDecision = typeof source.technicalEligible === 'boolean'
+  const candidate = hasStoredTechnicalDecision
+    ? normalizeStoredCandidateDecision(storedCandidate)
+    : reconstructLegacyActionCandidateDecision({ dataDir, runId, candidate: storedCandidate })
   if (String(candidateView.sha256 || '').trim().toLowerCase() !== candidate.sha256) {
     throw createCandidateValidationError('candidate_hash_mismatch', 'Candidate view no longer matches the retained record')
   }
-  if (!candidateView.technicalEligible || candidate.technicalEligible !== true) {
+  if ((hasStoredTechnicalDecision && candidateView.technicalEligible !== true) || candidate.technicalEligible !== true) {
     throw createCandidateValidationError('candidate_technically_unusable', 'Candidate is technically unusable')
   }
   if (String(actionId || '') && !recordRelativePath.includes(`/action-${actionId}/`)) {

@@ -725,6 +725,19 @@ const ActionCandidateReview = ({
   )
 }
 
+const PackageQualityReview = ({ progress }: { progress: CreatorWorkflowProgressViewState }) => {
+  const review = progress.qualityFirst?.packageReview
+  if (!review) return null
+  return (
+    <div className={`creator-package-quality-review ${review.recommended ? 'ok' : 'error'}`} data-testid="creator-package-quality-review">
+      <strong>{review.recommended ? '最终包达到自动质量建议' : '最终包未达推荐标准，但已保留给你复查'}</strong>
+      {!review.recommended ? <span>质量系统只提供建议；你选择的候选、原始失败证据和最终审美决定均被保留。</span> : null}
+      {review.qualityWarningCodes.length ? <span className="creator-candidate-failures">质量建议：{review.qualityWarningCodes.join('、')}</span> : null}
+      {review.evidenceRelativePath ? <code title={review.evidenceRelativePath}>{review.evidenceRelativePath}</code> : null}
+    </div>
+  )
+}
+
 const ResultCard = ({
   result,
   running,
@@ -839,6 +852,7 @@ const ResultCard = ({
           onLoadAssetPreview={onLoadAssetPreview}
         />
       ) : null}
+      {progress?.qualityFirst ? <PackageQualityReview progress={progress} /> : null}
       {progress?.qualityFirst?.phase === 'recovery-required' ? (
         <div className="creator-recovery-panel error" data-testid="creator-recovery-required">
           <strong>idle 未通过质量门</strong>

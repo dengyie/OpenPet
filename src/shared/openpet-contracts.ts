@@ -2248,6 +2248,12 @@ export interface CreatorQualityFirstProgressViewState {
     }
   } | null
   identityReview: CreatorIdentityReviewViewState
+  packageReview: {
+    recommended: boolean
+    qualityWarningCodes: string[]
+    evidenceRelativePath: string
+    boardRelativePath: string
+  } | null
   recovery: {
     reason: string
     relativePath: string

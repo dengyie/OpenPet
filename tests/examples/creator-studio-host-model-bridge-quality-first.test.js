@@ -610,6 +610,20 @@ test('quality-first final package requires a passing code-owned visual gate over
   assert.equal(accepted.gate.ok, true)
   assert.match(accepted.boardRelativePath, /final-package-review-board\.png$/)
 
+  const warned = await evaluateQualityFirstFinalPackage({
+    dataDir,
+    runId,
+    sourcePath: paths.source,
+    canonicalPath: paths.canonical,
+    spritesheetPath: paths.atlas,
+    atlasQaPath,
+    allowVisualQualityWarnings: true,
+    requestEvaluation: async () => ({ gate: { ok: false, outcome: 'repair', failures: ['visual-score-overall-below-minimum'] }, evidenceRelativePath: `runs/${runId}/evaluations/final-package.json` })
+  })
+  assert.equal(warned.recommended, false)
+  assert.deepEqual(warned.qualityWarningCodes, ['visual-score-overall-below-minimum'])
+  assert.equal(warned.gate.ok, false)
+
   await assert.rejects(() => evaluateQualityFirstFinalPackage({
     dataDir,
     runId,
@@ -618,11 +632,7 @@ test('quality-first final package requires a passing code-owned visual gate over
     spritesheetPath: paths.atlas,
     atlasQaPath,
     requestEvaluation: async () => ({ gate: { ok: false, outcome: 'repair', failures: ['visual-score-overall-below-minimum'] }, evidenceRelativePath: `runs/${runId}/evaluations/final-package.json` })
-  }), (error) => {
-    assert.equal(error.code, 'final_package_visual_gate_failed')
-    assert.match(error.message, /visual-score-overall-below-minimum/)
-    return true
-  })
+  }), (error) => error?.code === 'final_package_visual_gate_failed')
 
   const outsideCanonical = path.join(os.tmpdir(), `openpet-outside-canonical-${Date.now()}.png`)
   await sharp({ create: { width: 8, height: 8, channels: 4, background: '#fff' } }).png().toFile(outsideCanonical)

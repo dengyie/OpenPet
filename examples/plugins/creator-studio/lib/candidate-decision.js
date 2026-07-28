@@ -35,7 +35,7 @@ const normalizeCandidateDecision = ({
 const normalizeStoredCandidateDecision = (candidate = {}) => {
   const technicalEligible = typeof candidate.technicalEligible === 'boolean'
     ? candidate.technicalEligible
-    : candidate.eligible === true
+    : false
   const recommended = typeof candidate.recommended === 'boolean'
     ? candidate.recommended
     : candidate.eligible === true

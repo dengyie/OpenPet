@@ -1,6 +1,6 @@
 # Pet Character And Action Generation
 
-> Updated: 2026-07-25
+> Updated: 2026-07-28
 > Owner: `codex/dev8`
 > Status: quality-first replacement implemented; focused development checks passed; independent Provider and visual verification pending
 
@@ -10,13 +10,20 @@ This document is the current implementation contract for generating an OpenPet c
 
 The normal Create flow produces:
 
-- one source-faithful canonical character selected deterministically from candidates that pass the immutable quality gates, with an optional pre-action human identity checkpoint;
+- one source-faithful canonical character selected automatically from recommended candidates or explicitly by its owner from any hash-verified technically usable candidate;
 - a required `idle` action and any optional actions that independently pass unchanged quality gates;
 - retained raw, processed, prompt, evaluator, contact-sheet, GIF, checkpoint, and package evidence;
 - a partial or complete official atlas that never substitutes copied idle art for a failed action;
 - explicit review, import, and activation boundaries.
 
-Visual quality and identity consistency take priority over latency and cost. Automated code and model evaluation may reject or request repair, but may not grant artistic approval, import a pack, activate a pack, or weaken a threshold.
+Visual quality and identity consistency take priority over latency and cost. Automated code and model evaluation produce strict recommendations, but the owner retains the final aesthetic decision. They may not grant artistic approval, import a pack, activate a pack, weaken a threshold, or relabel a failed recommendation as passed.
+
+Candidate decisions have two independent dimensions:
+
+- `technicalEligible`: the retained asset is present, path-safe, hash-current, processable, and complete enough to materialize;
+- `recommended`: the candidate also passes the current deterministic and model-assisted quality profile.
+
+Automatic selection requires both fields. A human may select `technicalEligible=true, recommended=false` only after acknowledging the exact current warning codes. The selection is bound to `runId + candidateId + sha256`; its failed scores, defects, and gate evidence remain unchanged and visible. Missing, corrupt, unsafe, stale-bound, hash-mismatched, unprocessable, or incomplete assets can never be overridden.
 
 Official-quality output requires a source-faithful canonical character plus action-specific Provider generation. Base-image transforms or transform-only frames are preview fallbacks, not official-quality action rows.
 
@@ -32,7 +39,7 @@ source image
   -> deterministic candidate QA
   -> one canonical comparison evaluator board
   -> code-owned per-candidate visual gates
-  -> deterministic unique canonical anchor selection
+  -> automatic recommended canonical selection or hash-bound human choice
   -> optional awaiting_identity_review when requireIdentityReviewBeforeActions=true
   -> idle candidate pool
   -> lock character scale profile
@@ -40,7 +47,7 @@ source image
   -> deterministic running-left mirror
   -> package/atlas QA
   -> fixed source/canonical/contact-sheet/atlas evaluator board
-  -> code-owned final-package visual gate
+  -> code-owned final-package visual recommendation
   -> ready_for_review
   -> explicit human approval
   -> explicit import
@@ -157,9 +164,9 @@ Encoded-file hashes or candidate names are not used as visual proxies. Perceptua
 
 Every technically usable paid candidate, including duplicates, is composed with the source into one fixed 3072x2048 canonical comparison board. The board supports one through four candidate regions. The evaluator returns one strict score record per candidate region. Code independently reapplies identity, silhouette, small-scale, completeness, style, confidence, and overall thresholds to each candidate. An overall model recommendation cannot turn a failing candidate into a passing candidate.
 
-At least one candidate passing all candidate-level quality gates is sufficient. Passing candidates are ranked deterministically by overall score, then identity score, then stable candidate ID. The winner becomes the unique `selected-anchor`; other passing candidates remain `alternate` or `duplicate-alternate`, and failed candidates remain `unusable`. All downstream anchor grids, action reference boards, checkpoints, package hashes, and action Provider requests bind only to that selected anchor.
+At least one recommended candidate is sufficient for automatic selection. Recommended candidates are ranked deterministically by overall score, then identity score, then stable candidate ID. The winner becomes the unique `selected-anchor`; other recommended candidates remain `alternate` or `duplicate-alternate`. A technically usable quality failure remains `selectable-with-warning`, not `unusable`. All downstream anchor grids, action reference boards, checkpoints, package hashes, and action Provider requests bind only to the automatically or manually selected anchor.
 
-Only when no candidate passes does the run fail closed with `canonical_identity_candidates_unusable` and phase `identity-generation-failed`. Create exposes every retained paid candidate, its safe relative asset path, disposition, duplicate binding, evaluator evidence, and failure codes. The next legal recovery action is `retry-identity`, which archives the existing evidence before generating a new pool. A running backend progress message is never presented as a failure reason.
+When no candidate is recommended but at least one is technically usable, the run pauses at `awaiting_identity_review` so the owner can select a warned candidate or retry identity generation. Only when no candidate is technically usable does the run fail closed with `canonical_identity_candidates_unusable` and phase `identity-generation-failed`. Create exposes every retained paid candidate, its safe relative asset path, disposition, duplicate binding, evaluator evidence, technical blockers, and quality warnings. A running backend progress message is never presented as a failure reason.
 
 By default `requireIdentityReviewBeforeActions=false`, so the selected anchor immediately continues into `idle` and the only mandatory human art boundary is the final review. When the setting is explicitly enabled, the run enters `awaiting_identity_review` and exact `runId + candidateId + sha256` acceptance is required before action generation.
 
@@ -167,7 +174,7 @@ Candidate cards show:
 
 - 128-pixel preview access;
 - candidate ID and exact sha256 binding;
-- eligibility, score, model, and failure codes;
+- independent technical eligibility and recommendation state, score, model, warning codes, and hard blockers;
 - safe relative evidence paths.
 
 No action Provider request is legal before deterministic selection or, when configured, exact human identity acceptance.
@@ -185,7 +192,9 @@ After canonical selection (and optional identity acceptance), `idle` runs first.
 
 Candidate generation, deterministic processing, code QA, visual evaluation, and persistence are isolated steps. Processing or evaluation failure on one candidate does not hide that candidate or prevent comparison with the other candidate. Perceptual duplicates remain paid candidates and still enter processing and evaluation; diversity is comparison evidence, not a quality failure.
 
-The selected action candidate must pass both deterministic QA and the code-owned evaluator gate. Selection uses evaluator overall score, then identity distance, then a stable candidate ID tie-breaker. At least one passing candidate is sufficient. When fewer than two candidates are perceptually distinct, the accepted result records `diversityStatus=degraded` and warning `action_candidate_diversity_insufficient`, but continues without weakening any quality threshold. Failed paid action candidates remain visible; an optional action may be omitted, but a low-quality candidate must never be relabeled as passed.
+Automatic action selection requires both deterministic process completeness and the code-owned evaluator recommendation. It uses evaluator overall score, then identity distance, then a stable candidate ID tie-breaker. The owner may instead reuse any retained technically usable action candidate after acknowledging its exact warnings; this performs deterministic local materialization and makes no Provider or evaluator request. The failed quality result remains failed evidence. When fewer than two candidates are perceptually distinct, the accepted result records `diversityStatus=degraded` and warning `action_candidate_diversity_insufficient`, but continues without weakening any quality threshold. Technically unusable paid candidates remain visible but disabled.
+
+Selecting a retained `idle` candidate rebuilds the scale profile and invalidates every profile-dependent action. Selecting `running-right` rebuilds the deterministic `running-left` mirror. Selecting any other action invalidates and rebuilds only that action checkpoint and the final package. A rebuild failure enters recovery with the paid candidate evidence intact.
 
 An action retry following the former diversity hard gate reloads hash-verified retained candidate records and evaluates those paid raw sheets before issuing another image request. If the recovered `idle` candidate passes before a scale profile exists, the runtime reconstructs and persists `character-scale-profile.json`, reuses the new idle checkpoint, and resumes the remaining planned actions before final package generation.
 
@@ -215,7 +224,7 @@ unused cells                fully transparent
 
 The accepted idle result locks `character-scale-profile.json`. All later compatible actions bind to the plan hash, canonical hash, scale-profile hash, processor version, and quality-profile hash.
 
-Finalization first builds the real atlas and deterministic contact-sheet/GIF evidence. It then composes one fixed 2048x1536 review board containing source identity, accepted canonical identity, action contact sheet, and final atlas. The Hatch Pet evaluator scores the `final-package` schema, and code reapplies immutable package thresholds. A missing package, failed atlas QA, failed package visual gate, unsafe evidence path, or incomplete idle checkpoint fails closed before approval.
+Finalization first builds the real atlas and deterministic contact-sheet/GIF evidence. It then composes one fixed 2048x1536 review board containing source identity, accepted canonical identity, action contact sheet, and final atlas. The Hatch Pet evaluator scores the `final-package` schema, and code reapplies immutable package thresholds. A missing package, failed atlas QA, unsafe evidence path, or incomplete idle checkpoint always fails closed. When the package includes an explicit human quality override, a final-package visual failure is retained as `recommended=false` plus warning evidence and proceeds to human review; it does not rewrite the overridden candidate or package as quality-passed.
 
 After that gate passes, quality-first finalization publishes the existing import contract without a compatibility bypass:
 
@@ -252,7 +261,7 @@ If idle fails, generation stops in `recovery-required`. It does not create an id
 
 ## 10. Evidence, retries, and recovery
 
-Every candidate record is atomic and hash-verifies each referenced artifact. Evaluator evidence is bound to the review-board hash, so candidates and actions cannot overwrite one another's evaluation files.
+Every candidate record is atomic and hash-verifies each referenced artifact. Evaluator evidence is bound to the review-board hash, so candidates and actions cannot overwrite one another's evaluation files. Legacy canonical records without decision fields may recover technical eligibility only from a current in-run file whose hash matches. Legacy action records require verified `raw-sheet`, `processed-sheet`, `contact-sheet`, and `gif` artifacts before they become selectable; legacy `eligible` alone is never authorization.
 
 Identity retry:
 
@@ -280,7 +289,7 @@ No renderer-facing view includes absolute paths, secrets, raw Provider payloads,
 The model and deterministic gates may only propose, score, reject, omit, or request repair. Human actions remain explicit:
 
 1. optionally select canonical identity when the pre-action checkpoint is enabled;
-2. inspect the selected anchor, alternates, unusable candidates, and action assets;
+2. inspect the selected anchor, recommended alternates, warned selectable candidates, technically unusable candidates, and action assets;
 3. approve the final art result;
 4. import the pack;
 5. optionally activate it.

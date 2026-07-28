@@ -4,7 +4,8 @@ const assert = require('node:assert')
 const {
   assertHumanCandidateSelection,
   createCandidateSelection,
-  normalizeCandidateDecision
+  normalizeCandidateDecision,
+  normalizeStoredCandidateDecision
 } = require('../../examples/plugins/creator-studio/lib/candidate-decision')
 
 const hash = (character) => character.repeat(64)
@@ -129,4 +130,20 @@ test('human selection requires current quality warnings for a non-recommended ca
     qualityOverride: true,
     acknowledgedWarningCodes: ['visual-score-overall-below-minimum']
   }), (error) => error?.code === 'quality_override_evidence_stale')
+})
+
+test('legacy eligible alone is recommendation evidence and never technical authorization', () => {
+  const legacy = normalizeStoredCandidateDecision({
+    candidateId: 'legacy-candidate',
+    sha256: hash('a'),
+    eligible: true,
+    gate: { ok: true, outcome: 'pass', failures: [] }
+  })
+
+  assert.equal(legacy.recommended, true)
+  assert.equal(legacy.technicalEligible, false)
+  assert.throws(() => assertHumanCandidateSelection({
+    candidate: legacy,
+    expectedHash: legacy.sha256
+  }), (error) => error?.code === 'candidate_technically_unusable')
 })

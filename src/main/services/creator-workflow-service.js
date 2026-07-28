@@ -1542,6 +1542,34 @@ const createQualityFirstModelAttemptViews = (value) => Array.isArray(value)
     })
   : []
 
+const hasVerifiedCandidateArtifact = ({ pluginDataDir, runId, artifact }) => {
+  const relativePath = normalizeSafeRelativePath(artifact?.relativePath || artifact?.path)
+  const expectedHash = normalizeText(artifact?.sha256).toLowerCase()
+  if (!relativePath || !isRunRelativePath({ runId, relativePath }) || !/^[a-f0-9]{64}$/.test(expectedHash)) return false
+  const safeRun = getSafeCreatorRunDir({ pluginDataDir, runId, requireExisting: true })
+  const absolutePath = path.resolve(pluginDataDir, relativePath)
+  if (!safeRun || !isPathInsideDirectory({ rootPath: safeRun.runDir, targetPath: absolutePath, requireExisting: true })) return false
+  try {
+    return crypto.createHash('sha256').update(fs.readFileSync(absolutePath)).digest('hex') === expectedHash
+  } catch (_) {
+    return false
+  }
+}
+
+const reconstructLegacyCandidateTechnicalEligibility = ({ candidate, pluginDataDir, runId }) => {
+  const artifacts = Array.isArray(candidate?.artifacts) ? candidate.artifacts : []
+  const roles = new Map(artifacts.map((artifact) => [normalizeText(artifact?.role), artifact]))
+  if (roles.has('raw-sheet')) {
+    return ['raw-sheet', 'processed-sheet', 'contact-sheet', 'gif']
+      .every((role) => hasVerifiedCandidateArtifact({ pluginDataDir, runId, artifact: roles.get(role) }))
+  }
+  const canonicalArtifact = roles.get('raw-canonical') || {
+    relativePath: candidate?.relativePath,
+    sha256: candidate?.sha256
+  }
+  return hasVerifiedCandidateArtifact({ pluginDataDir, runId, artifact: canonicalArtifact })
+}
+
 const createQualityFirstCandidateView = ({ candidate = {}, pluginDataDir = '', runId = '' } = {}) => {
   const safeRun = getSafeCreatorRunDir({ pluginDataDir, runId, requireExisting: true })
   const candidateRecordRelativePath = normalizeSafeRelativePath(candidate.candidateRecordRelativePath)
@@ -1591,12 +1619,15 @@ const createQualityFirstCandidateView = ({ candidate = {}, pluginDataDir = '', r
           : null
       }).filter(Boolean)
     : []
-  const technicalEligible = typeof candidateViewSource.technicalEligible === 'boolean'
+  const hasStoredTechnicalDecision = typeof candidateViewSource.technicalEligible === 'boolean'
+  const technicalEligible = hasStoredTechnicalDecision
     ? candidateViewSource.technicalEligible
-    : candidateViewSource.eligible === true
+    : reconstructLegacyCandidateTechnicalEligibility({ candidate: candidateViewSource, pluginDataDir, runId })
   const recommended = typeof candidateViewSource.recommended === 'boolean'
     ? candidateViewSource.recommended
-    : candidateViewSource.eligible === true
+    : hasStoredTechnicalDecision
+      ? candidateViewSource.eligible === true
+      : technicalEligible && candidateViewSource.eligible === true && candidateViewSource.qa?.ok === true && candidateViewSource.gate?.ok === true
   const selection = isPlainObject(candidateViewSource.selection) && ['automatic', 'human-override'].includes(normalizeText(candidateViewSource.selection.selectionAuthority))
     ? {
         candidateId: normalizeText(candidateViewSource.selection.candidateId).slice(0, 128),
@@ -1699,6 +1730,11 @@ const createQualityFirstIdentityReviewView = ({ run = null, pluginDataDir = '' }
   const acceptedCandidateId = normalizeText(qualityFirst.acceptedCanonical?.candidateId)
   const acceptedSha256 = normalizeText(qualityFirst.acceptedCanonical?.sha256).slice(0, 128)
   const nextAction = normalizeText(qualityFirst.nextAction)
+  const packageVisualEvaluation = isPlainObject(qualityFirst.package?.visualEvaluation)
+    ? qualityFirst.package.visualEvaluation
+    : null
+  const packageEvidenceRelativePath = normalizeSafeRelativePath(packageVisualEvaluation?.evidenceRelativePath)
+  const packageBoardRelativePath = normalizeSafeRelativePath(packageVisualEvaluation?.boardRelativePath)
   return {
     pipeline: 'quality-first-v1',
     phase,
@@ -1725,6 +1761,14 @@ const createQualityFirstIdentityReviewView = ({ run = null, pluginDataDir = '' }
       acceptedCandidateId,
       acceptedSha256
     },
+    packageReview: packageVisualEvaluation
+      ? {
+          recommended: packageVisualEvaluation.recommended === true || packageVisualEvaluation.gate?.ok === true,
+          qualityWarningCodes: createUniqueTextList(packageVisualEvaluation.qualityWarningCodes || packageVisualEvaluation.gate?.failures || []).slice(0, 32),
+          evidenceRelativePath: isRunRelativePath({ runId, relativePath: packageEvidenceRelativePath }) ? packageEvidenceRelativePath : '',
+          boardRelativePath: isRunRelativePath({ runId, relativePath: packageBoardRelativePath }) ? packageBoardRelativePath : ''
+        }
+      : null,
     recovery: isPlainObject(qualityFirst.recovery)
       ? (() => {
           const value = normalizeSafeRelativePath(qualityFirst.recovery.relativePath)

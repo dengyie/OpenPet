@@ -3,6 +3,16 @@ const assert = require('node:assert/strict')
 
 const { createQualityFirstFullPetOrchestrator } = require('../../examples/plugins/creator-studio/lib/quality-first-full-pet-orchestrator')
 
+const recommendedCanonical = ({ candidateId, sha256, score = 0, ...rest }) => ({
+  candidateId,
+  sha256,
+  score,
+  eligible: true,
+  technicalEligible: true,
+  recommended: true,
+  ...rest
+})
+
 const createHarness = ({ idleOk = true, finalizePackage = async () => ({ spritesheetRelativePath: 'runs/run-1/quality-first/package/spritesheet.webp', artifacts: { outputDir: '/data/runs/run-1/quality-first/package' } }) } = {}) => {
   const calls = { canonical: 0, actions: [], actionCanonicals: [], mirrors: 0, recovery: 0, events: [] }
   const orchestrator = createQualityFirstFullPetOrchestrator({
@@ -11,9 +21,9 @@ const createHarness = ({ idleOk = true, finalizePackage = async () => ({ sprites
       return {
         dispatchCount: 3,
         candidates: [
-          { candidateId: 'canonical-1', eligible: true, sha256: 'a'.repeat(64), score: 90 },
-          { candidateId: 'canonical-2', eligible: true, sha256: 'b'.repeat(64), score: 92 },
-          { candidateId: 'canonical-3', eligible: true, sha256: 'c'.repeat(64), score: 91 }
+          recommendedCanonical({ candidateId: 'canonical-1', sha256: 'a'.repeat(64), score: 90 }),
+          recommendedCanonical({ candidateId: 'canonical-2', sha256: 'b'.repeat(64), score: 92 }),
+          recommendedCanonical({ candidateId: 'canonical-3', sha256: 'c'.repeat(64), score: 91 })
         ]
       }
     },
@@ -163,9 +173,9 @@ test('canonical acceptance publishes finalized package artifacts for the existin
     generateCanonicalCandidatePool: async () => ({
       dispatchCount: 3,
       candidates: [
-        { candidateId: 'canonical-1', eligible: true, sha256: 'a'.repeat(64) },
-        { candidateId: 'canonical-2', eligible: true, sha256: 'b'.repeat(64) },
-        { candidateId: 'canonical-3', eligible: true, sha256: 'c'.repeat(64) }
+        recommendedCanonical({ candidateId: 'canonical-1', sha256: 'a'.repeat(64) }),
+        recommendedCanonical({ candidateId: 'canonical-2', sha256: 'b'.repeat(64) }),
+        recommendedCanonical({ candidateId: 'canonical-3', sha256: 'c'.repeat(64) })
       ]
     }),
     runQualityFirstAction: async ({ actionId }) => ({ ok: true, actionId, selectedCandidateId: `${actionId}-candidate` }),
@@ -211,19 +221,17 @@ test('one passing canonical continues even when the other paid candidates are du
     generateCanonicalCandidatePool: async () => ({
       dispatchCount: 4,
       candidates: [
-        {
+        recommendedCanonical({
           candidateId: 'canonical-1',
-          eligible: true,
           sha256: 'a'.repeat(64),
           score: 95,
           relativePath: 'runs/run-1/candidates/canonical/canonical-1/raw/0001.png',
           attemptKind: 'initial',
           diversityProfileId: 'identity-faithful-balanced-v1',
           promptText: 'secret prompt must not escape'
-        },
-        {
+        }),
+        recommendedCanonical({
           candidateId: 'canonical-2',
-          eligible: true,
           sha256: 'b'.repeat(64),
           score: 94,
           relativePath: 'runs/run-1/candidates/canonical/canonical-2/raw/0001.png',
@@ -231,7 +239,7 @@ test('one passing canonical continues even when the other paid candidates are du
           diversityProfileId: 'identity-safe-alternate-neutral-v1',
           duplicateOfCandidateId: 'canonical-1',
           previewDataUrl: 'data:image/png;base64,secret'
-        },
+        }),
         {
           candidateId: 'canonical-3',
           eligible: false,
@@ -270,7 +278,7 @@ test('successful action results retain degraded diversity evidence without becom
   const orchestrator = createQualityFirstFullPetOrchestrator({
     generateCanonicalCandidatePool: async () => ({
       dispatchCount: 1,
-      candidates: [{ candidateId: 'canonical-1', eligible: true, sha256: 'a'.repeat(64), score: 95 }]
+      candidates: [recommendedCanonical({ candidateId: 'canonical-1', sha256: 'a'.repeat(64), score: 95 })]
     }),
     runQualityFirstAction: async ({ actionId }) => ({
       ok: true,
@@ -364,9 +372,9 @@ test('canonical acceptance durably publishes identity, profile, and completed ac
     generateCanonicalCandidatePool: async () => ({
       dispatchCount: 3,
       candidates: [
-        { candidateId: 'canonical-1', eligible: true, sha256: 'a'.repeat(64) },
-        { candidateId: 'canonical-2', eligible: true, sha256: 'b'.repeat(64) },
-        { candidateId: 'canonical-3', eligible: true, sha256: 'c'.repeat(64) }
+        recommendedCanonical({ candidateId: 'canonical-1', sha256: 'a'.repeat(64) }),
+        recommendedCanonical({ candidateId: 'canonical-2', sha256: 'b'.repeat(64) }),
+        recommendedCanonical({ candidateId: 'canonical-3', sha256: 'c'.repeat(64) })
       ]
     }),
     runQualityFirstAction: async ({ actionId }) => {

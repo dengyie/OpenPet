@@ -2889,6 +2889,7 @@
 
 .creator-identity-review,
 .creator-action-candidate-review,
+.creator-package-quality-review,
 .creator-recovery-panel {
   display: grid;
   gap: 10px;

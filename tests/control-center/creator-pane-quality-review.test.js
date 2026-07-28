@@ -59,6 +59,15 @@ test('creator pane lets owners compare and select retained action candidates wit
   assert.match(contracts, /CreatorAcceptActionCandidateRequest/)
 })
 
+test('creator pane surfaces final package quality warnings after a human override', () => {
+  const source = read('src/control-center/src/panes/CreatorPane.tsx')
+  const contracts = read('src/shared/openpet-contracts.ts')
+  assert.match(source, /最终包未达推荐标准，但已保留给你复查/)
+  assert.match(source, /packageReview/)
+  assert.match(contracts, /packageReview/)
+  assert.match(contracts, /qualityWarningCodes/)
+})
+
 test('creator pane exposes recovery bundle guidance for idle failure', () => {
   const source = read('src/control-center/src/panes/CreatorPane.tsx')
   assert.match(source, /recovery-required/)

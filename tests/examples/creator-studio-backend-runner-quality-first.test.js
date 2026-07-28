@@ -19,6 +19,41 @@ const { writeCandidateRecord } = require('../../examples/plugins/creator-studio/
 
 const createDataDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-quality-first-backend-'))
 
+const writeLegacyActionCandidateRecord = ({ dataDir, runId, actionId, candidateId, complete = true, eligible = true }) => {
+  const roles = complete ? ['raw-sheet', 'processed-sheet', 'contact-sheet', 'gif'] : ['raw-sheet']
+  const artifacts = roles.map((role) => {
+    const extension = role === 'gif' ? 'gif' : 'png'
+    const relativePath = `runs/${runId}/candidates/${actionId}/${candidateId}/legacy/${role}.${extension}`
+    const absolutePath = path.join(dataDir, relativePath)
+    const bytes = Buffer.from(`${candidateId}:${role}`)
+    fs.mkdirSync(path.dirname(absolutePath), { recursive: true })
+    fs.writeFileSync(absolutePath, bytes)
+    return {
+      role,
+      relativePath,
+      sha256: crypto.createHash('sha256').update(bytes).digest('hex')
+    }
+  })
+  const rawHash = artifacts.find((artifact) => artifact.role === 'raw-sheet').sha256
+  const recordRelativePath = `runs/${runId}/candidates/action-${actionId}/${candidateId}/candidate.json`
+  const recordPath = path.join(dataDir, recordRelativePath)
+  fs.mkdirSync(path.dirname(recordPath), { recursive: true })
+  fs.writeFileSync(recordPath, `${JSON.stringify({
+    version: 1,
+    runId,
+    scope: `action-${actionId}`,
+    candidate: {
+      candidateId,
+      sha256: rawHash,
+      eligible,
+      artifacts,
+      qa: { ok: true, failures: [] },
+      gate: { ok: false, outcome: 'reject', failures: ['visual-score-overall-below-minimum'] }
+    }
+  }, null, 2)}\n`)
+  return { rawHash, recordRelativePath }
+}
+
 test('backend persists awaiting identity review and resumes only after exact acceptance', async () => {
   const dataDir = createDataDir()
   const created = createRun({
@@ -27,9 +62,14 @@ test('backend persists awaiting identity review and resumes only after exact acc
     now: () => '2026-07-20T10:00:00.000Z'
   })
   writeRun({ dataDir, run: { ...created, status: 'confirmed', taskStatus: 'confirmed' } })
+  const candidateRelativePath = `runs/${created.runId}/candidates/canonical/c1/raw/0001.png`
+  const candidatePath = path.join(dataDir, candidateRelativePath)
+  fs.mkdirSync(path.dirname(candidatePath), { recursive: true })
+  fs.writeFileSync(candidatePath, 'quality-canonical')
+  const candidateHash = crypto.createHash('sha256').update('quality-canonical').digest('hex')
   const calls = []
   const orchestrator = {
-    start: async ({ run }) => ({ ...run, status: 'awaiting_identity_review', currentStep: 'identity-review', qualityFirst: { phase: 'awaiting_identity_review', canonicalCandidates: [{ candidateId: 'c1', eligible: true, sha256: 'a'.repeat(64) }] } }),
+    start: async ({ run }) => ({ ...run, status: 'awaiting_identity_review', currentStep: 'identity-review', qualityFirst: { phase: 'awaiting_identity_review', canonicalCandidates: [{ candidateId: 'c1', eligible: true, technicalEligible: true, recommended: true, sha256: candidateHash, relativePath: candidateRelativePath }] } }),
     acceptCanonicalIdentity: async ({ run, candidateId, sha256 }) => {
       calls.push({ candidateId, sha256 })
       return { ...run, status: 'ready_for_review', currentStep: 'review', qualityFirst: { ...run.qualityFirst, phase: 'ready_for_review' } }
@@ -38,9 +78,9 @@ test('backend persists awaiting identity review and resumes only after exact acc
   const pending = await runQualityFirstIdentityStage({ dataDir, runId: created.runId, orchestrator, plan: { hash: 'plan' }, requireIdentityReviewBeforeActions: true })
   assert.equal(pending.run.status, 'awaiting_identity_review')
   assert.equal(readRun({ dataDir, runId: created.runId }).qualityFirst.phase, 'awaiting_identity_review')
-  const accepted = await acceptQualityFirstCanonicalIdentity({ dataDir, runId: created.runId, candidateId: 'c1', expectedHash: 'a'.repeat(64), orchestrator, plan: { hash: 'plan' }, actions: ['idle'] })
+  const accepted = await acceptQualityFirstCanonicalIdentity({ dataDir, runId: created.runId, candidateId: 'c1', expectedHash: candidateHash, orchestrator, plan: { hash: 'plan' }, actions: ['idle'] })
   assert.equal(accepted.run.status, 'ready_for_review')
-  assert.deepEqual(calls, [{ candidateId: 'c1', sha256: 'a'.repeat(64) }])
+  assert.deepEqual(calls, [{ candidateId: 'c1', sha256: candidateHash }])
   assert.deepEqual(readRunLogs({ dataDir, runId: created.runId }).map((entry) => entry.event), [
     'quality-first.identity.started',
     'quality-first.identity.completed',
@@ -202,6 +242,55 @@ test('backend rejects missing canonical warning acknowledgement before changing 
   assert.equal(unchanged.status, 'awaiting_identity_review')
   assert.equal(unchanged.currentStep, 'identity-review')
   assert.equal(Object.hasOwn(unchanged, 'generationLease'), false)
+})
+
+test('backend reconstructs technical eligibility for a legacy warned canonical from its current retained file', async () => {
+  const dataDir = createDataDir()
+  const created = createRun({
+    dataDir,
+    input: { petName: 'Legacy Canonical Pet', backend: 'provider', generationTask: { mode: 'full-pet', actions: [{ actionId: 'idle' }], questions: [] } }
+  })
+  const relativePath = `runs/${created.runId}/candidates/canonical/canonical-legacy/raw/0001.png`
+  const absolutePath = path.join(dataDir, relativePath)
+  fs.mkdirSync(path.dirname(absolutePath), { recursive: true })
+  fs.writeFileSync(absolutePath, 'legacy-canonical')
+  const sha256 = crypto.createHash('sha256').update('legacy-canonical').digest('hex')
+  const warnings = ['visual-score-overall-below-minimum']
+  writeRun({ dataDir, run: {
+    ...created,
+    status: 'awaiting_identity_review',
+    currentStep: 'identity-review',
+    qualityFirst: {
+      phase: 'awaiting_identity_review',
+      canonicalCandidates: [{
+        candidateId: 'canonical-legacy',
+        sha256,
+        relativePath,
+        eligible: false,
+        gate: { ok: false, outcome: 'reject', failures: warnings }
+      }]
+    }
+  } })
+  let called = false
+  const output = await acceptQualityFirstCanonicalIdentity({
+    dataDir,
+    runId: created.runId,
+    candidateId: 'canonical-legacy',
+    expectedHash: sha256,
+    qualityOverride: true,
+    acknowledgedWarningCodes: warnings,
+    orchestrator: {
+      acceptCanonicalIdentity: async ({ run }) => {
+        called = true
+        return { ...run, status: 'ready_for_review', currentStep: 'review', qualityFirst: { ...run.qualityFirst, phase: 'ready_for_review' } }
+      }
+    },
+    plan: { hash: 'plan-hash' },
+    actions: ['idle']
+  })
+
+  assert.equal(called, true)
+  assert.equal(output.run.status, 'ready_for_review')
 })
 
 test('backend defaults to the selected canonical and completes actions without a mid-run identity pause', async () => {
@@ -384,7 +473,18 @@ test('backend preserves the latest accepted identity state when action generatio
     dataDir,
     input: { petName: 'Durable Pet', backend: 'provider', generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1', actions: [{ actionId: 'idle', name: 'Idle', motionPrompt: 'idle', frameCount: 6, transparentBackground: true }], questions: [] } }
   })
-  const canonical = { candidateId: 'canonical-1', eligible: true, sha256: 'a'.repeat(64) }
+  const canonicalRelativePath = `runs/${created.runId}/candidates/canonical/canonical-1/raw/0001.png`
+  const canonicalPath = path.join(dataDir, canonicalRelativePath)
+  fs.mkdirSync(path.dirname(canonicalPath), { recursive: true })
+  fs.writeFileSync(canonicalPath, 'durable-canonical')
+  const canonical = {
+    candidateId: 'canonical-1',
+    eligible: true,
+    technicalEligible: true,
+    recommended: true,
+    sha256: crypto.createHash('sha256').update('durable-canonical').digest('hex'),
+    relativePath: canonicalRelativePath
+  }
   writeRun({ dataDir, run: {
     ...created,
     status: 'awaiting_identity_review',
@@ -597,6 +697,100 @@ test('manual action selection reuses an exact retained candidate without Provide
   assert.equal(output.run.qualityFirst.actionResults.waving.selection.selectionAuthority, 'human-override')
   assert.equal(output.run.qualityFirst.actionResults.waving.selection.qualityOverride, true)
   assert.equal(output.run.qualityFirst.actionResults.idle.ok, true)
+})
+
+test('manual action selection reconstructs a legacy candidate only from a complete verified artifact set', async () => {
+  const dataDir = createDataDir()
+  const created = createRun({
+    dataDir,
+    input: { petName: 'Legacy Action Pet', backend: 'provider', generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1', actions: [{ actionId: 'idle' }, { actionId: 'waving' }], questions: [] } }
+  })
+  const legacy = writeLegacyActionCandidateRecord({ dataDir, runId: created.runId, actionId: 'waving', candidateId: 'candidate-legacy' })
+  const warnings = ['visual-score-overall-below-minimum']
+  const canonical = { candidateId: 'canonical-1', sha256: 'a'.repeat(64) }
+  const profile = { version: 1, hash: 'p'.repeat(64) }
+  writeRun({ dataDir, run: {
+    ...created,
+    status: 'ready_for_review',
+    currentStep: 'review',
+    qualityFirst: {
+      phase: 'ready_for_review',
+      acceptedCanonical: canonical,
+      scaleProfileHash: profile.hash,
+      actionResults: {
+        idle: { ok: true, selectedCandidateId: 'idle-candidate' },
+        waving: {
+          ok: false,
+          candidates: [{
+            candidateId: 'candidate-legacy',
+            sha256: legacy.rawHash,
+            eligible: false,
+            qualityWarningCodes: warnings,
+            candidateRecordRelativePath: legacy.recordRelativePath
+          }]
+        }
+      }
+    }
+  } })
+  const calls = []
+  const output = await acceptQualityFirstActionCandidate({
+    dataDir,
+    runId: created.runId,
+    actionId: 'waving',
+    candidateId: 'candidate-legacy',
+    expectedHash: legacy.rawHash,
+    qualityOverride: true,
+    acknowledgedWarningCodes: warnings,
+    runtime: {
+      materializeActionCandidate: async ({ candidate }) => {
+        calls.push(candidate.candidateId)
+        return { ok: true, actionId: 'waving', selectedCandidateId: candidate.candidateId, selectedCandidate: candidate, candidates: [candidate] }
+      },
+      persistActionResult: async () => {},
+      finalizePackage: async () => ({ artifacts: { outputDir: path.join(dataDir, 'runs', created.runId, 'quality-first', 'package') } })
+    },
+    plan: { hash: 'plan-hash', actions: [{ actionId: 'idle' }, { actionId: 'waving' }] },
+    profile
+  })
+
+  assert.deepEqual(calls, ['candidate-legacy'])
+  assert.equal(output.run.qualityFirst.actionResults.waving.selection.qualityOverride, true)
+})
+
+test('manual action selection never authorizes legacy eligible alone without processed artifacts', async () => {
+  const dataDir = createDataDir()
+  const created = createRun({
+    dataDir,
+    input: { petName: 'Incomplete Legacy Pet', backend: 'provider', generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1', actions: [{ actionId: 'idle' }, { actionId: 'waving' }], questions: [] } }
+  })
+  const legacy = writeLegacyActionCandidateRecord({ dataDir, runId: created.runId, actionId: 'waving', candidateId: 'candidate-incomplete', complete: false, eligible: true })
+  const profile = { version: 1, hash: 'p'.repeat(64) }
+  writeRun({ dataDir, run: {
+    ...created,
+    status: 'ready_for_review',
+    qualityFirst: {
+      phase: 'ready_for_review',
+      acceptedCanonical: { candidateId: 'canonical-1', sha256: 'a'.repeat(64) },
+      scaleProfileHash: profile.hash,
+      actionResults: {
+        idle: { ok: true },
+        waving: { ok: false, candidates: [{ candidateId: 'candidate-incomplete', sha256: legacy.rawHash, eligible: true, candidateRecordRelativePath: legacy.recordRelativePath }] }
+      }
+    }
+  } })
+
+  await assert.rejects(() => acceptQualityFirstActionCandidate({
+    dataDir,
+    runId: created.runId,
+    actionId: 'waving',
+    candidateId: 'candidate-incomplete',
+    expectedHash: legacy.rawHash,
+    runtime: { materializeActionCandidate: async () => { throw new Error('must not materialize') }, persistActionResult: async () => {}, finalizePackage: async () => ({}) },
+    plan: { hash: 'plan-hash', actions: [{ actionId: 'idle' }, { actionId: 'waving' }] },
+    profile
+  }), (error) => error?.code === 'candidate_technically_unusable')
+
+  assert.equal(readRun({ dataDir, runId: created.runId }).status, 'ready_for_review')
 })
 
 test('manual idle selection rebuilds the scale profile and drops actions bound to the old profile', async () => {
