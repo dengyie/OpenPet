@@ -58,7 +58,17 @@ const registerCreatorIpc = ({
   ipcMainService.handle(IPC.CREATOR_ACCEPT_IDENTITY, (_event, payload) => requireService().acceptCreatorIdentity({
     runId: payload?.runId,
     candidateId: payload?.candidateId,
-    sha256: payload?.sha256
+    sha256: payload?.sha256,
+    qualityOverride: payload?.qualityOverride,
+    acknowledgedWarningCodes: payload?.acknowledgedWarningCodes
+  }))
+  ipcMainService.handle(IPC.CREATOR_ACCEPT_ACTION_CANDIDATE, (_event, payload) => requireService().acceptCreatorActionCandidate({
+    runId: payload?.runId,
+    actionId: payload?.actionId,
+    candidateId: payload?.candidateId,
+    sha256: payload?.sha256,
+    qualityOverride: payload?.qualityOverride,
+    acknowledgedWarningCodes: payload?.acknowledgedWarningCodes
   }))
   ipcMainService.handle(IPC.CREATOR_EXPORT_RECOVERY_BUNDLE, (_event, payload) => requireService().exportRecoveryBundle({
     runId: payload?.runId

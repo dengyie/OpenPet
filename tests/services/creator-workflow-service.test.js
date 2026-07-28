@@ -2199,9 +2199,32 @@ test('creator workflow diagnostics expose renderer-safe quality-first identity c
   const runId = 'run-quality-first-review'
   const runDir = path.join(pluginDataDir, 'runs', runId)
   const candidateDir = path.join(runDir, 'candidates', 'canonical', 'canonical-1', 'raw')
+  const warnedCandidateDir = path.join(runDir, 'candidates', 'canonical', 'canonical-4', 'raw')
+  const actionCandidateDir = path.join(runDir, 'candidates', 'idle', 'candidate-2', 'raw')
+  const actionRecordDir = path.join(runDir, 'candidates', 'action-idle', 'candidate-2')
   fs.mkdirSync(candidateDir, { recursive: true })
+  fs.mkdirSync(warnedCandidateDir, { recursive: true })
+  fs.mkdirSync(actionCandidateDir, { recursive: true })
+  fs.mkdirSync(actionRecordDir, { recursive: true })
   fs.mkdirSync(path.join(runDir, 'budgets'), { recursive: true })
   fs.writeFileSync(path.join(candidateDir, 'candidate.png'), 'png')
+  fs.writeFileSync(path.join(warnedCandidateDir, 'candidate.png'), 'warned-png')
+  fs.writeFileSync(path.join(actionCandidateDir, 'candidate.png'), 'action-png')
+  fs.writeFileSync(path.join(actionRecordDir, 'candidate.json'), `${JSON.stringify({
+    version: 1,
+    runId,
+    scope: 'action-idle',
+    candidate: {
+      candidateId: 'candidate-2',
+      sha256: 'c'.repeat(64),
+      technicalEligible: true,
+      recommended: false,
+      technicalFailureCodes: [],
+      qualityWarningCodes: ['visual-defect-motion-unreadable'],
+      model: 'gpt-image-2',
+      artifacts: [{ role: 'raw-sheet', relativePath: `runs/${runId}/candidates/idle/candidate-2/raw/candidate.png`, sha256: 'c'.repeat(64) }]
+    }
+  }, null, 2)}\n`)
   fs.writeFileSync(path.join(runDir, 'budgets', 'ledger.json'), `${JSON.stringify({
     version: 1,
     startedAtMs: Date.now() - 1000,
@@ -2232,7 +2255,14 @@ test('creator workflow diagnostics expose renderer-safe quality-first identity c
           warningCodes: ['action_candidate_diversity_insufficient'],
           distinctCandidateCount: 1,
           evaluatedCandidateCount: 2,
-          candidates: [{ candidateId: 'candidate-1' }, { candidateId: 'candidate-2' }]
+          candidates: [{ candidateId: 'candidate-1' }, {
+            candidateId: 'candidate-2',
+            sha256: 'c'.repeat(64),
+            technicalEligible: true,
+            recommended: false,
+            qualityWarningCodes: ['visual-defect-motion-unreadable'],
+            candidateRecordRelativePath: `runs/${runId}/candidates/action-idle/candidate-2/candidate.json`
+          }]
         }
       },
       canonicalCandidates: [{
@@ -2254,6 +2284,17 @@ test('creator workflow diagnostics expose renderer-safe quality-first identity c
         relativePath: '/Users/private/should-not-leak.png',
         duplicateOfCandidateId: 'canonical-1',
         failureCodes: []
+      }, {
+        candidateId: 'canonical-4',
+        eligible: false,
+        technicalEligible: true,
+        recommended: false,
+        disposition: 'selectable-with-warning',
+        sha256: 'd'.repeat(64),
+        score: 68,
+        relativePath: `runs/${runId}/candidates/canonical/canonical-4/raw/candidate.png`,
+        qualityWarningCodes: ['visual-defect-identity-drift', 'visual-score-overall-below-minimum'],
+        failureCodes: ['visual-defect-identity-drift', 'visual-score-overall-below-minimum']
       }]
     }
   }, null, 2)}\n`)
@@ -2264,11 +2305,15 @@ test('creator workflow diagnostics expose renderer-safe quality-first identity c
   assert.equal(diagnostics.progress.qualityFirst.nextAction, 'human-review')
   assert.equal(diagnostics.progress.qualityFirst.identityReview.status, 'selected')
   assert.equal(diagnostics.progress.qualityFirst.identityReview.selectedCandidateId, 'canonical-1')
-  assert.equal(diagnostics.progress.qualityFirst.identityReview.candidates.length, 2)
+  assert.equal(diagnostics.progress.qualityFirst.identityReview.candidates.length, 3)
   assert.equal(diagnostics.progress.qualityFirst.identityReview.candidates[0].previewable, true)
   assert.equal(diagnostics.progress.qualityFirst.identityReview.candidates[0].disposition, 'selected-anchor')
   assert.equal(diagnostics.progress.qualityFirst.identityReview.candidates[1].disposition, 'duplicate-alternate')
   assert.equal(diagnostics.progress.qualityFirst.identityReview.candidates[1].relativePath, '')
+  assert.equal(diagnostics.progress.qualityFirst.identityReview.candidates[2].technicalEligible, true)
+  assert.equal(diagnostics.progress.qualityFirst.identityReview.candidates[2].recommended, false)
+  assert.equal(diagnostics.progress.qualityFirst.identityReview.candidates[2].selectionState, 'selectable-with-warning')
+  assert.deepEqual(diagnostics.progress.qualityFirst.identityReview.candidates[2].qualityWarningCodes, ['visual-defect-identity-drift', 'visual-score-overall-below-minimum'])
   assert.equal(diagnostics.progress.qualityFirst.budget.usage.providerCalls, 5)
   assert.equal(diagnostics.progress.qualityFirst.budget.usage.providerFailures, 1)
   assert.equal(diagnostics.progress.qualityFirst.budget.remaining.providerCalls, 67)
@@ -2278,6 +2323,11 @@ test('creator workflow diagnostics expose renderer-safe quality-first identity c
   assert.deepEqual(diagnostics.progress.qualityFirst.actionResults.idle.warningCodes, ['action_candidate_diversity_insufficient'])
   assert.equal(diagnostics.progress.qualityFirst.actionResults.idle.distinctCandidateCount, 1)
   assert.equal(diagnostics.progress.qualityFirst.actionResults.idle.evaluatedCandidateCount, 2)
+  assert.equal(diagnostics.progress.qualityFirst.actionResults.idle.candidates.length, 2)
+  assert.equal(diagnostics.progress.qualityFirst.actionResults.idle.candidates[1].technicalEligible, true)
+  assert.equal(diagnostics.progress.qualityFirst.actionResults.idle.candidates[1].recommended, false)
+  assert.equal(diagnostics.progress.qualityFirst.actionResults.idle.candidates[1].selectionState, 'selectable-with-warning')
+  assert.equal(diagnostics.progress.qualityFirst.actionResults.idle.candidates[1].relativePath, `runs/${runId}/candidates/idle/candidate-2/raw/candidate.png`)
   assert.doesNotMatch(JSON.stringify(diagnostics), /\/Users\/private/)
 })
 
@@ -2398,7 +2448,7 @@ test('creator workflow diagnostics expose a failed identity pool without absolut
   assert.doesNotMatch(JSON.stringify(diagnostics), /\/Users\/mango|data:image|secret prompt body/i)
 })
 
-test('creator workflow accepts an eligible canonical identity through an exact hash-bound command', async () => {
+test('creator workflow accepts a warned canonical identity through an exact hash-bound command', async () => {
   const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-accept-identity-'))
   const runId = 'run-accept-identity'
   const runDir = path.join(pluginDataDir, 'runs', runId)
@@ -2453,13 +2503,66 @@ test('creator workflow accepts an eligible canonical identity through an exact h
   const result = await service.acceptCreatorIdentity({
     runId,
     candidateId: 'canonical-1',
-    sha256: 'a'.repeat(64)
+    sha256: 'a'.repeat(64),
+    qualityOverride: true,
+    acknowledgedWarningCodes: ['visual-score-overall-below-minimum']
   })
   assert.equal(result.state, 'review-required')
   assert.equal(result.code, 'identity_accepted_review_required')
   assert.deepEqual(calls, [{
     commandId: 'accept-identity',
-    payload: { runId, candidateId: 'canonical-1', sha256: 'a'.repeat(64) }
+    payload: {
+      runId,
+      candidateId: 'canonical-1',
+      sha256: 'a'.repeat(64),
+      qualityOverride: true,
+      acknowledgedWarningCodes: ['visual-score-overall-below-minimum']
+    }
+  }])
+})
+
+test('creator workflow selects a retained action candidate through the dedicated command', async () => {
+  const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-accept-action-candidate-'))
+  const runId = 'run-accept-action-candidate'
+  const runDir = path.join(pluginDataDir, 'runs', runId)
+  fs.mkdirSync(runDir, { recursive: true })
+  fs.writeFileSync(path.join(runDir, 'run.json'), `${JSON.stringify({ runId, status: 'ready_for_review', currentStep: 'review', qualityFirst: { phase: 'ready_for_review', actionResults: {} } })}\n`)
+  const calls = []
+  const service = createCreatorWorkflowService({
+    pluginService: {
+      listPlugins: () => [createPluginView({ commands: [{ id: 'accept-action-candidate' }] })],
+      getPluginCreatorDataDir: () => pluginDataDir,
+      runCommand: async (_pluginId, commandId, payload) => {
+        calls.push({ commandId, payload })
+        return { commandId, result: { run: { runId, status: 'ready_for_review', currentStep: 'review', qualityFirst: { phase: 'ready_for_review', actionResults: {} } } } }
+      }
+    },
+    imageGenerationModelService: { checkHealth: async () => ({ ok: true }), getConfig: () => ({ provider: 'openai-compatible', model: 'gpt-image-2' }) },
+    actionService: { getConfig: () => ({ defaultAction: 'idle', clickAction: 'waving', actions: [] }), acceptTriggerProposalItem: () => ({ animations: {} }) },
+    creatorReferenceService: { getReference: () => null, bindReference: async () => ({ replaced: false, reference: null }), copyReferenceIntoRun: () => ({}) }
+  })
+
+  const result = await service.acceptCreatorActionCandidate({
+    runId,
+    actionId: 'waving',
+    candidateId: 'candidate-2',
+    sha256: 'c'.repeat(64),
+    qualityOverride: true,
+    acknowledgedWarningCodes: ['visual-defect-motion-unreadable']
+  })
+
+  assert.equal(result.state, 'review-required')
+  assert.equal(result.code, 'action_candidate_accepted_review_required')
+  assert.deepEqual(calls, [{
+    commandId: 'accept-action-candidate',
+    payload: {
+      runId,
+      actionId: 'waving',
+      candidateId: 'candidate-2',
+      sha256: 'c'.repeat(64),
+      qualityOverride: true,
+      acknowledgedWarningCodes: ['visual-defect-motion-unreadable']
+    }
   }])
 })
 

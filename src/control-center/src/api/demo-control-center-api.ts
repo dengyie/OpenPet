@@ -44,6 +44,7 @@ import type {
   CreatorRetryActionRequest,
   CreatorRetryIdentityRequest,
   CreatorAcceptIdentityRequest,
+  CreatorAcceptActionCandidateRequest,
   CreatorExportRecoveryBundleRequest,
   CreatorExportRecoveryBundleResult,
   CreatorImportAvailableActionsRequest,
@@ -4234,6 +4235,23 @@ export const demoControlCenterAPI: ControlCenterApi = {
       state: 'review-required',
       code: 'identity_accepted_review_required',
       message: `身份候选 ${payload.candidateId} 已接受，动作候选已生成，请复查`,
+      run,
+      diagnostics: createDemoCreatorDiagnostics(run.runId, 'review')
+    }
+  },
+  acceptCreatorActionCandidate: async (payload: CreatorAcceptActionCandidateRequest): Promise<CreatorWorkflowResult> => {
+    const run = completeDemoCreatorRun({
+      state: 'review-required',
+      mode: 'full-pet',
+      runId: payload.runId,
+      commandId: 'accept-action-candidate',
+      message: `Accepted retained demo action candidate ${payload.actionId}/${payload.candidateId}`
+    })
+    return {
+      ok: true,
+      state: 'review-required',
+      code: 'action_candidate_accepted_review_required',
+      message: `动作候选 ${payload.candidateId} 已采用，未产生新的图片费用`,
       run,
       diagnostics: createDemoCreatorDiagnostics(run.runId, 'review')
     }

@@ -358,6 +358,14 @@ test('registerCreatorIpc wires creator workflow handlers', async () => {
       calls.push({ type: 'action', payload })
       return { ok: true, state: 'completed', code: 'action_imported', message: 'ok', run: null }
     },
+    acceptCreatorIdentity: async (payload) => {
+      calls.push({ type: 'accept-identity', payload })
+      return { ok: true, state: 'review-required', code: 'identity_accepted_review_required', message: 'ok', run: null }
+    },
+    acceptCreatorActionCandidate: async (payload) => {
+      calls.push({ type: 'accept-action-candidate', payload })
+      return { ok: true, state: 'review-required', code: 'action_candidate_accepted_review_required', message: 'ok', run: null }
+    },
     getLastRun: async () => ({ ok: true, run: null })
   }
 
@@ -400,6 +408,21 @@ test('registerCreatorIpc wires creator workflow handlers', async () => {
     motionPrompt: 'spin quickly',
     referenceImageToken: 'token-reference'
   })
+  await ipcMain.handlers.get(IPC.CREATOR_ACCEPT_IDENTITY)(null, {
+    runId: 'run-1',
+    candidateId: 'canonical-4',
+    sha256: 'f'.repeat(64),
+    qualityOverride: true,
+    acknowledgedWarningCodes: ['visual-score-overall-below-minimum']
+  })
+  await ipcMain.handlers.get(IPC.CREATOR_ACCEPT_ACTION_CANDIDATE)(null, {
+    runId: 'run-1',
+    actionId: 'waving',
+    candidateId: 'candidate-2',
+    sha256: 'c'.repeat(64),
+    qualityOverride: true,
+    acknowledgedWarningCodes: ['visual-defect-motion-unreadable']
+  })
   assert.deepEqual(await ipcMain.handlers.get(IPC.CREATOR_GET_LAST_RUN)(), { ok: true, run: null })
   assert.deepEqual(calls, [
     {
@@ -424,6 +447,27 @@ test('registerCreatorIpc wires creator workflow handlers', async () => {
         actionName: 'spin',
         motionPrompt: 'spin quickly',
         referenceImageToken: 'token-reference'
+      }
+    },
+    {
+      type: 'accept-identity',
+      payload: {
+        runId: 'run-1',
+        candidateId: 'canonical-4',
+        sha256: 'f'.repeat(64),
+        qualityOverride: true,
+        acknowledgedWarningCodes: ['visual-score-overall-below-minimum']
+      }
+    },
+    {
+      type: 'accept-action-candidate',
+      payload: {
+        runId: 'run-1',
+        actionId: 'waving',
+        candidateId: 'candidate-2',
+        sha256: 'c'.repeat(64),
+        qualityOverride: true,
+        acknowledgedWarningCodes: ['visual-defect-motion-unreadable']
       }
     }
   ])

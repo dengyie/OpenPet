@@ -17,6 +17,7 @@ const LEGACY_CREATOR_STUDIO_COMMAND_ID = 'create-run'
 const CREATOR_STUDIO_CONFIRM_COMMAND_ID = 'confirm-task'
 const CREATOR_STUDIO_GENERATE_COMMAND_ID = 'run-step'
 const CREATOR_STUDIO_ACCEPT_IDENTITY_COMMAND_ID = 'accept-identity'
+const CREATOR_STUDIO_ACCEPT_ACTION_CANDIDATE_COMMAND_ID = 'accept-action-candidate'
 const CREATOR_STUDIO_RETRY_ACTION_COMMAND_ID = 'retry-action'
 const CREATOR_STUDIO_RETRY_IDENTITY_COMMAND_ID = 'retry-identity'
 
@@ -1558,8 +1559,11 @@ const createQualityFirstCandidateView = ({ candidate = {}, pluginDataDir = '', r
     ? candidateRecord.candidate
     : null
   const candidateViewSource = persistedCandidate ? { ...persistedCandidate, ...candidate } : candidate
-  const relativePath = normalizeSafeRelativePath(candidate.relativePath)
-  const promptRelativePath = normalizeSafeRelativePath(candidate.promptRelativePath)
+  const sourceArtifacts = Array.isArray(candidateViewSource.artifacts) ? candidateViewSource.artifacts : []
+  const rawArtifact = sourceArtifacts.find((artifact) => ['raw-sheet', 'raw-canonical'].includes(normalizeText(artifact?.role)))
+  const promptArtifact = sourceArtifacts.find((artifact) => normalizeText(artifact?.role) === 'prompt')
+  const relativePath = normalizeSafeRelativePath(candidateViewSource.relativePath || rawArtifact?.relativePath)
+  const promptRelativePath = normalizeSafeRelativePath(candidateViewSource.promptRelativePath || promptArtifact?.relativePath)
   const safeAssetPath = relativePath && isRunRelativePath({ runId, relativePath }) ? relativePath : ''
   const safePromptPath = promptRelativePath && isRunRelativePath({ runId, relativePath: promptRelativePath })
     ? promptRelativePath
@@ -1575,8 +1579,8 @@ const createQualityFirstCandidateView = ({ candidate = {}, pluginDataDir = '', r
     }) &&
     canPreviewImageFile(absolutePath)
   )
-  const artifacts = Array.isArray(candidate.artifacts)
-    ? candidate.artifacts.map((artifact) => {
+  const artifacts = sourceArtifacts.length
+    ? sourceArtifacts.map((artifact) => {
         const artifactPath = normalizeSafeRelativePath(artifact?.relativePath || artifact?.path)
         return artifactPath && isRunRelativePath({ runId, relativePath: artifactPath })
           ? {
@@ -1587,19 +1591,49 @@ const createQualityFirstCandidateView = ({ candidate = {}, pluginDataDir = '', r
           : null
       }).filter(Boolean)
     : []
+  const technicalEligible = typeof candidateViewSource.technicalEligible === 'boolean'
+    ? candidateViewSource.technicalEligible
+    : candidateViewSource.eligible === true
+  const recommended = typeof candidateViewSource.recommended === 'boolean'
+    ? candidateViewSource.recommended
+    : candidateViewSource.eligible === true
+  const selection = isPlainObject(candidateViewSource.selection) && ['automatic', 'human-override'].includes(normalizeText(candidateViewSource.selection.selectionAuthority))
+    ? {
+        candidateId: normalizeText(candidateViewSource.selection.candidateId).slice(0, 128),
+        sha256: normalizeText(candidateViewSource.selection.sha256).slice(0, 128),
+        selectionAuthority: normalizeText(candidateViewSource.selection.selectionAuthority),
+        qualityOverride: candidateViewSource.selection.qualityOverride === true,
+        acknowledgedWarningCodes: createUniqueTextList(candidateViewSource.selection.acknowledgedWarningCodes || []).slice(0, 32),
+        selectedAt: normalizeText(candidateViewSource.selection.selectedAt).slice(0, 64)
+      }
+    : null
+  const selectionState = selection?.selectionAuthority === 'human-override'
+    ? 'selected-by-human'
+    : technicalEligible !== true
+      ? 'technically-unusable'
+      : recommended === true
+        ? 'recommended'
+        : 'selectable-with-warning'
+  const disposition = normalizeText(candidateViewSource.disposition)
   return {
     candidateId: normalizeText(candidate.candidateId),
-    eligible: candidate.eligible === true,
-    technicalEligible: candidate.technicalEligible !== false,
-    disposition: ['selected-anchor', 'alternate', 'duplicate-alternate', 'unusable'].includes(normalizeText(candidate.disposition))
-      ? normalizeText(candidate.disposition)
-      : (candidate.eligible === true ? (candidate.duplicateOfCandidateId ? 'duplicate-alternate' : 'alternate') : 'unusable'),
-    sha256: normalizeText(candidate.sha256).slice(0, 128),
-    score: Number.isFinite(Number(candidate.score)) ? Number(candidate.score) : null,
+    eligible: recommended,
+    technicalEligible,
+    recommended,
+    selectionState,
+    disposition: ['selected-anchor', 'alternate', 'duplicate-alternate', 'selectable-with-warning', 'selected-by-human', 'unusable', 'technically-unusable'].includes(disposition)
+      ? disposition
+      : selectionState,
+    sha256: normalizeText(candidateViewSource.sha256 || rawArtifact?.sha256).slice(0, 128),
+    score: Number.isFinite(Number(candidateViewSource.score ?? candidateViewSource.evaluation?.scores?.overall))
+      ? Number(candidateViewSource.score ?? candidateViewSource.evaluation?.scores?.overall)
+      : null,
     model: normalizeText(candidateViewSource.model).slice(0, 160),
     relativePath: safeAssetPath,
     promptRelativePath: safePromptPath,
     previewable,
+    technicalFailureCodes: createUniqueTextList(candidateViewSource.technicalFailureCodes || []).slice(0, 32),
+    qualityWarningCodes: createUniqueTextList(candidateViewSource.qualityWarningCodes || candidateViewSource.gate?.failures || []).slice(0, 32),
     failureCodes: createUniqueTextList([
       ...(Array.isArray(persistedCandidate?.failureCodes) ? persistedCandidate.failureCodes : []),
       ...(Array.isArray(candidate?.failureCodes) ? candidate.failureCodes : [])
@@ -1610,7 +1644,8 @@ const createQualityFirstCandidateView = ({ candidate = {}, pluginDataDir = '', r
     artifacts,
     canonicalMetrics: isPlainObject(candidate.canonicalMetrics) ? candidate.canonicalMetrics : null,
     descriptors: isPlainObject(candidate.descriptors) ? candidate.descriptors : null,
-    modelAttempts: createQualityFirstModelAttemptViews(candidateViewSource.modelAttempts)
+    modelAttempts: createQualityFirstModelAttemptViews(candidateViewSource.modelAttempts),
+    selection
   }
 }
 
@@ -1714,7 +1749,12 @@ const createQualityFirstIdentityReviewView = ({ run = null, pluginDataDir = '' }
             warningCodes: createUniqueTextList(Array.isArray(result?.warningCodes) ? result.warningCodes : []).slice(0, 16),
             distinctCandidateCount: Math.max(0, Math.trunc(Number(result?.distinctCandidateCount) || 0)),
             evaluatedCandidateCount: Math.max(0, Math.trunc(Number(result?.evaluatedCandidateCount) || 0)),
-            candidateCount: Array.isArray(result?.candidates) ? result.candidates.length : 0
+            candidateCount: Array.isArray(result?.candidates) ? result.candidates.length : 0,
+            candidates: Array.isArray(result?.candidates)
+              ? result.candidates
+                .map((candidate) => createQualityFirstCandidateView({ candidate, pluginDataDir, runId }))
+                .filter((candidate) => candidate.candidateId)
+              : []
           }
         ]).filter(([actionId]) => actionId))
       : {}
@@ -3022,10 +3062,13 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
     label: '正在重新生成 canonical identity'
   })
 
-  const acceptCreatorIdentity = async ({ runId, candidateId, sha256 } = {}) => {
+  const acceptCreatorIdentity = async ({ runId, candidateId, sha256, qualityOverride = false, acknowledgedWarningCodes = [] } = {}) => {
     const normalizedRunId = normalizeText(runId)
     const normalizedCandidateId = normalizeText(candidateId)
     const normalizedSha256 = normalizeText(sha256).toLowerCase()
+    const normalizedWarningCodes = createUniqueTextList(acknowledgedWarningCodes)
+      .filter((code) => SAFE_ID_PATTERN.test(code))
+      .slice(0, 32)
     if (!normalizedRunId || !normalizedCandidateId || !normalizedSha256) {
       return createWorkflowResult({
         state: 'missing-input',
@@ -3055,7 +3098,12 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
       const commandResult = await pluginService.runCommand(
         CREATOR_STUDIO_PLUGIN_ID,
         CREATOR_STUDIO_ACCEPT_IDENTITY_COMMAND_ID,
-        { runId: normalizedRunId, candidateId: normalizedCandidateId, sha256: normalizedSha256 }
+        {
+          runId: normalizedRunId,
+          candidateId: normalizedCandidateId,
+          sha256: normalizedSha256,
+          ...(qualityOverride === true ? { qualityOverride: true, acknowledgedWarningCodes: normalizedWarningCodes } : {})
+        }
       )
       const run = getCreatorStudioRun(commandResult)
       if (!run?.runId) throw new Error('Creator Studio identity acceptance did not return a run')
@@ -3074,6 +3122,87 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
           runId: run.runId,
           commandId: CREATOR_STUDIO_ACCEPT_IDENTITY_COMMAND_ID,
           message: getCommandMessage(commandResult, 'Identity accepted'),
+          diagnostics
+        }),
+        diagnostics
+      })
+    })
+  }
+
+  const acceptCreatorActionCandidate = async ({
+    runId,
+    actionId,
+    candidateId,
+    sha256,
+    qualityOverride = false,
+    acknowledgedWarningCodes = []
+  } = {}) => {
+    const normalizedRunId = normalizeText(runId)
+    const normalizedActionId = normalizeText(actionId)
+    const normalizedCandidateId = normalizeText(candidateId)
+    const normalizedSha256 = normalizeText(sha256).toLowerCase()
+    const normalizedWarningCodes = createUniqueTextList(acknowledgedWarningCodes)
+      .filter((code) => SAFE_ID_PATTERN.test(code))
+      .slice(0, 32)
+    if (!normalizedRunId || !normalizedActionId || !normalizedCandidateId || !normalizedSha256) {
+      return createWorkflowResult({
+        state: 'missing-input',
+        code: 'missing_action_candidate_acceptance',
+        message: '选择动作候选需要 runId、actionId、candidateId 和 sha256'
+      })
+    }
+    if (
+      !isSafeRunId(normalizedRunId) ||
+      !isSafePathSegment(normalizedActionId) ||
+      !isSafePathSegment(normalizedCandidateId) ||
+      !/^[a-f0-9]{64}$/.test(normalizedSha256)
+    ) {
+      return createWorkflowResult({
+        state: 'missing-input',
+        code: 'invalid_action_candidate_acceptance',
+        message: '动作候选标识或 sha256 不符合安全契约'
+      })
+    }
+    return runExclusively({
+      mode: 'full-pet',
+      message: `正在采用已有动作候选 ${normalizedActionId}/${normalizedCandidateId}`
+    }, async () => {
+      assertPluginReady()
+      const pluginDataDir = pluginService.getPluginCreatorDataDir(CREATOR_STUDIO_PLUGIN_ID)
+      updateWorkflowProgress({
+        runId: normalizedRunId,
+        commandId: CREATOR_STUDIO_ACCEPT_ACTION_CANDIDATE_COMMAND_ID,
+        message: `正在复用 ${normalizedActionId} 的已有候选 ${normalizedCandidateId}`
+      })
+      startProgressPolling()
+      const commandResult = await pluginService.runCommand(
+        CREATOR_STUDIO_PLUGIN_ID,
+        CREATOR_STUDIO_ACCEPT_ACTION_CANDIDATE_COMMAND_ID,
+        {
+          runId: normalizedRunId,
+          actionId: normalizedActionId,
+          candidateId: normalizedCandidateId,
+          sha256: normalizedSha256,
+          ...(qualityOverride === true ? { qualityOverride: true, acknowledgedWarningCodes: normalizedWarningCodes } : {})
+        }
+      )
+      const run = getCreatorStudioRun(commandResult)
+      if (!run?.runId) throw new Error('Creator Studio action candidate acceptance did not return a run')
+      const diagnostics = readWorkflowDiagnostics({ pluginDataDir, runId: run.runId })
+      const recoveryRequired = normalizeText(run.status) === 'recovery-required' || diagnostics?.progress?.qualityFirst?.phase === 'recovery-required'
+      const state = recoveryRequired ? 'recovery-required' : 'review-required'
+      return createWorkflowResult({
+        state,
+        code: recoveryRequired ? 'action_candidate_recovery_required' : 'action_candidate_accepted_review_required',
+        message: recoveryRequired
+          ? `已采用动作候选 ${normalizedCandidateId}，但依赖资产仍需处理；请复查 run ${run.runId}`
+          : `已采用动作候选 ${normalizedCandidateId}，未产生新的图片费用；请复查 run ${run.runId}`,
+        run: createRunView({
+          state,
+          mode: 'full-pet',
+          runId: run.runId,
+          commandId: CREATOR_STUDIO_ACCEPT_ACTION_CANDIDATE_COMMAND_ID,
+          message: getCommandMessage(commandResult, 'Action candidate accepted'),
           diagnostics
         }),
         diagnostics
@@ -3736,6 +3865,7 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
     retryFullPetAction,
     retryFullPetIdentity,
     acceptCreatorIdentity,
+    acceptCreatorActionCandidate,
     exportRecoveryBundle,
     importAvailableActions
   }

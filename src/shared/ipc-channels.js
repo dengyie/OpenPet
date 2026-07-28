@@ -139,6 +139,7 @@ const IPC = Object.freeze({
   CREATOR_RETRY_ACTION: 'creator:retry-action',
   CREATOR_RETRY_IDENTITY: 'creator:retry-identity',
   CREATOR_ACCEPT_IDENTITY: 'creator:accept-identity',
+  CREATOR_ACCEPT_ACTION_CANDIDATE: 'creator:accept-action-candidate',
   CREATOR_EXPORT_RECOVERY_BUNDLE: 'creator:export-recovery-bundle',
   CREATOR_IMPORT_AVAILABLE_ACTIONS: 'creator:import-available-actions',
   CREATOR_GET_LAST_RUN: 'creator:get-last-run',

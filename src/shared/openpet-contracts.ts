@@ -2036,6 +2036,17 @@ export interface CreatorAcceptIdentityRequest {
   runId: string
   candidateId: string
   sha256: string
+  qualityOverride?: boolean
+  acknowledgedWarningCodes?: string[]
+}
+
+export interface CreatorAcceptActionCandidateRequest {
+  runId: string
+  actionId: string
+  candidateId: string
+  sha256: string
+  qualityOverride?: boolean
+  acknowledgedWarningCodes?: string[]
 }
 
 export interface CreatorExportRecoveryBundleRequest {
@@ -2158,13 +2169,17 @@ export interface CreatorCanonicalCandidateViewState {
   candidateId: string
   eligible: boolean
   technicalEligible: boolean
-  disposition: 'selected-anchor' | 'alternate' | 'duplicate-alternate' | 'unusable'
+  recommended: boolean
+  selectionState: 'recommended' | 'selectable-with-warning' | 'selected-by-human' | 'technically-unusable'
+  disposition: 'selected-anchor' | 'alternate' | 'duplicate-alternate' | 'selectable-with-warning' | 'selected-by-human' | 'unusable' | 'technically-unusable' | 'recommended'
   sha256: string
   score: number | null
   model: string
   relativePath: string
   promptRelativePath: string
   previewable: boolean
+  technicalFailureCodes: string[]
+  qualityWarningCodes: string[]
   failureCodes: string[]
   attemptKind?: string
   diversityProfileId?: string
@@ -2177,6 +2192,14 @@ export interface CreatorCanonicalCandidateViewState {
   canonicalMetrics: JsonObject | null
   descriptors: JsonObject | null
   modelAttempts: CreatorProviderModelAttemptViewState[]
+  selection: {
+    candidateId: string
+    sha256: string
+    selectionAuthority: 'automatic' | 'human-override'
+    qualityOverride: boolean
+    acknowledgedWarningCodes: string[]
+    selectedAt: string
+  } | null
 }
 
 export interface CreatorIdentityReviewViewState {
@@ -2240,6 +2263,7 @@ export interface CreatorQualityFirstProgressViewState {
     distinctCandidateCount: number
     evaluatedCandidateCount: number
     candidateCount: number
+    candidates: CreatorCanonicalCandidateViewState[]
   }>
 }
 
@@ -3765,6 +3789,7 @@ export interface ControlCenterApi {
   retryCreatorAction: (payload: CreatorRetryActionRequest) => Promise<CreatorWorkflowResult>
   retryCreatorIdentity: (payload: CreatorRetryIdentityRequest) => Promise<CreatorWorkflowResult>
   acceptCreatorIdentity: (payload: CreatorAcceptIdentityRequest) => Promise<CreatorWorkflowResult>
+  acceptCreatorActionCandidate: (payload: CreatorAcceptActionCandidateRequest) => Promise<CreatorWorkflowResult>
   exportCreatorRecoveryBundle: (payload: CreatorExportRecoveryBundleRequest) => Promise<CreatorExportRecoveryBundleResult>
   importCreatorAvailableActions: (payload: CreatorImportAvailableActionsRequest) => Promise<CreatorWorkflowResult>
   getCreatorLastRun: () => Promise<CreatorLastRunResult>
