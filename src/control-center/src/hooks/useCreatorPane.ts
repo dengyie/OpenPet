@@ -336,16 +336,40 @@ export function useCreatorPane(active: boolean) {
     }
   }
 
-  const onAcceptCreatorIdentity = async (candidateId: string, sha256: string) => {
+  const onAcceptCreatorIdentity = async (
+    candidateId: string,
+    sha256: string,
+    options: { qualityOverride: boolean; acknowledgedWarningCodes: string[] }
+  ) => {
     const runId = String(result?.run?.runId || creatorState.lastRun?.runId || '').trim()
     if (!runId || !candidateId || !sha256 || running) return
     setRunning(true)
     setStatus(`正在接受身份候选 ${candidateId}，随后会先生成并检查 idle…`)
     try {
-      const nextResult = await api.acceptCreatorIdentity({ runId, candidateId, sha256 })
+      const nextResult = await api.acceptCreatorIdentity({ runId, candidateId, sha256, ...options })
       await syncAfterWorkflow(nextResult)
     } catch (error) {
       setStatus(messageFromError(error, `身份候选 ${candidateId} 接受失败`))
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  const onAcceptCreatorActionCandidate = async (
+    actionId: string,
+    candidateId: string,
+    sha256: string,
+    options: { qualityOverride: boolean; acknowledgedWarningCodes: string[] }
+  ) => {
+    const runId = String(result?.run?.runId || creatorState.lastRun?.runId || '').trim()
+    if (!runId || !actionId || !candidateId || !sha256 || running) return
+    setRunning(true)
+    setStatus(`正在复用 ${actionId} 的已有候选 ${candidateId}；不会产生新的图片请求…`)
+    try {
+      const nextResult = await api.acceptCreatorActionCandidate({ runId, actionId, candidateId, sha256, ...options })
+      await syncAfterWorkflow(nextResult)
+    } catch (error) {
+      setStatus(messageFromError(error, `动作候选 ${candidateId} 采用失败`))
     } finally {
       setRunning(false)
     }
@@ -528,6 +552,7 @@ export function useCreatorPane(active: boolean) {
     onRetryFullPetAction,
     onRetryFullPetIdentity,
     onAcceptCreatorIdentity,
+    onAcceptCreatorActionCandidate,
     onExportCreatorRecoveryBundle,
     onImportAvailableActions,
     onOpenCreatorStudioDetails,

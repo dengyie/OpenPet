@@ -2888,6 +2888,7 @@
 }
 
 .creator-identity-review,
+.creator-action-candidate-review,
 .creator-recovery-panel {
   display: grid;
   gap: 10px;
@@ -2896,6 +2897,26 @@
   border: 1px solid var(--op-color-border-strong);
   border-radius: var(--op-radius-md);
   background: var(--op-color-surface-sunken);
+}
+
+.creator-action-candidate-review,
+.creator-action-candidate-group,
+.creator-candidate-decision,
+.creator-quality-override-confirmation {
+  display: grid;
+  gap: 8px;
+}
+
+.creator-action-candidate-group {
+  padding-top: 8px;
+  border-top: 1px solid var(--op-color-border-strong);
+}
+
+.creator-quality-override-confirmation {
+  padding: 10px;
+  border: 1px solid var(--op-color-warning);
+  border-radius: var(--op-radius-md);
+  background: var(--op-color-warning-soft);
 }
 
 .creator-identity-review-header {

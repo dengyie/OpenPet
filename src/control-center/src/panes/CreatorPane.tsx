@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type {
   CreatorActionAssetViewState,
   CreatorActionAttemptViewState,
+  CreatorCanonicalCandidateViewState,
   CreatorStateViewState,
   CreatorWorkflowProgressViewState,
   CreatorWorkflowResult,
@@ -22,6 +23,11 @@ interface ExistingActionDraft {
   motionPrompt: string
   referenceImageToken: string
   referenceFileName: string
+}
+
+interface CandidateAcceptanceOptions {
+  qualityOverride: boolean
+  acknowledgedWarningCodes: string[]
 }
 
 export interface CreatorPaneProps {
@@ -52,7 +58,8 @@ export interface CreatorPaneProps {
   onRestoreClickAction: () => void | Promise<void>
   onRetryFullPetAction: (actionId: string) => void | Promise<void>
   onRetryFullPetIdentity: () => void | Promise<void>
-  onAcceptCreatorIdentity: (candidateId: string, sha256: string) => void | Promise<void>
+  onAcceptCreatorIdentity: (candidateId: string, sha256: string, options: CandidateAcceptanceOptions) => void | Promise<void>
+  onAcceptCreatorActionCandidate: (actionId: string, candidateId: string, sha256: string, options: CandidateAcceptanceOptions) => void | Promise<void>
   onExportCreatorRecoveryBundle: () => void | Promise<void>
   onImportAvailableActions: () => void | Promise<void>
   onOpenCreatorStudioDetails: () => void | Promise<void>
@@ -475,6 +482,27 @@ const formatAttemptStatus = (value: string) => {
   return 'unavailable'
 }
 
+const formatCandidateSelectionState = (candidate: CreatorCanonicalCandidateViewState) => {
+  if (candidate.selectionState === 'selected-by-human') return '已由你选择'
+  if (candidate.selectionState === 'technically-unusable') return '技术上不可用'
+  if (candidate.selectionState === 'selectable-with-warning') return '未达推荐标准，但可以选择'
+  return '推荐使用'
+}
+
+const CandidateDecisionEvidence = ({ candidate }: { candidate: CreatorCanonicalCandidateViewState }) => (
+  <div className="creator-candidate-decision">
+    <strong>{formatCandidateSelectionState(candidate)}</strong>
+    {candidate.selection?.qualityOverride ? <span>采用时未达推荐标准</span> : null}
+    {typeof candidate.score === 'number' ? <span>综合分 {candidate.score}</span> : null}
+    {candidate.qualityWarningCodes.length ? (
+      <span className="creator-candidate-failures">质量建议：{candidate.qualityWarningCodes.join('、')}</span>
+    ) : null}
+    {candidate.technicalFailureCodes.length ? (
+      <span className="creator-candidate-failures">技术阻断：{candidate.technicalFailureCodes.join('、')}</span>
+    ) : null}
+  </div>
+)
+
 const IdentityReviewPanel = ({
   progress,
   running,
@@ -484,10 +512,11 @@ const IdentityReviewPanel = ({
 }: {
   progress: CreatorWorkflowProgressViewState
   running: boolean
-  onAcceptCreatorIdentity: (candidateId: string, sha256: string) => void | Promise<void>
+  onAcceptCreatorIdentity: (candidateId: string, sha256: string, options: CandidateAcceptanceOptions) => void | Promise<void>
   onRetryFullPetIdentity: () => void | Promise<void>
   onLoadAssetPreview?: (relativePath: string) => Promise<string>
 }) => {
+  const [confirmingCandidateId, setConfirmingCandidateId] = useState('')
   const qualityFirst = progress.qualityFirst
   const identityReview = qualityFirst?.identityReview
   if (!qualityFirst || !identityReview) return null
@@ -511,7 +540,7 @@ const IdentityReviewPanel = ({
         {identityReview.candidates.map((candidate) => (
           <div
             key={candidate.candidateId}
-            className={`creator-canonical-candidate ${candidate.disposition === 'unusable' ? 'error' : 'ok'} ${candidate.disposition}`.trim()}
+            className={`creator-canonical-candidate ${candidate.technicalEligible ? 'ok' : 'error'} ${candidate.disposition}`.trim()}
             data-testid={`creator-canonical-candidate-${candidate.candidateId}`}
           >
             {candidate.relativePath ? (
@@ -529,14 +558,7 @@ const IdentityReviewPanel = ({
             ) : <span className="creator-candidate-preview-missing">候选图不可预览</span>}
             <div className="creator-candidate-details">
               <strong>{candidate.candidateId}</strong>
-              <span>{candidate.disposition === 'selected-anchor'
-                ? '已选为唯一 canonical anchor'
-                : candidate.disposition === 'duplicate-alternate'
-                  ? '质量通过 · 视觉重复备用候选'
-                  : candidate.disposition === 'alternate'
-                    ? '质量通过 · 备用候选'
-                    : '未通过质量门'}</span>
-              {typeof candidate.score === 'number' ? <span>综合分 {candidate.score}</span> : null}
+              <CandidateDecisionEvidence candidate={candidate} />
               {candidate.model ? <span>模型 {candidate.model}</span> : null}
               <code title={candidate.sha256}>sha256 {candidate.sha256.slice(0, 12)}…</code>
               {candidate.failureCodes.length ? (
@@ -570,17 +592,42 @@ const IdentityReviewPanel = ({
             <button
               type="button"
               className="primary"
-              disabled={running || !acceptancePending || !candidate.eligible || !candidate.sha256}
-              onClick={() => onAcceptCreatorIdentity(candidate.candidateId, candidate.sha256)}
+              disabled={running || !acceptancePending || !candidate.technicalEligible || !candidate.sha256}
+              onClick={() => {
+                if (candidate.recommended) {
+                  void onAcceptCreatorIdentity(candidate.candidateId, candidate.sha256, { qualityOverride: false, acknowledgedWarningCodes: [] })
+                } else {
+                  setConfirmingCandidateId(candidate.candidateId)
+                }
+              }}
               data-testid={`creator-accept-identity-${candidate.candidateId}`}
               title={!acceptancePending
                 ? '当前使用自动选择或已完成身份选择，无需再次接受候选'
-                : candidate.eligible
-                  ? '接受此身份候选并开始 idle 生成'
-                  : '该候选未通过质量门'}
+                : candidate.technicalEligible
+                  ? (candidate.recommended ? '接受推荐身份候选并开始 idle 生成' : '该候选未达推荐标准，但技术完整，可以由你选择')
+                  : '该候选技术上不可用'}
             >
-              接受此身份候选
+              {candidate.recommended ? '选择此候选' : '仍然选择此候选'}
             </button>
+            {confirmingCandidateId === candidate.candidateId ? (
+              <div className="creator-quality-override-confirmation" data-testid="creator-quality-override-confirmation">
+                <strong>确认采用未推荐候选 {candidate.candidateId}</strong>
+                <span>sha256 {candidate.sha256.slice(0, 12)}…；自动质量结果仍保持未通过，后续动作可能继承这些差异。</span>
+                <span>{candidate.qualityWarningCodes.join('、') || '自动质量系统未给出具体原因'}</span>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={running}
+                  onClick={() => onAcceptCreatorIdentity(candidate.candidateId, candidate.sha256, {
+                    qualityOverride: true,
+                    acknowledgedWarningCodes: candidate.qualityWarningCodes
+                  })}
+                >
+                  我了解风险，按我的选择继续
+                </button>
+                <button type="button" className="ghost" onClick={() => setConfirmingCandidateId('')}>取消</button>
+              </div>
+            ) : null}
           </div>
         ))}
       </div>
@@ -597,6 +644,87 @@ const IdentityReviewPanel = ({
   )
 }
 
+const ActionCandidateReview = ({
+  progress,
+  running,
+  onAcceptCreatorActionCandidate,
+  onLoadAssetPreview
+}: {
+  progress: CreatorWorkflowProgressViewState
+  running: boolean
+  onAcceptCreatorActionCandidate: (actionId: string, candidateId: string, sha256: string, options: CandidateAcceptanceOptions) => void | Promise<void>
+  onLoadAssetPreview?: (relativePath: string) => Promise<string>
+}) => {
+  const [confirmingKey, setConfirmingKey] = useState('')
+  const entries = Object.entries(progress.qualityFirst?.actionResults || {})
+    .filter(([, result]) => result.candidates.length > 0)
+  if (!entries.length) return null
+  return (
+    <div className="creator-action-candidate-review" data-testid="creator-action-candidate-review">
+      <strong>动作候选选择</strong>
+      <span>复用已有资产不会产生新的图片请求；重新生成会产生新的图片请求。</span>
+      {entries.map(([actionId, result]) => (
+        <div key={actionId} className="creator-action-candidate-group">
+          <strong>{actionId}</strong>
+          <div className="creator-canonical-candidates">
+            {result.candidates.map((candidate) => {
+              const key = `${actionId}:${candidate.candidateId}`
+              return (
+                <div key={key} className={`creator-canonical-candidate ${candidate.technicalEligible ? 'ok' : 'error'}`}>
+                  {candidate.relativePath ? (
+                    <LazyAssetThumb
+                      asset={{ actionId, kind: 'frame', relativePath: candidate.relativePath, label: candidate.candidateId, previewable: candidate.previewable }}
+                      actionId={actionId}
+                      onLoadAssetPreview={onLoadAssetPreview}
+                    />
+                  ) : null}
+                  <div className="creator-candidate-details">
+                    <strong>{candidate.candidateId}</strong>
+                    <CandidateDecisionEvidence candidate={candidate} />
+                    <code title={candidate.sha256}>sha256 {candidate.sha256.slice(0, 12)}…</code>
+                  </div>
+                  <button
+                    type="button"
+                    className="primary"
+                    disabled={running || !candidate.technicalEligible || !candidate.sha256}
+                    onClick={() => {
+                      if (candidate.recommended) {
+                        void onAcceptCreatorActionCandidate(actionId, candidate.candidateId, candidate.sha256, { qualityOverride: false, acknowledgedWarningCodes: [] })
+                      } else {
+                        setConfirmingKey(key)
+                      }
+                    }}
+                    data-testid={`creator-accept-action-candidate-${actionId}-${candidate.candidateId}`}
+                  >
+                    {candidate.recommended ? '复用已有资产' : '按我的选择复用'}
+                  </button>
+                  {confirmingKey === key ? (
+                    <div className="creator-quality-override-confirmation" data-testid={`creator-action-quality-override-${actionId}-${candidate.candidateId}`}>
+                      <strong>该动作候选未达推荐标准</strong>
+                      <span>{candidate.qualityWarningCodes.join('、') || '自动质量系统未给出具体原因'}</span>
+                      <button
+                        type="button"
+                        className="primary"
+                        onClick={() => onAcceptCreatorActionCandidate(actionId, candidate.candidateId, candidate.sha256, {
+                          qualityOverride: true,
+                          acknowledgedWarningCodes: candidate.qualityWarningCodes
+                        })}
+                      >
+                        我了解风险，复用此资产
+                      </button>
+                      <button type="button" className="ghost" onClick={() => setConfirmingKey('')}>取消</button>
+                    </div>
+                  ) : null}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 const ResultCard = ({
   result,
   running,
@@ -609,6 +737,7 @@ const ResultCard = ({
   onRetryFullPetAction,
   onRetryFullPetIdentity,
   onAcceptCreatorIdentity,
+  onAcceptCreatorActionCandidate,
   onExportCreatorRecoveryBundle,
   onImportAvailableActions,
   onOpenCreatorStudioDetails,
@@ -626,7 +755,8 @@ const ResultCard = ({
   onRestoreClickAction: () => void | Promise<void>
   onRetryFullPetAction: (actionId: string) => void | Promise<void>
   onRetryFullPetIdentity: () => void | Promise<void>
-  onAcceptCreatorIdentity: (candidateId: string, sha256: string) => void | Promise<void>
+  onAcceptCreatorIdentity: (candidateId: string, sha256: string, options: CandidateAcceptanceOptions) => void | Promise<void>
+  onAcceptCreatorActionCandidate: (actionId: string, candidateId: string, sha256: string, options: CandidateAcceptanceOptions) => void | Promise<void>
   onExportCreatorRecoveryBundle: () => void | Promise<void>
   onImportAvailableActions: () => void | Promise<void>
   onOpenCreatorStudioDetails: () => void | Promise<void>
@@ -698,6 +828,14 @@ const ResultCard = ({
           running={running}
           onAcceptCreatorIdentity={onAcceptCreatorIdentity}
           onRetryFullPetIdentity={onRetryFullPetIdentity}
+          onLoadAssetPreview={onLoadAssetPreview}
+        />
+      ) : null}
+      {progress?.qualityFirst ? (
+        <ActionCandidateReview
+          progress={progress}
+          running={running}
+          onAcceptCreatorActionCandidate={onAcceptCreatorActionCandidate}
           onLoadAssetPreview={onLoadAssetPreview}
         />
       ) : null}
@@ -940,6 +1078,7 @@ export function CreatorPane({
   onRetryFullPetAction,
   onRetryFullPetIdentity,
   onAcceptCreatorIdentity,
+  onAcceptCreatorActionCandidate,
   onExportCreatorRecoveryBundle,
   onImportAvailableActions,
   onOpenCreatorStudioDetails,
@@ -1207,6 +1346,7 @@ export function CreatorPane({
           onRetryFullPetAction={onRetryFullPetAction}
           onRetryFullPetIdentity={onRetryFullPetIdentity}
           onAcceptCreatorIdentity={onAcceptCreatorIdentity}
+          onAcceptCreatorActionCandidate={onAcceptCreatorActionCandidate}
           onExportCreatorRecoveryBundle={onExportCreatorRecoveryBundle}
           onImportAvailableActions={onImportAvailableActions}
           onOpenCreatorStudioDetails={onOpenCreatorStudioDetails}
