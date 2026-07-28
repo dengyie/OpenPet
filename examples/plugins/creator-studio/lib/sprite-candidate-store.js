@@ -32,6 +32,10 @@ const writeAtomic = (filePath, value) => {
   }
 }
 const sanitizeFailures = (value) => Array.isArray(value) ? value.slice(0, 32).map((entry) => String(entry).slice(0, 120)) : []
+const sanitizeSha256 = (value) => {
+  const normalized = String(value || '').trim().toLowerCase()
+  return /^[a-f0-9]{64}$/.test(normalized) ? normalized : ''
+}
 const sanitizeTraceId = (value) => {
   const normalized = String(value || '').trim()
   return /^[A-Za-z0-9][A-Za-z0-9:_-]{0,127}$/.test(normalized) ? normalized : ''
@@ -83,8 +87,29 @@ const sanitizeModelAttempts = (value) => Array.isArray(value) ? value.slice(0, 1
     ...(sanitizeTraceContext(attempt?.traceContext) ? { traceContext: sanitizeTraceContext(attempt.traceContext) } : {})
   }
 }) : []
+const sanitizeSelection = ({ value, candidateId, sha256 }) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const selectionCandidateId = String(value.candidateId || '').trim()
+  const selectionSha256 = sanitizeSha256(value.sha256)
+  const selectionAuthority = ['automatic', 'human-override'].includes(value.selectionAuthority)
+    ? value.selectionAuthority
+    : ''
+  if (!selectionAuthority || selectionCandidateId !== candidateId || !selectionSha256 || selectionSha256 !== sha256) {
+    throw new Error('Candidate selection does not match the retained candidate')
+  }
+  return {
+    candidateId,
+    sha256,
+    selectionAuthority,
+    qualityOverride: value.qualityOverride === true,
+    acknowledgedWarningCodes: sanitizeFailures(value.acknowledgedWarningCodes),
+    selectedAt: String(value.selectedAt || '').slice(0, 64)
+  }
+}
 const sanitizeCandidate = ({ dataDir, candidate }) => {
   const source = candidate && typeof candidate === 'object' ? candidate : {}
+  const candidateId = normalizeSegment(source.candidateId, 'candidateId')
+  const sha256 = sanitizeSha256(source.sha256)
   const artifacts = Array.isArray(source.artifacts) ? source.artifacts.map((artifact) => {
     const resolved = resolveInsideDataDir({ dataDir, filePath: artifact?.path })
     const actualHash = sha256File(resolved.absolute)
@@ -102,8 +127,10 @@ const sanitizeCandidate = ({ dataDir, candidate }) => {
     meanColorDescriptor: Array.isArray(source.descriptors.meanColorDescriptor) ? source.descriptors.meanColorDescriptor.filter((value) => Number.isFinite(value)).slice(0, 8) : []
   } : undefined
   const modelAttempts = sanitizeModelAttempts(source.modelAttempts)
+  const selection = sanitizeSelection({ value: source.selection, candidateId, sha256 })
   return {
-    candidateId: normalizeSegment(source.candidateId, 'candidateId'),
+    candidateId,
+    ...(sha256 ? { sha256 } : {}),
     attemptKind: ['initial', 'duplicate-replacement', 'repair'].includes(source.attemptKind) ? source.attemptKind : 'initial',
     dispatchIndex: Number.isInteger(source.dispatchIndex) ? source.dispatchIndex : 0,
     ...(sanitizeStrategyId(source.strategyId) ? { strategyId: sanitizeStrategyId(source.strategyId) } : {}),
@@ -118,6 +145,11 @@ const sanitizeCandidate = ({ dataDir, candidate }) => {
     ...(sanitizeQuality(source.qa) ? { qa: sanitizeQuality(source.qa) } : {}),
     ...(sanitizeGate(source.gate) ? { gate: sanitizeGate(source.gate) } : {}),
     ...(source.failureCodes ? { failureCodes: sanitizeFailures(source.failureCodes) } : {}),
+    ...(typeof source.technicalEligible === 'boolean' ? { technicalEligible: source.technicalEligible } : {}),
+    ...(typeof source.recommended === 'boolean' ? { recommended: source.recommended } : {}),
+    ...(source.technicalFailureCodes ? { technicalFailureCodes: sanitizeFailures(source.technicalFailureCodes) } : {}),
+    ...(source.qualityWarningCodes ? { qualityWarningCodes: sanitizeFailures(source.qualityWarningCodes) } : {}),
+    ...(selection ? { selection } : {}),
     ...(modelAttempts.length ? { modelAttempts } : {}),
     ...(source.evaluation && typeof source.evaluation === 'object' ? { evaluation: {
       recommendation: String(source.evaluation.recommendation || '').slice(0, 32),

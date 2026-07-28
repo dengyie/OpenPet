@@ -88,6 +88,50 @@ test('candidate store preserves bounded provider failure attempts without persis
   assert.equal(stored.includes('sk-must-not-persist'), false)
 })
 
+test('candidate store preserves technical recommendation and hash-bound human selection evidence', () => {
+  const dataDir = createDataDir()
+  const record = writeCandidateRecord({
+    dataDir,
+    runId: 'run-human-choice',
+    scope: 'canonical',
+    candidate: {
+      candidateId: 'canonical-4',
+      sha256: 'f'.repeat(64),
+      technicalEligible: true,
+      recommended: false,
+      technicalFailureCodes: [],
+      qualityWarningCodes: ['visual-defect-identity-drift', 'visual-score-overall-below-minimum'],
+      selection: {
+        candidateId: 'canonical-4',
+        sha256: 'f'.repeat(64),
+        selectionAuthority: 'human-override',
+        qualityOverride: true,
+        acknowledgedWarningCodes: ['visual-defect-identity-drift', 'visual-score-overall-below-minimum'],
+        selectedAt: '2026-07-28T00:00:00.000Z',
+        ignoredSecret: 'sk-do-not-store'
+      }
+    }
+  })
+
+  assert.equal(record.candidate.sha256, 'f'.repeat(64))
+  assert.equal(record.candidate.technicalEligible, true)
+  assert.equal(record.candidate.recommended, false)
+  assert.deepEqual(record.candidate.technicalFailureCodes, [])
+  assert.deepEqual(record.candidate.qualityWarningCodes, [
+    'visual-defect-identity-drift',
+    'visual-score-overall-below-minimum'
+  ])
+  assert.deepEqual(record.candidate.selection, {
+    candidateId: 'canonical-4',
+    sha256: 'f'.repeat(64),
+    selectionAuthority: 'human-override',
+    qualityOverride: true,
+    acknowledgedWarningCodes: ['visual-defect-identity-drift', 'visual-score-overall-below-minimum'],
+    selectedAt: '2026-07-28T00:00:00.000Z'
+  })
+  assert.equal(fs.readFileSync(path.join(dataDir, record.relativePath), 'utf8').includes('sk-do-not-store'), false)
+})
+
 test('candidate store rejects escaping assets and hash mismatches', () => {
   const dataDir = createDataDir()
   const outside = path.join(os.tmpdir(), `outside-${Date.now()}.png`)
