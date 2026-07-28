@@ -199,6 +199,50 @@ test('host evaluates duplicate canonical outputs as paid candidates and keeps ev
   assert.equal(persisted.length, 2)
 })
 
+test('host canonical evaluation preserves technical eligibility when quality recommendation fails', async () => {
+  const persisted = []
+  const pool = await hostModelBridgeModule.__testInternals.evaluateCanonicalCandidatePool({
+    pool: {
+      version: 1,
+      dispatchCount: 1,
+      distinctEligibleCount: 1,
+      candidates: [{
+        candidateId: 'canonical-4',
+        path: '/data/canonical-4.png',
+        sha256: 'f'.repeat(64),
+        eligible: true,
+        technicalEligible: true,
+        failureCodes: []
+      }]
+    },
+    dataDir: '/data',
+    runId: 'run-1',
+    sourcePath: '/data/source.png',
+    createBoard: async () => ({
+      path: '/data/board.png',
+      sha256: 'e'.repeat(64),
+      regions: [{ regionId: 'source', role: 'source-identity' }, { regionId: 'canonical-4', role: 'canonical-candidate' }]
+    }),
+    requestEvaluation: async () => ({
+      evaluation: { candidates: [{ candidateId: 'canonical-4', scores: { identity: 84, silhouette: 45, overall: 68 } }] },
+      gate: { candidateGates: { 'canonical-4': { ok: false, outcome: 'reject', failures: ['visual-score-silhouette-below-minimum', 'visual-score-overall-below-minimum'] } }, },
+      evidenceRelativePath: 'runs/run-1/evaluations/canonical.json'
+    }),
+    persistCandidate: async (candidate) => persisted.push(structuredClone(candidate))
+  })
+
+  assert.equal(pool.passingCandidateCount, 0)
+  assert.equal(pool.candidates[0].technicalEligible, true)
+  assert.equal(pool.candidates[0].recommended, false)
+  assert.equal(pool.candidates[0].eligible, false)
+  assert.deepEqual(pool.candidates[0].technicalFailureCodes, [])
+  assert.deepEqual(pool.candidates[0].qualityWarningCodes, [
+    'visual-score-silhouette-below-minimum',
+    'visual-score-overall-below-minimum'
+  ])
+  assert.equal(persisted[0].technicalEligible, true)
+})
+
 test('host selected action delegates to the bounded quality-first runner', async () => {
   const generated = [
     { candidateId: 'one', descriptors: { perceptualHash: '0000', identityDescriptor: [0], alphaMaskDescriptor: [0] } },

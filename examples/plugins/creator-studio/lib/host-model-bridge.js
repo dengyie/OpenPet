@@ -2870,7 +2870,12 @@ const generateCanonicalCandidatePool = async ({
       })
     ))
     const duplicate = Boolean(duplicateOf)
-    const technicalEligible = generated?.eligible === true
+    const technicalEligible = typeof generated?.technicalEligible === 'boolean'
+      ? generated.technicalEligible
+      : generated?.eligible === true
+    const recommended = typeof generated?.recommended === 'boolean'
+      ? generated.recommended
+      : technicalEligible
     const candidate = {
       ...generated,
       candidateId: String(generated?.candidateId || `canonical-${dispatchIndex}`),
@@ -2878,7 +2883,10 @@ const generateCanonicalCandidatePool = async ({
       attemptKind,
       diversityProfileId,
       technicalEligible,
-      eligible: technicalEligible,
+      recommended,
+      eligible: recommended,
+      technicalFailureCodes: technicalEligible ? [] : [...new Set(generated?.technicalFailureCodes || generated?.failureCodes || [])],
+      qualityWarningCodes: [...new Set(generated?.qualityWarningCodes || [])],
       diversityStatus: duplicate ? 'duplicate' : 'distinct',
       failureCodes: Array.isArray(generated?.failureCodes) ? [...new Set(generated.failureCodes)] : [],
       ...(duplicate ? {
@@ -2887,7 +2895,7 @@ const generateCanonicalCandidatePool = async ({
       } : {})
     }
     candidates.push(candidate)
-    if (candidate.eligible && !duplicate && sha256) distinctCandidates.push(candidate)
+    if (candidate.technicalEligible && !duplicate && sha256) distinctCandidates.push(candidate)
     await persistCandidate(candidate)
   }
   return { version: 1, dispatchCount: candidates.length, distinctEligibleCount: distinctCandidates.length, candidates }
@@ -2904,8 +2912,7 @@ const evaluateCanonicalCandidatePool = async ({
 } = {}) => {
   const candidates = Array.isArray(pool?.candidates) ? pool.candidates : []
   const evaluable = candidates.filter((candidate) => (
-    candidate?.technicalEligible !== false &&
-    candidate?.eligible === true &&
+    candidate?.technicalEligible === true &&
     candidate?.path &&
     candidate?.sha256
   ))
@@ -2913,7 +2920,12 @@ const evaluateCanonicalCandidatePool = async ({
     return {
       ...pool,
       passingCandidateCount: 0,
-      candidates: candidates.map((candidate) => ({ ...candidate, eligible: false, disposition: 'unusable' }))
+      candidates: candidates.map((candidate) => ({
+        ...candidate,
+        eligible: false,
+        recommended: false,
+        disposition: candidate?.technicalEligible === true ? 'selectable-with-warning' : 'unusable'
+      }))
     }
   }
   const evaluatorBoardPath = path.join(dataDir, `runs/${runId}/evaluations/canonical-comparison-board.png`)
@@ -2940,23 +2952,31 @@ const evaluateCanonicalCandidatePool = async ({
     const candidateGate = evaluation.gate?.candidateGates?.[candidate.candidateId]
     candidate.evaluation = candidateEvaluation || null
     candidate.gate = candidateGate || { ok: false, outcome: 'cannot-evaluate', failures: ['canonical-comparison-result-missing'] }
-    candidate.eligible = candidate.gate.ok === true
+    candidate.recommended = candidate.gate.ok === true
+    candidate.eligible = candidate.recommended
     candidate.score = Number(candidateEvaluation?.scores?.overall) || 0
     candidate.failureCodes = [...new Set([...(candidate.failureCodes || []), ...(candidate.gate.failures || [])])]
-    candidate.disposition = candidate.eligible
+    candidate.technicalFailureCodes = [...new Set(candidate.technicalFailureCodes || [])]
+    candidate.qualityWarningCodes = [...new Set(candidate.gate.failures || [])]
+    candidate.disposition = candidate.recommended
       ? (candidate.duplicateOfCandidateId ? 'duplicate-alternate' : 'alternate')
-      : 'unusable'
+      : 'selectable-with-warning'
     candidate.evaluationEvidenceRelativePath = evaluation.evidenceRelativePath
     await persistCandidate(candidate)
   }
   const normalizedCandidates = candidates.map((candidate) => (
     evaluable.includes(candidate)
       ? candidate
-      : { ...candidate, eligible: false, disposition: 'unusable' }
+      : {
+          ...candidate,
+          eligible: false,
+          recommended: false,
+          disposition: candidate?.technicalEligible === true ? 'selectable-with-warning' : 'unusable'
+        }
   ))
   return {
     ...pool,
-    passingCandidateCount: normalizedCandidates.filter((candidate) => candidate.eligible === true).length,
+    passingCandidateCount: normalizedCandidates.filter((candidate) => candidate.recommended === true).length,
     candidates: normalizedCandidates,
     evaluationEvidenceRelativePath: evaluation.evidenceRelativePath,
     evaluatorBoardRelativePath: path.relative(dataDir, board.path).replace(/\\/g, '/')

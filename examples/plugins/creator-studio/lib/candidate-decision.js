@@ -32,6 +32,24 @@ const normalizeCandidateDecision = ({
   qualityWarningCodes: uniqueCodes(qualityWarningCodes)
 })
 
+const normalizeStoredCandidateDecision = (candidate = {}) => {
+  const technicalEligible = typeof candidate.technicalEligible === 'boolean'
+    ? candidate.technicalEligible
+    : candidate.eligible === true
+  const recommended = typeof candidate.recommended === 'boolean'
+    ? candidate.recommended
+    : candidate.eligible === true
+  return normalizeCandidateDecision({
+    candidate,
+    technicalEligible,
+    recommended,
+    technicalFailureCodes: candidate.technicalFailureCodes || (technicalEligible ? [] : candidate.failureCodes),
+    qualityWarningCodes: candidate.qualityWarningCodes || (technicalEligible && !recommended
+      ? (candidate.gate?.failures || candidate.failureCodes)
+      : [])
+  })
+}
+
 const assertHumanCandidateSelection = ({
   candidate,
   expectedHash,
@@ -100,5 +118,6 @@ module.exports = {
   assertHumanCandidateSelection,
   createCandidateSelection,
   normalizeCandidateDecision,
+  normalizeStoredCandidateDecision,
   uniqueCodes
 }

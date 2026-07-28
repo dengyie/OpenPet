@@ -65,6 +65,63 @@ test('start generates canonical candidates and blocks all action generation unti
   assert.deepEqual(h.calls.actions, [])
 })
 
+test('canonical quality failures pause for human choice and allow an explicit warned override', async () => {
+  const actionCanonicals = []
+  const orchestrator = createQualityFirstFullPetOrchestrator({
+    generateCanonicalCandidatePool: async () => ({
+      dispatchCount: 2,
+      candidates: [{
+        candidateId: 'canonical-4',
+        sha256: 'f'.repeat(64),
+        technicalEligible: true,
+        recommended: false,
+        eligible: false,
+        score: 68,
+        qualityWarningCodes: ['visual-defect-identity-drift', 'visual-score-overall-below-minimum'],
+        gate: { ok: false, outcome: 'reject', failures: ['visual-defect-identity-drift', 'visual-score-overall-below-minimum'] }
+      }]
+    }),
+    runQualityFirstAction: async ({ actionId, canonical }) => {
+      actionCanonicals.push(canonical.candidateId)
+      return { ok: true, actionId, selectedCandidateId: `${actionId}-candidate` }
+    },
+    createCharacterScaleProfile: async () => ({ hash: 'p'.repeat(64) }),
+    finalizePackage: async () => ({ artifacts: { outputDir: '/data/package' } }),
+    now: () => '2026-07-28T00:00:00.000Z'
+  })
+
+  const pending = await orchestrator.start({
+    run: { runId: 'run-1' },
+    plan: { hash: 'plan-hash' },
+    actions: ['idle'],
+    requireIdentityReviewBeforeActions: false
+  })
+
+  assert.equal(pending.status, 'awaiting_identity_review')
+  assert.equal(pending.qualityFirst.passingCandidateCount, 0)
+  assert.equal(pending.qualityFirst.selectedCanonical, null)
+  assert.equal(pending.qualityFirst.canonicalCandidates[0].technicalEligible, true)
+  assert.equal(pending.qualityFirst.canonicalCandidates[0].recommended, false)
+  assert.equal(pending.qualityFirst.canonicalCandidates[0].disposition, 'selectable-with-warning')
+  assert.deepEqual(actionCanonicals, [])
+
+  const accepted = await orchestrator.acceptCanonicalIdentity({
+    run: pending,
+    candidateId: 'canonical-4',
+    sha256: 'f'.repeat(64),
+    qualityOverride: true,
+    acknowledgedWarningCodes: ['visual-score-overall-below-minimum', 'visual-defect-identity-drift'],
+    plan: { hash: 'plan-hash' },
+    actions: ['idle']
+  })
+
+  assert.equal(accepted.status, 'ready_for_review')
+  assert.equal(accepted.qualityFirst.acceptedCanonical.recommended, false)
+  assert.equal(accepted.qualityFirst.acceptedCanonical.selection.selectionAuthority, 'human-override')
+  assert.equal(accepted.qualityFirst.acceptedCanonical.selection.qualityOverride, true)
+  assert.deepEqual(actionCanonicals, ['canonical-4'])
+})
+
 test('canonical acceptance runs idle first, locks scale profile, continues optional actions, and mirrors running-left', async () => {
   const h = createHarness()
   const pending = await h.orchestrator.start({ run: { runId: 'run-1' }, plan: { hash: 'plan-hash' }, requireIdentityReviewBeforeActions: true })
@@ -143,7 +200,7 @@ test('idle failure produces recovery-required state and never runs optional acti
   assert.equal(h.calls.recovery, 1)
 })
 
-test('identity acceptance requires an eligible candidate and exact hash', async () => {
+test('identity acceptance requires a technically eligible candidate and exact hash', async () => {
   const h = createHarness()
   const pending = await h.orchestrator.start({ run: { runId: 'run-1' }, plan: { hash: 'plan-hash' }, requireIdentityReviewBeforeActions: true })
   await assert.rejects(() => h.orchestrator.acceptCanonicalIdentity({ run: pending, candidateId: 'canonical-2', sha256: 'wrong' }), /not eligible or hash/i)
@@ -257,13 +314,13 @@ test('successful action results retain degraded diversity evidence without becom
   })
 })
 
-test('canonical generation fails only when no candidate passes the quality gates', async () => {
+test('canonical generation fails only when no candidate is technically usable', async () => {
   const orchestrator = createQualityFirstFullPetOrchestrator({
     generateCanonicalCandidatePool: async () => ({
       dispatchCount: 4,
       candidates: [
-        { candidateId: 'canonical-1', eligible: false, sha256: 'a'.repeat(64), failureCodes: ['identity-gate-failed'], relativePath: 'runs/run-1/candidates/canonical/canonical-1/raw.png' },
-        { candidateId: 'canonical-2', eligible: false, sha256: 'b'.repeat(64), failureCodes: ['incomplete-subject'], relativePath: '/Users/mango/private.png', promptText: 'secret' }
+        { candidateId: 'canonical-1', technicalEligible: false, recommended: false, eligible: false, sha256: 'a'.repeat(64), failureCodes: ['identity-gate-failed'], relativePath: 'runs/run-1/candidates/canonical/canonical-1/raw.png' },
+        { candidateId: 'canonical-2', technicalEligible: false, recommended: false, eligible: false, sha256: 'b'.repeat(64), failureCodes: ['incomplete-subject'], relativePath: '/Users/mango/private.png', promptText: 'secret' }
       ]
     }),
     runQualityFirstAction: async () => ({ ok: true }),

@@ -1,4 +1,8 @@
 const crypto = require('node:crypto')
+const {
+  createCandidateSelection,
+  normalizeStoredCandidateDecision
+} = require('./candidate-decision')
 
 const ACTION_ORDER = Object.freeze(['idle', 'running-right', 'waving', 'jumping', 'failed', 'waiting', 'running', 'review'])
 const normalizeId = (value) => String(value || '').trim()
@@ -17,13 +21,17 @@ const publicCanonicalCandidate = (candidate = {}) => {
   const promptRelativePath = normalizeSafeRelativePath(candidate.promptRelativePath)
   const candidateRecordRelativePath = normalizeSafeRelativePath(candidate.candidateRecordRelativePath)
   const evaluationEvidenceRelativePath = normalizeSafeRelativePath(candidate.evaluationEvidenceRelativePath)
+  const normalized = normalizeStoredCandidateDecision(candidate)
   return {
     candidateId: normalizeId(candidate.candidateId),
-    eligible: candidate.eligible === true,
+    eligible: normalized.recommended,
     sha256: String(candidate.sha256 || '').slice(0, 128),
     score: Number(candidate.score) || 0,
     disposition: String(candidate.disposition || ''),
-    technicalEligible: candidate.technicalEligible !== false,
+    technicalEligible: normalized.technicalEligible,
+    recommended: normalized.recommended,
+    technicalFailureCodes: normalized.technicalFailureCodes,
+    qualityWarningCodes: normalized.qualityWarningCodes,
     failureCodes: unique(candidate.failureCodes).slice(0, 32),
     ...(candidate.attemptKind ? { attemptKind: String(candidate.attemptKind).slice(0, 80) } : {}),
     ...(candidate.diversityProfileId ? { diversityProfileId: String(candidate.diversityProfileId).slice(0, 120) } : {}),
@@ -37,6 +45,7 @@ const publicCanonicalCandidate = (candidate = {}) => {
     ...(candidate.descriptors ? { descriptors: candidate.descriptors } : {}),
     ...(candidate.evaluation ? { evaluation: candidate.evaluation } : {}),
     ...(candidate.gate ? { gate: candidate.gate } : {}),
+    ...(candidate.selection ? { selection: candidate.selection } : {}),
     ...(evaluationEvidenceRelativePath ? { evaluationEvidenceRelativePath } : {})
   }
 }
@@ -44,14 +53,18 @@ const publicCanonicalCandidate = (candidate = {}) => {
 const assertCanonicalPool = (pool) => {
   const candidates = Array.isArray(pool?.candidates) ? pool.candidates : []
   const publicCandidates = candidates.map(publicCanonicalCandidate)
-  const passingCandidates = publicCandidates.filter((candidate) => candidate.eligible === true && candidate.sha256)
-  if (passingCandidates.length === 0 || Number(pool?.dispatchCount || 0) > 4) {
+  const technicalCandidates = publicCandidates.filter((candidate) => candidate.technicalEligible === true && candidate.sha256)
+  const passingCandidates = technicalCandidates.filter((candidate) => candidate.recommended === true)
+  if (technicalCandidates.length === 0 || Number(pool?.dispatchCount || 0) > 4) {
     const error = new Error('canonical_identity_candidates_unusable')
     error.code = 'canonical_identity_candidates_unusable'
     error.canonicalPool = {
       dispatchCount: Math.max(0, Math.min(4, Number(pool?.dispatchCount) || candidates.length)),
       passingCandidateCount: 0,
-      candidates: publicCandidates.map((candidate) => ({ ...candidate, disposition: 'unusable' }))
+      candidates: publicCandidates.map((candidate) => ({
+        ...candidate,
+        disposition: candidate.technicalEligible ? 'selectable-with-warning' : 'unusable'
+      }))
     }
     throw error
   }
@@ -62,20 +75,28 @@ const assertCanonicalPool = (pool) => {
     if (identityDifference) return identityDifference
     return left.candidateId.localeCompare(right.candidateId)
   })
-  const selectedCandidateId = ranked[0].candidateId
+  const selectedCandidateId = ranked[0]?.candidateId || ''
   const normalizedCandidates = publicCandidates.map((candidate) => ({
     ...candidate,
-    disposition: candidate.eligible !== true
+    disposition: candidate.technicalEligible !== true
       ? 'unusable'
-      : candidate.candidateId === selectedCandidateId
+      : selectedCandidateId && candidate.candidateId === selectedCandidateId
         ? 'selected-anchor'
-        : candidate.duplicateOfCandidateId
-          ? 'duplicate-alternate'
-          : 'alternate'
+        : candidate.recommended === true
+          ? (candidate.duplicateOfCandidateId ? 'duplicate-alternate' : 'alternate')
+          : 'selectable-with-warning'
   }))
+  const selectedCanonical = normalizedCandidates.find((candidate) => candidate.candidateId === selectedCandidateId) || null
+  if (selectedCanonical) {
+    selectedCanonical.selection = createCandidateSelection({
+      candidate: selectedCanonical,
+      expectedHash: selectedCanonical.sha256,
+      authority: 'automatic'
+    })
+  }
   return {
     candidates: normalizedCandidates,
-    selectedCanonical: normalizedCandidates.find((candidate) => candidate.candidateId === selectedCandidateId),
+    selectedCanonical,
     passingCandidateCount: passingCandidates.length
   }
 }
@@ -136,26 +157,27 @@ const createQualityFirstFullPetOrchestrator = ({
     const candidates = selection.candidates
     recordEvent({ scope: 'identity', status: 'completed', runId: normalizeId(run?.runId), candidateCount: candidates.length })
     const startedAt = now()
+    const identityReviewRequired = requireIdentityReviewBeforeActions || !selection.selectedCanonical
     const selectedRun = {
       ...run,
-      status: requireIdentityReviewBeforeActions ? 'awaiting_identity_review' : 'generating',
-      currentStep: requireIdentityReviewBeforeActions ? 'identity-review' : 'idle',
+      status: identityReviewRequired ? 'awaiting_identity_review' : 'generating',
+      currentStep: identityReviewRequired ? 'identity-review' : 'idle',
       updatedAt: startedAt,
-      reviewStatus: requireIdentityReviewBeforeActions ? 'identity-pending' : 'pending',
+      reviewStatus: identityReviewRequired ? 'identity-pending' : 'pending',
       qualityFirst: {
         version: 1,
-        phase: requireIdentityReviewBeforeActions ? 'awaiting_identity_review' : 'canonical-selected',
+        phase: identityReviewRequired ? 'awaiting_identity_review' : 'canonical-selected',
         planHash: String(plan?.hash || hash(plan || {})),
         canonicalCandidates: candidates,
         selectedCanonical: selection.selectedCanonical,
-        acceptedCanonical: requireIdentityReviewBeforeActions ? null : selection.selectedCanonical,
+        acceptedCanonical: identityReviewRequired ? null : selection.selectedCanonical,
         actionResults: {},
         passingCandidateCount: selection.passingCandidateCount,
-        requireIdentityReviewBeforeActions: requireIdentityReviewBeforeActions === true,
-        nextAction: requireIdentityReviewBeforeActions ? 'accept-canonical-identity' : 'generate-idle'
+        requireIdentityReviewBeforeActions: identityReviewRequired,
+        nextAction: identityReviewRequired ? 'accept-canonical-identity' : 'generate-idle'
       }
     }
-    if (requireIdentityReviewBeforeActions) return selectedRun
+    if (identityReviewRequired) return selectedRun
     return continueWithCanonicalIdentity({
       run: selectedRun,
       candidate: selection.selectedCanonical,
@@ -170,11 +192,14 @@ const createQualityFirstFullPetOrchestrator = ({
     const canonicalCandidates = Array.isArray(state.canonicalCandidates)
       ? state.canonicalCandidates.map((entry) => ({
           ...entry,
+          ...(entry.candidateId === candidate.candidateId ? candidate : {}),
           disposition: entry.candidateId === candidate.candidateId
             ? 'selected-anchor'
-            : entry.eligible === true
+            : entry.recommended === true || entry.eligible === true
               ? (entry.duplicateOfCandidateId ? 'duplicate-alternate' : 'alternate')
-              : 'unusable'
+              : entry.technicalEligible === true
+                ? 'selectable-with-warning'
+                : 'unusable'
         }))
       : []
     const selectedCandidate = canonicalCandidates.find((entry) => entry.candidateId === candidate.candidateId) || candidate
@@ -315,12 +340,42 @@ const createQualityFirstFullPetOrchestrator = ({
     }
   }
 
-  const acceptCanonicalIdentity = async ({ run, candidateId, sha256, plan, actions = [], persistRunState = async () => {} } = {}) => {
+  const acceptCanonicalIdentity = async ({
+    run,
+    candidateId,
+    sha256,
+    qualityOverride = false,
+    acknowledgedWarningCodes = [],
+    plan,
+    actions = [],
+    persistRunState = async () => {}
+  } = {}) => {
     const state = run?.qualityFirst
     if (!state || state.phase !== 'awaiting_identity_review') throw new Error('Canonical identity review is not pending')
     const candidate = state.canonicalCandidates.find((entry) => entry.candidateId === normalizeId(candidateId))
-    if (!candidate || candidate.eligible !== true || candidate.sha256 !== String(sha256 || '')) throw new Error('Canonical identity candidate is not eligible or hash does not match')
-    return continueWithCanonicalIdentity({ run, candidate, plan, actions, persistRunState })
+    if (!candidate) throw new Error('Canonical identity candidate is not eligible or hash does not match')
+    const normalizedCandidate = publicCanonicalCandidate(candidate)
+    let selection
+    try {
+      selection = createCandidateSelection({
+        candidate: normalizedCandidate,
+        expectedHash: sha256,
+        authority: 'human-override',
+        qualityOverride,
+        acknowledgedWarningCodes,
+        now
+      })
+    } catch (error) {
+      error.message = `Canonical identity candidate is not eligible or hash does not match: ${error.message}`
+      throw error
+    }
+    return continueWithCanonicalIdentity({
+      run,
+      candidate: { ...normalizedCandidate, selection },
+      plan,
+      actions,
+      persistRunState
+    })
   }
 
   return { start, acceptCanonicalIdentity, continueWithCanonicalIdentity }

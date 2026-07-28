@@ -19,6 +19,10 @@ runCommand(async (context) => {
     runId,
     candidateId: context.payload?.candidateId,
     expectedHash: context.payload?.sha256,
+    qualityOverride: context.payload?.qualityOverride === true,
+    acknowledgedWarningCodes: Array.isArray(context.payload?.acknowledgedWarningCodes)
+      ? context.payload.acknowledgedWarningCodes
+      : [],
     orchestrator: runtime.orchestrator,
     plan,
     actions: plan.actions.map((action) => action.actionId)

@@ -22,6 +22,10 @@ const { loadPetGenerationGovernance } = require('./pet-generation-governance')
 const { FIXTURE_BACKEND, PROVIDER_BACKEND, normalizeCreatorBackend } = require('./backend-mode')
 const { GENERATED_FULL_PET_ACTION_IDS } = require('./full-pet-basic-actions')
 const {
+  assertHumanCandidateSelection,
+  normalizeStoredCandidateDecision
+} = require('./candidate-decision')
+const {
   invalidateActionCheckpoint,
   invalidateAllActionCheckpoints
 } = require('./full-pet-action-checkpoints')
@@ -43,6 +47,40 @@ const appendDiagnosticRunLog = (entry) => {
     return appendRunLog(entry)
   } catch (_) {
     return null
+  }
+}
+
+const createCandidateValidationError = (code, message) => {
+  const error = new Error(message)
+  error.code = code
+  return error
+}
+
+const assertRetainedCandidateAssetCurrent = ({ dataDir, runId, candidate }) => {
+  const relativePath = String(candidate?.relativePath || '').trim().replace(/\\/g, '/')
+  if (!relativePath) throw createCandidateValidationError('candidate_asset_missing', 'Candidate asset path is missing')
+  const expectedPrefix = `runs/${runId}/`
+  if (
+    relativePath.startsWith('/') ||
+    /^[a-z][a-z0-9+.-]*:/i.test(relativePath) ||
+    relativePath.split('/').includes('..') ||
+    !relativePath.startsWith(expectedPrefix)
+  ) {
+    throw createCandidateValidationError('candidate_path_unsafe', 'Candidate asset path is unsafe')
+  }
+  const runDir = path.resolve(dataDir, 'runs', runId)
+  const targetPath = path.resolve(dataDir, relativePath)
+  if (!fs.existsSync(targetPath) || !fs.statSync(targetPath).isFile()) {
+    throw createCandidateValidationError('candidate_asset_missing', 'Candidate asset is missing')
+  }
+  const realRunDir = fs.realpathSync.native(runDir)
+  const realTargetPath = fs.realpathSync.native(targetPath)
+  const relativeToRun = path.relative(realRunDir, realTargetPath)
+  if (!relativeToRun || relativeToRun.startsWith('..') || path.isAbsolute(relativeToRun)) {
+    throw createCandidateValidationError('candidate_path_unsafe', 'Candidate asset escaped the run directory')
+  }
+  if (sha256(realTargetPath) !== String(candidate.sha256 || '').trim().toLowerCase()) {
+    throw createCandidateValidationError('candidate_hash_mismatch', 'Candidate asset changed after review')
   }
 }
 
@@ -518,6 +556,8 @@ const acceptQualityFirstCanonicalIdentity = async ({
   runId,
   candidateId,
   expectedHash,
+  qualityOverride = false,
+  acknowledgedWarningCodes = [],
   orchestrator,
   plan,
   actions = [],
@@ -529,8 +569,20 @@ const acceptQualityFirstCanonicalIdentity = async ({
     throw new Error('Creator Studio canonical identity review is not pending')
   }
   const candidate = run.qualityFirst.canonicalCandidates?.find((entry) => entry.candidateId === String(candidateId || ''))
-  if (!candidate || candidate.eligible !== true || candidate.sha256 !== String(expectedHash || '')) {
+  if (!candidate) {
     throw new Error('Creator Studio canonical identity candidate or hash is invalid')
+  }
+  const normalizedCandidate = normalizeStoredCandidateDecision(candidate)
+  assertHumanCandidateSelection({
+    candidate: normalizedCandidate,
+    expectedHash,
+    qualityOverride,
+    acknowledgedWarningCodes
+  })
+  if (candidate.relativePath) {
+    assertRetainedCandidateAssetCurrent({ dataDir, runId, candidate })
+  } else if (!normalizedCandidate.recommended) {
+    throw createCandidateValidationError('candidate_asset_missing', 'Candidate asset path is required for a quality override')
   }
   const startedAt = now()
   const lease = createGenerationLease({ commandId: 'accept-identity', startedAt, leaseId: `${runId}-accept-identity-${startedAt}` })
@@ -549,6 +601,8 @@ const acceptQualityFirstCanonicalIdentity = async ({
       run: generatingRun,
       candidateId,
       sha256: expectedHash,
+      qualityOverride,
+      acknowledgedWarningCodes,
       plan,
       actions,
       persistRunState: async (nextRun) => {

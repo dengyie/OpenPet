@@ -1,4 +1,5 @@
 const fs = require('node:fs')
+const crypto = require('node:crypto')
 const os = require('node:os')
 const path = require('node:path')
 const test = require('node:test')
@@ -44,6 +45,161 @@ test('backend persists awaiting identity review and resumes only after exact acc
     'quality-first.identity.awaiting-review',
     'quality-first.identity.accepted'
   ])
+})
+
+test('backend forwards a hash-bound quality override for a technical non-recommended canonical', async () => {
+  const dataDir = createDataDir()
+  const created = createRun({
+    dataDir,
+    input: { petName: 'Preferred Pet', backend: 'provider', generationTask: { mode: 'full-pet', actions: [{ actionId: 'idle' }], questions: [] } }
+  })
+  const warnings = ['visual-defect-identity-drift', 'visual-score-overall-below-minimum']
+  const relativePath = `runs/${created.runId}/candidates/canonical/canonical-4/raw/0001.png`
+  const absolutePath = path.join(dataDir, relativePath)
+  fs.mkdirSync(path.dirname(absolutePath), { recursive: true })
+  fs.writeFileSync(absolutePath, 'canonical-four')
+  const candidateHash = crypto.createHash('sha256').update('canonical-four').digest('hex')
+  writeRun({ dataDir, run: {
+    ...created,
+    status: 'awaiting_identity_review',
+    currentStep: 'identity-review',
+    qualityFirst: {
+      phase: 'awaiting_identity_review',
+      canonicalCandidates: [{
+        candidateId: 'canonical-4',
+        sha256: candidateHash,
+        relativePath,
+        technicalEligible: true,
+        recommended: false,
+        eligible: false,
+        qualityWarningCodes: warnings
+      }]
+    }
+  } })
+  const calls = []
+  const orchestrator = {
+    acceptCanonicalIdentity: async (payload) => {
+      calls.push({
+        candidateId: payload.candidateId,
+        sha256: payload.sha256,
+        qualityOverride: payload.qualityOverride,
+        acknowledgedWarningCodes: payload.acknowledgedWarningCodes
+      })
+      return {
+        ...payload.run,
+        status: 'ready_for_review',
+        currentStep: 'review',
+        qualityFirst: { ...payload.run.qualityFirst, phase: 'ready_for_review' }
+      }
+    }
+  }
+
+  const accepted = await acceptQualityFirstCanonicalIdentity({
+    dataDir,
+    runId: created.runId,
+    candidateId: 'canonical-4',
+    expectedHash: candidateHash,
+    qualityOverride: true,
+    acknowledgedWarningCodes: warnings.slice().reverse(),
+    orchestrator,
+    plan: { hash: 'plan-hash' },
+    actions: ['idle']
+  })
+
+  assert.equal(accepted.run.status, 'ready_for_review')
+  assert.deepEqual(calls, [{
+    candidateId: 'canonical-4',
+    sha256: candidateHash,
+    qualityOverride: true,
+    acknowledgedWarningCodes: warnings.slice().reverse()
+  }])
+})
+
+test('backend rejects a canonical file changed after review before changing run state', async () => {
+  const dataDir = createDataDir()
+  const created = createRun({
+    dataDir,
+    input: { petName: 'Hash Bound Pet', backend: 'provider', generationTask: { mode: 'full-pet', actions: [{ actionId: 'idle' }], questions: [] } }
+  })
+  const relativePath = `runs/${created.runId}/candidates/canonical/canonical-4/raw/0001.png`
+  const absolutePath = path.join(dataDir, relativePath)
+  fs.mkdirSync(path.dirname(absolutePath), { recursive: true })
+  fs.writeFileSync(absolutePath, 'original-canonical')
+  const originalHash = crypto.createHash('sha256').update('original-canonical').digest('hex')
+  const warnings = ['visual-score-overall-below-minimum']
+  writeRun({ dataDir, run: {
+    ...created,
+    status: 'awaiting_identity_review',
+    currentStep: 'identity-review',
+    qualityFirst: {
+      phase: 'awaiting_identity_review',
+      canonicalCandidates: [{
+        candidateId: 'canonical-4',
+        sha256: originalHash,
+        relativePath,
+        technicalEligible: true,
+        recommended: false,
+        eligible: false,
+        qualityWarningCodes: warnings
+      }]
+    }
+  } })
+  fs.writeFileSync(absolutePath, 'changed-after-review')
+
+  await assert.rejects(() => acceptQualityFirstCanonicalIdentity({
+    dataDir,
+    runId: created.runId,
+    candidateId: 'canonical-4',
+    expectedHash: originalHash,
+    qualityOverride: true,
+    acknowledgedWarningCodes: warnings,
+    orchestrator: { acceptCanonicalIdentity: async () => { throw new Error('must not run') } },
+    plan: { hash: 'plan-hash' },
+    actions: ['idle']
+  }), (error) => error?.code === 'candidate_hash_mismatch')
+
+  assert.equal(readRun({ dataDir, runId: created.runId }).status, 'awaiting_identity_review')
+})
+
+test('backend rejects missing canonical warning acknowledgement before changing run state', async () => {
+  const dataDir = createDataDir()
+  const created = createRun({
+    dataDir,
+    input: { petName: 'Protected Review Pet', backend: 'provider', generationTask: { mode: 'full-pet', actions: [{ actionId: 'idle' }], questions: [] } }
+  })
+  writeRun({ dataDir, run: {
+    ...created,
+    status: 'awaiting_identity_review',
+    currentStep: 'identity-review',
+    qualityFirst: {
+      phase: 'awaiting_identity_review',
+      canonicalCandidates: [{
+        candidateId: 'canonical-4',
+        sha256: 'f'.repeat(64),
+        technicalEligible: true,
+        recommended: false,
+        eligible: false,
+        qualityWarningCodes: ['visual-score-overall-below-minimum']
+      }]
+    }
+  } })
+
+  await assert.rejects(() => acceptQualityFirstCanonicalIdentity({
+    dataDir,
+    runId: created.runId,
+    candidateId: 'canonical-4',
+    expectedHash: 'f'.repeat(64),
+    qualityOverride: false,
+    acknowledgedWarningCodes: [],
+    orchestrator: { acceptCanonicalIdentity: async () => { throw new Error('must not run') } },
+    plan: { hash: 'plan-hash' },
+    actions: ['idle']
+  }), (error) => error?.code === 'quality_override_acknowledgement_required')
+
+  const unchanged = readRun({ dataDir, runId: created.runId })
+  assert.equal(unchanged.status, 'awaiting_identity_review')
+  assert.equal(unchanged.currentStep, 'identity-review')
+  assert.equal(Object.hasOwn(unchanged, 'generationLease'), false)
 })
 
 test('backend defaults to the selected canonical and completes actions without a mid-run identity pause', async () => {
