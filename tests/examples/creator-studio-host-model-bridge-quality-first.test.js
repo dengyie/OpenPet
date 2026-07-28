@@ -441,6 +441,81 @@ test('quality-first host runtime reuses a five-way-bound action checkpoint witho
   }
 })
 
+test('quality-first host runtime materializes a warned retained action candidate without Provider generation', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-quality-first-manual-action-'))
+  const runId = 'run-manual-action'
+  const sourceRelativePath = `runs/${runId}/inputs/reference.png`
+  const canonicalRelativePath = `runs/${runId}/canonical.png`
+  for (const relativePath of [sourceRelativePath, canonicalRelativePath]) {
+    const absolutePath = path.join(dataDir, relativePath)
+    fs.mkdirSync(path.dirname(absolutePath), { recursive: true })
+    await sharp({ create: { width: 192, height: 208, channels: 4, background: { r: 80, g: 120, b: 160, alpha: 1 } } }).png().toFile(absolutePath)
+  }
+  const plan = createSpriteAssetPlan({
+    version: 1,
+    revision: 1,
+    character: { assetClass: 'grounded-compact-character' },
+    actions: [{ actionId: 'idle' }]
+  })
+  const rawRelativePath = `runs/${runId}/candidates/idle/candidate-2/raw/0001.png`
+  const rawPath = path.join(dataDir, rawRelativePath)
+  fs.mkdirSync(path.dirname(rawPath), { recursive: true })
+  const cellWidth = 1024 / 3
+  const cellHeight = 1024 / 2
+  const sprite = await sharp({ create: { width: 72, height: 96, channels: 4, background: { r: 90, g: 130, b: 170, alpha: 1 } } }).png().toBuffer()
+  const composites = []
+  for (let index = 0; index < 6; index += 1) {
+    composites.push({
+      input: sprite,
+      left: Math.floor((index % 3) * cellWidth + ((cellWidth - 72) / 2)),
+      top: Math.floor(Math.floor(index / 3) * cellHeight + ((cellHeight - 96) / 2))
+    })
+  }
+  await sharp({ create: { width: 1024, height: 1024, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite(composites)
+    .png()
+    .toFile(rawPath)
+  const candidateHash = crypto.createHash('sha256').update(fs.readFileSync(rawPath)).digest('hex')
+  const previousUrl = process.env.OPENPET_BRIDGE_URL
+  const previousToken = process.env.OPENPET_BRIDGE_TOKEN
+  delete process.env.OPENPET_BRIDGE_URL
+  delete process.env.OPENPET_BRIDGE_TOKEN
+  try {
+    const runtime = await createQualityFirstHostRuntime({
+      dataDir,
+      run: { runId, input: { referenceImage: { relativePath: sourceRelativePath } } },
+      planOverride: plan
+    })
+    const result = await runtime.materializeActionCandidate({
+      actionId: 'idle',
+      candidate: {
+        candidateId: 'candidate-2',
+        sha256: candidateHash,
+        technicalEligible: true,
+        recommended: false,
+        qualityWarningCodes: ['visual-score-overall-below-minimum'],
+        artifacts: [{ role: 'raw-sheet', relativePath: rawRelativePath, sha256: candidateHash }],
+        selection: { selectionAuthority: 'human-override', qualityOverride: true }
+      },
+      canonical: { candidateId: 'canonical-1', sha256: 'a'.repeat(64), relativePath: canonicalRelativePath },
+      profile: null,
+      plan
+    })
+
+    assert.equal(result.ok, true)
+    assert.equal(result.selectedCandidateId, 'candidate-2')
+    assert.equal(result.selectedCandidate.technicalEligible, true)
+    assert.equal(result.selectedCandidate.recommended, false)
+    assert.equal(result.selectedCandidate.processed.frames.length, 6)
+    assert.equal(result.selectedCandidate.processed.frames.every((frame) => fs.existsSync(frame.path)), true)
+  } finally {
+    if (previousUrl == null) delete process.env.OPENPET_BRIDGE_URL
+    else process.env.OPENPET_BRIDGE_URL = previousUrl
+    if (previousToken == null) delete process.env.OPENPET_BRIDGE_TOKEN
+    else process.env.OPENPET_BRIDGE_TOKEN = previousToken
+  }
+})
+
 test('quality-first host runtime persists Provider request ids for failed action candidates', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-quality-first-failed-evidence-'))
   const runId = 'run-failed-evidence'

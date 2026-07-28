@@ -162,6 +162,51 @@ test('runner performs at most one reason-directed repair after both initial cand
   assert.deepEqual(h.calls.archives, [{ actionId: 'idle', reasonCodes: ['cell-edge-contact', 'visual-score-overall-below-minimum'] }])
 })
 
+test('runner keeps processed quality failures technically selectable but excludes them from automatic selection', async () => {
+  const h = createHarness({
+    generated: [
+      { candidateId: 'candidate-1', descriptors: descriptors('0000', 0) },
+      { candidateId: 'candidate-2', descriptors: descriptors('ffff', 2) },
+      { candidateId: 'candidate-3', descriptors: descriptors('0f0f', 4) }
+    ],
+    evaluationById: {
+      'candidate-1': { evaluation: { scores: { overall: 68 } }, gate: { ok: false, outcome: 'reject', failures: ['visual-score-overall-below-minimum'] } },
+      'candidate-2': { evaluation: { scores: { overall: 70 } }, gate: { ok: false, outcome: 'reject', failures: ['visual-defect-motion-unreadable'] } },
+      'candidate-3': { evaluation: { scores: { overall: 72 } }, gate: { ok: false, outcome: 'reject', failures: ['visual-defect-identity-drift'] } }
+    }
+  })
+
+  const result = await runQualityFirstAction({ context: { actionId: 'waving' }, ...h.callbacks })
+
+  assert.equal(result.ok, false)
+  assert.equal(result.selectedCandidateId, '')
+  assert.equal(result.candidates.length, 3)
+  for (const candidate of result.candidates) {
+    assert.equal(candidate.technicalEligible, true)
+    assert.equal(candidate.recommended, false)
+    assert.deepEqual(candidate.technicalFailureCodes, [])
+    assert.equal(candidate.qualityWarningCodes.length, 1)
+  }
+})
+
+test('runner marks processing failures technically unusable', async () => {
+  const h = createHarness({
+    generated: [
+      { candidateId: 'candidate-1', descriptors: descriptors('0000', 0) },
+      { candidateId: 'candidate-2', descriptors: descriptors('ffff', 2) },
+      { candidateId: 'candidate-3', descriptors: descriptors('0f0f', 4) }
+    ]
+  })
+  h.callbacks.processCandidate = async () => { throw new Error('processor failed') }
+
+  const result = await runQualityFirstAction({ context: { actionId: 'waving' }, ...h.callbacks })
+
+  assert.equal(result.ok, false)
+  assert.equal(result.candidates.every((candidate) => candidate.technicalEligible === false), true)
+  assert.equal(result.candidates.every((candidate) => candidate.recommended === false), true)
+  assert.equal(result.candidates.every((candidate) => candidate.technicalFailureCodes.includes('candidate-processing-failed')), true)
+})
+
 test('runner rewrites archived candidate record links after reason-directed repair', async () => {
   const generated = [
     { candidateId: 'candidate-1', descriptors: descriptors('0000', 0) },

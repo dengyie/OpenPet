@@ -221,7 +221,11 @@ const archiveCandidateRevision = ({ dataDir, runId, scope, reason = 'repair', no
 }
 
 const selectBestPassingCandidate = ({ candidates = [] } = {}) => candidates
-  .filter((candidate) => candidate?.qa?.ok === true && candidate?.gate?.ok === true)
+  .filter((candidate) => (
+    typeof candidate?.technicalEligible === 'boolean' || typeof candidate?.recommended === 'boolean'
+      ? candidate?.technicalEligible === true && candidate?.recommended === true
+      : candidate?.qa?.ok === true && candidate?.gate?.ok === true
+  ))
   .slice()
   .sort((left, right) => {
     const leftScore = Number(left.evaluation?.scores?.overall) || 0

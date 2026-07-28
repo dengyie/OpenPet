@@ -3234,6 +3234,79 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
     })
     return runner
   }
+  const materializeActionCandidate = async ({ actionId, candidate, profile }) => {
+    const action = plan.actions.find((entry) => entry.actionId === actionId)
+    if (!action) {
+      const error = new Error(`Unknown retained action candidate scope: ${actionId}`)
+      error.code = 'candidate_binding_stale'
+      throw error
+    }
+    const rawArtifact = Array.isArray(candidate?.artifacts)
+      ? candidate.artifacts.find((artifact) => artifact?.role === 'raw-sheet')
+      : null
+    const rawRelativePath = createSafeRelativePath(rawArtifact?.relativePath || candidate?.relativePath)
+    if (!rawRelativePath || !rawRelativePath.startsWith(`runs/${run.runId}/`)) {
+      const error = new Error('Retained action candidate raw asset path is unsafe')
+      error.code = 'candidate_path_unsafe'
+      throw error
+    }
+    const rawPath = path.resolve(dataDir, rawRelativePath)
+    if (!fs.existsSync(rawPath) || !fs.statSync(rawPath).isFile()) {
+      const error = new Error('Retained action candidate raw asset is missing')
+      error.code = 'candidate_asset_missing'
+      throw error
+    }
+    const rawHash = sha256File(rawPath)
+    if (rawHash !== String(candidate?.sha256 || rawArtifact?.sha256 || '').toLowerCase()) {
+      const error = new Error('Retained action candidate raw asset hash changed')
+      error.code = 'candidate_hash_mismatch'
+      throw error
+    }
+    const outputDir = path.join(dataDir, `runs/${run.runId}/candidates/${actionId}/${candidate.candidateId}/manual-processed`)
+    const processed = await processSpriteSheet({
+      inputPath: rawPath,
+      outputDir,
+      layout: action.layout,
+      profile: profile || {},
+      actionPolicy: { ...action, actionId }
+    })
+    const expectedFrameCount = Math.max(1, Number(action.frameCount) || Number(action.layout?.cellCount) || 0)
+    const frames = Array.isArray(processed.frames) ? processed.frames : []
+    if (frames.length !== expectedFrameCount || frames.some((frame) => !frame?.path || !fs.existsSync(frame.path))) {
+      const error = new Error('Retained action candidate processed frame set is incomplete')
+      error.code = 'action_candidate_frames_incomplete'
+      throw error
+    }
+    const qa = analyzeSpriteCandidate({ actionId, rawMetrics: processed.metrics, profile: profile || {}, actionPolicy: action })
+    const selectedCandidate = {
+      ...candidate,
+      rawPath,
+      outputDir,
+      processed,
+      qa,
+      technicalEligible: true,
+      recommended: candidate.recommended === true,
+      artifacts: [
+        { role: 'raw-sheet', path: rawPath, sha256: rawHash },
+        { role: 'processed-sheet', path: processed.processedSheet.path, sha256: processed.processedSheet.sha256 },
+        { role: 'contact-sheet', path: processed.contactSheet.path, sha256: processed.contactSheet.sha256 },
+        { role: 'gif', path: processed.gif.path, sha256: processed.gif.sha256 }
+      ]
+    }
+    return {
+      ok: true,
+      actionId,
+      disposition: 'accepted-by-human',
+      selectedCandidateId: selectedCandidate.candidateId,
+      selectedCandidate,
+      selection: candidate.selection,
+      warningCodes: Array.isArray(candidate.qualityWarningCodes) ? candidate.qualityWarningCodes : [],
+      candidates: [selectedCandidate],
+      diversityStatus: 'degraded',
+      distinctCandidateCount: 1,
+      evaluatedCandidateCount: 1
+    }
+  }
   const persistActionResult = async ({ actionId, result, canonical, profile }) => {
     if (result?.checkpointReused === true) {
       return readActionCheckpoints({ dataDir, runId: run.runId }).actions?.[actionId] || null
@@ -3505,6 +3578,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
     planRelativePath,
     createCharacterScaleProfile: createRuntimeCharacterScaleProfile,
     runAction,
+    materializeActionCandidate,
     mirrorRunningLeft,
     createRecoveryBundle,
     persistActionResult,

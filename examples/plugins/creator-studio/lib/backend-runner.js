@@ -23,6 +23,7 @@ const { FIXTURE_BACKEND, PROVIDER_BACKEND, normalizeCreatorBackend } = require('
 const { GENERATED_FULL_PET_ACTION_IDS } = require('./full-pet-basic-actions')
 const {
   assertHumanCandidateSelection,
+  createCandidateSelection,
   normalizeStoredCandidateDecision
 } = require('./candidate-decision')
 const {
@@ -637,15 +638,255 @@ const createQualityFirstActionResultView = (result) => ({
   warningCodes: [...new Set((Array.isArray(result?.warningCodes) ? result.warningCodes : []).map(String))].slice(0, 16),
   distinctCandidateCount: Math.max(0, Number(result?.distinctCandidateCount) || 0),
   evaluatedCandidateCount: Math.max(0, Number(result?.evaluatedCandidateCount) || 0),
+  ...((result?.selection || result?.selectedCandidate?.selection) ? {
+    selection: result.selection || result.selectedCandidate.selection
+  } : {}),
   candidates: Array.isArray(result?.candidates) ? result.candidates.map((candidate) => ({
     candidateId: String(candidate?.candidateId || ''),
     attemptKind: String(candidate?.attemptKind || ''),
     ok: candidate?.qa?.ok === true && candidate?.gate?.ok === true,
+    sha256: String(candidate?.sha256 || '').toLowerCase(),
+    technicalEligible: candidate?.technicalEligible === true,
+    recommended: candidate?.recommended === true,
+    technicalFailureCodes: [...new Set(candidate?.technicalFailureCodes || [])].map(String).slice(0, 32),
+    qualityWarningCodes: [...new Set(candidate?.qualityWarningCodes || [])].map(String).slice(0, 32),
     failureCodes: [...new Set([...(candidate?.qa?.failures || []), ...(candidate?.gate?.failures || []), ...(candidate?.failureCodes || [])])].map(String).slice(0, 32),
     score: Number(candidate?.evaluation?.scores?.overall) || 0,
     candidateRecordRelativePath: String(candidate?.candidateRecordRelativePath || '').replace(/\\/g, '/')
   })) : []
 })
+
+const loadRetainedActionCandidateForSelection = ({ dataDir, runId, actionId, candidateView }) => {
+  const recordRelativePath = String(candidateView?.candidateRecordRelativePath || '').trim().replace(/\\/g, '/')
+  const expectedPrefix = `runs/${runId}/`
+  if (
+    !recordRelativePath ||
+    recordRelativePath.startsWith('/') ||
+    /^[a-z][a-z0-9+.-]*:/i.test(recordRelativePath) ||
+    recordRelativePath.split('/').includes('..') ||
+    !recordRelativePath.startsWith(expectedPrefix)
+  ) {
+    throw createCandidateValidationError('candidate_path_unsafe', 'Candidate record path is unsafe')
+  }
+  const runDir = path.resolve(dataDir, 'runs', runId)
+  const recordPath = path.resolve(dataDir, recordRelativePath)
+  if (!fs.existsSync(recordPath) || !fs.statSync(recordPath).isFile()) {
+    throw createCandidateValidationError('candidate_asset_missing', 'Candidate record is missing')
+  }
+  const realRunDir = fs.realpathSync.native(runDir)
+  const realRecordPath = fs.realpathSync.native(recordPath)
+  const relativeToRun = path.relative(realRunDir, realRecordPath)
+  if (!relativeToRun || relativeToRun.startsWith('..') || path.isAbsolute(relativeToRun)) {
+    throw createCandidateValidationError('candidate_path_unsafe', 'Candidate record escaped the run directory')
+  }
+  let record
+  try {
+    record = JSON.parse(fs.readFileSync(realRecordPath, 'utf8'))
+  } catch (_) {
+    throw createCandidateValidationError('candidate_decode_failed', 'Candidate record is invalid')
+  }
+  const source = record?.candidate && typeof record.candidate === 'object' ? record.candidate : null
+  if (!source || String(source.candidateId || '') !== String(candidateView.candidateId || '')) {
+    throw createCandidateValidationError('candidate_not_found', 'Candidate record does not match the requested candidate')
+  }
+  const rawArtifact = Array.isArray(source.artifacts)
+    ? source.artifacts.find((artifact) => artifact?.role === 'raw-sheet')
+    : null
+  const rawRelativePath = String(rawArtifact?.relativePath || '').trim().replace(/\\/g, '/')
+  const candidateHash = String(source.sha256 || rawArtifact?.sha256 || candidateView.sha256 || '').trim().toLowerCase()
+  const candidate = normalizeStoredCandidateDecision({
+    ...source,
+    sha256: candidateHash,
+    relativePath: rawRelativePath,
+    candidateRecordRelativePath: recordRelativePath
+  })
+  if (String(candidateView.sha256 || '').trim().toLowerCase() !== candidate.sha256) {
+    throw createCandidateValidationError('candidate_hash_mismatch', 'Candidate view no longer matches the retained record')
+  }
+  if (!candidateView.technicalEligible || candidate.technicalEligible !== true) {
+    throw createCandidateValidationError('candidate_technically_unusable', 'Candidate is technically unusable')
+  }
+  if (String(actionId || '') && !recordRelativePath.includes(`/action-${actionId}/`)) {
+    throw createCandidateValidationError('candidate_binding_stale', 'Candidate does not belong to the requested action')
+  }
+  return candidate
+}
+
+const acceptQualityFirstActionCandidate = async ({
+  dataDir,
+  runId,
+  actionId,
+  candidateId,
+  expectedHash,
+  qualityOverride = false,
+  acknowledgedWarningCodes = [],
+  runtime,
+  plan,
+  profile,
+  now = () => new Date().toISOString()
+} = {}) => {
+  if (!runtime?.materializeActionCandidate || !runtime?.persistActionResult || !runtime?.finalizePackage) {
+    throw new Error('Quality-first action candidate selection requires a complete host runtime')
+  }
+  const run = readRun({ dataDir, runId })
+  const normalizedActionId = String(actionId || '').trim()
+  const normalizedCandidateId = String(candidateId || '').trim()
+  if (!GENERATED_FULL_PET_ACTION_IDS.includes(normalizedActionId)) {
+    throw createCandidateValidationError('candidate_binding_stale', 'Requested action candidate does not belong to a generated action')
+  }
+  if (!['ready_for_review', 'recovery-required', 'failed'].includes(String(run.status || ''))) {
+    throw createCandidateValidationError('candidate_binding_stale', 'Action candidate review is not available for this run state')
+  }
+  const canonical = run.qualityFirst?.acceptedCanonical
+  if (!canonical?.candidateId || !canonical?.sha256) {
+    throw createCandidateValidationError('candidate_binding_stale', 'Action candidate selection requires an accepted canonical identity')
+  }
+  if (normalizedActionId !== 'idle' && !profile?.hash) {
+    throw createCandidateValidationError('candidate_binding_stale', 'Action candidate selection requires the current scale profile')
+  }
+  const actionResult = run.qualityFirst?.actionResults?.[normalizedActionId]
+  const candidateView = actionResult?.candidates?.find((candidate) => String(candidate?.candidateId || '') === normalizedCandidateId)
+  if (!candidateView) throw createCandidateValidationError('candidate_not_found', 'Retained action candidate was not found')
+  const candidate = loadRetainedActionCandidateForSelection({
+    dataDir,
+    runId,
+    actionId: normalizedActionId,
+    candidateView
+  })
+  assertHumanCandidateSelection({
+    candidate,
+    expectedHash,
+    qualityOverride,
+    acknowledgedWarningCodes
+  })
+  assertRetainedCandidateAssetCurrent({ dataDir, runId, candidate })
+  const selection = createCandidateSelection({
+    candidate,
+    expectedHash,
+    authority: 'human-override',
+    qualityOverride,
+    acknowledgedWarningCodes,
+    now
+  })
+  const startedAt = now()
+  const lease = createGenerationLease({ commandId: 'accept-action-candidate', startedAt, leaseId: `${runId}-accept-action-candidate-${startedAt}` })
+  const generatingRun = {
+    ...run,
+    status: 'generating',
+    currentStep: normalizedActionId,
+    generationLease: lease,
+    backendStatus: createBackendStatus({ backend: PROVIDER_BACKEND, state: 'running', message: `Applying retained ${normalizedActionId} candidate`, updatedAt: startedAt })
+  }
+  writeRun({ dataDir, run: generatingRun })
+  const stopLeaseHeartbeat = createGenerationLeaseHeartbeat({ dataDir, runId, leaseId: lease.leaseId, now })
+  appendDiagnosticRunLog({ dataDir, runId, event: 'quality-first.action.selection-started', message: `Applying retained action candidate for ${normalizedActionId}`, data: { actionId: normalizedActionId, candidateId: normalizedCandidateId }, now })
+  try {
+    if (normalizedActionId === 'idle') {
+      invalidateAllActionCheckpoints({ dataDir, runId, reason: 'human-idle-candidate-selection', now })
+    } else {
+      invalidateActionCheckpoint({ dataDir, runId, actionId: normalizedActionId, reason: 'human-candidate-selection', now })
+      if (normalizedActionId === 'running-right') {
+        invalidateActionCheckpoint({ dataDir, runId, actionId: 'running-left', reason: 'human-running-mirror-selection', now })
+      }
+    }
+    const materialized = await runtime.materializeActionCandidate({
+      actionId: normalizedActionId,
+      candidate: { ...candidate, selection },
+      canonical,
+      profile,
+      plan
+    })
+    if (materialized?.ok !== true || materialized?.selectedCandidateId !== normalizedCandidateId) {
+      throw createCandidateValidationError('override_checkpoint_rebuild_failed', 'Retained action candidate could not be materialized')
+    }
+    const selectedResult = {
+      ...materialized,
+      selection,
+      selectedCandidate: { ...(materialized.selectedCandidate || candidate), selection }
+    }
+    let effectiveProfile = profile
+    if (normalizedActionId === 'idle') {
+      if (!runtime?.createCharacterScaleProfile || !runtime?.persistScaleProfile) {
+        throw createCandidateValidationError('override_checkpoint_rebuild_failed', 'Idle candidate selection requires scale-profile reconstruction')
+      }
+      effectiveProfile = await runtime.createCharacterScaleProfile({ canonical, idle: selectedResult })
+      if (!effectiveProfile?.hash) {
+        throw createCandidateValidationError('override_checkpoint_rebuild_failed', 'Idle candidate selection produced an invalid scale profile')
+      }
+      await runtime.persistScaleProfile({ profile: effectiveProfile, canonical, idle: selectedResult })
+    }
+    await runtime.persistActionResult({ actionId: normalizedActionId, result: selectedResult, canonical, profile: effectiveProfile })
+    const actionResults = {
+      ...(normalizedActionId === 'idle' ? {} : (run.qualityFirst?.actionResults || {})),
+      [normalizedActionId]: createQualityFirstActionResultView(selectedResult)
+    }
+    if (normalizedActionId === 'running-right') {
+      if (!runtime?.mirrorRunningLeft) {
+        throw createCandidateValidationError('override_checkpoint_rebuild_failed', 'Running-right candidate selection requires mirror reconstruction')
+      }
+      const mirrored = await runtime.mirrorRunningLeft({ source: selectedResult, profile: effectiveProfile, canonical })
+      if (mirrored?.ok !== true) {
+        throw createCandidateValidationError('override_checkpoint_rebuild_failed', 'Running-left mirror reconstruction failed')
+      }
+      await runtime.persistActionResult({ actionId: 'running-left', result: mirrored, canonical, profile: effectiveProfile })
+      actionResults['running-left'] = createQualityFirstActionResultView(mirrored)
+    }
+    const packageResult = actionResults.idle?.ok === true
+      ? await runtime.finalizePackage({ run, canonical, profile: effectiveProfile, actionResults })
+      : null
+    if (actionResults.idle?.ok === true && (!packageResult?.artifacts || typeof packageResult.artifacts !== 'object')) {
+      throw createCandidateValidationError('override_checkpoint_rebuild_failed', 'Final package artifacts are missing after action selection')
+    }
+    const { artifacts: packageArtifacts, ...publicPackageResult } = packageResult || {}
+    const completedAt = now()
+    const completedRun = {
+      ...generatingRun,
+      ...(packageArtifacts ? { artifacts: { ...(generatingRun.artifacts || {}), ...packageArtifacts } } : {}),
+      status: actionResults.idle?.ok === true ? 'ready_for_review' : 'recovery-required',
+      currentStep: actionResults.idle?.ok === true ? 'review' : 'recovery',
+      reviewStatus: actionResults.idle?.ok === true ? 'pending' : 'recovery-required',
+      generationLease: undefined,
+      updatedAt: completedAt,
+      backendStatus: createBackendStatus({
+        backend: PROVIDER_BACKEND,
+        state: actionResults.idle?.ok === true ? 'ready' : 'recovery-required',
+        message: `Retained ${normalizedActionId} candidate applied`,
+        updatedAt: completedAt
+      }),
+      qualityFirst: {
+        ...run.qualityFirst,
+        phase: actionResults.idle?.ok === true ? 'ready_for_review' : 'recovery-required',
+        actionResults,
+        ...(effectiveProfile?.hash ? { scaleProfileHash: effectiveProfile.hash } : {}),
+        ...(packageResult ? { package: publicPackageResult } : {}),
+        nextAction: actionResults.idle?.ok === true ? 'human-review' : 'select-or-retry-idle'
+      }
+    }
+    writeRun({ dataDir, run: completedRun })
+    appendDiagnosticRunLog({ dataDir, runId, event: 'quality-first.action.selected', message: `Retained action candidate applied for ${normalizedActionId}`, data: { actionId: normalizedActionId, candidateId: normalizedCandidateId, qualityOverride: selection.qualityOverride }, now })
+    return { outputDir: '', bundlePath: '', sha256: '', run: completedRun }
+  } catch (error) {
+    const failedAt = now()
+    const failureCode = String(error?.code || 'override_checkpoint_rebuild_failed').replace(/[^A-Za-z0-9:_-]/g, '_').slice(0, 120)
+    updateRunStatus({
+      dataDir,
+      runId,
+      status: 'recovery-required',
+      patch: {
+        generationLease: undefined,
+        currentStep: 'recovery',
+        error: error.message,
+        backendStatus: createBackendStatus({ backend: PROVIDER_BACKEND, state: 'recovery-required', message: error.message, updatedAt: failedAt }),
+        qualityFirst: { ...run.qualityFirst, phase: 'recovery-required', failureCode, nextAction: 'select-or-retry-action' }
+      },
+      now: () => failedAt
+    })
+    appendDiagnosticRunLog({ dataDir, runId, level: 'error', event: 'quality-first.action.selection-failed', message: `Retained action candidate selection failed for ${normalizedActionId}`, data: { actionId: normalizedActionId, candidateId: normalizedCandidateId, failureCode }, now: () => failedAt })
+    throw error
+  } finally {
+    stopLeaseHeartbeat()
+  }
+}
 
 const runQualityFirstActionRepair = async ({
   dataDir,
@@ -956,6 +1197,7 @@ const runGenerationStep = async ({ dataDir, runId, now = () => new Date().toISOS
 }
 
 module.exports = {
+  acceptQualityFirstActionCandidate,
   acceptQualityFirstCanonicalIdentity,
   buildHostGeneratedActionOutput,
   persistGeneratedImageAttempt,

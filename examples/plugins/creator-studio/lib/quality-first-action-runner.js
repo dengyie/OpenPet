@@ -1,4 +1,5 @@
 const { selectBestPassingCandidate } = require('./sprite-candidate-store')
+const { normalizeCandidateDecision } = require('./candidate-decision')
 
 const unique = (values) => [...new Set(values.filter(Boolean).map((value) => String(value)))]
 const hammingDistance = (left, right) => {
@@ -135,9 +136,23 @@ const runQualityFirstAction = async ({
     let withQa
     try {
       const processed = await processCandidate(candidate)
-      withQa = { ...candidate, ...processed }
+      withQa = normalizeCandidateDecision({
+        candidate: { ...candidate, ...processed },
+        technicalEligible: processed?.technicalEligible !== false,
+        recommended: false,
+        technicalFailureCodes: processed?.technicalEligible === false
+          ? (processed.technicalFailureCodes || ['candidate-processing-incomplete'])
+          : [],
+        qualityWarningCodes: processed?.qa?.failures || []
+      })
     } catch (error) {
-      withQa = { ...candidate, qa: { ok: false, failures: ['candidate-processing-failed'], error: errorSummary(error) } }
+      withQa = normalizeCandidateDecision({
+        candidate: { ...candidate, qa: { ok: false, failures: ['candidate-processing-failed'], error: errorSummary(error) } },
+        technicalEligible: false,
+        recommended: false,
+        technicalFailureCodes: ['candidate-processing-failed'],
+        qualityWarningCodes: []
+      })
     }
     if (withQa.qa?.ok === true) {
       try {
@@ -147,6 +162,17 @@ const runQualityFirstAction = async ({
       }
     } else failureCodes.push(...(withQa.qa?.failures || []))
     failureCodes.push(...(withQa.gate?.failures || []))
+    withQa = normalizeCandidateDecision({
+      candidate: withQa,
+      technicalEligible: withQa.technicalEligible === true,
+      recommended: withQa.technicalEligible === true && withQa.qa?.ok === true && withQa.gate?.ok === true,
+      technicalFailureCodes: withQa.technicalFailureCodes,
+      qualityWarningCodes: [
+        ...(withQa.qualityWarningCodes || []),
+        ...(withQa.qa?.failures || []),
+        ...(withQa.gate?.failures || [])
+      ]
+    })
     Object.assign(candidate, withQa)
     evaluatedCandidates.push(candidate)
     return candidate

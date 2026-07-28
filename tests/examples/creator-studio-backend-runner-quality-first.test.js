@@ -6,6 +6,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 
 const {
+  acceptQualityFirstActionCandidate,
   acceptQualityFirstCanonicalIdentity,
   runQualityFirstActionRepair,
   runQualityFirstIdentityRetry,
@@ -14,6 +15,7 @@ const {
 } = require('../../examples/plugins/creator-studio/lib/backend-runner')
 const backendRunnerModule = require('../../examples/plugins/creator-studio/lib/backend-runner')
 const { createRun, readRun, readRunLogs, writeRun } = require('../../examples/plugins/creator-studio/lib/run-store')
+const { writeCandidateRecord } = require('../../examples/plugins/creator-studio/lib/sprite-candidate-store')
 
 const createDataDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-quality-first-backend-'))
 
@@ -493,6 +495,262 @@ test('quality-first action repair reruns only the requested action and preserves
     'quality-first.action.repair-started',
     'quality-first.action.repaired'
   ])
+})
+
+test('manual action selection reuses an exact retained candidate without Provider generation', async () => {
+  const dataDir = createDataDir()
+  const created = createRun({
+    dataDir,
+    input: { petName: 'Chosen Action Pet', backend: 'provider', generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1', actions: [{ actionId: 'idle' }, { actionId: 'waving' }], questions: [] } }
+  })
+  const rawPath = path.join(dataDir, 'runs', created.runId, 'candidates', 'waving', 'candidate-2', 'raw', 'sheet.png')
+  fs.mkdirSync(path.dirname(rawPath), { recursive: true })
+  fs.writeFileSync(rawPath, 'retained-paid-action')
+  const candidateHash = crypto.createHash('sha256').update('retained-paid-action').digest('hex')
+  const warnings = ['visual-defect-motion-unreadable']
+  const record = writeCandidateRecord({
+    dataDir,
+    runId: created.runId,
+    scope: 'action-waving',
+    candidate: {
+      candidateId: 'candidate-2',
+      sha256: candidateHash,
+      technicalEligible: true,
+      recommended: false,
+      technicalFailureCodes: [],
+      qualityWarningCodes: warnings,
+      artifacts: [{ role: 'raw-sheet', path: rawPath, sha256: candidateHash }],
+      qa: { ok: true, failures: [] },
+      gate: { ok: false, outcome: 'reject', failures: warnings }
+    }
+  })
+  const canonical = { candidateId: 'canonical-1', sha256: 'a'.repeat(64) }
+  const profile = { version: 1, hash: 'p'.repeat(64) }
+  writeRun({ dataDir, run: {
+    ...created,
+    status: 'ready_for_review',
+    currentStep: 'review',
+    qualityFirst: {
+      phase: 'ready_for_review',
+      acceptedCanonical: canonical,
+      scaleProfileHash: profile.hash,
+      actionResults: {
+        idle: { ok: true, actionId: 'idle', selectedCandidateId: 'idle-candidate' },
+        waving: {
+          ok: false,
+          actionId: 'waving',
+          failureCode: 'action_quality_gate_failed',
+          candidates: [{
+            candidateId: 'candidate-2',
+            sha256: candidateHash,
+            technicalEligible: true,
+            recommended: false,
+            qualityWarningCodes: warnings,
+            candidateRecordRelativePath: record.relativePath
+          }]
+        }
+      }
+    }
+  } })
+  const calls = []
+  const runtime = {
+    runAction: async () => { throw new Error('manual selection must not call Provider generation') },
+    materializeActionCandidate: async ({ actionId, candidate }) => {
+      calls.push(['materialize', actionId, candidate.candidateId, candidate.selection.selectionAuthority])
+      return {
+        ok: true,
+        actionId,
+        disposition: 'accepted-by-human',
+        selectedCandidateId: candidate.candidateId,
+        selectedCandidate: candidate,
+        candidates: [candidate]
+      }
+    },
+    persistActionResult: async ({ actionId, result }) => calls.push(['persist', actionId, result.selectedCandidateId]),
+    finalizePackage: async () => ({
+      spritesheetRelativePath: `runs/${created.runId}/quality-first/package/spritesheet.webp`,
+      artifacts: { outputDir: path.join(dataDir, 'runs', created.runId, 'quality-first', 'package') }
+    })
+  }
+
+  const output = await acceptQualityFirstActionCandidate({
+    dataDir,
+    runId: created.runId,
+    actionId: 'waving',
+    candidateId: 'candidate-2',
+    expectedHash: candidateHash,
+    qualityOverride: true,
+    acknowledgedWarningCodes: warnings,
+    runtime,
+    plan: { hash: 'plan-hash', actions: [{ actionId: 'idle' }, { actionId: 'waving' }] },
+    profile,
+    now: () => '2026-07-28T01:00:00.000Z'
+  })
+
+  assert.deepEqual(calls, [
+    ['materialize', 'waving', 'candidate-2', 'human-override'],
+    ['persist', 'waving', 'candidate-2']
+  ])
+  assert.equal(output.run.status, 'ready_for_review')
+  assert.equal(output.run.qualityFirst.actionResults.waving.ok, true)
+  assert.equal(output.run.qualityFirst.actionResults.waving.selectedCandidateId, 'candidate-2')
+  assert.equal(output.run.qualityFirst.actionResults.waving.selection.selectionAuthority, 'human-override')
+  assert.equal(output.run.qualityFirst.actionResults.waving.selection.qualityOverride, true)
+  assert.equal(output.run.qualityFirst.actionResults.idle.ok, true)
+})
+
+test('manual idle selection rebuilds the scale profile and drops actions bound to the old profile', async () => {
+  const dataDir = createDataDir()
+  const created = createRun({
+    dataDir,
+    input: { petName: 'New Idle Pet', backend: 'provider', generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1', actions: [{ actionId: 'idle' }, { actionId: 'waving' }], questions: [] } }
+  })
+  const rawPath = path.join(dataDir, 'runs', created.runId, 'candidates', 'idle', 'candidate-2', 'raw', 'sheet.png')
+  fs.mkdirSync(path.dirname(rawPath), { recursive: true })
+  fs.writeFileSync(rawPath, 'retained-idle')
+  const candidateHash = crypto.createHash('sha256').update('retained-idle').digest('hex')
+  const warnings = ['visual-score-overall-below-minimum']
+  const record = writeCandidateRecord({
+    dataDir,
+    runId: created.runId,
+    scope: 'action-idle',
+    candidate: {
+      candidateId: 'candidate-2',
+      sha256: candidateHash,
+      technicalEligible: true,
+      recommended: false,
+      qualityWarningCodes: warnings,
+      artifacts: [{ role: 'raw-sheet', path: rawPath, sha256: candidateHash }]
+    }
+  })
+  const canonical = { candidateId: 'canonical-1', sha256: 'a'.repeat(64) }
+  writeRun({ dataDir, run: {
+    ...created,
+    status: 'recovery-required',
+    currentStep: 'recovery',
+    qualityFirst: {
+      phase: 'recovery-required',
+      acceptedCanonical: canonical,
+      scaleProfileHash: 'o'.repeat(64),
+      actionResults: {
+        idle: { ok: false, candidates: [{ candidateId: 'candidate-2', sha256: candidateHash, technicalEligible: true, recommended: false, qualityWarningCodes: warnings, candidateRecordRelativePath: record.relativePath }] },
+        waving: { ok: true, selectedCandidateId: 'old-waving' }
+      }
+    }
+  } })
+  const rebuiltProfile = { version: 1, hash: 'n'.repeat(64) }
+  const calls = []
+  const runtime = {
+    materializeActionCandidate: async ({ candidate }) => ({ ok: true, actionId: 'idle', selectedCandidateId: candidate.candidateId, selectedCandidate: candidate, candidates: [candidate] }),
+    createCharacterScaleProfile: async ({ idle }) => {
+      calls.push(['create-profile', idle.selectedCandidateId])
+      return rebuiltProfile
+    },
+    persistScaleProfile: async ({ profile }) => calls.push(['persist-profile', profile.hash]),
+    persistActionResult: async ({ actionId, profile }) => calls.push(['persist-action', actionId, profile.hash]),
+    finalizePackage: async ({ profile, actionResults }) => {
+      calls.push(['package', profile.hash, Object.keys(actionResults).sort().join(',')])
+      return { artifacts: { outputDir: path.join(dataDir, 'runs', created.runId, 'quality-first', 'package') } }
+    }
+  }
+
+  const output = await acceptQualityFirstActionCandidate({
+    dataDir,
+    runId: created.runId,
+    actionId: 'idle',
+    candidateId: 'candidate-2',
+    expectedHash: candidateHash,
+    qualityOverride: true,
+    acknowledgedWarningCodes: warnings,
+    runtime,
+    plan: { hash: 'plan-hash', actions: [{ actionId: 'idle' }, { actionId: 'waving' }] },
+    profile: null,
+    now: () => '2026-07-28T02:00:00.000Z'
+  })
+
+  assert.deepEqual(calls, [
+    ['create-profile', 'candidate-2'],
+    ['persist-profile', rebuiltProfile.hash],
+    ['persist-action', 'idle', rebuiltProfile.hash],
+    ['package', rebuiltProfile.hash, 'idle']
+  ])
+  assert.equal(output.run.qualityFirst.scaleProfileHash, rebuiltProfile.hash)
+  assert.deepEqual(Object.keys(output.run.qualityFirst.actionResults), ['idle'])
+})
+
+test('manual running-right selection rebuilds the derived running-left action', async () => {
+  const dataDir = createDataDir()
+  const created = createRun({
+    dataDir,
+    input: { petName: 'Direction Pet', backend: 'provider', generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1', actions: [{ actionId: 'idle' }, { actionId: 'running-right' }], questions: [] } }
+  })
+  const rawPath = path.join(dataDir, 'runs', created.runId, 'candidates', 'running-right', 'candidate-2', 'raw', 'sheet.png')
+  fs.mkdirSync(path.dirname(rawPath), { recursive: true })
+  fs.writeFileSync(rawPath, 'retained-running')
+  const candidateHash = crypto.createHash('sha256').update('retained-running').digest('hex')
+  const warnings = ['visual-defect-motion-unreadable']
+  const record = writeCandidateRecord({
+    dataDir,
+    runId: created.runId,
+    scope: 'action-running-right',
+    candidate: {
+      candidateId: 'candidate-2',
+      sha256: candidateHash,
+      technicalEligible: true,
+      recommended: false,
+      qualityWarningCodes: warnings,
+      artifacts: [{ role: 'raw-sheet', path: rawPath, sha256: candidateHash }]
+    }
+  })
+  const canonical = { candidateId: 'canonical-1', sha256: 'a'.repeat(64) }
+  const profile = { version: 1, hash: 'p'.repeat(64) }
+  writeRun({ dataDir, run: {
+    ...created,
+    status: 'ready_for_review',
+    currentStep: 'review',
+    qualityFirst: {
+      phase: 'ready_for_review',
+      acceptedCanonical: canonical,
+      scaleProfileHash: profile.hash,
+      actionResults: {
+        idle: { ok: true, selectedCandidateId: 'idle-candidate' },
+        'running-right': { ok: false, candidates: [{ candidateId: 'candidate-2', sha256: candidateHash, technicalEligible: true, recommended: false, qualityWarningCodes: warnings, candidateRecordRelativePath: record.relativePath }] },
+        'running-left': { ok: true, selectedCandidateId: 'old-mirror' }
+      }
+    }
+  } })
+  const calls = []
+  const runtime = {
+    materializeActionCandidate: async ({ candidate }) => ({ ok: true, actionId: 'running-right', selectedCandidateId: candidate.candidateId, selectedCandidate: candidate, candidates: [candidate] }),
+    mirrorRunningLeft: async ({ source }) => {
+      calls.push(['mirror', source.selectedCandidateId])
+      return { ok: true, actionId: 'running-left', selectedCandidateId: 'candidate-2-mirror', selectedCandidate: { candidateId: 'candidate-2-mirror' }, candidates: [] }
+    },
+    persistActionResult: async ({ actionId }) => calls.push(['persist', actionId]),
+    finalizePackage: async () => ({ artifacts: { outputDir: path.join(dataDir, 'runs', created.runId, 'quality-first', 'package') } })
+  }
+
+  const output = await acceptQualityFirstActionCandidate({
+    dataDir,
+    runId: created.runId,
+    actionId: 'running-right',
+    candidateId: 'candidate-2',
+    expectedHash: candidateHash,
+    qualityOverride: true,
+    acknowledgedWarningCodes: warnings,
+    runtime,
+    plan: { hash: 'plan-hash', actions: [{ actionId: 'idle' }, { actionId: 'running-right' }] },
+    profile,
+    now: () => '2026-07-28T03:00:00.000Z'
+  })
+
+  assert.deepEqual(calls, [
+    ['persist', 'running-right'],
+    ['mirror', 'candidate-2'],
+    ['persist', 'running-left']
+  ])
+  assert.equal(output.run.qualityFirst.actionResults['running-right'].selectedCandidateId, 'candidate-2')
+  assert.equal(output.run.qualityFirst.actionResults['running-left'].selectedCandidateId, 'candidate-2-mirror')
 })
 
 test('quality-first idle recovery can rebuild the missing scale profile from a retained passing candidate', async () => {
