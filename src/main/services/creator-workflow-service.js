@@ -5,6 +5,7 @@ const { CODEX_ROWS } = require('../pet-pack/codex-pet')
 const { sanitizeLogText } = require('./log-safety')
 const { writeJsonAtomic } = require('../json-file-utils')
 const { inferAnimationType } = require('../../../examples/plugins/creator-studio/lib/action-semantics')
+const { getQualityFirstQualityProfile } = require('../../../examples/plugins/creator-studio/lib/pet-generation-quality-profile')
 const {
   failGeneratingRunAfterCommandTermination
 } = require('../../../examples/plugins/creator-studio/lib/run-store')
@@ -667,7 +668,7 @@ const canPreviewImageFile = (absolutePath) => {
     const size = fs.statSync(absolutePath).size
     if (!Number.isFinite(size) || size <= 0 || size > IMAGE_PREVIEW_SOURCE_MAX_BYTES) return false
     const ext = path.extname(absolutePath).toLowerCase()
-    return Boolean(MIME_BY_EXT[ext])
+    return Boolean(MIME_BY_EXT[ext]) && hasSupportedImageSignature(absolutePath)
   } catch (_) {
     return false
   }
@@ -1556,21 +1557,71 @@ const hasVerifiedCandidateArtifact = ({ pluginDataDir, runId, artifact }) => {
   }
 }
 
+const hasSupportedImageSignature = (absolutePath) => {
+  try {
+    const header = Buffer.alloc(12)
+    const fd = fs.openSync(absolutePath, 'r')
+    let bytesRead = 0
+    try {
+      bytesRead = fs.readSync(fd, header, 0, header.length, 0)
+    } finally {
+      fs.closeSync(fd)
+    }
+    if (bytesRead < 6) return false
+    if (header.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return true
+    if (header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff) return true
+    if (header.subarray(0, 6).toString('ascii') === 'GIF87a' || header.subarray(0, 6).toString('ascii') === 'GIF89a') return true
+    return bytesRead >= 12 && header.subarray(0, 4).toString('ascii') === 'RIFF' && header.subarray(8, 12).toString('ascii') === 'WEBP'
+  } catch (_) {
+    return false
+  }
+}
+
 const reconstructLegacyCandidateTechnicalEligibility = ({ candidate, pluginDataDir, runId }) => {
   const artifacts = Array.isArray(candidate?.artifacts) ? candidate.artifacts : []
   const roles = new Map(artifacts.map((artifact) => [normalizeText(artifact?.role), artifact]))
   if (roles.has('raw-sheet')) {
     return ['raw-sheet', 'processed-sheet', 'contact-sheet', 'gif']
-      .every((role) => hasVerifiedCandidateArtifact({ pluginDataDir, runId, artifact: roles.get(role) }))
+      .every((role) => {
+        const artifact = roles.get(role)
+        const relativePath = normalizeSafeRelativePath(artifact?.relativePath || artifact?.path)
+        return hasVerifiedCandidateArtifact({ pluginDataDir, runId, artifact }) && hasSupportedImageSignature(path.resolve(pluginDataDir, relativePath))
+      })
   }
   const canonicalArtifact = roles.get('raw-canonical') || {
     relativePath: candidate?.relativePath,
     sha256: candidate?.sha256
   }
-  return hasVerifiedCandidateArtifact({ pluginDataDir, runId, artifact: canonicalArtifact })
+  const canonicalRelativePath = normalizeSafeRelativePath(canonicalArtifact?.relativePath || canonicalArtifact?.path)
+  return hasVerifiedCandidateArtifact({ pluginDataDir, runId, artifact: canonicalArtifact }) &&
+    hasSupportedImageSignature(path.resolve(pluginDataDir, canonicalRelativePath))
 }
 
-const createQualityFirstCandidateView = ({ candidate = {}, pluginDataDir = '', runId = '' } = {}) => {
+const hasCurrentCandidatePrimaryAsset = ({ candidate, pluginDataDir, runId }) => {
+  const artifacts = Array.isArray(candidate?.artifacts) ? candidate.artifacts : []
+  const primaryArtifact = artifacts.find((artifact) => ['raw-sheet', 'raw-canonical'].includes(normalizeText(artifact?.role))) || {
+    relativePath: candidate?.relativePath,
+    sha256: candidate?.sha256
+  }
+  const relativePath = normalizeSafeRelativePath(primaryArtifact?.relativePath || primaryArtifact?.path)
+  return hasVerifiedCandidateArtifact({ pluginDataDir, runId, artifact: primaryArtifact }) &&
+    hasSupportedImageSignature(path.resolve(pluginDataDir, relativePath))
+}
+
+const hasCurrentCandidateBindings = ({ candidate, expectedBindings }) => {
+  if (!expectedBindings) return true
+  const bindings = candidate?.bindings
+  return Boolean(
+    bindings &&
+    normalizeText(bindings.planHash) === normalizeText(expectedBindings.planHash) &&
+    normalizeText(bindings.canonicalHash) === normalizeText(expectedBindings.canonicalHash) &&
+    normalizeText(bindings.profileHash) === normalizeText(expectedBindings.profileHash) &&
+    Number(bindings.processorVersion) === Number(expectedBindings.processorVersion) &&
+    normalizeText(bindings.qualityProfileHash) === normalizeText(expectedBindings.qualityProfileHash)
+  )
+}
+
+const createQualityFirstCandidateView = ({ candidate = {}, pluginDataDir = '', runId = '', expectedBindings = null } = {}) => {
   const safeRun = getSafeCreatorRunDir({ pluginDataDir, runId, requireExisting: true })
   const candidateRecordRelativePath = normalizeSafeRelativePath(candidate.candidateRecordRelativePath)
   const candidateRecordPath = candidateRecordRelativePath && isRunRelativePath({ runId, relativePath: candidateRecordRelativePath })
@@ -1586,7 +1637,18 @@ const createQualityFirstCandidateView = ({ candidate = {}, pluginDataDir = '', r
   const persistedCandidate = isPlainObject(candidateRecord?.candidate) && normalizeText(candidateRecord.candidate.candidateId) === normalizeText(candidate.candidateId)
     ? candidateRecord.candidate
     : null
-  const candidateViewSource = persistedCandidate ? { ...persistedCandidate, ...candidate } : candidate
+  const candidateViewSource = persistedCandidate
+    ? {
+        ...candidate,
+        ...persistedCandidate,
+        candidateRecordRelativePath,
+        technicalEligible: persistedCandidate.technicalEligible,
+        recommended: persistedCandidate.recommended,
+        eligible: persistedCandidate.eligible,
+        bindings: persistedCandidate.bindings,
+        selection: candidate.selection || persistedCandidate.selection
+      }
+    : candidate
   const sourceArtifacts = Array.isArray(candidateViewSource.artifacts) ? candidateViewSource.artifacts : []
   const rawArtifact = sourceArtifacts.find((artifact) => ['raw-sheet', 'raw-canonical'].includes(normalizeText(artifact?.role)))
   const promptArtifact = sourceArtifacts.find((artifact) => normalizeText(artifact?.role) === 'prompt')
@@ -1620,9 +1682,13 @@ const createQualityFirstCandidateView = ({ candidate = {}, pluginDataDir = '', r
       }).filter(Boolean)
     : []
   const hasStoredTechnicalDecision = typeof candidateViewSource.technicalEligible === 'boolean'
-  const technicalEligible = hasStoredTechnicalDecision
-    ? candidateViewSource.technicalEligible
+  const currentArtifactEvidenceValid = hasStoredTechnicalDecision
+    ? hasCurrentCandidatePrimaryAsset({ candidate: candidateViewSource, pluginDataDir, runId })
     : reconstructLegacyCandidateTechnicalEligibility({ candidate: candidateViewSource, pluginDataDir, runId })
+  const currentBindingEvidenceValid = hasCurrentCandidateBindings({ candidate: candidateViewSource, expectedBindings })
+  const technicalEligible = hasStoredTechnicalDecision
+    ? candidateViewSource.technicalEligible === true && currentArtifactEvidenceValid && currentBindingEvidenceValid
+    : currentArtifactEvidenceValid && currentBindingEvidenceValid
   const recommended = typeof candidateViewSource.recommended === 'boolean'
     ? candidateViewSource.recommended
     : hasStoredTechnicalDecision
@@ -1638,10 +1704,10 @@ const createQualityFirstCandidateView = ({ candidate = {}, pluginDataDir = '', r
         selectedAt: normalizeText(candidateViewSource.selection.selectedAt).slice(0, 64)
       }
     : null
-  const selectionState = selection?.selectionAuthority === 'human-override'
-    ? 'selected-by-human'
-    : technicalEligible !== true
-      ? 'technically-unusable'
+  const selectionState = technicalEligible !== true
+    ? 'technically-unusable'
+    : selection?.selectionAuthority === 'human-override'
+      ? 'selected-by-human'
       : recommended === true
         ? 'recommended'
         : 'selectable-with-warning'
@@ -1663,7 +1729,13 @@ const createQualityFirstCandidateView = ({ candidate = {}, pluginDataDir = '', r
     relativePath: safeAssetPath,
     promptRelativePath: safePromptPath,
     previewable,
-    technicalFailureCodes: createUniqueTextList(candidateViewSource.technicalFailureCodes || []).slice(0, 32),
+    technicalFailureCodes: createUniqueTextList([
+      ...(candidateViewSource.technicalFailureCodes || []),
+      ...(hasStoredTechnicalDecision && candidateViewSource.technicalEligible === true && !currentArtifactEvidenceValid
+        ? ['candidate-asset-missing-or-changed']
+        : []),
+      ...(!currentBindingEvidenceValid ? ['candidate-binding-stale'] : [])
+    ]).slice(0, 32),
     qualityWarningCodes: createUniqueTextList(candidateViewSource.qualityWarningCodes || candidateViewSource.gate?.failures || []).slice(0, 32),
     failureCodes: createUniqueTextList([
       ...(Array.isArray(persistedCandidate?.failureCodes) ? persistedCandidate.failureCodes : []),
@@ -1735,6 +1807,8 @@ const createQualityFirstIdentityReviewView = ({ run = null, pluginDataDir = '' }
     : null
   const packageEvidenceRelativePath = normalizeSafeRelativePath(packageVisualEvaluation?.evidenceRelativePath)
   const packageBoardRelativePath = normalizeSafeRelativePath(packageVisualEvaluation?.boardRelativePath)
+  const acceptedCanonicalHash = normalizeText(qualityFirst.acceptedCanonical?.sha256)
+  const activeQualityProfileHash = normalizeText(getQualityFirstQualityProfile().hash)
   return {
     pipeline: 'quality-first-v1',
     phase,
@@ -1796,7 +1870,18 @@ const createQualityFirstIdentityReviewView = ({ run = null, pluginDataDir = '' }
             candidateCount: Array.isArray(result?.candidates) ? result.candidates.length : 0,
             candidates: Array.isArray(result?.candidates)
               ? result.candidates
-                .map((candidate) => createQualityFirstCandidateView({ candidate, pluginDataDir, runId }))
+                .map((candidate) => createQualityFirstCandidateView({
+                  candidate,
+                  pluginDataDir,
+                  runId,
+                  expectedBindings: {
+                    planHash: normalizeText(qualityFirst.planHash),
+                    canonicalHash: acceptedCanonicalHash,
+                    profileHash: normalizeText(actionId) === 'idle' ? '' : normalizeText(qualityFirst.scaleProfileHash),
+                    processorVersion: 1,
+                    qualityProfileHash: activeQualityProfileHash
+                  }
+                }))
                 .filter((candidate) => candidate.candidateId)
               : []
           }

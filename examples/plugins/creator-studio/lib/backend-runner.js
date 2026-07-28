@@ -1,5 +1,7 @@
 const fs = require('fs')
 const path = require('path')
+const crypto = require('node:crypto')
+const sharp = require('sharp')
 const { getBackendAdapter } = require('./backend-adapters')
 const {
   appendRunLog,
@@ -19,6 +21,7 @@ const {
 const { assertActionFrameQaPassed } = require('./action-frame-qa')
 const { buildRealAtlasFromGeneratedImage } = require('./real-atlas-builder')
 const { loadPetGenerationGovernance } = require('./pet-generation-governance')
+const { getQualityFirstQualityProfile } = require('./pet-generation-quality-profile')
 const { FIXTURE_BACKEND, PROVIDER_BACKEND, normalizeCreatorBackend } = require('./backend-mode')
 const { GENERATED_FULL_PET_ACTION_IDS } = require('./full-pet-basic-actions')
 const {
@@ -55,6 +58,14 @@ const createCandidateValidationError = (code, message) => {
   const error = new Error(message)
   error.code = code
   return error
+}
+
+const hasCurrentEmbeddedHash = (value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const recordedHash = String(value.hash || '').trim().toLowerCase()
+  if (!/^[a-f0-9]{64}$/.test(recordedHash)) return false
+  const { hash: _hash, ...valueWithoutHash } = value
+  return crypto.createHash('sha256').update(JSON.stringify(valueWithoutHash)).digest('hex') === recordedHash
 }
 
 const assertRetainedCandidateAssetCurrent = ({ dataDir, runId, candidate }) => {
@@ -99,17 +110,42 @@ const verifyRetainedCandidateArtifact = ({ dataDir, runId, artifact, label }) =>
   return relativePath
 }
 
-const reconstructLegacyActionCandidateDecision = ({ dataDir, runId, candidate }) => {
+const assertCandidateBindingsCurrent = ({ candidate, actionId, plan, canonical, profile }) => {
+  const bindings = candidate?.bindings
+  const expectedProfileHash = actionId === 'idle' ? '' : String(profile?.hash || '')
+  if (
+    !bindings ||
+    String(bindings.planHash || '') !== String(plan?.hash || '') ||
+    String(bindings.canonicalHash || '') !== String(canonical?.sha256 || '') ||
+    String(bindings.profileHash || '') !== expectedProfileHash ||
+    Number(bindings.processorVersion) !== 1 ||
+    String(bindings.qualityProfileHash || '') !== String(getQualityFirstQualityProfile().hash || '')
+  ) {
+    throw createCandidateValidationError('candidate_binding_stale', 'Candidate dependency binding is missing or stale')
+  }
+}
+
+const assertRetainedCandidateImageDecodable = async ({ dataDir, relativePath }) => {
+  try {
+    const metadata = await sharp(path.resolve(dataDir, String(relativePath || '')), { failOn: 'error' }).metadata()
+    if (!metadata.width || !metadata.height) throw new Error('missing image dimensions')
+  } catch (_) {
+    throw createCandidateValidationError('candidate_decode_failed', 'Candidate image cannot be decoded')
+  }
+}
+
+const reconstructLegacyActionCandidateDecision = async ({ dataDir, runId, candidate }) => {
   const artifacts = Array.isArray(candidate?.artifacts) ? candidate.artifacts : []
   const requiredRoles = ['raw-sheet', 'processed-sheet', 'contact-sheet', 'gif']
   const artifactsByRole = new Map(artifacts.map((artifact) => [String(artifact?.role || ''), artifact]))
   for (const role of requiredRoles) {
-    verifyRetainedCandidateArtifact({
+    const relativePath = verifyRetainedCandidateArtifact({
       dataDir,
       runId,
       artifact: artifactsByRole.get(role),
       label: `Legacy candidate ${role}`
     })
+    await assertRetainedCandidateImageDecodable({ dataDir, relativePath })
   }
   return normalizeStoredCandidateDecision({
     ...candidate,
@@ -602,6 +638,10 @@ const acceptQualityFirstCanonicalIdentity = async ({
   if (run.status !== 'awaiting_identity_review' || run.qualityFirst?.phase !== 'awaiting_identity_review') {
     throw new Error('Creator Studio canonical identity review is not pending')
   }
+  const runPlanHash = String(run.qualityFirst?.planHash || '')
+  if (runPlanHash && (!hasCurrentEmbeddedHash(plan) || String(plan.hash) !== runPlanHash)) {
+    throw createCandidateValidationError('candidate_binding_stale', 'Canonical identity selection requires the current sprite plan')
+  }
   const candidate = run.qualityFirst.canonicalCandidates?.find((entry) => entry.candidateId === String(candidateId || ''))
   if (!candidate) {
     throw new Error('Creator Studio canonical identity candidate or hash is invalid')
@@ -609,6 +649,7 @@ const acceptQualityFirstCanonicalIdentity = async ({
   const hasStoredTechnicalDecision = typeof candidate.technicalEligible === 'boolean'
   if (!hasStoredTechnicalDecision) {
     assertRetainedCandidateAssetCurrent({ dataDir, runId, candidate })
+    await assertRetainedCandidateImageDecodable({ dataDir, relativePath: candidate.relativePath })
   }
   const normalizedCandidate = normalizeStoredCandidateDecision({
     ...candidate,
@@ -622,6 +663,7 @@ const acceptQualityFirstCanonicalIdentity = async ({
   })
   if (candidate.relativePath && hasStoredTechnicalDecision) {
     assertRetainedCandidateAssetCurrent({ dataDir, runId, candidate })
+    await assertRetainedCandidateImageDecodable({ dataDir, relativePath: candidate.relativePath })
   } else if (!candidate.relativePath) {
     throw createCandidateValidationError('candidate_asset_missing', 'Candidate asset path is required for a quality override')
   }
@@ -696,7 +738,7 @@ const createQualityFirstActionResultView = (result) => ({
   })) : []
 })
 
-const loadRetainedActionCandidateForSelection = ({ dataDir, runId, actionId, candidateView }) => {
+const loadRetainedActionCandidateForSelection = async ({ dataDir, runId, actionId, candidateView }) => {
   const recordRelativePath = String(candidateView?.candidateRecordRelativePath || '').trim().replace(/\\/g, '/')
   const expectedPrefix = `runs/${runId}/`
   if (
@@ -743,7 +785,7 @@ const loadRetainedActionCandidateForSelection = ({ dataDir, runId, actionId, can
   const hasStoredTechnicalDecision = typeof source.technicalEligible === 'boolean'
   const candidate = hasStoredTechnicalDecision
     ? normalizeStoredCandidateDecision(storedCandidate)
-    : reconstructLegacyActionCandidateDecision({ dataDir, runId, candidate: storedCandidate })
+    : await reconstructLegacyActionCandidateDecision({ dataDir, runId, candidate: storedCandidate })
   if (String(candidateView.sha256 || '').trim().toLowerCase() !== candidate.sha256) {
     throw createCandidateValidationError('candidate_hash_mismatch', 'Candidate view no longer matches the retained record')
   }
@@ -785,17 +827,31 @@ const acceptQualityFirstActionCandidate = async ({
   if (!canonical?.candidateId || !canonical?.sha256) {
     throw createCandidateValidationError('candidate_binding_stale', 'Action candidate selection requires an accepted canonical identity')
   }
-  if (normalizedActionId !== 'idle' && !profile?.hash) {
+  const runPlanHash = String(run.qualityFirst?.planHash || '')
+  if (runPlanHash && (!hasCurrentEmbeddedHash(plan) || String(plan.hash) !== runPlanHash)) {
+    throw createCandidateValidationError('candidate_binding_stale', 'Action candidate selection requires the current sprite plan')
+  }
+  if (normalizedActionId !== 'idle' && (
+    !hasCurrentEmbeddedHash(profile) ||
+    String(profile.hash) !== String(run.qualityFirst?.scaleProfileHash || '')
+  )) {
     throw createCandidateValidationError('candidate_binding_stale', 'Action candidate selection requires the current scale profile')
   }
   const actionResult = run.qualityFirst?.actionResults?.[normalizedActionId]
   const candidateView = actionResult?.candidates?.find((candidate) => String(candidate?.candidateId || '') === normalizedCandidateId)
   if (!candidateView) throw createCandidateValidationError('candidate_not_found', 'Retained action candidate was not found')
-  const candidate = loadRetainedActionCandidateForSelection({
+  const candidate = await loadRetainedActionCandidateForSelection({
     dataDir,
     runId,
     actionId: normalizedActionId,
     candidateView
+  })
+  assertCandidateBindingsCurrent({
+    candidate,
+    actionId: normalizedActionId,
+    plan,
+    canonical,
+    profile
   })
   assertHumanCandidateSelection({
     candidate,
@@ -804,6 +860,7 @@ const acceptQualityFirstActionCandidate = async ({
     acknowledgedWarningCodes
   })
   assertRetainedCandidateAssetCurrent({ dataDir, runId, candidate })
+  await assertRetainedCandidateImageDecodable({ dataDir, relativePath: candidate.relativePath })
   const selection = createCandidateSelection({
     candidate,
     expectedHash,
@@ -812,6 +869,33 @@ const acceptQualityFirstActionCandidate = async ({
     acknowledgedWarningCodes,
     now
   })
+  const pendingActionResult = {
+    ...actionResult,
+    disposition: 'selected-by-human',
+    selectedCandidateId: normalizedCandidateId,
+    selection,
+    candidates: Array.isArray(actionResult?.candidates)
+      ? actionResult.candidates.map((entry) => (
+          String(entry?.candidateId || '') === normalizedCandidateId
+            ? { ...entry, selection }
+            : entry
+        ))
+      : []
+  }
+  const priorActionResults = { ...(run.qualityFirst?.actionResults || {}) }
+  if (normalizedActionId === 'idle') {
+    for (const actionId of Object.keys(priorActionResults)) delete priorActionResults[actionId]
+  } else if (normalizedActionId === 'running-right') {
+    delete priorActionResults['running-left']
+  }
+  const pendingQualityFirst = {
+    ...run.qualityFirst,
+    actionResults: {
+      ...priorActionResults,
+      [normalizedActionId]: pendingActionResult
+    },
+    ...(normalizedActionId === 'idle' ? { scaleProfileHash: '' } : {})
+  }
   const startedAt = now()
   const lease = createGenerationLease({ commandId: 'accept-action-candidate', startedAt, leaseId: `${runId}-accept-action-candidate-${startedAt}` })
   const generatingRun = {
@@ -819,6 +903,7 @@ const acceptQualityFirstActionCandidate = async ({
     status: 'generating',
     currentStep: normalizedActionId,
     generationLease: lease,
+    qualityFirst: pendingQualityFirst,
     backendStatus: createBackendStatus({ backend: PROVIDER_BACKEND, state: 'running', message: `Applying retained ${normalizedActionId} candidate`, updatedAt: startedAt })
   }
   writeRun({ dataDir, run: generatingRun })
@@ -843,10 +928,22 @@ const acceptQualityFirstActionCandidate = async ({
     if (materialized?.ok !== true || materialized?.selectedCandidateId !== normalizedCandidateId) {
       throw createCandidateValidationError('override_checkpoint_rebuild_failed', 'Retained action candidate could not be materialized')
     }
+    const materializedSelectedCandidate = { ...(materialized.selectedCandidate || candidate), selection }
+    const retainedCandidates = Array.isArray(actionResult?.candidates)
+      ? actionResult.candidates.map((entry) => (
+          String(entry?.candidateId || '') === normalizedCandidateId
+            ? { ...entry, ...materializedSelectedCandidate, selection }
+            : entry
+        ))
+      : []
+    if (!retainedCandidates.some((entry) => String(entry?.candidateId || '') === normalizedCandidateId)) {
+      retainedCandidates.push(materializedSelectedCandidate)
+    }
     const selectedResult = {
       ...materialized,
       selection,
-      selectedCandidate: { ...(materialized.selectedCandidate || candidate), selection }
+      selectedCandidate: materializedSelectedCandidate,
+      candidates: retainedCandidates
     }
     let effectiveProfile = profile
     if (normalizedActionId === 'idle') {
@@ -921,7 +1018,7 @@ const acceptQualityFirstActionCandidate = async ({
         currentStep: 'recovery',
         error: error.message,
         backendStatus: createBackendStatus({ backend: PROVIDER_BACKEND, state: 'recovery-required', message: error.message, updatedAt: failedAt }),
-        qualityFirst: { ...run.qualityFirst, phase: 'recovery-required', failureCode, nextAction: 'select-or-retry-action' }
+        qualityFirst: { ...pendingQualityFirst, phase: 'recovery-required', failureCode, nextAction: 'select-or-retry-action' }
       },
       now: () => failedAt
     })

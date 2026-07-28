@@ -106,6 +106,27 @@ const sanitizeSelection = ({ value, candidateId, sha256 }) => {
     selectedAt: String(value.selectedAt || '').slice(0, 64)
   }
 }
+const sanitizeBindings = (value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const bindings = {
+    planHash: sanitizeSha256(value.planHash),
+    canonicalHash: sanitizeSha256(value.canonicalHash),
+    profileHash: value.profileHash === '' ? '' : sanitizeSha256(value.profileHash),
+    processorVersion: Number(value.processorVersion),
+    qualityProfileHash: sanitizeSha256(value.qualityProfileHash)
+  }
+  if (
+    !bindings.planHash ||
+    !bindings.canonicalHash ||
+    (!bindings.profileHash && value.profileHash !== '') ||
+    !Number.isInteger(bindings.processorVersion) ||
+    bindings.processorVersion < 1 ||
+    !bindings.qualityProfileHash
+  ) {
+    throw new Error('Candidate bindings are invalid')
+  }
+  return bindings
+}
 const sanitizeCandidate = ({ dataDir, candidate }) => {
   const source = candidate && typeof candidate === 'object' ? candidate : {}
   const candidateId = normalizeSegment(source.candidateId, 'candidateId')
@@ -128,6 +149,7 @@ const sanitizeCandidate = ({ dataDir, candidate }) => {
   } : undefined
   const modelAttempts = sanitizeModelAttempts(source.modelAttempts)
   const selection = sanitizeSelection({ value: source.selection, candidateId, sha256 })
+  const bindings = sanitizeBindings(source.bindings)
   return {
     candidateId,
     ...(sha256 ? { sha256 } : {}),
@@ -149,6 +171,7 @@ const sanitizeCandidate = ({ dataDir, candidate }) => {
     ...(typeof source.recommended === 'boolean' ? { recommended: source.recommended } : {}),
     ...(source.technicalFailureCodes ? { technicalFailureCodes: sanitizeFailures(source.technicalFailureCodes) } : {}),
     ...(source.qualityWarningCodes ? { qualityWarningCodes: sanitizeFailures(source.qualityWarningCodes) } : {}),
+    ...(bindings ? { bindings } : {}),
     ...(selection ? { selection } : {}),
     ...(modelAttempts.length ? { modelAttempts } : {}),
     ...(source.evaluation && typeof source.evaluation === 'object' ? { evaluation: {

@@ -420,7 +420,7 @@ const evaluateQualityFirstFinalPackage = async ({
   })
   if (evaluated?.gate?.ok !== true) {
     const failures = Array.isArray(evaluated?.gate?.failures) ? evaluated.gate.failures.map(String).slice(0, 32) : ['final-package-visual-gate-failed']
-    if (allowVisualQualityWarnings === true) {
+    if (allowVisualQualityWarnings === true && ['repair', 'reject'].includes(String(evaluated?.gate?.outcome || ''))) {
       return {
         gate: evaluated?.gate || { ok: false, outcome: 'repair', failures },
         recommended: false,
@@ -2855,6 +2855,14 @@ const createQualityFirstRecoveryBundle = async ({ dataDir, run, actionResults = 
   }
 }
 
+const hasHumanCandidateSelection = ({ canonical, actionResults = {} } = {}) => (
+  canonical?.selection?.selectionAuthority === 'human-override' ||
+  Object.values(actionResults).some((result) => (
+    result?.selection?.selectionAuthority === 'human-override' ||
+    result?.selectedCandidate?.selection?.selectionAuthority === 'human-override'
+  ))
+)
+
 const generateCanonicalCandidatePool = async ({
   generateCandidate,
   persistCandidate = () => {},
@@ -3023,13 +3031,15 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
   writeJsonFile(path.join(dataDir, planRelativePath), plan)
   const qualityProfile = require('./pet-generation-quality-profile').getQualityFirstQualityProfile()
   const persistedScaleProfilePath = path.join(dataDir, `runs/${run.runId}/character-scale-profile.json`)
+  const isHashBoundScaleProfile = (value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value) || !/^[a-f0-9]{64}$/.test(String(value.hash || ''))) return false
+    const { hash: recordedHash, ...profileWithoutHash } = value
+    return crypto.createHash('sha256').update(JSON.stringify(profileWithoutHash)).digest('hex') === recordedHash
+  }
   const readPersistedScaleProfile = () => {
     try {
       const value = JSON.parse(fs.readFileSync(persistedScaleProfilePath, 'utf8'))
-      if (!value || typeof value !== 'object' || !/^[a-f0-9]{64}$/.test(String(value.hash || ''))) return null
-      const { hash: recordedHash, ...profileWithoutHash } = value
-      const computedHash = crypto.createHash('sha256').update(JSON.stringify(profileWithoutHash)).digest('hex')
-      return computedHash === recordedHash ? value : null
+      return isHashBoundScaleProfile(value) ? value : null
     } catch (_) {
       return null
     }
@@ -3239,7 +3249,17 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
           dataDir,
           runId: run.runId,
           scope: `action-${actionId}`,
-          candidate: { ...candidate, artifacts: collectQualityFirstCandidateArtifacts({ dataDir, candidate }) }
+          candidate: {
+            ...candidate,
+            bindings: {
+              planHash: plan.hash,
+              canonicalHash: canonical.sha256,
+              profileHash: actionId === 'idle' ? '' : String(actionProfile?.hash || ''),
+              processorVersion: 1,
+              qualityProfileHash: qualityProfile.hash
+            },
+            artifacts: collectQualityFirstCandidateArtifacts({ dataDir, candidate })
+          }
         })
         candidate.candidateRecordRelativePath = record.relativePath
       },
@@ -3253,6 +3273,14 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
       const error = new Error(`Unknown retained action candidate scope: ${actionId}`)
       error.code = 'candidate_binding_stale'
       throw error
+    }
+    if (actionId !== 'idle') {
+      const expectedProfileHash = String(run?.qualityFirst?.scaleProfileHash || '')
+      if (!isHashBoundScaleProfile(profile) || (expectedProfileHash && String(profile.hash) !== expectedProfileHash)) {
+        const error = new Error('Retained action candidate scale profile binding is stale')
+        error.code = 'candidate_binding_stale'
+        throw error
+      }
     }
     const rawArtifact = Array.isArray(candidate?.artifacts)
       ? candidate.artifacts.find((artifact) => artifact?.role === 'raw-sheet')
@@ -3276,11 +3304,12 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
       throw error
     }
     const outputDir = path.join(dataDir, `runs/${run.runId}/candidates/${actionId}/${candidate.candidateId}/manual-processed`)
+    const processingProfile = actionId === 'idle' ? {} : profile
     const processed = await processSpriteSheet({
       inputPath: rawPath,
       outputDir,
       layout: action.layout,
-      profile: profile || {},
+      profile: processingProfile,
       actionPolicy: { ...action, actionId }
     })
     const expectedFrameCount = Math.max(1, Number(action.frameCount) || Number(action.layout?.cellCount) || 0)
@@ -3290,7 +3319,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
       error.code = 'action_candidate_frames_incomplete'
       throw error
     }
-    const qa = analyzeSpriteCandidate({ actionId, rawMetrics: processed.metrics, profile: profile || {}, actionPolicy: action })
+    const qa = analyzeSpriteCandidate({ actionId, rawMetrics: processed.metrics, profile: processingProfile, actionPolicy: action })
     const selectedCandidate = {
       ...candidate,
       rawPath,
@@ -3428,9 +3457,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
       canonicalPath: path.join(dataDir, canonical.relativePath),
       spritesheetPath: packaged.spritesheetPath,
       atlasQaPath: packaged.atlasQaPath,
-      allowVisualQualityWarnings: canonical?.selection?.qualityOverride === true || Object.values(actionResults).some((result) => (
-        result?.selection?.qualityOverride === true || result?.selectedCandidate?.selection?.qualityOverride === true
-      ))
+      allowVisualQualityWarnings: hasHumanCandidateSelection({ canonical, actionResults })
     })
     const generatedImage = {
       ok: true,
@@ -3982,6 +4009,7 @@ module.exports = {
     generateWithModelFallback,
     evaluateActionKeyframeQuality,
     getSuccessfulGenerationModels,
+    hasHumanCandidateSelection,
     isSoftIdentityDescriptorRetryEligible,
     prepareGeneratedKeyframeOutput,
     loadRetainedQualityFirstActionCandidates,

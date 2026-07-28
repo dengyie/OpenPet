@@ -14,6 +14,7 @@ const {
   createCreatorWorkflowService
 } = require('../../src/main/services/creator-workflow-service')
 const { readRun } = require('../../examples/plugins/creator-studio/lib/run-store')
+const { getQualityFirstQualityProfile } = require('../../examples/plugins/creator-studio/lib/pet-generation-quality-profile')
 
 const OFFICIAL_FULL_PET_ACTION_IDS = [
   'idle',
@@ -26,6 +27,8 @@ const OFFICIAL_FULL_PET_ACTION_IDS = [
   'running',
   'review'
 ]
+const LEGACY_PNG_BYTES = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+Xn9pAAAAAElFTkSuQmCC', 'base64')
+const LEGACY_GIF_BYTES = Buffer.from('R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==', 'base64')
 
 const createReadyHatchPetAgentService = () => ({
   getGenerationReadiness: () => ({
@@ -2208,22 +2211,30 @@ test('creator workflow diagnostics expose renderer-safe quality-first identity c
   fs.mkdirSync(actionCandidateDir, { recursive: true })
   fs.mkdirSync(actionRecordDir, { recursive: true })
   fs.mkdirSync(path.join(runDir, 'budgets'), { recursive: true })
-  fs.writeFileSync(path.join(candidateDir, 'candidate.png'), 'png')
-  fs.writeFileSync(path.join(warnedCandidateDir, 'candidate.png'), 'warned-png')
-  fs.writeFileSync(path.join(actionCandidateDir, 'candidate.png'), 'action-png')
+  fs.writeFileSync(path.join(candidateDir, 'candidate.png'), LEGACY_PNG_BYTES)
+  fs.writeFileSync(path.join(warnedCandidateDir, 'candidate.png'), LEGACY_PNG_BYTES)
+  fs.writeFileSync(path.join(actionCandidateDir, 'candidate.png'), LEGACY_PNG_BYTES)
+  const retainedImageHash = crypto.createHash('sha256').update(LEGACY_PNG_BYTES).digest('hex')
   fs.writeFileSync(path.join(actionRecordDir, 'candidate.json'), `${JSON.stringify({
     version: 1,
     runId,
     scope: 'action-idle',
     candidate: {
       candidateId: 'candidate-2',
-      sha256: 'c'.repeat(64),
+      sha256: retainedImageHash,
       technicalEligible: true,
       recommended: false,
       technicalFailureCodes: [],
       qualityWarningCodes: ['visual-defect-motion-unreadable'],
       model: 'gpt-image-2',
-      artifacts: [{ role: 'raw-sheet', relativePath: `runs/${runId}/candidates/idle/candidate-2/raw/candidate.png`, sha256: 'c'.repeat(64) }]
+      bindings: {
+        planHash: 'p'.repeat(64),
+        canonicalHash: retainedImageHash,
+        profileHash: '',
+        processorVersion: 1,
+        qualityProfileHash: getQualityFirstQualityProfile().hash
+      },
+      artifacts: [{ role: 'raw-sheet', relativePath: `runs/${runId}/candidates/idle/candidate-2/raw/candidate.png`, sha256: retainedImageHash }]
     }
   }, null, 2)}\n`)
   fs.writeFileSync(path.join(runDir, 'budgets', 'ledger.json'), `${JSON.stringify({
@@ -2253,8 +2264,8 @@ test('creator workflow diagnostics expose renderer-safe quality-first identity c
         }
       },
       requireIdentityReviewBeforeActions: false,
-      selectedCanonical: { candidateId: 'canonical-1', sha256: 'a'.repeat(64) },
-      acceptedCanonical: { candidateId: 'canonical-1', sha256: 'a'.repeat(64) },
+      selectedCanonical: { candidateId: 'canonical-1', sha256: retainedImageHash },
+      acceptedCanonical: { candidateId: 'canonical-1', sha256: retainedImageHash },
       actionResults: {
         idle: {
           ok: true,
@@ -2266,7 +2277,7 @@ test('creator workflow diagnostics expose renderer-safe quality-first identity c
           evaluatedCandidateCount: 2,
           candidates: [{ candidateId: 'candidate-1' }, {
             candidateId: 'candidate-2',
-            sha256: 'c'.repeat(64),
+            sha256: retainedImageHash,
             technicalEligible: true,
             recommended: false,
             qualityWarningCodes: ['visual-defect-motion-unreadable'],
@@ -2278,7 +2289,7 @@ test('creator workflow diagnostics expose renderer-safe quality-first identity c
         candidateId: 'canonical-1',
         eligible: true,
         disposition: 'selected-anchor',
-        sha256: 'a'.repeat(64),
+        sha256: retainedImageHash,
         score: 94,
         model: 'gpt-image-2',
         relativePath: `runs/${runId}/candidates/canonical/canonical-1/raw/candidate.png`,
@@ -2299,7 +2310,7 @@ test('creator workflow diagnostics expose renderer-safe quality-first identity c
         technicalEligible: true,
         recommended: false,
         disposition: 'selectable-with-warning',
-        sha256: 'd'.repeat(64),
+        sha256: retainedImageHash,
         score: 68,
         relativePath: `runs/${runId}/candidates/canonical/canonical-4/raw/candidate.png`,
         qualityWarningCodes: ['visual-defect-identity-drift', 'visual-score-overall-below-minimum'],
@@ -2347,11 +2358,14 @@ test('creator workflow diagnostics reconstruct legacy action eligibility only fr
   const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-legacy-candidate-'))
   const runId = 'run-legacy-candidate-review'
   const runDir = path.join(pluginDataDir, 'runs', runId)
-  const createLegacyCandidate = ({ candidateId, complete }) => {
+  const planHash = 'p'.repeat(64)
+  const canonicalHash = 'c'.repeat(64)
+  const profileHash = 's'.repeat(64)
+  const createLegacyCandidate = ({ candidateId, complete, bound = true }) => {
     const roles = complete ? ['raw-sheet', 'processed-sheet', 'contact-sheet', 'gif'] : ['raw-sheet']
     const artifacts = roles.map((role) => {
       const relativePath = `runs/${runId}/candidates/waving/${candidateId}/${role}.${role === 'gif' ? 'gif' : 'png'}`
-      const bytes = Buffer.from(`${candidateId}:${role}`)
+      const bytes = role === 'gif' ? LEGACY_GIF_BYTES : LEGACY_PNG_BYTES
       const absolutePath = path.join(pluginDataDir, relativePath)
       fs.mkdirSync(path.dirname(absolutePath), { recursive: true })
       fs.writeFileSync(absolutePath, bytes)
@@ -2368,6 +2382,15 @@ test('creator workflow diagnostics reconstruct legacy action eligibility only fr
         candidateId,
         sha256: artifacts[0].sha256,
         eligible: true,
+        ...(bound ? {
+          bindings: {
+            planHash,
+            canonicalHash,
+            profileHash,
+            processorVersion: 1,
+            qualityProfileHash: getQualityFirstQualityProfile().hash
+          }
+        } : {}),
         artifacts,
         qa: { ok: true, failures: [] },
         gate: { ok: false, outcome: 'reject', failures: ['visual-score-overall-below-minimum'] }
@@ -2377,6 +2400,16 @@ test('creator workflow diagnostics reconstruct legacy action eligibility only fr
   }
   const complete = createLegacyCandidate({ candidateId: 'candidate-complete', complete: true })
   const incomplete = createLegacyCandidate({ candidateId: 'candidate-incomplete', complete: false })
+  const unbound = {
+    ...createLegacyCandidate({ candidateId: 'candidate-unbound', complete: true, bound: false }),
+    bindings: {
+      planHash,
+      canonicalHash,
+      profileHash,
+      processorVersion: 1,
+      qualityProfileHash: getQualityFirstQualityProfile().hash
+    }
+  }
   fs.writeFileSync(path.join(runDir, 'run.json'), `${JSON.stringify({
     runId,
     status: 'ready_for_review',
@@ -2384,8 +2417,11 @@ test('creator workflow diagnostics reconstruct legacy action eligibility only fr
     generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1' },
     qualityFirst: {
       phase: 'ready_for_review',
+      planHash,
+      acceptedCanonical: { candidateId: 'canonical-1', sha256: canonicalHash },
+      scaleProfileHash: profileHash,
       actionResults: {
-        waving: { ok: false, candidates: [complete, { ...incomplete, eligible: true }] }
+        waving: { ok: false, candidates: [complete, { ...incomplete, eligible: true }, unbound] }
       }
     }
   }, null, 2)}\n`)
@@ -2397,6 +2433,81 @@ test('creator workflow diagnostics reconstruct legacy action eligibility only fr
   assert.equal(candidates[0].selectionState, 'selectable-with-warning')
   assert.equal(candidates[1].technicalEligible, false)
   assert.equal(candidates[1].selectionState, 'technically-unusable')
+  assert.equal(candidates[2].technicalEligible, false)
+  assert.equal(candidates[2].selectionState, 'technically-unusable')
+  assert.deepEqual(candidates[2].technicalFailureCodes, ['candidate-binding-stale'])
+})
+
+test('creator workflow diagnostics do not present hash-matched non-image legacy canonical bytes as selectable', () => {
+  const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-legacy-canonical-decode-'))
+  const runId = 'run-legacy-canonical-decode'
+  const runDir = path.join(pluginDataDir, 'runs', runId)
+  const relativePath = `runs/${runId}/candidates/canonical/canonical-broken/raw/0001.png`
+  const absolutePath = path.join(pluginDataDir, relativePath)
+  const bytes = Buffer.from('not-an-image')
+  fs.mkdirSync(path.dirname(absolutePath), { recursive: true })
+  fs.writeFileSync(absolutePath, bytes)
+  fs.writeFileSync(path.join(runDir, 'run.json'), `${JSON.stringify({
+    runId,
+    status: 'awaiting_identity_review',
+    currentStep: 'identity-review',
+    generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1' },
+    qualityFirst: {
+      phase: 'awaiting_identity_review',
+      canonicalCandidates: [{
+        candidateId: 'canonical-broken',
+        sha256: crypto.createHash('sha256').update(bytes).digest('hex'),
+        relativePath,
+        eligible: false,
+        gate: { ok: false, failures: ['visual-score-overall-below-minimum'] }
+      }]
+    }
+  }, null, 2)}\n`)
+
+  const candidate = __testInternals.readWorkflowDiagnostics({ pluginDataDir, runId })
+    .progress.qualityFirst.identityReview.candidates[0]
+  assert.equal(candidate.previewable, false)
+  assert.equal(candidate.technicalEligible, false)
+  assert.equal(candidate.selectionState, 'technically-unusable')
+})
+
+test('creator workflow diagnostics revoke stored technical eligibility when the retained asset is missing', () => {
+  const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-missing-selected-candidate-'))
+  const runId = 'run-missing-selected-candidate'
+  const runDir = path.join(pluginDataDir, 'runs', runId)
+  const relativePath = `runs/${runId}/candidates/canonical/canonical-selected/raw/0001.png`
+  fs.mkdirSync(runDir, { recursive: true })
+  fs.writeFileSync(path.join(runDir, 'run.json'), `${JSON.stringify({
+    runId,
+    status: 'ready_for_review',
+    currentStep: 'review',
+    generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1' },
+    qualityFirst: {
+      phase: 'ready_for_review',
+      acceptedCanonical: { candidateId: 'canonical-selected', sha256: 'a'.repeat(64) },
+      canonicalCandidates: [{
+        candidateId: 'canonical-selected',
+        sha256: 'a'.repeat(64),
+        relativePath,
+        technicalEligible: true,
+        recommended: true,
+        selection: {
+          candidateId: 'canonical-selected',
+          sha256: 'a'.repeat(64),
+          selectionAuthority: 'human-override',
+          qualityOverride: false,
+          acknowledgedWarningCodes: [],
+          selectedAt: '2026-07-29T00:00:00.000Z'
+        }
+      }]
+    }
+  }, null, 2)}\n`)
+
+  const candidate = __testInternals.readWorkflowDiagnostics({ pluginDataDir, runId })
+    .progress.qualityFirst.identityReview.candidates[0]
+  assert.equal(candidate.previewable, false)
+  assert.equal(candidate.technicalEligible, false)
+  assert.equal(candidate.selectionState, 'technically-unusable')
 })
 
 test('creator workflow diagnostics do not treat a running backend message as a failure reason', () => {
@@ -2426,7 +2537,7 @@ test('creator workflow diagnostics expose a failed identity pool without absolut
   const runDir = path.join(pluginDataDir, 'runs', runId)
   const candidatePath = path.join(runDir, 'candidates', 'canonical', 'canonical-1', 'raw', '0001.png')
   fs.mkdirSync(path.dirname(candidatePath), { recursive: true })
-  fs.writeFileSync(candidatePath, 'png')
+  fs.writeFileSync(candidatePath, LEGACY_PNG_BYTES)
   const candidateRecordRelativePath = `runs/${runId}/candidates/canonical/canonical-1/candidate.json`
   fs.writeFileSync(path.join(pluginDataDir, candidateRecordRelativePath), `${JSON.stringify({
     version: 1,

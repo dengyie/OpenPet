@@ -516,6 +516,51 @@ test('quality-first host runtime materializes a warned retained action candidate
   }
 })
 
+test('quality-first host runtime rejects a scale profile whose content no longer matches its embedded hash', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-quality-first-corrupt-profile-'))
+  const runId = 'run-corrupt-profile'
+  const sourceRelativePath = `runs/${runId}/inputs/reference.png`
+  const canonicalRelativePath = `runs/${runId}/canonical.png`
+  for (const relativePath of [sourceRelativePath, canonicalRelativePath]) {
+    const absolutePath = path.join(dataDir, relativePath)
+    fs.mkdirSync(path.dirname(absolutePath), { recursive: true })
+    await sharp({ create: { width: 192, height: 208, channels: 4, background: { r: 80, g: 120, b: 160, alpha: 1 } } }).png().toFile(absolutePath)
+  }
+  const plan = createSpriteAssetPlan({
+    version: 1,
+    revision: 1,
+    character: { assetClass: 'grounded-compact-character' },
+    actions: [{ actionId: 'waving' }]
+  })
+  const rawRelativePath = `runs/${runId}/candidates/waving/candidate-2/raw/0001.png`
+  const rawPath = path.join(dataDir, rawRelativePath)
+  fs.mkdirSync(path.dirname(rawPath), { recursive: true })
+  await sharp({ create: { width: 1024, height: 1024, channels: 4, background: { r: 90, g: 130, b: 170, alpha: 1 } } }).png().toFile(rawPath)
+  const candidateHash = crypto.createHash('sha256').update(fs.readFileSync(rawPath)).digest('hex')
+  const profileBase = { version: 1, maxBodyScaleCv: 0.08 }
+  const validHash = crypto.createHash('sha256').update(JSON.stringify(profileBase)).digest('hex')
+  const corruptProfile = { ...profileBase, maxBodyScaleCv: 999, hash: validHash }
+  const runtime = await createQualityFirstHostRuntime({
+    dataDir,
+    run: { runId, qualityFirst: { scaleProfileHash: validHash }, input: { referenceImage: { relativePath: sourceRelativePath } } },
+    planOverride: plan
+  })
+
+  await assert.rejects(() => runtime.materializeActionCandidate({
+    actionId: 'waving',
+    candidate: {
+      candidateId: 'candidate-2',
+      sha256: candidateHash,
+      technicalEligible: true,
+      recommended: true,
+      artifacts: [{ role: 'raw-sheet', relativePath: rawRelativePath, sha256: candidateHash }]
+    },
+    canonical: { candidateId: 'canonical-1', sha256: 'a'.repeat(64), relativePath: canonicalRelativePath },
+    profile: corruptProfile,
+    plan
+  }), (error) => error?.code === 'candidate_binding_stale')
+})
+
 test('quality-first host runtime persists Provider request ids for failed action candidates', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-quality-first-failed-evidence-'))
   const runId = 'run-failed-evidence'
@@ -631,6 +676,17 @@ test('quality-first final package requires a passing code-owned visual gate over
     canonicalPath: paths.canonical,
     spritesheetPath: paths.atlas,
     atlasQaPath,
+    allowVisualQualityWarnings: true,
+    requestEvaluation: async () => ({ gate: { ok: false, outcome: 'cannot-evaluate', failures: ['final-package-evaluation-unavailable'] }, evidenceRelativePath: `runs/${runId}/evaluations/final-package.json` })
+  }), (error) => error?.code === 'final_package_visual_gate_failed')
+
+  await assert.rejects(() => evaluateQualityFirstFinalPackage({
+    dataDir,
+    runId,
+    sourcePath: paths.source,
+    canonicalPath: paths.canonical,
+    spritesheetPath: paths.atlas,
+    atlasQaPath,
     requestEvaluation: async () => ({ gate: { ok: false, outcome: 'repair', failures: ['visual-score-overall-below-minimum'] }, evidenceRelativePath: `runs/${runId}/evaluations/final-package.json` })
   }), (error) => error?.code === 'final_package_visual_gate_failed')
 
@@ -645,6 +701,24 @@ test('quality-first final package requires a passing code-owned visual gate over
     atlasQaPath,
     requestEvaluation: async () => ({ gate: { ok: true, outcome: 'pass', failures: [] } })
   }), /canonical.*inside the Creator Studio data directory/i)
+})
+
+test('final package quality stays advisory after any explicit human candidate selection', () => {
+  const { hasHumanCandidateSelection } = hostModelBridgeModule.__testInternals
+  assert.equal(hasHumanCandidateSelection({
+    canonical: { selection: { selectionAuthority: 'human-override', qualityOverride: false } },
+    actionResults: {}
+  }), true)
+  assert.equal(hasHumanCandidateSelection({
+    canonical: { selection: { selectionAuthority: 'automatic', qualityOverride: false } },
+    actionResults: {
+      waving: { selectedCandidate: { selection: { selectionAuthority: 'human-override', qualityOverride: false } } }
+    }
+  }), true)
+  assert.equal(hasHumanCandidateSelection({
+    canonical: { selection: { selectionAuthority: 'automatic', qualityOverride: false } },
+    actionResults: {}
+  }), false)
 })
 
 test('host model bridge no longer exports the removed legacy full-pet repair entry point', () => {

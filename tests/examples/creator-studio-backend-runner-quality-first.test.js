@@ -16,16 +16,35 @@ const {
 const backendRunnerModule = require('../../examples/plugins/creator-studio/lib/backend-runner')
 const { createRun, readRun, readRunLogs, writeRun } = require('../../examples/plugins/creator-studio/lib/run-store')
 const { writeCandidateRecord } = require('../../examples/plugins/creator-studio/lib/sprite-candidate-store')
+const { getQualityFirstQualityProfile } = require('../../examples/plugins/creator-studio/lib/pet-generation-quality-profile')
 
 const createDataDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-quality-first-backend-'))
+const LEGACY_PNG_BYTES = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+Xn9pAAAAAElFTkSuQmCC', 'base64')
+const LEGACY_GIF_BYTES = Buffer.from('R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==', 'base64')
+const writePngFixture = (filePath) => {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true })
+  fs.writeFileSync(filePath, LEGACY_PNG_BYTES)
+  return crypto.createHash('sha256').update(LEGACY_PNG_BYTES).digest('hex')
+}
+const createHashBoundValue = (base) => ({
+  ...base,
+  hash: crypto.createHash('sha256').update(JSON.stringify(base)).digest('hex')
+})
+const createCandidateBindings = ({ planHash, canonicalHash, profileHash = '' }) => ({
+  planHash,
+  canonicalHash,
+  profileHash,
+  processorVersion: 1,
+  qualityProfileHash: getQualityFirstQualityProfile().hash
+})
 
-const writeLegacyActionCandidateRecord = ({ dataDir, runId, actionId, candidateId, complete = true, eligible = true }) => {
+const writeLegacyActionCandidateRecord = ({ dataDir, runId, actionId, candidateId, complete = true, eligible = true, bindings }) => {
   const roles = complete ? ['raw-sheet', 'processed-sheet', 'contact-sheet', 'gif'] : ['raw-sheet']
   const artifacts = roles.map((role) => {
     const extension = role === 'gif' ? 'gif' : 'png'
     const relativePath = `runs/${runId}/candidates/${actionId}/${candidateId}/legacy/${role}.${extension}`
     const absolutePath = path.join(dataDir, relativePath)
-    const bytes = Buffer.from(`${candidateId}:${role}`)
+    const bytes = role === 'gif' ? LEGACY_GIF_BYTES : LEGACY_PNG_BYTES
     fs.mkdirSync(path.dirname(absolutePath), { recursive: true })
     fs.writeFileSync(absolutePath, bytes)
     return {
@@ -46,6 +65,7 @@ const writeLegacyActionCandidateRecord = ({ dataDir, runId, actionId, candidateI
       candidateId,
       sha256: rawHash,
       eligible,
+      ...(bindings ? { bindings } : {}),
       artifacts,
       qa: { ok: true, failures: [] },
       gate: { ok: false, outcome: 'reject', failures: ['visual-score-overall-below-minimum'] }
@@ -64,9 +84,7 @@ test('backend persists awaiting identity review and resumes only after exact acc
   writeRun({ dataDir, run: { ...created, status: 'confirmed', taskStatus: 'confirmed' } })
   const candidateRelativePath = `runs/${created.runId}/candidates/canonical/c1/raw/0001.png`
   const candidatePath = path.join(dataDir, candidateRelativePath)
-  fs.mkdirSync(path.dirname(candidatePath), { recursive: true })
-  fs.writeFileSync(candidatePath, 'quality-canonical')
-  const candidateHash = crypto.createHash('sha256').update('quality-canonical').digest('hex')
+  const candidateHash = writePngFixture(candidatePath)
   const calls = []
   const orchestrator = {
     start: async ({ run }) => ({ ...run, status: 'awaiting_identity_review', currentStep: 'identity-review', qualityFirst: { phase: 'awaiting_identity_review', canonicalCandidates: [{ candidateId: 'c1', eligible: true, technicalEligible: true, recommended: true, sha256: candidateHash, relativePath: candidateRelativePath }] } }),
@@ -98,9 +116,7 @@ test('backend forwards a hash-bound quality override for a technical non-recomme
   const warnings = ['visual-defect-identity-drift', 'visual-score-overall-below-minimum']
   const relativePath = `runs/${created.runId}/candidates/canonical/canonical-4/raw/0001.png`
   const absolutePath = path.join(dataDir, relativePath)
-  fs.mkdirSync(path.dirname(absolutePath), { recursive: true })
-  fs.writeFileSync(absolutePath, 'canonical-four')
-  const candidateHash = crypto.createHash('sha256').update('canonical-four').digest('hex')
+  const candidateHash = writePngFixture(absolutePath)
   writeRun({ dataDir, run: {
     ...created,
     status: 'awaiting_identity_review',
@@ -253,8 +269,8 @@ test('backend reconstructs technical eligibility for a legacy warned canonical f
   const relativePath = `runs/${created.runId}/candidates/canonical/canonical-legacy/raw/0001.png`
   const absolutePath = path.join(dataDir, relativePath)
   fs.mkdirSync(path.dirname(absolutePath), { recursive: true })
-  fs.writeFileSync(absolutePath, 'legacy-canonical')
-  const sha256 = crypto.createHash('sha256').update('legacy-canonical').digest('hex')
+  await require('sharp')({ create: { width: 16, height: 16, channels: 4, background: '#8844cc' } }).png().toFile(absolutePath)
+  const sha256 = crypto.createHash('sha256').update(fs.readFileSync(absolutePath)).digest('hex')
   const warnings = ['visual-score-overall-below-minimum']
   writeRun({ dataDir, run: {
     ...created,
@@ -291,6 +307,105 @@ test('backend reconstructs technical eligibility for a legacy warned canonical f
 
   assert.equal(called, true)
   assert.equal(output.run.status, 'ready_for_review')
+})
+
+test('backend does not reconstruct legacy canonical eligibility from hash-matched non-image bytes', async () => {
+  const dataDir = createDataDir()
+  const created = createRun({
+    dataDir,
+    input: { petName: 'Broken Legacy Canonical', backend: 'provider', generationTask: { mode: 'full-pet', actions: [{ actionId: 'idle' }], questions: [] } }
+  })
+  const relativePath = `runs/${created.runId}/candidates/canonical/canonical-broken/raw/0001.png`
+  const absolutePath = path.join(dataDir, relativePath)
+  fs.mkdirSync(path.dirname(absolutePath), { recursive: true })
+  fs.writeFileSync(absolutePath, 'not-an-image')
+  const sha256 = crypto.createHash('sha256').update('not-an-image').digest('hex')
+  writeRun({ dataDir, run: {
+    ...created,
+    status: 'awaiting_identity_review',
+    qualityFirst: {
+      phase: 'awaiting_identity_review',
+      canonicalCandidates: [{ candidateId: 'canonical-broken', sha256, relativePath, eligible: false, gate: { ok: false, failures: ['visual-score-overall-below-minimum'] } }]
+    }
+  } })
+
+  await assert.rejects(() => acceptQualityFirstCanonicalIdentity({
+    dataDir,
+    runId: created.runId,
+    candidateId: 'canonical-broken',
+    expectedHash: sha256,
+    qualityOverride: true,
+    acknowledgedWarningCodes: ['visual-score-overall-below-minimum'],
+    orchestrator: { acceptCanonicalIdentity: async () => { throw new Error('must not continue') } }
+  }), (error) => error?.code === 'candidate_decode_failed')
+  assert.equal(readRun({ dataDir, runId: created.runId }).status, 'awaiting_identity_review')
+})
+
+test('backend rejects a stored technical canonical when its current asset cannot be decoded', async () => {
+  const dataDir = createDataDir()
+  const created = createRun({
+    dataDir,
+    input: { petName: 'Broken Stored Canonical', backend: 'provider', generationTask: { mode: 'full-pet', actions: [{ actionId: 'idle' }], questions: [] } }
+  })
+  const relativePath = `runs/${created.runId}/candidates/canonical/canonical-broken/raw/0001.png`
+  const absolutePath = path.join(dataDir, relativePath)
+  const bytes = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from('truncated')])
+  fs.mkdirSync(path.dirname(absolutePath), { recursive: true })
+  fs.writeFileSync(absolutePath, bytes)
+  const sha256 = crypto.createHash('sha256').update(bytes).digest('hex')
+  writeRun({ dataDir, run: {
+    ...created,
+    status: 'awaiting_identity_review',
+    currentStep: 'identity-review',
+    qualityFirst: {
+      phase: 'awaiting_identity_review',
+      canonicalCandidates: [{ candidateId: 'canonical-broken', sha256, relativePath, technicalEligible: true, recommended: true }]
+    }
+  } })
+
+  await assert.rejects(() => acceptQualityFirstCanonicalIdentity({
+    dataDir,
+    runId: created.runId,
+    candidateId: 'canonical-broken',
+    expectedHash: sha256,
+    orchestrator: { acceptCanonicalIdentity: async () => { throw new Error('must not continue') } }
+  }), (error) => error?.code === 'candidate_decode_failed')
+  assert.equal(readRun({ dataDir, runId: created.runId }).status, 'awaiting_identity_review')
+})
+
+test('backend rejects a changed sprite plan before accepting canonical identity', async () => {
+  const dataDir = createDataDir()
+  const created = createRun({
+    dataDir,
+    input: { petName: 'Canonical Plan Binding Pet', backend: 'provider', generationTask: { mode: 'full-pet', actions: [{ actionId: 'idle' }], questions: [] } }
+  })
+  const relativePath = `runs/${created.runId}/candidates/canonical/canonical-1/raw/0001.png`
+  const absolutePath = path.join(dataDir, relativePath)
+  fs.mkdirSync(path.dirname(absolutePath), { recursive: true })
+  fs.writeFileSync(absolutePath, LEGACY_PNG_BYTES)
+  const sha256 = crypto.createHash('sha256').update(LEGACY_PNG_BYTES).digest('hex')
+  const currentPlan = createHashBoundValue({ version: 1, actions: ['idle'] })
+  const stalePlan = createHashBoundValue({ version: 1, actions: ['jumping'] })
+  writeRun({ dataDir, run: {
+    ...created,
+    status: 'awaiting_identity_review',
+    currentStep: 'identity-review',
+    qualityFirst: {
+      phase: 'awaiting_identity_review',
+      planHash: currentPlan.hash,
+      canonicalCandidates: [{ candidateId: 'canonical-1', sha256, relativePath, technicalEligible: true, recommended: true }]
+    }
+  } })
+
+  await assert.rejects(() => acceptQualityFirstCanonicalIdentity({
+    dataDir,
+    runId: created.runId,
+    candidateId: 'canonical-1',
+    expectedHash: sha256,
+    orchestrator: { acceptCanonicalIdentity: async () => { throw new Error('must not continue') } },
+    plan: stalePlan
+  }), (error) => error?.code === 'candidate_binding_stale')
+  assert.equal(readRun({ dataDir, runId: created.runId }).status, 'awaiting_identity_review')
 })
 
 test('backend defaults to the selected canonical and completes actions without a mid-run identity pause', async () => {
@@ -475,14 +590,13 @@ test('backend preserves the latest accepted identity state when action generatio
   })
   const canonicalRelativePath = `runs/${created.runId}/candidates/canonical/canonical-1/raw/0001.png`
   const canonicalPath = path.join(dataDir, canonicalRelativePath)
-  fs.mkdirSync(path.dirname(canonicalPath), { recursive: true })
-  fs.writeFileSync(canonicalPath, 'durable-canonical')
+  const canonicalHash = writePngFixture(canonicalPath)
   const canonical = {
     candidateId: 'canonical-1',
     eligible: true,
     technicalEligible: true,
     recommended: true,
-    sha256: crypto.createHash('sha256').update('durable-canonical').digest('hex'),
+    sha256: canonicalHash,
     relativePath: canonicalRelativePath
   }
   writeRun({ dataDir, run: {
@@ -550,7 +664,7 @@ test('quality-first action repair reruns only the requested action and preserves
       actionResults: { idle: { ok: true }, waving: { ok: false, failureCode: 'old-failure' } }
     }
   } })
-  const profile = { version: 1, hash: 'p'.repeat(64) }
+  const profile = createHashBoundValue({ version: 1 })
   fs.writeFileSync(path.join(dataDir, 'runs', created.runId, 'character-scale-profile.json'), `${JSON.stringify(profile)}\n`)
   const paidCandidatePath = path.join(dataDir, 'runs', created.runId, 'candidates', 'waving', 'candidate-old', 'raw', 'sheet.png')
   const paidPromptPath = path.join(dataDir, 'runs', created.runId, 'prompts', 'quality-first', 'waving-candidate-old.txt')
@@ -604,10 +718,11 @@ test('manual action selection reuses an exact retained candidate without Provide
     input: { petName: 'Chosen Action Pet', backend: 'provider', generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1', actions: [{ actionId: 'idle' }, { actionId: 'waving' }], questions: [] } }
   })
   const rawPath = path.join(dataDir, 'runs', created.runId, 'candidates', 'waving', 'candidate-2', 'raw', 'sheet.png')
-  fs.mkdirSync(path.dirname(rawPath), { recursive: true })
-  fs.writeFileSync(rawPath, 'retained-paid-action')
-  const candidateHash = crypto.createHash('sha256').update('retained-paid-action').digest('hex')
+  const candidateHash = writePngFixture(rawPath)
   const warnings = ['visual-defect-motion-unreadable']
+  const canonical = { candidateId: 'canonical-1', sha256: 'a'.repeat(64) }
+  const profile = createHashBoundValue({ version: 1 })
+  const plan = createHashBoundValue({ version: 1, actions: [{ actionId: 'idle' }, { actionId: 'waving' }] })
   const record = writeCandidateRecord({
     dataDir,
     runId: created.runId,
@@ -619,19 +734,19 @@ test('manual action selection reuses an exact retained candidate without Provide
       recommended: false,
       technicalFailureCodes: [],
       qualityWarningCodes: warnings,
+      bindings: createCandidateBindings({ planHash: plan.hash, canonicalHash: canonical.sha256, profileHash: profile.hash }),
       artifacts: [{ role: 'raw-sheet', path: rawPath, sha256: candidateHash }],
       qa: { ok: true, failures: [] },
       gate: { ok: false, outcome: 'reject', failures: warnings }
     }
   })
-  const canonical = { candidateId: 'canonical-1', sha256: 'a'.repeat(64) }
-  const profile = { version: 1, hash: 'p'.repeat(64) }
   writeRun({ dataDir, run: {
     ...created,
     status: 'ready_for_review',
     currentStep: 'review',
     qualityFirst: {
       phase: 'ready_for_review',
+      planHash: plan.hash,
       acceptedCanonical: canonical,
       scaleProfileHash: profile.hash,
       actionResults: {
@@ -641,6 +756,12 @@ test('manual action selection reuses an exact retained candidate without Provide
           actionId: 'waving',
           failureCode: 'action_quality_gate_failed',
           candidates: [{
+            candidateId: 'candidate-1',
+            sha256: 'b'.repeat(64),
+            technicalEligible: false,
+            recommended: false,
+            technicalFailureCodes: ['candidate-processing-failed']
+          }, {
             candidateId: 'candidate-2',
             sha256: candidateHash,
             technicalEligible: true,
@@ -682,7 +803,7 @@ test('manual action selection reuses an exact retained candidate without Provide
     qualityOverride: true,
     acknowledgedWarningCodes: warnings,
     runtime,
-    plan: { hash: 'plan-hash', actions: [{ actionId: 'idle' }, { actionId: 'waving' }] },
+    plan,
     profile,
     now: () => '2026-07-28T01:00:00.000Z'
   })
@@ -697,6 +818,8 @@ test('manual action selection reuses an exact retained candidate without Provide
   assert.equal(output.run.qualityFirst.actionResults.waving.selection.selectionAuthority, 'human-override')
   assert.equal(output.run.qualityFirst.actionResults.waving.selection.qualityOverride, true)
   assert.equal(output.run.qualityFirst.actionResults.idle.ok, true)
+  assert.deepEqual(output.run.qualityFirst.actionResults.waving.candidates.map((candidate) => candidate.candidateId), ['candidate-1', 'candidate-2'])
+  assert.equal(output.run.qualityFirst.actionResults.waving.candidates[0].technicalEligible, false)
 })
 
 test('manual action selection reconstructs a legacy candidate only from a complete verified artifact set', async () => {
@@ -705,16 +828,24 @@ test('manual action selection reconstructs a legacy candidate only from a comple
     dataDir,
     input: { petName: 'Legacy Action Pet', backend: 'provider', generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1', actions: [{ actionId: 'idle' }, { actionId: 'waving' }], questions: [] } }
   })
-  const legacy = writeLegacyActionCandidateRecord({ dataDir, runId: created.runId, actionId: 'waving', candidateId: 'candidate-legacy' })
   const warnings = ['visual-score-overall-below-minimum']
   const canonical = { candidateId: 'canonical-1', sha256: 'a'.repeat(64) }
-  const profile = { version: 1, hash: 'p'.repeat(64) }
+  const profile = createHashBoundValue({ version: 1 })
+  const plan = createHashBoundValue({ version: 1, actions: [{ actionId: 'idle' }, { actionId: 'waving' }] })
+  const legacy = writeLegacyActionCandidateRecord({
+    dataDir,
+    runId: created.runId,
+    actionId: 'waving',
+    candidateId: 'candidate-legacy',
+    bindings: createCandidateBindings({ planHash: plan.hash, canonicalHash: canonical.sha256, profileHash: profile.hash })
+  })
   writeRun({ dataDir, run: {
     ...created,
     status: 'ready_for_review',
     currentStep: 'review',
     qualityFirst: {
       phase: 'ready_for_review',
+      planHash: plan.hash,
       acceptedCanonical: canonical,
       scaleProfileHash: profile.hash,
       actionResults: {
@@ -749,7 +880,7 @@ test('manual action selection reconstructs a legacy candidate only from a comple
       persistActionResult: async () => {},
       finalizePackage: async () => ({ artifacts: { outputDir: path.join(dataDir, 'runs', created.runId, 'quality-first', 'package') } })
     },
-    plan: { hash: 'plan-hash', actions: [{ actionId: 'idle' }, { actionId: 'waving' }] },
+    plan,
     profile
   })
 
@@ -764,7 +895,7 @@ test('manual action selection never authorizes legacy eligible alone without pro
     input: { petName: 'Incomplete Legacy Pet', backend: 'provider', generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1', actions: [{ actionId: 'idle' }, { actionId: 'waving' }], questions: [] } }
   })
   const legacy = writeLegacyActionCandidateRecord({ dataDir, runId: created.runId, actionId: 'waving', candidateId: 'candidate-incomplete', complete: false, eligible: true })
-  const profile = { version: 1, hash: 'p'.repeat(64) }
+  const profile = createHashBoundValue({ version: 1 })
   writeRun({ dataDir, run: {
     ...created,
     status: 'ready_for_review',
@@ -793,6 +924,320 @@ test('manual action selection never authorizes legacy eligible alone without pro
   assert.equal(readRun({ dataDir, runId: created.runId }).status, 'ready_for_review')
 })
 
+test('manual action selection rejects a scale profile that does not match the run binding', async () => {
+  const dataDir = createDataDir()
+  const created = createRun({
+    dataDir,
+    input: { petName: 'Stale Profile Pet', backend: 'provider', generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1', actions: [{ actionId: 'idle' }, { actionId: 'waving' }], questions: [] } }
+  })
+  const rawPath = path.join(dataDir, 'runs', created.runId, 'candidates', 'waving', 'candidate-2', 'raw', 'sheet.png')
+  fs.mkdirSync(path.dirname(rawPath), { recursive: true })
+  fs.writeFileSync(rawPath, 'stale-profile-candidate')
+  const sha256 = crypto.createHash('sha256').update('stale-profile-candidate').digest('hex')
+  const record = writeCandidateRecord({
+    dataDir,
+    runId: created.runId,
+    scope: 'action-waving',
+    candidate: { candidateId: 'candidate-2', sha256, technicalEligible: true, recommended: true, artifacts: [{ role: 'raw-sheet', path: rawPath, sha256 }] }
+  })
+  writeRun({ dataDir, run: {
+    ...created,
+    status: 'ready_for_review',
+    qualityFirst: {
+      phase: 'ready_for_review',
+      acceptedCanonical: { candidateId: 'canonical-1', sha256: 'a'.repeat(64) },
+      scaleProfileHash: 'p'.repeat(64),
+      actionResults: { idle: { ok: true }, waving: { ok: false, candidates: [{ candidateId: 'candidate-2', sha256, technicalEligible: true, recommended: true, candidateRecordRelativePath: record.relativePath }] } }
+    }
+  } })
+
+  await assert.rejects(() => acceptQualityFirstActionCandidate({
+    dataDir,
+    runId: created.runId,
+    actionId: 'waving',
+    candidateId: 'candidate-2',
+    expectedHash: sha256,
+    runtime: { materializeActionCandidate: async () => { throw new Error('must not materialize') }, persistActionResult: async () => {}, finalizePackage: async () => ({}) },
+    profile: { version: 1, hash: 'q'.repeat(64) },
+    plan: { hash: 'plan-hash', actions: [{ actionId: 'idle' }, { actionId: 'waving' }] }
+  }), (error) => error?.code === 'candidate_binding_stale')
+  assert.equal(readRun({ dataDir, runId: created.runId }).status, 'ready_for_review')
+})
+
+test('manual action selection rejects a corrupt scale profile before changing run state', async () => {
+  const dataDir = createDataDir()
+  const created = createRun({
+    dataDir,
+    input: { petName: 'Corrupt Profile Pet', backend: 'provider', generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1', actions: [{ actionId: 'idle' }, { actionId: 'waving' }], questions: [] } }
+  })
+  const rawPath = path.join(dataDir, 'runs', created.runId, 'candidates', 'waving', 'candidate-2', 'raw', 'sheet.png')
+  fs.mkdirSync(path.dirname(rawPath), { recursive: true })
+  fs.writeFileSync(rawPath, 'corrupt-profile-candidate')
+  const sha256 = crypto.createHash('sha256').update('corrupt-profile-candidate').digest('hex')
+  const record = writeCandidateRecord({
+    dataDir,
+    runId: created.runId,
+    scope: 'action-waving',
+    candidate: { candidateId: 'candidate-2', sha256, technicalEligible: true, recommended: true, artifacts: [{ role: 'raw-sheet', path: rawPath, sha256 }] }
+  })
+  const validProfile = createHashBoundValue({ version: 1, maxBodyScaleCv: 0.08 })
+  const corruptProfile = { ...validProfile, maxBodyScaleCv: 999 }
+  writeRun({ dataDir, run: {
+    ...created,
+    status: 'ready_for_review',
+    qualityFirst: {
+      phase: 'ready_for_review',
+      acceptedCanonical: { candidateId: 'canonical-1', sha256: 'a'.repeat(64) },
+      scaleProfileHash: validProfile.hash,
+      actionResults: { idle: { ok: true }, waving: { ok: false, candidates: [{ candidateId: 'candidate-2', sha256, technicalEligible: true, recommended: true, candidateRecordRelativePath: record.relativePath }] } }
+    }
+  } })
+
+  await assert.rejects(() => acceptQualityFirstActionCandidate({
+    dataDir,
+    runId: created.runId,
+    actionId: 'waving',
+    candidateId: 'candidate-2',
+    expectedHash: sha256,
+    runtime: { materializeActionCandidate: async () => { throw new Error('must not materialize') }, persistActionResult: async () => {}, finalizePackage: async () => ({}) },
+    profile: corruptProfile,
+    plan: { hash: 'plan-hash', actions: [{ actionId: 'idle' }, { actionId: 'waving' }] }
+  }), (error) => error?.code === 'candidate_binding_stale')
+
+  const unchanged = readRun({ dataDir, runId: created.runId })
+  assert.equal(unchanged.status, 'ready_for_review')
+  assert.equal(Object.hasOwn(unchanged, 'generationLease'), false)
+  assert.equal(unchanged.qualityFirst.actionResults.waving.selectedCandidateId, undefined)
+})
+
+test('manual action selection rejects an undecodable retained image before changing run state', async () => {
+  const dataDir = createDataDir()
+  const created = createRun({
+    dataDir,
+    input: { petName: 'Broken Action Image Pet', backend: 'provider', generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1', actions: [{ actionId: 'idle' }, { actionId: 'waving' }], questions: [] } }
+  })
+  const rawPath = path.join(dataDir, 'runs', created.runId, 'candidates', 'waving', 'candidate-2', 'raw', 'sheet.png')
+  const bytes = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from('truncated')])
+  fs.mkdirSync(path.dirname(rawPath), { recursive: true })
+  fs.writeFileSync(rawPath, bytes)
+  const sha256 = crypto.createHash('sha256').update(bytes).digest('hex')
+  const canonical = { candidateId: 'canonical-1', sha256: 'a'.repeat(64) }
+  const profile = createHashBoundValue({ version: 1 })
+  const plan = createHashBoundValue({ version: 1, actions: [{ actionId: 'idle' }, { actionId: 'waving' }] })
+  const record = writeCandidateRecord({
+    dataDir,
+    runId: created.runId,
+    scope: 'action-waving',
+    candidate: {
+      candidateId: 'candidate-2',
+      sha256,
+      technicalEligible: true,
+      recommended: true,
+      bindings: createCandidateBindings({ planHash: plan.hash, canonicalHash: canonical.sha256, profileHash: profile.hash }),
+      artifacts: [{ role: 'raw-sheet', path: rawPath, sha256 }]
+    }
+  })
+  writeRun({ dataDir, run: {
+    ...created,
+    status: 'ready_for_review',
+    qualityFirst: {
+      phase: 'ready_for_review',
+      planHash: plan.hash,
+      acceptedCanonical: canonical,
+      scaleProfileHash: profile.hash,
+      actionResults: { idle: { ok: true }, waving: { ok: false, candidates: [{ candidateId: 'candidate-2', sha256, technicalEligible: true, recommended: true, candidateRecordRelativePath: record.relativePath }] } }
+    }
+  } })
+
+  await assert.rejects(() => acceptQualityFirstActionCandidate({
+    dataDir,
+    runId: created.runId,
+    actionId: 'waving',
+    candidateId: 'candidate-2',
+    expectedHash: sha256,
+    runtime: { materializeActionCandidate: async () => { throw new Error('must not materialize') }, persistActionResult: async () => {}, finalizePackage: async () => ({}) },
+    profile,
+    plan
+  }), (error) => error?.code === 'candidate_decode_failed')
+  assert.equal(readRun({ dataDir, runId: created.runId }).status, 'ready_for_review')
+})
+
+test('manual action selection rejects a sprite plan that does not match the run binding', async () => {
+  const dataDir = createDataDir()
+  const created = createRun({
+    dataDir,
+    input: { petName: 'Stale Plan Pet', backend: 'provider', generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1', actions: [{ actionId: 'idle' }, { actionId: 'waving' }], questions: [] } }
+  })
+  const rawPath = path.join(dataDir, 'runs', created.runId, 'candidates', 'waving', 'candidate-2', 'raw', 'sheet.png')
+  fs.mkdirSync(path.dirname(rawPath), { recursive: true })
+  fs.writeFileSync(rawPath, 'stale-plan-candidate')
+  const sha256 = crypto.createHash('sha256').update('stale-plan-candidate').digest('hex')
+  const record = writeCandidateRecord({
+    dataDir,
+    runId: created.runId,
+    scope: 'action-waving',
+    candidate: { candidateId: 'candidate-2', sha256, technicalEligible: true, recommended: true, artifacts: [{ role: 'raw-sheet', path: rawPath, sha256 }] }
+  })
+  const profile = createHashBoundValue({ version: 1, maxBodyScaleCv: 0.08 })
+  const currentPlan = createHashBoundValue({ version: 1, actions: ['idle', 'waving'] })
+  const stalePlan = createHashBoundValue({ version: 1, actions: ['idle', 'jumping'] })
+  writeRun({ dataDir, run: {
+    ...created,
+    status: 'ready_for_review',
+    qualityFirst: {
+      phase: 'ready_for_review',
+      planHash: currentPlan.hash,
+      acceptedCanonical: { candidateId: 'canonical-1', sha256: 'b'.repeat(64) },
+      scaleProfileHash: profile.hash,
+      actionResults: { idle: { ok: true }, waving: { ok: false, candidates: [{ candidateId: 'candidate-2', sha256, technicalEligible: true, recommended: true, candidateRecordRelativePath: record.relativePath }] } }
+    }
+  } })
+
+  await assert.rejects(() => acceptQualityFirstActionCandidate({
+    dataDir,
+    runId: created.runId,
+    actionId: 'waving',
+    candidateId: 'candidate-2',
+    expectedHash: sha256,
+    runtime: { materializeActionCandidate: async () => { throw new Error('must not materialize') }, persistActionResult: async () => {}, finalizePackage: async () => ({}) },
+    profile,
+    plan: { ...stalePlan, actions: [{ actionId: 'idle' }, { actionId: 'waving' }] }
+  }), (error) => error?.code === 'candidate_binding_stale')
+  assert.equal(readRun({ dataDir, runId: created.runId }).status, 'ready_for_review')
+})
+
+test('manual action selection preserves the exact human choice when checkpoint rebuild fails', async () => {
+  const dataDir = createDataDir()
+  const created = createRun({
+    dataDir,
+    input: { petName: 'Durable Choice Pet', backend: 'provider', generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1', actions: [{ actionId: 'idle' }, { actionId: 'waving' }], questions: [] } }
+  })
+  const rawPath = path.join(dataDir, 'runs', created.runId, 'candidates', 'waving', 'candidate-2', 'raw', 'sheet.png')
+  const sha256 = writePngFixture(rawPath)
+  const warnings = ['visual-score-overall-below-minimum']
+  const canonical = { candidateId: 'canonical-1', sha256: 'a'.repeat(64) }
+  const profile = createHashBoundValue({ version: 1 })
+  const plan = createHashBoundValue({ version: 1, actions: [{ actionId: 'idle' }, { actionId: 'waving' }] })
+  const record = writeCandidateRecord({
+    dataDir,
+    runId: created.runId,
+    scope: 'action-waving',
+    candidate: {
+      candidateId: 'candidate-2',
+      sha256,
+      technicalEligible: true,
+      recommended: false,
+      qualityWarningCodes: warnings,
+      bindings: createCandidateBindings({ planHash: plan.hash, canonicalHash: canonical.sha256, profileHash: profile.hash }),
+      artifacts: [{ role: 'raw-sheet', path: rawPath, sha256 }]
+    }
+  })
+  const candidateView = { candidateId: 'candidate-2', sha256, technicalEligible: true, recommended: false, qualityWarningCodes: warnings, candidateRecordRelativePath: record.relativePath }
+  writeRun({ dataDir, run: {
+    ...created,
+    status: 'ready_for_review',
+    qualityFirst: {
+      phase: 'ready_for_review',
+      planHash: plan.hash,
+      acceptedCanonical: canonical,
+      scaleProfileHash: profile.hash,
+      actionResults: { idle: { ok: true }, waving: { ok: false, candidates: [candidateView] } }
+    }
+  } })
+
+  await assert.rejects(() => acceptQualityFirstActionCandidate({
+    dataDir,
+    runId: created.runId,
+    actionId: 'waving',
+    candidateId: 'candidate-2',
+    expectedHash: sha256,
+    qualityOverride: true,
+    acknowledgedWarningCodes: warnings,
+    runtime: {
+      materializeActionCandidate: async () => { throw Object.assign(new Error('local rebuild failed'), { code: 'override_checkpoint_rebuild_failed' }) },
+      persistActionResult: async () => {},
+      finalizePackage: async () => ({})
+    },
+    plan,
+    profile,
+    now: () => '2026-07-28T04:00:00.000Z'
+  }), /local rebuild failed/)
+
+  const failed = readRun({ dataDir, runId: created.runId })
+  assert.equal(failed.status, 'recovery-required')
+  assert.equal(failed.qualityFirst.actionResults.waving.selectedCandidateId, 'candidate-2')
+  assert.equal(failed.qualityFirst.actionResults.waving.selection.selectionAuthority, 'human-override')
+  assert.equal(failed.qualityFirst.actionResults.waving.candidates[0].selection.sha256, sha256)
+})
+
+for (const scenario of [
+  { actionId: 'idle', expectedActionIds: ['idle'] },
+  { actionId: 'running-right', expectedActionIds: ['idle', 'running-right', 'waving'] }
+]) {
+  test(`failed ${scenario.actionId} selection removes run-state checkpoints bound to the replaced candidate`, async () => {
+    const dataDir = createDataDir()
+    const created = createRun({
+      dataDir,
+      input: { petName: 'Dependency Pet', backend: 'provider', generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1', actions: [{ actionId: 'idle' }, { actionId: 'running-right' }, { actionId: 'waving' }], questions: [] } }
+    })
+    const candidateId = 'candidate-replacement'
+    const rawPath = path.join(dataDir, 'runs', created.runId, 'candidates', scenario.actionId, candidateId, 'raw', 'sheet.png')
+    const sha256 = writePngFixture(rawPath)
+    const canonical = { candidateId: 'canonical-1', sha256: 'a'.repeat(64) }
+    const profile = createHashBoundValue({ version: 1 })
+    const plan = createHashBoundValue({ version: 1, actions: [{ actionId: 'idle' }, { actionId: 'running-right' }, { actionId: 'waving' }] })
+    const record = writeCandidateRecord({
+      dataDir,
+      runId: created.runId,
+      scope: `action-${scenario.actionId}`,
+      candidate: {
+        candidateId,
+        sha256,
+        technicalEligible: true,
+        recommended: true,
+        bindings: createCandidateBindings({ planHash: plan.hash, canonicalHash: canonical.sha256, profileHash: scenario.actionId === 'idle' ? '' : profile.hash }),
+        artifacts: [{ role: 'raw-sheet', path: rawPath, sha256 }]
+      }
+    })
+    const candidateView = { candidateId, sha256, technicalEligible: true, recommended: true, candidateRecordRelativePath: record.relativePath }
+    writeRun({ dataDir, run: {
+      ...created,
+      status: 'ready_for_review',
+      qualityFirst: {
+        phase: 'ready_for_review',
+        planHash: plan.hash,
+        acceptedCanonical: canonical,
+        scaleProfileHash: profile.hash,
+        actionResults: {
+          idle: scenario.actionId === 'idle' ? { ok: true, candidates: [candidateView] } : { ok: true },
+          'running-right': scenario.actionId === 'running-right' ? { ok: true, candidates: [candidateView] } : { ok: true },
+          'running-left': { ok: true, mirroredFrom: 'running-right' },
+          waving: { ok: true }
+        }
+      }
+    } })
+
+    await assert.rejects(() => acceptQualityFirstActionCandidate({
+      dataDir,
+      runId: created.runId,
+      actionId: scenario.actionId,
+      candidateId,
+      expectedHash: sha256,
+      runtime: {
+        materializeActionCandidate: async () => { throw Object.assign(new Error('rebuild failed'), { code: 'override_checkpoint_rebuild_failed' }) },
+        persistActionResult: async () => {},
+        finalizePackage: async () => ({})
+      },
+      plan,
+      profile: scenario.actionId === 'idle' ? null : profile
+    }), /rebuild failed/)
+
+    const failed = readRun({ dataDir, runId: created.runId })
+    assert.deepEqual(Object.keys(failed.qualityFirst.actionResults).sort(), scenario.expectedActionIds.slice().sort())
+    assert.equal(failed.qualityFirst.scaleProfileHash, scenario.actionId === 'idle' ? '' : profile.hash)
+  })
+}
+
 test('manual idle selection rebuilds the scale profile and drops actions bound to the old profile', async () => {
   const dataDir = createDataDir()
   const created = createRun({
@@ -800,10 +1245,10 @@ test('manual idle selection rebuilds the scale profile and drops actions bound t
     input: { petName: 'New Idle Pet', backend: 'provider', generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1', actions: [{ actionId: 'idle' }, { actionId: 'waving' }], questions: [] } }
   })
   const rawPath = path.join(dataDir, 'runs', created.runId, 'candidates', 'idle', 'candidate-2', 'raw', 'sheet.png')
-  fs.mkdirSync(path.dirname(rawPath), { recursive: true })
-  fs.writeFileSync(rawPath, 'retained-idle')
-  const candidateHash = crypto.createHash('sha256').update('retained-idle').digest('hex')
+  const candidateHash = writePngFixture(rawPath)
   const warnings = ['visual-score-overall-below-minimum']
+  const canonical = { candidateId: 'canonical-1', sha256: 'a'.repeat(64) }
+  const plan = createHashBoundValue({ version: 1, actions: [{ actionId: 'idle' }, { actionId: 'waving' }] })
   const record = writeCandidateRecord({
     dataDir,
     runId: created.runId,
@@ -814,16 +1259,17 @@ test('manual idle selection rebuilds the scale profile and drops actions bound t
       technicalEligible: true,
       recommended: false,
       qualityWarningCodes: warnings,
+      bindings: createCandidateBindings({ planHash: plan.hash, canonicalHash: canonical.sha256, profileHash: '' }),
       artifacts: [{ role: 'raw-sheet', path: rawPath, sha256: candidateHash }]
     }
   })
-  const canonical = { candidateId: 'canonical-1', sha256: 'a'.repeat(64) }
   writeRun({ dataDir, run: {
     ...created,
     status: 'recovery-required',
     currentStep: 'recovery',
     qualityFirst: {
       phase: 'recovery-required',
+      planHash: plan.hash,
       acceptedCanonical: canonical,
       scaleProfileHash: 'o'.repeat(64),
       actionResults: {
@@ -857,7 +1303,7 @@ test('manual idle selection rebuilds the scale profile and drops actions bound t
     qualityOverride: true,
     acknowledgedWarningCodes: warnings,
     runtime,
-    plan: { hash: 'plan-hash', actions: [{ actionId: 'idle' }, { actionId: 'waving' }] },
+    plan,
     profile: null,
     now: () => '2026-07-28T02:00:00.000Z'
   })
@@ -879,10 +1325,11 @@ test('manual running-right selection rebuilds the derived running-left action', 
     input: { petName: 'Direction Pet', backend: 'provider', generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1', actions: [{ actionId: 'idle' }, { actionId: 'running-right' }], questions: [] } }
   })
   const rawPath = path.join(dataDir, 'runs', created.runId, 'candidates', 'running-right', 'candidate-2', 'raw', 'sheet.png')
-  fs.mkdirSync(path.dirname(rawPath), { recursive: true })
-  fs.writeFileSync(rawPath, 'retained-running')
-  const candidateHash = crypto.createHash('sha256').update('retained-running').digest('hex')
+  const candidateHash = writePngFixture(rawPath)
   const warnings = ['visual-defect-motion-unreadable']
+  const canonical = { candidateId: 'canonical-1', sha256: 'a'.repeat(64) }
+  const profile = createHashBoundValue({ version: 1 })
+  const plan = createHashBoundValue({ version: 1, actions: [{ actionId: 'idle' }, { actionId: 'running-right' }] })
   const record = writeCandidateRecord({
     dataDir,
     runId: created.runId,
@@ -893,17 +1340,17 @@ test('manual running-right selection rebuilds the derived running-left action', 
       technicalEligible: true,
       recommended: false,
       qualityWarningCodes: warnings,
+      bindings: createCandidateBindings({ planHash: plan.hash, canonicalHash: canonical.sha256, profileHash: profile.hash }),
       artifacts: [{ role: 'raw-sheet', path: rawPath, sha256: candidateHash }]
     }
   })
-  const canonical = { candidateId: 'canonical-1', sha256: 'a'.repeat(64) }
-  const profile = { version: 1, hash: 'p'.repeat(64) }
   writeRun({ dataDir, run: {
     ...created,
     status: 'ready_for_review',
     currentStep: 'review',
     qualityFirst: {
       phase: 'ready_for_review',
+      planHash: plan.hash,
       acceptedCanonical: canonical,
       scaleProfileHash: profile.hash,
       actionResults: {
@@ -933,7 +1380,7 @@ test('manual running-right selection rebuilds the derived running-left action', 
     qualityOverride: true,
     acknowledgedWarningCodes: warnings,
     runtime,
-    plan: { hash: 'plan-hash', actions: [{ actionId: 'idle' }, { actionId: 'running-right' }] },
+    plan,
     profile,
     now: () => '2026-07-28T03:00:00.000Z'
   })
@@ -1078,7 +1525,7 @@ test('quality-first action repair fails closed when final package artifacts cann
     generationTask: { ...created.generationTask, pipeline: 'quality-first-v1' },
     qualityFirst: { phase: 'ready_for_review', acceptedCanonical: canonical, actionResults: { idle: { ok: true }, waving: { ok: false } } }
   } })
-  const profile = { version: 1, hash: 'p'.repeat(64) }
+  const profile = createHashBoundValue({ version: 1 })
   await assert.rejects(() => runQualityFirstActionRepair({
     dataDir,
     runId: created.runId,

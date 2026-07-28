@@ -132,6 +132,31 @@ test('candidate store preserves technical recommendation and hash-bound human se
   assert.equal(fs.readFileSync(path.join(dataDir, record.relativePath), 'utf8').includes('sk-do-not-store'), false)
 })
 
+test('candidate store preserves only complete five-way dependency bindings', () => {
+  const dataDir = createDataDir()
+  const bindings = {
+    planHash: '1'.repeat(64),
+    canonicalHash: '2'.repeat(64),
+    profileHash: '3'.repeat(64),
+    processorVersion: 1,
+    qualityProfileHash: '4'.repeat(64)
+  }
+  const record = writeCandidateRecord({
+    dataDir,
+    runId: 'run-bindings',
+    scope: 'action-waving',
+    candidate: { candidateId: 'candidate-1', bindings }
+  })
+  assert.deepEqual(record.candidate.bindings, bindings)
+
+  assert.throws(() => writeCandidateRecord({
+    dataDir,
+    runId: 'run-bindings',
+    scope: 'action-waving',
+    candidate: { candidateId: 'candidate-2', bindings: { ...bindings, qualityProfileHash: '' } }
+  }), /bindings are invalid/i)
+})
+
 test('candidate store rejects escaping assets and hash mismatches', () => {
   const dataDir = createDataDir()
   const outside = path.join(os.tmpdir(), `outside-${Date.now()}.png`)
