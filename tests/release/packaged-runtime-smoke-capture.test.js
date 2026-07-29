@@ -189,16 +189,26 @@ test('runPackagedRuntimeSmoke merges evidence into a report file', async () => {
     }
   }, null, 2))
 
-  const result = await require('../../scripts/run-packaged-runtime-smoke').runPackagedRuntimeSmoke({
-    appPath,
-    releaseDir,
-    outputDir: tempDir,
-    reportOutput: reportPath,
-    desktopPickerSmokeReport: pickerReportPath,
-    timeoutMs: 100,
-    spawnImpl: fakeSpawn,
-    now: () => new Date('2026-06-16T03:00:00.000Z')
-  })
+  const originalPlatformDescriptor = Object.getOwnPropertyDescriptor(process, 'platform')
+  Object.defineProperty(process, 'platform', { ...originalPlatformDescriptor, value: 'linux' })
+  let result
+  try {
+    result = await require('../../scripts/run-packaged-runtime-smoke').runPackagedRuntimeSmoke({
+      appPath,
+      releaseDir,
+      outputDir: tempDir,
+      reportOutput: reportPath,
+      desktopPickerSmokeReport: pickerReportPath,
+      timeoutMs: 100,
+      allowAnyPlatform: true,
+      spawnImpl: fakeSpawn,
+      now: () => new Date('2026-06-16T03:00:00.000Z'),
+      platform: 'darwin',
+      arch: 'arm64'
+    })
+  } finally {
+    Object.defineProperty(process, 'platform', originalPlatformDescriptor)
+  }
 
   const written = JSON.parse(fs.readFileSync(result.reportPath, 'utf-8'))
   assert.equal(result.validation.ok, true)

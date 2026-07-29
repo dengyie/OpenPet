@@ -383,16 +383,19 @@ const runPackagedRuntimeSmoke = async ({
   desktopPickerSmokeReport = '',
   timeoutMs = DEFAULT_TIMEOUT_MS,
   allowPendingPicker = false,
+  allowAnyPlatform = false,
   spawnImpl = spawn,
   fsImpl = fs,
-  now = () => new Date()
+  now = () => new Date(),
+  platform = process.platform,
+  arch = process.arch
 } = {}) => {
-  const baseReport = createPackagedRuntimeSmokeReport({ releaseDir, platform: process.platform, arch: process.arch })
+  const baseReport = createPackagedRuntimeSmokeReport({ releaseDir, platform, arch, allowAnyPlatform })
   const resolvedAppPath = appPath ? path.resolve(appPath) : discoverAppPath(baseReport)
-  const session = createRuntimeSmokeSession({ appPath: resolvedAppPath, outputDir, platform: process.platform, arch: process.arch, now })
+  const session = createRuntimeSmokeSession({ appPath: resolvedAppPath, outputDir, platform, arch, now })
   fsImpl.mkdirSync(session.sessionDir, { recursive: true })
 
-  const executable = process.platform === 'darwin' ? resolveMacExecutable(resolvedAppPath) : resolvedAppPath
+  const executable = platform === 'darwin' ? resolveMacExecutable(resolvedAppPath) : resolvedAppPath
   if (!fsImpl.existsSync(executable)) throw new Error(`Packaged app executable not found: ${executable}`)
 
   const desktopPickerEvidence = desktopPickerSmokeReport
