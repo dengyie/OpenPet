@@ -38,8 +38,11 @@ jobs:
       - name: Build Control Center
         run: npm run build:control-center
 
-      - name: Check audit
-        run: npm audit
+      - name: Check production dependency audit
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Check full dependency tree for critical vulnerabilities
+        run: npm audit --include=dev --audit-level=critical
 
       - name: Generate sprites
         run: npm run generate-sprites

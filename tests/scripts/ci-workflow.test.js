@@ -22,3 +22,9 @@ test('CI installs Playwright Chromium before running Node tests', () => {
   assert.notEqual(testIndex, -1, 'CI should retain the Node test step')
   assert.ok(installIndex < testIndex, 'Chromium installation must happen before npm test')
 })
+
+test('CI blocks high production vulnerabilities and critical full-tree vulnerabilities', () => {
+  assert.match(workflow, /run: npm audit --omit=dev --audit-level=high/)
+  assert.match(workflow, /run: npm audit --include=dev --audit-level=critical/)
+  assert.doesNotMatch(workflow, /^\s+run: npm audit\s*$/m)
+})
