@@ -10,16 +10,19 @@ const sharp = require('sharp')
 const { createCreatorStudioServer } = require('../../examples/plugins/creator-studio/service/studio-service')
 const { createMinimalWebp } = require('../../examples/plugins/creator-studio/lib/fake-hatch-pet')
 const { createRun, readRun, updateRunStatus, writeRun } = require('../../examples/plugins/creator-studio/lib/run-store')
+const { trackAsyncCleanup, trackBrowserCleanup, trackServerCleanup } = require('../helpers/test-resource-cleanup')
 
-const openDashboardServer = async (dataDir) => {
+const openDashboardServer = async (dataDir, testContext) => {
   const dashboardPath = path.join(__dirname, '../../examples/plugins/creator-studio/web/dashboard/index.html')
   const server = createCreatorStudioServer({ dataDir, dashboardPath })
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  trackServerCleanup(testContext, server)
   return server
 }
 
-const openDashboardPage = async (server) => {
+const openDashboardPage = async (server, testContext) => {
   const browser = await chromium.launch({ headless: true })
+  trackBrowserCleanup(testContext, browser)
   const page = await browser.newPage()
   await page.goto(`http://127.0.0.1:${server.address().port}`)
   return { browser, page }
@@ -45,7 +48,7 @@ const writeSolidPng = async (targetPath, { width, height, background }) => {
   }).png().toFile(targetPath)
 }
 
-test('creator studio run reads recover stale generating leases before returning state', async () => {
+test('creator studio run reads recover stale generating leases before returning state', async (t) => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-stale-read-'))
   const run = createRun({
     dataDir,
@@ -69,7 +72,7 @@ test('creator studio run reads recover stale generating leases before returning 
       }
     }
   })
-  const server = await openDashboardServer(dataDir)
+  const server = await openDashboardServer(dataDir, t)
   try {
     const response = await fetch(`http://127.0.0.1:${server.address().port}/api/runs`)
     const body = await response.json()
@@ -1075,14 +1078,11 @@ const seedLegacyReadyForReviewActionRunWithoutTask = async (dataDir) => {
   return run
 }
 
-test('creator studio dashboard drives a single-action fixture run to the host import handoff', async () => {
+test('creator studio dashboard drives a single-action fixture run to the host import handoff', async (t) => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-'))
-  const dashboardPath = path.join(__dirname, '../../examples/plugins/creator-studio/web/dashboard/index.html')
-  const server = createCreatorStudioServer({ dataDir, dashboardPath })
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const server = await openDashboardServer(dataDir, t)
   const port = server.address().port
-  const browser = await chromium.launch({ headless: true })
-  const page = await browser.newPage()
+  const { browser, page } = await openDashboardPage(server, t)
 
   try {
     await page.goto(`http://127.0.0.1:${port}`)
@@ -1131,11 +1131,11 @@ test('creator studio dashboard drives a single-action fixture run to the host im
   }
 })
 
-test('creator studio dashboard drives a full-pet fixture run to the host import handoff', async () => {
+test('creator studio dashboard drives a full-pet fixture run to the host import handoff', async (t) => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-full-pet-'))
-  const server = await openDashboardServer(dataDir)
+  const server = await openDashboardServer(dataDir, t)
   const port = server.address().port
-  const { browser, page } = await openDashboardPage(server)
+  const { browser, page } = await openDashboardPage(server, t)
 
   try {
     await page.goto(`http://127.0.0.1:${port}`)
@@ -1187,11 +1187,11 @@ test('creator studio dashboard drives a full-pet fixture run to the host import 
   }
 })
 
-test('creator studio dashboard keeps generated status when secondary run-list refresh fails', async () => {
+test('creator studio dashboard keeps generated status when secondary run-list refresh fails', async (t) => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-refresh-failure-'))
-  const server = await openDashboardServer(dataDir)
+  const server = await openDashboardServer(dataDir, t)
   const port = server.address().port
-  const { browser, page } = await openDashboardPage(server)
+  const { browser, page } = await openDashboardPage(server, t)
   let failRunListRefresh = false
   let failedRunListRefreshes = 0
 
@@ -1238,11 +1238,11 @@ test('creator studio dashboard keeps generated status when secondary run-list re
   }
 })
 
-test('creator studio dashboard surfaces blocked single-action qa before approval', async () => {
+test('creator studio dashboard surfaces blocked single-action qa before approval', async (t) => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-blocked-action-'))
   const run = await seedBlockedActionReviewRun(dataDir)
-  const server = await openDashboardServer(dataDir)
-  const { browser, page } = await openDashboardPage(server)
+  const server = await openDashboardServer(dataDir, t)
+  const { browser, page } = await openDashboardPage(server, t)
 
   try {
     await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
@@ -1303,11 +1303,11 @@ test('creator studio dashboard surfaces blocked single-action qa before approval
   }
 })
 
-test('creator studio dashboard shows imported action review completion details', async () => {
+test('creator studio dashboard shows imported action review completion details', async (t) => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-imported-action-'))
   await seedImportedActionRun(dataDir)
-  const server = await openDashboardServer(dataDir)
-  const { browser, page } = await openDashboardPage(server)
+  const server = await openDashboardServer(dataDir, t)
+  const { browser, page } = await openDashboardPage(server, t)
 
   try {
     await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
@@ -1368,11 +1368,11 @@ test('creator studio dashboard shows imported action review completion details',
   }
 })
 
-test('creator studio dashboard preserves imported action follow-up for legacy runs without generationTask', async () => {
+test('creator studio dashboard preserves imported action follow-up for legacy runs without generationTask', async (t) => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-imported-action-legacy-pre-task-'))
   await seedLegacyImportedActionRunWithoutTask(dataDir)
-  const server = await openDashboardServer(dataDir)
-  const { browser, page } = await openDashboardPage(server)
+  const server = await openDashboardServer(dataDir, t)
+  const { browser, page } = await openDashboardPage(server, t)
 
   try {
     await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
@@ -1389,11 +1389,11 @@ test('creator studio dashboard preserves imported action follow-up for legacy ru
   }
 })
 
-test('creator studio dashboard shows imported action handoff failure details', async () => {
+test('creator studio dashboard shows imported action handoff failure details', async (t) => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-imported-action-failed-'))
   await seedImportedFailedActionRun(dataDir)
-  const server = await openDashboardServer(dataDir)
-  const { browser, page } = await openDashboardPage(server)
+  const server = await openDashboardServer(dataDir, t)
+  const { browser, page } = await openDashboardPage(server, t)
 
   try {
     await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
@@ -1493,11 +1493,11 @@ test('creator studio dashboard shows imported action handoff failure details', a
   }
 })
 
-test('creator studio dashboard shows imported full-pet review completion details', async () => {
+test('creator studio dashboard shows imported full-pet review completion details', async (t) => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-imported-full-pet-'))
   await seedImportedFullPetRun(dataDir)
-  const server = await openDashboardServer(dataDir)
-  const { browser, page } = await openDashboardPage(server)
+  const server = await openDashboardServer(dataDir, t)
+  const { browser, page } = await openDashboardPage(server, t)
 
   try {
     await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
@@ -1576,11 +1576,11 @@ test('creator studio dashboard shows imported full-pet review completion details
   }
 })
 
-test('creator studio dashboard preserves imported full-pet follow-up for legacy runs without generationTask', async () => {
+test('creator studio dashboard preserves imported full-pet follow-up for legacy runs without generationTask', async (t) => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-imported-full-pet-legacy-pre-task-'))
   await seedLegacyImportedFullPetRunWithoutTask(dataDir)
-  const server = await openDashboardServer(dataDir)
-  const { browser, page } = await openDashboardPage(server)
+  const server = await openDashboardServer(dataDir, t)
+  const { browser, page } = await openDashboardPage(server, t)
 
   try {
     await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
@@ -1597,11 +1597,11 @@ test('creator studio dashboard preserves imported full-pet follow-up for legacy 
   }
 })
 
-test('creator studio dashboard hides stale full-pet source mismatch warnings after import', async () => {
+test('creator studio dashboard hides stale full-pet source mismatch warnings after import', async (t) => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-imported-full-pet-mismatch-'))
   await seedImportedFullPetRunWithSourceMismatch(dataDir)
-  const server = await openDashboardServer(dataDir)
-  const { browser, page } = await openDashboardPage(server)
+  const server = await openDashboardServer(dataDir, t)
+  const { browser, page } = await openDashboardPage(server, t)
 
   try {
     await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
@@ -1620,11 +1620,11 @@ test('creator studio dashboard hides stale full-pet source mismatch warnings aft
   }
 })
 
-test('creator studio dashboard shows imported action missing trigger handoff record details', async () => {
+test('creator studio dashboard shows imported action missing trigger handoff record details', async (t) => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-imported-action-missing-trigger-'))
   await seedImportedActionRunWithoutTriggerSubmission(dataDir)
-  const server = await openDashboardServer(dataDir)
-  const { browser, page } = await openDashboardPage(server)
+  const server = await openDashboardServer(dataDir, t)
+  const { browser, page } = await openDashboardPage(server, t)
 
   try {
     await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
@@ -1674,7 +1674,7 @@ test('creator studio dashboard shows imported action missing trigger handoff rec
   }
 })
 
-test('creator studio dashboard surfaces full-pet qa source mismatch before approval', async () => {
+test('creator studio dashboard surfaces full-pet qa source mismatch before approval', async (t) => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-full-pet-mismatch-'))
   const run = createRun({
     dataDir,
@@ -1760,8 +1760,8 @@ test('creator studio dashboard surfaces full-pet qa source mismatch before appro
     },
     now: () => '2026-06-27T00:30:30.000Z'
   })
-  const server = await openDashboardServer(dataDir)
-  const { browser, page } = await openDashboardPage(server)
+  const server = await openDashboardServer(dataDir, t)
+  const { browser, page } = await openDashboardPage(server, t)
 
   try {
     await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
@@ -1794,10 +1794,10 @@ test('creator studio dashboard surfaces full-pet qa source mismatch before appro
   }
 })
 
-test('creator studio dashboard lets users edit a drafted action task before confirmation', async () => {
+test('creator studio dashboard lets users edit a drafted action task before confirmation', async (t) => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-task-edit-'))
-  const server = await openDashboardServer(dataDir)
-  const { browser, page } = await openDashboardPage(server)
+  const server = await openDashboardServer(dataDir, t)
+  const { browser, page } = await openDashboardPage(server, t)
 
   try {
     await page.locator('#prompt-input').fill('新增一个自定义动作：原地打滚，动作要循环。')
@@ -1832,10 +1832,10 @@ test('creator studio dashboard lets users edit a drafted action task before conf
   }
 })
 
-test('creator studio dashboard lets users edit a drafted full-pet task before confirmation', async () => {
+test('creator studio dashboard lets users edit a drafted full-pet task before confirmation', async (t) => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-full-pet-task-edit-'))
-  const server = await openDashboardServer(dataDir)
-  const { browser, page } = await openDashboardPage(server)
+  const server = await openDashboardServer(dataDir, t)
+  const { browser, page } = await openDashboardPage(server, t)
 
   try {
     await page.locator('#prompt-input').fill('生成一只完整的新桌宠，要软乎乎的橘猫风格，包含 idle 动作。')
@@ -1871,7 +1871,7 @@ test('creator studio dashboard lets users edit a drafted full-pet task before co
   }
 })
 
-test('creator studio dashboard syncs prompt and backend controls when loading existing runs', async () => {
+test('creator studio dashboard syncs prompt and backend controls when loading existing runs', async (t) => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-run-sync-'))
   const fixtureRun = createRun({
     dataDir,
@@ -1917,8 +1917,8 @@ test('creator studio dashboard syncs prompt and backend controls when loading ex
     },
     now: () => '2026-06-28T08:05:00.000Z'
   })
-  const server = await openDashboardServer(dataDir)
-  const { browser, page } = await openDashboardPage(server)
+  const server = await openDashboardServer(dataDir, t)
+  const { browser, page } = await openDashboardPage(server, t)
 
   try {
     await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
@@ -1935,7 +1935,7 @@ test('creator studio dashboard syncs prompt and backend controls when loading ex
   }
 })
 
-test('creator studio dashboard loads the requested run from the runId query parameter', async () => {
+test('creator studio dashboard loads the requested run from the runId query parameter', async (t) => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-query-run-'))
   const firstRun = createRun({
     dataDir,
@@ -1970,9 +1970,8 @@ test('creator studio dashboard loads the requested run from the runId query para
       currentStep: 'generated'
     }
   })
-  const server = await openDashboardServer(dataDir)
-  const browser = await chromium.launch({ headless: true })
-  const page = await browser.newPage()
+  const server = await openDashboardServer(dataDir, t)
+  const { browser, page } = await openDashboardPage(server, t)
 
   try {
     await page.goto(`http://127.0.0.1:${server.address().port}/?runId=${encodeURIComponent(targetRun.runId)}`)
@@ -1990,7 +1989,7 @@ test('creator studio dashboard loads the requested run from the runId query para
   }
 })
 
-test('creator studio dashboard normalizes legacy run backends when syncing loaded runs', async () => {
+test('creator studio dashboard normalizes legacy run backends when syncing loaded runs', async (t) => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-run-sync-legacy-backend-'))
   const legacyCloudRun = createRun({
     dataDir,
@@ -2058,8 +2057,8 @@ test('creator studio dashboard normalizes legacy run backends when syncing loade
       }
     }
   })
-  const server = await openDashboardServer(dataDir)
-  const { browser, page } = await openDashboardPage(server)
+  const server = await openDashboardServer(dataDir, t)
+  const { browser, page } = await openDashboardPage(server, t)
 
   try {
     await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
@@ -2080,7 +2079,7 @@ test('creator studio dashboard normalizes legacy run backends when syncing loade
   }
 })
 
-test('creator studio dashboard syncs legacy pre-task run controls when loading a run without generationTask', async () => {
+test('creator studio dashboard syncs legacy pre-task run controls when loading a run without generationTask', async (t) => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-run-sync-legacy-pre-task-'))
   const standardRun = createRun({
     dataDir,
@@ -2140,8 +2139,8 @@ test('creator studio dashboard syncs legacy pre-task run controls when loading a
       currentStep: 'draft'
     }
   })
-  const server = await openDashboardServer(dataDir)
-  const { browser, page } = await openDashboardPage(server)
+  const server = await openDashboardServer(dataDir, t)
+  const { browser, page } = await openDashboardPage(server, t)
 
   try {
     await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
@@ -2173,11 +2172,11 @@ test('creator studio dashboard syncs legacy pre-task run controls when loading a
   }
 })
 
-test('creator studio dashboard enables retry generation for failed legacy runs without generationTask', async () => {
+test('creator studio dashboard enables retry generation for failed legacy runs without generationTask', async (t) => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-legacy-failed-retry-'))
   const run = seedLegacyFailedRunWithoutTask(dataDir)
-  const server = await openDashboardServer(dataDir)
-  const { browser, page } = await openDashboardPage(server)
+  const server = await openDashboardServer(dataDir, t)
+  const { browser, page } = await openDashboardPage(server, t)
 
   try {
     await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
@@ -2196,11 +2195,11 @@ test('creator studio dashboard enables retry generation for failed legacy runs w
   }
 })
 
-test('creator studio dashboard enables retry generation for failed legacy full-pet runs without generationTask', async () => {
+test('creator studio dashboard enables retry generation for failed legacy full-pet runs without generationTask', async (t) => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-legacy-failed-full-pet-retry-'))
   const run = seedLegacyFailedFullPetRunWithoutTask(dataDir)
-  const server = await openDashboardServer(dataDir)
-  const { browser, page } = await openDashboardPage(server)
+  const server = await openDashboardServer(dataDir, t)
+  const { browser, page } = await openDashboardPage(server, t)
 
   try {
     await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
@@ -2222,11 +2221,11 @@ test('creator studio dashboard enables retry generation for failed legacy full-p
   }
 })
 
-test('creator studio dashboard enables approval for reviewable legacy action runs without generationTask', async () => {
+test('creator studio dashboard enables approval for reviewable legacy action runs without generationTask', async (t) => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-legacy-review-approve-'))
   const run = await seedLegacyReadyForReviewActionRunWithoutTask(dataDir)
-  const server = await openDashboardServer(dataDir)
-  const { browser, page } = await openDashboardPage(server)
+  const server = await openDashboardServer(dataDir, t)
+  const { browser, page } = await openDashboardPage(server, t)
 
   try {
     await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
@@ -2244,11 +2243,11 @@ test('creator studio dashboard enables approval for reviewable legacy action run
   }
 })
 
-test('creator studio dashboard enables approval for reviewable legacy full-pet runs without generationTask', async () => {
+test('creator studio dashboard enables approval for reviewable legacy full-pet runs without generationTask', async (t) => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-legacy-full-pet-review-approve-'))
   const run = await seedLegacyReadyForReviewFullPetRunWithoutTask(dataDir)
-  const server = await openDashboardServer(dataDir)
-  const { browser, page } = await openDashboardPage(server)
+  const server = await openDashboardServer(dataDir, t)
+  const { browser, page } = await openDashboardPage(server, t)
 
   try {
     await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
@@ -2268,11 +2267,11 @@ test('creator studio dashboard enables approval for reviewable legacy full-pet r
   }
 })
 
-test('creator studio dashboard preserves retry-before-approval guidance for legacy full-pet runs without generationTask', async () => {
+test('creator studio dashboard preserves retry-before-approval guidance for legacy full-pet runs without generationTask', async (t) => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-legacy-full-pet-mismatch-'))
   const run = await seedLegacyReadyForReviewFullPetRunWithoutTask(dataDir, { mismatchSourceImage: true })
-  const server = await openDashboardServer(dataDir)
-  const { browser, page } = await openDashboardPage(server)
+  const server = await openDashboardServer(dataDir, t)
+  const { browser, page } = await openDashboardPage(server, t)
 
   try {
     await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
@@ -2296,7 +2295,7 @@ test('creator studio dashboard preserves retry-before-approval guidance for lega
   }
 })
 
-test('creator studio dashboard shows sanitized prompt provenance and can replay action playback previews', { concurrency: false }, async () => {
+test('creator studio dashboard shows sanitized prompt provenance and can replay action playback previews', { concurrency: false }, async (t) => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-provenance-playback-'))
   const bridgeServer = http.createServer((request, response) => {
     let body = ''
@@ -2352,12 +2351,19 @@ test('creator studio dashboard shows sanitized prompt provenance and can replay 
     })
   })
   await new Promise((resolve) => bridgeServer.listen(0, '127.0.0.1', resolve))
+  trackServerCleanup(t, bridgeServer)
   const previousBridgeUrl = process.env.OPENPET_BRIDGE_URL
   const previousBridgeToken = process.env.OPENPET_BRIDGE_TOKEN
   process.env.OPENPET_BRIDGE_URL = `http://127.0.0.1:${bridgeServer.address().port}`
   process.env.OPENPET_BRIDGE_TOKEN = 'bridge-token'
-  const server = await openDashboardServer(dataDir)
-  const { browser, page } = await openDashboardPage(server)
+  const restoreBridgeEnvironment = trackAsyncCleanup(t, async () => {
+    if (previousBridgeUrl == null) delete process.env.OPENPET_BRIDGE_URL
+    else process.env.OPENPET_BRIDGE_URL = previousBridgeUrl
+    if (previousBridgeToken == null) delete process.env.OPENPET_BRIDGE_TOKEN
+    else process.env.OPENPET_BRIDGE_TOKEN = previousBridgeToken
+  })
+  const server = await openDashboardServer(dataDir, t)
+  const { browser, page } = await openDashboardPage(server, t)
 
   try {
     await page.locator('#backend-select').selectOption('provider')
@@ -2424,14 +2430,11 @@ test('creator studio dashboard shows sanitized prompt provenance and can replay 
     await new Promise((resolve) => server.close(resolve))
     bridgeServer.closeAllConnections?.()
     await new Promise((resolve) => bridgeServer.close(resolve))
-    if (previousBridgeUrl == null) delete process.env.OPENPET_BRIDGE_URL
-    else process.env.OPENPET_BRIDGE_URL = previousBridgeUrl
-    if (previousBridgeToken == null) delete process.env.OPENPET_BRIDGE_TOKEN
-    else process.env.OPENPET_BRIDGE_TOKEN = previousBridgeToken
+    await restoreBridgeEnvironment()
   }
 })
 
-test('creator studio dashboard shows failed generation recovery and retries the same run', { concurrency: false }, async () => {
+test('creator studio dashboard shows failed generation recovery and retries the same run', { concurrency: false }, async (t) => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-retry-'))
   let generationAttempts = 0
   let actionRowAttempts = 0
@@ -2494,12 +2497,19 @@ test('creator studio dashboard shows failed generation recovery and retries the 
     })
   })
   await new Promise((resolve) => bridgeServer.listen(0, '127.0.0.1', resolve))
+  trackServerCleanup(t, bridgeServer)
   const previousBridgeUrl = process.env.OPENPET_BRIDGE_URL
   const previousBridgeToken = process.env.OPENPET_BRIDGE_TOKEN
   process.env.OPENPET_BRIDGE_URL = `http://127.0.0.1:${bridgeServer.address().port}`
   process.env.OPENPET_BRIDGE_TOKEN = 'bridge-token'
-  const server = await openDashboardServer(dataDir)
-  const { browser, page } = await openDashboardPage(server)
+  const restoreBridgeEnvironment = trackAsyncCleanup(t, async () => {
+    if (previousBridgeUrl == null) delete process.env.OPENPET_BRIDGE_URL
+    else process.env.OPENPET_BRIDGE_URL = previousBridgeUrl
+    if (previousBridgeToken == null) delete process.env.OPENPET_BRIDGE_TOKEN
+    else process.env.OPENPET_BRIDGE_TOKEN = previousBridgeToken
+  })
+  const server = await openDashboardServer(dataDir, t)
+  const { browser, page } = await openDashboardPage(server, t)
 
   try {
     await page.locator('#backend-select').selectOption('provider')
@@ -2533,10 +2543,7 @@ test('creator studio dashboard shows failed generation recovery and retries the 
     await new Promise((resolve) => server.close(resolve))
     bridgeServer.closeAllConnections?.()
     await new Promise((resolve) => bridgeServer.close(resolve))
-    if (previousBridgeUrl == null) delete process.env.OPENPET_BRIDGE_URL
-    else process.env.OPENPET_BRIDGE_URL = previousBridgeUrl
-    if (previousBridgeToken == null) delete process.env.OPENPET_BRIDGE_TOKEN
-    else process.env.OPENPET_BRIDGE_TOKEN = previousBridgeToken
+    await restoreBridgeEnvironment()
   }
 })
 

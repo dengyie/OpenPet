@@ -11,16 +11,18 @@ try {
 
 const { createAgentAwarenessServer } = require('../../examples/plugins/agent-awareness/service/agent-awareness-service')
 const { writeCodexHookPlan } = require('../../examples/plugins/agent-awareness/commands/codex-hook-plan')
+const { trackAsyncCleanup, trackBrowserCleanup } = require('../helpers/test-resource-cleanup')
 
-const openDashboardPage = async (port, route = '/') => {
+const openDashboardPage = async (port, testContext, route = '/') => {
   const browser = await chromium.launch({ headless: true })
+  const closeBrowser = trackBrowserCleanup(testContext, browser)
   const page = await browser.newPage()
   const consoleMessages = []
   page.on('console', (message) => {
     consoleMessages.push({ type: message.type(), text: message.text() })
   })
   await page.goto(`http://127.0.0.1:${port}${route}`, { waitUntil: 'networkidle' })
-  return { browser, consoleMessages, page }
+  return { browser, closeBrowser, consoleMessages, page }
 }
 
 test('agent awareness dashboard browser view renders sanitized diagnostics and sessions', async (t) => {
@@ -52,6 +54,7 @@ test('agent awareness dashboard browser view renders sanitized diagnostics and s
       stop: () => {}
     })
   })
+  const closeService = trackAsyncCleanup(t, () => service.close())
 
   await service.start(0)
   await service.handleEvent({
@@ -72,7 +75,7 @@ test('agent awareness dashboard browser view renders sanitized diagnostics and s
   }, { initial: false })
 
   const port = service.server.address().port
-  const { browser, page, consoleMessages } = await openDashboardPage(port)
+  const { closeBrowser, page, consoleMessages } = await openDashboardPage(port, t)
 
   try {
     await page.waitForSelector('[data-testid="agent-summary"] .metric')
@@ -154,7 +157,7 @@ test('agent awareness dashboard browser view renders sanitized diagnostics and s
     assert.equal(await page.locator('[data-section="session-workbench"]').isHidden(), true)
     assert.deepEqual(consoleMessages, [])
   } finally {
-    await browser.close()
-    await service.close()
+    await closeBrowser()
+    await closeService()
   }
 })
