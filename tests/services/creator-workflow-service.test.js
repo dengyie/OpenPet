@@ -2438,6 +2438,79 @@ test('creator workflow diagnostics reconstruct legacy action eligibility only fr
   assert.deepEqual(candidates[2].technicalFailureCodes, ['candidate-binding-stale'])
 })
 
+test('creator workflow diagnostics preserve invalidated paid candidates and expose stale profile bindings', () => {
+  const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-stale-action-candidate-'))
+  const runId = 'run-stale-action-candidate'
+  const runDir = path.join(pluginDataDir, 'runs', runId)
+  const planHash = 'p'.repeat(64)
+  const canonicalHash = 'c'.repeat(64)
+  const oldProfileHash = 'o'.repeat(64)
+  const newProfileHash = 'n'.repeat(64)
+  const candidateId = 'waving-paid-candidate'
+  const rawRelativePath = `runs/${runId}/candidates/waving/${candidateId}/raw/sheet.png`
+  const rawPath = path.join(pluginDataDir, rawRelativePath)
+  fs.mkdirSync(path.dirname(rawPath), { recursive: true })
+  fs.writeFileSync(rawPath, LEGACY_PNG_BYTES)
+  const sha256 = crypto.createHash('sha256').update(LEGACY_PNG_BYTES).digest('hex')
+  const recordRelativePath = `runs/${runId}/candidates/action-waving/${candidateId}/candidate.json`
+  const recordPath = path.join(pluginDataDir, recordRelativePath)
+  const oldSelection = { candidateId, sha256, selectionAuthority: 'human-override', qualityOverride: false, acknowledgedWarningCodes: [] }
+  fs.mkdirSync(path.dirname(recordPath), { recursive: true })
+  fs.writeFileSync(recordPath, `${JSON.stringify({
+    version: 1,
+    runId,
+    scope: 'action-waving',
+    candidate: {
+      candidateId,
+      sha256,
+      technicalEligible: true,
+      recommended: true,
+      bindings: {
+        planHash,
+        canonicalHash,
+        profileHash: oldProfileHash,
+        processorVersion: 1,
+        qualityProfileHash: getQualityFirstQualityProfile().hash
+      },
+      artifacts: [{ role: 'raw-sheet', relativePath: rawRelativePath, sha256 }],
+      disposition: 'selected-by-human',
+      selection: oldSelection
+    }
+  }, null, 2)}\n`)
+  fs.writeFileSync(path.join(runDir, 'run.json'), `${JSON.stringify({
+    runId,
+    status: 'ready_for_review',
+    qualityFirst: {
+      phase: 'ready_for_review',
+      planHash,
+      acceptedCanonical: { candidateId: 'canonical-1', sha256: canonicalHash },
+      scaleProfileHash: newProfileHash,
+      actionResults: {
+        idle: { ok: true },
+        waving: {
+          ok: false,
+          disposition: 'invalidated',
+          selectedCandidateId: '',
+          failureCode: 'candidate-binding-stale',
+          candidates: [{ candidateId, sha256, technicalEligible: true, recommended: true, disposition: 'invalidated', candidateRecordRelativePath: recordRelativePath, selection: null }]
+        }
+      }
+    }
+  }, null, 2)}\n`)
+
+  const actionResult = __testInternals.readWorkflowDiagnostics({ pluginDataDir, runId })
+    .progress.qualityFirst.actionResults.waving
+  assert.equal(actionResult.ok, false)
+  assert.equal(actionResult.failureCode, 'candidate-binding-stale')
+  assert.equal(actionResult.candidates.length, 1)
+  assert.equal(actionResult.candidates[0].technicalEligible, false)
+  assert.equal(actionResult.candidates[0].selectionState, 'technically-unusable')
+  assert.equal(actionResult.candidates[0].disposition, 'technically-unusable')
+  assert.deepEqual(actionResult.candidates[0].technicalFailureCodes, ['candidate-binding-stale'])
+  assert.equal(actionResult.candidates[0].selection, null)
+  assert.equal(actionResult.candidates[0].relativePath, rawRelativePath)
+})
+
 test('creator workflow diagnostics do not present hash-matched non-image legacy canonical bytes as selectable', () => {
   const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-legacy-canonical-decode-'))
   const runId = 'run-legacy-canonical-decode'

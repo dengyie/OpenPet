@@ -322,6 +322,61 @@ test('successful action results retain degraded diversity evidence without becom
   })
 })
 
+test('action result candidates retain the bounded host decision contract needed for later selection', async () => {
+  const warnings = ['visual-score-overall-below-minimum']
+  const orchestrator = createQualityFirstFullPetOrchestrator({
+    generateCanonicalCandidatePool: async () => ({
+      dispatchCount: 1,
+      candidates: [recommendedCanonical({ candidateId: 'canonical-1', sha256: 'a'.repeat(64), score: 95 })]
+    }),
+    runQualityFirstAction: async ({ actionId }) => ({
+      ok: true,
+      actionId,
+      selectedCandidateId: `${actionId}-candidate-1`,
+      candidates: [{
+        candidateId: `${actionId}-candidate-1`,
+        sha256: 'b'.repeat(64),
+        technicalEligible: true,
+        recommended: false,
+        technicalFailureCodes: [],
+        qualityWarningCodes: warnings,
+        attemptKind: 'quality-retry',
+        candidateRecordRelativePath: `runs/run-1/candidates/action-${actionId}/${actionId}-candidate-1/candidate.json`,
+        qa: { ok: true, failures: [] },
+        gate: { ok: false, failures: warnings },
+        evaluation: { scores: { overall: 73 } },
+        artifacts: [{ role: 'raw-sheet', path: '/Users/private/raw.png' }],
+        promptText: 'secret prompt',
+        privateProviderResponse: { data: 'must not cross boundary' }
+      }]
+    }),
+    createCharacterScaleProfile: async () => ({ hash: 'c'.repeat(64) }),
+    finalizePackage: async () => ({ artifacts: { outputDir: '/data/package' } })
+  })
+
+  const run = await orchestrator.start({
+    run: { runId: 'run-1' },
+    plan: { hash: 'plan-hash' },
+    actions: ['idle']
+  })
+  const candidate = run.qualityFirst.actionResults.idle.candidates[0]
+
+  assert.deepEqual(candidate, {
+    candidateId: 'idle-candidate-1',
+    attemptKind: 'quality-retry',
+    ok: false,
+    sha256: 'b'.repeat(64),
+    technicalEligible: true,
+    recommended: false,
+    technicalFailureCodes: [],
+    qualityWarningCodes: warnings,
+    failureCodes: warnings,
+    score: 73,
+    candidateRecordRelativePath: 'runs/run-1/candidates/action-idle/idle-candidate-1/candidate.json'
+  })
+  assert.doesNotMatch(JSON.stringify(run.qualityFirst.actionResults), /\/Users\/private|secret prompt|must not cross boundary/)
+})
+
 test('canonical generation fails only when no candidate is technically usable', async () => {
   const orchestrator = createQualityFirstFullPetOrchestrator({
     generateCanonicalCandidatePool: async () => ({

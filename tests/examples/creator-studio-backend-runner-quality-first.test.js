@@ -14,6 +14,7 @@ const {
   runGenerationStep
 } = require('../../examples/plugins/creator-studio/lib/backend-runner')
 const backendRunnerModule = require('../../examples/plugins/creator-studio/lib/backend-runner')
+const { createQualityFirstFullPetOrchestrator } = require('../../examples/plugins/creator-studio/lib/quality-first-full-pet-orchestrator')
 const { createRun, readRun, readRunLogs, writeRun } = require('../../examples/plugins/creator-studio/lib/run-store')
 const { writeCandidateRecord } = require('../../examples/plugins/creator-studio/lib/sprite-candidate-store')
 const { getQualityFirstQualityProfile } = require('../../examples/plugins/creator-studio/lib/pet-generation-quality-profile')
@@ -822,6 +823,85 @@ test('manual action selection reuses an exact retained candidate without Provide
   assert.equal(output.run.qualityFirst.actionResults.waving.candidates[0].technicalEligible, false)
 })
 
+test('a real orchestrator action result round-trips through run.json into manual acceptance', async () => {
+  const dataDir = createDataDir()
+  const created = createRun({
+    dataDir,
+    input: { petName: 'Round Trip Pet', backend: 'provider', generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1', actions: [{ actionId: 'idle' }, { actionId: 'waving' }], questions: [] } }
+  })
+  const canonical = { candidateId: 'canonical-1', sha256: 'a'.repeat(64), technicalEligible: true, recommended: true }
+  const plan = createHashBoundValue({ version: 1, actions: [{ actionId: 'idle' }, { actionId: 'waving' }] })
+  const profile = createHashBoundValue({ version: 1, maxBodyScaleCv: 0.08 })
+  const candidateId = 'waving-candidate-2'
+  const rawPath = path.join(dataDir, 'runs', created.runId, 'candidates', 'waving', candidateId, 'raw', 'sheet.png')
+  const candidateHash = writePngFixture(rawPath)
+  const record = writeCandidateRecord({
+    dataDir,
+    runId: created.runId,
+    scope: 'action-waving',
+    candidate: {
+      candidateId,
+      sha256: candidateHash,
+      technicalEligible: true,
+      recommended: true,
+      technicalFailureCodes: [],
+      qualityWarningCodes: [],
+      bindings: createCandidateBindings({ planHash: plan.hash, canonicalHash: canonical.sha256, profileHash: profile.hash }),
+      artifacts: [{ role: 'raw-sheet', path: rawPath, sha256: candidateHash }],
+      qa: { ok: true, failures: [] },
+      gate: { ok: true, outcome: 'pass', failures: [] }
+    }
+  })
+  const generatedCandidate = {
+    candidateId,
+    sha256: candidateHash,
+    technicalEligible: true,
+    recommended: true,
+    technicalFailureCodes: [],
+    qualityWarningCodes: [],
+    candidateRecordRelativePath: record.relativePath,
+    qa: { ok: true, failures: [] },
+    gate: { ok: true, outcome: 'pass', failures: [] }
+  }
+  const orchestrator = createQualityFirstFullPetOrchestrator({
+    generateCanonicalCandidatePool: async () => ({ dispatchCount: 1, candidates: [canonical] }),
+    runQualityFirstAction: async ({ actionId }) => actionId === 'idle'
+      ? { ok: true, actionId, selectedCandidateId: 'idle-candidate', candidates: [] }
+      : { ok: false, actionId, failureCode: 'action_candidate_diversity_insufficient', candidates: [generatedCandidate] },
+    createCharacterScaleProfile: async () => profile,
+    finalizePackage: async () => ({ artifacts: { outputDir: path.join(dataDir, 'runs', created.runId, 'quality-first', 'package') } })
+  })
+  const generatedRun = await orchestrator.start({
+    run: { ...created, status: 'generating' },
+    plan,
+    actions: ['idle', 'waving']
+  })
+  writeRun({ dataDir, run: generatedRun })
+  const calls = []
+
+  const output = await acceptQualityFirstActionCandidate({
+    dataDir,
+    runId: created.runId,
+    actionId: 'waving',
+    candidateId,
+    expectedHash: candidateHash,
+    runtime: {
+      materializeActionCandidate: async ({ candidate }) => {
+        calls.push(['materialize', candidate.candidateId])
+        return { ok: true, actionId: 'waving', selectedCandidateId: candidate.candidateId, selectedCandidate: candidate, candidates: [candidate] }
+      },
+      persistActionResult: async ({ actionId, result }) => calls.push(['persist', actionId, result.selectedCandidateId]),
+      finalizePackage: async () => ({ artifacts: { outputDir: path.join(dataDir, 'runs', created.runId, 'quality-first', 'package') } })
+    },
+    plan,
+    profile
+  })
+
+  assert.deepEqual(calls, [['materialize', candidateId], ['persist', 'waving', candidateId]])
+  assert.equal(output.run.qualityFirst.actionResults.waving.ok, true)
+  assert.equal(output.run.qualityFirst.actionResults.waving.selectedCandidateId, candidateId)
+})
+
 test('manual action selection reconstructs a legacy candidate only from a complete verified artifact set', async () => {
   const dataDir = createDataDir()
   const created = createRun({
@@ -1171,8 +1251,8 @@ test('manual action selection preserves the exact human choice when checkpoint r
 })
 
 for (const scenario of [
-  { actionId: 'idle', expectedActionIds: ['idle'] },
-  { actionId: 'running-right', expectedActionIds: ['idle', 'running-right', 'waving'] }
+  { actionId: 'idle', expectedActionIds: ['idle', 'running-left', 'running-right', 'waving'], expectedCheckpointActionIds: [] },
+  { actionId: 'running-right', expectedActionIds: ['idle', 'running-right', 'waving'], expectedCheckpointActionIds: ['idle', 'waving'] }
 ]) {
   test(`failed ${scenario.actionId} selection removes run-state checkpoints bound to the replaced candidate`, async () => {
     const dataDir = createDataDir()
@@ -1200,22 +1280,38 @@ for (const scenario of [
       }
     })
     const candidateView = { candidateId, sha256, technicalEligible: true, recommended: true, candidateRecordRelativePath: record.relativePath }
+    const oldSelection = { candidateId: 'old-candidate', sha256: 'd'.repeat(64), selectionAuthority: 'human-override', qualityOverride: false, acknowledgedWarningCodes: [] }
     writeRun({ dataDir, run: {
       ...created,
       status: 'ready_for_review',
+      artifacts: { generatedImage: { evidence: 'keep' }, outputDir: '/old/package', bundle: '/old/package.zip', spritesheet: '/old/spritesheet.webp' },
       qualityFirst: {
         phase: 'ready_for_review',
         planHash: plan.hash,
         acceptedCanonical: canonical,
         scaleProfileHash: profile.hash,
+        package: { bundleRelativePath: `runs/${created.runId}/quality-first/package/old.zip` },
         actionResults: {
           idle: scenario.actionId === 'idle' ? { ok: true, candidates: [candidateView] } : { ok: true },
-          'running-right': scenario.actionId === 'running-right' ? { ok: true, candidates: [candidateView] } : { ok: true },
-          'running-left': { ok: true, mirroredFrom: 'running-right' },
-          waving: { ok: true }
+          'running-right': scenario.actionId === 'running-right'
+            ? { ok: true, candidates: [candidateView] }
+            : { ok: true, selectedCandidateId: 'old-running', selection: oldSelection, candidates: [{ candidateId: 'old-running', selection: oldSelection, evidence: 'paid-running' }] },
+          'running-left': { ok: true, mirroredFrom: 'running-right', evidence: 'derived-running' },
+          waving: { ok: true, selectedCandidateId: 'old-waving', selection: oldSelection, candidates: [{ candidateId: 'old-waving', selection: oldSelection, evidence: 'paid-waving' }] }
         }
       }
     } })
+    fs.writeFileSync(path.join(dataDir, 'runs', created.runId, 'full-pet-action-checkpoints.json'), `${JSON.stringify({
+      version: 1,
+      runId: created.runId,
+      actions: {
+        idle: { actionId: 'idle', ok: true },
+        'running-right': { actionId: 'running-right', ok: true },
+        'running-left': { actionId: 'running-left', ok: true },
+        waving: { actionId: 'waving', ok: true }
+      },
+      invalidations: []
+    }, null, 2)}\n`)
 
     await assert.rejects(() => acceptQualityFirstActionCandidate({
       dataDir,
@@ -1234,11 +1330,27 @@ for (const scenario of [
 
     const failed = readRun({ dataDir, runId: created.runId })
     assert.deepEqual(Object.keys(failed.qualityFirst.actionResults).sort(), scenario.expectedActionIds.slice().sort())
+    const checkpoints = JSON.parse(fs.readFileSync(path.join(dataDir, 'runs', created.runId, 'full-pet-action-checkpoints.json'), 'utf8'))
+    assert.deepEqual(Object.keys(checkpoints.actions).sort(), scenario.expectedCheckpointActionIds.slice().sort())
     assert.equal(failed.qualityFirst.scaleProfileHash, scenario.actionId === 'idle' ? '' : profile.hash)
+    if (scenario.actionId === 'idle') {
+      for (const actionId of ['running-right', 'running-left', 'waving']) {
+        assert.equal(failed.qualityFirst.actionResults[actionId].ok, false)
+        assert.equal(failed.qualityFirst.actionResults[actionId].disposition, 'invalidated')
+        assert.equal(failed.qualityFirst.actionResults[actionId].failureCode, 'candidate-binding-stale')
+        assert.equal(failed.qualityFirst.actionResults[actionId].selectedCandidateId, '')
+        assert.equal(failed.qualityFirst.actionResults[actionId].selection, undefined)
+      }
+      assert.equal(failed.qualityFirst.actionResults.waving.candidates[0].evidence, 'paid-waving')
+      assert.equal(failed.qualityFirst.actionResults.waving.candidates[0].selection, null)
+      assert.equal(failed.qualityFirst.package, undefined)
+      assert.equal(failed.artifacts.bundle, undefined)
+      assert.deepEqual(failed.artifacts.generatedImage, { evidence: 'keep' })
+    }
   })
 }
 
-test('manual idle selection rebuilds the scale profile and drops actions bound to the old profile', async () => {
+test('manual idle selection rebuilds the scale profile and preserves old-profile action evidence as stale', async () => {
   const dataDir = createDataDir()
   const created = createRun({
     dataDir,
@@ -1263,18 +1375,26 @@ test('manual idle selection rebuilds the scale profile and drops actions bound t
       artifacts: [{ role: 'raw-sheet', path: rawPath, sha256: candidateHash }]
     }
   })
+  const oldSelection = { candidateId: 'old-waving', sha256: 'd'.repeat(64), selectionAuthority: 'human-override', qualityOverride: false, acknowledgedWarningCodes: [] }
   writeRun({ dataDir, run: {
     ...created,
     status: 'recovery-required',
     currentStep: 'recovery',
+    artifacts: { generatedImage: { evidence: 'keep' }, outputDir: '/old/package', bundle: '/old/package.zip', spritesheet: '/old/spritesheet.webp' },
     qualityFirst: {
       phase: 'recovery-required',
       planHash: plan.hash,
       acceptedCanonical: canonical,
       scaleProfileHash: 'o'.repeat(64),
+      package: { bundleRelativePath: `runs/${created.runId}/quality-first/package/old.zip` },
       actionResults: {
         idle: { ok: false, candidates: [{ candidateId: 'candidate-2', sha256: candidateHash, technicalEligible: true, recommended: false, qualityWarningCodes: warnings, candidateRecordRelativePath: record.relativePath }] },
-        waving: { ok: true, selectedCandidateId: 'old-waving' }
+        waving: {
+          ok: true,
+          selectedCandidateId: 'old-waving',
+          selection: oldSelection,
+          candidates: [{ candidateId: 'old-waving', evidence: 'paid-waving', selection: oldSelection }]
+        }
       }
     }
   } })
@@ -1289,7 +1409,7 @@ test('manual idle selection rebuilds the scale profile and drops actions bound t
     persistScaleProfile: async ({ profile }) => calls.push(['persist-profile', profile.hash]),
     persistActionResult: async ({ actionId, profile }) => calls.push(['persist-action', actionId, profile.hash]),
     finalizePackage: async ({ profile, actionResults }) => {
-      calls.push(['package', profile.hash, Object.keys(actionResults).sort().join(',')])
+      calls.push(['package', profile.hash, Object.keys(actionResults).sort().join(','), actionResults.waving?.ok, actionResults.waving?.failureCode])
       return { artifacts: { outputDir: path.join(dataDir, 'runs', created.runId, 'quality-first', 'package') } }
     }
   }
@@ -1312,10 +1432,20 @@ test('manual idle selection rebuilds the scale profile and drops actions bound t
     ['create-profile', 'candidate-2'],
     ['persist-profile', rebuiltProfile.hash],
     ['persist-action', 'idle', rebuiltProfile.hash],
-    ['package', rebuiltProfile.hash, 'idle']
+    ['package', rebuiltProfile.hash, 'idle,waving', false, 'candidate-binding-stale']
   ])
   assert.equal(output.run.qualityFirst.scaleProfileHash, rebuiltProfile.hash)
-  assert.deepEqual(Object.keys(output.run.qualityFirst.actionResults), ['idle'])
+  assert.deepEqual(Object.keys(output.run.qualityFirst.actionResults), ['waving', 'idle'])
+  assert.equal(output.run.qualityFirst.actionResults.waving.ok, false)
+  assert.equal(output.run.qualityFirst.actionResults.waving.disposition, 'invalidated')
+  assert.equal(output.run.qualityFirst.actionResults.waving.failureCode, 'candidate-binding-stale')
+  assert.equal(output.run.qualityFirst.actionResults.waving.selectedCandidateId, '')
+  assert.equal(output.run.qualityFirst.actionResults.waving.selection, undefined)
+  assert.equal(output.run.qualityFirst.actionResults.waving.candidates[0].evidence, 'paid-waving')
+  assert.equal(output.run.qualityFirst.actionResults.waving.candidates[0].selection, null)
+  assert.equal(output.run.qualityFirst.package.bundleRelativePath, undefined)
+  assert.equal(output.run.artifacts.bundle, undefined)
+  assert.deepEqual(output.run.artifacts.generatedImage, { evidence: 'keep' })
 })
 
 test('manual running-right selection rebuilds the derived running-left action', async () => {

@@ -738,6 +738,43 @@ const createQualityFirstActionResultView = (result) => ({
   })) : []
 })
 
+const invalidateActionResultForScaleProfileChange = (result = {}) => {
+  const { selection: _selection, ...evidence } = result && typeof result === 'object' ? result : {}
+  return {
+    ...evidence,
+    ok: false,
+    disposition: 'invalidated',
+    selectedCandidateId: '',
+    failureCode: 'candidate-binding-stale',
+    candidates: Array.isArray(result?.candidates)
+      ? result.candidates.map((candidate) => {
+          const { selection: _candidateSelection, ...candidateEvidence } = candidate && typeof candidate === 'object' ? candidate : {}
+          return { ...candidateEvidence, disposition: 'invalidated', selection: null }
+        })
+      : []
+  }
+}
+
+const invalidateProfileBoundActionResults = (actionResults = {}) => Object.fromEntries(
+  Object.entries(actionResults)
+    .filter(([actionId]) => actionId !== 'idle')
+    .map(([actionId, result]) => [actionId, invalidateActionResultForScaleProfileChange(result)])
+)
+
+const removeGeneratedPackageArtifacts = (artifacts = {}) => {
+  const {
+    outputDir: _outputDir,
+    petJson: _petJson,
+    spritesheet: _spritesheet,
+    bundle: _bundle,
+    qa: _qa,
+    sourceImageQa: _sourceImageQa,
+    actionTaskQa: _actionTaskQa,
+    ...retainedEvidence
+  } = artifacts && typeof artifacts === 'object' ? artifacts : {}
+  return retainedEvidence
+}
+
 const loadRetainedActionCandidateForSelection = async ({ dataDir, runId, actionId, candidateView }) => {
   const recordRelativePath = String(candidateView?.candidateRecordRelativePath || '').trim().replace(/\\/g, '/')
   const expectedPrefix = `runs/${runId}/`
@@ -882,14 +919,15 @@ const acceptQualityFirstActionCandidate = async ({
         ))
       : []
   }
-  const priorActionResults = { ...(run.qualityFirst?.actionResults || {}) }
-  if (normalizedActionId === 'idle') {
-    for (const actionId of Object.keys(priorActionResults)) delete priorActionResults[actionId]
-  } else if (normalizedActionId === 'running-right') {
+  const priorActionResults = normalizedActionId === 'idle'
+    ? invalidateProfileBoundActionResults(run.qualityFirst?.actionResults)
+    : { ...(run.qualityFirst?.actionResults || {}) }
+  if (normalizedActionId === 'running-right') {
     delete priorActionResults['running-left']
   }
+  const { package: _stalePackage, ...qualityFirstWithoutStalePackage } = run.qualityFirst || {}
   const pendingQualityFirst = {
-    ...run.qualityFirst,
+    ...(normalizedActionId === 'idle' ? qualityFirstWithoutStalePackage : run.qualityFirst),
     actionResults: {
       ...priorActionResults,
       [normalizedActionId]: pendingActionResult
@@ -902,6 +940,9 @@ const acceptQualityFirstActionCandidate = async ({
     ...run,
     status: 'generating',
     currentStep: normalizedActionId,
+    ...(normalizedActionId === 'idle' ? { artifacts: removeGeneratedPackageArtifacts(run.artifacts) } : {}),
+    reviewStatus: 'pending',
+    importStatus: 'not-imported',
     generationLease: lease,
     qualityFirst: pendingQualityFirst,
     backendStatus: createBackendStatus({ backend: PROVIDER_BACKEND, state: 'running', message: `Applying retained ${normalizedActionId} candidate`, updatedAt: startedAt })
@@ -958,7 +999,9 @@ const acceptQualityFirstActionCandidate = async ({
     }
     await runtime.persistActionResult({ actionId: normalizedActionId, result: selectedResult, canonical, profile: effectiveProfile })
     const actionResults = {
-      ...(normalizedActionId === 'idle' ? {} : (run.qualityFirst?.actionResults || {})),
+      ...(normalizedActionId === 'idle'
+        ? invalidateProfileBoundActionResults(run.qualityFirst?.actionResults)
+        : (run.qualityFirst?.actionResults || {})),
       [normalizedActionId]: createQualityFirstActionResultView(selectedResult)
     }
     if (normalizedActionId === 'running-right') {
@@ -986,6 +1029,7 @@ const acceptQualityFirstActionCandidate = async ({
       status: actionResults.idle?.ok === true ? 'ready_for_review' : 'recovery-required',
       currentStep: actionResults.idle?.ok === true ? 'review' : 'recovery',
       reviewStatus: actionResults.idle?.ok === true ? 'pending' : 'recovery-required',
+      importStatus: 'not-imported',
       generationLease: undefined,
       updatedAt: completedAt,
       backendStatus: createBackendStatus({
@@ -995,7 +1039,7 @@ const acceptQualityFirstActionCandidate = async ({
         updatedAt: completedAt
       }),
       qualityFirst: {
-        ...run.qualityFirst,
+        ...pendingQualityFirst,
         phase: actionResults.idle?.ok === true ? 'ready_for_review' : 'recovery-required',
         actionResults,
         ...(effectiveProfile?.hash ? { scaleProfileHash: effectiveProfile.hash } : {}),

@@ -1646,7 +1646,8 @@ const createQualityFirstCandidateView = ({ candidate = {}, pluginDataDir = '', r
         recommended: persistedCandidate.recommended,
         eligible: persistedCandidate.eligible,
         bindings: persistedCandidate.bindings,
-        selection: candidate.selection || persistedCandidate.selection
+        disposition: Object.hasOwn(candidate, 'disposition') ? candidate.disposition : persistedCandidate.disposition,
+        selection: Object.hasOwn(candidate, 'selection') ? candidate.selection : persistedCandidate.selection
       }
     : candidate
   const sourceArtifacts = Array.isArray(candidateViewSource.artifacts) ? candidateViewSource.artifacts : []

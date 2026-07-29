@@ -111,14 +111,22 @@ const publicActionResult = (result) => ({
   warningCodes: unique(result?.warningCodes).slice(0, 16),
   distinctCandidateCount: Math.max(0, Number(result?.distinctCandidateCount) || 0),
   evaluatedCandidateCount: Math.max(0, Number(result?.evaluatedCandidateCount) || 0),
-  candidates: Array.isArray(result?.candidates) ? result.candidates.map((candidate) => ({
-    candidateId: normalizeId(candidate?.candidateId),
-    attemptKind: String(candidate?.attemptKind || ''),
-    ok: candidate?.qa?.ok === true && candidate?.gate?.ok === true,
-    failureCodes: unique([...(candidate?.qa?.failures || []), ...(candidate?.gate?.failures || []), ...(candidate?.failureCodes || [])]),
-    score: Number(candidate?.evaluation?.scores?.overall) || 0,
-    candidateRecordRelativePath: String(candidate?.candidateRecordRelativePath || '').replace(/\\/g, '/')
-  })) : []
+  candidates: Array.isArray(result?.candidates) ? result.candidates.map((candidate) => {
+    const decision = publicCanonicalCandidate(candidate)
+    return {
+      candidateId: decision.candidateId,
+      attemptKind: String(candidate?.attemptKind || ''),
+      ok: candidate?.qa?.ok === true && candidate?.gate?.ok === true,
+      sha256: decision.sha256.toLowerCase(),
+      technicalEligible: decision.technicalEligible,
+      recommended: decision.recommended,
+      technicalFailureCodes: decision.technicalFailureCodes,
+      qualityWarningCodes: decision.qualityWarningCodes,
+      failureCodes: unique([...(candidate?.qa?.failures || []), ...(candidate?.gate?.failures || []), ...(candidate?.failureCodes || [])]),
+      score: Number(candidate?.evaluation?.scores?.overall) || 0,
+      candidateRecordRelativePath: decision.candidateRecordRelativePath || ''
+    }
+  }) : []
 })
 
 const createQualityFirstFullPetOrchestrator = ({

@@ -57,6 +57,8 @@ test('creator pane lets owners compare and select retained action candidates wit
   assert.match(source, /onAcceptCreatorActionCandidate/)
   assert.match(hook, /acceptCreatorActionCandidate/)
   assert.match(contracts, /CreatorAcceptActionCandidateRequest/)
+  assert.match(source, /result\.failureCode/)
+  assert.match(source, /状态原因/)
 })
 
 test('creator pane surfaces final package quality warnings after a human override', () => {

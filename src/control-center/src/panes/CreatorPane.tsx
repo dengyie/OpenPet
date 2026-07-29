@@ -666,6 +666,7 @@ const ActionCandidateReview = ({
       {entries.map(([actionId, result]) => (
         <div key={actionId} className="creator-action-candidate-group">
           <strong>{actionId}</strong>
+          {result.failureCode ? <span className="creator-candidate-failures">状态原因：{result.failureCode}</span> : null}
           <div className="creator-canonical-candidates">
             {result.candidates.map((candidate) => {
               const key = `${actionId}:${candidate.candidateId}`
