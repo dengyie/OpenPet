@@ -2,6 +2,27 @@
 
 OpenPet release records. Dates use Asia/Shanghai local time.
 
+## v1.0.1 - 2026-07-27
+
+### Added
+
+- Added human quality overrides in Creator Studio: owners may now select warned (but technically usable) canonical and action candidates, with hash-bound, auditable selection records and clear quality-warning acknowledgement.
+- Split candidate decisions into technical eligibility (can feed the next pipeline stage) vs. quality recommendation (passes the automated profile), with four derived selection states surfaced in the Control Center.
+- Added retained action-candidate selection with realpath containment and sha256 re-verification of current assets.
+
+### Fixed
+
+- Hardened human pet candidate selection: manual overrides never mutate quality evidence, require exact warning-code acknowledgement, and make zero provider calls (deterministic reuse only).
+- Hardened streaming navigation, cursor repair merging, local HTTP request body byte-buffering, local-plugin-runner JSON boundary failures, and creator frame/atlas validation.
+- Made quality-first pet generation resilient to provider timeouts and improved creator provider failure diagnostics and recovery paths.
+- Recovered usable action candidates after transient failures.
+
+### Validation
+
+- `npm run check:syntax`: passed (Node syntax, TypeScript no-emit, Control Center production build).
+- `npm test`: 2533 Node tests passed, 0 failed, 1 skipped.
+- `tsc --noEmit`: exit 0.
+
 ## v1.0.1-rc.3 - 2026-06-24
 
 ### Added
