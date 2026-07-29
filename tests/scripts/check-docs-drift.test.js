@@ -18,6 +18,15 @@ const createDocsFixture = () => {
   return docsRoot
 }
 
+const replaceUpdateDate = (content, nextDate) => {
+  const updated = content.replace(
+    /^> Last updated: \d{4}-\d{2}-\d{2}$/m,
+    `> Last updated: ${nextDate}`
+  )
+  assert.notEqual(updated, content, 'fixture should contain a replaceable update-date header')
+  return updated
+}
+
 test('parseArgs accepts docs drift checker options', () => {
   const parsed = parseArgs(['--docs-root', '/tmp/openpet-docs', '--json'])
   assert.equal(parsed.docsRoot, path.resolve('/tmp/openpet-docs'))
@@ -92,10 +101,7 @@ test('checkDocsDrift allows live docs to carry independent valid update dates', 
   const todoPath = path.join(docsRoot, 'TODO.md')
   fs.writeFileSync(
     todoPath,
-    fs.readFileSync(todoPath, 'utf-8').replace(
-      '> Last updated: 2026-07-16',
-      '> Last updated: 2026-07-17'
-    )
+    replaceUpdateDate(fs.readFileSync(todoPath, 'utf-8'), '2026-07-18')
   )
 
   const result = checkDocsDrift({ docsRoot })
@@ -109,10 +115,7 @@ test('checkDocsDrift identifies invalid update dates by document', () => {
   const todoPath = path.join(docsRoot, 'TODO.md')
   fs.writeFileSync(
     todoPath,
-    fs.readFileSync(todoPath, 'utf-8').replace(
-      '> Last updated: 2026-07-16',
-      '> Last updated: 2026/07/17'
-    )
+    replaceUpdateDate(fs.readFileSync(todoPath, 'utf-8'), '2026/07/17')
   )
 
   const result = checkDocsDrift({ docsRoot })
