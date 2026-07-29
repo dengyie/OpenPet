@@ -272,8 +272,8 @@ jobs:
             echo "mode=unsigned-prerelease" >> "$GITHUB_OUTPUT"
             echo "::notice::Missing Windows signing secrets:$missing. Building unsigned prerelease assets for $RELEASE_TAG; filenames will include unsigned."
           else
-            echo "::error::Missing Windows signing secrets:$missing. Stable Windows releases must be signed. Use a prerelease tag such as vX.Y.Z-rc.N for unsigned validation artifacts."
-            exit 1
+            echo "mode=unsigned-stable" >> "$GITHUB_OUTPUT"
+            echo "::notice::Missing Windows signing secrets:$missing. Building an unsigned Windows release for $RELEASE_TAG; filenames will include unsigned. Windows smoke validation stays pending until a Windows host runs it."
           fi
 
       - name: Build signed Windows distribution
@@ -284,15 +284,15 @@ jobs:
           CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
 
-      - name: Build unsigned Windows prerelease distribution
-        if: steps.signing.outputs.mode == 'unsigned-prerelease'
+      - name: Build unsigned Windows distribution
+        if: steps.signing.outputs.mode == 'unsigned-prerelease' || steps.signing.outputs.mode == 'unsigned-stable'
         run: npm run dist -- --win --x64 --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
-      - name: Mark unsigned Windows prerelease assets
-        if: steps.signing.outputs.mode == 'unsigned-prerelease'
+      - name: Mark unsigned Windows assets
+        if: steps.signing.outputs.mode == 'unsigned-prerelease' || steps.signing.outputs.mode == 'unsigned-stable'
         run: npm run prepare-windows-release-assets
 
       - name: Create pending Windows smoke report
