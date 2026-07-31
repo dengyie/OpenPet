@@ -282,7 +282,7 @@ test('runner retains a failed Provider dispatch with request evidence and contin
   const persisted = []
   let dispatchCount = 0
   const result = await runQualityFirstAction({
-    context: { actionId: 'waving' },
+    context: { actionId: 'waving', provider: 'openai-compatible', model: 'gpt-image-2' },
     reserveCreativeDispatch: () => {},
     generateCandidate: async () => {
       dispatchCount += 1
@@ -300,7 +300,12 @@ test('runner retains a failed Provider dispatch with request evidence and contin
   })
   assert.equal(result.ok, true)
   const failed = persisted.find((candidate) => candidate.candidateId === 'candidate-1')
-  assert.equal(failed.failureCodes.includes('provider-generation-failed'), true)
+  assert.equal(failed.provider, 'openai-compatible')
+  assert.equal(failed.model, 'gpt-image-2')
+  assert.equal(failed.technicalEligible, false)
+  assert.equal(failed.recommended, false)
+  assert.deepEqual(failed.technicalFailureCodes, ['provider_transport_failed'])
+  assert.equal(failed.failureCodes.includes('provider_transport_failed'), true)
   assert.equal(failed.requestId, 'provider-request-failed-1')
   assert.deepEqual(failed.modelAttempts, [{ model: 'gpt-image-2', ok: false, requestId: 'provider-request-failed-1' }])
   assert.equal(dispatchCount, 3)

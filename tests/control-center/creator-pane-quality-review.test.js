@@ -20,6 +20,7 @@ test('creator pane renders recommended, warned, selected, and technically unusab
   const source = read('src/control-center/src/panes/CreatorPane.tsx')
   assert.match(source, /identity-generation-failed/)
   assert.match(source, /身份候选生成失败/)
+  assert.match(source, /identityGenerationFailed\s*\?\s*\(progress\.failureReason/)
   assert.match(source, /passingCandidateCount/)
   assert.match(source, /推荐使用/)
   assert.match(source, /未达推荐标准，但可以选择/)

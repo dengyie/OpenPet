@@ -1713,6 +1713,8 @@ const createQualityFirstCandidateView = ({ candidate = {}, pluginDataDir = '', r
         ? 'recommended'
         : 'selectable-with-warning'
   const disposition = normalizeText(candidateViewSource.disposition)
+  const modelAttempts = createQualityFirstModelAttemptViews(candidateViewSource.modelAttempts)
+  const recordedModel = modelAttempts.slice().reverse().find((attempt) => attempt.model)?.model || ''
   return {
     candidateId: normalizeText(candidate.candidateId),
     eligible: recommended,
@@ -1726,7 +1728,7 @@ const createQualityFirstCandidateView = ({ candidate = {}, pluginDataDir = '', r
     score: Number.isFinite(Number(candidateViewSource.score ?? candidateViewSource.evaluation?.scores?.overall))
       ? Number(candidateViewSource.score ?? candidateViewSource.evaluation?.scores?.overall)
       : null,
-    model: normalizeText(candidateViewSource.model).slice(0, 160),
+    model: normalizeText(candidateViewSource.model || recordedModel).slice(0, 160),
     relativePath: safeAssetPath,
     promptRelativePath: safePromptPath,
     previewable,
@@ -1748,7 +1750,7 @@ const createQualityFirstCandidateView = ({ candidate = {}, pluginDataDir = '', r
     artifacts,
     canonicalMetrics: isPlainObject(candidate.canonicalMetrics) ? candidate.canonicalMetrics : null,
     descriptors: isPlainObject(candidate.descriptors) ? candidate.descriptors : null,
-    modelAttempts: createQualityFirstModelAttemptViews(candidateViewSource.modelAttempts),
+    modelAttempts,
     selection
   }
 }
@@ -1904,7 +1906,36 @@ const createRunFailureReason = (run = {}) => {
   if (normalizedFailure !== 'canonical_identity_candidates_unusable') {
     return sanitizeProgressReason(normalizedFailure)
   }
-  return sanitizeProgressReason('没有身份候选通过身份、完整性、构图和背景质量门；全部付费候选已保留，可检查失败原因后重新生成身份候选')
+  const candidates = Array.isArray(run?.qualityFirst?.canonicalCandidates)
+    ? run.qualityFirst.canonicalCandidates
+    : []
+  const returnedCandidateCount = candidates.filter((candidate) => (
+    /^[a-f0-9]{64}$/i.test(normalizeText(candidate?.sha256)) &&
+    Boolean(normalizeSafeRelativePath(candidate?.relativePath))
+  )).length
+  const candidateFailureCodes = candidates.map((candidate) => createUniqueTextList([
+    ...(Array.isArray(candidate?.technicalFailureCodes) ? candidate.technicalFailureCodes : []),
+    ...(Array.isArray(candidate?.failureCodes) ? candidate.failureCodes : [])
+  ]))
+  const providerFailureCodes = createUniqueTextList(candidateFailureCodes.flat())
+    .filter((code) => /^provider_[a-z0-9_:-]+$/i.test(code))
+    .slice(0, 4)
+  const everyCandidateFailedAtProvider = candidates.length > 0 && candidateFailureCodes.every((codes) => (
+    codes.some((code) => /^provider_[a-z0-9_:-]+$/i.test(code))
+  ))
+  if (returnedCandidateCount === 0 && everyCandidateFailedAtProvider) {
+    return sanitizeProgressReason(
+      `图片 Provider 未返回候选图片：${candidates.length}/${candidates.length} 次身份候选请求在传输或响应阶段失败（${providerFailureCodes.join('、') || 'provider_request_error'}）。已保留请求记录和提示词，但没有可预览或选择的图片；请稍后重新生成身份候选`
+    )
+  }
+  if (returnedCandidateCount === 0) {
+    return sanitizeProgressReason(
+      `身份候选生成失败：${candidates.length || 0} 次请求均未形成可用图片。已保留请求记录和提示词，但没有可预览或选择的图片；请检查具体失败原因后重新生成身份候选`
+    )
+  }
+  return sanitizeProgressReason(
+    `没有身份候选达到技术可用条件；已返回的 ${returnedCandidateCount} 张候选图片和失败证据均已保留，可检查具体原因后重新生成身份候选`
+  )
 }
 
 const createWorkflowProgressView = ({

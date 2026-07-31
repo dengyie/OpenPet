@@ -60,6 +60,37 @@ test('host canonical pool assigns an identity-safe duplicate-replacement strateg
   assert.equal(pool.candidates[3].diversityProfileId, 'identity-safe-alternate-neutral-v1')
 })
 
+test('failed canonical candidates preserve Provider, model, and exact transport evidence', () => {
+  assert.equal(typeof hostModelBridgeModule.__testInternals.createFailedCanonicalCandidate, 'function')
+  const error = new Error('Image Provider generation timed out after 120000ms')
+  error.code = 'provider_timeout'
+  error.modelAttempts = [{
+    model: 'gpt-image-2',
+    ok: false,
+    errorCode: 'provider_timeout',
+    timeoutMs: 120000,
+    durationMs: 120041,
+    requestId: 'provider-timeout-request'
+  }]
+
+  const candidate = hostModelBridgeModule.__testInternals.createFailedCanonicalCandidate({
+    candidateId: 'canonical-1',
+    promptRelativePath: 'runs/run-timeout/prompts/quality-first/canonical-1.txt',
+    settings: { provider: 'openai-compatible', model: 'gpt-image-2' },
+    error,
+    traceContext: { runId: 'run-timeout', stage: 'canonical-candidate', candidateId: 'canonical-1' }
+  })
+
+  assert.equal(candidate.provider, 'openai-compatible')
+  assert.equal(candidate.model, 'gpt-image-2')
+  assert.equal(candidate.technicalEligible, false)
+  assert.equal(candidate.recommended, false)
+  assert.deepEqual(candidate.technicalFailureCodes, ['provider_timeout'])
+  assert.deepEqual(candidate.failureCodes, ['provider_timeout'])
+  assert.equal(candidate.requestId, 'provider-timeout-request')
+  assert.deepEqual(candidate.modelAttempts, error.modelAttempts)
+})
+
 test('identity-safe canonical replacement requests visible neutral variation without weakening identity locks', () => {
   assert.equal(typeof hostModelBridgeModule.__testInternals.createCanonicalRequestedChanges, 'function')
   const requestedChanges = hostModelBridgeModule.__testInternals.createCanonicalRequestedChanges('identity-safe-alternate-neutral-v1')

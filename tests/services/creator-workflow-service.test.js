@@ -2700,6 +2700,78 @@ test('creator workflow diagnostics expose a failed identity pool without absolut
   assert.doesNotMatch(JSON.stringify(diagnostics), /\/Users\/mango|data:image|secret prompt body/i)
 })
 
+test('creator workflow diagnoses an all-timeout identity pool as missing Provider outputs, not failed artwork', () => {
+  const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-timeout-identity-pool-'))
+  const runId = 'run-timeout-identity-pool'
+  const runDir = path.join(pluginDataDir, 'runs', runId)
+  const canonicalCandidates = []
+  for (let index = 1; index <= 4; index += 1) {
+    const candidateId = `canonical-${index}`
+    const candidateRecordRelativePath = `runs/${runId}/candidates/canonical/${candidateId}/candidate.json`
+    fs.mkdirSync(path.dirname(path.join(pluginDataDir, candidateRecordRelativePath)), { recursive: true })
+    fs.writeFileSync(path.join(pluginDataDir, candidateRecordRelativePath), `${JSON.stringify({
+      version: 1,
+      runId,
+      scope: 'canonical',
+      candidate: {
+        candidateId,
+        provider: 'openai-compatible',
+        modelAttempts: [{
+          model: 'gpt-image-2',
+          ok: false,
+          errorCode: 'provider_timeout',
+          timeoutMs: 120000,
+          durationMs: 120041,
+          requestId: `provider-timeout-${index}`
+        }],
+        technicalEligible: false,
+        recommended: false,
+        technicalFailureCodes: ['provider_timeout'],
+        failureCodes: ['provider_timeout']
+      }
+    }, null, 2)}\n`)
+    canonicalCandidates.push({
+      candidateId,
+      sha256: '',
+      eligible: false,
+      technicalEligible: false,
+      recommended: false,
+      disposition: 'unusable',
+      technicalFailureCodes: ['provider_timeout'],
+      failureCodes: ['provider_timeout'],
+      candidateRecordRelativePath
+    })
+  }
+  fs.writeFileSync(path.join(runDir, 'run.json'), `${JSON.stringify({
+    runId,
+    status: 'failed',
+    taskStatus: 'confirmed',
+    currentStep: 'canonical-candidates',
+    error: 'canonical_identity_candidates_unusable',
+    backendStatus: { state: 'failed', message: 'canonical_identity_candidates_unusable' },
+    qualityFirst: {
+      version: 1,
+      phase: 'identity-generation-failed',
+      failureCode: 'canonical_identity_candidates_unusable',
+      dispatchCount: 4,
+      passingCandidateCount: 0,
+      nextAction: 'retry-identity',
+      canonicalCandidates
+    }
+  }, null, 2)}\n`)
+
+  const diagnostics = __testInternals.readWorkflowDiagnostics({ pluginDataDir, runId })
+
+  assert.match(diagnostics.failureReason, /Provider/)
+  assert.match(diagnostics.failureReason, /4\/4/)
+  assert.match(diagnostics.failureReason, /provider_timeout/)
+  assert.match(diagnostics.failureReason, /没有可预览或选择的图片/)
+  assert.doesNotMatch(diagnostics.failureReason, /质量门|全部付费候选已保留/)
+  assert.equal(diagnostics.progress.qualityFirst.identityReview.candidates[0].model, 'gpt-image-2')
+  assert.equal(diagnostics.progress.qualityFirst.identityReview.candidates[0].modelAttempts[0].errorCode, 'provider_timeout')
+  assert.equal(diagnostics.progress.summary, diagnostics.failureReason)
+})
+
 test('creator workflow accepts a warned canonical identity through an exact hash-bound command', async () => {
   const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-accept-identity-'))
   const runId = 'run-accept-identity'

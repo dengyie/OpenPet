@@ -2863,6 +2863,38 @@ const hasHumanCandidateSelection = ({ canonical, actionResults = {} } = {}) => (
   ))
 )
 
+const createFailedCanonicalCandidate = ({
+  candidateId,
+  promptRelativePath,
+  settings = {},
+  error,
+  traceContext
+} = {}) => {
+  const modelAttempts = Array.isArray(error?.modelAttempts) ? error.modelAttempts.slice(0, 16) : []
+  const failureCode = String(error?.code || 'canonical-generation-failed')
+    .replace(/[^A-Za-z0-9:_-]/g, '_')
+    .slice(0, 120)
+  const model = String(modelAttempts.at(-1)?.model || settings.model || '')
+  return {
+    candidateId,
+    sha256: '',
+    eligible: false,
+    technicalEligible: false,
+    recommended: false,
+    score: 0,
+    promptRelativePath,
+    provider: String(settings.provider || ''),
+    model,
+    descriptors: { perceptualHash: candidateId, identityDescriptor: [0], alphaMaskDescriptor: [0] },
+    requestId: String(modelAttempts.at(-1)?.requestId || ''),
+    traceContext,
+    modelAttempts,
+    technicalFailureCodes: [failureCode],
+    qualityWarningCodes: [],
+    failureCodes: [failureCode]
+  }
+}
+
 const generateCanonicalCandidatePool = async ({
   generateCandidate,
   persistCandidate = () => {},
@@ -3108,19 +3140,13 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
         failureCodes: eligible ? [] : [cutout.failureCondition || 'canonical-technical-qa-failed']
       }
     } catch (error) {
-      const modelAttempts = Array.isArray(error?.modelAttempts) ? error.modelAttempts.slice(0, 16) : []
-      return {
+      return createFailedCanonicalCandidate({
         candidateId,
-        sha256: '',
-        eligible: false,
-        score: 0,
         promptRelativePath,
-        descriptors: { perceptualHash: candidateId, identityDescriptor: [0], alphaMaskDescriptor: [0] },
-        requestId: String(modelAttempts.at(-1)?.requestId || ''),
+        settings,
+        error,
         traceContext: { runId: run.runId, stage: 'canonical-candidate', candidateId },
-        modelAttempts,
-        failureCodes: [String(error?.code || 'canonical-generation-failed').replace(/[^A-Za-z0-9:_-]/g, '_').slice(0, 120)]
-      }
+      })
     }
   }
   const persistCanonicalCandidate = async (candidate) => {
@@ -3208,7 +3234,12 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
         }))
       : []
     const runner = await generateSelectedFullPetAction({
-      context: { actionId, duplicateThresholds: { perceptualHashDistance: 4, identityDescriptorDistance: 0.08, alphaMaskDistance: 0.08 } },
+      context: {
+        actionId,
+        provider: String(settings.provider || ''),
+        model: String(settings.model || ''),
+        duplicateThresholds: { perceptualHashDistance: 4, identityDescriptorDistance: 0.08, alphaMaskDistance: 0.08 }
+      },
       existingCandidates: retainedCandidates,
       reserveCreativeDispatch: async () => {},
       generateCandidate: async ({ candidateId, attemptKind, dispatchIndex, failureCodes }) => {
@@ -3231,7 +3262,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
         if (!output) throw new Error('action candidate requires exactly one Provider output')
         const rawPath = path.join(dataDir, output.dataRelativePath)
         const outputDir = path.join(dataDir, `runs/${run.runId}/candidates/${actionId}/${candidateId}/processed`)
-        return { candidateId, strategyId: task.strategyId, rawPath, promptRelativePath, model: generated.selectedModel, requestId: generated.response?.result?.requestId || generated.attempts?.at(-1)?.requestId || '', traceContext: generated.response?.result?.traceContext || { runId: run.runId, actionId, stage: 'action-candidate', candidateId }, modelAttempts: generated.attempts, sha256: sha256File(rawPath), descriptors: await createSpriteImageDescriptors({ imagePath: rawPath }), actionPolicy: { anchorPolicy: action.anchorPolicy }, outputDir }
+        return { candidateId, strategyId: task.strategyId, rawPath, promptRelativePath, provider: generated.response?.provider || settings.provider, model: generated.selectedModel, requestId: generated.response?.result?.requestId || generated.attempts?.at(-1)?.requestId || '', traceContext: generated.response?.result?.traceContext || { runId: run.runId, actionId, stage: 'action-candidate', candidateId }, modelAttempts: generated.attempts, sha256: sha256File(rawPath), descriptors: await createSpriteImageDescriptors({ imagePath: rawPath }), actionPolicy: { anchorPolicy: action.anchorPolicy }, outputDir }
       },
       processCandidate: async (candidate) => {
         const processed = await processSpriteSheet({ inputPath: candidate.rawPath, outputDir: candidate.outputDir, layout: action.layout, profile: actionProfile, actionPolicy: { ...action, actionId } })
@@ -4002,6 +4033,7 @@ module.exports = {
     createFullPetActionIdentityContext,
     collectQualityFirstCandidateArtifacts,
     createCanonicalRequestedChanges,
+    createFailedCanonicalCandidate,
     createQualityFirstActionCandidateTask,
     evaluateCanonicalCandidatePool,
     createSoftIdentityRetryRequestedChanges,

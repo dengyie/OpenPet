@@ -66,14 +66,23 @@ const runQualityFirstAction = async ({
       })
     } catch (error) {
       const modelAttempts = Array.isArray(error?.modelAttempts) ? error.modelAttempts.slice(0, 16) : []
+      const failureCode = String(error?.code || 'provider-generation-failed')
+        .replace(/[^A-Za-z0-9:_-]/g, '_')
+        .slice(0, 120)
       const failedCandidate = {
         candidateId: assignedCandidateId,
         actionId,
         attemptKind,
         dispatchIndex,
+        provider: String(context.provider || ''),
+        model: String(modelAttempts.at(-1)?.model || context.model || ''),
         requestId: String(modelAttempts.at(-1)?.requestId || ''),
         modelAttempts,
-        failureCodes: ['provider-generation-failed']
+        technicalEligible: false,
+        recommended: false,
+        technicalFailureCodes: [failureCode],
+        qualityWarningCodes: [],
+        failureCodes: [failureCode]
       }
       dispatches.push(failedCandidate)
       allCandidates.push(failedCandidate)

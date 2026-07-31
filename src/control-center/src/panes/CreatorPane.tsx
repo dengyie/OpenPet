@@ -529,7 +529,7 @@ const IdentityReviewPanel = ({
         <div>
           <strong>{identityGenerationFailed ? '身份候选生成失败' : (automaticallySelected ? 'Canonical identity 已自动选定' : '选择 canonical identity')}</strong>
           <span>{identityGenerationFailed
-            ? `本次 ${qualityFirst.dispatchCount} 张付费候选均已保留，但没有候选通过身份、完整性、构图和背景质量门。请检查具体失败原因后重新生成身份候选。`
+            ? (progress.failureReason || '身份候选生成失败；请检查各候选的 Provider 请求记录和技术阻断原因后重新生成。')
             : automaticallySelected
               ? '系统已按质量分、身份分和稳定候选 ID 选定唯一 anchor；其他付费候选仍作为可检查的备用资产保留。'
               : '动作生成尚未开始。请选择最符合参考图身份、比例和渲染风格的可用候选。'}</span>
