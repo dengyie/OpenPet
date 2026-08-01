@@ -160,6 +160,32 @@ test('catalog service rejects downloaded packages with mismatched hashes', async
   )
 })
 
+test('catalog service cancels failed package responses before preserving the HTTP error', async () => {
+  let canceled = false
+  const catalogPath = writeCatalog({
+    plugins: [{ id: 'focus-timer', name: 'Focus Timer', version: '1.0.0', packageUrl: 'https://catalog.test/focus.zip', sha256: '0'.repeat(64) }]
+  })
+  const { catalogService } = createRealServices({
+    catalogPath,
+    fetchImpl: async () => ({
+      ok: false,
+      status: 503,
+      body: {
+        cancel: async () => {
+          canceled = true
+          throw new Error('catalog body cancellation failed')
+        }
+      }
+    })
+  })
+
+  await assert.rejects(
+    () => catalogService.prepareInstall({ kind: 'plugin', itemId: 'focus-timer' }),
+    { message: 'Catalog download failed with HTTP 503' }
+  )
+  assert.equal(canceled, true)
+})
+
 test('catalog service times out stalled package downloads', async () => {
   const catalogPath = writeCatalog({
     plugins: [{ id: 'focus-timer', name: 'Focus Timer', version: '1.0.0', packageUrl: 'https://catalog.test/focus.zip', sha256: '0'.repeat(64) }]

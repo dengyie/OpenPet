@@ -2,7 +2,7 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const crypto = require('node:crypto')
-const { readBoundedResponseBuffer } = require('./bounded-response-body')
+const { cancelResponseBodyQuietly, readBoundedResponseBuffer } = require('./bounded-response-body')
 const zipArchiveUtils = require('./zip-archive-utils')
 
 const MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
@@ -103,7 +103,10 @@ const createPluginGithubImportService = ({
         headers: { Accept: 'application/vnd.github+json' },
         signal: controller?.signal
       })
-      if (!response?.ok) throw new Error(errorMessage)
+      if (!response?.ok) {
+        await cancelResponseBodyQuietly(response)
+        throw new Error(errorMessage)
+      }
       const payload = JSON.parse((await readBoundedResponseBuffer(response, {
         maxBytes: 1024 * 1024,
         sizeErrorMessage: 'GitHub repository metadata exceeds the configured byte limit',
@@ -123,7 +126,10 @@ const createPluginGithubImportService = ({
       headers: { Accept: 'application/octet-stream' },
       signal: controller?.signal
     }), { controller, timeoutMs: archiveTimeoutMs, message: 'Failed to download the repository source archive' })
-    if (!response?.ok) throw new Error('Failed to download the repository source archive')
+    if (!response?.ok) {
+      await cancelResponseBodyQuietly(response)
+      throw new Error('Failed to download the repository source archive')
+    }
     const buffer = await withTimeout(readBoundedResponseBuffer(response, {
       maxBytes: maxArchiveBytes,
       sizeErrorMessage: `GitHub repository archive exceeds ${maxArchiveBytes} bytes`,

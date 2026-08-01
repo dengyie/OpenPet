@@ -4,7 +4,7 @@ const path = require('path')
 const crypto = require('crypto')
 const { compareVersions } = require('./about-service')
 const { getBlockStatus, mergeBlocklists, normalizeBlocklist } = require('./ecosystem-policy')
-const { readBoundedResponseBuffer } = require('./bounded-response-body')
+const { cancelResponseBodyQuietly, readBoundedResponseBuffer } = require('./bounded-response-body')
 
 const CATALOG_SELECTION_TTL_MS = 10 * 60 * 1000
 const MAX_PACKAGE_BYTES = 64 * 1024 * 1024
@@ -247,7 +247,10 @@ const createCatalogService = ({
       headers: { Accept: 'application/octet-stream' },
       signal: controller?.signal
     }), { controller, timeoutMs: downloadTimeoutMs, message: 'Catalog download timed out' })
-    if (!response?.ok) throw new Error(`Catalog download failed with HTTP ${response?.status || 'unknown'}`)
+    if (!response?.ok) {
+      await cancelResponseBodyQuietly(response)
+      throw new Error(`Catalog download failed with HTTP ${response?.status || 'unknown'}`)
+    }
     const buffer = await withTimeout(readBoundedResponseBuffer(response, {
       maxBytes: maxPackageBytes,
       sizeErrorMessage: `Catalog package exceeds ${maxPackageBytes} bytes`,

@@ -26,6 +26,12 @@ const cancelQuietly = (operation) => {
   } catch (_) {}
 }
 
+const cancelResponseBodyQuietly = async (response) => {
+  try {
+    await response?.body?.cancel?.()
+  } catch (_) {}
+}
+
 const awaitWithAbort = async (operation, controller) => {
   const signal = controller?.signal
   const pendingOperation = Promise.resolve(operation)
@@ -170,6 +176,7 @@ const readBoundedResponseBuffer = async (response, {
 }
 
 module.exports = {
+  cancelResponseBodyQuietly,
   createResponseBodyTooLargeError,
   getDeclaredContentLength,
   readBoundedResponseBuffer

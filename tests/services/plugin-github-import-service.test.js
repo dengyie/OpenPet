@@ -162,6 +162,56 @@ test('github plugin import service surfaces repository lookup failures', async (
   )
 })
 
+test('github plugin import service cancels failed repository metadata responses before preserving the lookup error', async () => {
+  let canceled = false
+  const service = createPluginGithubImportService({
+    pluginInstallService: { inspectPluginPackage: () => ({}) },
+    fetchImpl: async () => ({
+      ok: false,
+      status: 404,
+      body: {
+        cancel: async () => {
+          canceled = true
+          throw new Error('metadata body cancellation failed')
+        }
+      }
+    })
+  })
+
+  await assert.rejects(
+    () => service.inspectRepositoryUrl('https://github.com/openpet/missing-plugin'),
+    {
+      message: 'Unable to read the repository default branch. Check that the repository exists and is publicly accessible.'
+    }
+  )
+  assert.equal(canceled, true)
+})
+
+test('github plugin import service cancels failed archive responses before preserving the download error', async () => {
+  let canceled = false
+  const service = createPluginGithubImportService({
+    pluginInstallService: { inspectPluginPackage: () => ({}) },
+    fetchImpl: async (url) => String(url).includes('/repos/')
+      ? createResponse({ default_branch: 'main' })
+      : {
+          ok: false,
+          status: 502,
+          body: {
+            cancel: async () => {
+              canceled = true
+              throw new Error('archive body cancellation failed')
+            }
+          }
+        }
+  })
+
+  await assert.rejects(
+    () => service.inspectRepositoryUrl('https://github.com/openpet/unavailable-plugin'),
+    { message: 'Failed to download the repository source archive' }
+  )
+  assert.equal(canceled, true)
+})
+
 test('github plugin import service times out and cancels a stalled repository metadata body', async () => {
   let canceled = false
   const metadataResponse = {
