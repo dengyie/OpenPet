@@ -13,8 +13,9 @@ const withTimeout = async (promise, { controller, timeoutMs, message }) => {
   let timer = null
   const timeout = new Promise((_, reject) => {
     timer = setTimeout(() => {
-      controller?.abort?.()
-      reject(new Error(message))
+      const error = new Error(message)
+      controller?.abort?.(error)
+      reject(error)
     }, timeoutMs)
   })
   try {
@@ -95,24 +96,23 @@ const createPluginGithubImportService = ({
 
   const lookupDefaultBranch = async ({ owner, repo }) => {
     const controller = createAbortController()
-    const response = await withTimeout(fetchImpl(`https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`, {
-      method: 'GET',
-      headers: { Accept: 'application/vnd.github+json' },
-      signal: controller?.signal
-    }), { controller, timeoutMs: archiveTimeoutMs, message: 'Unable to read the repository default branch. Check that the repository exists and is publicly accessible.' })
-    if (!response?.ok) {
-      throw new Error('Unable to read the repository default branch. Check that the repository exists and is publicly accessible.')
-    }
-    const payload = JSON.parse((await readBoundedResponseBuffer(response, {
-      maxBytes: 1024 * 1024,
-      sizeErrorMessage: 'GitHub repository metadata exceeds the configured byte limit',
-      controller
-    })).toString('utf8').replace(/^\uFEFF/, ''))
-    const defaultBranch = String(payload?.default_branch || '').trim()
-    if (!defaultBranch) {
-      throw new Error('Unable to read the repository default branch. Check that the repository exists and is publicly accessible.')
-    }
-    return defaultBranch
+    const errorMessage = 'Unable to read the repository default branch. Check that the repository exists and is publicly accessible.'
+    return withTimeout((async () => {
+      const response = await fetchImpl(`https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`, {
+        method: 'GET',
+        headers: { Accept: 'application/vnd.github+json' },
+        signal: controller?.signal
+      })
+      if (!response?.ok) throw new Error(errorMessage)
+      const payload = JSON.parse((await readBoundedResponseBuffer(response, {
+        maxBytes: 1024 * 1024,
+        sizeErrorMessage: 'GitHub repository metadata exceeds the configured byte limit',
+        controller
+      })).toString('utf8').replace(/^\uFEFF/, ''))
+      const defaultBranch = String(payload?.default_branch || '').trim()
+      if (!defaultBranch) throw new Error(errorMessage)
+      return defaultBranch
+    })(), { controller, timeoutMs: archiveTimeoutMs, message: errorMessage })
   }
 
   const downloadArchive = async ({ owner, repo, defaultBranch }) => {

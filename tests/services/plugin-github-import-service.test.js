@@ -162,6 +162,40 @@ test('github plugin import service surfaces repository lookup failures', async (
   )
 })
 
+test('github plugin import service times out and cancels a stalled repository metadata body', async () => {
+  let canceled = false
+  const metadataResponse = {
+    ok: true,
+    status: 200,
+    headers: { get: () => '' },
+    body: {
+      getReader: () => ({
+        read: () => new Promise(() => {}),
+        cancel: async () => { canceled = true },
+        releaseLock: () => {}
+      })
+    }
+  }
+  const service = createPluginGithubImportService({
+    pluginInstallService: { inspectPluginPackage: () => ({}) },
+    fetchImpl: async () => metadataResponse,
+    archiveTimeoutMs: 20
+  })
+
+  const outcome = await Promise.race([
+    service.inspectRepositoryUrl('https://github.com/openpet/stalled-plugin')
+      .then(() => ({ status: 'resolved' }), (error) => ({ status: 'rejected', error })),
+    new Promise((resolve) => setTimeout(() => resolve({ status: 'pending' }), 120))
+  ])
+
+  assert.equal(outcome.status, 'rejected')
+  assert.equal(
+    outcome.error.message,
+    'Unable to read the repository default branch. Check that the repository exists and is publicly accessible.'
+  )
+  assert.equal(canceled, true)
+})
+
 test('github plugin import service cancels an unbounded archive stream as soon as it exceeds the byte limit', async () => {
   const archiveResponse = createStreamingResponse([
     Buffer.alloc(4, 1),
