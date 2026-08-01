@@ -186,6 +186,40 @@ test('catalog service cancels failed package responses before preserving the HTT
   assert.equal(canceled, true)
 })
 
+test('catalog service does not wait for failed response cancellation before rejecting', async () => {
+  let canceled = false
+  const catalogPath = writeCatalog({
+    plugins: [{ id: 'focus-timer', name: 'Focus Timer', version: '1.0.0', packageUrl: 'https://catalog.test/focus.zip', sha256: '0'.repeat(64) }]
+  })
+  const { catalogService } = createRealServices({
+    catalogPath,
+    fetchImpl: async () => ({
+      ok: false,
+      status: 503,
+      body: {
+        cancel: () => {
+          canceled = true
+          return new Promise(() => {})
+        }
+      }
+    })
+  })
+
+  let watchdog
+  const outcome = await Promise.race([
+    catalogService.prepareInstall({ kind: 'plugin', itemId: 'focus-timer' })
+      .then(() => ({ status: 'resolved' }), (error) => ({ status: 'rejected', error })),
+    new Promise((resolve) => {
+      watchdog = setTimeout(() => resolve({ status: 'pending' }), 50)
+    })
+  ])
+  clearTimeout(watchdog)
+
+  assert.equal(canceled, true)
+  assert.equal(outcome.status, 'rejected')
+  assert.equal(outcome.error.message, 'Catalog download failed with HTTP 503')
+})
+
 test('catalog service times out stalled package downloads', async () => {
   const catalogPath = writeCatalog({
     plugins: [{ id: 'focus-timer', name: 'Focus Timer', version: '1.0.0', packageUrl: 'https://catalog.test/focus.zip', sha256: '0'.repeat(64) }]

@@ -1,7 +1,10 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 
-const { readBoundedResponseBuffer } = require('../../src/main/services/bounded-response-body')
+const {
+  cancelResponseBodyQuietly,
+  readBoundedResponseBuffer
+} = require('../../src/main/services/bounded-response-body')
 
 const createStreamingResponse = (chunks, { contentLength = '' } = {}) => {
   let index = 0
@@ -21,6 +24,21 @@ const createStreamingResponse = (chunks, { contentLength = '' } = {}) => {
     cancelReason: () => canceledWith
   }
 }
+
+test('response body cancellation does not wait for a never-settling cancel promise', () => {
+  let canceled = false
+  const result = cancelResponseBodyQuietly({
+    body: {
+      cancel: () => {
+        canceled = true
+        return new Promise(() => {})
+      }
+    }
+  })
+
+  assert.equal(canceled, true)
+  assert.equal(result, undefined)
+})
 
 test('bounded response reader accepts a streaming body exactly at the byte limit', async () => {
   const response = createStreamingResponse([Buffer.from('1234'), Buffer.from('5678')])

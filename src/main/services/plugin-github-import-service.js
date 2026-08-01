@@ -104,7 +104,7 @@ const createPluginGithubImportService = ({
         signal: controller?.signal
       })
       if (!response?.ok) {
-        await cancelResponseBodyQuietly(response)
+        cancelResponseBodyQuietly(response)
         throw new Error(errorMessage)
       }
       const payload = JSON.parse((await readBoundedResponseBuffer(response, {
@@ -127,7 +127,7 @@ const createPluginGithubImportService = ({
       signal: controller?.signal
     }), { controller, timeoutMs: archiveTimeoutMs, message: 'Failed to download the repository source archive' })
     if (!response?.ok) {
-      await cancelResponseBodyQuietly(response)
+      cancelResponseBodyQuietly(response)
       throw new Error('Failed to download the repository source archive')
     }
     const buffer = await withTimeout(readBoundedResponseBuffer(response, {

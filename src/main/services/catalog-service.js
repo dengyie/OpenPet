@@ -248,7 +248,7 @@ const createCatalogService = ({
       signal: controller?.signal
     }), { controller, timeoutMs: downloadTimeoutMs, message: 'Catalog download timed out' })
     if (!response?.ok) {
-      await cancelResponseBodyQuietly(response)
+      cancelResponseBodyQuietly(response)
       throw new Error(`Catalog download failed with HTTP ${response?.status || 'unknown'}`)
     }
     const buffer = await withTimeout(readBoundedResponseBuffer(response, {

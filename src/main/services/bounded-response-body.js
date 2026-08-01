@@ -26,11 +26,7 @@ const cancelQuietly = (operation) => {
   } catch (_) {}
 }
 
-const cancelResponseBodyQuietly = async (response) => {
-  try {
-    await response?.body?.cancel?.()
-  } catch (_) {}
-}
+const cancelResponseBodyQuietly = (response) => cancelQuietly(() => response?.body?.cancel?.())
 
 const awaitWithAbort = async (operation, controller) => {
   const signal = controller?.signal
