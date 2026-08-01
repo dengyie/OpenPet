@@ -3199,3 +3199,134 @@ test('ai service streamComplete propagates abort signal to tools fallback comple
   )
   assert.ok(signalFromFallback)
 })
+
+const createCancelableAiResponse = (chunks, contentType = 'application/json') => {
+  let index = 0
+  let canceled = false
+  return {
+    ok: true,
+    status: 200,
+    headers: { get: (name) => String(name).toLowerCase() === 'content-type' ? contentType : '' },
+    body: {
+      getReader: () => ({
+        read: async () => index < chunks.length
+          ? { done: false, value: Buffer.from(chunks[index++]) }
+          : { done: true, value: undefined },
+        cancel: async () => { canceled = true },
+        releaseLock: () => {}
+      })
+    },
+    wasCanceled: () => canceled
+  }
+}
+
+const createLimitedAiService = ({ fetchImpl, settingsService = createSettingsService(), limits = {} }) => createAiService({
+  settingsService,
+  secretService: {
+    getSecretValue: () => 'sk-test-secret',
+    setSecret: () => {}
+  },
+  fetchImpl,
+  providerResponseLimits: {
+    jsonBytes: 64,
+    streamBytes: 128,
+    replyBytes: 32,
+    ...limits
+  }
+})
+
+test('ai service cancels oversized JSON responses and does not persist partial chat output', async () => {
+  const response = createCancelableAiResponse([
+    JSON.stringify({ choices: [{ message: { content: 'x'.repeat(80) } }] })
+  ])
+  const settingsService = createSettingsService({
+    ai: {
+      enabled: true,
+      provider: 'openai-compatible',
+      baseUrl: 'https://provider.test/v1',
+      model: 'bounded-model',
+      apiKeyRef: 'ai.default',
+      systemPrompt: ''
+    }
+  })
+  const service = createLimitedAiService({ fetchImpl: async () => response, settingsService })
+
+  await assert.rejects(
+    () => service.chat({ message: 'hello', conversationId: 'bounded-chat' }),
+    (error) => error?.providerCode === 'response_too_large' && !/x{10}/.test(error.message)
+  )
+
+  assert.equal(response.wasCanceled(), true)
+  assert.equal(settingsService.get().ai.conversations, undefined)
+})
+
+test('ai service cancels a single unbroken SSE frame that exceeds the stream budget', async () => {
+  const response = createCancelableAiResponse([
+    `data: ${JSON.stringify({ choices: [{ delta: { content: 'x'.repeat(100) } }] })}`
+  ], 'text/event-stream')
+  const service = createLimitedAiService({ fetchImpl: async () => response, limits: { streamBytes: 64 } })
+
+  await assert.rejects(
+    () => service.streamComplete({ messages: [{ role: 'user', content: 'hello' }] }),
+    (error) => error?.providerCode === 'response_too_large'
+  )
+
+  assert.equal(response.wasCanceled(), true)
+})
+
+test('ai service bounds cumulative SSE reply bytes before delivering an overflowing delta', async () => {
+  const response = createCancelableAiResponse([[
+    'data: {"choices":[{"delta":{"content":"1234"}}]}',
+    '',
+    'data: {"choices":[{"delta":{"content":"5678"}}]}',
+    '',
+    'data: [DONE]',
+    ''
+  ].join('\n')], 'text/event-stream')
+  const deltas = []
+  const service = createLimitedAiService({
+    fetchImpl: async () => response,
+    limits: { streamBytes: 1024, replyBytes: 6 }
+  })
+
+  await assert.rejects(
+    () => service.streamComplete({
+      messages: [{ role: 'user', content: 'hello' }],
+      onDelta: (delta) => deltas.push(delta)
+    }),
+    (error) => error?.providerCode === 'response_too_large'
+  )
+
+  assert.deepEqual(deltas, ['1234'])
+  assert.equal(response.wasCanceled(), true)
+})
+
+test('ai service applies the JSON response budget to structured completions', async () => {
+  const response = createCancelableAiResponse([JSON.stringify({
+    choices: [{ message: { tool_calls: [{ function: { name: 'bounded_tool', arguments: JSON.stringify({ value: 'x'.repeat(80) }) } }] } }]
+  })])
+  const service = createLimitedAiService({ fetchImpl: async () => response })
+
+  await assert.rejects(
+    () => service.completeStructuredTool({
+      messages: [{ role: 'user', content: 'hello' }],
+      tool: { type: 'function', function: { name: 'bounded_tool', parameters: { type: 'object' } } }
+    }),
+    (error) => error?.providerCode === 'response_too_large'
+  )
+
+  assert.equal(response.wasCanceled(), true)
+})
+
+test('ai service does not replace the model catalog after an oversized discovery response', async () => {
+  const response = createCancelableAiResponse([JSON.stringify({ data: [{ id: 'x'.repeat(100) }] })])
+  const settingsService = createSettingsService()
+  const service = createLimitedAiService({ fetchImpl: async () => response, settingsService })
+
+  const result = await service.discoverModels()
+
+  assert.equal(result.ok, false)
+  assert.equal(result.code, 'response_too_large')
+  assert.equal(settingsService.get().ai.modelCatalog, undefined)
+  assert.equal(response.wasCanceled(), true)
+})

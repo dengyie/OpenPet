@@ -86,7 +86,7 @@ const createResponse = (buffer, { ok = true, status = 200 } = {}) => ({
   arrayBuffer: async () => buffer
 })
 
-const createRealServices = ({ settingsService = createSettingsService(), catalogPath, fetchImpl, downloadTimeoutMs } = {}) => {
+const createRealServices = ({ settingsService = createSettingsService(), catalogPath, fetchImpl, downloadTimeoutMs, maxPackageBytes } = {}) => {
   const pluginDir = createTempDir('catalog-installed-plugins')
   const userPacksDir = createTempDir('catalog-installed-packs')
   let catalogService = null
@@ -116,7 +116,8 @@ const createRealServices = ({ settingsService = createSettingsService(), catalog
     catalogPath,
     fetchImpl,
     tempRoot: createTempDir('catalog-temp'),
-    downloadTimeoutMs
+    downloadTimeoutMs,
+    maxPackageBytes
   })
   return { catalogService, settingsService, pluginService, petPackService }
 }
@@ -173,6 +174,41 @@ test('catalog service times out stalled package downloads', async () => {
     () => catalogService.prepareInstall({ kind: 'plugin', itemId: 'focus-timer' }),
     /timed out/
   )
+})
+
+test('catalog service cancels an archive stream as soon as it exceeds the byte limit without content-length', async () => {
+  let index = 0
+  let canceled = false
+  const chunks = [Buffer.alloc(4, 1), Buffer.alloc(5, 2)]
+  const response = {
+    ok: true,
+    status: 200,
+    headers: { get: () => '' },
+    body: {
+      getReader: () => ({
+        read: async () => index < chunks.length
+          ? { done: false, value: chunks[index++] }
+          : { done: true, value: undefined },
+        cancel: async () => { canceled = true },
+        releaseLock: () => {}
+      })
+    },
+    arrayBuffer: async () => { throw new Error('streaming responses must not be fully buffered') }
+  }
+  const catalogPath = writeCatalog({
+    plugins: [{ id: 'focus-timer', name: 'Focus Timer', version: '1.0.0', packageUrl: 'https://catalog.test/focus.zip', sha256: '0'.repeat(64) }]
+  })
+  const { catalogService } = createRealServices({
+    catalogPath,
+    fetchImpl: async () => response,
+    maxPackageBytes: 8
+  })
+
+  await assert.rejects(
+    () => catalogService.prepareInstall({ kind: 'plugin', itemId: 'focus-timer' }),
+    /exceeds 8 bytes/
+  )
+  assert.equal(canceled, true)
 })
 
 test('catalog service downloads, reviews, and installs a plugin package', async () => {

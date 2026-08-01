@@ -2,6 +2,8 @@ const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
 const { sanitizeLogText } = require('./log-safety')
+const { readBoundedResponseBuffer } = require('./bounded-response-body')
+const { normalizeProviderResponseLimits } = require('./provider-response-limits')
 const {
   createSavedProviderModelCatalog,
   getScopedProviderModelCatalog,
@@ -189,14 +191,28 @@ const writeOutputPng = ({ targetDir, index, bytes }) => {
   return { outputPath, fileName }
 }
 
-const decodeRequiredBase64Image = ({ value, fieldName }) => {
+const decodeRequiredBase64Image = ({ value, fieldName, maxBytes = Infinity }) => {
   const encoded = String(value || '').trim()
   if (!encoded) {
     throw new Error(`Image Provider returned an output with missing image bytes (${fieldName})`)
   }
+  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) {
+    throw new Error(`Image Provider returned invalid image bytes (${fieldName})`)
+  }
+  const estimatedBytes = Math.max(0, Math.floor(encoded.length * 3 / 4) - (encoded.endsWith('==') ? 2 : encoded.endsWith('=') ? 1 : 0))
+  if (estimatedBytes > maxBytes) {
+    const error = new Error('Image Provider response exceeded the configured byte limit')
+    error.code = 'provider_response_too_large'
+    throw error
+  }
   const bytes = Buffer.from(encoded, 'base64')
   if (!bytes.length) {
     throw new Error(`Image Provider returned an output with missing image bytes (${fieldName})`)
+  }
+  if (bytes.byteLength > maxBytes) {
+    const error = new Error('Image Provider response exceeded the configured byte limit')
+    error.code = 'provider_response_too_large'
+    throw error
   }
   return bytes
 }
@@ -288,7 +304,7 @@ const fetchWithTimeout = async ({
           ...options,
           signal: controller.signal
         })
-        return await consumeResponse(response, controller.signal)
+        return await consumeResponse(response, controller)
       })(),
       new Promise((_, reject) => {
         timeoutHandle = setTimeout(() => {
@@ -298,6 +314,7 @@ const fetchWithTimeout = async ({
       })
     ])
   } catch (error) {
+    if (error?.code === 'provider_response_too_large') throw error
     if (isAbortError(error) || controller.signal.aborted) {
       throw new Error(timeoutMessage)
     }
@@ -310,12 +327,22 @@ const fetchWithTimeout = async ({
 // parsed 用于区分"provider 返回了合法的空模型列表"与"响应体解析失败"。
 // 两者都会得到空 body，但只有前者可以覆盖已保存的模型目录；解析失败时
 // 必须保留旧目录，否则一次坏响应就会把用户已发现的模型清空。
-const readOptionalJsonResponse = async (response, signal) => {
-  if (!response?.ok || typeof response.json !== 'function') return { parsed: false, body: {} }
+const readOptionalJsonResponse = async (response, controller, maxBytes) => {
+  if (!response?.ok) return { parsed: false, body: {} }
   try {
-    return { parsed: true, body: await response.json() }
+    const bytes = await readBoundedResponseBuffer(response, {
+      maxBytes,
+      sizeErrorMessage: 'Image Provider response exceeded the configured byte limit',
+      controller
+    })
+    return { parsed: true, body: JSON.parse(bytes.toString('utf8').replace(/^\uFEFF/, '')) }
   } catch (error) {
-    if (signal?.aborted) throw error
+    if (error?.code === 'RESPONSE_BODY_TOO_LARGE') {
+      const sizeError = new Error('Image Provider response exceeded the configured byte limit')
+      sizeError.code = 'provider_response_too_large'
+      throw sizeError
+    }
+    if (controller?.signal?.aborted) throw error
     return { parsed: false, body: {} }
   }
 }
@@ -760,7 +787,8 @@ const createImageGenerationModelService = ({
   appLogService,
   idFactory = () => crypto.randomUUID(),
   providerGenerationTimeoutMs,
-  cloudGenerationTimeoutMs
+  cloudGenerationTimeoutMs,
+  providerResponseLimits = {}
 } = {}) => {
   if (!settingsService) throw new Error('settingsService is required')
   if (!secretService) throw new Error('secretService is required')
@@ -768,6 +796,7 @@ const createImageGenerationModelService = ({
   let activeProviderJobs = 0
   let healthCacheRevision = 0
   const queuedProviderJobs = []
+  const responseLimits = normalizeProviderResponseLimits(providerResponseLimits)
 
   const getStoredConfig = () => normalizeConfig(settingsService.get().models?.imageGeneration)
   const getStoredImageGenerationState = () => (
@@ -1125,8 +1154,8 @@ const createImageGenerationModelService = ({
             Authorization: `Bearer ${apiKey}`
           }
         },
-        consumeResponse: async (response, signal) => {
-          const { parsed, body } = await readOptionalJsonResponse(response, signal)
+        consumeResponse: async (response, controller) => {
+          const { parsed, body } = await readOptionalJsonResponse(response, controller, responseLimits.imageJsonBytes)
           return { response, body, bodyParsed: parsed }
         }
       })
@@ -1297,8 +1326,8 @@ const createImageGenerationModelService = ({
             Authorization: `Bearer ${apiKey}`
           }
         },
-        consumeResponse: async (response, signal) => {
-          const { parsed, body } = await readOptionalJsonResponse(response, signal)
+        consumeResponse: async (response, controller) => {
+          const { parsed, body } = await readOptionalJsonResponse(response, controller, responseLimits.imageJsonBytes)
           return { response, body, bodyParsed: parsed }
         }
       })
@@ -1487,16 +1516,21 @@ const createImageGenerationModelService = ({
             headers,
             body: requestBody
           },
-          consumeResponse: async (response) => ({
+          consumeResponse: async (response, controller) => ({
             response,
-            body: response?.ok && typeof response.json === 'function'
-              ? await response.json()
+            body: response?.ok
+              ? (await readOptionalJsonResponse(response, controller, responseLimits.imageJsonBytes)).body
               : {}
           })
         })
         response = providerResponse.response
         responseBody = providerResponse.body
       } catch (error) {
+        if (error?.code === 'provider_response_too_large') {
+          const providerError = new Error('Image Provider response exceeded the configured byte limit')
+          providerError.code = 'provider_response_too_large'
+          throw providerError
+        }
         if (isTransientProviderTransportError(error) && canRetryWithinBudget()) {
           recordTransientRetry({ error })
           continue
@@ -1645,13 +1679,16 @@ const createImageGenerationModelService = ({
     }
 
     let outputs
+    const outputPaths = []
     try {
-      outputs = items.map((item, index) => {
-        const bytes = decodeRequiredBase64Image({
-          value: item?.b64_json,
-          fieldName: 'b64_json'
-        })
+      const decodedImages = items.map((item) => decodeRequiredBase64Image({
+        value: item?.b64_json,
+        fieldName: 'b64_json',
+        maxBytes: responseLimits.imageBytes
+      }))
+      outputs = decodedImages.map((bytes, index) => {
         const { outputPath, fileName } = writeOutputPng({ targetDir, index: index + 1, bytes })
+        outputPaths.push(outputPath)
         return {
           dataRelativePath: path.posix.join(relativeDir.replace(/\\/g, '/'), fileName),
           mimeType: 'image/png',
@@ -1659,6 +1696,7 @@ const createImageGenerationModelService = ({
         }
       })
     } catch (error) {
+      for (const outputPath of outputPaths) fs.rmSync(outputPath, { force: true })
       recordProviderLog({
         level: 'error',
         event: 'imageGeneration.provider.request.failed',

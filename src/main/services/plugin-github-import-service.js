@@ -2,7 +2,8 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const crypto = require('node:crypto')
-const { execFileSync } = require('node:child_process')
+const { readBoundedResponseBuffer } = require('./bounded-response-body')
+const zipArchiveUtils = require('./zip-archive-utils')
 
 const MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
 
@@ -21,16 +22,6 @@ const withTimeout = async (promise, { controller, timeoutMs, message }) => {
   } finally {
     clearTimeout(timer)
   }
-}
-
-const readResponseBuffer = async (response, maxBytes) => {
-  const contentLength = Number(response.headers?.get?.('content-length') || 0)
-  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
-    throw new Error(`GitHub repository archive exceeds ${maxBytes} bytes`)
-  }
-  const buffer = Buffer.from(await response.arrayBuffer())
-  if (buffer.byteLength > maxBytes) throw new Error(`GitHub repository archive exceeds ${maxBytes} bytes`)
-  return buffer
 }
 
 const hashBuffer = (buffer) => crypto.createHash('sha256').update(buffer).digest('hex')
@@ -65,10 +56,13 @@ const validateRepositoryUrl = (repositoryUrl) => {
   }
 }
 
-const extractArchiveToTemp = ({ archivePath, extractRoot }) => {
-  execFileSync('unzip', ['-qq', archivePath, '-d', extractRoot])
-  return extractRoot
-}
+const extractArchiveToTemp = ({ archivePath, tempRoot, limits }) => zipArchiveUtils.extractZipToTemp(archivePath, {
+  subject: 'Plugin package',
+  folderSubject: 'Plugin',
+  tempPrefix: 'openpet-github-plugin-extract-',
+  tempRoot,
+  limits
+})
 
 const findRepositoryRoot = (extractRoot) => {
   const candidates = fs.readdirSync(extractRoot, { withFileTypes: true })
@@ -92,10 +86,12 @@ const createPluginGithubImportService = ({
   tempRoot = os.tmpdir(),
   archiveTimeoutMs = 15000,
   maxArchiveBytes = MAX_ARCHIVE_BYTES,
+  zipLimits = {},
   extractArchive = extractArchiveToTemp
 }) => {
   if (!pluginInstallService?.inspectPluginPackage) throw new Error('pluginInstallService.inspectPluginPackage is required')
   if (typeof fetchImpl !== 'function') throw new Error('GitHub repository import is not available')
+  const limits = { ...zipArchiveUtils.DEFAULT_ZIP_LIMITS, ...zipLimits }
 
   const lookupDefaultBranch = async ({ owner, repo }) => {
     const controller = createAbortController()
@@ -107,7 +103,11 @@ const createPluginGithubImportService = ({
     if (!response?.ok) {
       throw new Error('Unable to read the repository default branch. Check that the repository exists and is publicly accessible.')
     }
-    const payload = await response.json()
+    const payload = JSON.parse((await readBoundedResponseBuffer(response, {
+      maxBytes: 1024 * 1024,
+      sizeErrorMessage: 'GitHub repository metadata exceeds the configured byte limit',
+      controller
+    })).toString('utf8').replace(/^\uFEFF/, ''))
     const defaultBranch = String(payload?.default_branch || '').trim()
     if (!defaultBranch) {
       throw new Error('Unable to read the repository default branch. Check that the repository exists and is publicly accessible.')
@@ -124,7 +124,11 @@ const createPluginGithubImportService = ({
       signal: controller?.signal
     }), { controller, timeoutMs: archiveTimeoutMs, message: 'Failed to download the repository source archive' })
     if (!response?.ok) throw new Error('Failed to download the repository source archive')
-    const buffer = await withTimeout(readResponseBuffer(response, maxArchiveBytes), {
+    const buffer = await withTimeout(readBoundedResponseBuffer(response, {
+      maxBytes: maxArchiveBytes,
+      sizeErrorMessage: `GitHub repository archive exceeds ${maxArchiveBytes} bytes`,
+      controller
+    }), {
       controller,
       timeoutMs: archiveTimeoutMs,
       message: 'Failed to download the repository source archive'
@@ -145,10 +149,14 @@ const createPluginGithubImportService = ({
     const { owner, repo } = validateRepositoryUrl(repositoryUrl)
     const defaultBranch = await lookupDefaultBranch({ owner, repo })
     const downloaded = await downloadArchive({ owner, repo, defaultBranch })
-    const extractRoot = path.join(downloaded.cleanupPath, 'extract')
-
     try {
-      extractArchive({ archivePath: downloaded.archivePath, extractRoot })
+      const requestedExtractRoot = path.join(downloaded.cleanupPath, 'extract')
+      const extractRoot = await extractArchive({
+        archivePath: downloaded.archivePath,
+        extractRoot: requestedExtractRoot,
+        tempRoot: downloaded.cleanupPath,
+        limits
+      }) || requestedExtractRoot
       const repositoryRoot = findRepositoryRoot(extractRoot)
       return pluginInstallService.inspectPluginPackage(repositoryRoot, {
         sourceType: 'github',

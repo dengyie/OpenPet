@@ -2301,3 +2301,73 @@ test('image generation releases the provider response body on a non-retryable er
   // 400 不可重试：直接跳出循环时也必须释放响应体，否则连接泄漏。
   assert.equal(bodyCancelCount, 1)
 })
+
+test('image generation cancels oversized model discovery responses without replacing the saved catalog', async () => {
+  let index = 0
+  let canceled = false
+  const response = {
+    ok: true,
+    status: 200,
+    headers: { get: () => '' },
+    body: {
+      getReader: () => ({
+        read: async () => index++ === 0
+          ? { done: false, value: Buffer.from(JSON.stringify({ data: [{ id: 'x'.repeat(128) }] })) }
+          : { done: true, value: undefined },
+        cancel: async () => { canceled = true },
+        releaseLock: () => {}
+      })
+    }
+  }
+  const savedCatalog = createSavedProviderModelCatalog({
+    capability: 'image',
+    provider: 'openai-compatible',
+    baseUrl: 'http://127.0.0.1:8317/v1',
+    models: ['existing-model'],
+    fetchedAt: '2026-07-01T00:00:00.000Z'
+  })
+  const settingsService = createSettingsService(providerSettings({ modelCatalog: savedCatalog }))
+  const service = createImageGenerationModelService({
+    settingsService,
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-secret', label: 'Image API Key' }
+    }),
+    fetchImpl: async () => response,
+    providerResponseLimits: { imageJsonBytes: 32 }
+  })
+
+  const result = await service.discoverModels()
+
+  assert.equal(result.ok, false)
+  assert.match(result.message, /configured byte limit/i)
+  assert.equal(canceled, true)
+  assert.deepEqual(settingsService.get().models.imageGeneration.modelCatalog.models, ['existing-model'])
+})
+
+test('image generation rejects oversized Base64 output without persisting a partial image', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-bounded-'))
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings()),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-secret', label: 'Image API Key' }
+    }),
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: [{ b64_json: Buffer.alloc(16, 1).toString('base64') }] })
+    }),
+    providerResponseLimits: { imageBytes: 4 }
+  })
+
+  await assert.rejects(
+    () => service.generateImage({
+      prompt: 'bounded image output',
+      referenceImages: createReferenceImages(dataDir),
+      output: { dataDir, dataRelativeDir: 'runs/bounded/frames/base' },
+      constraints: { width: 1024, height: 1024, transparent: true }
+    }),
+    (error) => error?.code === 'provider_response_too_large' && /configured byte limit/i.test(error.message)
+  )
+
+  assert.equal(fs.existsSync(path.join(dataDir, 'runs', 'bounded', 'frames', 'base', '0001.png')), false)
+})

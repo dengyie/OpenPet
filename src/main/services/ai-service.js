@@ -1,5 +1,7 @@
 const crypto = require('crypto')
 const { sanitizeLogText } = require('./log-safety')
+const { readBoundedResponseBuffer } = require('./bounded-response-body')
+const { normalizeProviderResponseLimits } = require('./provider-response-limits')
 const {
   createSavedProviderModelCatalog,
   getScopedProviderModelCatalog,
@@ -420,6 +422,10 @@ const createLinkedAbortSignal = (externalSignal, timeoutMs) => {
   return {
     signal: controller.signal,
     isTimeout: () => abortReason === 'timeout',
+    abort: (reason) => {
+      if (!abortReason) abortReason = 'internal'
+      controller.abort(reason)
+    },
     clear: () => {
       externalSignal?.removeEventListener?.('abort', abortFromExternal)
       timeout.signal.removeEventListener?.('abort', abortFromTimeout)
@@ -430,6 +436,8 @@ const createLinkedAbortSignal = (externalSignal, timeoutMs) => {
 
 const createAbortError = (linkedSignal) => {
   if (linkedSignal?.isTimeout?.()) return createTimeoutError()
+  if (linkedSignal?.signal?.reason?.code === 'RESPONSE_BODY_TOO_LARGE') return createProviderResponseTooLargeError()
+  if (linkedSignal?.signal?.reason?.name === 'ProviderResponseTooLargeError') return linkedSignal.signal.reason
   const error = new Error('AI provider request aborted')
   error.name = 'AbortError'
   return error
@@ -454,8 +462,23 @@ const raceWithLinkedAbort = async (operation, linkedSignal) => {
   }
 }
 
-const readStreamTextChunks = async function * (body, linkedSignal = null) {
+const createProviderResponseTooLargeError = () => {
+  const error = new Error('AI provider response exceeded the configured byte limit')
+  error.name = 'ProviderResponseTooLargeError'
+  error.providerCode = 'response_too_large'
+  return error
+}
+
+const assertProviderByteLimit = (currentBytes, maxBytes, linkedSignal) => {
+  if (currentBytes <= maxBytes) return
+  const error = createProviderResponseTooLargeError()
+  linkedSignal?.abort?.(error)
+  throw error
+}
+
+const readStreamTextChunks = async function * (body, linkedSignal = null, maxBytes = Infinity) {
   if (!body) return
+  let totalBytes = 0
   if (typeof body.getReader === 'function') {
     const reader = body.getReader()
     const decoder = new TextDecoder()
@@ -467,6 +490,8 @@ const readStreamTextChunks = async function * (body, linkedSignal = null) {
           reachedEnd = true
           break
         }
+        totalBytes += value?.byteLength || 0
+        assertProviderByteLimit(totalBytes, maxBytes, linkedSignal)
         yield decoder.decode(value, { stream: true })
       }
       const tail = decoder.decode()
@@ -494,11 +519,18 @@ const readStreamTextChunks = async function * (body, linkedSignal = null) {
         break
       }
       if (Buffer.isBuffer(chunk)) {
+        totalBytes += chunk.byteLength
+        assertProviderByteLimit(totalBytes, maxBytes, linkedSignal)
         yield chunk.toString('utf8')
       } else if (chunk instanceof Uint8Array) {
+        totalBytes += chunk.byteLength
+        assertProviderByteLimit(totalBytes, maxBytes, linkedSignal)
         yield new TextDecoder().decode(chunk)
       } else {
-        yield String(chunk || '')
+        const text = String(chunk || '')
+        totalBytes += Buffer.byteLength(text, 'utf8')
+        assertProviderByteLimit(totalBytes, maxBytes, linkedSignal)
+        yield text
       }
     }
   } finally {
@@ -543,13 +575,25 @@ const extractDiscoveredModelIds = (body, { secrets = [], sort = true } = {}) => 
   )
 }
 
-const readJsonBody = async (response, linkedSignal = null) => {
-  if (!response || typeof response.json !== 'function') {
+const readJsonBody = async (response, linkedSignal = null, maxBytes = Infinity) => {
+  if (!response) {
     return { ok: false, body: {} }
   }
   try {
-    return { ok: true, body: await raceWithLinkedAbort(response.json(), linkedSignal) }
+    const buffer = await raceWithLinkedAbort(readBoundedResponseBuffer(response, {
+      maxBytes,
+      sizeErrorMessage: 'AI provider response exceeded the configured byte limit',
+      controller: linkedSignal
+    }), linkedSignal)
+    return { ok: true, body: JSON.parse(buffer.toString('utf8').replace(/^\uFEFF/, '')) }
   } catch (error) {
+    if (
+      error?.code === 'RESPONSE_BODY_TOO_LARGE' ||
+      error?.providerCode === 'response_too_large' ||
+      error?.name === 'ProviderResponseTooLargeError'
+    ) {
+      throw createProviderResponseTooLargeError()
+    }
     if (error?.name === 'AbortError' || error?.name === 'TimeoutError') throw error
     return { ok: false, body: {} }
   }
@@ -562,8 +606,8 @@ const createProviderResponseParseError = () => {
   return error
 }
 
-const sniffProviderResponseBody = async (body, linkedSignal, fallbackMode) => {
-  const iterator = readStreamTextChunks(body, linkedSignal)[Symbol.asyncIterator]()
+const sniffProviderResponseBody = async (body, linkedSignal, fallbackMode, maxBytes) => {
+  const iterator = readStreamTextChunks(body, linkedSignal, maxBytes)[Symbol.asyncIterator]()
   const prefetchedChunks = []
   let prefix = ''
   let reachedEnd = false
@@ -607,6 +651,7 @@ const readSniffedJsonBody = async ({ prefetchedChunks, iterator, reachedEnd }, l
     }
     return JSON.parse(text.replace(/^\uFEFF/, ''))
   } catch (error) {
+    if (error?.name === 'ProviderResponseTooLargeError') throw error
     if (error?.name === 'AbortError' || error?.name === 'TimeoutError') throw error
     throw createProviderResponseParseError()
   }
@@ -645,6 +690,9 @@ const classifyConnectionError = (error) => {
   if (error?.message === 'fetch is not available') {
     return { code: 'fetch_unavailable', message: 'Fetch is not available' }
   }
+  if (error?.providerCode === 'response_too_large') {
+    return { code: 'response_too_large', message: 'AI provider response exceeded the configured byte limit' }
+  }
   if (error?.name === 'AbortError' || error?.message === 'AI provider request timed out') {
     return { code: 'timeout', message: 'AI provider request timed out' }
   }
@@ -660,7 +708,7 @@ const classifyConnectionError = (error) => {
   return { code: 'network_error', message: 'AI provider request failed' }
 }
 
-const probeAvailableModels = async ({ config, fetchImpl, apiKey, requestTimeoutMs }) => {
+const probeAvailableModels = async ({ config, fetchImpl, apiKey, requestTimeoutMs, responseLimits }) => {
   if (config.provider !== 'openai-compatible') {
     return {
       modelsProbe: 'failed',
@@ -710,7 +758,7 @@ const probeAvailableModels = async ({ config, fetchImpl, apiKey, requestTimeoutM
       }
     }
 
-    const parsed = await readJsonBody(response, linkedSignal)
+    const parsed = await readJsonBody(response, linkedSignal, responseLimits.jsonBytes)
     if (!parsed.ok) {
       return {
         modelsProbe: 'failed',
@@ -745,6 +793,7 @@ const createAiService = ({
   requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
   maxHistoryMessages = DEFAULT_MAX_HISTORY_MESSAGES,
   maxConversations = DEFAULT_MAX_CONVERSATIONS,
+  providerResponseLimits = {},
   appLogService,
   idFactory = () => crypto.randomUUID()
 }) => {
@@ -753,6 +802,7 @@ const createAiService = ({
 
   const historyLimit = Math.max(0, Number(maxHistoryMessages) || 0)
   const conversationLimit = Math.max(0, Number(maxConversations) || 0)
+  const responseLimits = normalizeProviderResponseLimits(providerResponseLimits)
   const conversationQueues = new Map()
   const createRequestId = (value = '') => {
     const requested = String(value || '').replace(/[\u0000-\u001F\u007F]/g, '').trim().slice(0, 120)
@@ -1214,7 +1264,7 @@ const createAiService = ({
         throw safeError
       }
 
-      const { body: data } = await readJsonBody(response, linkedSignal)
+      const { body: data } = await readJsonBody(response, linkedSignal, responseLimits.jsonBytes)
       if (!response.ok) {
         throw createProviderError({
           status: response.status,
@@ -1222,6 +1272,7 @@ const createAiService = ({
         })
       }
       const result = parseChatResult(data)
+      assertProviderByteLimit(Buffer.byteLength(result.reply, 'utf8'), responseLimits.replyBytes, linkedSignal)
       recordLog({
         level: 'info',
         event: 'ai.provider.request.completed',
@@ -1410,7 +1461,7 @@ const createAiService = ({
       }
 
       if (!response.ok) {
-        const { body: data } = await readJsonBody(response, linkedSignal)
+        const { body: data } = await readJsonBody(response, linkedSignal, responseLimits.jsonBytes)
         const providerMessage = typeof data?.error?.message === 'string' ? data.error.message : ''
         const providerCode = typeof data?.error?.code === 'string' ? data.error.code : ''
         const providerError = createProviderError({
@@ -1456,7 +1507,7 @@ const createAiService = ({
       let responseMode = classifyProviderResponse(response)
       let sniffedResponse = null
       if (hasReadableStreamBody(response.body)) {
-        sniffedResponse = await sniffProviderResponseBody(response.body, linkedSignal, responseMode)
+        sniffedResponse = await sniffProviderResponseBody(response.body, linkedSignal, responseMode, responseLimits.streamBytes)
         responseMode = sniffedResponse.mode
       }
 
@@ -1465,11 +1516,12 @@ const createAiService = ({
         if (sniffedResponse) {
           data = await readSniffedJsonBody(sniffedResponse, linkedSignal)
         } else {
-          const parsed = await readJsonBody(response, linkedSignal)
+          const parsed = await readJsonBody(response, linkedSignal, responseLimits.jsonBytes)
           if (!parsed.ok) throw createProviderResponseParseError()
           data = parsed.body
         }
         const result = parseChatResult(data)
+        assertProviderByteLimit(Buffer.byteLength(result.reply, 'utf8'), responseLimits.replyBytes, linkedSignal)
         const nonStreamFinishReason = typeof data?.choices?.[0]?.finish_reason === 'string'
           ? data.choices[0].finish_reason
           : ''
@@ -1509,6 +1561,7 @@ const createAiService = ({
         if (event.done) return true
         if (event.finishReason) finishReason = event.finishReason
         if (!event.delta) return false
+        assertProviderByteLimit(Buffer.byteLength(reply, 'utf8') + Buffer.byteLength(event.delta, 'utf8'), responseLimits.replyBytes, linkedSignal)
         chunkCount += 1
         reply += event.delta
         if (typeof onDelta === 'function') onDelta(event.delta)
@@ -1516,7 +1569,7 @@ const createAiService = ({
       }
       const streamChunks = sniffedResponse
         ? replayPrefetchedTextChunks(sniffedResponse)
-        : readStreamTextChunks(response.body, linkedSignal)
+        : readStreamTextChunks(response.body, linkedSignal, responseLimits.streamBytes)
       for await (const textChunk of streamChunks) {
         if (linkedSignal.signal.aborted) {
           if (linkedSignal.isTimeout()) throw createTimeoutError()
@@ -1657,7 +1710,7 @@ const createAiService = ({
             }
           })
         }), linkedSignal)
-        const parsed = await readJsonBody(response, linkedSignal)
+        const parsed = await readJsonBody(response, linkedSignal, responseLimits.jsonBytes)
         data = parsed.body
       } catch (error) {
         if (error?.name === 'AbortError' && linkedSignal.isTimeout()) {
@@ -1776,7 +1829,8 @@ const createAiService = ({
         config,
         fetchImpl,
         apiKey,
-        requestTimeoutMs
+        requestTimeoutMs,
+        responseLimits
       })
       const response = {
         ok: true,
@@ -1925,7 +1979,7 @@ const createAiService = ({
         signal: linkedSignal.signal
       }), linkedSignal)
 
-      const { body } = await readJsonBody(response, linkedSignal)
+      const { body } = await readJsonBody(response, linkedSignal, responseLimits.jsonBytes)
       if (!response.ok) {
         if (isOptionalModelsProbeStatus(response.status)) {
           return completeDiscovery({
@@ -2089,7 +2143,7 @@ const createAiService = ({
         signal: linkedSignal.signal
       }), linkedSignal)
       const status = response?.status || 'error'
-      const { body } = await readJsonBody(response, linkedSignal)
+      const { body } = await readJsonBody(response, linkedSignal, responseLimits.jsonBytes)
       if (!response?.ok) {
         if (isOptionalModelsProbeStatus(status)) {
           return completeDiscovery({

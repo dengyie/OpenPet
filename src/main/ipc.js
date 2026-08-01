@@ -968,7 +968,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
       properties: ['openDirectory', 'createDirectory']
     })
     if (selected.canceled || !selected.filePaths[0]) return { canceled: true }
-    return { canceled: false, ...petPackService.exportPack(payload.packId, selected.filePaths[0]) }
+    return { canceled: false, ...await petPackService.exportPack(payload.packId, selected.filePaths[0]) }
   })
 
   ipcMainService.handle(IPC.PET_PACKS_SET_ACTIVE, (event, payload) => {

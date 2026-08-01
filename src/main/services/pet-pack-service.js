@@ -2,7 +2,6 @@ const fs = require('fs')
 const path = require('path')
 const os = require('os')
 const crypto = require('crypto')
-const { execFileSync } = require('child_process')
 const { pathToFileURL } = require('url')
 const zipArchiveUtils = require('./zip-archive-utils')
 const { writeJsonAtomic } = require('../json-file-utils')
@@ -228,11 +227,6 @@ const writePackManifest = (rootPath, pack) => {
     }
   }
   writeJsonFile(manifestPath, manifest)
-}
-
-const writeZipFromDirectory = (sourceDir, outputPath) => {
-  fs.rmSync(outputPath, { force: true })
-  execFileSync('zip', ['-qr', outputPath, '.'], { cwd: sourceDir })
 }
 
 const createPetPackService = ({
@@ -590,7 +584,7 @@ const createPetPackService = ({
     }
   }
 
-  const exportPack = (packId, outputDir) => {
+  const exportPack = async (packId, outputDir) => {
     if (!isSafePackId(packId)) throw new Error('Pet pack id is invalid')
     if (isBuiltInPackId(packId)) throw new Error('Cannot export the built-in pet pack')
     if (!outputDir) throw new Error('Pet pack export output directory is required')
@@ -602,7 +596,7 @@ const createPetPackService = ({
     try {
       copyDirectory(pack.rootPath, exportRoot)
       writePackManifest(exportRoot, pack)
-      writeZipFromDirectory(exportRoot, outputPath)
+      await zipArchiveUtils.writeZipFromDirectory(exportRoot, outputPath)
     } finally {
       fs.rmSync(exportRoot, { recursive: true, force: true })
     }

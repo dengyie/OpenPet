@@ -19,6 +19,29 @@ const createResponse = (body, { ok = true, status = 200, headers = {} } = {}) =>
   arrayBuffer: async () => Buffer.isBuffer(body) ? body : Buffer.from(body)
 })
 
+const createStreamingResponse = (chunks, { headers = {} } = {}) => {
+  let index = 0
+  let canceled = false
+  return {
+    ok: true,
+    status: 200,
+    headers: {
+      get: (name) => headers[String(name || '').toLowerCase()] || ''
+    },
+    body: {
+      getReader: () => ({
+        read: async () => index < chunks.length
+          ? { done: false, value: chunks[index++] }
+          : { done: true, value: undefined },
+        cancel: async () => { canceled = true },
+        releaseLock: () => {}
+      })
+    },
+    arrayBuffer: async () => { throw new Error('streaming responses must not be fully buffered') },
+    wasCanceled: () => canceled
+  }
+}
+
 const createRepositoryRoot = ({ withPluginManifest = true } = {}) => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-github-plugin-root-'))
   const repoRoot = path.join(tempRoot, 'demo-plugin-main')
@@ -137,4 +160,53 @@ test('github plugin import service surfaces repository lookup failures', async (
     () => service.inspectRepositoryUrl('https://github.com/openpet/missing-plugin'),
     /default branch/
   )
+})
+
+test('github plugin import service cancels an unbounded archive stream as soon as it exceeds the byte limit', async () => {
+  const archiveResponse = createStreamingResponse([
+    Buffer.alloc(4, 1),
+    Buffer.alloc(5, 2)
+  ])
+  const service = createPluginGithubImportService({
+    pluginInstallService: { inspectPluginPackage: () => ({}) },
+    fetchImpl: async (url) => String(url).includes('/repos/')
+      ? createResponse({ default_branch: 'main' })
+      : archiveResponse,
+    maxArchiveBytes: 8
+  })
+
+  await assert.rejects(
+    () => service.inspectRepositoryUrl('https://github.com/openpet/oversized-plugin'),
+    /exceeds 8 bytes/
+  )
+  assert.equal(archiveResponse.wasCanceled(), true)
+})
+
+test('github plugin import service accepts a streaming archive exactly at the byte limit', async () => {
+  const { tempRoot } = createRepositoryRoot()
+  const archiveResponse = createStreamingResponse([
+    Buffer.alloc(4, 1),
+    Buffer.alloc(4, 2)
+  ])
+  const service = createPluginGithubImportService({
+    pluginInstallService: {
+      inspectPluginPackage: () => ({ plugin: { id: 'demo-plugin' } })
+    },
+    fetchImpl: async (url) => String(url).includes('/repos/')
+      ? createResponse({ default_branch: 'main' })
+      : archiveResponse,
+    maxArchiveBytes: 8,
+    extractArchive: async ({ extractRoot }) => {
+      extractRoot ||= fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-github-test-extract-'))
+      fs.mkdirSync(extractRoot, { recursive: true })
+      fs.cpSync(tempRoot, extractRoot, { recursive: true })
+      return extractRoot
+    }
+  })
+
+  const review = await service.inspectRepositoryUrl('https://github.com/openpet/bounded-plugin')
+
+  assert.equal(review.plugin.id, 'demo-plugin')
+  assert.equal(archiveResponse.wasCanceled(), false)
+  fs.rmSync(tempRoot, { recursive: true, force: true })
 })

@@ -15,8 +15,11 @@ const {
   assertArchiveLimits,
   assertNoSymlinks,
   assertSafeZipEntry,
+  extractZipArchive,
   extractZipToTemp,
-  runArchiveOperation
+  inspectZipArchive,
+  runArchiveOperation,
+  writeZipFromDirectory
 } = require('../../src/main/services/zip-archive-utils')
 
 const tightLimits = Object.freeze({
@@ -201,5 +204,29 @@ test('extractZipToTemp returns a populated staging directory on success', async 
   } finally {
     if (stagedPath) fs.rmSync(stagedPath, { recursive: true, force: true })
     fs.rmSync(zipRoot, { recursive: true, force: true })
+  }
+})
+
+test('ZIP inspection and extraction do not depend on commands from PATH', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-zip-portable-'))
+  const source = path.join(root, 'source')
+  const destination = path.join(root, 'destination')
+  const zipPath = path.join(root, 'fixture.zip')
+  fs.mkdirSync(source)
+  fs.mkdirSync(destination)
+  fs.writeFileSync(path.join(source, 'plugin.json'), '{"id":"portable"}')
+  await writeZipFromDirectory(source, zipPath)
+  const originalPath = process.env.PATH
+
+  try {
+    process.env.PATH = ''
+    const entries = await inspectZipArchive({ zipPath, timeoutMs: 1000, subject: 'Plugin package' })
+    await extractZipArchive({ zipPath, destination, timeoutMs: 1000 })
+
+    assert.deepEqual(entries.map((entry) => entry.name), ['plugin.json'])
+    assert.equal(fs.readFileSync(path.join(destination, 'plugin.json'), 'utf8'), '{"id":"portable"}')
+  } finally {
+    process.env.PATH = originalPath
+    fs.rmSync(root, { recursive: true, force: true })
   }
 })

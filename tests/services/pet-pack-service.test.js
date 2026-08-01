@@ -8,6 +8,7 @@ const { execFileSync } = require('node:child_process')
 
 const { createActionService } = require('../../src/main/services/action-service')
 const { BUILT_IN_PACK_ID, createPetPackService } = require('../../src/main/services/pet-pack-service')
+const zipArchiveUtils = require('../../src/main/services/zip-archive-utils')
 const { createMinimalWebp: createFixtureWebp } = require('../../examples/plugins/creator-studio/lib/fake-hatch-pet')
 
 const createSettingsService = (initialSettings = {}) => {
@@ -346,7 +347,7 @@ test('pet pack service exports installed user packs as re-importable zip package
 
   const inspection = service.inspectPackDirectory(sourceDir)
   service.importPack(inspection.selectionId)
-  const exported = service.exportPack('exportable-cat', outputDir)
+  const exported = await service.exportPack('exportable-cat', outputDir)
 
   assert.equal(exported.packId, 'exportable-cat')
   assert.equal(exported.fileName, 'exportable-cat-1.0.0.openpet-pet.zip')
@@ -356,8 +357,9 @@ test('pet pack service exports installed user packs as re-importable zip package
   service.removePack('exportable-cat')
   const reinspection = await service.inspectPackSource(exported.outputPath)
   const reimported = service.importPack(reinspection.selectionId)
-  const exportedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-pet-pack-export-check-'))
-  execFileSync('unzip', ['-qq', exported.outputPath, '-d', exportedRoot])
+  const exportedRoot = await zipArchiveUtils.extractZipToTemp(exported.outputPath, {
+    tempPrefix: 'openpet-pet-pack-export-check-'
+  })
   const exportedManifest = JSON.parse(fs.readFileSync(path.join(exportedRoot, 'pet.json'), 'utf-8'))
 
   assert.equal(reinspection.valid, true)
@@ -371,10 +373,10 @@ test('pet pack service exports installed user packs as re-importable zip package
   assert.equal(reimported.pack.id, 'exportable-cat')
 })
 
-test('pet pack service refuses to export built-in packs', () => {
+test('pet pack service refuses to export built-in packs', async () => {
   const service = createService()
 
-  assert.throws(() => service.exportPack(BUILT_IN_PACK_ID, createTempDir('pet-pack-export-built-in')), /built-in/)
+  await assert.rejects(() => service.exportPack(BUILT_IN_PACK_ID, createTempDir('pet-pack-export-built-in')), /built-in/)
 })
 
 test('pet pack service inspects and imports a Codex-compatible pet directory', () => {

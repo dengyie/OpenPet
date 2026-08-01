@@ -2,14 +2,13 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const crypto = require('crypto')
-const { execFileSync } = require('child_process')
 const { compareVersions } = require('./about-service')
 const { getBlockStatus, mergeBlocklists, normalizeBlocklist } = require('./ecosystem-policy')
+const { readBoundedResponseBuffer } = require('./bounded-response-body')
 
 const CATALOG_SELECTION_TTL_MS = 10 * 60 * 1000
 const MAX_PACKAGE_BYTES = 64 * 1024 * 1024
 const DEFAULT_DOWNLOAD_TIMEOUT_MS = 15000
-const SAFE_ZIP_ENTRY_PATTERN = /^[^/\\\0][^\\\0]*$/
 const SAFE_PLUGIN_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/
 const SAFE_PACK_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/
 
@@ -53,37 +52,6 @@ const normalizeCatalogId = (value, fieldName, pattern) => {
   const normalized = String(value || '').trim()
   if (!pattern.test(normalized)) throw new Error(`Catalog ${fieldName} must be a safe id`)
   return normalized
-}
-
-const assertSafeZipEntry = (entryName) => {
-  if (
-    !SAFE_ZIP_ENTRY_PATTERN.test(entryName) ||
-    path.isAbsolute(entryName) ||
-    /^[a-zA-Z]:[\\/]/.test(entryName) ||
-    entryName.split('/').includes('..')
-  ) {
-    throw new Error('Catalog package contains unsafe paths')
-  }
-}
-
-const extractZipToTemp = (zipPath, tempRoot) => {
-  const entries = execFileSync('unzip', ['-Z1', zipPath], { encoding: 'utf-8' })
-    .split(/\r?\n/)
-    .filter(Boolean)
-  entries.forEach(assertSafeZipEntry)
-  const extractRoot = fs.mkdtempSync(path.join(tempRoot, 'openpet-catalog-zip-'))
-  execFileSync('unzip', ['-qq', zipPath, '-d', extractRoot])
-  return extractRoot
-}
-
-const findPetPackRoot = (extractRoot) => {
-  if (fs.existsSync(path.join(extractRoot, 'pet.json'))) return extractRoot
-  const candidates = fs.readdirSync(extractRoot, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => path.join(extractRoot, entry.name))
-    .filter((entryPath) => fs.existsSync(path.join(entryPath, 'pet.json')))
-  if (candidates.length !== 1) throw new Error('Catalog pet pack package must contain exactly one pet.json root')
-  return candidates[0]
 }
 
 const normalizeDownload = (entry = {}) => {
@@ -151,16 +119,6 @@ const readCatalogFile = (catalogPath) => {
   } catch (error) {
     throw new Error(`Catalog file is invalid: ${error.message}`)
   }
-}
-
-const readResponseBuffer = async (response, maxBytes) => {
-  const contentLength = Number(response.headers?.get?.('content-length') || 0)
-  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
-    throw new Error(`Catalog package exceeds ${maxBytes} bytes`)
-  }
-  const buffer = Buffer.from(await response.arrayBuffer())
-  if (buffer.byteLength > maxBytes) throw new Error(`Catalog package exceeds ${maxBytes} bytes`)
-  return buffer
 }
 
 const createCatalogService = ({
@@ -290,7 +248,11 @@ const createCatalogService = ({
       signal: controller?.signal
     }), { controller, timeoutMs: downloadTimeoutMs, message: 'Catalog download timed out' })
     if (!response?.ok) throw new Error(`Catalog download failed with HTTP ${response?.status || 'unknown'}`)
-    const buffer = await withTimeout(readResponseBuffer(response, maxPackageBytes), { controller, timeoutMs: downloadTimeoutMs, message: 'Catalog package read timed out' })
+    const buffer = await withTimeout(readBoundedResponseBuffer(response, {
+      maxBytes: maxPackageBytes,
+      sizeErrorMessage: `Catalog package exceeds ${maxPackageBytes} bytes`,
+      controller
+    }), { controller, timeoutMs: downloadTimeoutMs, message: 'Catalog package read timed out' })
     const digest = hashBuffer(buffer)
     if (digest !== entry.sha256) throw new Error('Catalog package sha256 does not match')
     assertNotBlocked({ kind: entry.kind, id: entry.id, sha256: digest })
@@ -345,12 +307,9 @@ const createCatalogService = ({
 
   const preparePetPackInstall = async (entry) => {
     const downloaded = await downloadPackage(entry)
-    let extractRoot = ''
     let petPackSelectionId = ''
     try {
-      extractRoot = extractZipToTemp(downloaded.packagePath, tempRoot)
-      const petPackRoot = findPetPackRoot(extractRoot)
-      const inspection = petPackService.inspectPackDirectory(petPackRoot)
+      const inspection = await petPackService.inspectPackSource(downloaded.packagePath)
       petPackSelectionId = inspection.selectionId
       if (!inspection.valid) throw new Error(inspection.errors[0] || 'Pet pack inspection failed')
       if (inspection.pack?.id !== entry.id) throw new Error('Catalog pet pack id does not match package manifest')
@@ -363,13 +322,11 @@ const createCatalogService = ({
         petPackSelectionId: inspection.selectionId,
         sourcePackageHash: downloaded.sha256,
         packagePath: downloaded.packagePath,
-        cleanupPath: extractRoot,
         expiresAt: Date.now() + CATALOG_SELECTION_TTL_MS
       })
       return { kind: 'pet-pack', selectionId, sourcePackageHash: downloaded.sha256, petPackReview: inspection }
     } catch (error) {
       if (petPackSelectionId) petPackService.clearPendingSelection(petPackSelectionId)
-      if (extractRoot) fs.rmSync(extractRoot, { recursive: true, force: true })
       fs.rmSync(path.dirname(downloaded.packagePath), { recursive: true, force: true })
       throw error
     }
