@@ -53,7 +53,7 @@ npm run check:api-contract
 
 ## 2. 编码约定
 
-- **缩进**:`services/backend/**`、`packages/contracts/**` 用 **tab**(与现有文件一致);根目录脚本用 2 空格。不要混。
+- **缩进**:`services/backend/**` 用 **tab**(与现有文件一致);`packages/contracts/**` 用 **2 空格**(与 `bridge.ts` 等现有文件一致);根目录脚本用 2 空格。不要混,不要顺手格式化整个文件。
 - **命名**:文件 kebab-case;导出 camelCase;常量 SCREAMING_SNAKE_CASE;数值常量用下划线分组(`10_000`)。
 - **单文件 ≤ 400 行**(05 篇 §4.2)。超了就拆,不要靠折行糊过去。
 - **不许 `console.log`**:走注入的 `logger`。模块不自己造 logger,由调用方传进来 —— 现有文件都是这个形状,例如 `createShellClient({ send, exit, logger })`。
@@ -145,7 +145,7 @@ assert.throws(() => fn(), (error) => {
 | §3 表 | 必须有「合计」行;单元格里的 `*` 会被剔除,所以加粗不影响 |
 | §2.3 错误码 | 反引号包裹且匹配 `^[A-Z][A-Z0-9_]+$` 才会进对账 |
 
-两项**尚未硬化**(脚本只打印 `todo`),M1 起要变成硬检查:后端实际注册的路由 vs §4 路由表(靠 `router.routes()` 对);`src/shared/ipc-channels.ts` 的通道盘点 vs §3 的 154。
+两项**尚未硬化**(脚本只打印 `todo`),M1 起要变成硬检查:后端实际注册的路由 vs 03 篇 §4 路由表(靠 `router.routes()` 对);`src/shared/ipc-channels.ts` 的通道盘点 vs §3 的 154。
 
 ---
 
@@ -175,17 +175,19 @@ assert.throws(() => fn(), (error) => {
 - 一张卡一个分支:`refactor/t07-jobs-queue`,从基线切,做完发 PR 回基线。
 - 提交信息用 ASCII:`T07: add jobs/queue.js with resource lock`。
 - **一次提交只做一张卡。** 顺手改的东西单独提。
-- PR 描述必须写三件事:改了哪些文件、三条门禁的输出、**你发现但没做的东西**(同时追加到 09 篇缺口清单)。
+- PR 描述必须写三件事:改了哪些文件、三条门禁的输出、**你发现但没做的东西**(同时追加到 09 篇 §4 缺口清单)。
 
 ---
 
 ## 8. 已知陷阱
 
+完整缺口清单在 09 篇 §4,这里只列最容易踩的几条。
+
 1. **`@openpet/contracts` 的入口还不存在。** `main` 指向 `./dist/index.js`,而 `dist/` 要 `npm run build:contracts` 才生成。TS 侧可以走 `@openpet/contracts/src/*` 直接用源码。
 2. **`package-lock.json` 和 workspaces 还没同步。** 首次 `npm install` 会大面积改动 lockfile,这是正常的,不要 revert。
 3. **ESM 入口在 `app.asar` 里可能解析不了(风险 R20)。** ADR-004 让 sidecar 作为 asar 内的 Node 脚本跑,但 `services/backend` 是 ESM,而 Electron 的 asar 补丁覆盖的是 `fs` 和 CJS `require`。**只在打包后暴露**,开发期一切正常。两条不碰业务代码的退路:把 `services/backend/**` 加进 `build.asarUnpack`,或把该包降级成 CJS。
 4. **`/health` 需要鉴权,返 401。** 早期草稿写过「免鉴权返 204」,以 03 篇为准。
-5. **`dialog.request` 两边不一致。** 契约的 bridge schema 有 9 类消息,后端 `bridge/message-schema.js` 的 `SHELL_TO_BACKEND_TYPES` 只有 8 类,少 `dialog.request`。这是已知缺口,由对应任务卡修,别顺手改。
+5. **`dialog.request` 两边不一致。** 契约 `backendToShellSchema` 有 9 类消息,后端 `bridge/message-schema.js` 的 `BACKEND_TO_SHELL_TYPES` 只有 8 类,少 `dialog.request`(`SHELL_TO_BACKEND_TYPES` 与契约的 6 类一致)。这是已知缺口 G2,由对应任务卡修,别顺手改。
 6. **`ready` 里的 `apiVersion` 是字符串 `"v1"`。** spike 的 `sidecar-http.js` 写的是数字 `1`,那只是探针,契约以 `"v1"` 为准。
 7. **`date +%s%3N` 在 macOS(BSD date)不可用。** 要毫秒时间戳用 `Date.now()`。
 8. **仓库文档混用全半角标点。** 正文括号大多是全角「()」,而逗号冒号是半角。逐字重发文档时照抄,不要规范化 —— 门禁按字符串匹配。
@@ -197,3 +199,4 @@ assert.throws(() => fn(), (error) => {
 | 版本 | 日期 | 变更 |
 | --- | --- | --- |
 | v1.0 | 2026-08-15 | 首版:硬规则、错误约定、测试模板、门禁格式要求、所有权与提交协议、陷阱清单 |
+| v1.0.1 | 2026-08-15 | 修正两处事实:`packages/contracts` 缩进是 2 空格而非 tab;缺 `dialog.request` 的白名单是 `BACKEND_TO_SHELL_TYPES` |
