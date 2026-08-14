@@ -1,0 +1,31 @@
+{
+  "name": "@openpet/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "description": "OpenPet 前后端唯一契约源:HTTP 信封、错误码、Job、SSE 事件、反向通道信封",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./src/*": "./src/*"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.0.0"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}
