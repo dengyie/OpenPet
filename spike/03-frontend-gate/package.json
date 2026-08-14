@@ -1,0 +1,5 @@
+{
+  "name": "openpet-spike-frontend-gate",
+  "private": true,
+  "type": "module"
+}
