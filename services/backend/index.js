@@ -67,7 +67,14 @@ const shell = createShellClient({
 	logger,
 })
 
-// 把 inbox 里缓存的消息交给真正的处理器,之后直接转发。
+// ⚠️ 顺序敏感,三步不能调:
+//   1. 先注册 init 的等待者
+//   2. 再把 deliver 指向 shellClient
+//   3. 最后排空 inbox
+// 若把排空提到注册之前,已经到达的 init 会在 pending/waiters/handlers 都为空时
+// 进入 receive(),被静默丢弃,后端随后等 10 秒超时退出。
+const initPromise = shell.waitFor("init", { timeoutMs: INIT_TIMEOUT_MS })
+
 deliver = (raw) => shell.receive(raw)
 for (const raw of inbox.splice(0)) shell.receive(raw)
 
@@ -84,7 +91,7 @@ const runtime = {
 	db: null,
 }
 
-const initEnvelope = await shell.waitFor("init", { timeoutMs: INIT_TIMEOUT_MS }).catch((error) => {
+const initEnvelope = await initPromise.catch((error) => {
 	logger.error("等待 Shell 的 init 超时,退出", { timeoutMs: INIT_TIMEOUT_MS, error: String(error) })
 	process.exit(EXIT_INIT_TIMEOUT)
 	return null
