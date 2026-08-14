@@ -202,7 +202,7 @@
 | GET · POST · DELETE | `/ai/memories` · `/{id}` | 记忆 |
 | POST | `/ai/chat` | **SSE 流式**(`Accept: text/event-stream`) |
 | GET · DELETE | `/ai/conversations` · `/{id}` | 对话 |
-| POST | `/ai/talk/start` · `/ai/talk/stop` | 主动時话 |
+| POST | `/ai/talk/start` · `/ai/talk/stop` | 主动搭话 |
 | GET · POST · PATCH · DELETE | `/ai/behavior/rules` | 行为规则 |
 | POST | `/ai/behavior/dry-run` | 干跑 |
 | GET · POST | `/ai/traces` · `/ai/traces/export` | 诊断 |
@@ -281,6 +281,10 @@ Authorization: Bearer <sessionToken>
 Accept: text/event-stream
 ```
 
+`topics` 的全量可选值共 8 个:`pet`、`jobs`、`plugins`、`ai`、`logs`、`settings`、`catalog`、`system`。上面只是典型订阅示例。
+
+> ⚠️ **`system` 无论是否出现在 `topics` 里都会下发。** 降级、关闭、事件丢弃、Job 恢复这四类通知直接影响前端能不能信任自己的缓存,不能因为前端忘了订阅就静默丢弃。后端对 `system` 不做订阅过滤。
+
 帧格式(带 `id` 以支持 `Last-Event-ID` 断点重连):
 
 ```text
@@ -302,6 +306,10 @@ data: {"jobId":"job_01H...","kind":"image.generate","phase":"rendering","percent
 | `catalog` | `catalog.refreshed` | |
 | `logs` | `log.appended` | 默认不订阅,仅日志面板开启 |
 | `system` | `backend.shutting-down` · `backend.degraded` | 前端切降级 UI |
+| `system` | `system.jobs-recovered` | `{ interrupted: string[], requeued: string[] }` —— 后端重启后的 Job 恢复结果(见 [04 篇 §2.6](./04-subsystems.md))。前端收到后必须失效任务列表缓存,并对 `interrupted` 里的项提示可重试 |
+| `system` | `system.events-dropped` | `{ topic: string, dropped: number, since: string }` —— 背压丢帧通告(见下方背压规则)。**前端收到即视为本地缓存不再可信**,需全量重拉受影响 topic 的数据 |
+
+> 📌 上表的 event 名是契约的一部分,`packages/contracts` 里必须有一份与之逐字对应的枚举,并由 `check:api-contract` 校验「后端实际发出的事件名 = 枚举 = 本表」三方一致。本表曾漏登 `system.jobs-recovered` 与 `system.events-dropped` 两项,就是因为它们只写在子系统篇里而没回归到契约。
 
 **心跳**:每 15s 发 `: ping` 注释行。前端 45s 无帧则重连。
 
@@ -406,7 +414,7 @@ type ShellToBackend =
 	- 前端 TS 类型(`z.infer`)
 	- MSW mock handler(取代 181 KB 的 demo api)
 	- 本文档路由表(防文档漂移)
-3. 新增 `npm run check:api-contract`:校验路由实现与契约完全一致(多余/缺失路由均报错),并同时比对 `ipc-channels.ts` 的通道盘点数。
+3. 新增 `npm run check:api-contract`:校验路由实现与契约完全一致(多余/缺失路由均报错),同时校验 §5 事件目录与后端实际发出的事件名一致,并比对 `ipc-channels.ts` 的通道盘点数。
 4. 接入现有 `check:docs-drift`,使契约变更必须同步文档。
 
 ## 10. 性能预算
@@ -424,4 +432,4 @@ type ShellToBackend =
 
 测量方式:统一响应里已有 `meta.elapsedMs`,M2 起在 `tests/backend/perf.test.js` 用 200 次采样断言 P95,纳入 CI 门禁。
 
-> 📌 **契约冻结点**:本篇的路由表与错误码表在 M1 结束前必须定稿并转为代码。之后的变更走 ADR 补充,不得直接改代码。
+> 📌 **契约冻结点**:本篇的路由表、错误码表与 §5 事件目录在 M1 结束前必须定稿并转为代码。之后的变更走 ADR 补充,不得直接改代码。
