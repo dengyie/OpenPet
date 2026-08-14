@@ -1,0 +1,427 @@
+# 03 · API 契约与通信协议
+
+> 🔌 本篇是前后端并行开发的唯一依据。契约未定稿前不得开始写业务代码。154 个 IPC 通道的去向已在本篇逐域定义。
+
+## 1. 协议基础
+
+| 项 | 值 |
+| --- | --- |
+| Base URL | `http://127.0.0.1:<随机端口>/api/v1` |
+| 传输 | HTTP/1.1 keep-alive(不用 HTTPS,loopback 内) |
+| 内容类型 | `application/json; charset=utf-8` |
+| 鉴权 | `Authorization: Bearer <sessionToken>`(全部端点强制) |
+| 推送 | SSE,`GET /api/v1/events` |
+| 反向调用 | Node `child_process` fork 消息通道(不过 HTTP) |
+| 版本策略 | 路径内嵌 `v1`;破坏性变更 → `v2` 并行一个大版本 |
+| 幂等 | 所有写操作支持可选 `Idempotency-Key` 头 |
+
+### 1.1 请求头约定
+
+| 头 | 必选 | 说明 |
+| --- | --- | --- |
+| `Authorization` | 是 | `Bearer <sessionToken>` |
+| `Content-Type` | 写操作时是 | `application/json` |
+| `X-Request-Id` | 否 | 前端可传,不传则后端生成 |
+| `Idempotency-Key` | 否 | 对安装/导入/生成类强烈建议传 |
+| `X-Client` | 否 | `control-center` / `pet-window` / `mcp` |
+
+### 1.2 端口发现与就绪门禁
+
+后端用 `listen(0)` 由系统分配端口,因此 **Base URL 在后端启动完成前根本不存在**。前端必须走下面的门禁,不得假设端口已知:
+
+1. Shell fork sidecar,sidecar 绑定端口成功后发 `ready` 消息(含 `port`、`apiVersion`、`pid`)。
+2. Shell 收到 `ready` 后,才把 `port` 与 `sessionToken` 注入渲染进程(`openpetShell.getBackend()`)。
+3. 渲染进程首帧时 `getBackend()` 返回 `null`,这是**正常初始态,不是错误**。
+4. api client 在 `null` 状态下把请求排队(上限 50 条 / 10 秒),收到 `onBackendChanged` 后统一冲刷。
+5. 超过 10 秒仍未就绪 → 进入降级 UI,停止排队并丢弃队列。
+
+> ⚠️ **这是每次冷启动都会发生的竞态,不是低概率风险。** Control Center 窗口的渲染速度快于 sidecar 的端口绑定,若前端直接发请求必然拿到空端口。排队 + 门禁是强制要求,不是优化项。
+
+## 2. 统一响应包装
+
+### 2.1 成功
+
+```json
+{
+  "ok": true,
+  "data": { },
+  "meta": { "requestId": "r_01H...", "elapsedMs": 42 }
+}
+```
+
+列表类响应:
+
+```json
+{
+  "ok": true,
+  "data": { "items": [], "total": 128, "cursor": "eyJvZmZzZXQiOjUwfQ" },
+  "meta": { "requestId": "r_01H..." }
+}
+```
+
+### 2.2 失败
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "PLUGIN_MANIFEST_INVALID",
+    "message": "插件清单缺少 permissions 字段",
+    "details": { "field": "permissions", "pluginId": "im-gateway" },
+    "retryable": false,
+    "requestId": "r_01H..."
+  }
+}
+```
+
+> ⚠️ `message` 是面向用户的中文文案,前端可直接展示;`code` 是稳定枚举,前端用于分支判断。**前端不得靠 `message` 字符串匹配做逻辑。**
+
+### 2.3 HTTP 状态码与错误码表
+
+| HTTP | code | 含义 | 可重试 |
+| --- | --- | --- | --- |
+| 400 | `VALIDATION_FAILED` | 入参校验失败 | 否 |
+| 401 | `UNAUTHORIZED` | token 缺失/错误 | 否 |
+| 403 | `PERMISSION_DENIED` | 插件权限/未授权原生执行 | 否 |
+| 404 | `NOT_FOUND` | 资源不存在 | 否 |
+| 409 | `CONFLICT` | 并发写冲突、重复安装 | 是(重拉后) |
+| 413 | `PAYLOAD_TOO_LARGE` | 超 1 MB | 否 |
+| 415 | `UNSUPPORTED_MEDIA_TYPE` | 非 JSON | 否 |
+| 423 | `LOCKED` | 资源被长任务占用 | 是 |
+| 429 | `RATE_LIMITED` | 限流(带 `Retry-After`) | 是 |
+| 500 | `INTERNAL` | 未预期异常 | 是 |
+| 502 | `PROVIDER_ERROR` | 上游 provider 报错 | 是 |
+| 503 | `BACKEND_UNAVAILABLE` | 后端启动中/关闭中 | 是 |
+| 504 | `PROVIDER_TIMEOUT` | provider 超时 | 是 |
+
+**专用业务码**(搭配 400/409/423):`PLUGIN_MANIFEST_INVALID`、`PLUGIN_ALREADY_RUNNING`、`PLUGIN_NATIVE_NOT_APPROVED`、`PET_PACK_INCOMPATIBLE`、`ACTION_FRAMES_MISSING`、`AI_KEY_NOT_CONFIGURED`、`JOB_NOT_CANCELABLE`、`MIGRATION_REQUIRED`。
+
+## 3. 154 个通道的去向总表
+
+| 域 | 通道数 | 留 IPC | 迁 HTTP | 备注 |
+| --- | --- | --- | --- | --- |
+| `PET_*` 运行时 | 16 | 16 | 0 | 全部窗口/几何能力 |
+| `PET_CHAT_*` | 8 | 8 | 0 | 窗口控制,内部转发后端 |
+| `PET_BUBBLE_CHAT_*` | 11 | 11 | 0 | 窗口控制 |
+| `SETTINGS_*` | 7 | 2 | 5 | `OPEN`/`CLOSE` 留(开窗) |
+| `ACTIONS_*` | 13 | 1 | 12 | `INSPECT_FRAMES` 弹框部分留 IPC,路径校验走 HTTP(两段式) |
+| `PET_PACKS_*` | 9 | 1 | 8 | 导入需弹框 |
+| AI 总域 | 37 | 0 | 37 | 全迁 |
+| `PLUGINS_*` | 25 | 2 | 23 | `OPEN_DASHBOARD`、`INSPECT_PACKAGE` 留 |
+| `CREATOR_*` | 13 | 0 | 13 | 多数转 Job |
+| `SERVICE_*` | 7 | 0 | 7 | 全迁 |
+| `ABOUT_*` | 2 | 0 | 2 | 全迁 |
+| `CATALOG_*` | 6 | 0 | 6 | 全迁 |
+| **合计** | **154** | **41** | **113** | |
+
+## 4. 路由表
+
+### 4.1 健康与服务
+
+| 方法 | 路径 | 源 IPC | 说明 |
+| --- | --- | --- | --- |
+| GET | `/health` | — | 未鉴权返 `401`(无例外,见 [02 篇 §6.2](./02-architecture.md));鉴权后返版本与运行时长 |
+| GET | `/service/status` | `SERVICE_GET_STATUS` | 含端口、enabled、内存、活跃 Job 数 |
+| POST | `/service/enable` | `SERVICE_SET_ENABLED` | 开关对外 MCP/HTTP |
+| POST | `/service/token/rotate` | `SERVICE_ROTATE_TOKEN` | 仅轮换 MCP token |
+| GET | `/service/logs` | `SERVICE_GET_LOGS` | 分页,从 SQLite 读 |
+| DELETE | `/service/logs` | `SERVICE_CLEAR_LOGS` | 清空 |
+| GET | `/service/config` | `SERVICE_GET_CONFIG` | 不返回 token 明文 |
+| POST | `/service/diagnostics` | 新增 | 导出诊断包 |
+| GET | `/about` | `ABOUT_GET_INFO` | 版本信息 |
+| POST | `/about/check-updates` | `ABOUT_CHECK_UPDATES` | 返 Job(可能联网) |
+
+> ⚠️ **缺口待补:** §3 记 `SERVICE_*` 共 7 个通道全迁 HTTP,但本表只落了 6 个(status / enable / token·rotate / logs GET / logs DELETE / config GET)。第 7 个是服务配置的**写入**通道(对应 `PUT /service/config`),常量名需在 M0 对着 `src/shared/ipc-channels.ts` 核实后补进本表。`check:api-contract` 必须同时校验「路由数 = 契约数 = 通道盘点数」,否则这类缺口会一直漏到上线。
+
+### 4.2 设置
+
+| 方法 | 路径 | 源 IPC | 说明 |
+| --- | --- | --- | --- |
+| GET | `/settings` | `SETTINGS_GET` | 全量读,已脱敏 |
+| PATCH | `/settings` | `SETTINGS_SAVE` | **改为部分更新**,带 `ifVersion` 乐观锁 |
+| POST | `/settings/cursor/import` | `SETTINGS_IMPORT_CURSOR` | 传路径(弹框在 Shell) |
+| POST | `/settings/preview-scale` | `SETTINGS_PREVIEW_SCALE` | 预览 |
+| GET | `/settings/schema` | 新增 | 前端动态渲染用 |
+
+> 🔑 **关键变更:`SETTINGS_SAVE` 不得直译为 `PUT /settings`。** 现状是全量读-改-写,在多进程下会丢写。必须改为 `PATCH` + 版本号乐观锁,冲突返 `409 CONFLICT`。
+
+### 4.3 宠物(仅读 + 反向驱动)
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/pet/state` | 宠物当前状态快照(后端从 Shell 缓存) |
+| POST | `/pet/say` | 后端代理 → 反向通道 → PetService |
+| POST | `/pet/action` | 同上 |
+| POST | `/pet/event` | 同上,供插件与 MCP 使用 |
+
+### 4.4 动作
+
+| 方法 | 路径 | 源 IPC |
+| --- | --- | --- |
+| GET | `/actions` | `ACTIONS_GET` |
+| POST | `/actions/frames/inspect` | `ACTIONS_INSPECT_FRAMES`(传路径)† |
+| POST | `/actions/frames/reinspect` | `ACTIONS_REINSPECT_FRAMES` |
+| POST | `/actions/frames/import` | `ACTIONS_IMPORT_FRAMES` → **Job** |
+| DELETE | `/actions/frames/selection` | `ACTIONS_CLEAR_FRAME_SELECTION` |
+| PUT | `/actions/config` | `ACTIONS_SAVE_CONFIG` |
+| DELETE | `/actions/{id}` | `ACTIONS_DELETE` |
+| POST | `/actions/triggers/preview` | `ACTIONS_PREVIEW_TRIGGER_PROPOSAL` |
+| POST | `/actions/triggers/proposals` | `ACTIONS_SUBMIT_TRIGGER_PROPOSAL` |
+| POST | `/actions/triggers/proposals/{id}/accept` | `ACTIONS_ACCEPT_TRIGGER_PROPOSAL` |
+| POST | `/actions/triggers/proposals/{id}/reject` | `ACTIONS_REJECT_TRIGGER_PROPOSAL` |
+| PATCH | `/actions/triggers/rules/{id}` | `ACTIONS_UPDATE_TRIGGER_RULE` |
+| DELETE | `/actions/triggers/rules/{id}` | `ACTIONS_DELETE_TRIGGER_RULE` |
+
+† 本表 13 行 ≠ §3 的「12 迁 HTTP」。`ACTIONS_INSPECT_FRAMES` 是**两段式通道**:弹框部分留在 Shell IPC(计入那 1 个「留 IPC」),路径校验部分落在这条 HTTP 路由上。因此它在两边各算一次,总数仍为 13。
+
+### 4.5 宠物包
+
+| 方法 | 路径 | 源 IPC |
+| --- | --- | --- |
+| GET | `/pet-packs` | `PET_PACKS_GET` |
+| POST | `/pet-packs/import` | `PET_PACKS_IMPORT`(传路径)→ **Job** |
+| POST | `/pet-packs/{id}/activate` | `PET_PACKS_SET_ACTIVE` |
+| DELETE | `/pet-packs/{id}` | `PET_PACKS_DELETE` |
+| POST | `/pet-packs/{id}/export` | `PET_PACKS_EXPORT` → **Job** |
+| GET | `/pet-packs/{id}/manifest` | `PET_PACKS_GET_MANIFEST` |
+| POST | `/pet-packs/validate` | `PET_PACKS_VALIDATE` |
+
+本表 7 条路由,而 §3 记 `PET_PACKS_*` 9 个通道中有 8 个迁 HTTP。差的那 1 个是 `CONTROL_CENTER_ACTIVE_PET_PACK_CHANGED` —— 它是**事件而非请求**,迁移后变成 SSE 的 `pet.pack-activated`(见 §5),不占路由。另 1 个留 IPC 的是导入时的原生弹框。
+
+### 4.6 AI(37 个通道全迁)
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/ai/config` | 不含密钥明文 |
+| PATCH | `/ai/config` | 部分更新 |
+| PUT | `/ai/providers/{id}/key` | **只写**,返 `{ configured, maskedTail }` |
+| DELETE | `/ai/providers/{id}/key` | 清除 |
+| POST | `/ai/providers/{id}/test` | 连接测试,15s 超时 |
+| GET | `/ai/providers/{id}/models` | 模型目录 |
+| GET · PUT | `/ai/persona` | 人设 |
+| GET · POST · DELETE | `/ai/memories` · `/{id}` | 记忆 |
+| POST | `/ai/chat` | **SSE 流式**(`Accept: text/event-stream`) |
+| GET · DELETE | `/ai/conversations` · `/{id}` | 对话 |
+| POST | `/ai/talk/start` · `/ai/talk/stop` | 主动時话 |
+| GET · POST · PATCH · DELETE | `/ai/behavior/rules` | 行为规则 |
+| POST | `/ai/behavior/dry-run` | 干跑 |
+| GET · POST | `/ai/traces` · `/ai/traces/export` | 诊断 |
+| GET · POST | `/ai/hatch/agents` · `/ai/hatch/start` | 孵化 → **Job** |
+| GET | `/ai/hatch/budget` | 预算账本 |
+| POST | `/ai/images/generate` | → **Job**(265s) |
+| GET | `/ai/images/health` | provider 健康 |
+| GET | `/ai/images/models` | 图像模型目录 |
+
+### 4.7 插件
+
+| 方法 | 路径 | 源 IPC | Job |
+| --- | --- | --- | --- |
+| GET | `/plugins` | `PLUGINS_GET_LIST` | |
+| GET | `/plugins/{id}` | `PLUGINS_GET_DETAIL` | |
+| POST | `/plugins/install` | `PLUGINS_INSTALL`(传路径) | ✅ |
+| POST | `/plugins/install/github` | `PLUGINS_IMPORT_GITHUB` | ✅ |
+| DELETE | `/plugins/{id}` | `PLUGINS_UNINSTALL` | |
+| POST | `/plugins/{id}/enable` | `PLUGINS_SET_ENABLED` | |
+| POST | `/plugins/{id}/start` | `PLUGINS_START_SERVICE` | |
+| POST | `/plugins/{id}/stop` | `PLUGINS_STOP_SERVICE` | |
+| POST | `/plugins/{id}/restart` | `PLUGINS_RESTART_SERVICE` | |
+| GET | `/plugins/{id}/status` | `PLUGINS_GET_RUNTIME_STATUS` | |
+| GET | `/plugins/{id}/logs` | `PLUGINS_GET_LOGS` | |
+| DELETE | `/plugins/{id}/logs` | `PLUGINS_CLEAR_LOGS` | |
+| POST | `/plugins/{id}/commands/{cmd}` | `PLUGINS_RUN_COMMAND` | ✅ |
+| GET · PUT | `/plugins/{id}/permissions` | `PLUGINS_*_PERMISSIONS` | |
+| POST | `/plugins/{id}/native-approval` | `PLUGINS_SET_NATIVE_EXECUTION_APPROVED` | |
+| POST | `/plugins/validate` | `PLUGINS_VALIDATE` | |
+| POST | `/plugins/sync-bundled` | `PLUGINS_SYNC_BUNDLED` | ✅ |
+| GET · PUT | `/plugins/{id}/config` | `PLUGINS_*_CONFIG` | |
+
+**保留在 IPC**:`PLUGINS_OPEN_DASHBOARD`(需开 `BrowserWindow`)、`PLUGINS_INSPECT_PACKAGE`(需 `dialog.showOpenDialog`)。
+
+### 4.8 Creator Studio
+
+| 方法 | 路径 | Job |
+| --- | --- | --- |
+| GET | `/creator/flows` | |
+| POST · PATCH · DELETE | `/creator/flows` · `/{id}` | |
+| POST | `/creator/characters/generate` | ✅ 265s |
+| POST | `/creator/sprites/generate` | ✅ |
+| POST | `/creator/sprites/evaluate` | ✅ |
+| GET · POST · DELETE | `/creator/references` | |
+| POST | `/creator/workflows/{id}/run` | ✅ |
+| GET | `/creator/workflows/{id}/artifacts` | |
+| POST | `/creator/export` | ✅ |
+
+### 4.9 Catalog
+
+| 方法 | 路径 | 源 IPC |
+| --- | --- | --- |
+| GET | `/catalog` | `CATALOG_GET` |
+| POST | `/catalog/refresh` | `CATALOG_REFRESH` |
+| GET | `/catalog/{id}` | `CATALOG_GET_DETAIL` |
+| POST | `/catalog/install` | `CATALOG_INSTALL_SELECTION` → **Job** |
+| GET | `/catalog/installed` | `CATALOG_GET_INSTALLED` |
+| POST | `/catalog/source` | `CATALOG_SET_SOURCE` |
+
+### 4.10 Job
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/jobs` | 列表,可按 `status`、`kind` 过滤 |
+| GET | `/jobs/{id}` | 详情 |
+| POST | `/jobs/{id}/cancel` | 取消(不可取消返 `423`) |
+| POST | `/jobs/{id}/retry` | 重试(仅 failed/interrupted) |
+| GET | `/jobs/{id}/events` | 历史事件(补齐历史进度) |
+| DELETE | `/jobs/completed` | 清理已完成 |
+
+## 5. SSE 事件规范
+
+```text
+GET /api/v1/events?topics=pet,jobs,plugins,ai,logs
+Authorization: Bearer <sessionToken>
+Accept: text/event-stream
+```
+
+帧格式(带 `id` 以支持 `Last-Event-ID` 断点重连):
+
+```text
+id: 10241
+event: job.progress
+data: {"jobId":"job_01H...","kind":"image.generate","phase":"rendering","percent":62,"message":"第 3/5 帧"}
+
+```
+
+### 事件目录
+
+| topic | event | 负载要点 |
+| --- | --- | --- |
+| `jobs` | `job.created` · `job.progress` · `job.succeeded` · `job.failed` · `job.canceled` | `jobId`、`kind`、`phase`、`percent` |
+| `plugins` | `plugin.installed` · `plugin.removed` · `plugin.status-changed` · `plugin.log` | `pluginId`、`status` |
+| `ai` | `ai.chat-delta` · `ai.chat-done` · `ai.talk-utterance` | `conversationId`、`delta` |
+| `pet` | `pet.pack-activated` · `pet.actions-changed` | 前端据此失效缓存 |
+| `settings` | `settings.changed` | `paths: string[]`(只告知变更路径) |
+| `catalog` | `catalog.refreshed` | |
+| `logs` | `log.appended` | 默认不订阅,仅日志面板开启 |
+| `system` | `backend.shutting-down` · `backend.degraded` | 前端切降级 UI |
+
+**心跳**:每 15s 发 `: ping` 注释行。前端 45s 无帧则重连。
+
+**背压**:单连接缓冲上限 1000 帧,超限丢弃最旧 `log.appended` 并发一条 `system.events-dropped`。
+
+## 6. Job 契约
+
+### 6.1 创建响应
+
+所有长任务统一返 `202 Accepted`:
+
+```json
+{
+  "ok": true,
+  "data": {
+    "jobId": "job_01HQ8Z...",
+    "kind": "image.generate",
+    "status": "queued",
+    "createdAt": "2026-08-09T06:05:00.000Z",
+    "estimatedMs": 265000,
+    "pollUrl": "/api/v1/jobs/job_01HQ8Z..."
+  }
+}
+```
+
+### 6.2 Job 对象
+
+```json
+{
+  "jobId": "job_01HQ8Z...",
+  "kind": "image.generate",
+  "status": "running",
+  "progress": { "phase": "rendering", "percent": 62, "message": "第 3/5 帧" },
+  "cancelable": true,
+  "attempt": 1,
+  "maxAttempts": 2,
+  "createdAt": "...", "startedAt": "...", "finishedAt": null,
+  "result": null,
+  "error": null,
+  "input": { "redacted": true, "summary": "prompt: 橘猫站立…" }
+}
+```
+
+`status` 枚举:`queued` · `running` · `succeeded` · `failed` · `canceled` · `interrupted`(进程重启遗留,见 [02 篇 §4.3](./02-architecture.md))。
+
+### 6.3 kind 枚举(17 个)
+
+`image.generate` · `sprite.generate` · `sprite.evaluate` · `creator.character` · `creator.workflow` · `creator.export` · `hatch.run` · `plugin.install` · `plugin.install.github` · `plugin.command` · `plugin.sync-bundled` · `pet-pack.import` · `pet-pack.export` · `actions.import-frames` · `catalog.install` · `about.check-updates` · `store.migrate`
+
+## 7. 反向通道契约(Backend → Shell)
+
+不过 HTTP,走 fork 消息。所有消息统一套一层带版本号的信封,消息类型严格白名单:
+
+```ts
+// 信封:升级或崩溃重拉会产生新旧进程配对,必须靠版本号拦住
+type Envelope<T> = { v: 1; id: string; at: number; body: T }
+
+type BackendToShell =
+  | { type: "pet.say"; text: string; durationMs?: number }
+  | { type: "pet.playAction"; actionId: string; loop?: boolean }
+  | { type: "pet.event"; name: string; payload?: unknown }
+  | { type: "window.openPluginDashboard"; pluginId: string; url: string }
+  | { type: "notify"; level: "info"|"warn"|"error"; message: string }
+  | { type: "tray.setBadge"; count: number }
+  | { type: "ready"; port: number; apiVersion: "v1"; pid: number }
+  | { type: "degraded"; reason: string }
+
+type ShellToBackend =
+  | { type: "init"; userDataPath: string; sessionToken: string; logLevel: string }
+  | { type: "shutdown"; graceMs: number }
+  | { type: "pet.stateSnapshot"; state: PetState }
+  | { type: "dialog.result"; requestId: string; paths: string[] | null }
+  | { type: "power.suspend" | "power.resume" }
+```
+
+**规则**:
+
+1. 每条消息入口做 schema 校验;未知 `type` 丢弃并记 warn。
+2. **`v` 与当前支持版本不符时,Shell 立即杀掉并重拉 sidecar,重拉不超过 2 次**,之后进降级模式;sidecar 收到未知 `v` 时主动退出(exit code 78 = 版本不兼容)。这是升级期唯一可靠的兜底。
+3. 不得在此通道传输大二进制负载(文件走路径)。**唯一允许传输敏感数据的是 `init` 消息中的 provider 密钥**,见 ADR-010 与 [04 篇 §4](./04-subsystems.md)。
+4. `id` 用于把 `dialog.result` 与发起方配对,超过 60 秒未回则丢弃并返 `504`。
+5. **`apiVersion` 是字符串 `"v1"`,不是数字。** [07 篇](./07-spike.md) 的 spike 验证代码里写的是 `apiVersion: 1`(数字),那只是测时序用的一次性脚本;转正式实现时以本篇为准。
+
+## 8. 兼容与弃用策略
+
+| 对象 | 策略 |
+| --- | --- |
+| 兼容端点 `POST /api/pet/say`、`/api/pet/action`、`/api/pet/event` | 原路径保留一个大版本,后端内部转发到 `/api/v1/pet/*`;新代码只允许用 v1 路径 |
+| `GET /api/status` | 保留但**移除未鉴权信息披露**:未鉴权返 `401` |
+| `POST /mcp` · `GET /mcp` | **端口与路径都不得变化**。MCP 仍在用户自选端口上对外监听(默认关闭),与前后端之间的 `/api/v1`(随机端口、仅回环)是两个互不相干的监听器。sidecar 内嵌 MCP 后必须继承原端口配置,否则现有客户端配置全部失效 |
+| `x-openpet-token` · `x-ibot-token` | 保留,仅适用于兼容路径 |
+| 旧 IPC 通道常量 | M1–M4 期间保留 shim,并在 dev 下 `console.warn`;M5 删除 |
+| 弃用窗口 | 至少一个完整大版本(1.x → 2.0 才能删) |
+
+## 9. 契约工程化
+
+1. `packages/contracts/api/*.ts` 定义所有请求/响应类型(以 `openpet-contracts.ts` 96.6 KB 为基底)。
+	- **旧文件的处置已定案(ADR-012)**:M0 把 `src/shared/openpet-contracts.ts` 原样搬到 `packages/contracts/legacy.ts`,原路径改为一行 `export * from "@openpet/contracts/legacy"` 的薄壳;M5 删除薄壳并批量改 import。**任何阶段都不允许两份可编辑的类型定义同时存在。**
+	- `src/shared` 下的 JS/TS 双版本文件(`cursor-library`、`ipc-channels`)同批处理:TS 为唯一源,JS 由构建产出并加入 `.gitignore`。此项不做完,`check:api-contract` 会因为读到过期的 JS 常量而误报。
+2. 用 `zod`(ADR-016 已定案,不再比选 TypeBox 或手写)同时产出:
+	- 后端运行时入参校验中间件
+	- 前端 TS 类型(`z.infer`)
+	- MSW mock handler(取代 181 KB 的 demo api)
+	- 本文档路由表(防文档漂移)
+3. 新增 `npm run check:api-contract`:校验路由实现与契约完全一致(多余/缺失路由均报错),并同时比对 `ipc-channels.ts` 的通道盘点数。
+4. 接入现有 `check:docs-drift`,使契约变更必须同步文档。
+
+## 10. 性能预算
+
+分离后每个操作多一跳回环 HTTP。**没有预算就没有「切完变慢了」的判据**,下列上限进入 M2 验收:
+
+| 操作 | 现状(IPC) | 分离后 P95 上限 | 超标处理 |
+| --- | --- | --- | --- |
+| `GET /settings` | 约 2 ms | 30 ms | 加进程内 5 秒缓存,由 `settings.changed` 失效 |
+| `GET /plugins`(20 个插件) | 约 15 ms | 80 ms | 运行状态字段拆到 `/plugins/status` 单独轮询 |
+| `POST /pet/say`(含反向通道) | 约 3 ms | 50 ms | 降级为 Shell 直连 PetService |
+| SSE 首帧延迟 | — | 200 ms | 连接建立即补发一帧状态快照 |
+| 冷启动到前端可用 | 约 1.2 s | 2.0 s | sidecar 延迟启动,非 AI 面板先渲染 |
+| Control Center 切 tab | 约 30 ms | 150 ms | 预取相邻 tab 数据 |
+
+测量方式:统一响应里已有 `meta.elapsedMs`,M2 起在 `tests/backend/perf.test.js` 用 200 次采样断言 P95,纳入 CI 门禁。
+
+> 📌 **契约冻结点**:本篇的路由表与错误码表在 M1 结束前必须定稿并转为代码。之后的变更走 ADR 补充,不得直接改代码。
