@@ -1,6 +1,6 @@
 # 09 · 仓库现状快照
 
-> v1.1 · 2026-08-15 · 基线分支 `refactor/frontend-backend-split`
+> v1.2 · 2026-08-15 · 基线分支 `refactor/frontend-backend-split`
 
 **读者**:领到任务卡准备写代码的 agent。前置阅读 [08 篇 执行手册](./08-agent-guide.md)。
 
@@ -182,16 +182,16 @@ const db = await openDatabase({ file, pragmas, logger })
 
 | 编号 | 状态 | 现象 | 影响 / 去向 |
 | --- | --- | --- | --- |
-| G1 | ⏳ | `@openpet/contracts` 的 `main` 指向未生成的 `dist/` | 先 `npm run build:contracts`;TS 侧可走 `@openpet/contracts/src/*` |
+| G1 | ⏳ | `@openpet/contracts` 的 `main` 指向未生成的 `dist/` | 先 `npm run build:contracts`;TS 侧可走 `@openpet/contracts/src/*`。由 [14 篇](./14-handoff.md) **E2** 关闭 |
 | G2 | ⏳ | 后端 `BACKEND_TO_SHELL_TYPES` 8 项,契约 9 项,少 `dialog.request` | 选目录/文件对话框走不通;由 **T12** 修,要同时加白名单、`shell-client` 的 request 分支、60s 超时返 504。**T18/T19 强依赖它** |
 | G3 | ⏳ | 13 个通用码的状态映射在 `middleware.js` 和契约 `envelope.ts` **各有一份** | 需要 gate 检查这层重复;不要再复制第三处 |
-| G4 | ⏳ | R20:ESM 入口在 `app.asar` 内可能解析失败 | 只在打包后暴露;退路是 `build.asarUnpack` 或降级 CJS。已登记为 [06 篇 §9](./06-roadmap.md) 的 **R20**,且 spike 5 的判定标准已收紧为「打包后的 sidecar 真的发出 `ready`」 |
-| G5 | ⏳ | `package-lock.json` 未与 workspaces 同步 | 首次 `npm install` 会大改 lockfile,正常 |
-| G6 | ⏳ | 六条 spike 全部未跑 | 见 §5 —— **目前唯一必须由人在本机执行的部分** |
+| G4 | ⏳ | R20:ESM 入口在 `app.asar` 内可能解析失败 | 只在打包后暴露;退路是 `build.asarUnpack` 或降级 CJS。已登记为 [06 篇 §9](./06-roadmap.md) 的 **R20**,且 spike 5 的判定标准已收紧为「打包后的 sidecar 真的发出 `ready`」。由 [14 篇](./14-handoff.md) **E6** 验 |
+| G5 | ⏳ | `package-lock.json` 未与 workspaces 同步 | 首次 `npm install` 会大改 lockfile,正常。由 [14 篇](./14-handoff.md) **E1** 关闭 |
+| G6 | ⏳ | 六条 spike 全部未跑 | 见 §5 —— **目前唯一必须由人在本机执行的部分**;执行卡见 [14 篇](./14-handoff.md) E3–E8 |
 | G7 | ✅ | 04 篇 §2.6 的 ⚠️ 待补登记 注记已过期 | 已关闭:注记改为「已补登(v1.3)」,并说明 `system` topic 现列四个事件、已纳入 `check:api-contract` 的 `EVENT_NAMES` 对账范围 |
 | G8 | ✅ | 06 篇 §9 风险表缺 R20 | 已关闭:R20 已补入风险登记册,并同步收紧 §2 spike 第 5 条的判定标准 |
-| G9 | ⏳ | 门禁两项仍是 `todo`(路由表、通道盘点) | M1 起硬化;路由表用 `router.routes()` 对 03 篇 §4,通道盘点对 154 |
-| G10 | ⏳ | `tests/backend/state-machine.test.js` 有一处 `it()` 标题笔误 | 纯文案,下次动该文件时一并改 |
+| G9 | ⏳ | 门禁两项仍是 `todo`(路由表、通道盘点) | M1 起硬化;路由表用 `router.routes()` 对 03 篇 §4,通道盘点对 154。**它打印 `todo` 不算门禁红** |
+| G10 | ⏳ | `tests/backend/state-machine.test.js` 有一处 `it()` 标题笔误 | 纯文案,下次动该文件时一并改;[14 篇](./14-handoff.md) **E9** 顺手带走 |
 
 ---
 
@@ -199,14 +199,20 @@ const db = await openDatabase({ file, pragmas, logger })
 
 **全部未跑。** 它们需要真实 Electron / 打包环境,是目前唯一必须由人在本机执行的部分。建议顺序 `6 → 1 → 2 → 5 → 3 → 4`。
 
+> 📌 **执行细节已整理成 [14 交接单](./14-handoff.md) 的 E3–E8 卡**:每条给了完整命令、期望输出、判定档位、不绿改什么、结论写回哪里。**实测结果一律填 [07 篇](./07-spike.md) §7 那张表(唯一权威结果表)**;填完回来把下面这段的「全部未跑」改成实际状态,并把 §4 的 G6 标 ✅。
+
 | spike | 命令 | 未跑意味着 |
 | --- | --- | --- |
 | 6 `node:sqlite` | `ELECTRON_RUN_AS_NODE=1 npx electron spike/06-node-sqlite/probe-sqlite.js` | 存储层的地基未证实;所有 DB 相关卡都建立在 `store/db.js` 这个 seam 上 |
 | 1 fork sidecar | `npx electron spike/01-fork-sidecar/shell.js` | 进程模型未证实 |
 | 2 端口与 ready | `ELECTRON_RUN_AS_NODE=1 npx electron spike/02-port-ready/sidecar-http.js` | 启动握手未证实 |
 | 5 打包 | `npm run pack` + 手验安装包 | R20 就在这里暴露;**判定标准是打包后的 sidecar 真的发出 `ready`,不是路径能解析** |
-| 3 前端闸门 | `npx electron spike/03-frontend-gate/run.js` | 已知 case 2 为红,修法在 05 篇 §2.2 + F14 |
-| 4 safeStorage | `npx electron spike/04-safe-storage/probe.js` | 密钥方案未证实 |
+| 3 前端闸门 | `ELECTRON_RUN_AS_NODE=1 npx electron spike/03-frontend-gate/run.js` | 已知 case 2 为红,修法在 05 篇 §2.2 + F14 |
+| 4 safeStorage | `ELECTRON_RUN_AS_NODE=1 npx electron spike/04-safe-storage/probe.js` | 密钥方案未证实 |
+
+🚨 **除 spike 1 外,命令前面那个 `ELECTRON_RUN_AS_NODE=1` 不能省。** spike 1 不带是故意的 —— `shell.js` 本身就是 Electron 主进程,由它给子进程设这个变量。
+
+**spike 4 尤其要命**:不带这个变量,你跑的是 Electron 主进程,`require("electron")` 当然拿得到 `safeStorage` —— 你会得到与事实**完全相反**的结论,进而错误地删掉 ADR-010 的 `init` 注入。本表在 v1.1 及以前的版本里,spike 3 与 spike 4 两行漏了这个变量,v1.2 已修。
 
 **未跑期间怎么办**:照 08 篇 H4/H8 —— 把运行时依赖藏在 seam 后面,业务逻辑写成纯函数并配裸 `node` 能跑的测试。`jobs/state-machine.js` 与它的测试就是这个做法的样板:六条 spike 全红也不影响它跑绿。
 
@@ -218,3 +224,4 @@ const db = await openDatabase({ file, pragmas, logger })
 | --- | --- | --- |
 | v1.0 | 2026-08-15 | 首版:已落地文件的对外接口、待建清单、10 条缺口、spike 状态 |
 | v1.1 | 2026-08-15 | 缺口表新增「状态」列,**关闭 G7 与 G8**(04 篇 §2.6 注记已清、06 篇 §9 已补 R20);G4 的去向改为已登记的 R20;G2 补注由 T12 修且 T18/T19 强依赖;§3 待建清单接上 12/13 篇的卡号(T14、T29、T31),并注明 `conversations` 仓储要到 M4 才建 |
+| v1.2 | 2026-08-15 | **修掉 §5 命令表里 spike 3、spike 4 缺 `ELECTRON_RUN_AS_NODE=1` 的两行**(这是 [14 篇](./14-handoff.md) §5 登记的第 1 条文档债,危险度高:spike 4 用错解释器会得出相反结论);§5 补执行卡与唯一权威结果表的指针;§4 给 G1/G4/G5/G6/G10 标注对应的 E 卡,G9 补注「打印 `todo` 不算红」 |
