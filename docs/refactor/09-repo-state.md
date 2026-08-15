@@ -1,6 +1,6 @@
 # 09 · 仓库现状快照
 
-> v1.0 · 2026-08-15 · 基线分支 `refactor/frontend-backend-split`
+> v1.1 · 2026-08-15 · 基线分支 `refactor/frontend-backend-split`
 
 **读者**:领到任务卡准备写代码的 agent。前置阅读 [08 篇 执行手册](./08-agent-guide.md)。
 
@@ -161,35 +161,37 @@ const db = await openDatabase({ file, pragmas, logger })
 
 ## 3. 还不存在的文件
 
-按 M1 归组;编号见 10 篇任务卡。
+按 M1 归组;编号见 [10 篇](./10-tasks-m1.md)、[11 篇](./11-tasks-m1-http.md)、[12 篇](./12-tasks-m2.md)、[13 篇](./13-tasks-m3.md) 的任务卡(M1 = T01–T14、M2 = T15–T23、M3 = T24–T33)。
 
 | 组 | 待建 |
 | --- | --- |
-| 迁移与仓储 | `store/migrate.js`(运行器 + 校验和 + 版本降级保护)、`store/repositories/*.js`、`store/migrate-from-json.js` |
-| Job 引擎 | `jobs/queue.js`、`jobs/runner.js`、`jobs/progress.js`、`jobs/recovery.js` |
+| 迁移与仓储 | `store/migrate.js`(运行器 + 校验和 + 版本降级保护)、`store/repositories/*.js`、`store/migrate-from-json.js`(T14) |
+| Job 引擎 | `jobs/queue.js`、`jobs/runner.js`、`jobs/progress.js`、`jobs/recovery.js`、`jobs/handlers/*.js`(T31) |
 | HTTP | `routes/*.js`(§4.1–§4.10 共 10 组)、`domains/*.js`、SSE 推送 |
 | 密钥 | `secrets/*.js` |
-| 反向通道 | `dialog.request` 补齐、`apps/desktop/src/sidecar/message-handler.js`、`orphan-cleanup.js` |
+| 反向通道 | `dialog.request` 补齐、`apps/desktop/src/sidecar/message-handler.js`、`orphan-cleanup.js`、`domains/plugins/process-ledger.js`(T29) |
 | 兼容层 | `mcp/*.js`、`/api/pet/*` 与 `/mcp` 的保留实现(ADR-009) |
+
+> ⚠️ **`conversations` 仓储要到 M4 才建。** T14 的 JSON 导入直接用 `db.prepare(...)` 写入,不要为它提前造仓库层 —— 见 [12 篇 T14](./12-tasks-m2.md)。
 
 ---
 
 ## 4. 缺口清单
 
-每条都是**已知**的,不要重复发现;修它的时候在对应任务卡里勾掉。
+每条都是**已知**的,不要重复发现。已关闭的条目保留在表里并标 ✅,这样你既不会重复修,也不会以为它从来没存在过。
 
-| 编号 | 现象 | 影响 |
-| --- | --- | --- |
-| G1 | `@openpet/contracts` 的 `main` 指向未生成的 `dist/` | 先 `npm run build:contracts`;TS 侧可走 `@openpet/contracts/src/*` |
-| G2 | 后端 `BACKEND_TO_SHELL_TYPES` 8 项,契约 9 项,少 `dialog.request` | 选目录/文件对话框走不通;修的时候要同时加白名单、`shell-client` 的 request 分支、60s 超时返 504 |
-| G3 | 13 个通用码的状态映射在 `middleware.js` 和契约 `envelope.ts` **各有一份** | 需要 gate 检查这层重复;不要再复制第三处 |
-| G4 | R20:ESM 入口在 `app.asar` 内可能解析失败 | 只在打包后暴露;退路是 `build.asarUnpack` 或降级 CJS。06 篇 §9 还没登记这条 |
-| G5 | `package-lock.json` 未与 workspaces 同步 | 首次 `npm install` 会大改 lockfile,正常 |
-| G6 | 六条 spike 全部未跑 | 见 §5 |
-| G7 | 04 篇 §2.6 的 ⚠️ 待补登记 注记已过期 | `system.jobs-recovered`、`system.events-dropped` 已补进 03 篇 §5,注记该清 |
-| G8 | 06 篇 §9 风险表缺 R20 | 补一行 |
-| G9 | 门禁两项仍是 `todo`(路由表、通道盘点) | M1 起硬化 |
-| G10 | `tests/backend/state-machine.test.js` 有一处 `it()` 标题笔误 | 纯文案,下次动该文件时一并改 |
+| 编号 | 状态 | 现象 | 影响 / 去向 |
+| --- | --- | --- | --- |
+| G1 | ⏳ | `@openpet/contracts` 的 `main` 指向未生成的 `dist/` | 先 `npm run build:contracts`;TS 侧可走 `@openpet/contracts/src/*` |
+| G2 | ⏳ | 后端 `BACKEND_TO_SHELL_TYPES` 8 项,契约 9 项,少 `dialog.request` | 选目录/文件对话框走不通;由 **T12** 修,要同时加白名单、`shell-client` 的 request 分支、60s 超时返 504。**T18/T19 强依赖它** |
+| G3 | ⏳ | 13 个通用码的状态映射在 `middleware.js` 和契约 `envelope.ts` **各有一份** | 需要 gate 检查这层重复;不要再复制第三处 |
+| G4 | ⏳ | R20:ESM 入口在 `app.asar` 内可能解析失败 | 只在打包后暴露;退路是 `build.asarUnpack` 或降级 CJS。已登记为 [06 篇 §9](./06-roadmap.md) 的 **R20**,且 spike 5 的判定标准已收紧为「打包后的 sidecar 真的发出 `ready`」 |
+| G5 | ⏳ | `package-lock.json` 未与 workspaces 同步 | 首次 `npm install` 会大改 lockfile,正常 |
+| G6 | ⏳ | 六条 spike 全部未跑 | 见 §5 —— **目前唯一必须由人在本机执行的部分** |
+| G7 | ✅ | 04 篇 §2.6 的 ⚠️ 待补登记 注记已过期 | 已关闭:注记改为「已补登(v1.3)」,并说明 `system` topic 现列四个事件、已纳入 `check:api-contract` 的 `EVENT_NAMES` 对账范围 |
+| G8 | ✅ | 06 篇 §9 风险表缺 R20 | 已关闭:R20 已补入风险登记册,并同步收紧 §2 spike 第 5 条的判定标准 |
+| G9 | ⏳ | 门禁两项仍是 `todo`(路由表、通道盘点) | M1 起硬化;路由表用 `router.routes()` 对 03 篇 §4,通道盘点对 154 |
+| G10 | ⏳ | `tests/backend/state-machine.test.js` 有一处 `it()` 标题笔误 | 纯文案,下次动该文件时一并改 |
 
 ---
 
@@ -202,7 +204,7 @@ const db = await openDatabase({ file, pragmas, logger })
 | 6 `node:sqlite` | `ELECTRON_RUN_AS_NODE=1 npx electron spike/06-node-sqlite/probe-sqlite.js` | 存储层的地基未证实;所有 DB 相关卡都建立在 `store/db.js` 这个 seam 上 |
 | 1 fork sidecar | `npx electron spike/01-fork-sidecar/shell.js` | 进程模型未证实 |
 | 2 端口与 ready | `ELECTRON_RUN_AS_NODE=1 npx electron spike/02-port-ready/sidecar-http.js` | 启动握手未证实 |
-| 5 打包 | `npm run pack` + 手验安装包 | R20 就在这里暴露 |
+| 5 打包 | `npm run pack` + 手验安装包 | R20 就在这里暴露;**判定标准是打包后的 sidecar 真的发出 `ready`,不是路径能解析** |
 | 3 前端闸门 | `npx electron spike/03-frontend-gate/run.js` | 已知 case 2 为红,修法在 05 篇 §2.2 + F14 |
 | 4 safeStorage | `npx electron spike/04-safe-storage/probe.js` | 密钥方案未证实 |
 
@@ -215,3 +217,4 @@ const db = await openDatabase({ file, pragmas, logger })
 | 版本 | 日期 | 变更 |
 | --- | --- | --- |
 | v1.0 | 2026-08-15 | 首版:已落地文件的对外接口、待建清单、10 条缺口、spike 状态 |
+| v1.1 | 2026-08-15 | 缺口表新增「状态」列,**关闭 G7 与 G8**(04 篇 §2.6 注记已清、06 篇 §9 已补 R20);G4 的去向改为已登记的 R20;G2 补注由 T12 修且 T18/T19 强依赖;§3 待建清单接上 12/13 篇的卡号(T14、T29、T31),并注明 `conversations` 仓储要到 M4 才建 |
