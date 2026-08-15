@@ -287,7 +287,7 @@ AI 与 Creator 可分开回滚。但 `demo-control-center-api.ts` 删除不可�
 | R17 | 多一跳回环 HTTP 导致面板体感变慢 | 中 | 中 | [03 篇 §10](./03-api-contract.md) 的 P95 预算入 CI;超标即按表中「超标处理」加缓存或拆端点 |
 | R18 | `node:sqlite` 在 Electron 内置 Node 下不可用或仍需启动 flag(ADR-014 前提不成立) | 中 | 中 | §2 spike 第 6 条先验,不等到 M1 才发现;`store/db.js` 只暴露 driver 接口,换 `better-sqlite3` 只需替一个实现文件,仓库层零改动 |
 | R19 | TanStack Query 退化成第二套状态模型(组件里到处 `useQuery`) | 中 | 中 | `useQuery` 只允许出现在 pane 级 hook;`staleTime: Infinity` + 关闭聚焦重取;失效入口统一收在 `useSse` 的事件处理里,review 时按此卡 |
-| R20 | sidecar 是 ESM 包却跑在 `app.asar` 内,ESM loader 不在 Electron 的 asar 补丁覆盖范围 | 中 | 高 | **只在打包后暴露,开发态永远是绿的**。由 §2 spike 第 5 条兜住:判定标准必须是「打包后的 sidecar 真的发出 `ready`」而不是「路径能解析」。退路两条:`build.asarUnpack` 加 `services/backend/**`(代价是后端代码以明文落在安装目录),或把 `services/backend` 降为 CJS(代价是与 `packages/contracts` 的 ESM 形态不一致) |
+| R20 | sidecar 是 ESM 包却跑在 `app.asar` 内,ESM loader 不在 Electron 的 asar 补丁覆盖范围 | 已缓解 | 高 | E6 实测 app.asar 内 `cwd` 导致 `spawn ENOTDIR`;采用 `build.asarUnpack` 的 `services/backend/**` 和 unpacked 入口解析。打包 Electron 已收到 ready;代价是后端代码以明文落在安装目录 |
 
 ### 9.1 最值得盯的三个
 
@@ -299,10 +299,10 @@ AI 与 Creator 可分开回滚。但 `demo-control-center-api.ts` 删除不可�
 
 | ID | 决策 | 备选项 | 状态 | 结论 |
 | --- | --- | --- | --- | --- |
-| D1 | 后端进程形态 | `utilityProcess` vs `child_process.fork` vs 独立二进制 | ✅ 已定案 | **`fork`**:自带 IPC 通道,不依赖 Electron API。§2 spike 第 1 条仅作上机确认手续,不再重开选型 |
+| D1 | 后端进程形态 | `utilityProcess` vs `child_process.fork` vs 独立二进制 | ✅ 已验证 | **`fork`**:Electron 42.4.0 / Node 24.16.0 实测 IPC 双向可用,ready +145 ms,不依赖 Electron API |
 | D2 | 后端 HTTP 框架 | 原生 `node:http` vs Hono vs Fastify | ✅ ADR-013 | **原生 `node:http` + 自写约 150 行 router**:method/path 匹配、路径参数解析、middleware 函数数组、统一错误兜底。鉴权、body 上限、访问日志三块直接复用 `local-http-service.js` 的实现经验 |
 | D3 | 密钥加密 | 反向通道每次代理 vs 后端自管密钥文件 | ✅ ADR-010 | Shell 侧 `safeStorage` 解密,经 `init` 消息一次性注入后端内存;两个备选项均被否决(一个多一跳、一个丢钥匙串) |
-| D4 | SQLite 驱动 | `node:sqlite` vs `better-sqlite3` | ✅ ADR-014 | **`node:sqlite`**,避开 native 重建与二次公证;`store/db.js` 只对外暴露 driver 接口(`exec` / `prepare` / `transaction`),`better-sqlite3` 作为随时可切的退路。可用性由 §2 spike 第 6 条先验 |
+| D4 | SQLite 驱动 | `node:sqlite` vs `better-sqlite3` | 🟡 ADR-014 | **`node:sqlite`** 在 Electron 42.4.0 / Node 24.16.0 无需 flag且索引/事务可用;G11 尚须以 file-backed DB 验证 WAL。`store/db.js` 保持可替换 driver 接口 |
 | D5 | 前端数据层 | TanStack Query vs 自写 `useResource` | ✅ ADR-015 | **TanStack Query**。四条硬约束:`staleTime: Infinity`、关闭 `refetchOnWindowFocus`、缓存失效只由 SSE 事件触发、`useQuery` 只允许出现在 pane 级 hook 中 |
 | D6 | 契约 schema 工具 | zod vs TypeBox vs 手写 | ✅ ADR-016 | **zod**。schema 是唯一真相源,类型由 `z.infer` 派生;后端请求与响应都校验,前端仅 dev 模式校验,生产构建把 zod tree-shake 掉(前端零体积代价) |
 | D7 | 外部 HTTP/MCP 服务位置 | 后端内嵌 vs 保留现位 | ✅ 已关闭 | **后端内嵌**,与业务服务同进程;**必须继承原对外端口与路径**,否则违反「不改 MCP 对外行为」这条非目标(见 [03 篇 §8](./03-api-contract.md)) |

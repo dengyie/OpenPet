@@ -324,12 +324,12 @@ console.log("NODE_SQLITE_OK", db.prepare("SELECT count(*) AS n FROM jobs").get()
 
 | # | 假设 | 预期 | 实测 | 结论 | 关联 |
 | --- | --- | --- | --- | --- | --- |
-| 1 | `fork` 可启动内置 Node 且消息通道双向可用 | ready 低于 1 秒 | 待填 | 待填 | D1 / ADR-002 |
-| 2 | `listen(0)` 的端口能快速回传 Shell | ready 低于 300 ms | 待填 | 待填 | R12 / G8 |
-| 3 | 后端未就绪时前端请求可排队后冲刷 | 并发 5 个全部 200 | 待填 | 待填 | F11 |
-| 4 | sidecar 拿不到 `safeStorage` | require 失败或无该导出 | 待填 | 待填 | ADR-010 |
-| 5 | asar 内脚本可被 fork | 打包后 sidecar 正常启动 | 待填 | 待填 | ADR-004 / R10 |
-| 6 | `node:sqlite` 可用且支持 WAL 与部分索引 | 四项能力全部通过 | 待填 | 待填 | ADR-014 / R18 |
+| 1 | `fork` 可启动内置 Node 且消息通道双向可用 | ready 低于 1 秒 | Electron 42.4.0 / Node 24.16.0; `process.send=true`; ready +145 ms; `init` 后 code 0 | ✅ D1 保持 `fork` | D1 / ADR-002 |
+| 2 | `listen(0)` 的端口能快速回传 Shell | ready 低于 300 ms | 单跑:首行 +569 ms,listen +574 ms;完整共享 T0:首行 +779 ms,listen +783 ms,Shell 收到 ready +86 ms(从 fork) | ✅ ready 送达低于 300 ms;后端启动应在窗口创建前并行以控制共享 T0 开销 | R12 / G8 |
+| 3 | 后端未就绪时前端请求可排队后冲刷 | 并发 5 个全部 200 | 3/4:延迟并发成功 3043 ms;第 2 条 11006 ms 后仍 leaked;上限 26 ms;换端口 4 ms | ✅ 第 2 条按预期红;T20 负责定时清扫 | F11 |
+| 4 | sidecar 拿不到 `safeStorage` | require 失败或无该导出 | sidecar:`requireOk=true`,`typeofExport="string"`,`hasSafeStorage=false`;Shell:`isEncryptionAvailable=true` | ✅ ADR-010 保留:Shell 解密后经 `init` 注入 | ADR-010 |
+| 5 | asar 内脚本可被 fork | 打包后 sidecar 正常启动 | 初始 app.asar 路径 fork 为 `spawn ENOTDIR`;改为 `asarUnpack` + unpacked resolver 后,已打包 Electron 收到 ready(`startupMs=5`)并 clean exit 0。`isPackaged=true`;`appPath=.../Resources/app.asar`;`resourcesPath=.../Resources`;sidecar `__dirname=.../Resources/app.asar.unpacked/services/backend` | ✅ R20 命中后已缓解;后端以 unpacked 明文文件运行 | ADR-004 / R10 |
+| 6 | `node:sqlite` 可用且支持 WAL 与部分索引 | 四项能力全部通过 | 模块无需 flag;部分唯一索引与显式事务通过;`:memory:` probe 返回 `journal_mode='memory'`,未能证明 file-backed WAL | 🟡 驱动可用,但新增 G11:以 file-backed DB 验证 WAL 后才能关闭 ADR-014 的完整前提 | ADR-014 / R18 |
 
 ## 8. 不绿的时候改什么
 

@@ -52,27 +52,9 @@ Node 22.12 跑得通,不代表 Electron 42 内置的 Node 跑得通 —— 这�
 代价是后端代码以明文躺在安装目录里 —— 对本地宠物应用可以接受,但要在 02 篇 §6.5 的
 风险面里补一行。
 
-## 结果记录表(跑完填这张)
+## 结果
 
-| # | 假设 | 预期 | 实测 | 结论 | 关联 |
-| --- | --- | --- | --- | --- | --- |
-| 1 | `fork` 可启动内置 Node 且消息通道双向可用 | ready 低于 1 秒 | 待填 | 待填 | D1 / ADR-002 |
-| 2 | `listen(0)` 的端口能快速回传 Shell | ready 低于 300 ms | 待填 | 待填 | R12 / G8 |
-| 3 | 后端未就绪时前端请求可排队后冲刷 | 并发 5 个全部 200 | 待填 | 待填 | F11 |
-| 4 | sidecar 拿不到 `safeStorage` | require 失败或无该导出 | 待填 | 待填 | ADR-010 |
-| 5 | asar 内脚本可被 fork | 打包后 sidecar 正常启动 | 待填 | 待填 | ADR-004 / R10 |
-| 6 | `node:sqlite` 可用且支持 WAL 与部分索引 | 四项能力全部通过 | 待填 | 待填 | ADR-014 / R18 |
-
-## 与 07 篇的两处偏差(需要同步回文档)
-
-- `03-frontend-gate/` 下多了一个 `package.json`(内容只有 `{"type": "module"}`)。
-  07 篇 §3 的 `transport.js` 用的是 ESM `export`,而仓库根是 CJS,不加这个文件
-  `run.js` 无法 import 它。
-- `03-frontend-gate/run.js` 的第 2 个用例(后端永不启动)**预期会红**。07 篇 §3 的
-  `transport.js` 只在「新请求进来」时才判 `MAX_WAIT_MS`,已经入队的 Promise 在后端
-  永不就绪的情况下不会被清算 —— 断言表里那句「不泄漏未结算的 Promise」现在是不成立的。
-  这正是 spike 要暴露的缺口,修复归属 `apps/control-center/src/api/transport.ts`
-  (05 篇 §2.2),需要加一个定时清扫。
+唯一权威结果表在 [docs/refactor/07-spike.md](../docs/refactor/07-spike.md) §7。
 
 ## 去向
 

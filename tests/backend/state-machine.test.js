@@ -59,7 +59,7 @@ before(async () => {
 })
 
 describe("状态机 · 常量", () => {
-	it("6 个状态、7 类以外共 17 个 kind,且均不重复", () => {
+	it("6 个状态,17 个 kind,且均不重复", () => {
 		assert.equal(sm.JOB_STATUSES.length, 6)
 		assert.equal(new Set(sm.JOB_STATUSES).size, 6)
 		assert.equal(sm.JOB_KINDS.length, 17)

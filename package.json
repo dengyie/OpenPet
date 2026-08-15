@@ -127,7 +127,8 @@
     ],
     "asar": true,
     "asarUnpack": [
-      "build/native/**/*"
+      "build/native/**/*",
+      "services/backend/**"
     ],
     "afterSign": "build/notarize.js",
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",

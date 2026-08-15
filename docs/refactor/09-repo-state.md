@@ -182,22 +182,23 @@ const db = await openDatabase({ file, pragmas, logger })
 
 | 编号 | 状态 | 现象 | 影响 / 去向 |
 | --- | --- | --- | --- |
-| G1 | ⏳ | `@openpet/contracts` 的 `main` 指向未生成的 `dist/` | 先 `npm run build:contracts`;TS 侧可走 `@openpet/contracts/src/*`。由 [14 篇](./14-handoff.md) **E2** 关闭 |
+| G1 | ✅ | `@openpet/contracts` 的 `main` 指向未生成的 `dist/` | E2 已生成 `dist/index.js` 与 `dist/index.d.ts` |
 | G2 | ⏳ | 后端 `BACKEND_TO_SHELL_TYPES` 8 项,契约 9 项,少 `dialog.request` | 选目录/文件对话框走不通;由 **T12** 修,要同时加白名单、`shell-client` 的 request 分支、60s 超时返 504。**T18/T19 强依赖它** |
 | G3 | ⏳ | 13 个通用码的状态映射在 `middleware.js` 和契约 `envelope.ts` **各有一份** | 需要 gate 检查这层重复;不要再复制第三处 |
-| G4 | ⏳ | R20:ESM 入口在 `app.asar` 内可能解析失败 | 只在打包后暴露;退路是 `build.asarUnpack` 或降级 CJS。已登记为 [06 篇 §9](./06-roadmap.md) 的 **R20**,且 spike 5 的判定标准已收紧为「打包后的 sidecar 真的发出 `ready`」。由 [14 篇](./14-handoff.md) **E6** 验 |
-| G5 | ⏳ | `package-lock.json` 未与 workspaces 同步 | 首次 `npm install` 会大改 lockfile,正常。由 [14 篇](./14-handoff.md) **E1** 关闭 |
-| G6 | ⏳ | 六条 spike 全部未跑 | 见 §5 —— **目前唯一必须由人在本机执行的部分**;执行卡见 [14 篇](./14-handoff.md) E3–E8 |
+| G4 | ✅ | R20:ESM 入口在 `app.asar` 内可能解析失败 | E6 命中 `spawn ENOTDIR`;已用 `asarUnpack` + unpacked resolver 缓解并收到打包 sidecar ready |
+| G5 | ✅ | `package-lock.json` 未与 workspaces 同步 | E1 `npm install` 已确认 workspaces 和 lockfile 解析正常;本次 lockfile 无额外变化 |
+| G6 | ✅ | 六条 spike 全部未跑 | E3–E8 已全部实测;唯一权威结果见 [07 篇](./07-spike.md) §7 |
 | G7 | ✅ | 04 篇 §2.6 的 ⚠️ 待补登记 注记已过期 | 已关闭:注记改为「已补登(v1.3)」,并说明 `system` topic 现列四个事件、已纳入 `check:api-contract` 的 `EVENT_NAMES` 对账范围 |
 | G8 | ✅ | 06 篇 §9 风险表缺 R20 | 已关闭:R20 已补入风险登记册,并同步收紧 §2 spike 第 5 条的判定标准 |
 | G9 | ⏳ | 门禁两项仍是 `todo`(路由表、通道盘点) | M1 起硬化;路由表用 `router.routes()` 对 03 篇 §4,通道盘点对 154。**它打印 `todo` 不算门禁红** |
-| G10 | ⏳ | `tests/backend/state-machine.test.js` 有一处 `it()` 标题笔误 | 纯文案,下次动该文件时一并改;[14 篇](./14-handoff.md) **E9** 顺手带走 |
+| G10 | ✅ | `tests/backend/state-machine.test.js` 有一处 `it()` 标题笔误 | E9 已改为「6 个状态,17 个 kind」 |
+| G11 | ⏳ | E3 的 `:memory:` SQLite 探针返回 `journal_mode='memory'` | `node:sqlite` 模块/部分索引/事务已实测,但 WAL 只能由 file-backed DB 验证;M1 存储层落地前补一条 file-backed probe |
 
 ---
 
 ## 5. 六条 spike 的状态
 
-**全部未跑。** 它们需要真实 Electron / 打包环境,是目前唯一必须由人在本机执行的部分。建议顺序 `6 → 1 → 2 → 5 → 3 → 4`。
+**E3–E8 已于 macOS / Electron 42.4.0 / Node 24.16.0 实测。** 结果见 [07 篇](./07-spike.md) §7:fork、端口、打包 sidecar 与 safeStorage 通过;前端闸门为预期的 3/4;SQLite WAL 仍由 G11 追踪。
 
 > 📌 **执行细节已整理成 [14 交接单](./14-handoff.md) 的 E3–E8 卡**:每条给了完整命令、期望输出、判定档位、不绿改什么、结论写回哪里。**实测结果一律填 [07 篇](./07-spike.md) §7 那张表(唯一权威结果表)**;填完回来把下面这段的「全部未跑」改成实际状态,并把 §4 的 G6 标 ✅。
 

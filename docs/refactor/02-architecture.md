@@ -282,8 +282,8 @@ sidecar 不可用时,**宠物必须继续正常走动**。
 | 项 | 影响 | 处理 |
 | --- | --- | --- |
 | `build.files` 白名单 | 必须新增 sidecar 路径 | M2 同步修改并验证 `npm run pack` |
-| asar | sidecar 在 asar 内可直接 fork | 无需 `asarUnpack`(除非引入 native 模块);由 [07 篇](./07-spike.md) 第 5 条 spike 实测确认 |
-| SQLite | ADR-014 已定为 `node:sqlite`,不引 `better-sqlite3`,避开 native 重建与二次公证 | 可用性是前提而非假设,必须由 [07 篇](./07-spike.md) 第 6 条 spike 先证明(风险 R18);不通则按 ADR-014 的 driver 接口切 `better-sqlite3` |
+| asar | ESM sidecar 以 `app.asar` 路径 fork 会因 `cwd` 为 asar 内目录而 `spawn ENOTDIR` | `services/backend/**` 置于 `asarUnpack`;打包时入口为 `resources/app.asar.unpacked/services/backend/index.js`。实测:`isPackaged=true`,`appPath=resources/app.asar`,`resourcesPath=resources`,`__dirname=resources/app.asar.unpacked/services/backend`;已收到 ready 并 clean exit |
+| SQLite | ADR-014 已定为 `node:sqlite`,不引 `better-sqlite3`,避开 native 重建与二次公证 | Electron 42.4.0 / Node 24.16.0 中模块无需 flag,部分索引与事务通过;`:memory:` 不能验证 WAL,须由 G11 以 file-backed DB 补验 |
 | macOS 签名 | 现有已有「code has no resources」故障 | 不在本期解决;但新增目录不得引入新的未签名二进制 |
 | 启动时间 | +fork 开销约 80–150 ms | 宠物窗口不等待后端,用户无感 |
 | 安装包体积 | 不变(复用内置 Node) | — |

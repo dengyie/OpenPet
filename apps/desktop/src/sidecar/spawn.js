@@ -30,6 +30,9 @@ function resolveSidecarEntry(app) {
 	if (!app || typeof app.getAppPath !== "function") {
 		throw new Error("resolveSidecarEntry 需要 Electron 的 app 对象")
 	}
+	if (app.isPackaged) {
+		return path.join(process.resourcesPath, "app.asar.unpacked", SIDECAR_RELATIVE_ENTRY)
+	}
 	return path.join(app.getAppPath(), SIDECAR_RELATIVE_ENTRY)
 }
 
