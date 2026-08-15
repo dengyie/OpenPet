@@ -6,8 +6,8 @@
 
 | 阶段 | 名称 | 周数 | 核心产出 | 可发布 |
 | --- | --- | --- | --- | --- |
-| M0 | 契约与骶架 | 1.5 | `packages/contracts` + 空壳 sidecar | ✅ 无感知 |
-| M1 | 进程骶架与存储 | 2 | 启停管理、SQLite、密钥迁移 | ✅ 无感知 |
+| M0 | 契约与骨架 | 1.5 | `packages/contracts` + 空壳 sidecar | ✅ 无感知 |
+| M1 | 进程骨架与存储 | 2 | 启停管理、SQLite、密钥迁移 | ✅ 无感知 |
 | M2 | 轻域切换 | 2 | settings/about/catalog/service | ✅ 可发布 |
 | M3 | 插件与 Job | 3 | 插件域 + Job 引擎 + 反向通道 | ⚠️ 建议仅预发布 |
 | M4 | AI 与 Creator | 2.5 | 37 个 AI 通道 + Creator + 删 demo-api | ✅ 可发布 |
@@ -23,7 +23,7 @@ M0 ──► M1 ──► M2 ──► M3 ──► M4 ──► M5
 
 > 📌 **最重要的约束:每个里程碑结束时代码都必须能正常构建、正常跑、正常打包。** 不允许出现「改到一半跑不起来」的状态超过一天。这是单人项目的生存线 —— 一旦跑不起来,反馈环断了,重构就会卡死。
 
-## 2. M0 · 契约与骶架(1.5 周)
+## 2. M0 · 契约与骨架(1.5 周)
 
 ### 第 0 步:六条 spike(半天,必须先做)
 
@@ -33,10 +33,10 @@ M0 ──► M1 ──► M2 ──► M3 ──► M4 ──► M5
 
 1. Electron 主进程 `child_process.fork` 一个 Node 脚本 —— 验证 D1 的进程形态。
 2. 脚本 `listen(0)` 拿到端口,通过 `ready` 消息回传主进程 —— 验证端口发现时序(见 [03 篇 §1.2](./03-api-contract.md))。
-3. 主进程注入渲染进程,前端发一个 `fetch` 拿到 200 —— 验证就绪门禁与请求排队。
+3. 主进程注入渲染进程,前端发一个 `fetch` 拿到 200 —— 验证就继门禁与请求排队。
 4. 在脚本里尝试 `require("electron")` —— **确认 `safeStorage` 确实不可用**,为 ADR-010 留下证据。
-5. 立刻跑一次 `npm run pack` 并手动打开安装包 —— 验证 sidecar 在 asar 内的路径解析。
-6. 在同一个脚本里 `require("node:sqlite")` 并建一张表 —— **验证 ADR-014 的前提**。sidecar 跑的是 `ELECTRON_RUN_AS_NODE` 下的 Electron 内置 Node,`node:sqlite` 到底暂露不暂露、是否仍要 `--experimental-sqlite`,只有实测能确认。不可用就当场切 `better-sqlite3`,此时 R11(公证)重新升为高风险。
+5. 立即跑一次 `npm run pack` 并手动打开安装包 —— 验证 sidecar 在 asar 内的路径解析。**判定标准是「打包后的 sidecar 真的发出了 `ready` 消息」,不是「路径能解析出来」** —— `services/backend` 是 ESM 包,而 Electron 的 asar 补丁只覆盖 `fs` 与 CJS `require`,ESM loader 解析 `app.asar` 内的入口并不在覆盖范围(风险 R20)。这一条只在打包后才会暴露,开发态永远是绿的。
+6. 在同一个脚本里 `require("node:sqlite")` 并建一张表 —— **验证 ADR-014 的前提**。sidecar 跑的是 `ELECTRON_RUN_AS_NODE` 下的 Electron 内置 Node,`node:sqlite` 到底暴露不暴露、是否仍要 `--experimental-sqlite`,只有实测能确认。不可用就当场切 `better-sqlite3`,此时 R11(公证)重新升为高风险。
 
 这 6 条全绿才进入下面的正式任务。任何一条不通,先改方案而不是先写契约。
 
@@ -50,7 +50,7 @@ M0 ──► M1 ──► M2 ──► M3 ──► M4 ──► M5
 6. 新增 `npm run check:api-contract`(实现与 schema 对账)
 7. 新增 `tests/backend/` 目录与首个契约测试
 8. 按 **ADR-012** 把 `openpet-contracts.ts` 搬为 `packages/contracts/legacy.ts`,原路径改为薄壳 re-export
-9. 反向通道骶架落地 **ADR-011** 的 `v: 1` 信封与「版本不符即重拉」逻辑
+9. 反向通道骨架落地 **ADR-011** 的 `v: 1` 信封与「版本不符即重拉」逻辑
 10. 按 **ADR-017** 建 npm workspaces 根配置(`apps/*`、`services/*`、`packages/*`),并同步扩 `build.files` 白名单;第一个 commit 只调目录不改逻辑
 11. 按 **ADR-013** 写 `services/backend/http/router.js`(约 150 行),按 **ADR-016** 用 zod 写首批 schema 并以 `z.infer` 导出类型
 
@@ -61,13 +61,13 @@ M0 ──► M1 ──► M2 ──► M3 ──► M4 ──► M5
 - 现有全部测试与 `pack` 仍通过
 - 宠物行为零变化
 - **`pack` 产物里 sidecar 路径正确**,安装包能真的启动 sidecar(不拖到 M5 才发现)
-- 前端在 sidecar 未就绪时不报错,请求被正确排队后冲刷
+- 前端在 sidecar 未就继时不报错,请求被正确排队后冲刷
 
 ### 回滚
 
 删除 sidecar 启动调用(一行),应用回到现状。风险极低。
 
-## 3. M1 · 进程骶架与存储(2 周)
+## 3. M1 · 进程骨架与存储(2 周)
 
 ### 任务
 
@@ -77,7 +77,7 @@ M0 ──► M1 ──► M2 ──► M3 ──► M4 ──► M5
 4. JSON → SQLite 迁移与回滚
 5. 密钥服务搬迁,按 **ADR-010** 落地:Shell 侧 `safeStorage.decrypt` → `init` 消息一次性注入 → 后端只持内存副本,永不落盘、永不进日志、永不出现在任何响应体。`safeStorage.isEncryptionAvailable()` 为 false 时退回 0600 权限明文文件,并在界面显式告警
 6. 日志与 `requestId` 贯穿
-7. 反向通道骶架(白名单 + 校验,先只通 `pet.say`)
+7. 反向通道骨架(白名单 + 校验,先只通 `pet.say`)
 8. 子进程 pid 台账与孤儿清理
 
 ### 验收
@@ -147,7 +147,7 @@ SQLite 与 JSON 双写一个迭代,以 JSON 为准;确认无差异后切单写�
 | --- | --- |
 | B1 | 现有内置插件全部正常安装、启动、停止 |
 | B2 | 插件调 `pet:say` 能正确让宠物说话(反向通道打通) |
-| B3 | 插件调未授权能力被拒,且拒绍发生在后端 |
+| B3 | 插件调未授权能力被拒,且拒给发生在后端 |
 | B4 | 插件 dashboard 窗口能正常开启并在插件停止时关闭 |
 | B5 | 图像生成 Job 完整跑完 265s 不断链,进度正常 |
 | B6 | Job 运行中刷新面板,进度不丢 |
@@ -160,7 +160,7 @@ SQLite 与 JSON 双写一个迭代,以 JSON 为准;确认无差异后切单写�
 
 插件域整体回滚开关(`plugins.transport = "ipc"`)。但注意:**桥服务器一旦搬迁,回滚需同时回滚桥的位置**,比其他域复杂。建议在单独分支做,满足全部验收后才合入。
 
-> ⚠️ **M3 不建议直接发布。** 插件域涉及子进程、权限、窗口三重跨进程交互,集成测试很难盖全。建议自己日常用两周再发。
+> ⚠️ **M3 不建议直接发布。** 插件域涉及子进程、权限、窗口三重跳进程交互,集成测试很难盖全。建议自己日常用两周再发。
 
 ## 6. M4 · AI 与 Creator(2.5 周)
 
@@ -261,7 +261,7 @@ AI 与 Creator 可分开回滚。但 `demo-control-center-api.ts` 删除不可�
 | SSE 可靠性 | 断线重连、Last-Event-ID、背压 | 集成测试 |
 | Job 生命周期 | 创建、进度、取消、中断恢复 | 集成测试 |
 | 存储迁移 | JSON → SQLite 正向与回滚 | 单测 + 真文件 |
-| 安全 | 未鉴权拒绍、路径逃逸、权限越界 | 单测 |
+| 安全 | 未鉴权拒给、路径逃逸、权限越界 | 单测 |
 | 反向通道 | 白名单之外消息被丢弃 | 单测 |
 
 ## 9. 风险登记册
@@ -270,7 +270,7 @@ AI 与 Creator 可分开回滚。但 `demo-control-center-api.ts` 删除不可�
 | --- | --- | --- | --- | --- |
 | R1 | 存储迁移丢用户数据 | 中 | **极高** | 双写一个迭代、自动备份、条数对账、旧 JSON 不删 |
 | R2 | 孤儿插件进程 | **高** | 中 | pid 台账 + 启动清理 + 进程名校验 |
-| R3 | 启动变慢(多一个进程) | **高** | 低 | 宠物不等后端([02 篇 §4](./02-architecture.md) 第 8 步),后端异步就绪 |
+| R3 | 启动变慢(多一个进程) | **高** | 低 | 宠物不等后端([02 篇 §4](./02-architecture.md) 第 8 步),后端异步就继 |
 | R4 | 本机其他进程冒充前端 | 中 | 高 | 会话 token 每次启动随机、仅 loopback、timingSafeEqual |
 | R5 | 密钥加密降级(sidecar 内无 safeStorage) | **已消除** | 中 | 已由 ADR-010 定案:Shell 解密 + `init` 一次性注入。仅剩「系统不支持加密」的退化路径,需界面告警 |
 | R6 | Job 引擎超出预估工量 | 中 | 中 | M0 先做最小可用版(无持久化),M3 再完善 |
@@ -279,7 +279,7 @@ AI 与 Creator 可分开回滚。但 `demo-control-center-api.ts` 删除不可�
 | R9 | JS/TS 双版本共享层漂移加剧 | **高** | 中 | M5 治理;期间只改 TS 并自动生成 JS |
 | R10 | 打包后 sidecar 路径错误 | 中 | 高 | M0 就跑 `pack` 并手验安装包,不拖到 M5 |
 | R11 | macOS 公证因新二进制失败 | 中 | 高 | 纯 JS sidecar(不引入 native),沿用现有 entitlements;M0 就跑 `pack` 验证 |
-| R12 | 端口未就绪时前端已发出请求(冷启动竞态) | **必然发生** | 中 | 端口 0 自动分配;前端强制走 [03 篇 §1.2](./03-api-contract.md) 就绪门禁与请求排队,`getBackend()` 返 `null` 视为正常初始态而非错误 |
+| R12 | 端口未就继时前端已发出请求(冷启动竞态) | **必然发生** | 中 | 端口 0 自动分配;前端强制走 [03 篇 §1.2](./03-api-contract.md) 就继门禁与请求排队,`getBackend()` 返 `null` 视为正常初始态而非错误 |
 | R13 | 内存占用上升 | **高** | 低 | 目标 < 80 MB 增幅,作为 M5 验收项 |
 | R14 | 单人项目 12 周周期中断 | **高** | 中 | 每阶段可停住;每个里程碑都能发布 |
 | R15 | 反向通道成为提权通道 | 低 | **极高** | 严格白名单、Shell 硬编码窗口参数、不执行后端传的任意路径 |
@@ -287,6 +287,7 @@ AI 与 Creator 可分开回滚。但 `demo-control-center-api.ts` 删除不可�
 | R17 | 多一跳回环 HTTP 导致面板体感变慢 | 中 | 中 | [03 篇 §10](./03-api-contract.md) 的 P95 预算入 CI;超标即按表中「超标处理」加缓存或拆端点 |
 | R18 | `node:sqlite` 在 Electron 内置 Node 下不可用或仍需启动 flag(ADR-014 前提不成立) | 中 | 中 | §2 spike 第 6 条先验,不等到 M1 才发现;`store/db.js` 只暴露 driver 接口,换 `better-sqlite3` 只需替一个实现文件,仓库层零改动 |
 | R19 | TanStack Query 退化成第二套状态模型(组件里到处 `useQuery`) | 中 | 中 | `useQuery` 只允许出现在 pane 级 hook;`staleTime: Infinity` + 关闭聚焦重取;失效入口统一收在 `useSse` 的事件处理里,review 时按此卡 |
+| R20 | sidecar 是 ESM 包却跑在 `app.asar` 内,ESM loader 不在 Electron 的 asar 补丁覆盖范围 | 中 | 高 | **只在打包后暴露,开发态永远是绿的**。由 §2 spike 第 5 条兜住:判定标准必须是「打包后的 sidecar 真的发出 `ready`」而不是「路径能解析」。退路两条:`build.asarUnpack` 加 `services/backend/**`(代价是后端代码以明文落在安装目录),或把 `services/backend` 降为 CJS(代价是与 `packages/contracts` 的 ESM 形态不一致) |
 
 ### 9.1 最值得盯的三个
 
@@ -299,7 +300,7 @@ AI 与 Creator 可分开回滚。但 `demo-control-center-api.ts` 删除不可�
 | ID | 决策 | 备选项 | 状态 | 结论 |
 | --- | --- | --- | --- | --- |
 | D1 | 后端进程形态 | `utilityProcess` vs `child_process.fork` vs 独立二进制 | ✅ 已定案 | **`fork`**:自带 IPC 通道,不依赖 Electron API。§2 spike 第 1 条仅作上机确认手续,不再重开选型 |
-| D2 | 后端 HTTP 框框架 | 原生 `node:http` vs Hono vs Fastify | ✅ ADR-013 | **原生 `node:http` + 自写约 150 行 router**:method/path 匹配、路径参数解析、middleware 函数数组、统一错误兜底。鉴权、body 上限、访问日志三块直接复用 `local-http-service.js` 的实现经验 |
+| D2 | 后端 HTTP 框架 | 原生 `node:http` vs Hono vs Fastify | ✅ ADR-013 | **原生 `node:http` + 自写约 150 行 router**:method/path 匹配、路径参数解析、middleware 函数数组、统一错误兜底。鉴权、body 上限、访问日志三块直接复用 `local-http-service.js` 的实现经验 |
 | D3 | 密钥加密 | 反向通道每次代理 vs 后端自管密钥文件 | ✅ ADR-010 | Shell 侧 `safeStorage` 解密,经 `init` 消息一次性注入后端内存;两个备选项均被否决(一个多一跳、一个丢钥匙串) |
 | D4 | SQLite 驱动 | `node:sqlite` vs `better-sqlite3` | ✅ ADR-014 | **`node:sqlite`**,避开 native 重建与二次公证;`store/db.js` 只对外暴露 driver 接口(`exec` / `prepare` / `transaction`),`better-sqlite3` 作为随时可切的退路。可用性由 §2 spike 第 6 条先验 |
 | D5 | 前端数据层 | TanStack Query vs 自写 `useResource` | ✅ ADR-015 | **TanStack Query**。四条硬约束:`staleTime: Infinity`、关闭 `refetchOnWindowFocus`、缓存失效只由 SSE 事件触发、`useQuery` 只允许出现在 pane 级 hook 中 |
@@ -329,12 +330,13 @@ AI 与 Creator 可分开回滚。但 `demo-control-center-api.ts` 删除不可�
 - [ ] 反向通道带 `v` 信封,版本不符能正确重拉(ADR-011)
 - [ ] `openpet-contracts.ts` 薄壳已删除,类型只剩一份(ADR-012)
 - [ ] mac / Windows 安装包均可用,macOS 公证通过
+- [ ] 打包后的 sidecar 真的发出 `ready`(R20 已验证,非仅路径可解析)
 - [ ] 文档(`AGENTS.md` 等 4 份)已同步,`check:docs-drift` 绿
 
 ## 12. 下一步建议
 
-1. **先跑 §2 的六条 spike**(半天)—— 代码已在 `spike/` 目录就绪,跑法与断言见 [07 篇](./07-spike.md)。它会直接给出 D1 与端口时序的答案,也会验证 ADR-010 与 ADR-014 的前提
+1. **先跑 §2 的六条 spike**(半天)—— 代码已在 `spike/` 目录就继,跑法与断言见 [07 篇](./07-spike.md)。它会直接给出 D1 与端口时序的答案,也会验证 ADR-010 与 ADR-014 的前提
 2. **技术选型已全部关闭**(D2 → ADR-013、D4 → ADR-014、D5 → ADR-015、D6 → ADR-016、D8 → ADR-017),开工前不需要再讨论选型;只有 D1 与 ADR-014 的前提要靠 spike 第 1、6 条实测确认
 3. **先跑一次 `pack`**,确认当前基线可打包(`docs/project-context.json` 里 `releaseReady: false` 且有 macOS 签名报错待解)
 4. **M0 的第一个 commit 建议只做目录调整**(npm workspaces + 目录搬迁),不改逻辑,方便出问题时 revert
-5. 如需要,可把 M0–M5 拆成 GitHub issues 或 Notion 任务库跟踪
+5. 实现阶段的任务拆解已经做好:M1 的 13 张任务卡见 [10 篇](./10-tasks-m1.md) 与 [11 篇](./11-tasks-m1-http.md),agent 执行规范见 [08 篇](./08-agent-guide.md),入口在 [00 篇](./00-START-HERE.md)
