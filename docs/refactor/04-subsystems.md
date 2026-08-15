@@ -66,18 +66,18 @@
 ```text
 前端                    Shell                      Backend
   │  IPC: dialog.pick      │                            │
-  │──────────────────►│ showOpenDialog()           │
+  │────────────────►│ showOpenDialog()           │
   │◄───── paths[] ───────│                            │
   │                        │                            │
   │  POST /plugins/inspect { path }                     │
   │──────────────────────────────────────►│ 读取与校验
-  │◄───────── manifest / 错误 ────────────────────│
+  │◄───────── manifest / 错误 ──────────────────│
 ```
 
 **路径安全规则**(后端必须执行):
 
-- 只接受绑对路径,先 `fs.realpath` 解符号链接
-- 拒绍 `userData` 与应用目录内部的系统路径写入
+- 只接受绕对路径,先 `fs.realpath` 解符号链接
+- 拒给 `userData` 与应用目录内部的系统路径写入
 - 校验文件后缀与魔术字(zip 头)
 - 单次文件大小上限(建议 200 MB)
 - 解压时防 zip slip(复用 `zip-archive-utils.js` 现有校验)
@@ -171,7 +171,7 @@ type JobProgress = {
 3. 清理临时目录 `userData/backend/tmp/job-*`
 4. 发 SSE `system.jobs-recovered` 告知前端刷新
 
-> ⚠️ **待补登录:** 第 4 步的 `system.jobs-recovered` 并未出现在 [03 篇 §5](./03-api-contract.md) 的事件目录里(`system` topic 只列了 `backend.shutting-down` 与 `backend.degraded`)。同样缺失的还有 03 篇 §5 背压段提到的 `system.events-dropped`。两个事件必须在契约冻结(M1)前补进事件目录,并纳入 `check:api-contract` 的校验范围 —— 否则前端 `useSse` 会收到契约外的事件名。
+> ✅ **已补登(v1.3)。** 第 4 步的 `system.jobs-recovered` 与背压段的 `system.events-dropped` 已补进 [03 篇 §5](./03-api-contract.md) 的事件目录(`system` topic 现列四个事件),并已纳入 `check:api-contract` 的 `EVENT_NAMES` 对账范围。实现时事件名一律从 `packages/contracts` 取,不要在后端重写字面量。
 
 ## 3. 存储与并发
 
@@ -189,7 +189,7 @@ type JobProgress = {
 | 日志、Job、对话 | **Backend** | HTTP 读 |
 | 帧缓存索引 | **Backend** | 前端内存缓存 |
 
-> 💡 **把窗口几何从 `settings.json` 拆出去。** 它是 Shell 高频写入的(拖拽、缩放),与业务配置放一起会制造不必要的跨进程写竞争。拆开后两边各自单写者,零冲突。
+> 💡 **把窗口几何从 `settings.json` 拆出去。** 它是 Shell 高频写入的(拖拽、缩放),与业务配置放一起会制造不必要的跳进程写竞争。拆开后两边各自单写者,零冲突。
 
 ### 3.3 userData 目录布局
 
@@ -443,3 +443,5 @@ apps/desktop/src/sidecar/
   ├─ message-handler.js  # 反向通道服务端
   └─ orphan-cleanup.js   # pid 台账清理
 ```
+
+> 🤖 **这份清单已经拆成可执行的任务卡。** 上面每个文件都对应 [10 篇](./10-tasks-m1.md)、[11 篇](./11-tasks-m1-http.md) 里的一张卡(T01–T13),卡上写了精确的导出签名与验收断言。**实现时以任务卡为准**,本篇提供的是设计意图与理由 —— 两者冲突时先改文档再写代码,不要自行取舍。
