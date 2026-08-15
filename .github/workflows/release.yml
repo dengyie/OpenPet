@@ -56,6 +56,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install Playwright Chromium
+        if: matrix.platform == 'macos'
+        run: npx playwright install chromium
+
       - name: Test
         if: matrix.platform == 'macos'
         run: npm test
@@ -95,6 +99,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium
 
       - name: Test
         run: npm test

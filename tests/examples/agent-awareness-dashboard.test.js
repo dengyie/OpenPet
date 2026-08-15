@@ -707,6 +707,49 @@ test('agent awareness dashboard builds a selected session workbench from stable 
   assert.match(rendered.sessionWorkbenchHtml, /Tool: apply_patch/)
 })
 
+test('agent awareness dashboard keeps a selected live session visible after summary retention expires', () => {
+  const runtime = createDashboardRuntime({ documentRef: null, fetchImpl: null })
+  const viewModel = runtime.buildDashboardViewModel({
+    query: { view: 'sessions', sessionId: 'approval-session' },
+    health: { ok: true },
+    sessionsPayload: {
+      liveSessions: [{
+        sessionId: 'approval-session',
+        project: 'OpenPet #111111',
+        status: 'waiting',
+        phase: 'approval',
+        type: 'approval.requested',
+        message: 'Need approval',
+        timestamp: '2026-07-03T12:00:00.000Z',
+        usage: {
+          totalTokens: 1200,
+          contextUsedPercent: 0.6
+        },
+        history: [{
+          type: 'turn.started',
+          status: 'working',
+          message: 'Started work',
+          timestamp: '2026-07-02T12:00:00.000Z'
+        }, {
+          type: 'approval.requested',
+          status: 'waiting',
+          message: 'Need approval',
+          timestamp: '2026-07-03T12:00:00.000Z'
+        }]
+      }],
+      sessionSummaries: []
+    }
+  })
+
+  assert.equal(viewModel.selectedSession.sessionId, 'approval-session')
+  assert.equal(viewModel.selectedSession.status.label, 'Waiting')
+  assert.match(viewModel.selectedSession.firstSeenAt, /Jul 02, 2026/)
+  assert.match(viewModel.selectedSession.lastSeenAt, /Jul 03, 2026/)
+  assert.match(viewModel.selectedSession.usageText, /1,200 tokens/)
+  assert.equal(viewModel.selectedSession.usagePeakText, 'No usage metadata yet')
+  assert.match(runtime.renderDashboard(viewModel).sessionWorkbenchHtml, /Need approval/)
+})
+
 test('agent awareness dashboard load applies location detail query', async () => {
   const runtime = createDashboardRuntime({
     documentRef: null,
