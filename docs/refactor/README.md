@@ -1,11 +1,14 @@
-# OpenPet 前后端分离 · 开发文档 v1.3
+# OpenPet 前后端分离 · 开发文档 v1.4
 
-> 📌 **状态** M0 进行中:契约包与文档门禁已落地 · **版本** v1.3 · **代码基线** `dengyie/OpenPet@c56a3f1` (main / v1.0.1-rc.3) · **编写日期** 2026-08-09
+> 📌 **状态** M0 进行中:契约包、后端骨架与 agent 执行文档已落地 · **版本** v1.4 · **代码基线** `dengyie/OpenPet@c56a3f1` (main / v1.0.1-rc.3) · **编写日期** 2026-08-09
 
 > **本目录是这份文档的权威副本。** 文档最初写在 Notion,现已随代码进入
 > `refactor/frontend-backend-split`。代码在 Git、文档在别处会必然漂移,而这份文档里有
 > 154 条通道映射和一整张契约表 —— 漂了就等于没有。后续变更改这里,不改 Notion。
 > Notion 原稿已于 2026-08-15 降为归档副本并回指本目录。
+
+> 🤖 **如果你是来实现代码的 agent,不要从本文件开始。** 直接去 [00 · 从这里开始](./00-START-HERE.md)。
+> 01–07 篇是给人看的设计文档,00、08–11 篇才是给你看的执行文档。
 
 ## 一、文档目的与读者
 
@@ -18,6 +21,7 @@
 | 后端开发 | 02 目标架构、03 API 契约、04 子系统改造 |
 | 插件作者 | 04 插件运行时改造(桥接协议变更) |
 | 发布负责人 | 06 迁移路线、测试门禁、打包影响 |
+| **实现 agent** | **00 入口 → 08 执行手册 → 09 仓库现状 → 10/11 任务卡**;背景不足时再回查 03、04 |
 
 ## 二、执行摘要
 
@@ -124,7 +128,9 @@
 
 ## 八、子文档索引
 
-本文档按下列顺序拆分,建议按序阅读;每份子文档均可独立作为开发依据。
+本文档按下列顺序拆分,每份子文档均可独立作为开发依据。
+
+**给人看的设计文档(01–07)** —— 讲「为什么这样设计」:
 
 | # | 文档 | 内容 |
 | --- | --- | --- |
@@ -134,7 +140,19 @@
 | 04 | [关键子系统改造](./04-subsystems.md) | 插件运行时、Job 引擎、存储与并发 |
 | 05 | [前端改造方案](./05-frontend.md) | pane 拆分、api client、mock 替换、preload 清零 |
 | 06 | [迁移路线图、测试门禁与风险登记](./06-roadmap.md) | 六阶段任务清单、验收、回滚 |
-| 07 | [M0 Spike 代码骨架与验证清单](./07-spike.md) | 六条假设的可运行探针、判定标准与结论去向（**开工从这里开始**） |
+| 07 | [M0 Spike 代码骨架与验证清单](./07-spike.md) | 六条假设的可运行探针、判定标准与结论去向 |
+
+**给实现 agent 看的执行文档(00、08–11)** —— 讲「具体做什么、做到什么程度算完」:
+
+| # | 文档 | 内容 |
+| --- | --- | --- |
+| 00 | [从这里开始](./00-START-HERE.md) | 入口:读的顺序、三条门禁命令、领卡方式、三个真相源（**实现 agent 从这里开始**） |
+| 08 | [Agent 执行手册](./08-agent-guide.md) | 十条硬规则 H1–H10、错误怎么抛、测试怎么写、分支与 PR 规范、八条已知陷阱 |
+| 09 | [仓库现状快照](./09-repo-state.md) | 每个已落地文件的对外接口逐一列出、待建文件、缺口 G1–G10 |
+| 10 | [M1 任务卡:存储层与 Job 引擎](./10-tasks-m1.md) | T01–T08,每卡含精确导出签名与验收断言 |
+| 11 | [M1 任务卡:HTTP、SSE、Shell 侧](./11-tasks-m1-http.md) | T09–T13,含 M1 完成判定 |
+
+> 💡 **为什么要多这一层。** 人看不懂会来问,agent 不问 —— 它按自己的理解发明。而几个 agent 各自为同一个概念发明不同名字,就是契约漂移最常见的来源。08–11 篇的目的不是把设计写得更清楚,而是**消除自由度**:列名一律照 `001_init.sql`,事件名与错误码一律从 `packages/contracts` 取,状态字符串一律从 `jobs/state-machine.js` 取。
 
 对应的可运行代码在仓库根的 [`spike/`](../../spike/) 目录;契约包在 [`packages/contracts/`](../../packages/contracts/)。
 
@@ -144,18 +162,24 @@
 
 | 产出 | 位置 | 状态 |
 | --- | --- | --- |
-| 八篇开发文档 | `docs/refactor/` | ✅ 已提交并逐篇 review |
+| 十二篇子文档 | `docs/refactor/` | ✅ 已提交并逐篇 review |
 | 六条 spike 探针 | [`spike/`](../../spike/) | ⏳ 代码就绪,待上机跑（推荐顺序 `6 → 1 → 2 → 5 → 3 → 4`） |
 | 契约包首版 | [`packages/contracts/`](../../packages/contracts/) | ✅ 信封、错误码、Job、SSE 事件、反向通道 |
-| 契约门禁 | [`scripts/check-api-contract.mjs`](../../scripts/check-api-contract.mjs) | ✅ 可运行:`node scripts/check-api-contract.mjs` |
+| 契约门禁 | [`scripts/check-api-contract.mjs`](../../scripts/check-api-contract.mjs) | ✅ 可运行:`npm run check:api-contract` |
+| 根 `package.json` | 仓库根 | ✅ workspaces、`build.files`、`build:contracts` / `test:backend` / `check:node` 脚本 |
+| 后端骨架 | [`services/backend/`](../../services/backend/) | ✅ 入口、router、中间件链、桥层、SQLite driver、Job 状态机、`001_init.sql` |
+| 后端单测 | [`tests/backend/`](../../tests/backend/) | ✅ 状态机穷举 + 与 `001_init.sql` 的一致性对账 |
+| agent 执行文档层 | `docs/refactor/00`、`08`–`11` | ✅ 手册、现状快照、M1 全部 13 张任务卡 |
 
-**下一步的顺序不能颠倒:**
+**下一步的顺序:**
 
-1. 先跑六条 spike。**在六条全绿之前不要开 M0 剩余的 11 个任务** —— 见 [07 篇](./07-spike.md)。
-2. spike 5（`npm run pack` 并手验安装包）绿了之后,才动根 `package.json` 的 `workspaces` 与 `build.files` 白名单。这两项是 R10（打包路径）的正面,顺序颠倒的话打包失败会和契约改动混在一起,难以定位。
-3. 然后是 `services/backend` 骨架与 `apps/desktop/src/sidecar/spawn.js`。
+1. **跑六条 spike** —— 这是目前唯一的真阻塞项,需要真实 Electron 与打包环境。推荐顺序 `6 → 1 → 2 → 5 → 3 → 4`,见 [07 篇](./07-spike.md)。
+2. **并行开 T01–T13** —— 这 13 张卡全部隔在注入式接缝之后,裸 node 下即可完整验收,**不必等 spike**。见 [10 篇](./10-tasks-m1.md)、[11 篇](./11-tasks-m1-http.md)。
+3. M2（AI 40 通道)与 M3（插件 23 通道)的任务卡待开,等 M1 入库后再写 —— 免得卡片与实际接口提前漂移。
 
-> ⚠️ `packages/contracts` 目前还没接入根 `workspaces`,也没被任何代码 import,因此对现有构建与打包零影响。它能先行,正是因为它不碰构建配置。同理,`check:api-contract` 目前用 `node scripts/...` 直接跑,暂不往根 `package.json` 的 `scripts` 里加别名 —— 那个文件同时装着 `build.files` 白名单与约 60 个 evidence 脚本,值得攒到上一条的时机一次改完。
+> ⚠️ **一处有意的顺序偏离,记录在此以免日后误判。** 原计划是「spike 5(`npm run pack` 手验安装包)绿了之后才动根 `package.json` 的 `workspaces` 与 `build.files`」。实际执行中这一步提前做了,因为后端骨架与 `test:backend` 都依赖 workspaces 才能装依赖与跑测试。**代价是**:若 spike 5 报错,打包问题会与 workspaces 改动混在一起,定位变难(这正是 R10 的形状)。**缓解**:这两处改动集中在单个提交 `304a5a34` 内,可整体 revert 后再单独验证打包。
+
+> ⚠️ **`package-lock.json` 当前与根 `workspaces` 不同步。** 首次 `npm install` 会重写它(新增 `zod` 与两个 workspace 符号链接),这是预期行为而非 bug。缺口清单见 [09 篇 §4](./09-repo-state.md) G5。
 
 ## 十、变更记录
 
@@ -165,3 +189,4 @@
 | v1.1 | 2026-08-09 | 深入 review 后修复:新增 ADR-010–017 并关闭全部待定决策;补性能预算（03 §10）与端口 ready 门禁;补 M0 spike、R16、R17;新增 07 篇 spike 代码骨架与判定分支 | mango |
 | v1.2 | 2026-08-14 | 随代码进入 `refactor/frontend-backend-split`,本目录成为权威副本;修正 hub 标题版本号与 ADR-013 的连接符;07 篇 §0 补 `03-frontend-gate/package.json`,§3 第 2 条断言标注为已知红 | mango |
 | v1.3 | 2026-08-15 | 03 篇 §5 补登 `system.jobs-recovered` 与 `system.events-dropped`（此前只写在 04 篇 §2.6）,并补全 8 个 topic 的可选值清单、明确 `system` 不受订阅过滤;新增 `packages/contracts` 首版与可运行的 `scripts/check-api-contract.mjs`;新增§九当前进度（含下一步顺序约束）;Notion 原稿已降为归档副本 | mango |
+| v1.4 | 2026-08-15 | 新增 agent 执行文档层:00 入口、08 执行手册、09 仓库现状快照、10/11 篇 M1 全部 13 张任务卡;§八 索引改为「设计文档 / 执行文档」两组;§一 读者表新增实现 agent 行;§九 刷新为后端骨架与根 `package.json` 已落地,并记录 workspaces 提前改动这一有意的顺序偏离与其缓解手段;清除 §九 中「`packages/contracts` 尚未接入 workspaces」的陈旧说明 | mango |
