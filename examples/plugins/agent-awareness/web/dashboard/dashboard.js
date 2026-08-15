@@ -240,30 +240,31 @@ const createDashboardRuntime = ({
     return !['idle', 'completed', 'failed'].includes(status)
   }).length
 
-  const buildSelectedSession = ({ selectedSummary = null, liveSessions = [] } = {}) => {
-    if (!selectedSummary) return null
-    const liveSession = liveSessions.find((session) => String(session.sessionId || '') === String(selectedSummary.sessionId || '')) || null
-    const timelineSource = Array.isArray(selectedSummary.timelineTail) && selectedSummary.timelineTail.length
+  const buildSelectedSession = ({ selectedSessionId = '', selectedSummary = null, liveSessions = [] } = {}) => {
+    const sessionId = String(selectedSummary?.sessionId || selectedSessionId || '')
+    const liveSession = liveSessions.find((session) => String(session.sessionId || '') === sessionId) || null
+    if (!selectedSummary && !liveSession) return null
+    const timelineSource = Array.isArray(selectedSummary?.timelineTail) && selectedSummary.timelineTail.length
       ? selectedSummary.timelineTail
       : (Array.isArray(liveSession?.history) ? liveSession.history.slice(-6) : [])
 
     return {
-      detailHref: buildSessionHref(selectedSummary.sessionId || ''),
-      sessionId: sanitizeDisplayText(selectedSummary.sessionId || ''),
-      project: sanitizeDisplayText(selectedSummary.project || liveSession?.project || 'Unknown project'),
-      status: getStatusMeta(selectedSummary.status || liveSession?.status || ''),
-      phase: sanitizeDisplayText(selectedSummary.phase || liveSession?.phase || ''),
-      toolName: sanitizeDisplayText(selectedSummary.toolName || liveSession?.toolName || ''),
-      approvalState: sanitizeDisplayText(selectedSummary.approvalState || liveSession?.approvalState || ''),
-      firstSeenAt: formatTimestamp(selectedSummary.firstSeenAt || ''),
-      lastSeenAt: formatTimestamp(selectedSummary.lastSeenAt || liveSession?.timestamp || ''),
-      eventCount: Number(selectedSummary.eventCount) || (Array.isArray(liveSession?.history) ? liveSession.history.length : 0),
-      summaryTitle: sanitizeDisplayText(selectedSummary.summary?.title || liveSession?.summary?.title || selectedSummary.project || ''),
-      currentStep: sanitizeDisplayText(selectedSummary.summary?.currentStep || liveSession?.summary?.currentStep || selectedSummary.phase || ''),
-      progressHint: sanitizeDisplayText(selectedSummary.summary?.recentProgressHint || liveSession?.summary?.recentProgressHint || liveSession?.message || ''),
-      usageText: describeUsage(selectedSummary.usageLatest || liveSession?.usage || {}),
-      usagePeakText: describeUsage(selectedSummary.usagePeak || {}),
-      gitText: describeGit(selectedSummary.gitLatest || liveSession?.git || {}),
+      detailHref: buildSessionHref(sessionId),
+      sessionId: sanitizeDisplayText(sessionId),
+      project: sanitizeDisplayText(selectedSummary?.project || liveSession?.project || 'Unknown project'),
+      status: getStatusMeta(selectedSummary?.status || liveSession?.status || ''),
+      phase: sanitizeDisplayText(selectedSummary?.phase || liveSession?.phase || ''),
+      toolName: sanitizeDisplayText(selectedSummary?.toolName || liveSession?.toolName || ''),
+      approvalState: sanitizeDisplayText(selectedSummary?.approvalState || liveSession?.approvalState || ''),
+      firstSeenAt: formatTimestamp(selectedSummary?.firstSeenAt || liveSession?.history?.[0]?.timestamp || liveSession?.timestamp || ''),
+      lastSeenAt: formatTimestamp(selectedSummary?.lastSeenAt || liveSession?.timestamp || ''),
+      eventCount: Number(selectedSummary?.eventCount) || (Array.isArray(liveSession?.history) ? liveSession.history.length : 0),
+      summaryTitle: sanitizeDisplayText(selectedSummary?.summary?.title || liveSession?.summary?.title || selectedSummary?.project || liveSession?.project || ''),
+      currentStep: sanitizeDisplayText(selectedSummary?.summary?.currentStep || liveSession?.summary?.currentStep || selectedSummary?.phase || liveSession?.phase || ''),
+      progressHint: sanitizeDisplayText(selectedSummary?.summary?.recentProgressHint || liveSession?.summary?.recentProgressHint || liveSession?.message || ''),
+      usageText: describeUsage(selectedSummary?.usageLatest || liveSession?.usage || {}),
+      usagePeakText: describeUsage(selectedSummary?.usagePeak || {}),
+      gitText: describeGit(selectedSummary?.gitLatest || liveSession?.git || {}),
       timeline: timelineSource.slice(-6).reverse().map((entry) => ({
         type: entry.type || 'session.updated',
         status: getStatusMeta(entry.status),
@@ -601,7 +602,7 @@ const createDashboardRuntime = ({
       detailNotice,
       attentionSession,
       requestedSessionId,
-      selectedSession: buildSelectedSession({ selectedSummary, liveSessions }),
+      selectedSession: buildSelectedSession({ selectedSessionId, selectedSummary, liveSessions }),
       serviceOk: health.ok === true,
       statsMode,
       usageStats: formatUsageStatsRows(usageStatsRecords),

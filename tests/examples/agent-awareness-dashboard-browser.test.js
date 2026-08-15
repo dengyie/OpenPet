@@ -34,6 +34,7 @@ test('agent awareness dashboard browser view renders sanitized diagnostics and s
   writeCodexHookPlan({ dataDir, port: 0 })
   const service = createAgentAwarenessServer({
     dataDir,
+    now: () => '2026-07-09T12:00:00.000Z',
     bridgeClient: {
       event: async () => {},
       say: async () => {}
