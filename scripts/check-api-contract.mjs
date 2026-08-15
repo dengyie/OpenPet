@@ -164,7 +164,12 @@ for (const topic of new Set(Object.values(docEventTopic))) {
 
 compare("Job kind", backticked(section(doc, "### 6.3 ")), constArray(jobsSrc, "jobs.ts", "JOB_KINDS"))
 
-const statusLine = doc.split("\n").find((l) => l.includes("queued") && l.includes("interrupted"))
+const statusLine = section(doc, "### 6.2 ")
+  .split("\n")
+  .find((l) => {
+    const tokens = backticked(l)
+    return tokens.includes("queued") && tokens.includes("interrupted")
+  })
 if (!statusLine) fail("doc", "§6.2 里找不到 status 枚举那一行")
 const docStatuses = statusLine ? backticked(statusLine).filter((s) => s !== "status") : []
 compare("Job 状态", docStatuses, constArray(jobsSrc, "jobs.ts", "JOB_STATUSES"))
