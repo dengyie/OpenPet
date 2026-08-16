@@ -184,7 +184,7 @@ const db = await openDatabase({ file, pragmas, logger })
 
 | 编号 | 状态 | 现象 | 影响 / 去向 |
 | --- | --- | --- | --- |
-| 缺口 G1 | ⏳ | `@openpet/contracts` 的 `main` 指向未生成的 `dist/` | `build:contracts` 是孤儿脚本:`.github/workflows/ci.yml` 没有步骤调用它,`packages/contracts/` 下也没有 `dist/`。「能构建」不等于「被构建」;由 T34 / [#45](https://github.com/dengyie/OpenPet/issues/45) 修复 |
+| 缺口 G1 | ⏳ | `@openpet/contracts` 的 `main` 指向未生成的 `dist/` | `build:contracts` 是孤儿脚本:`.github/workflows/ci.yml` 没有步骤调用它,`packages/contracts/` 下也没有 `dist/`。「能构建」不等于「被构建」;由 T34(卡面 [#41 §5](https://github.com/dengyie/OpenPet/issues/41),进度 [#41 §4](https://github.com/dengyie/OpenPet/issues/41)) 修复 |
 | 缺口 G2 | ⏳ | 后端 `BACKEND_TO_SHELL_TYPES` 8 项,契约 9 项,少 `dialog.request` | 选目录/文件对话框走不通;由 **T12** 修,要同时加白名单、`shell-client` 的 request 分支、60s 超时返 504。**T18/T19 强依赖它** |
 | 缺口 G3 | ⏳ | 13 个通用码的状态映射在 `middleware.js` 和契约 `envelope.ts` **各有一份** | 需要 gate 检查这层重复;不要再复制第三处 |
 | 缺口 G4 | ✅ | R20:ESM 入口在 `app.asar` 内可能解析失败 | E6 命中 `spawn ENOTDIR`;已用 `asarUnpack` + unpacked resolver 缓解并收到打包 sidecar ready |
@@ -194,7 +194,7 @@ const db = await openDatabase({ file, pragmas, logger })
 | 缺口 G8 | ✅ | 06 篇 §9 风险表缺 R20 | 已关闭:R20 已补入风险登记册,并同步收紧 §2 spike 第 5 条的判定标准 |
 | 缺口 G9 | ⏳ | 门禁两项仍是 `todo`(路由表、通道盘点) | M1 起硬化;路由表用 `router.routes()` 对 03 篇 §4,通道盘点对 154。**它打印 `todo` 不算门禁红** |
 | 缺口 G10 | ✅ | `tests/backend/state-machine.test.js` 有一处 `it()` 标题笔误 | E9 已改为「6 个状态,17 个 kind」 |
-| 缺口 G11 | ⏳ | E3 的 `:memory:` SQLite 探针返回 `journal_mode='memory'` | 由 T35 / [#46](https://github.com/dengyie/OpenPet/issues/46) 用 file-backed WAL 复验并新增 `tests/backend/sqlite-driver.test.js` |
+| 缺口 G11 | ⏳ | E3 的 `:memory:` SQLite 探针返回 `journal_mode='memory'` | 由 T35(卡面 [#41 §5](https://github.com/dengyie/OpenPet/issues/41),进度 [#41 §4](https://github.com/dengyie/OpenPet/issues/41)) 用 file-backed WAL 复验并新增 `tests/backend/sqlite-driver.test.js` |
 
 ---
 
@@ -206,11 +206,11 @@ const db = await openDatabase({ file, pragmas, logger })
 
 | spike | 结果 | 后续归属 |
 | --- | --- | --- |
-| 6 `node:sqlite` | [07 篇 §7 第 6 行](./07-spike.md):模块、部分唯一索引与事务通过;`:memory:` 未证明 WAL | 缺口 G11 / T35 / [#46](https://github.com/dengyie/OpenPet/issues/46) |
+| 6 `node:sqlite` | [07 篇 §7 第 6 行](./07-spike.md):模块、部分唯一索引与事务通过;`:memory:` 未证明 WAL | 缺口 G11 / T35(卡面 [#41 §5](https://github.com/dengyie/OpenPet/issues/41),进度 [#41 §4](https://github.com/dengyie/OpenPet/issues/41)) |
 | 1 fork sidecar | [07 篇 §7 第 1 行](./07-spike.md):ready +145 ms,双向消息与 clean exit 通过 | D1 保持 fork |
 | 2 端口与 ready | [07 篇 §7 第 2 行](./07-spike.md):单跑首行 +569 ms;共享 T0 首行 +779 ms;完整链路 ready +86 ms | 窗口创建前并行启动 |
 | 5 打包 | [07 篇 §7 第 5 行](./07-spike.md):初始 `spawn ENOTDIR`;`asarUnpack` + unpacked resolver 后 ready、clean exit 0 | R20 已缓解;后端 JS 明文可读 |
-| 3 前端闸门 | [07 篇 §7 第 3 行](./07-spike.md):3/4,第 2 条按预期红 | T20 / [#26](https://github.com/dengyie/OpenPet/issues/26) |
+| 3 前端闸门 | [07 篇 §7 第 3 行](./07-spike.md):3/4,第 2 条按预期红 | T20(#41 §4) |
 | 4 safeStorage | [07 篇 §7 第 4 行](./07-spike.md):sidecar 无 safeStorage;Shell encryption available | ADR-010 保留 |
 
 🚨 **除 spike 1 外,命令前面那个 `ELECTRON_RUN_AS_NODE=1` 不能省。** spike 1 不带是故意的 —— `shell.js` 本身就是 Electron 主进程,由它给子进程设这个变量。
@@ -228,4 +228,4 @@ const db = await openDatabase({ file, pragmas, logger })
 | v1.0 | 2026-08-15 | 首版:已落地文件的对外接口、待建清单、10 条缺口、spike 状态 |
 | v1.1 | 2026-08-15 | 缺口表新增「状态」列,**关闭 G7 与 G8**(04 篇 §2.6 注记已清、06 篇 §9 已补 R20);G4 的去向改为已登记的 R20;G2 补注由 T12 修且 T18/T19 强依赖;§3 待建清单接上 12/13 篇的卡号(T14、T29、T31),并注明 `conversations` 仓储要到 M4 才建 |
 | v1.2 | 2026-08-15 | **修掉 §5 命令表里 spike 3、spike 4 缺 `ELECTRON_RUN_AS_NODE=1` 的两行**(这是 [14 篇](./14-handoff.md) §5 登记的第 1 条文档债,危险度高:spike 4 用错解释器会得出相反结论);§5 补执行卡与唯一权威结果表的指针;§4 给 G1/G4/G5/G6/G10 标注对应的 E 卡,G9 补注「打印 `todo` 不算红」 |
-| v1.3 | 2026-08-16 | 以 `main` 为基线回填 E1–E10;缺口 G1 重新指向 T34/#45,缺口 G11 指向 T35/#46;完成结果替代待执行表,并区分目标 G1–G8 与缺口 G1–G11 |
+| v1.3 | 2026-08-16 | 以 `main` 为基线回填 E1–E10;缺口 G1/G11 改由 T34/T35 对接 #41 §5 卡面与 #41 §4 进度;完成结果替代待执行表,并区分目标 G1–G8 与缺口 G1–G11 |

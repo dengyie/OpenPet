@@ -190,7 +190,7 @@ npm run pack
 # 然后启动打出来的应用,看 sidecar 有没有回报 ready
 ```
 
-✅ **E6 已采用 `asarUnpack` + unpacked resolver**，不再把 `build.files` 当作 R20 兜底；直接从 `npm run pack` 开始验证打包后的 sidecar `ready`。
+✅ **E6 已采用 `asarUnpack` + unpacked resolver**,不再把 `build.files` 当作 R20 兜底;直接从 `npm run pack` 开始验证打包后的 sidecar `ready`。
 
 **期望输出** 四个路径的实际值(`isPackaged` / `getAppPath()` / `resourcesPath` / `__dirname`),外加 sidecar 的 ready。
 
@@ -366,9 +366,9 @@ E1–E10 已完成。下面逐行保留原债务位置,写清已完成结果与�
 | 2 | 07 篇 §5 步骤 1 与 `spike/README.md`「第 5 条」步骤 1 | **已完成**:`build.files` 已含 `apps/**/*`、`services/**/*`、`packages/**/*`;E6 正式方案为 `asarUnpack` + unpacked resolver | 已关闭 |
 | 3 | `spike/README.md` 的结果记录表 | **已完成**:重复表已改为指向 07 篇 §7 的单一结果源 | 已关闭 |
 | 4 | `spike/README.md`「与 07 篇的两处偏差(需要同步回文档)」 | **已完成**:偏差已同步进 07 篇 §0 与 §3,旧说明已移除 | 已关闭 |
-| 5 | 缺口 G1:`build:contracts` 未进入构建/CI | **仍未关闭**:由 T34 补显式打包与构建门禁 | [#45](https://github.com/dengyie/OpenPet/issues/45) |
-| 6 | 缺口 G11:file-backed WAL 未验证 | **仍未关闭**:由 T35 复验并补 `tests/backend/sqlite-driver.test.js` | [#46](https://github.com/dengyie/OpenPet/issues/46) |
-| 7 | `check:api-contract`、`check:docs-drift`、`build:contracts` 未显式进入 CI | **仍未关闭**:由 T36 增加显式 CI 门禁 | [#47](https://github.com/dengyie/OpenPet/issues/47) |
+| 5 | 缺口 G1:`build:contracts` 未进入构建/CI | **仍未关闭**:由 T34 补显式打包与构建门禁 | #41 §5 卡面,#41 §4 进度 |
+| 6 | 缺口 G11:file-backed WAL 未验证 | **仍未关闭**:由 T35 复验并补 `tests/backend/sqlite-driver.test.js` | #41 §5 卡面,#41 §4 进度 |
+| 7 | `check:api-contract`、`check:docs-drift`、`build:contracts` 未显式进入 CI | **仍未关闭**:由 T36 增加显式 CI 门禁 | #41 §5 卡面,#41 §4 进度 |
 
 > 这是 G3 那条教训的复现:**同一个事实在仓库里出现第二次,就开始漂。** 命令表、结果表都应该只有一份。
 

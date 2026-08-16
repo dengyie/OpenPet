@@ -28,7 +28,7 @@
 
 - 数据库句柄挂到 `runtime.db`,不要另造全局(09 篇 §2.8)。
 - settings 路径组装与 store 注入归 T09;T10 只消费注入后的 `store`,不得自行拼路径或重新实现 T03。
-- **降级模式**:第 3 步抛 `MIGRATION_REQUIRED` 时**不要退出进程**。置 `runtime.degraded = true`,继继绑端口,但除 `/health` 与 `/service/*` 以外的路由一律返 `503 MIGRATION_REQUIRED`,并向 Shell 发 `degraded` 消息。理由:用户降版后应用必须能启动到能看见提示的程度,直接退出只会得到一个打不开的应用。
+- **降级模式**:第 3 步抛 `MIGRATION_REQUIRED` 时**不要退出进程**。置 `runtime.degraded = true`,继续绑端口,但除 `/health` 与 `/service/*` 以外的路由一律返 `503 MIGRATION_REQUIRED`,并向 Shell 发 `degraded` 消息。理由:用户降版后应用必须能启动到能看见提示的程度,直接退出只会得到一个打不开的应用。
 - 开库失败(包括 `NODE_SQLITE_UNAVAILABLE`)同样进降级模式,不要静默继续。
 - 路由按 03 篇 §4.1 注册全 **10 条**。已知两个坑:`/health` **需鉴权**(未带 token 返 401,不是 204);§4.1 只映射了 7 个 `SERVICE_*` 通道中的 6 个,`PUT /service/config` 是缺口 —— 先按文档实现 6 个,第 7 个写进 PR 备注并追加到 09 篇 §4。
 - 每小时定时器调 T04 的 `cleanup()`;定时器要 `unref()`,否则 sidecar 退不了。

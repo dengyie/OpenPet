@@ -35,7 +35,7 @@ npm run check:api-contract  # 契约与文档对账
 
 一卡一分支一 PR,分支名形如 `refactor/t07-jobs-runner`,在独立 worktree 中从最新 `main` 切出,PR base 也必须是 `main`。
 
-依赖关系看卡顶部的**依赖与阻塞**字段。原 T01–T33 中当前可直接认领的是 T01、T05、T12;T03 已完成,T04 依赖 T01。
+依赖关系看卡顶部的**依赖与阻塞**字段。原 T01–T33 中当前可直接认领的是 T01、T05、T12、T20;T03 已完成,T04 依赖 T01。
 
 ## 最重要的一条
 
@@ -79,4 +79,4 @@ npm run check:api-contract  # 契约与文档对账
 - 后端**骨架**已落:入口、路由器、中间件链、桥层、SQLite 驱动、Job 状态机 + 单测、初始迁移、契约包 + 门禁。
 - 任务卡已开到 M3:**T01–T33,共 33 张**。M4(AI 37 通道 + Creator 13 通道)与 M5(清理)的卡还没写。
 - **M0 已完成**,E1–E10 真机结果见 [07 篇 §7](./07-spike.md);E7 为预期的 3/4,未结算队列归 T20。
-- M1–M3 原 33 张任务卡仍是 **1/33**(仅 T03 / #9 完成)。领卡与交互看 [#41](https://github.com/dengyie/OpenPet/issues/41),验收与文档欠账看 [#48](https://github.com/dengyie/OpenPet/issues/48)。
+- M1–M3 原 33 张任务卡仍是 **1/33**(仅 T03 / #9 完成)。领卡、验收与文档欠账统一看 [#41](https://github.com/dengyie/OpenPet/issues/41)。

@@ -290,4 +290,4 @@ sidecar 不可用时,**宠物必须继续正常走动**。
 | 安装包体积 | 不变(复用内置 Node) | — |
 | 升级迁移 | 首次启动需跑 JSON → SQLite 迁移 | 带备份与回滚,详见 [04 篇](./04-subsystems.md) |
 
-> 📌 **`node:sqlite` 的模块前提已由 E3 证实。** Electron 42.4.0 / Node 24.16.0 下无需 flag,模块、部分唯一索引与显式事务均通过;但 `:memory:` 探针返回 `journal_mode='memory'`,WAL 仍未验证,遗留缺口 G11 归 [#46](https://github.com/dengyie/OpenPet/issues/46)。实测见 [07 篇](./07-spike.md) §7 第 6 行。
+> 📌 **`node:sqlite` 的模块前提已由 E3 证实。** Electron 42.4.0 / Node 24.16.0 下无需 flag,模块、部分唯一索引与显式事务均通过;但 `:memory:` 探针返回 `journal_mode='memory'`,WAL 仍未验证,遗留缺口 G11 归 T35(卡面 [#41 §5](https://github.com/dengyie/OpenPet/issues/41),进度 [#41 §4](https://github.com/dengyie/OpenPet/issues/41))。实测见 [07 篇](./07-spike.md) §7 第 6 行。

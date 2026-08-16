@@ -1,6 +1,6 @@
 # OpenPet 前后端分离 · 开发文档 v1.6
 
-> 📌 **状态** M0 已完成:E1–E10 真机结果已回填 · **版本** v1.6 · **代码基线** `main@bbfdb096` · **更新日期** 2026-08-16
+> 📌 **状态** M0 已完成:E1–E10 真机结果已回填 · **版本** v1.6 · **代码基线** `main` · **更新日期** 2026-08-16
 
 > **本目录是这份文档的权威副本。** 文档最初写在 Notion,现已随代码进入
 > `main`。代码在 Git、文档在别处会必然漂移,而这份文档里有
@@ -165,7 +165,7 @@
 
 ## 九、当前进度
 
-截至 2026-08-16,`main@bbfdb096` 的真实状态如下:
+截至 2026-08-16,`main` 的真实状态如下:
 
 | 产出 | 位置 | 状态 |
 | --- | --- | --- |
@@ -175,18 +175,20 @@
 | 契约门禁 | [`scripts/check-api-contract.mjs`](../../scripts/check-api-contract.mjs) | ✅ 可运行:`npm run check:api-contract` |
 | 打包 sidecar | [02 篇 §8](./02-architecture.md) | ✅ E6 命中 R20 后采用 `asarUnpack` + `app.asar.unpacked` resolver |
 | 后端骨架 | [`services/backend/`](../../services/backend/) | ✅ 入口、router、中间件链、桥层、SQLite driver、Job 状态机、`001_init.sql` |
-| 新增验收卡 | [#45](https://github.com/dengyie/OpenPet/issues/45) / [#46](https://github.com/dengyie/OpenPet/issues/46) / [#47](https://github.com/dengyie/OpenPet/issues/47) | ⏳ T34 contracts 打包、T35 file-backed WAL、T36 显式 CI 门禁;均不计入原 1/33 |
+| 新增验收卡 | #41 §5 卡面 / #41 §4 进度 | ⏳ T34 contracts 打包、T35 file-backed WAL、T36 显式 CI 门禁;均不计入原 1/33 |
 
 **下一步的顺序:**
 
 1. **领卡与 agent 交互看 [#41](https://github.com/dengyie/OpenPet/issues/41)**,以动态标签筛选和卡内依赖为准。
-2. **验收结论与文档欠账看 [#48](https://github.com/dengyie/OpenPet/issues/48)**;缺口 G1 已退回 ⏳ 并归 T34/#45,缺口 G11 归 T35/#46。
-3. **原 T01–T33 当前可直接认领 T01、T05、T12**;T03 已完成,其余按 10/11 篇主链推进。
+2. **验收结论与文档欠账看 [#41](https://github.com/dengyie/OpenPet/issues/41)**;缺口 G1/G11 分别归 T34/T35 的 #41 §5 卡面与 #41 §4 进度。
+3. **原 T01–T33 当前可直接认领 T01、T05、T12、T20**;T03 已完成,其余按 10/11 篇主链推进。
 4. **M2 与 M3 的卡已写好,不代表阶段已完成。** T20 无后端依赖可并行,其余以各卡「依赖与阻塞」为准。
 
 > ⚠️ **一处有意的顺序偏离,记录在此以免日后误判。** 原计划是「spike 5(`npm run pack` 手验安装包)绿了之后才动根 `package.json` 的 `workspaces` 与 `build.files`」。实际执行中这一步提前做了,因为后端骨架与 `test:backend` 都依赖 workspaces 才能装依赖与跑测试。**代价是**:若 spike 5 报错,打包问题会与 workspaces 改动混在一起,定位变难(这正是 R10 的形状)。**缓解**:这两处改动集中在单个提交 `304a5a34` 内,可整体 revert 后再单独验证打包。
 
-> ⚠️ **缺口 G1 已重新打开。** E2 只证明 `build:contracts` 能运行,但 `dist/` 未入库,打包与 CI 都没有显式调用该脚本;修复归 [#45](https://github.com/dengyie/OpenPet/issues/45)。SQLite file-backed WAL 的未决证据归缺口 G11 / [#46](https://github.com/dengyie/OpenPet/issues/46)。
+> ⚠️ **缺口 G1 已重新打开。** E2 只证明 `build:contracts` 能运行,但 `dist/` 未入库,打包与 CI 都没有显式调用该脚本;修复归 T34 的 #41 §5 卡面与 #41 §4 进度。SQLite file-backed WAL 的未决证据归缺口 G11 / T35,同样以 #41 §5 卡面与 #41 §4 进度为准。
+
+> 原任务卡文档统计为 **1/33**(T01–T33);#41 §4 总控任务板含 T34–T36,按 **1/36** 统计。
 
 > ⚠️ **`SETTINGS_*` 的归属与 06 篇 §4 的字面说法不一致。** 06 篇把设置域列为 M2 第 4 项,但它实际已由 M1 的 T03(设置存储 + 乐观锁)与 T10(5 条路由)完成,M2 只剩前端切换。**不要按 06 篇 §4 再实现一遍后端设置域** —— 这一条在 [12 篇 §2.0](./12-tasks-m2.md) 有对照表。
 
@@ -200,4 +202,4 @@
 | v1.3 | 2026-08-15 | 03 篇 §5 补登 `system.jobs-recovered` 与 `system.events-dropped`（此前只写在 04 篇 §2.6）,并补全 8 个 topic 的可选值清单、明确 `system` 不受订阅过滤;新增 `packages/contracts` 首版与可运行的 `scripts/check-api-contract.mjs`;新增§九当前进度（含下一步顺序约束）;Notion 原稿已降为归档副本 | mango |
 | v1.4 | 2026-08-15 | 新增 agent 执行文档层:00 入口、08 执行手册、09 仓库现状快照、10/11 篇 M1 全部 13 张任务卡;§八 索引改为「设计文档 / 执行文档」两组;§一 读者表新增实现 agent 行;§九 刷新为后端骨架与根 `package.json` 已落地,并记录 workspaces 提前改动这一有意的顺序偏离与其缓解手段;清除 §九 中「`packages/contracts` 尚未接入 workspaces」的陈旧说明 | mango |
 | v1.5 | 2026-08-15 | 新增 12 篇(T14 M1 补卡 + T15–T23 M2)与 13 篇(T24–T33 M3),任务卡总数 13 → 33;04 篇 §2.6 的过期注记已关闭(G7);06 篇 §9 补登 **R20 ESM-in-asar** 并收紧 spike 5 的判定标准(G8);§九 修正 v1.4 的一处笔误 ——「M2(AI 40 通道)」应为轻域 40 通道,AI 37 通道在 M4;新增 `SETTINGS_*` 归属说明,避免按 06 篇 §4 重复实现;整条分支已摊在 draft PR #6 | mango |
-| v1.6 | 2026-08-16 | 基线切到 `main@bbfdb096`;M0 E1–E10 完成,E7 3/4 为预期红;原任务卡 1/33;采用 `asarUnpack`;缺口 G1/G11 分别指向 #45/#46;新增 #41 领卡与 #48 验收入口 | mango |
+| v1.6 | 2026-08-16 | 基线切到 `main`;M0 E1–E10 完成,E7 3/4 为预期红;原任务卡 1/33;采用 `asarUnpack`;缺口 G1/G11 统一指向 #41 §5 卡面与 #41 §4 进度;新增 #41 领卡与验收入口 | mango |

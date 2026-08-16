@@ -26,7 +26,7 @@
 - 每个文件在**一个事务**里完成 `exec(sql)` + 写台账。事务回调不能是 async(08 篇 §2)。
 - 文件按版本号升序执行。
 
-**验收** `tests/backend/migrate.test.js`(`:memory:`):跑两次,第二次 `applied` 为空(幂等);001 应用后 9 张表均存在;篖改台账里的 checksum → `INTERNAL`;手插 `version = 99` → `MIGRATION_REQUIRED` 且 `status === 503`。
+**验收** `tests/backend/migrate.test.js`(`:memory:`):跑两次,第二次 `applied` 为空(幂等);001 应用后 9 张表均存在;篡改台账里的 checksum → `INTERNAL`;手插 `version = 99` → `MIGRATION_REQUIRED` 且 `status === 503`。
 
 **不要**:不用 `PRAGMA user_version`(台账表才是真相);不改 `001_init.sql`;不在这里做 JSON 迁入(那是后续卡)。
 
