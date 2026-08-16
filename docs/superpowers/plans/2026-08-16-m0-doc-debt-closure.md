@@ -60,7 +60,7 @@
 - [x] **Step 2: Run syntax and native test gates.** Run `npm run check:node` and `npm test`; record any environment-only failures separately from regressions.
 - [x] **Step 3: Inspect the diff.** Run `git diff --check`, verify no stale pre-`main` branch links remain in active docs, and confirm no runtime or `cat_anime/` files changed.
 - [x] **Step 4: Commit the documentation batch.** Use a focused commit message such as `docs: close M0 refactor documentation debt`.
-- [ ] **Step 5: Push and open a PR against `main`.** Include issue #48 checklist references and a complete HANDBACK block; do not mark any item complete until CI is green.
+- [x] **Step 5: Push and open a PR against `main`.** Include issue #48 checklist references and a complete HANDBACK block; do not mark any item complete until CI is green.
 
 ### Task 4: Maintain GitHub tracking after merge
 
@@ -68,7 +68,7 @@
 - Update: issue #48 checklist and audit comment
 - Update: issue #41 handoff link/comment only when the repository PR is merged
 
-- [ ] **Step 1: Post the PR URL and exact scope to #48.** Distinguish repository-document changes from vault-only work.
+- [x] **Step 1: Post the PR URL and exact scope to #48.** Distinguish repository-document changes from vault-only work.
 - [ ] **Step 2: After CI and review, merge only into `main`.** Verify the merge SHA and remote CI result.
 - [ ] **Step 3: Mark only the corresponding #48 checklist items complete.** Keep unresolved G1/G11/vault items unchecked.
 - [ ] **Step 4: Add a concise #41 back-link.** Point agents to the updated `main` docs and #48 for acceptance debt; do not reintroduce hand-written progress counts.
