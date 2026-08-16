@@ -1,6 +1,6 @@
 # 09 · 仓库现状快照
 
-> v1.2 · 2026-08-15 · 基线分支 `refactor/frontend-backend-split`
+> v1.3 · 2026-08-16 · 基线分支 `main` · M0 E1–E10 已回填
 
 **读者**:领到任务卡准备写代码的 agent。前置阅读 [08 篇 执行手册](./08-agent-guide.md)。
 
@@ -89,7 +89,7 @@ const router = createRouter({ basePath: "/api/v1" })
 
 `parseEnvelope` 的 6 种失败原因:`not-object` / `version-mismatch` / `bad-id` / `bad-at` / `bad-body` / `unknown-type`。**`version-mismatch` 必须走「退出 78 由 Shell 重拉」,不能当普通错误吞掉**(ADR-011)。
 
-⚠️ `BACKEND_TO_SHELL_TYPES` 只有 8 项,而契约 `backendToShellSchema` 有 9 项 —— 少 `dialog.request`。见 §4 G2。
+⚠️ `BACKEND_TO_SHELL_TYPES` 只有 8 项,而契约 `backendToShellSchema` 有 9 项 —— 少 `dialog.request`。见 §4 缺口 G2。
 
 ### 2.4 `services/backend/bridge/shell-client.js`
 
@@ -110,7 +110,7 @@ const db = await openDatabase({ file, pragmas, logger })
 
 `DEFAULT_PRAGMAS`:`journal_mode = WAL`、`synchronous = NORMAL`、`foreign_keys = ON`、`busy_timeout = 5000`。
 
-要点:内部用 `await import("node:sqlite")`,拿不到就抛 `NODE_SQLITE_UNAVAILABLE`(spike 6 未跑,这是唯一的逃生口,见 08 篇 H4);模块级 `openFiles` 集合强制同一文件只开一次(ADR-007);**`transaction(fn)` 拒绝 async 回调**。
+要点:内部用 `await import("node:sqlite")`,拿不到就抛 `NODE_SQLITE_UNAVAILABLE`;E3 已确认 Electron 42.4.0 / Node 24.16.0 无需 flag,但 `:memory:` 探针返回 `journal_mode='memory'`,未验证 file-backed WAL(见 [07 篇](./07-spike.md) §7 第 6 行与缺口 G11)。模块级 `openFiles` 集合强制同一文件只开一次(ADR-007);**`transaction(fn)` 拒绝 async 回调**。
 
 ### 2.6 `services/backend/store/migrations/001_init.sql` —— 已冻结
 
@@ -178,44 +178,46 @@ const db = await openDatabase({ file, pragmas, logger })
 
 ## 4. 缺口清单
 
+本节的 G1–G11 是**缺口编号**,与 [README §三](./README.md) 的目标 G1–G8 是两套互不相干的编号;本篇正文统一写作「缺口 G1」至「缺口 G11」。
+
 每条都是**已知**的,不要重复发现。已关闭的条目保留在表里并标 ✅,这样你既不会重复修,也不会以为它从来没存在过。
 
 | 编号 | 状态 | 现象 | 影响 / 去向 |
 | --- | --- | --- | --- |
-| G1 | ✅ | `@openpet/contracts` 的 `main` 指向未生成的 `dist/` | E2 已生成 `dist/index.js` 与 `dist/index.d.ts` |
-| G2 | ⏳ | 后端 `BACKEND_TO_SHELL_TYPES` 8 项,契约 9 项,少 `dialog.request` | 选目录/文件对话框走不通;由 **T12** 修,要同时加白名单、`shell-client` 的 request 分支、60s 超时返 504。**T18/T19 强依赖它** |
-| G3 | ⏳ | 13 个通用码的状态映射在 `middleware.js` 和契约 `envelope.ts` **各有一份** | 需要 gate 检查这层重复;不要再复制第三处 |
-| G4 | ✅ | R20:ESM 入口在 `app.asar` 内可能解析失败 | E6 命中 `spawn ENOTDIR`;已用 `asarUnpack` + unpacked resolver 缓解并收到打包 sidecar ready |
-| G5 | ✅ | `package-lock.json` 未与 workspaces 同步 | E1 `npm install` 已确认 workspaces 和 lockfile 解析正常;本次 lockfile 无额外变化 |
-| G6 | ✅ | 六条 spike 全部未跑 | E3–E8 已全部实测;唯一权威结果见 [07 篇](./07-spike.md) §7 |
-| G7 | ✅ | 04 篇 §2.6 的 ⚠️ 待补登记 注记已过期 | 已关闭:注记改为「已补登(v1.3)」,并说明 `system` topic 现列四个事件、已纳入 `check:api-contract` 的 `EVENT_NAMES` 对账范围 |
-| G8 | ✅ | 06 篇 §9 风险表缺 R20 | 已关闭:R20 已补入风险登记册,并同步收紧 §2 spike 第 5 条的判定标准 |
-| G9 | ⏳ | 门禁两项仍是 `todo`(路由表、通道盘点) | M1 起硬化;路由表用 `router.routes()` 对 03 篇 §4,通道盘点对 154。**它打印 `todo` 不算门禁红** |
-| G10 | ✅ | `tests/backend/state-machine.test.js` 有一处 `it()` 标题笔误 | E9 已改为「6 个状态,17 个 kind」 |
-| G11 | ⏳ | E3 的 `:memory:` SQLite 探针返回 `journal_mode='memory'` | `node:sqlite` 模块/部分索引/事务已实测,但 WAL 只能由 file-backed DB 验证;M1 存储层落地前补一条 file-backed probe |
+| 缺口 G1 | ⏳ | `@openpet/contracts` 的 `main` 指向未生成的 `dist/` | `build:contracts` 是孤儿脚本:`.github/workflows/ci.yml` 没有步骤调用它,`packages/contracts/` 下也没有 `dist/`。「能构建」不等于「被构建」;由 T34 / [#45](https://github.com/dengyie/OpenPet/issues/45) 修复 |
+| 缺口 G2 | ⏳ | 后端 `BACKEND_TO_SHELL_TYPES` 8 项,契约 9 项,少 `dialog.request` | 选目录/文件对话框走不通;由 **T12** 修,要同时加白名单、`shell-client` 的 request 分支、60s 超时返 504。**T18/T19 强依赖它** |
+| 缺口 G3 | ⏳ | 13 个通用码的状态映射在 `middleware.js` 和契约 `envelope.ts` **各有一份** | 需要 gate 检查这层重复;不要再复制第三处 |
+| 缺口 G4 | ✅ | R20:ESM 入口在 `app.asar` 内可能解析失败 | E6 命中 `spawn ENOTDIR`;已用 `asarUnpack` + unpacked resolver 缓解并收到打包 sidecar ready |
+| 缺口 G5 | ✅ | `package-lock.json` 未与 workspaces 同步 | E1 `npm install` 已确认 workspaces 和 lockfile 解析正常;本次 lockfile 无额外变化 |
+| 缺口 G6 | ✅ | M0 六条 spike 结果未回填 | E3–E8 已全部实测并回填;唯一权威结果见 [07 篇](./07-spike.md) §7 |
+| 缺口 G7 | ✅ | 04 篇 §2.6 的 ⚠️ 待补登记 注记已过期 | 已关闭:注记改为「已补登(v1.3)」,并说明 `system` topic 现列四个事件、已纳入 `check:api-contract` 的 `EVENT_NAMES` 对账范围 |
+| 缺口 G8 | ✅ | 06 篇 §9 风险表缺 R20 | 已关闭:R20 已补入风险登记册,并同步收紧 §2 spike 第 5 条的判定标准 |
+| 缺口 G9 | ⏳ | 门禁两项仍是 `todo`(路由表、通道盘点) | M1 起硬化;路由表用 `router.routes()` 对 03 篇 §4,通道盘点对 154。**它打印 `todo` 不算门禁红** |
+| 缺口 G10 | ✅ | `tests/backend/state-machine.test.js` 有一处 `it()` 标题笔误 | E9 已改为「6 个状态,17 个 kind」 |
+| 缺口 G11 | ⏳ | E3 的 `:memory:` SQLite 探针返回 `journal_mode='memory'` | 由 T35 / [#46](https://github.com/dengyie/OpenPet/issues/46) 用 file-backed WAL 复验并新增 `tests/backend/sqlite-driver.test.js` |
 
 ---
 
-## 5. 六条 spike 的状态
+## 5. 六条 spike 的已完成结果
 
-**E3–E8 已于 macOS / Electron 42.4.0 / Node 24.16.0 实测。** 结果见 [07 篇](./07-spike.md) §7:fork、端口、打包 sidecar 与 safeStorage 通过;前端闸门为预期的 3/4;SQLite WAL 仍由 G11 追踪。
+**E3–E8 已于 macOS / Electron 42.4.0 / Node 24.16.0 实测。** 结果见 [07 篇](./07-spike.md) §7:fork、端口、打包 sidecar 与 safeStorage 通过;前端闸门为预期的 3/4;SQLite WAL 仍由缺口 G11 追踪。
 
-> 📌 **执行细节已整理成 [14 交接单](./14-handoff.md) 的 E3–E8 卡**:每条给了完整命令、期望输出、判定档位、不绿改什么、结论写回哪里。**实测结果一律填 [07 篇](./07-spike.md) §7 那张表(唯一权威结果表)**;填完回来把下面这段的「全部未跑」改成实际状态,并把 §4 的 G6 标 ✅。
+> 📌 **执行细节仍见 [14 交接单](./14-handoff.md) 的 E3–E8 卡**,但本节是状态索引而非待执行清单。完整实测值只维护在 [07 篇](./07-spike.md) §7。
 
-| spike | 命令 | 未跑意味着 |
+| spike | 结果 | 后续归属 |
 | --- | --- | --- |
-| 6 `node:sqlite` | `ELECTRON_RUN_AS_NODE=1 npx electron spike/06-node-sqlite/probe-sqlite.js` | 存储层的地基未证实;所有 DB 相关卡都建立在 `store/db.js` 这个 seam 上 |
-| 1 fork sidecar | `npx electron spike/01-fork-sidecar/shell.js` | 进程模型未证实 |
-| 2 端口与 ready | `ELECTRON_RUN_AS_NODE=1 npx electron spike/02-port-ready/sidecar-http.js` | 启动握手未证实 |
-| 5 打包 | `npm run pack` + 手验安装包 | R20 就在这里暴露;**判定标准是打包后的 sidecar 真的发出 `ready`,不是路径能解析** |
-| 3 前端闸门 | `ELECTRON_RUN_AS_NODE=1 npx electron spike/03-frontend-gate/run.js` | 已知 case 2 为红,修法在 05 篇 §2.2 + F14 |
-| 4 safeStorage | `ELECTRON_RUN_AS_NODE=1 npx electron spike/04-safe-storage/probe.js` | 密钥方案未证实 |
+| 6 `node:sqlite` | [07 篇 §7 第 6 行](./07-spike.md):模块、部分唯一索引与事务通过;`:memory:` 未证明 WAL | 缺口 G11 / T35 / [#46](https://github.com/dengyie/OpenPet/issues/46) |
+| 1 fork sidecar | [07 篇 §7 第 1 行](./07-spike.md):ready +145 ms,双向消息与 clean exit 通过 | D1 保持 fork |
+| 2 端口与 ready | [07 篇 §7 第 2 行](./07-spike.md):单跑首行 +569 ms;共享 T0 首行 +779 ms;完整链路 ready +86 ms | 窗口创建前并行启动 |
+| 5 打包 | [07 篇 §7 第 5 行](./07-spike.md):初始 `spawn ENOTDIR`;`asarUnpack` + unpacked resolver 后 ready、clean exit 0 | R20 已缓解;后端 JS 明文可读 |
+| 3 前端闸门 | [07 篇 §7 第 3 行](./07-spike.md):3/4,第 2 条按预期红 | T20 / [#26](https://github.com/dengyie/OpenPet/issues/26) |
+| 4 safeStorage | [07 篇 §7 第 4 行](./07-spike.md):sidecar 无 safeStorage;Shell encryption available | ADR-010 保留 |
 
 🚨 **除 spike 1 外,命令前面那个 `ELECTRON_RUN_AS_NODE=1` 不能省。** spike 1 不带是故意的 —— `shell.js` 本身就是 Electron 主进程,由它给子进程设这个变量。
 
 **spike 4 尤其要命**:不带这个变量,你跑的是 Electron 主进程,`require("electron")` 当然拿得到 `safeStorage` —— 你会得到与事实**完全相反**的结论,进而错误地删掉 ADR-010 的 `init` 注入。本表在 v1.1 及以前的版本里,spike 3 与 spike 4 两行漏了这个变量,v1.2 已修。
 
-**未跑期间怎么办**:照 08 篇 H4/H8 —— 把运行时依赖藏在 seam 后面,业务逻辑写成纯函数并配裸 `node` 能跑的测试。`jobs/state-machine.js` 与它的测试就是这个做法的样板:六条 spike 全红也不影响它跑绿。
+**维护边界**:结果已经闭环;只有打包、Electron 或协议边界变化时才重跑受影响的 spike。M1–M3 仍按任务卡依赖推进,不能把 M0 证据解读为功能完成。
 
 ---
 
@@ -226,3 +228,4 @@ const db = await openDatabase({ file, pragmas, logger })
 | v1.0 | 2026-08-15 | 首版:已落地文件的对外接口、待建清单、10 条缺口、spike 状态 |
 | v1.1 | 2026-08-15 | 缺口表新增「状态」列,**关闭 G7 与 G8**(04 篇 §2.6 注记已清、06 篇 §9 已补 R20);G4 的去向改为已登记的 R20;G2 补注由 T12 修且 T18/T19 强依赖;§3 待建清单接上 12/13 篇的卡号(T14、T29、T31),并注明 `conversations` 仓储要到 M4 才建 |
 | v1.2 | 2026-08-15 | **修掉 §5 命令表里 spike 3、spike 4 缺 `ELECTRON_RUN_AS_NODE=1` 的两行**(这是 [14 篇](./14-handoff.md) §5 登记的第 1 条文档债,危险度高:spike 4 用错解释器会得出相反结论);§5 补执行卡与唯一权威结果表的指针;§4 给 G1/G4/G5/G6/G10 标注对应的 E 卡,G9 补注「打印 `todo` 不算红」 |
+| v1.3 | 2026-08-16 | 以 `main` 为基线回填 E1–E10;缺口 G1 重新指向 T34/#45,缺口 G11 指向 T35/#46;完成结果替代待执行表,并区分目标 G1–G8 与缺口 G1–G11 |

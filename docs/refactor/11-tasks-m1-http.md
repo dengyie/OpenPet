@@ -1,6 +1,6 @@
 # 11 · M1 任务卡:HTTP、SSE、Shell 侧
 
-> v1.0 · 2026-08-15 · 基线分支 `refactor/frontend-backend-split`
+> v1.1 · 2026-08-16 · 基线分支 `main`
 
 **前置**:[08 篇 执行手册](./08-agent-guide.md)、[09 篇 仓库现状](./09-repo-state.md)。
 **本篇范围**:T09–T13。存储层与 Job 引擎在 [10 篇](./10-tasks-m1.md)。
@@ -18,14 +18,16 @@
 **启动顺序(在 `index.js` 里插入,不要改现有步骤的先后):**
 
 1. 等 `init`(现有)
-2. `openDatabase({ file: userDataDir/backend/openpet.db })`
-3. `migrate({ db })`
-4. `recoverJobs(...)`
-5. 绑端口 → 发 `ready`(现有)
+2. 组装 `userData/backend/settings.json`,构造 `createSettingsStore({ file, logger })` 并注入运行时;`services/backend/domains/settings.js` 已由 T03 完成,本卡不重写它
+3. `openDatabase({ file: userDataDir/backend/openpet.db })`
+4. `migrate({ db })`
+5. `recoverJobs(...)`
+6. 绑端口 → 发 `ready`(现有)
 
 **必须:**
 
 - 数据库句柄挂到 `runtime.db`,不要另造全局(09 篇 §2.8)。
+- settings 路径组装与 store 注入归 T09;T10 只消费注入后的 `store`,不得自行拼路径或重新实现 T03。
 - **降级模式**:第 3 步抛 `MIGRATION_REQUIRED` 时**不要退出进程**。置 `runtime.degraded = true`,继继绑端口,但除 `/health` 与 `/service/*` 以外的路由一律返 `503 MIGRATION_REQUIRED`,并向 Shell 发 `degraded` 消息。理由:用户降版后应用必须能启动到能看见提示的程度,直接退出只会得到一个打不开的应用。
 - 开库失败(包括 `NODE_SQLITE_UNAVAILABLE`)同样进降级模式,不要静默继续。
 - 路由按 03 篇 §4.1 注册全 **10 条**。已知两个坑:`/health` **需鉴权**(未带 token 返 401,不是 204);§4.1 只映射了 7 个 `SERVICE_*` 通道中的 6 个,`PUT /service/config` 是缺口 —— 先按文档实现 6 个,第 7 个写进 PR 备注并追加到 09 篇 §4。
@@ -123,7 +125,7 @@ npm run check:api-contract
 
 另外两个硬标准(06 篇 §8 门禁矩阵):`router.routes()` 已能与 03 篇 §4.1、§4.2 对账(把门禁里的 `todo` 改成硬检查);降级模式有测试覆盖(`test:degraded` 的雏形)。
 
-六条 spike 仍是独立阻塞项(09 篇 §5),**不要**因为 spike 未跑就暂停 T01–T13 —— 这些卡已经全部隔在 seam 后面,可以在裸 node 下完整验收。
+M0 六条 spike 已全部实测并回填(09 篇 §5)。T01–T13 的运行时依赖仍须隔在 seam 后面,并在裸 node 下完整验收。
 
 ---
 

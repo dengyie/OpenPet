@@ -1,6 +1,6 @@
 # 14 · 交接单:必须在真机上跑的事(E1–E10)
 
-> v1.0 · 2026-08-15 · 基线分支 `refactor/frontend-backend-split`
+> v1.1 · 2026-08-16 · 基线分支 `main` · E1–E10 结果已回填
 
 **读者**:有本机桌面环境、能跑 Electron 与 `npm` 的人或 agent(下称**执行方**)。如果你不写业务代码,只读这一篇 + [07 篇](./07-spike.md) 就够了。
 
@@ -49,7 +49,7 @@
 **前置** 无。这是第一张卡 —— 后面每条命令都要 `node_modules`。
 
 ```bash
-git checkout refactor/frontend-backend-split
+git checkout main
 npm install
 git diff --stat package-lock.json
 npm ls --workspaces --depth=0
@@ -68,7 +68,7 @@ npm ls --workspaces --depth=0
 - 报 workspace 找不到:检查根 `package.json` 的 `workspaces` 是 `["apps/*", "services/*", "packages/*"]`。**`apps/desktop` 没有 `package.json` 是正常的** —— npm 按 `<pattern>/package.json` 匹配,匹不到就跳过,所以实际只解析出 `services/backend` 与 `packages/contracts` 两个。
 - lockfile 冲突不要手改,删掉重装(`rm package-lock.json && npm install`),但**必须在 PR 里说明是重建而不是增量**。
 
-**结论写回** lockfile 单独一个 commit(`chore: sync package-lock with workspaces`);[09 篇](./09-repo-state.md) §4 把 **G5 标 ✅**。
+**结论写回** lockfile 单独一个 commit(`chore: sync package-lock with workspaces`);[09 篇](./09-repo-state.md) §4 把 **缺口 G5 标 ✅**。
 
 > lockfile 大改是**预期**,不是事故。它现在 182,911 字节,是 workspaces 之前的产物。
 
@@ -92,7 +92,7 @@ ls packages/contracts/dist
 - TS 报错八成来自 zod 的大版本:先 `npm ls zod` 确认装的是 `^4`。**不要改契约来迁就编译器。**
 - `dist` 结构与 `main` 不一致时,**改 `main` 不要改目录结构**,并在 PR 里说明。
 
-**结论写回** 09 篇 §4 把 **G1 标 ✅**;若改了 `package.json`,同步 09 篇 §2.10。
+**结论写回** 09 篇 §4 仅记录 E2 的构建证据;**缺口 G1 仍保持 ⏳**,因为 `dist/` 未入库且尚未进入打包/CI 门禁。若改了 `package.json`,同步 09 篇 §2.10。
 
 > 这张卡不阻塞门禁:`check:api-contract` 读的是 `packages/contracts/src/*.ts`,不是 `dist`。TS 侧在 `dist` 生成前也可以走 `@openpet/contracts/src/*`。它阻塞的是**任何 import 这个包的 T 卡**。
 
@@ -190,7 +190,7 @@ npm run pack
 # 然后启动打出来的应用,看 sidecar 有没有回报 ready
 ```
 
-✅ **07 篇 §5 与 `spike/README.md` 里的「步骤 1:往 `build.files` 加 `services/**/*` 与 `packages/**/*`」已经做完了**(commit `304a5a34`),直接从 `npm run pack` 开始。这两处文档待改,见 §5。
+✅ **E6 已采用 `asarUnpack` + unpacked resolver**，不再把 `build.files` 当作 R20 兜底；直接从 `npm run pack` 开始验证打包后的 sidecar `ready`。
 
 **期望输出** 四个路径的实际值(`isPackaged` / `getAppPath()` / `resourcesPath` / `__dirname`),外加 sidecar 的 ready。
 
@@ -299,7 +299,7 @@ npm run check:api-contract  # 契约与 03 篇对账
 **动作**
 
 1. 填满 07 篇 §7 的 6 行(实测、结论两列)。
-2. 09 篇 §5 开头那句「**全部未跑**」改成实际状态,§4 的 **G6 标 ✅**。
+2. 09 篇 §5 保持「已完成结果索引」,§4 的缺口 G6 保持 ✅;不要恢复成待执行语气。
 3. 有结论推翻 ADR 的:改 02 篇 §8 的 ADR 表与 06 篇 §10 的决策表,**同一个 PR**。
 4. 按 07 篇 §9 处置 spike 代码:五个转正、`04/probe.js` 删除。⚠️ **`01/shell.js` 与 `05/resolve-sidecar-path.js` 的转正目标 `apps/desktop/src/sidecar/spawn.js` 已经存在** —— 那是**核对差异**,不是覆盖它。
 5. `spike/README.md` 的结果表改成一行指针指向 07 篇 §7(理由见 §5)。
@@ -358,14 +358,17 @@ E9 门禁            ✅ 三条全绿(2 条 todo = G9,不算红)
 
 ## 5. 这一篇顺手记下的文档债
 
-写这一篇时逐字读了 07 篇、09 篇、`spike/README.md` 和 `spike/03-frontend-gate/run.js`,发现四处**已经过期或危险**的内容。**没有在本篇里悄悄纠正了就算完**,而是登记在这里,由下一次动那些文件的人改掉:
+E1–E10 已完成。下面逐行保留原债务位置,写清已完成结果与仍未关闭的后续项;权威实测值仍只在 [07 篇](./07-spike.md) §7。
 
 | # | 位置 | 问题 | 危险度 |
 | --- | --- | --- | --- |
-| 1 | 09 篇 §5 中 spike 3、spike 4 的命令 | 漏 `ELECTRON_RUN_AS_NODE=1` | 🚨 **高** —— spike 4 不带这个变量会得出**完全相反**的结论,进而错误地删掉 ADR-010 的 `init` 注入 |
-| 2 | 07 篇 §5 步骤 1 与 `spike/README.md`「第 5 条」步骤 1 | 让人往 `build.files` 加 `services/**/*` 与 `packages/**/*`,但这已在 `304a5a34` 做完 | 中 —— 会造成重复编辑与冲突 |
-| 3 | `spike/README.md` 的结果记录表 | 与 07 篇 §7 完全重复,两份表必然各说各话 | 中 |
-| 4 | `spike/README.md`「与 07 篇的两处偏差(需要同步回文档)」 | 那两处偏差**已经**同步进 07 篇 §0 与 §3 了,这一节自身过期 | 低 |
+| 1 | 09 篇 §5 中 spike 3、spike 4 的命令 | **已完成**:两条命令已补 `ELECTRON_RUN_AS_NODE=1`;E3–E8 结果落在 07 篇 §7 | 已关闭 |
+| 2 | 07 篇 §5 步骤 1 与 `spike/README.md`「第 5 条」步骤 1 | **已完成**:`build.files` 已含 `apps/**/*`、`services/**/*`、`packages/**/*`;E6 正式方案为 `asarUnpack` + unpacked resolver | 已关闭 |
+| 3 | `spike/README.md` 的结果记录表 | **已完成**:重复表已改为指向 07 篇 §7 的单一结果源 | 已关闭 |
+| 4 | `spike/README.md`「与 07 篇的两处偏差(需要同步回文档)」 | **已完成**:偏差已同步进 07 篇 §0 与 §3,旧说明已移除 | 已关闭 |
+| 5 | 缺口 G1:`build:contracts` 未进入构建/CI | **仍未关闭**:由 T34 补显式打包与构建门禁 | [#45](https://github.com/dengyie/OpenPet/issues/45) |
+| 6 | 缺口 G11:file-backed WAL 未验证 | **仍未关闭**:由 T35 复验并补 `tests/backend/sqlite-driver.test.js` | [#46](https://github.com/dengyie/OpenPet/issues/46) |
+| 7 | `check:api-contract`、`check:docs-drift`、`build:contracts` 未显式进入 CI | **仍未关闭**:由 T36 增加显式 CI 门禁 | [#47](https://github.com/dengyie/OpenPet/issues/47) |
 
 > 这是 G3 那条教训的复现:**同一个事实在仓库里出现第二次,就开始漂。** 命令表、结果表都应该只有一份。
 
@@ -392,3 +395,4 @@ E9 门禁            ✅ 三条全绿(2 条 todo = G9,不算红)
 | 版本 | 日期 | 变更 |
 | --- | --- | --- |
 | v1.0 | 2026-08-15 | 首版:E1–E10 十张真机执行卡、回写协议(07 篇 §7 为唯一权威结果表)、四条文档债登记、文档侧待办归属 |
+| v1.1 | 2026-08-16 | 回填 E1–E10 结果;基线改为 `main`;E6 采用 `asarUnpack`;§5 改为当前结果与剩余 G1/G11/E7 文档债 |

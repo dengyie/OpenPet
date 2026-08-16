@@ -1,6 +1,6 @@
 # 08 · 实现 Agent 执行手册
 
-> v1.0 · 2026-08-15 · 基线分支 `refactor/frontend-backend-split`
+> v1.1 · 2026-08-16 · 基线分支 `main`
 
 **读者**:领到任务卡去写代码的 agent。
 **读法**:本篇 → [09 篇 仓库现状](./09-repo-state.md) → 手上那张任务卡。01–07 篇只在任务卡明确指向某一节时才读,不要通读。
@@ -29,7 +29,7 @@
 
 推论:`tests/` 里测后端模块**必须**在 `before` 钩子里 `await import()`,不能用顶层 `require` 或静态 `import`。照抄 `tests/backend/state-machine.test.js` 的开头。
 
-**H4 不准直接碰 `node:sqlite`。** 一律走 `services/backend/store/db.js` 的 `openDatabase()`。理由:spike 6 还没跑,`node:sqlite` 在目标 Node 版本上可能需要 flag;这个 seam 是唯一的逃生口,散落的 `import("node:sqlite")` 会让换驱动变成全仓库改动。
+**H4 不准直接碰 `node:sqlite`。** 一律走 `services/backend/store/db.js` 的 `openDatabase()`。E3 已确认 Electron 42.4.0 / Node 24.16.0 无需 flag,但 G11 仍要求用 file-backed DB 验证 WAL;这个 seam 仍是唯一的逃生口,散落的 `import("node:sqlite")` 会让换驱动变成全仓库改动。
 
 **H5 单一写者。** 一份数据只有一个进程能写:settings / secrets / SQLite → Backend;窗口几何 → Shell(`window-state.json`)。要用对方的数据走消息,不要直接读写对方的文件。
 
@@ -171,8 +171,8 @@ assert.throws(() => fn(), (error) => {
 
 ## 7. 分支与提交
 
-- 基线分支 `refactor/frontend-backend-split`。**不要推 `main`。**
-- 一张卡一个分支:`refactor/t07-jobs-queue`,从基线切,做完发 PR 回基线。
+- 基线分支 `main`。开发必须在独立分支/worktree 完成,不要直接提交到 `main`。
+- 一张卡一个分支:`refactor/t07-jobs-queue`,从最新 `main` 切,做完发 PR,base 指向 `main`。
 - 提交信息用 ASCII:`T07: add jobs/queue.js with resource lock`。
 - **一次提交只做一张卡。** 顺手改的东西单独提。
 - PR 描述必须写三件事:改了哪些文件、三条门禁的输出、**你发现但没做的东西**(同时追加到 09 篇 §4 缺口清单)。
@@ -185,7 +185,7 @@ assert.throws(() => fn(), (error) => {
 
 1. **`@openpet/contracts` 的入口还不存在。** `main` 指向 `./dist/index.js`,而 `dist/` 要 `npm run build:contracts` 才生成。TS 侧可以走 `@openpet/contracts/src/*` 直接用源码。
 2. **`package-lock.json` 和 workspaces 还没同步。** 首次 `npm install` 会大面积改动 lockfile,这是正常的,不要 revert。
-3. **ESM 入口在 `app.asar` 里可能解析不了(风险 R20)。** ADR-004 让 sidecar 作为 asar 内的 Node 脚本跑,但 `services/backend` 是 ESM,而 Electron 的 asar 补丁覆盖的是 `fs` 和 CJS `require`。**只在打包后暴露**,开发期一切正常。两条不碰业务代码的退路:把 `services/backend/**` 加进 `build.asarUnpack`,或把该包降级成 CJS。
+3. **ESM 入口在 `app.asar` 里可能解析不了(风险 R20)。** E6 已命中并采用 `asarUnpack` + unpacked resolver:`services/backend/**` 位于 `app.asar.unpacked`;后端 JS 可读,不受 asar 完整性保护。不要把 CJS 降级当作默认方案,除非该正式方案回归失败。
 4. **`/health` 需要鉴权,返 401。** 早期草稿写过「免鉴权返 204」,以 03 篇为准。
 5. **`dialog.request` 两边不一致。** 契约 `backendToShellSchema` 有 9 类消息,后端 `bridge/message-schema.js` 的 `BACKEND_TO_SHELL_TYPES` 只有 8 类,少 `dialog.request`(`SHELL_TO_BACKEND_TYPES` 与契约的 6 类一致)。这是已知缺口 G2,由对应任务卡修,别顺手改。
 6. **`ready` 里的 `apiVersion` 是字符串 `"v1"`。** spike 的 `sidecar-http.js` 写的是数字 `1`,那只是探针,契约以 `"v1"` 为准。

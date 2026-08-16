@@ -432,4 +432,6 @@ type ShellToBackend =
 
 测量方式:统一响应里已有 `meta.elapsedMs`,M2 起在 `tests/backend/perf.test.js` 用 200 次采样断言 P95,纳入 CI 门禁。
 
+> 📌 **E5 真机时序**:sidecar 首行单跑 `+569 ms`,共享 `OPENPET_T0` 时 `+779 ms`;这段固定开销计入上表 2.0 s 冷启动预算。完整实测见 [07 篇](./07-spike.md) §7 第 2 行。
+
 > 📌 **契约冻结点**:本篇的路由表、错误码表与 §5 事件目录在 M1 结束前必须定稿并转为代码。之后的变更走 ADR 补充,不得直接改代码。

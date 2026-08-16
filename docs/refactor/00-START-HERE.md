@@ -1,13 +1,13 @@
 # 00 · 从这里开始(实现 agent 入口)
 
-> v1.1 · 2026-08-15 · 工作分支 `refactor/frontend-backend-split`
+> v1.2 · 2026-08-16 · 基线分支 `main`
 
 你被叫来实现 OpenPet 的前后端分离重构。设计已经冻结,**你的工作不包括重新做技术选型**。
 
 ## 读的顺序
 
 1. **[08 执行手册](./08-agent-guide.md)** —— 十条硬规则、错误怎么抛、测试怎么写、分支与提交规范。先读完。
-2. **[09 仓库现状](./09-repo-state.md)** —— 哪些文件已存在、它们导出什么、已知缺口 G1–G10。
+2. **[09 仓库现状](./09-repo-state.md)** —— 哪些文件已存在、它们导出什么、已知缺口 G1–G11。
 3. **你的任务卡**:
    - M1:[10 存储层与 Job 引擎](./10-tasks-m1.md)(T01–T08)、[11 HTTP/SSE/Shell](./11-tasks-m1-http.md)(T09–T13),外加 [12 篇](./12-tasks-m2.md) 里的 **T14**(JSON → SQLite 迁移,M1 补卡,收尾必做)。
    - M2:[12 篇](./12-tasks-m2.md) T15–T23(轻域与前端接线)。
@@ -33,9 +33,9 @@ npm run check:api-contract  # 契约与文档对账
 
 ## 领卡方式
 
-一卡一分支一 PR,分支名形如 `refactor/t07-jobs-runner`,从 `refactor/frontend-backend-split` 切出。
+一卡一分支一 PR,分支名形如 `refactor/t07-jobs-runner`,在独立 worktree 中从最新 `main` 切出,PR base 也必须是 `main`。
 
-依赖关系看卡顶部的**依赖与阻塞**字段。T03、T04、T05、T12 无前置,可以第一批并行开。
+依赖关系看卡顶部的**依赖与阻塞**字段。原 T01–T33 中当前可直接认领的是 T01、T05、T12;T03 已完成,T04 依赖 T01。
 
 ## 最重要的一条
 
@@ -78,5 +78,5 @@ npm run check:api-contract  # 契约与文档对账
 - 设计文档完成,8 个决策点全关闭。
 - 后端**骨架**已落:入口、路由器、中间件链、桥层、SQLite 驱动、Job 状态机 + 单测、初始迁移、契约包 + 门禁。
 - 任务卡已开到 M3:**T01–T33,共 33 张**。M4(AI 37 通道 + Creator 13 通道)与 M5(清理)的卡还没写。
-- **六条 spike 未跑**(G6),需真实 Electron 与打包环境 —— 已全部整理进 [14 交接单](./14-handoff.md)。**不阻塞 T01–T14**:运行时依赖都藏在 seam 后面,见 08 篇 H4/H8。
-- 整条分支的改动摊在 [draft PR #6](https://github.com/dengyie/OpenPet/pull/6) 里。
+- **M0 已完成**,E1–E10 真机结果见 [07 篇 §7](./07-spike.md);E7 为预期的 3/4,未结算队列归 T20。
+- M1–M3 原 33 张任务卡仍是 **1/33**(仅 T03 / #9 完成)。领卡与交互看 [#41](https://github.com/dengyie/OpenPet/issues/41),验收与文档欠账看 [#48](https://github.com/dengyie/OpenPet/issues/48)。
