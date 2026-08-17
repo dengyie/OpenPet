@@ -141,7 +141,7 @@ openpet/
 └─ playwright.config.js
 ```
 
-> ⚠️ `package.json` 的 `build.files` 是白名单式。目录调整后必须同步更新为 `apps/desktop/**`、`services/backend/**`、`packages/**`、`dist/control-center/**`,否则打包产物会静默缺少文件。这是最容易在 M2 阶段踩到的坑。
+> ⚠️ `package.json` 的 `build.files` 是白名单式,当前已覆盖 `apps/desktop/**`、`services/backend/**`、`packages/**`、`dist/control-center/**`。目录调整后仍必须同步更新,否则打包产物会静默缺少文件；这与 R20 的 `asarUnpack` 运行时修复是两件事。
 
 ## 4. 启动与关闭时序
 
@@ -227,7 +227,7 @@ sidecar 不可用时,**宠物必须继续正常走动**。
 - 端口 `0`(随机),不固定,降低被扫概率。
 - 全部 `/api/v1/*` 强制鉴权,**包括 `/health`,不设免鉴权例外**。未鉴权一律返 `401` 且不带任何信息(与 §6.5 一致)。理由:前端拿到 `baseUrl` 的同时必然拿到 token(同一条 preload 注入),Shell 判活走 fork 通道而不走 HTTP,因此不存在需要免鉴权探活的合法调用方。
 - 保留现有 `crypto.timingSafeEqual` 常量时间比较。
-- 校验 `Origin` / `Host`:拒绍非 `127.0.0.1` 的 Host 头,防 DNS rebinding。
+- 校验 `Origin` / `Host`:拒绝非 `127.0.0.1` 的 Host 头,防 DNS rebinding。
 - 保留 1 MB body 上限(现有 `MAX_BODY_BYTES`),文件类走路径引用而非流上传。
 - 不设 CORS 允许头(渲染进程同源不需要);若 dev 模式需要,仅允许 `http://127.0.0.1:5173`。
 
@@ -262,7 +262,8 @@ sidecar 不可用时,**宠物必须继续正常走动**。
 | 本机其他进程探测后端端口 | 随机端口 + 全端点鉴权 + 未鉴权统一 `401` 不泄露信息 |
 | 会话 token 泄露 | 仅内存、启动轮换、不入日志、不入 URL query |
 | 恶意本地页面请求后端 | Host 头校验 + 不返回 CORS 头 + token 不可猜 |
-| sidecar 被替换(DLL/脚本劫持) | 依赖 asar 完整性 + 代码签名(与签名轨道共同推进) |
+| 后端代码明文可见 | E6 采用 `build.asarUnpack = ["build/native/**/*", "services/backend/**"]`;后端 JS 位于 `resources/app.asar.unpacked/services/backend/index.js`,不得把源码不可见当作安全边界 |
+| sidecar 被替换(DLL/脚本劫持) | 依靠代码签名 + 安装目录写权限(与签名轨道共同推进);`app.asar.unpacked` 不受 asar 完整性保护 |
 | 反向通道被滥用 | fork channel 不可从外部达到;消息类型白名单 + 负载 schema 校验 + `v: 1` 版本信封(ADR-011),版本不符即杀并重拉 |
 
 ## 7. 可观测性
@@ -281,7 +282,7 @@ sidecar 不可用时,**宠物必须继续正常走动**。
 
 | 项 | 影响 | 处理 |
 | --- | --- | --- |
-| `build.files` 白名单 | 必须新增 sidecar 路径 | M2 同步修改并验证 `npm run pack` |
+| `build.files` 白名单 | 已包含 `services/**/*` 与 `packages/**/*` | 后续目录调整须同步白名单并重新验证 `npm run pack` |
 | asar | ESM sidecar 以 `app.asar` 路径 fork 会因 `cwd` 为 asar 内目录而 `spawn ENOTDIR` | `services/backend/**` 置于 `asarUnpack`;打包时入口为 `resources/app.asar.unpacked/services/backend/index.js`。实测:`isPackaged=true`,`appPath=resources/app.asar`,`resourcesPath=resources`,`__dirname=resources/app.asar.unpacked/services/backend`;已收到 ready 并 clean exit |
 | SQLite | ADR-014 已定为 `node:sqlite`,不引 `better-sqlite3`,避开 native 重建与二次公证 | Electron 42.4.0 / Node 24.16.0 中模块无需 flag,部分索引与事务通过;`:memory:` 不能验证 WAL,须由 G11 以 file-backed DB 补验 |
 | macOS 签名 | 现有已有「code has no resources」故障 | 不在本期解决;但新增目录不得引入新的未签名二进制 |
@@ -289,4 +290,4 @@ sidecar 不可用时,**宠物必须继续正常走动**。
 | 安装包体积 | 不变(复用内置 Node) | — |
 | 升级迁移 | 首次启动需跑 JSON → SQLite 迁移 | 带备份与回滚,详见 [04 篇](./04-subsystems.md) |
 
-> 📌 **`node:sqlite` 的前提条件已满足但未验证。** `engines` 已要求 Node ≥ 22.12.0,Electron 42 内置 Node 也满足版本要求。但「版本够高」不等于「模块已暴露」—— sidecar 跑在 `ELECTRON_RUN_AS_NODE` 下,是否需要 `--experimental-sqlite`、该 flag 能否透传,均由 [07 篇](./07-spike.md) 第 6 条 spike 实测定论。
+> 📌 **`node:sqlite` 的模块前提已由 E3 证实。** Electron 42.4.0 / Node 24.16.0 下无需 flag,模块、部分唯一索引与显式事务均通过;但 `:memory:` 探针返回 `journal_mode='memory'`,WAL 仍未验证,遗留缺口 G11 归 T35(卡面 [#41 §5](https://github.com/dengyie/OpenPet/issues/41),进度 [#41 §4](https://github.com/dengyie/OpenPet/issues/41))。实测见 [07 篇](./07-spike.md) §7 第 6 行。

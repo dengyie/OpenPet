@@ -21,11 +21,11 @@
 
 | 方向 | 载体 | 规则 |
 | --- | --- | --- |
-| 派单:文档侧 → 实现侧 | GitHub Issue,一张卡一个 | issue 正文只放目标一句话 + 卡的链接,**不复制卡的内容**。卡永远只有一份,在 `10`–`13` 篇里 |
-| 交付:实现侧 → 文档侧 | Pull Request | base 指向 `refactor/frontend-backend-split`,描述末尾必须带回执块(§2) |
-| 提问 / 发现文档写错了 | 回执块的 `doc-bugs`、`questions` 字段;PR 还没开就开一个带 `doc-bug` 标签的 issue | ⚠️ 实现侧**不要直接改 `docs/refactor/**`**,理由见 §4 |
+| 派单:文档侧 → 实现侧 | #41 §4 的 checkbox 行 | 每行对应一张卡;卡面全文在 #41 §5 与 `10`–`13` 篇,实现侧按 checkbox 认领与回报 |
+| 交付:实现侧 → 文档侧 | Pull Request | base 指向 `main`,描述末尾必须带回执块(§2) |
+| 提问 / 发现文档写错了 | 回执块的 `doc-bugs`、`questions` 字段;PR 还没开就在 #41 留评论并附任务编号 | ⚠️ 实现侧**不要直接改 `docs/refactor/**`**,理由见 §4 |
 | 实测结论:真机侧 → 所有人 | `07-spike.md` §7 结果表 | 那张表是唯一权威。只写在 PR 评论里等于没写 |
-| 状态快照 | `BOARD.md`(首次同步时生成) | 由文档侧每次同步后重写。**issue 才是真相**,这个文件只是给人看的快照 |
+| 状态快照 | #41 | #41 就是看板与唯一状态真相,不另维护状态文件 |
 
 ## 2. 回执块
 
@@ -64,13 +64,13 @@ questions:
 
 不管是定时触发还是被人叫醒,每次同步都跑同一套,顺序固定:
 
-1. 列出 `refactor/frontend-backend-split` 上的开放 PR。
+1. 列出 base 为 `main` 且带对应重构标签的开放 PR。
 2. 逐个抽回执块。缺块的,在 PR 下贴一条「缺回执块」并附 §2 模板,本轮不再处理它。
-3. 三条门禁全 `pass` 且 `assertions` 分子等于分母 → 在 PR 留言「文档侧无异议」,给对应 issue 打 `ready-to-merge`。⚠️ **合并动作永远留给人。**
+3. 三条门禁全 `pass` 且 `assertions` 分子等于分母 → 在 PR 留言「文档侧无异议」,在 #41 §4 勾选对应 checkbox,并在 PR 写 `Refs #41`。⚠️ **合并动作永远留给人,禁止写 `Closes #41`。**
 4. 汇总所有 `doc-bugs` → 一次性改文档 → 一个提交 → 在每个提出问题的 PR 下回一条「已修,见 <commit>」。
 5. 回答 `questions`。凡是会改变接口、依赖、目录结构的,不在评论里拍板 —— 升级成 ADR 补进 `README.md` §四,再回复。
 6. 更新 `09-repo-state.md`:§1 目录树、§3 还不存在的文件、§4 缺口表。
-7. 重写 `BOARD.md`。
+7. 更新 #41 §4 当前看板。
 8. 给人一段摘要:能合的是哪些、堵在哪、改了哪些文档。
 
 ## 4. 为什么不让实现侧改文档
@@ -125,18 +125,18 @@ questions:
 你要在 GitHub 仓库 dengyie/OpenPet 上完成一张开发任务卡:T03。
 
 【第一步 先读,读完再动手】
-1. https://github.com/dengyie/OpenPet/pull/6 的正文(入口说明)
-2. docs/refactor/00-START-HERE.md
+1. main 上的 docs/refactor/00-START-HERE.md
+2. docs/refactor/AGENT-PROTOCOL.md
 3. docs/refactor/08-agent-guide.md —— 编码约定、错误怎么抛、测试模板、提交规范,硬约束
 4. docs/refactor/09-repo-state.md —— 哪些文件已存在、精确导出签名、还剩哪些缺口
 5. 你这张卡 T03,在 docs/refactor/10-tasks-m1.md 里
 
-以上文件全在分支 refactor/frontend-backend-split 上,main 分支没有。
+以上文件都以最新 `main` 为准,旧重构分支已冻结,不得作为基线。
 
 【第二步 开分支】
 git fetch origin
-git checkout refactor/frontend-backend-split
-git checkout -b refactor/t03-settings
+git worktree add ../OpenPet-t03 -b refactor/t03-settings origin/main
+cd ../OpenPet-t03
 
 【第三步 实现】
 只做卡上「建哪个文件」列出的文件。卡上给了「精确导出签名」,照抄:不改名、不改参数顺序、不额外导出。
@@ -151,7 +151,7 @@ npm run check:api-contract
 check:api-contract 会打印两条 todo,那是已知未实现的检查项,不算红。
 
 【第五步 提 PR】
-base 选 refactor/frontend-backend-split,不是 main。
+base 选 main。
 PR 描述里把卡上「验收断言」逐条抄下来,标明每条是否满足、怎么验证的。
 最后一段附上 docs/refactor/AGENT-PROTOCOL.md §2 的回执块,字段一个都不能少。
 
@@ -182,11 +182,11 @@ PR 描述里把卡上「验收断言」逐条抄下来,标明每条是否满足�
 你要在一台装了 Node ≥22.12.0、能跑 Electron 的真机上,执行一组验证实验并把结论写回仓库。
 
 【读】
-1. https://github.com/dengyie/OpenPet/pull/6 的正文
+1. main 上的 docs/refactor/00-START-HERE.md
 2. docs/refactor/14-handoff.md —— 你的唯一执行清单,E1 到 E10,编号就是执行顺序
 3. 需要背景再看 docs/refactor/07-spike.md
 
-分支:refactor/frontend-backend-split
+基线分支:main
 
 【规矩】
 1. 命令一律以 14 篇为准,不要从别处复制。特别是 ELECTRON_RUN_AS_NODE=1 这个前缀:

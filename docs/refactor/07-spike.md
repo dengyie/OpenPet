@@ -104,7 +104,7 @@ process.on("message", (msg) => {
 
 ## 2. 端口分配与 ready 时序(R12 / 03 篇 §1.2)
 
-**验什么**:`listen(0)` 拿到的端口能否在 300 ms 内回到 Shell。它直接吃掉 G8 的冷启动预算(低于 2 秒),也决定前端第一帧要不要排队。
+**验什么**:`listen(0)` 拿到的端口能否在 300 ms 内回到 Shell。300 ms 的计时口径固定为**从 Shell 调用 `fork` 到 Shell 收到 `ready`**。它直接吃掉目标 G8 的冷启动预算(低于 2 秒),也决定前端第一帧要不要排队。
 
 ```javascript
 // spike/02-port-ready/sidecar-http.js
@@ -253,12 +253,12 @@ module.exports = { resolveSidecarEntry, dumpPaths }
 
 执行步骤(**必须真打包,不能只看开发态**):
 
-1. 在 `package.json` 的 `build.files` 白名单里加 `"services/**/*"` 与 `"packages/**/*"`。**这一步漏了,sidecar 根本不在包里**,而白名单式配置不会给你任何警告。
+1. `build.files` 已包含 `"apps/**/*"`、`"services/**/*"`、`"packages/**/*"`;R20 的正式修复是 `asarUnpack` + 从 `app.asar.unpacked` 解析 sidecar 入口,不是继续修改 `build.files`。
 2. `npm run pack`
 3. 启动打出来的应用,确认 sidecar fork 成功并回报 ready
 4. 记录上面四个路径的实际值,写进 [02 篇](./02-architecture.md) §8
 
-> ⚠️ 失败的退路是把 `services/**` 加进 `asarUnpack`(你已经在给 `build/native/**/*` 用这招)。代价是后端代码以明文文件躺在安装目录里 —— 对本地宠物应用可以接受,但要在 02 篇 §6 的风险面里补一行。
+> 📌 **已采用方案**:`build.asarUnpack` 包含 `"services/backend/**"`,unpacked resolver 指向 `resources/app.asar.unpacked/services/backend/index.js`。代价是后端代码以明文文件躺在安装目录里,已登记到 02 篇 §6.5;这不是兜底或备选。
 
 ## 6. node:sqlite 是否可用(ADR-014 / R18)
 
@@ -339,7 +339,7 @@ console.log("NODE_SQLITE_OK", db.prepare("SELECT count(*) AS n FROM jobs").get()
 | 2 | 放宽 03 篇 §10 的冷启动预算,或把 sidecar 的 fork 提前到窗口创建之前并行做 | G8 的数字要改,或 02 篇 §4.1 的 13 步要重排 |
 | 3 | 首屏改为只渲染骨架、不发请求,等 `onBackendChanged` 后再挂载数据组件 | 05 篇 §2.2 排队方案作废,改为门控渲染 |
 | 4 | **这是好消息**:ADR-010 简化为后端自解密,删掉 `init` 注入与 Shell 侧明文持有 | 04 篇 §4.1.1 简化;安全性提升 |
-| 5 | `services/**` 加进 `asarUnpack` | R10 降为低;02 篇 §6.5 补一行「后端代码明文可见」 |
+| 5 | 已命中 R20 并采用 `asarUnpack` + unpacked resolver;若再次失败,检查打包清单与 resolver,再评估 CJS 降级 | 02 篇 §6.5 已登记「后端代码明文可见」与 unpacked 完整性边界 |
 | 6 | 切 `better-sqlite3`,`store/db.js` 换实现(仓库层零改动,这就是 ADR-014 要求封 driver 接口的原因) | ADR-014 改结论;R11 macOS 公证升为高;M1 工期增加约 0.5 周 |
 
 ## 9. spike 代码的去向

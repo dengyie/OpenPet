@@ -2,8 +2,7 @@
 
 对应开发文档「07 · M0 Spike 代码骨架与验证清单」。
 
-**六条全绿之前,不要开始 M0 的其余 11 个任务。** 这半天的成本,是用来避免在 M1 中途
-发现地基假设不成立 —— 那时候已经动了数据层和密钥,回滚代价不可逆。
+**M0 已完成。** 六条 spike 的结果见 [docs/refactor/07-spike.md](../docs/refactor/07-spike.md) §7;本目录仅作历史与回归用。
 
 本目录不进 `src/`,也不进 `package.json` 的 `build.files` 白名单。验完按文末「去向」
 处理:五个文件转正,一个删除。
@@ -40,17 +39,13 @@ Node 22.12 跑得通,不代表 Electron 42 内置的 Node 跑得通 —— 这�
 
 ### 第 5 条(必须真打包,不能只看开发态)
 
-1. 先在 `package.json` 的 `build.files` 白名单里加 `"services/**/*"` 与
-   `"packages/**/*"`。**漏了这一步 sidecar 根本不在包里,而白名单式配置不会给你
-   任何警告。**
+1. `build.files` 已包含 `"apps/**/*"`、`"services/**/*"`、`"packages/**/*"`(commit `304a5a34`);R20 的正式修复是 `asarUnpack` + 从 `app.asar.unpacked` 解析 sidecar 入口。
 2. `npm run pack`
 3. 启动打出来的应用,确认 sidecar fork 成功并回报 ready
 4. 记录 `isPackaged` / `getAppPath()` / `resourcesPath` / `__dirname` 四个实际值,写回
    02 篇 §8
 
-失败的退路是把 `services/**` 加进 `asarUnpack`(现在 `build/native/**/*` 已经在用这招)。
-代价是后端代码以明文躺在安装目录里 —— 对本地宠物应用可以接受,但要在 02 篇 §6.5 的
-风险面里补一行。
+**已采用方案**是把 `services/backend/**` 加进 `asarUnpack`,并从 `app.asar.unpacked` 解析 sidecar 入口。代价是后端代码以明文躺在安装目录里,已在 02 篇 §6.5 的风险面登记。
 
 ## 结果
 

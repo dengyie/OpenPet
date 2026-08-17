@@ -1,9 +1,9 @@
-# OpenPet 前后端分离 · 开发文档 v1.5
+# OpenPet 前后端分离 · 开发文档 v1.6
 
-> 📌 **状态** M0 进行中:契约包、后端骨架与 agent 执行文档已落地 · **版本** v1.5 · **代码基线** `dengyie/OpenPet@c56a3f1` (main / v1.0.1-rc.3) · **编写日期** 2026-08-09
+> 📌 **状态** M0 已完成:E1–E10 真机结果已回填 · **版本** v1.6 · **代码基线** `main` · **更新日期** 2026-08-16
 
 > **本目录是这份文档的权威副本。** 文档最初写在 Notion,现已随代码进入
-> `refactor/frontend-backend-split`。代码在 Git、文档在别处会必然漂移,而这份文档里有
+> `main`。代码在 Git、文档在别处会必然漂移,而这份文档里有
 > 154 条通道映射和一整张契约表 —— 漂了就等于没有。后续变更改这里,不改 Notion。
 > Notion 原稿已于 2026-08-15 降为归档副本并回指本目录。
 
@@ -54,6 +54,8 @@
 | G7 | 契约单一来源 | 前后端类型均由 `packages/contracts` 生成,无手写副本 |
 | G8 | 分离不带来可感知的变慢 | `GET /settings` P95 低于 30 ms,冷启动到前端可用低于 2 s（完整预算见 [03 篇 §10](./03-api-contract.md)） |
 
+> 本节 G1–G8 是**目标编号**,与 [09 篇 §4](./09-repo-state.md) 的缺口 G1–G11 无关;引用时必须写明「目标」或「缺口」。
+
 ### 3.2 非目标（本期明确不做）
 
 - 不做远程/云端后端,后端仅监听回环地址。
@@ -70,7 +72,7 @@
 | ADR-001 | 前端 ↔ 后端协议 | loopback HTTP/1.1 + SSE | 渲染进程只能发 fetch;`/mcp` 已依赖 HTTP;可 curl 调试 |
 | ADR-002 | 后端 ↔ 主进程协议 | `child_process.fork` 消息通道 | 不占端口、本机其他进程不可达、无需二次鉴权 |
 | ADR-003 | PetService 位置 | 保留在 Electron 主进程 | 仅 3.8 KB 纯状态机,被窗口/菜单/气泡三处同步依赖,跳进程会导致动画抖动 |
-| ADR-004 | sidecar 打包形态 | 同 asar 内 Node 脚本,复用 Electron 内置 Node | RC 阶段避免体积 +40 MB 与二次签名 |
+| ADR-004 | sidecar 打包形态 | 同安装包内的 `app.asar.unpacked` Node 脚本,复用 Electron 内置 Node | E6 命中 R20 后采用 `asarUnpack` + unpacked resolver;避免体积 +40 MB 与二次签名 |
 | ADR-005 | 长任务模型 | 统一 Job 模型（queued/running/succeeded/failed/canceled/interrupted） | 生成类操作耗时 60–420 秒,需可查询、可取消、可恢复 |
 | ADR-006 | 持久化 | SQLite（WAL）替代大 JSON 文件 | `ai-talk-store.js` 已 56 KB,全量读改写模式不支持并发 |
 | ADR-007 | 配置写者 | 后端为唯一写者,窗口瞬时状态独立文件 | 避免两进程并发覆盖同一 JSON |
@@ -153,6 +155,7 @@
 | 11 | [M1 任务卡:HTTP、SSE、Shell 侧](./11-tasks-m1-http.md) | T09–T13,含 M1 完成判定 |
 | 12 | [M1 补卡与 M2 任务卡](./12-tasks-m2.md) | T14（JSON → SQLite 迁移,M1 漏卡）、T15–T23（轻域切换与前端数据层） |
 | 13 | [M3 任务卡](./13-tasks-m3.md) | T24–T33（插件域、桥搬迁、反向通道白名单、pid 台账、Job handler） |
+| 协议 | [Agent 交接协议](./AGENT-PROTOCOL.md) | GitHub 派单、HANDBACK、巡检与独立 worktree 规则 |
 
 > 💡 **为什么要多这一层。** 人看不懂会来问,agent 不问 —— 它按自己的理解发明。而几个 agent 各自为同一个概念发明不同名字,就是契约漂移最常见的来源。08–13 篇的目的不是把设计写得更清楚,而是**消除自由度**:列名一律照 `001_init.sql`,事件名与错误码一律从 `packages/contracts` 取,状态字符串一律从 `jobs/state-machine.js` 取。
 
@@ -162,29 +165,30 @@
 
 ## 九、当前进度
 
-截至 2026-08-15,分支 `refactor/frontend-backend-split` 上已落地(整条分支的改动摊在 [draft PR #6](https://github.com/dengyie/OpenPet/pull/6) 里):
+截至 2026-08-16,`main` 的真实状态如下:
 
 | 产出 | 位置 | 状态 |
 | --- | --- | --- |
-| 十四篇子文档 | `docs/refactor/` | ✅ 已提交并逐篇 review |
-| 六条 spike 探针 | [`spike/`](../../spike/) | ⏳ 代码就绪,待上机跑（推荐顺序 `6 → 1 → 2 → 5 → 3 → 4`） |
+| M0 验收 | [07 篇 §7](./07-spike.md) | ✅ E1–E10 真机完成;E7 为预期的 3/4,第 2 条清算归 T20 |
+| 原任务卡进度 | [10–13 篇](./10-tasks-m1.md) | **1/33**:仅 T03 / [#9](https://github.com/dengyie/OpenPet/issues/9) 完成;不得声称 M1–M3 已完成 |
 | 契约包首版 | [`packages/contracts/`](../../packages/contracts/) | ✅ 信封、错误码、Job、SSE 事件、反向通道 |
 | 契约门禁 | [`scripts/check-api-contract.mjs`](../../scripts/check-api-contract.mjs) | ✅ 可运行:`npm run check:api-contract` |
-| 根 `package.json` | 仓库根 | ✅ workspaces、`build.files`、`build:contracts` / `test:backend` / `check:node` 脚本 |
+| 打包 sidecar | [02 篇 §8](./02-architecture.md) | ✅ E6 命中 R20 后采用 `asarUnpack` + `app.asar.unpacked` resolver |
 | 后端骨架 | [`services/backend/`](../../services/backend/) | ✅ 入口、router、中间件链、桥层、SQLite driver、Job 状态机、`001_init.sql` |
-| 后端单测 | [`tests/backend/`](../../tests/backend/) | ✅ 状态机穷举 + 与 `001_init.sql` 的一致性对账 |
-| agent 执行文档层 | `docs/refactor/00`、`08`–`13` | ✅ 手册、现状快照、M1–M3 共 33 张任务卡（T01–T33） |
+| 新增验收卡 | #41 §5 卡面 / #41 §4 进度 | ⏳ T34 contracts 打包、T35 file-backed WAL、T36 显式 CI 门禁;均不计入原 1/33 |
 
 **下一步的顺序:**
 
-1. **跑六条 spike** —— 这是目前唯一的真阻塞项,需要真实 Electron 与打包环境。推荐顺序 `6 → 1 → 2 → 5 → 3 → 4`,见 [07 篇](./07-spike.md)。**其中第 5 条的判定标准已收紧**:必须确认打包后的 sidecar 真的发出 `ready`,而不只是路径能解析(风险 R20)。
-2. **并行开 T01–T13** —— 这 13 张卡全部隔在注入式接缝之后,裸 node 下即可完整验收,**不必等 spike**。见 [10 篇](./10-tasks-m1.md)、[11 篇](./11-tasks-m1-http.md)。
-3. **T14 必须在 M1 收尾前补上** —— JSON → SQLite 迁移在写 10/11 篇时被漏掉了(设计在 04 篇 §3.5,但没落成卡),见 [12 篇](./12-tasks-m2.md)。它不补,M2 一发版就踩 R16。
-4. **M2（T15–T23）与 M3（T24–T33）的卡已经写好**,但要等 M1 全绿再开工 —— 它们全部依赖 M1 的仓库层、事件总线与 Job 引擎。
+1. **领卡与 agent 交互看 [#41](https://github.com/dengyie/OpenPet/issues/41)**,以动态标签筛选和卡内依赖为准。
+2. **验收结论与文档欠账看 [#41](https://github.com/dengyie/OpenPet/issues/41)**;缺口 G1/G11 分别归 T34/T35 的 #41 §5 卡面与 #41 §4 进度。
+3. **原 T01–T33 当前可直接认领 T01、T05、T12、T20**;T03 已完成,其余按 10/11 篇主链推进。
+4. **M2 与 M3 的卡已写好,不代表阶段已完成。** T20 无后端依赖可并行,其余以各卡「依赖与阻塞」为准。
 
 > ⚠️ **一处有意的顺序偏离,记录在此以免日后误判。** 原计划是「spike 5(`npm run pack` 手验安装包)绿了之后才动根 `package.json` 的 `workspaces` 与 `build.files`」。实际执行中这一步提前做了,因为后端骨架与 `test:backend` 都依赖 workspaces 才能装依赖与跑测试。**代价是**:若 spike 5 报错,打包问题会与 workspaces 改动混在一起,定位变难(这正是 R10 的形状)。**缓解**:这两处改动集中在单个提交 `304a5a34` 内,可整体 revert 后再单独验证打包。
 
-> ⚠️ **`package-lock.json` 当前与根 `workspaces` 不同步。** 首次 `npm install` 会重写它(新增 `zod` 与两个 workspace 符号链接),这是预期行为而非 bug。缺口清单见 [09 篇 §4](./09-repo-state.md) G5。
+> ⚠️ **缺口 G1 已重新打开。** E2 只证明 `build:contracts` 能运行,但 `dist/` 未入库,打包与 CI 都没有显式调用该脚本;修复归 T34 的 #41 §5 卡面与 #41 §4 进度。SQLite file-backed WAL 的未决证据归缺口 G11 / T35,同样以 #41 §5 卡面与 #41 §4 进度为准。
+
+> 原任务卡文档统计为 **1/33**(T01–T33);#41 §4 总控任务板含 T34–T36,按 **1/36** 统计。
 
 > ⚠️ **`SETTINGS_*` 的归属与 06 篇 §4 的字面说法不一致。** 06 篇把设置域列为 M2 第 4 项,但它实际已由 M1 的 T03(设置存储 + 乐观锁)与 T10(5 条路由)完成,M2 只剩前端切换。**不要按 06 篇 §4 再实现一遍后端设置域** —— 这一条在 [12 篇 §2.0](./12-tasks-m2.md) 有对照表。
 
@@ -194,7 +198,8 @@
 | --- | --- | --- | --- |
 | v1.0 | 2026-08-09 | 首版草案,基于 `c56a3f1` 全量代码盘点 | mango |
 | v1.1 | 2026-08-09 | 深入 review 后修复:新增 ADR-010–017 并关闭全部待定决策;补性能预算（03 §10）与端口 ready 门禁;补 M0 spike、R16、R17;新增 07 篇 spike 代码骨架与判定分支 | mango |
-| v1.2 | 2026-08-14 | 随代码进入 `refactor/frontend-backend-split`,本目录成为权威副本;修正 hub 标题版本号与 ADR-013 的连接符;07 篇 §0 补 `03-frontend-gate/package.json`,§3 第 2 条断言标注为已知红 | mango |
+| v1.2 | 2026-08-14 | 随代码进入仓库,本目录成为权威副本;修正 hub 标题版本号与 ADR-013 的连接符;07 篇 §0 补 `03-frontend-gate/package.json`,§3 第 2 条断言标注为已知红 | mango |
 | v1.3 | 2026-08-15 | 03 篇 §5 补登 `system.jobs-recovered` 与 `system.events-dropped`（此前只写在 04 篇 §2.6）,并补全 8 个 topic 的可选值清单、明确 `system` 不受订阅过滤;新增 `packages/contracts` 首版与可运行的 `scripts/check-api-contract.mjs`;新增§九当前进度（含下一步顺序约束）;Notion 原稿已降为归档副本 | mango |
 | v1.4 | 2026-08-15 | 新增 agent 执行文档层:00 入口、08 执行手册、09 仓库现状快照、10/11 篇 M1 全部 13 张任务卡;§八 索引改为「设计文档 / 执行文档」两组;§一 读者表新增实现 agent 行;§九 刷新为后端骨架与根 `package.json` 已落地,并记录 workspaces 提前改动这一有意的顺序偏离与其缓解手段;清除 §九 中「`packages/contracts` 尚未接入 workspaces」的陈旧说明 | mango |
 | v1.5 | 2026-08-15 | 新增 12 篇(T14 M1 补卡 + T15–T23 M2)与 13 篇(T24–T33 M3),任务卡总数 13 → 33;04 篇 §2.6 的过期注记已关闭(G7);06 篇 §9 补登 **R20 ESM-in-asar** 并收紧 spike 5 的判定标准(G8);§九 修正 v1.4 的一处笔误 ——「M2(AI 40 通道)」应为轻域 40 通道,AI 37 通道在 M4;新增 `SETTINGS_*` 归属说明,避免按 06 篇 §4 重复实现;整条分支已摊在 draft PR #6 | mango |
+| v1.6 | 2026-08-16 | 基线切到 `main`;M0 E1–E10 完成,E7 3/4 为预期红;原任务卡 1/33;采用 `asarUnpack`;缺口 G1/G11 统一指向 #41 §5 卡面与 #41 §4 进度;新增 #41 领卡与验收入口 | mango |

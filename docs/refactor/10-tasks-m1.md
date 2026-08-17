@@ -1,13 +1,13 @@
 # 10 · M1 任务卡:存储层与 Job 引擎
 
-> v1.0 · 2026-08-15 · 基线分支 `refactor/frontend-backend-split`
+> v1.1 · 2026-08-16 · 基线分支 `main`
 
 **前置**:[08 篇 执行手册](./08-agent-guide.md)、[09 篇 仓库现状](./09-repo-state.md)。
 **本篇范围**:T01–T08。HTTP 路由、SSE、Shell 侧在下一篇。
 
 每张卡一个分支、一个 PR。卡里没写的不要发明;发现漏了先改本文件,和代码同 PR。
 
-**依赖图**:T01 → T02 →(T06 → T07 → T08);T03、T04、T05 可与其它卡并行。
+**依赖图**:T01 → T02 → T06 → T07;T04 依赖 T01,T08 依赖 T02,T05 可独立并行。跨篇主链:T01 + T02 + T08 → T09 → T10 / T11 / T14 /(T15–T19);T12 → T13。
 
 ---
 
@@ -26,7 +26,7 @@
 - 每个文件在**一个事务**里完成 `exec(sql)` + 写台账。事务回调不能是 async(08 篇 §2)。
 - 文件按版本号升序执行。
 
-**验收** `tests/backend/migrate.test.js`(`:memory:`):跑两次,第二次 `applied` 为空(幂等);001 应用后 9 张表均存在;篖改台账里的 checksum → `INTERNAL`;手插 `version = 99` → `MIGRATION_REQUIRED` 且 `status === 503`。
+**验收** `tests/backend/migrate.test.js`(`:memory:`):跑两次,第二次 `applied` 为空(幂等);001 应用后 9 张表均存在;篡改台账里的 checksum → `INTERNAL`;手插 `version = 99` → `MIGRATION_REQUIRED` 且 `status === 503`。
 
 **不要**:不用 `PRAGMA user_version`(台账表才是真相);不改 `001_init.sql`;不在这里做 JSON 迁入(那是后续卡)。
 
