@@ -35,6 +35,12 @@ jobs:
       - name: Build contracts
         run: npm run build:contracts
 
+      - name: Check API contract
+        run: npm run check:api-contract
+
+      - name: Check documentation drift
+        run: npm run check:docs-drift
+
       - name: Run tests
         run: npm test
 
