@@ -71,7 +71,7 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 		}
 	}
 
-	function sendBody(body) {
+	function dispatch(body, correlateDialogRequest) {
 		if (disposed) return null
 		if (body === null || typeof body !== "object" || typeof body.type !== "string") {
 			throw new Error("反向通道消息必须是带 type 的对象")
@@ -81,13 +81,20 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 			throw new Error("不在白名单里的反向通道消息类型: " + body.type)
 		}
 		const envelope = createEnvelope(body)
+		if (correlateDialogRequest && body.type === "dialog.request") {
+			envelope.body = { ...body, requestId: envelope.id }
+		}
 		send(envelope)
 		return envelope
 	}
 
+	function sendBody(body) {
+		return dispatch(body, false)
+	}
+
 	function request(body, options = {}) {
 		const timeoutMs = options.timeoutMs ?? DIALOG_RESULT_TIMEOUT_MS
-		const envelope = sendBody(body)
+		const envelope = dispatch(body, true)
 		if (envelope === null) return Promise.reject(new Error("shellClient 已销毁"))
 
 		return new Promise((resolve, reject) => {

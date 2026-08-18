@@ -22,6 +22,7 @@ export const BACKEND_TO_SHELL_TYPES = Object.freeze([
 	"window.openPluginDashboard",
 	"notify",
 	"tray.setBadge",
+	"dialog.request",
 ])
 
 /** Shell -> 后端。 */
