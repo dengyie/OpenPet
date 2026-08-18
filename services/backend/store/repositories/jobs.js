@@ -101,8 +101,8 @@ export function createJobsRepository({ db, now = Date.now } = {}) {
 		}
 
 		const resourceKey = input.resourceKey ?? null
-		const attempt = input.attempt ?? 1
-		const maxAttempts = input.maxAttempts ?? maxAttemptsFor(kind)
+		const attempt = 1
+		const maxAttempts = maxAttemptsFor(kind)
 		const createdAt = input.createdAt ?? now()
 		try {
 			db.prepare(

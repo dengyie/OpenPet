@@ -37,7 +37,7 @@ function job(id, overrides = {}) {
 describe("Jobs repository · insert 与互斥", () => {
 	it("insert 从 queued / attempt 1 开始并按 kind 填 maxAttempts", async () => {
 		await withRepository(({ repo }) => {
-			const inserted = repo.insert(job("job-defaults"))
+			const inserted = repo.insert(job("job-defaults", { attempt: 9, maxAttempts: 99 }))
 
 			assert.equal(inserted.id, "job-defaults")
 			assert.equal(inserted.status, "queued")
