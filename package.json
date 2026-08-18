@@ -19,8 +19,8 @@
     "build:system-cursor": "node scripts/build-macos-system-cursor-helper.js",
     "build:control-center": "vite build --config src/control-center/vite.config.js",
     "build:contracts": "npm --workspace @openpet/contracts run build",
-    "pack": "npm run build:system-cursor && npm run build:control-center && electron-builder --dir",
-    "dist": "npm run build:system-cursor && npm run build:control-center && electron-builder",
+    "pack": "npm run build:contracts && npm run build:system-cursor && npm run build:control-center && electron-builder --dir",
+    "dist": "npm run build:contracts && npm run build:system-cursor && npm run build:control-center && electron-builder",
     "generate-icons": "node scripts/generate-icons.js",
     "prepare-windows-release-assets": "node scripts/prepare-windows-release-assets.js",
     "create-windows-smoke-report": "node scripts/create-windows-smoke-report.js",
@@ -128,7 +128,10 @@
     "asar": true,
     "asarUnpack": [
       "build/native/**/*",
-      "services/backend/**"
+      "services/backend/**",
+      "packages/contracts/**",
+      "node_modules/@openpet/contracts/**",
+      "node_modules/zod/**"
     ],
     "afterSign": "build/notarize.js",
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
@@ -184,10 +187,12 @@
     }
   },
   "dependencies": {
+    "@openpet/contracts": "0.0.0",
     "grammy": "^1.44.0",
     "sharp": "^0.35.3",
     "yauzl": "^3.4.0",
-    "yazl": "^3.3.1"
+    "yazl": "^3.3.1",
+    "zod": "^4.0.0"
   },
   "devDependencies": {
     "@electron/notarize": "^3.1.1",
