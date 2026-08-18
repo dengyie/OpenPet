@@ -188,6 +188,7 @@
   },
   "dependencies": {
     "@openpet/contracts": "0.0.0",
+    "@tanstack/react-query": "^5.101.4",
     "grammy": "^1.44.0",
     "sharp": "^0.35.3",
     "yauzl": "^3.4.0",
