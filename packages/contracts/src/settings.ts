@@ -16,6 +16,12 @@ export const settingsPatchRequestSchema = z.object({
 })
 export type SettingsPatchRequest = z.infer<typeof settingsPatchRequestSchema>
 
+export const settingsPatchResponseSchema = z.object({
+  version: z.number().int().nonnegative(),
+  changedPaths: z.array(z.string()),
+})
+export type SettingsPatchResponse = z.infer<typeof settingsPatchResponseSchema>
+
 export const settingsEnvelopeSchema = z.object({
   version: z.number().int().nonnegative(),
   /** 已脱敏:密钥类字段只返回存在性与尾号 */

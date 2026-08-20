@@ -1,6 +1,7 @@
 import {
   settingsEnvelopeSchema,
   settingsPatchRequestSchema,
+  settingsPatchResponseSchema,
 } from '@openpet/contracts'
 import type { z } from 'zod'
 
@@ -18,12 +19,12 @@ export function createSettingsApi(client: ApiClient) {
         responseSchema: settingsEnvelopeSchema,
       })
     },
-    patch(body: SettingsPatch): Promise<SettingsSnapshot> {
-      return client.request({
+  patch(body: SettingsPatch): Promise<z.infer<typeof settingsPatchResponseSchema>> {
+    return client.request({
         method: 'PATCH',
         path: '/settings',
         requestSchema: settingsPatchRequestSchema,
-        responseSchema: settingsEnvelopeSchema,
+        responseSchema: settingsPatchResponseSchema,
         body,
       })
     },

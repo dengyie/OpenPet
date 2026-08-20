@@ -22,6 +22,7 @@ import { createShellClient } from "./bridge/shell-client.js"
 import { createSettingsStore } from "./domains/settings.js"
 import { recoverJobs } from "./jobs/recovery.js"
 import { initializeBackendRuntime, registerHealthRoutes } from "./routes/health.js"
+import { registerSettingsRoutes } from "./routes/settings.js"
 import { openDatabase } from "./store/db.js"
 import { migrate } from "./store/migrate.js"
 import { createJobsRepository } from "./store/repositories/jobs.js"
@@ -132,6 +133,12 @@ registerHealthRoutes({
 	router,
 	runtime,
 	deps: { logger, cleanup: () => runtime.logs?.cleanup?.() },
+})
+
+registerSettingsRoutes({
+	router,
+	store: runtime.settings ?? { read: () => ({ version: 0, values: {} }), patch: () => { throw new Error("settings 尚未初始化") } },
+	emit: (name, payload) => runtime.events?.publish?.(name, payload),
 })
 
 const server = createServer((req, res) => {
