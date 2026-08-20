@@ -17,9 +17,15 @@ import {
 	jsonBody,
 	loopbackOnly,
 	requestId,
-	sendSuccess,
 } from "./http/middleware.js"
 import { createShellClient } from "./bridge/shell-client.js"
+import { createSettingsStore } from "./domains/settings.js"
+import { recoverJobs } from "./jobs/recovery.js"
+import { initializeBackendRuntime, registerHealthRoutes } from "./routes/health.js"
+import { openDatabase } from "./store/db.js"
+import { migrate } from "./store/migrate.js"
+import { createJobsRepository } from "./store/repositories/jobs.js"
+import { createLogsRepository } from "./store/repositories/logs.js"
 
 const INIT_TIMEOUT_MS = 10_000
 const SHUTDOWN_GRACE_MS = 5_000
@@ -88,7 +94,11 @@ const runtime = {
 	legacyToken: null,
 	petState: null,
 	degraded: false,
+	degradedReason: null,
 	db: null,
+	settings: null,
+	jobs: null,
+	logs: null,
 }
 
 const initEnvelope = await initPromise.catch((error) => {
@@ -101,15 +111,12 @@ runtime.secrets = initEnvelope.body.secrets ?? {}
 runtime.userDataDir = initEnvelope.body.userDataDir ?? null
 runtime.legacyToken = initEnvelope.body.legacyToken ?? null
 
-// M1 起在这里 openDatabase({ file: join(runtime.userDataDir, "backend/openpet.db") })。
-// 现在不开:store/migrations/ 还没有,空开一个库只会留下一个需要迁移的空文件。
-
 const accessLogs = createAccessLogBuffer({ max: 200 })
 const router = createRouter({ basePath: "/api/v1" })
 
 router.use(requestId())
 router.use(errorBoundary({ logger }))
-router.use(accessLog({ buffer: accessLogs, logger }))
+router.use(accessLog({ buffer: accessLogs, logger, appendHttp: (entry) => runtime.logs?.appendHttp?.(entry) }))
 router.use(loopbackOnly())
 router.use(
 	bearerAuth({
@@ -121,15 +128,10 @@ router.use(
 router.use(jsonBody())
 
 // 03 篇 §4.1。注意 /health 也在 bearerAuth 之后 —— 未鉴权一律 401,不设例外。
-router.get("/health", (ctx) => {
-	sendSuccess(ctx, {
-		status: runtime.degraded ? "degraded" : "ok",
-		pid: process.pid,
-		apiVersion: "v1",
-		uptimeMs: Date.now() - runtime.startedAt,
-		store: runtime.db === null ? "not-opened" : runtime.db.driverName,
-		secretsLoaded: runtime.secrets !== null,
-	})
+registerHealthRoutes({
+	router,
+	runtime,
+	deps: { logger, cleanup: () => runtime.logs?.cleanup?.() },
 })
 
 const server = createServer((req, res) => {
@@ -143,11 +145,18 @@ server.requestTimeout = 0
 
 server.on("error", (error) => {
 	logger.error("HTTP server 出错", { error: String(error) })
-	shell.send({ type: "degraded", reason: "http-server-error", message: String(error) })
+	shell.send({ type: "degraded", reason: "http-server-error" })
 	process.exit(EXIT_HTTP_FAILED)
 })
 
-await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve))
+await initializeBackendRuntime({
+	runtime,
+	userDataDir: runtime.userDataDir,
+	shell,
+	logger,
+	deps: { createSettingsStore, openDatabase, migrate, createJobsRepository, createLogsRepository, recoverJobs },
+	bind: () => new Promise((resolve) => server.listen(0, "127.0.0.1", resolve)),
+})
 
 const address = server.address()
 

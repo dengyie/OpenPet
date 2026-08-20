@@ -178,7 +178,7 @@ const db = await openDatabase({ file, pragmas, logger })
 
 ## 4. 缺口清单
 
-本节的 G1–G11 是**缺口编号**,与 [README §三](./README.md) 的目标 G1–G8 是两套互不相干的编号;本篇正文统一写作「缺口 G1」至「缺口 G11」。
+本节的 G1–G12 是**缺口编号**,与 [README §三](./README.md) 的目标 G1–G8 是两套互不相干的编号;本篇正文统一写作「缺口 G1」至「缺口 G12」。
 
 每条都是**已知**的,不要重复发现。已关闭的条目保留在表里并标 ✅,这样你既不会重复修,也不会以为它从来没存在过。
 
@@ -195,6 +195,7 @@ const db = await openDatabase({ file, pragmas, logger })
 | 缺口 G9 | ⏳ | 门禁两项仍是 `todo`(路由表、通道盘点) | M1 起硬化;路由表用 `router.routes()` 对 03 篇 §4,通道盘点对 154。**它打印 `todo` 不算门禁红** |
 | 缺口 G10 | ✅ | `tests/backend/state-machine.test.js` 有一处 `it()` 标题笔误 | E9 已改为「6 个状态,17 个 kind」 |
 | 缺口 G11 | ⏳ | E3 的 `:memory:` SQLite 探针返回 `journal_mode='memory'` | 由 T35(卡面 [#41 §5](https://github.com/dengyie/OpenPet/issues/41),进度 [#41 §4](https://github.com/dengyie/OpenPet/issues/41)) 用 file-backed WAL 复验并新增 `tests/backend/sqlite-driver.test.js` |
+| 缺口 G12 | ⏳ | 03 篇 §3 盘点 7 个 `SERVICE_*` 写通道,§4.1 仅列 6 个对应入口 | 缺少服务配置写入端点 `PUT /service/config`;T09 先按 §4.1 注册现有 10 条健康/服务路由,由 T16 补齐端点与实现后同步契约表 |
 
 ---
 
