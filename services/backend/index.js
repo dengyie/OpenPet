@@ -25,12 +25,14 @@ import {
 import { createShellClient } from "./bridge/shell-client.js"
 import { createSettingsStore } from "./domains/settings.js"
 import { createAboutService } from "./domains/about.js"
+import { createLocalHttpManager } from "./domains/local-http.js"
 import { createEventHub } from "./events/hub.js"
 import { recoverJobs } from "./jobs/recovery.js"
 import { registerEventRoutes } from "./routes/events.js"
 import { initializeBackendRuntime, registerHealthRoutes } from "./routes/health.js"
 import { registerSettingsRoutes } from "./routes/settings.js"
 import { registerAboutRoutes } from "./routes/about.js"
+import { registerServiceRoutes } from "./routes/service.js"
 import { openDatabase } from "./store/db.js"
 import { migrate } from "./store/migrate.js"
 import { migrateFromJson, needsJsonImport } from "./store/migrate-from-json.js"
@@ -111,6 +113,7 @@ const runtime = {
 	settings: null,
 	jobs: null,
 	logs: null,
+	service: null,
 }
 
 const initEnvelope = await initPromise.catch((error) => {
@@ -146,6 +149,7 @@ router.use(jsonBody())
 registerHealthRoutes({
 	router,
 	runtime,
+	includeBusinessRoutes: false,
 	deps: { logger, cleanup: () => runtime.logs?.cleanup?.() },
 })
 
@@ -161,6 +165,14 @@ registerAboutRoutes(router, {
 		return runtime.jobs.insert(input)
 	} },
 })
+runtime.service = createLocalHttpManager({
+	settings: runtime.settings,
+	secrets: runtime.secrets,
+	shell,
+	petState: () => runtime.petState,
+	logger,
+})
+registerServiceRoutes(router, { manager: runtime.service })
 
 registerEventRoutes({ router, hub: eventHub })
 

@@ -54,13 +54,14 @@ function scheduleLogCleanup({ cleanup, logger, setInterval: schedule = setInterv
 	return timer
 }
 
-export function registerHealthRoutes({ router, runtime, deps = {} } = {}) {
+export function registerHealthRoutes({ router, runtime, deps = {}, includeBusinessRoutes = true } = {}) {
 	if (!router || typeof router.register !== "function") throw new TypeError("registerHealthRoutes 需要 router")
 	if (!runtime || typeof runtime !== "object") throw new TypeError("registerHealthRoutes 需要 runtime")
 
 	router.use(degradedGate(runtime))
 	const handlers = deps.handlers ?? {}
-	for (const [method, routePath] of ROUTES) {
+	const routes = includeBusinessRoutes ? ROUTES : ROUTES.filter(([, routePath]) => routePath === "/health")
+	for (const [method, routePath] of routes) {
 		const label = routeLabel(method, routePath)
 		let handler = handlers[label]
 		if (routePath === "/health") {
