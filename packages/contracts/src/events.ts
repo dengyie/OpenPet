@@ -22,6 +22,8 @@ export const EVENT_SETTINGS_CHANGED = "settings.changed" as const
 export const EVENT_SYSTEM_EVENTS_DROPPED = "system.events-dropped" as const
 export const EVENT_BACKEND_SHUTTING_DOWN = "backend.shutting-down" as const
 export const EVENT_CATALOG_REFRESHED = "catalog.refreshed" as const
+export const EVENT_PET_PACK_ACTIVATED = "pet.pack-activated" as const
+export const EVENT_ACTIONS_CHANGED = "pet.actions-changed" as const
 
 export const EVENT_NAMES = [
   "job.created",

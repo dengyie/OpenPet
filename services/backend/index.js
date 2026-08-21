@@ -26,6 +26,7 @@ import { createShellClient } from "./bridge/shell-client.js"
 import { createSettingsStore } from "./domains/settings.js"
 import { createAboutService } from "./domains/about.js"
 import { createLocalHttpManager } from "./domains/local-http.js"
+import { createPetPackService } from "./domains/pet-packs.js"
 import { createCatalogService } from "./domains/catalog.js"
 import { createEventHub } from "./events/hub.js"
 import { recoverJobs } from "./jobs/recovery.js"
@@ -34,6 +35,7 @@ import { initializeBackendRuntime, registerHealthRoutes } from "./routes/health.
 import { registerSettingsRoutes } from "./routes/settings.js"
 import { registerAboutRoutes } from "./routes/about.js"
 import { registerServiceRoutes } from "./routes/service.js"
+import { registerPetPackRoutes } from "./routes/pet-packs.js"
 import { registerCatalogRoutes } from "./routes/catalog.js"
 import { openDatabase } from "./store/db.js"
 import { migrate } from "./store/migrate.js"
@@ -117,6 +119,7 @@ const runtime = {
 	logs: null,
 	service: null,
 	catalog: null,
+	petPacks: null,
 }
 
 const initEnvelope = await initPromise.catch((error) => {
@@ -186,6 +189,16 @@ registerCatalogRoutes(router, {
 	catalog: runtime.catalog,
 	jobs: { insert: (input) => runtime.jobs?.insert(input) },
 })
+runtime.petPacks = createPetPackService({
+	root: join(dirname(fileURLToPath(import.meta.url)), "../.."),
+	userDataDir: runtime.userDataDir,
+	db: runtime.db,
+	jobs: { insert: (input) => runtime.jobs?.insert(input) },
+	dialog: shell,
+	logger,
+	emit: (name, payload) => eventHub.publish(name, payload),
+})
+registerPetPackRoutes(router, { packs: runtime.petPacks })
 
 registerEventRoutes({ router, hub: eventHub })
 
