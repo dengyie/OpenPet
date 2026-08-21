@@ -148,6 +148,28 @@ describe("T09 启动编排", () => {
 		assert.equal(result.degraded, false)
 	})
 
+	it("schema 首次迁移后导入 JSON,再创建 repositories", async () => {
+		const calls = []
+		const runtime = createRuntime({ db: null, settings: null, jobs: null })
+		const db = { driverName: "fake" }
+		await health.initializeBackendRuntime({
+			runtime,
+			userDataDir: "/tmp/openpet-user",
+			deps: {
+				createSettingsStore: () => ({}),
+				openDatabase: async () => db,
+				needsJsonImport: () => { calls.push("needs"); return true },
+				migrate: () => calls.push("migrate"),
+				migrateFromJson: async () => calls.push("import"),
+				createJobsRepository: () => { calls.push("repo"); return {} },
+				createLogsRepository: () => ({}),
+				recoverJobs: () => ({}),
+			},
+			bind: async () => calls.push("bind"),
+		})
+		assert.deepEqual(calls, ["needs", "migrate", "import", "repo", "bind"])
+	})
+
 	it("开库或迁移失败时通知 Shell 并仍然 bind", async () => {
 		for (const failureAt of ["open", "migrate"]) {
 			const calls = []

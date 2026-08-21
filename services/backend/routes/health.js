@@ -112,7 +112,20 @@ export async function initializeBackendRuntime({ runtime, userDataDir, shell, lo
 		paths = startupPaths(userDataDir)
 		runtime.settings = deps.createSettingsStore({ file: paths.settingsFile, logger })
 		runtime.db = await deps.openDatabase({ file: paths.databaseFile, logger })
+		// Sample before schema migration: the import gate is intentionally based on
+		// an empty schema_migrations ledger, while import itself runs after migrate.
+		const importNeeded = typeof deps.needsJsonImport === "function" ? deps.needsJsonImport(runtime.db) : false
 		deps.migrate({ db: runtime.db, logger })
+		if (importNeeded && typeof deps.migrateFromJson === "function") {
+			await deps.migrateFromJson({
+				db: runtime.db,
+				userDataDir,
+				now: deps.now,
+				logger,
+				onProgress: deps.onMigrationProgress,
+				force: true,
+			})
+		}
 		runtime.jobs = deps.createJobsRepository({ db: runtime.db })
 		runtime.logs = deps.createLogsRepository({ db: runtime.db })
 		recovery = deps.recoverJobs({

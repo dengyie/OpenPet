@@ -28,6 +28,7 @@ import { initializeBackendRuntime, registerHealthRoutes } from "./routes/health.
 import { registerSettingsRoutes } from "./routes/settings.js"
 import { openDatabase } from "./store/db.js"
 import { migrate } from "./store/migrate.js"
+import { migrateFromJson, needsJsonImport } from "./store/migrate-from-json.js"
 import { createJobsRepository } from "./store/repositories/jobs.js"
 import { createLogsRepository } from "./store/repositories/logs.js"
 
@@ -169,7 +170,7 @@ await initializeBackendRuntime({
 	userDataDir: runtime.userDataDir,
 	shell,
 	logger,
-	deps: { createSettingsStore, openDatabase, migrate, createJobsRepository, createLogsRepository, recoverJobs },
+	deps: { createSettingsStore, openDatabase, migrate, migrateFromJson, needsJsonImport, createJobsRepository, createLogsRepository, recoverJobs },
 	bind: () => new Promise((resolve) => server.listen(0, "127.0.0.1", resolve)),
 })
 
