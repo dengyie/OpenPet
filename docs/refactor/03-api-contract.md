@@ -127,11 +127,10 @@
 | GET | `/service/logs` | `SERVICE_GET_LOGS` | 分页,从 SQLite 读 |
 | DELETE | `/service/logs` | `SERVICE_CLEAR_LOGS` | 清空 |
 | GET | `/service/config` | `SERVICE_GET_CONFIG` | 不返回 token 明文 |
+| PUT | `/service/config` | `SERVICE_SAVE_CONFIG` | 更新服务配置,不接受 token 明文 |
 | POST | `/service/diagnostics` | 新增 | 导出诊断包 |
 | GET | `/about` | `ABOUT_GET_INFO` | 版本信息 |
 | POST | `/about/check-updates` | `ABOUT_CHECK_UPDATES` | 返 Job(可能联网) |
-
-> ⚠️ **缺口待补:** §3 记 `SERVICE_*` 共 7 个通道全迁 HTTP,但本表只落了 6 个(status / enable / token·rotate / logs GET / logs DELETE / config GET)。第 7 个是服务配置的**写入**通道(对应 `PUT /service/config`),常量名需在 M0 对着 `src/shared/ipc-channels.ts` 核实后补进本表。`check:api-contract` 必须同时校验「路由数 = 契约数 = 通道盘点数」,否则这类缺口会一直漏到上线。
 
 ### 4.2 设置
 

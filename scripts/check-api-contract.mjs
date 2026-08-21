@@ -11,9 +11,7 @@
  *   B. 重算文档里的算术 —— §3 通道去向总表的行内等式与总计。
  *      01 篇曾出现「合计 153」而实际应为 154 的错误,靠人眼没看出来。
  *
- * 退出码 1 表示对账失败。M1 起再补两项硬检查:
- *   - 后端实际注册的路由 vs 契约路由表
- *   - src/shared/ipc-channels.ts 的通道盘点数 vs §3 的 154
+ * 退出码 1 表示任一对账失败。
  *
  * 用法:node scripts/check-api-contract.mjs
  */
@@ -27,7 +25,6 @@ const DOC_PATH = "docs/refactor/03-api-contract.md"
 
 const problems = []
 const passes = []
-const todos = []
 
 const fail = (scope, message) => problems.push(`[${scope}] ${message}`)
 
@@ -223,7 +220,7 @@ if (declared === null) {
   if (ok) passes.push(`§3 通道表算术自洽(${sumTotal} = ${sumKept} 留 + ${sumMoved} 迁)`)
 }
 
-// --- 尚未硬化的检查 --------------------------------------------------------
+// --- C. 已实现路由注册表与契约子集 -----------------------------------------
 
 let routeRows = 0
 for (let i = 1; i <= 10; i += 1) {
@@ -239,23 +236,48 @@ for (let i = 1; i <= 10; i += 1) {
   }
   routeRows += tableRows(body.slice(idx + 1, end).join("\n")).length
 }
-todos.push(`§4 路由表共 ${routeRows} 行;后端路由注册表尚未存在,M1 起改为硬检查`)
-
+const registrySrc = readText("services/backend/routes/registry.js")
+if (!registrySrc.includes("IMPLEMENTED_API_ROUTES")) fail("routes", "找不到 IMPLEMENTED_API_ROUTES 注册表")
+const registryRoutes = new Set(quoted(registrySrc).filter((value) => /^(GET|POST|PUT|PATCH|DELETE) \//.test(value)))
+let actualRoutes = []
 try {
-  const channelsSrc = readFileSync(join(ROOT, "src/shared/ipc-channels.ts"), "utf8")
-  const literals = new Set(quoted(channelsSrc).filter((s) => s.includes(":")))
-  todos.push(
-    `src/shared/ipc-channels.ts 含冒号的字符串字面量 ${literals.size} 个,§3 盘点 ${sumTotal} 个;` +
-      "字面量形状确认后改为硬检查",
-  )
-} catch {
-  todos.push("读不到 src/shared/ipc-channels.ts,跳过通道盘点比对")
+  const registryModule = await import(new URL("../services/backend/routes/registry.js", import.meta.url))
+  actualRoutes = registryModule.registeredImplementedRoutes()
+} catch (error) {
+  fail("routes", `无法执行实际路由注册:${String(error)}`)
 }
+const docRoutes = new Set()
+for (let i = 1; i <= 10; i += 1) {
+  for (const cells of tableRows(section(doc, `### 4.${i} `))) {
+    const method = cells[0]
+    const routePath = backticked(cells[1] ?? "")[0]
+    if (/^(GET|POST|PUT|PATCH|DELETE)$/.test(method) && routePath?.startsWith("/")) docRoutes.add(`${method} ${routePath}`)
+  }
+}
+function normalizeRoute(route) { return route.replace(/:([A-Za-z][A-Za-z0-9_]*)/g, "{$1}") }
+for (const route of new Set([...registryRoutes, ...actualRoutes])) {
+  if (!docRoutes.has(normalizeRoute(route))) fail("routes", `已实现路由有、§4 无 -> ${route}`)
+}
+for (const route of registryRoutes) if (!actualRoutes.includes(route)) fail("routes", `注册表有、实际未注册 -> ${route}`)
+for (const route of actualRoutes) if (!registryRoutes.has(route)) fail("routes", `实际已注册、注册表无 -> ${route}`)
+if (!problems.some((problem) => problem.startsWith("[routes]"))) passes.push(`实际路由、注册表与 §4 精确对账(${actualRoutes.length}/${routeRows} 行)`)
+
+// --- D. TS/JS IPC 通道清单与 §3 总数 --------------------------------------
+
+function ipcValues(file) {
+  const source = readText(file)
+  return [...source.matchAll(/:\s*["']([^"']+)["']/g)].map((match) => match[1])
+}
+const tsChannels = ipcValues("src/shared/ipc-channels.ts")
+const jsChannels = ipcValues("src/shared/ipc-channels.js")
+compare("TS/JS IPC 通道", tsChannels, jsChannels)
+if (new Set(tsChannels).size !== tsChannels.length) fail("ipc", "src/shared/ipc-channels.ts 存在重复通道值")
+if (tsChannels.length !== sumTotal) fail("ipc", `IPC 通道数 ${tsChannels.length} != §3 盘点 ${sumTotal}`)
+else passes.push(`IPC 通道盘点一致(${tsChannels.length} 项)`)
 
 // --- 输出 ------------------------------------------------------------------
 
 for (const p of passes) console.log(`  ok    ${p}`)
-for (const t of todos) console.log(`  todo  ${t}`)
 
 if (problems.length > 0) {
   console.error(`\ncheck:api-contract 失败,共 ${problems.length} 处:`)
@@ -263,5 +285,5 @@ if (problems.length > 0) {
   console.error("\n改契约与改文档必须同时进行 —— 见 docs/refactor/03-api-contract.md §9。")
   process.exitCode = 1
 } else {
-  console.log(`\ncheck:api-contract 通过(${passes.length} 项对账,${todos.length} 项待硬化)`)
+  console.log(`\ncheck:api-contract 通过(${passes.length} 项硬对账)`)
 }

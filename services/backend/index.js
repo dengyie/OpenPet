@@ -33,6 +33,7 @@ import { createEventHub } from "./events/hub.js"
 import { recoverJobs } from "./jobs/recovery.js"
 import { createQueue } from "./jobs/queue.js"
 import { createRunner } from "./jobs/runner.js"
+import { createJobDispatcher } from "./jobs/dispatcher.js"
 import { registerEventRoutes } from "./routes/events.js"
 import { initializeBackendRuntime, registerHealthRoutes } from "./routes/health.js"
 import { registerSettingsRoutes } from "./routes/settings.js"
@@ -261,17 +262,12 @@ if (!runtime.degraded && runtime.jobs) {
 			"actions.import-frames": async ({ job, report, signal }) => runtime.actions.runImportFrames({ ...job.input, signal, report }),
 		},
 	})
-	runtime.enqueueJob = (input) => {
-		const job = runtime.queue.enqueue(input)
-		eventHub.publish("job.created", job)
-		runtime.queue.enqueue(job)
-		while (true) {
-			const next = runtime.queue.next()
-			if (!next) break
-			void runtime.runner.run(next).catch((error) => logger.error("Job 执行失败", { jobId: next.id, error: String(error) }))
-		}
-		return job
-	}
+	runtime.enqueueJob = createJobDispatcher({
+		queue: runtime.queue,
+		runner: runtime.runner,
+		publish: (name, payload) => eventHub.publish(name, payload),
+		logger,
+	})
 	for (const job of runtime.jobs.list({ status: "queued", limit: 1_000 })) runtime.queue.enqueue(job)
 	while (true) {
 		const next = runtime.queue.next()
