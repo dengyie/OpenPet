@@ -20,7 +20,9 @@ import {
 } from "./http/middleware.js"
 import { createShellClient } from "./bridge/shell-client.js"
 import { createSettingsStore } from "./domains/settings.js"
+import { createEventHub } from "./events/hub.js"
 import { recoverJobs } from "./jobs/recovery.js"
+import { registerEventRoutes } from "./routes/events.js"
 import { initializeBackendRuntime, registerHealthRoutes } from "./routes/health.js"
 import { registerSettingsRoutes } from "./routes/settings.js"
 import { openDatabase } from "./store/db.js"
@@ -114,6 +116,9 @@ runtime.legacyToken = initEnvelope.body.legacyToken ?? null
 
 const accessLogs = createAccessLogBuffer({ max: 200 })
 const router = createRouter({ basePath: "/api/v1" })
+// ADR-015:事件总线是唯一的失效通知来源。SSE 订阅、设置变更、Job/恢复钩子都走它。
+const eventHub = createEventHub({ logger })
+runtime.events = eventHub
 
 router.use(requestId())
 router.use(errorBoundary({ logger }))
@@ -138,8 +143,10 @@ registerHealthRoutes({
 registerSettingsRoutes({
 	router,
 	store: runtime.settings ?? { read: () => ({ version: 0, values: {} }), patch: () => { throw new Error("settings 尚未初始化") } },
-	emit: (name, payload) => runtime.events?.publish?.(name, payload),
+	emit: (name, payload) => eventHub.publish(name, payload),
 })
+
+registerEventRoutes({ router, hub: eventHub })
 
 const server = createServer((req, res) => {
 	void router.handle(req, res)
@@ -215,6 +222,9 @@ async function shutdown(reason, code) {
 	hardExit.unref()
 
 	await new Promise((resolve) => server.close(resolve))
+	// 03 篇 §5:关闭前通知订阅方,让前端切掉本地缓存并准备重连。
+	eventHub.publish("backend.shutting-down", { reason })
+	eventHub.closeAll()
 	if (runtime.db !== null) runtime.db.close()
 	shell.dispose()
 

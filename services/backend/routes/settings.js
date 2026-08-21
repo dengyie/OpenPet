@@ -1,4 +1,4 @@
-import { settingsPatchRequestSchema } from "@openpet/contracts"
+import { EVENT_SETTINGS_CHANGED, settingsPatchRequestSchema } from "@openpet/contracts"
 
 import { ApiError, sendSuccess } from "../http/middleware.js"
 
@@ -57,7 +57,7 @@ export function registerSettingsRoutes({ router, store, emit, handlers = {} } = 
 		[label("PATCH", "/settings")]: (ctx) => {
 			const result = store.patch(parsePatch(ctx.body))
 			if (result.changedPaths.length > 0) {
-				emit?.("settings.changed", { paths: result.changedPaths, version: result.version })
+				emit?.(EVENT_SETTINGS_CHANGED, { paths: result.changedPaths, version: result.version })
 			}
 			sendSuccess(ctx, result)
 		},

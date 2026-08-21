@@ -18,6 +18,10 @@ export const ALWAYS_DELIVERED_TOPICS = ["system"] as const
 /** 前端默认订阅集合。logs 只在日志面板打开时追加订阅。 */
 export const DEFAULT_SUBSCRIBED_TOPICS = ["pet", "jobs", "plugins", "ai", "settings", "catalog"] as const
 
+export const EVENT_SETTINGS_CHANGED = "settings.changed" as const
+export const EVENT_SYSTEM_EVENTS_DROPPED = "system.events-dropped" as const
+export const EVENT_BACKEND_SHUTTING_DOWN = "backend.shutting-down" as const
+
 export const EVENT_NAMES = [
   "job.created",
   "job.progress",
@@ -33,13 +37,13 @@ export const EVENT_NAMES = [
   "ai.talk-utterance",
   "pet.pack-activated",
   "pet.actions-changed",
-  "settings.changed",
+  EVENT_SETTINGS_CHANGED,
   "catalog.refreshed",
   "log.appended",
-  "backend.shutting-down",
+  EVENT_BACKEND_SHUTTING_DOWN,
   "backend.degraded",
   "system.jobs-recovered",
-  "system.events-dropped",
+  EVENT_SYSTEM_EVENTS_DROPPED,
 ] as const
 export type EventName = (typeof EVENT_NAMES)[number]
 
@@ -58,13 +62,13 @@ export const EVENT_TOPIC: Record<EventName, SseTopic> = {
   "ai.talk-utterance": "ai",
   "pet.pack-activated": "pet",
   "pet.actions-changed": "pet",
-  "settings.changed": "settings",
+  [EVENT_SETTINGS_CHANGED]: "settings",
   "catalog.refreshed": "catalog",
   "log.appended": "logs",
-  "backend.shutting-down": "system",
+  [EVENT_BACKEND_SHUTTING_DOWN]: "system",
   "backend.degraded": "system",
   "system.jobs-recovered": "system",
-  "system.events-dropped": "system",
+  [EVENT_SYSTEM_EVENTS_DROPPED]: "system",
 }
 
 /** 心跳:后端每 15s 发一行 ": ping" 注释 */
