@@ -37,13 +37,13 @@ export const EVENT_NAMES = [
   "ai.talk-utterance",
   "pet.pack-activated",
   "pet.actions-changed",
-  EVENT_SETTINGS_CHANGED,
+  "settings.changed",
   "catalog.refreshed",
   "log.appended",
-  EVENT_BACKEND_SHUTTING_DOWN,
+  "backend.shutting-down",
   "backend.degraded",
   "system.jobs-recovered",
-  EVENT_SYSTEM_EVENTS_DROPPED,
+  "system.events-dropped",
 ] as const
 export type EventName = (typeof EVENT_NAMES)[number]
 
@@ -62,13 +62,13 @@ export const EVENT_TOPIC: Record<EventName, SseTopic> = {
   "ai.talk-utterance": "ai",
   "pet.pack-activated": "pet",
   "pet.actions-changed": "pet",
-  [EVENT_SETTINGS_CHANGED]: "settings",
+  "settings.changed": "settings",
   "catalog.refreshed": "catalog",
   "log.appended": "logs",
-  [EVENT_BACKEND_SHUTTING_DOWN]: "system",
+  "backend.shutting-down": "system",
   "backend.degraded": "system",
   "system.jobs-recovered": "system",
-  [EVENT_SYSTEM_EVENTS_DROPPED]: "system",
+  "system.events-dropped": "system",
 }
 
 /** 心跳:后端每 15s 发一行 ": ping" 注释 */
