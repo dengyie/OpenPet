@@ -278,7 +278,7 @@ if (!runtime.degraded && runtime.jobs) {
 	runtime.enqueueJob = () => { throw new Error("Job service unavailable") }
 }
 
-registerJobRoutes(router, { jobs: runtime.jobs ?? { byId: () => null }, runner: runtime.runner })
+registerJobRoutes(router, { jobs: runtime.jobs ?? { byId: () => null }, runner: runtime.runner, dispatcher: runtime.enqueueJob })
 
 const address = server.address()
 

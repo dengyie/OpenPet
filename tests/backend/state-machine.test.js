@@ -79,11 +79,11 @@ describe("状态机 · 常量", () => {
 	it("活跃、终态、可重试三个集合划分正确", () => {
 		assert.deepEqual(Array.from(sm.ACTIVE_STATUSES).sort(), ["queued", "running"])
 		assert.deepEqual(Array.from(sm.TERMINAL_STATUSES).sort(), TERMINAL.slice().sort())
-		// succeeded 是唯一不可重试的终态。
+		// API contract 仅允许 failed / interrupted 由用户显式重试。
 		assert.equal(sm.RETRYABLE_STATUSES.has("succeeded"), false)
 		assert.deepEqual(
 			Array.from(sm.RETRYABLE_STATUSES).sort(),
-			["canceled", "failed", "interrupted"],
+			["failed", "interrupted"],
 		)
 	})
 })

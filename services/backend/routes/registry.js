@@ -41,8 +41,12 @@ export const IMPLEMENTED_API_ROUTES = Object.freeze([
 	"POST /catalog/install",
 	"GET /catalog/installed",
 	"POST /catalog/source",
+	"GET /jobs",
 	"GET /jobs/:id",
 	"POST /jobs/:id/cancel",
+	"POST /jobs/:id/retry",
+	"GET /jobs/:id/events",
+	"DELETE /jobs/completed",
 ])
 
 const noop = () => ({})
@@ -60,7 +64,7 @@ export function registeredImplementedRoutes() {
 	registerActionRoutes(router, { actions })
 	registerPetPackRoutes(router, { packs })
 	registerCatalogRoutes(router, { catalog, jobs: { insert: noop } })
-	registerJobRoutes(router, { jobs: { byId: noop }, runner: { cancel: noop } })
+	registerJobRoutes(router, { jobs: { byId: noop }, runner: { cancel: noop }, dispatcher: { resume: noop } })
 	return router.routes().map((route) => route.replace(" /api/v1/", " /"))
 }
 import { createRouter } from "../http/router.js"

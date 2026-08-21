@@ -110,7 +110,7 @@ running      ──(异常)──────►   failed
 running      ──(用户取消)──►   canceled
 running      ──(进程重启)──►   interrupted
 
-failed / canceled / interrupted  ──(retry)──►  queued
+failed / interrupted  ──(retry)──►  queued
 succeeded 为终态,不可再转
 ```
 
@@ -120,7 +120,7 @@ succeeded 为终态,不可再转
 | `running` | 执行中 | ✅(取决于 kind) | — |
 | `succeeded` | 成功 | ❌ | ❌ |
 | `failed` | 失败 | ❌ | ✅ |
-| `canceled` | 用户取消 | ❌ | ✅ |
+| `canceled` | 用户取消 | ❌ | ❌ |
 | `interrupted` | 进程重启导致中断 | ❌ | ✅ |
 
 ### 2.3 并发与队列

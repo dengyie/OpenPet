@@ -75,6 +75,11 @@ function parseLimit(value) {
 		: DEFAULT_LIST_LIMIT
 }
 
+function parseOffset(value) {
+	const parsed = Number(value)
+	return Number.isInteger(parsed) && parsed >= 0 ? parsed : 0
+}
+
 export function createJobsRepository({ db, now = Date.now } = {}) {
 	if (!db || typeof db.prepare !== "function") {
 		throw new ApiError("INTERNAL", "Jobs repository 需要数据库 driver")
@@ -146,12 +151,28 @@ export function createJobsRepository({ db, now = Date.now } = {}) {
 			params.push(options.resourceKey)
 		}
 		const limit = parseLimit(options.limit)
-		const offset = Number.isInteger(options.offset) && options.offset >= 0 ? options.offset : 0
+		const offset = parseOffset(options.offset)
 		const where = clauses.length > 0 ? " WHERE " + clauses.join(" AND ") : ""
 		return db
 			.prepare("SELECT * FROM jobs" + where + " ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?")
 			.all(...params, limit, offset)
 			.map(toJob)
+	}
+
+	function count(options = {}) {
+		const clauses = []
+		const params = []
+		if (options.status !== undefined) { clauses.push("status = ?"); params.push(options.status) }
+		if (options.kind !== undefined) { clauses.push("kind = ?"); params.push(options.kind) }
+		const where = clauses.length > 0 ? " WHERE " + clauses.join(" AND ") : ""
+		return Number(db.prepare("SELECT count(*) AS count FROM jobs" + where).get(...params).count)
+	}
+
+	function removeCompleted() {
+		const result = db.prepare(
+			"DELETE FROM jobs WHERE status IN ('succeeded','canceled') OR (status = 'failed' AND attempt >= max_attempts)",
+		).run()
+		return Number(result.changes)
 	}
 
 	function transition(id, to) {
@@ -171,11 +192,22 @@ export function createJobsRepository({ db, now = Date.now } = {}) {
 			attempt += 1
 		}
 
-		const result = db
-			.prepare(
-				"UPDATE jobs SET status = ?, attempt = ?, started_at = ?, finished_at = ? WHERE id = ? AND status = ?",
+		let result
+		try {
+			result = db
+				.prepare(
+					"UPDATE jobs SET status = ?, attempt = ?, started_at = ?, finished_at = ? WHERE id = ? AND status = ?",
 				)
 				.run(to, attempt, startedAt, finishedAt, id, current.status)
+		} catch (error) {
+			if (!isConstraintError(error) || to !== "queued" || current.resourceKey === null) throw error
+			const active = activeByResourceKey(current.resourceKey)
+			throw new ApiError("LOCKED", "resourceKey 已被活跃 Job 占用", {
+				status: 423,
+				details: { jobId: active?.id ?? null, resourceKey: current.resourceKey },
+				cause: error,
+			})
+		}
 		if (Number(result.changes) !== 1) {
 			throw new ApiError("CONFLICT", "Job 状态已被其它写者更新", {
 				details: { jobId: id, expectedStatus: current.status, to },
@@ -241,6 +273,10 @@ export function createJobsRepository({ db, now = Date.now } = {}) {
 			.map(toEvent)
 	}
 
+	function countEvents(jobId) {
+		return Number(db.prepare("SELECT count(*) AS count FROM job_events WHERE job_id = ?").get(jobId).count)
+	}
+
 	function countByStatus(status) {
 		if (status !== undefined) {
 			return Number(db.prepare("SELECT count(*) AS count FROM jobs WHERE status = ?").get(status).count)
@@ -256,11 +292,14 @@ export function createJobsRepository({ db, now = Date.now } = {}) {
 		insert,
 		byId,
 		list,
+		count,
+		removeCompleted,
 		transition,
 		setProgress,
 		finish,
 		appendEvent,
 		listEvents,
+		countEvents,
 		activeByResourceKey,
 		countByStatus,
 	}

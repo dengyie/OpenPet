@@ -152,6 +152,22 @@ describe("Jobs repository · CAS 与状态时间", () => {
 		})
 	})
 
+	it("retry resource collision returns LOCKED without incrementing attempt", async () => {
+		await withRepository(({ repo }) => {
+			repo.insert(job("retry-owner", { resourceKey: "shared" }))
+			repo.transition("retry-owner", "running")
+			repo.finish("retry-owner", { status: "failed" })
+			repo.insert(job("new-owner", { resourceKey: "shared" }))
+
+			assert.throws(
+				() => repo.transition("retry-owner", "queued"),
+				(error) => error.code === "LOCKED" && error.status === 423 && error.details.jobId === "new-owner",
+			)
+			assert.equal(repo.byId("retry-owner").status, "failed")
+			assert.equal(repo.byId("retry-owner").attempt, 1)
+		})
+	})
+
 describe("Jobs repository · progress、events 与查询", () => {
 	it("JSON 字段、事件顺序、过滤列表与状态计数可往返", async () => {
 		const ticks = [1_000, 2_000, 3_000, 4_000]
@@ -173,5 +189,29 @@ describe("Jobs repository · progress、events 与查询", () => {
 			assert.equal(repo.countByStatus("queued"), 1)
 				assert.deepEqual(repo.countByStatus(), { queued: 1 })
 			}, { now: () => ticks.shift() })
+	})
+
+	it("counts filters and removes terminal jobs with cascaded events", async () => {
+		await withRepository(({ repo }) => {
+			repo.insert(job("queued", { kind: "image.generate" }))
+			repo.insert(job("failed", { kind: "creator.export" }))
+			repo.transition("failed", "running")
+			repo.appendEvent("failed", { phase: "checking", percent: 10 })
+			repo.finish("failed", { status: "failed" })
+			repo.insert(job("succeeded", { kind: "about.check-updates" }))
+			repo.transition("succeeded", "running")
+			repo.finish("succeeded", { status: "succeeded" })
+			repo.insert(job("retryable", { kind: "about.check-updates" }))
+			repo.transition("retryable", "running")
+			repo.finish("retryable", { status: "interrupted" })
+
+			assert.equal(repo.count(), 4)
+			assert.equal(repo.count({ kind: "about.check-updates" }), 2)
+			assert.equal(repo.count({ status: "queued" }), 1)
+			assert.equal(repo.countEvents("failed"), 1)
+			assert.equal(repo.removeCompleted(), 2)
+			assert.deepEqual(repo.list().map(({ id }) => id), ["retryable", "queued"])
+			assert.deepEqual(repo.listEvents("failed"), [])
+		})
 	})
 })

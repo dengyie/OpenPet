@@ -33,7 +33,7 @@ export const TERMINAL_STATUSES = Object.freeze(
 )
 
 /** 04 篇 §2.2:succeeded 是唯一不可重试的终态。 */
-export const RETRYABLE_STATUSES = Object.freeze(new Set(["failed", "canceled", "interrupted"]))
+export const RETRYABLE_STATUSES = Object.freeze(new Set(["failed", "interrupted"]))
 
 const TRANSITIONS = Object.freeze({
 	queued: Object.freeze(new Set(["running", "canceled"])),
@@ -195,7 +195,7 @@ export function canRetry(job = {}) {
 export function assertRetry(job = {}) {
 	if (canRetry(job)) return true
 	if (!RETRYABLE_STATUSES.has(job.status)) {
-		throw new ApiError("CONFLICT", "只有 failed / canceled / interrupted 的 Job 能重试", {
+		throw new ApiError("CONFLICT", "只有 failed / interrupted 的 Job 能重试", {
 			details: { jobId: job.id ?? null, status: job.status ?? null },
 		})
 	}
