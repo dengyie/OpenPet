@@ -92,6 +92,7 @@ export function createRunner({
 	queue,
 	progress = createProgressThrottle,
 	handlers = {},
+	emit,
 	logger,
 	delay = sleep,
 	signalTree = signalProcessTree,
@@ -121,6 +122,7 @@ export function createRunner({
 			record.phase = frame.phase ?? null
 			repo.setProgress(record.jobId, frame)
 			repo.appendEvent?.(record.jobId, frame)
+			emit?.("job.progress", { jobId: record.jobId, ...frame })
 		}
 		if (typeof progress === "function") return progress({ onEmit: persist, jobId: record.jobId })
 		if (typeof progress?.create === "function") return progress.create({ onEmit: persist, jobId: record.jobId })
@@ -172,11 +174,14 @@ export function createRunner({
 					const result = await handler({ ...context, job: current })
 					jobProgress.flush()
 					if (record.canceled || record.interrupted) return repo.byId(job.id)
-					return repo.finish(job.id, { status: "succeeded", result })
+					const finished = repo.finish(job.id, { status: "succeeded", result })
+					emit?.("job.succeeded", finished)
+					return finished
 				} catch (error) {
 					jobProgress.flush()
 					if (record.canceled || record.interrupted) return repo.byId(job.id)
 					const failed = repo.finish(job.id, { status: "failed", error: jobError(error) })
+					emit?.("job.failed", failed)
 					if (!retryableStatus(error) || !canRetry(failed)) return failed
 					await delay(RETRY_BASE_DELAY_MS * (2 ** Math.max(0, failed.attempt - 1)))
 					if (record.canceled || record.interrupted || shuttingDown) return repo.byId(job.id)
@@ -228,7 +233,9 @@ export function createRunner({
 		record.canceled = true
 		record.controller.abort()
 		await terminateProcess(record)
-		return repo.finish(jobId, { status: "canceled" })
+		const canceled = repo.finish(jobId, { status: "canceled" })
+		emit?.("job.canceled", canceled)
+		return canceled
 	}
 
 	async function shutdown() {
@@ -250,7 +257,8 @@ export function createRunner({
 		for (const record of records) {
 			const current = repo.byId(record.jobId)
 			if (current?.status !== "running") continue
-			repo.finish(record.jobId, { status: "interrupted", error: interruptionError() })
+			const interruptedJob = repo.finish(record.jobId, { status: "interrupted", error: interruptionError() })
+			emit?.("job.failed", interruptedJob)
 			interrupted.push(record.jobId)
 		}
 		return { interrupted }

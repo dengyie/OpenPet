@@ -31,6 +31,8 @@ import { createActionService } from "./domains/actions.js"
 import { createCatalogService } from "./domains/catalog.js"
 import { createEventHub } from "./events/hub.js"
 import { recoverJobs } from "./jobs/recovery.js"
+import { createQueue } from "./jobs/queue.js"
+import { createRunner } from "./jobs/runner.js"
 import { registerEventRoutes } from "./routes/events.js"
 import { initializeBackendRuntime, registerHealthRoutes } from "./routes/health.js"
 import { registerSettingsRoutes } from "./routes/settings.js"
@@ -39,6 +41,7 @@ import { registerServiceRoutes } from "./routes/service.js"
 import { registerPetPackRoutes } from "./routes/pet-packs.js"
 import { registerActionRoutes } from "./routes/actions.js"
 import { registerCatalogRoutes } from "./routes/catalog.js"
+import { registerJobRoutes } from "./routes/jobs.js"
 import { openDatabase } from "./store/db.js"
 import { migrate } from "./store/migrate.js"
 import { migrateFromJson, needsJsonImport } from "./store/migrate-from-json.js"
@@ -123,6 +126,10 @@ const runtime = {
 	catalog: null,
 	petPacks: null,
 	actions: null,
+	about: null,
+	queue: null,
+	runner: null,
+	enqueueJob: null,
 }
 
 const initEnvelope = await initPromise.catch((error) => {
@@ -167,11 +174,12 @@ registerSettingsRoutes({
 	store: runtime.settings ?? { read: () => ({ version: 0, values: {} }), patch: () => { throw new Error("settings 尚未初始化") } },
 	emit: (name, payload) => eventHub.publish(name, payload),
 })
+runtime.about = createAboutService({ pkg: packageJson, runtime })
 registerAboutRoutes(router, {
-	about: createAboutService({ pkg: packageJson, runtime }),
+	about: runtime.about,
 	jobs: { insert: (input) => {
-		if (!runtime.jobs) throw new Error("Job service unavailable")
-		return runtime.jobs.insert(input)
+		if (!runtime.enqueueJob) throw new Error("Job service unavailable")
+		return runtime.enqueueJob(input)
 	} },
 })
 runtime.service = createLocalHttpManager({
@@ -190,13 +198,13 @@ runtime.catalog = createCatalogService({
 })
 registerCatalogRoutes(router, {
 	catalog: runtime.catalog,
-	jobs: { insert: (input) => runtime.jobs?.insert(input) },
+	jobs: { insert: (input) => runtime.enqueueJob?.(input) },
 })
 runtime.petPacks = createPetPackService({
 	root: join(dirname(fileURLToPath(import.meta.url)), "../.."),
 	userDataDir: runtime.userDataDir,
 	db: runtime.db,
-	jobs: { insert: (input) => runtime.jobs?.insert(input) },
+	jobs: { insert: (input) => runtime.enqueueJob?.(input) },
 	dialog: shell,
 	logger,
 	emit: (name, payload) => eventHub.publish(name, payload),
@@ -205,7 +213,7 @@ registerPetPackRoutes(router, { packs: runtime.petPacks })
 runtime.actions = createActionService({
 	root: join(dirname(fileURLToPath(import.meta.url)), "../.."),
 	db: runtime.db,
-	jobs: { insert: (input) => runtime.jobs?.insert(input) },
+	jobs: { insert: (input) => runtime.enqueueJob?.(input) },
 	dialog: shell,
 	logger,
 	emit: (name, payload) => eventHub.publish(name, payload),
@@ -237,6 +245,44 @@ await initializeBackendRuntime({
 	deps: { createSettingsStore, openDatabase, migrate, migrateFromJson, needsJsonImport, createJobsRepository, createLogsRepository, recoverJobs },
 	bind: () => new Promise((resolve) => server.listen(0, "127.0.0.1", resolve)),
 })
+
+if (!runtime.degraded && runtime.jobs) {
+	runtime.queue = createQueue({ repo: runtime.jobs, logger })
+	runtime.runner = createRunner({
+		repo: runtime.jobs,
+		queue: runtime.queue,
+		logger,
+		emit: (name, payload) => eventHub.publish(name, payload),
+		handlers: {
+			"about.check-updates": async ({ report }) => { report({ phase: "checking", percent: 25 }); return runtime.about.checkUpdates() },
+			"catalog.install": async ({ job, report, signal }) => { report({ phase: "installing", percent: 25 }); if (signal.aborted) throw signal.reason ?? new Error("Job canceled"); return runtime.catalog.install(job.input?.id) },
+			"pet-pack.import": async ({ job, report, signal }) => runtime.petPacks.runImport({ ...job.input, signal, report }),
+			"pet-pack.export": async ({ job, report, signal }) => runtime.petPacks.runExport({ ...job.input, signal, report }),
+			"actions.import-frames": async ({ job, report, signal }) => runtime.actions.runImportFrames({ ...job.input, signal, report }),
+		},
+	})
+	runtime.enqueueJob = (input) => {
+		const job = runtime.jobs.insert(input)
+		eventHub.publish("job.created", job)
+		runtime.queue.enqueue(job)
+		while (true) {
+			const next = runtime.queue.next()
+			if (!next) break
+			void runtime.runner.run(next).catch((error) => logger.error("Job 执行失败", { jobId: next.id, error: String(error) }))
+		}
+		return job
+	}
+	for (const job of runtime.jobs.list({ status: "queued", limit: 1_000 })) runtime.queue.enqueue(job)
+	while (true) {
+		const next = runtime.queue.next()
+		if (!next) break
+		void runtime.runner.run(next).catch((error) => logger.error("恢复 Job 执行失败", { jobId: next.id, error: String(error) }))
+	}
+} else {
+	runtime.enqueueJob = () => { throw new Error("Job service unavailable") }
+}
+
+registerJobRoutes(router, { jobs: runtime.jobs ?? { byId: () => null }, runner: runtime.runner })
 
 const address = server.address()
 
@@ -290,6 +336,8 @@ async function shutdown(reason, code) {
 	// 03 篇 §5:关闭前通知订阅方,让前端切掉本地缓存并准备重连。
 	eventHub.publish(EVENT_BACKEND_SHUTTING_DOWN, { reason })
 	eventHub.closeAll()
+	await runtime.runner?.shutdown?.()
+	runtime.queue?.stop?.()
 	await new Promise((resolve) => server.close(resolve))
 	if (runtime.db !== null) runtime.db.close()
 	shell.dispose()

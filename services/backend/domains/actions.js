@@ -6,6 +6,7 @@ import { ApiError } from "../http/middleware.js"
 
 const require = createRequire(import.meta.url)
 const { inspectFrameFolder } = require("../../../src/main/services/sprite-generator.js")
+const { createActionImportService } = require("../../../src/main/services/action-import-service.js")
 const SAFE_ID = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/
 
 function id(value) {
@@ -34,6 +35,11 @@ function sourcePath(value) {
 export function createActionService({ root, db, jobs, dialog, logger, now = Date.now, emit } = {}) {
 	if (typeof root !== "string" || !path.isAbsolute(root)) throw new TypeError("action root must be absolute")
 	const configPath = path.join(root, "cat_anime", "animations.json")
+	const legacyImporter = createActionImportService({
+		framesRoot: path.join(root, "cat_anime", "flames"),
+		spritesDir: path.join(root, "cat_anime", "sprites"),
+		configPath,
+	})
 	const proposals = []
 	let selection = null
 
@@ -106,8 +112,16 @@ export function createActionService({ root, db, jobs, dialog, logger, now = Date
 		const job = jobs.insert({ id: `actions-import-frames:${actionId}:${now()}`, kind: "actions.import-frames", input: { path: result.path, actionId }, resourceKey: `actions:${actionId}` })
 		return { jobId: job.id, actionId, inspection: result.inspection }
 	}
+	const runImportFrames = async ({ path: sourceDir, actionId, signal, report } = {}) => {
+		if (signal?.aborted) throw signal.reason ?? new Error("Job canceled")
+		report?.({ phase: "generating", percent: 25, message: "Generating action sprites" })
+		const result = await legacyImporter.importActionFrames({ sourceDir, actionId })
+		if (signal?.aborted) throw signal.reason ?? new Error("Job canceled")
+		emit?.(EVENT_ACTIONS_CHANGED, { at: now(), actions: result.actions ?? [] })
+		return result
+	}
 	const clearSelection = () => { selection = null; return { ok: true } }
 	const submitProposal = (input = {}) => { const proposal = { id: input.id ?? `proposal:${now()}`, ...input, status: "pending" }; proposals.push(proposal); return proposal }
 	const listProposals = () => clone(proposals)
-	return { list, get, create, update, updateConfig, remove, play, submitProposal, listProposals, inspect: inspectFrames, reinspect: inspectFrames, importFrames, clearSelection, previewProposal: (input) => ({ ...input, preview: true }), acceptProposal: (proposalId) => ({ id: proposalId, status: "accepted" }), rejectProposal: (proposalId) => ({ id: proposalId, status: "rejected" }), updateRule: (ruleId, patch) => ({ id: ruleId, ...patch }), deleteRule: (ruleId) => ({ id: ruleId, deleted: true }), db }
+	return { list, get, create, update, updateConfig, remove, play, submitProposal, listProposals, inspect: inspectFrames, reinspect: inspectFrames, importFrames, runImportFrames, clearSelection, previewProposal: (input) => ({ ...input, preview: true }), acceptProposal: (proposalId) => ({ id: proposalId, status: "accepted" }), rejectProposal: (proposalId) => ({ id: proposalId, status: "rejected" }), updateRule: (ruleId, patch) => ({ id: ruleId, ...patch }), deleteRule: (ruleId) => ({ id: ruleId, deleted: true }), db }
 }

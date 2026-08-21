@@ -145,6 +145,7 @@ export function createQueue({
 
 	const timer = setInterval(() => expire(), Math.max(1, tickMs))
 	timer.unref?.()
+	function stop() { clearInterval(timer) }
 
 	function stats() {
 		const groups = {}
@@ -163,7 +164,7 @@ export function createQueue({
 		}
 	}
 
-	return { enqueue, next, release, cancel, stats, expire }
+	return { enqueue, next, release, cancel, stats, expire, stop }
 }
 
 export { JOB_KINDS }

@@ -167,5 +167,52 @@ export function createPetPackService({ root, userDataDir, db, jobs, dialog, logg
 		const job = jobs.insert({ id: `pet-pack-export:${normalized}:${now()}`, kind: "pet-pack.export", input: { id: normalized, target: directory }, resourceKey: `pet-pack:${normalized}` })
 		return { jobId: job.id }
 	}
-	return { list, get, activate, remove, inspect, import: importPack, export: exportPack, status: () => ({ activePackId, db: db?.driverName ?? null }) }
+	const runImport = async ({ path: sourcePath, id, signal, report } = {}) => {
+		if (signal?.aborted) throw signal.reason ?? new Error("Job canceled")
+		const real = assertZipFile(sourcePath, protectedRoots)
+		const extracted = await zip.extractZipToTemp(real, {
+			subject: "Pet pack package",
+			folderSubject: "Pet pack",
+			limits: { ...zip.DEFAULT_ZIP_LIMITS, maxExpandedBytes: MAX_PET_PACK_BYTES, maxFileBytes: MAX_PET_PACK_BYTES },
+		})
+		try {
+			let sourceDir = extracted
+			const candidates = []
+			const walk = (dir) => {
+				for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+					const next = path.join(dir, entry.name)
+					if (entry.isDirectory()) walk(next)
+					else if (entry.isFile() && entry.name === "pet.json") candidates.push(path.dirname(next))
+				}
+			}
+			walk(extracted)
+			if (candidates.length !== 1) fail("pet pack must contain exactly one pet.json")
+			sourceDir = candidates[0]
+			const manifest = JSON.parse(fs.readFileSync(path.join(sourceDir, "pet.json"), "utf8"))
+			const packId = safeId(id ?? manifest.id)
+			if (packId !== manifest.id) fail("pet pack id does not match inspected package")
+			if (signal?.aborted) throw signal.reason ?? new Error("Job canceled")
+			report?.({ phase: "writing", percent: 50, message: "Installing pet pack" })
+			fs.mkdirSync(packsRoot, { recursive: true })
+			const target = packPath(packId)
+			fs.rmSync(target, { recursive: true, force: true })
+			fs.cpSync(sourceDir, target, { recursive: true, errorOnExist: true })
+			return { id: packId, manifest, path: target }
+		} finally {
+			fs.rmSync(extracted, { recursive: true, force: true })
+		}
+	}
+	const runExport = async ({ id, target, signal, report } = {}) => {
+		if (signal?.aborted) throw signal.reason ?? new Error("Job canceled")
+		const normalized = safeId(id)
+		const manifest = get(normalized)
+		if (normalized === "legacy-cat") throw new ApiError("VALIDATION_FAILED", "Cannot export the built-in pet pack")
+		const source = packPath(normalized)
+		fs.mkdirSync(target, { recursive: true })
+		report?.({ phase: "writing", percent: 40, message: "Exporting pet pack" })
+		const outputPath = path.join(target, `${normalized}-${manifest.version ?? "1.0.0"}.openpet-pet.zip`)
+		await zip.writeZipFromDirectory(source, outputPath)
+		return { id: normalized, outputPath, byteSize: fs.statSync(outputPath).size }
+	}
+	return { list, get, activate, remove, inspect, import: importPack, export: exportPack, runImport, runExport, status: () => ({ activePackId, db: db?.driverName ?? null }) }
 }
