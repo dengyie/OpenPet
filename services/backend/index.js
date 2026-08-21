@@ -27,6 +27,7 @@ import { createSettingsStore } from "./domains/settings.js"
 import { createAboutService } from "./domains/about.js"
 import { createLocalHttpManager } from "./domains/local-http.js"
 import { createPetPackService } from "./domains/pet-packs.js"
+import { createActionService } from "./domains/actions.js"
 import { createCatalogService } from "./domains/catalog.js"
 import { createEventHub } from "./events/hub.js"
 import { recoverJobs } from "./jobs/recovery.js"
@@ -36,6 +37,7 @@ import { registerSettingsRoutes } from "./routes/settings.js"
 import { registerAboutRoutes } from "./routes/about.js"
 import { registerServiceRoutes } from "./routes/service.js"
 import { registerPetPackRoutes } from "./routes/pet-packs.js"
+import { registerActionRoutes } from "./routes/actions.js"
 import { registerCatalogRoutes } from "./routes/catalog.js"
 import { openDatabase } from "./store/db.js"
 import { migrate } from "./store/migrate.js"
@@ -120,6 +122,7 @@ const runtime = {
 	service: null,
 	catalog: null,
 	petPacks: null,
+	actions: null,
 }
 
 const initEnvelope = await initPromise.catch((error) => {
@@ -199,6 +202,15 @@ runtime.petPacks = createPetPackService({
 	emit: (name, payload) => eventHub.publish(name, payload),
 })
 registerPetPackRoutes(router, { packs: runtime.petPacks })
+runtime.actions = createActionService({
+	root: join(dirname(fileURLToPath(import.meta.url)), "../.."),
+	db: runtime.db,
+	jobs: { insert: (input) => runtime.jobs?.insert(input) },
+	dialog: shell,
+	logger,
+	emit: (name, payload) => eventHub.publish(name, payload),
+})
+registerActionRoutes(router, { actions: runtime.actions })
 
 registerEventRoutes({ router, hub: eventHub })
 
