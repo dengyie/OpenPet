@@ -18,15 +18,22 @@ describe("T11 event hub", async () => {
 		assert.match(sink.writes.at(-1), /event: backend\.degraded/)
 	})
 
-	it("bounds a paused client and emits dropped notice", () => {
-		const sink = { writes: [], write(value) { this.writes.push(value); return false }, once() {}, end() {} }
+	it("bounds a paused client and emits a dropped notice after drain", () => {
+		let drain
+		const sink = {
+			writes: [],
+			blocked: true,
+			write(value) { this.writes.push(value); return !this.blocked },
+			once(event, callback) { if (event === "drain") drain = callback },
+			end() {},
+		}
 		const hub = createEventHub({ heartbeatMs: 60_000 })
 		hub.subscribe({ topics: ["logs"], sink })
 		for (let index = 0; index < MAX_BUFFERED_FRAMES + 5; index += 1) hub.publish("log.appended", { index })
-		hub.publish("backend.degraded", { reason: "test" })
-		const stats = hub.stats()
-		assert.equal(stats.clients, 1)
-		assert.ok(sink.writes.length >= 1)
+		assert.equal(hub.stats().clients, 1)
+		sink.blocked = false
+		drain()
+		assert.match(sink.writes.join(""), /event: system\.events-dropped/)
 	})
 
 	it("contracts expose the complete event directory", () => {

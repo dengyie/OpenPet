@@ -43,7 +43,12 @@ export function createEventHub({
 			client.lastFrameAt = now()
 			if (accepted !== false) return true
 			client.paused = true
-			if (typeof client.sink.once === "function") client.sink.once("drain", () => flush(client))
+			if (typeof client.sink.once === "function") {
+				client.sink.once("drain", () => {
+					client.paused = false
+					flush(client)
+				})
+			}
 			return false
 		} catch (error) {
 			logger?.warn?.("SSE 客户端写入失败", { error: String(error) })
