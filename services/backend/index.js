@@ -26,6 +26,7 @@ import { createShellClient } from "./bridge/shell-client.js"
 import { createSettingsStore } from "./domains/settings.js"
 import { createAboutService } from "./domains/about.js"
 import { createLocalHttpManager } from "./domains/local-http.js"
+import { createCatalogService } from "./domains/catalog.js"
 import { createEventHub } from "./events/hub.js"
 import { recoverJobs } from "./jobs/recovery.js"
 import { registerEventRoutes } from "./routes/events.js"
@@ -33,6 +34,7 @@ import { initializeBackendRuntime, registerHealthRoutes } from "./routes/health.
 import { registerSettingsRoutes } from "./routes/settings.js"
 import { registerAboutRoutes } from "./routes/about.js"
 import { registerServiceRoutes } from "./routes/service.js"
+import { registerCatalogRoutes } from "./routes/catalog.js"
 import { openDatabase } from "./store/db.js"
 import { migrate } from "./store/migrate.js"
 import { migrateFromJson, needsJsonImport } from "./store/migrate-from-json.js"
@@ -114,6 +116,7 @@ const runtime = {
 	jobs: null,
 	logs: null,
 	service: null,
+	catalog: null,
 }
 
 const initEnvelope = await initPromise.catch((error) => {
@@ -173,6 +176,16 @@ runtime.service = createLocalHttpManager({
 	logger,
 })
 registerServiceRoutes(router, { manager: runtime.service })
+runtime.catalog = createCatalogService({
+	root: join(dirname(fileURLToPath(import.meta.url)), "../.."),
+	db: runtime.db,
+	logger,
+	emit: (name, payload) => eventHub.publish(name, payload),
+})
+registerCatalogRoutes(router, {
+	catalog: runtime.catalog,
+	jobs: { insert: (input) => runtime.jobs?.insert(input) },
+})
 
 registerEventRoutes({ router, hub: eventHub })
 
