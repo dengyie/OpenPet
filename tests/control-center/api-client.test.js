@@ -54,7 +54,7 @@ describe("T21 API client contract boundary", () => {
 		let request
 		const transport = transportModule.createMockTransport({ handlers: [(input) => {
 			request = input
-			return success({ version: 3, values: { "pet.scale": 1.5 } })
+			return success({ version: 3, changedPaths: ["pet.scale"] })
 		}] })
 		const api = settingsApiModule.createSettingsApi(clientModule.createApiClient(transport))
 
