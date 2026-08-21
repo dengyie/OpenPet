@@ -7,6 +7,9 @@
 
 import { createServer } from "node:http"
 import { randomBytes } from "node:crypto"
+import { readFileSync } from "node:fs"
+import { dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
 import { EVENT_BACKEND_SHUTTING_DOWN } from "@openpet/contracts"
 
 import { createRouter } from "./http/router.js"
@@ -21,16 +24,20 @@ import {
 } from "./http/middleware.js"
 import { createShellClient } from "./bridge/shell-client.js"
 import { createSettingsStore } from "./domains/settings.js"
+import { createAboutService } from "./domains/about.js"
 import { createEventHub } from "./events/hub.js"
 import { recoverJobs } from "./jobs/recovery.js"
 import { registerEventRoutes } from "./routes/events.js"
 import { initializeBackendRuntime, registerHealthRoutes } from "./routes/health.js"
 import { registerSettingsRoutes } from "./routes/settings.js"
+import { registerAboutRoutes } from "./routes/about.js"
 import { openDatabase } from "./store/db.js"
 import { migrate } from "./store/migrate.js"
 import { migrateFromJson, needsJsonImport } from "./store/migrate-from-json.js"
 import { createJobsRepository } from "./store/repositories/jobs.js"
 import { createLogsRepository } from "./store/repositories/logs.js"
+
+const packageJson = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../package.json"), "utf8"))
 
 const INIT_TIMEOUT_MS = 10_000
 const SHUTDOWN_GRACE_MS = 5_000
@@ -146,6 +153,13 @@ registerSettingsRoutes({
 	router,
 	store: runtime.settings ?? { read: () => ({ version: 0, values: {} }), patch: () => { throw new Error("settings 尚未初始化") } },
 	emit: (name, payload) => eventHub.publish(name, payload),
+})
+registerAboutRoutes(router, {
+	about: createAboutService({ pkg: packageJson, runtime }),
+	jobs: { insert: (input) => {
+		if (!runtime.jobs) throw new Error("Job service unavailable")
+		return runtime.jobs.insert(input)
+	} },
 })
 
 registerEventRoutes({ router, hub: eventHub })
