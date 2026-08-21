@@ -7,6 +7,7 @@
 
 import { createServer } from "node:http"
 import { randomBytes } from "node:crypto"
+import { EVENT_BACKEND_SHUTTING_DOWN } from "@openpet/contracts"
 
 import { createRouter } from "./http/router.js"
 import {
@@ -221,10 +222,10 @@ async function shutdown(reason, code) {
 	const hardExit = setTimeout(() => process.exit(code), SHUTDOWN_GRACE_MS)
 	hardExit.unref()
 
-	await new Promise((resolve) => server.close(resolve))
 	// 03 篇 §5:关闭前通知订阅方,让前端切掉本地缓存并准备重连。
-	eventHub.publish("backend.shutting-down", { reason })
+	eventHub.publish(EVENT_BACKEND_SHUTTING_DOWN, { reason })
 	eventHub.closeAll()
+	await new Promise((resolve) => server.close(resolve))
 	if (runtime.db !== null) runtime.db.close()
 	shell.dispose()
 

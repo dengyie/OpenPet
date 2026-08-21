@@ -26,7 +26,13 @@ function validateTopics(topics) {
 	return new Set(values)
 }
 
-export function createEventHub({ logger, now = () => Date.now(), heartbeatMs = HEARTBEAT_MS } = {}) {
+export function createEventHub({
+	logger,
+	now = () => Date.now(),
+	heartbeatMs = HEARTBEAT_MS,
+	setInterval: schedule = setInterval,
+	clearInterval: cancel = clearInterval,
+} = {}) {
 	let nextId = 1
 	const clients = new Set()
 
@@ -109,7 +115,7 @@ export function createEventHub({ logger, now = () => Date.now(), heartbeatMs = H
 			lastFrameAt: now(),
 			heartbeat: null,
 		}
-		client.heartbeat = setInterval(() => {
+		client.heartbeat = schedule(() => {
 			if (client.closed) return
 			write(client, ": ping\n\n")
 			reportDrops(client)
@@ -125,7 +131,7 @@ export function createEventHub({ logger, now = () => Date.now(), heartbeatMs = H
 	function close(client) {
 		if (!client || client.closed) return
 		client.closed = true
-		clearInterval(client.heartbeat)
+		cancel(client.heartbeat)
 		clients.delete(client)
 		try {
 			client.sink.end?.()

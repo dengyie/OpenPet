@@ -34,4 +34,17 @@ describe("T11 event hub", async () => {
 		assert.equal(new Set(contracts.EVENT_NAMES).size, 21)
 		for (const name of contracts.EVENT_NAMES) assert.ok(contracts.SSE_TOPICS.includes(contracts.EVENT_TOPIC[name]))
 	})
+
+	it("sends heartbeats on the configured interval", () => {
+		let tick
+		const sink = { writes: [], write(value) { this.writes.push(value); return true }, end() {} }
+		const hub = createEventHub({
+			heartbeatMs: 15_000,
+			setInterval(callback, ms) { assert.equal(ms, 15_000); tick = callback; return 1 },
+			clearInterval() {},
+		})
+		hub.subscribe({ topics: ["jobs"], sink })
+		tick()
+		assert.equal(sink.writes.at(-1), ": ping\n\n")
+	})
 })
