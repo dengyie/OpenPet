@@ -91,6 +91,23 @@ describe("Job queue · scheduling", () => {
 			assert.equal(repo.byId("cancel-running").status, "running")
 		})
 	})
+
+	it("accepts a new job object once without re-inserting it", async () => {
+		const inserted = []
+		const repo = {
+			insert(input) { inserted.push(input); return { id: input.id, kind: input.kind, status: "queued" } },
+			byId(id) { return inserted.find((job) => job.id === id) ? { id, kind: "about.check-updates", status: "queued" } : null },
+			transition(id, status) { return { id, kind: "about.check-updates", status } },
+		}
+		const queue = createQueue({ repo, tickMs: 60_000 })
+		try {
+			const job = queue.enqueue({ id: "once", kind: "about.check-updates", input: {} })
+			assert.equal(job.id, "once")
+			assert.equal(inserted.length, 1)
+		} finally {
+			queue.stop()
+		}
+	})
 })
 
 describe("Job queue · timeout", () => {

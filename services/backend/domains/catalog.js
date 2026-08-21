@@ -36,7 +36,12 @@ export function createCatalogService({ root, db, logger, now = Date.now, emit } 
 		emit?.(EVENT_CATALOG_REFRESHED, { updatedAt: catalog.updatedAt, at: now() })
 		return catalog
 	}
-	const install = (id) => ({ item: get(id), accepted: true })
+	const install = (id) => {
+		const item = get(id)
+		throw new ApiError("BACKEND_UNAVAILABLE", "Catalog install requires the host installer service", {
+			details: { id: item.id, kind: item.kind ?? null },
+		})
+	}
 	const status = () => ({ source, updatedAt: read().updatedAt, plugins: read().plugins.length, petPacks: read().petPacks.length, db: db?.driverName ?? null })
 	const setSource = (next) => { source = typeof next === "string" && next.trim() ? next.trim() : "bundled"; return status() }
 	return { list, get, refresh, install, status, setSource }

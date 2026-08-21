@@ -262,7 +262,7 @@ if (!runtime.degraded && runtime.jobs) {
 		},
 	})
 	runtime.enqueueJob = (input) => {
-		const job = runtime.jobs.insert(input)
+		const job = runtime.queue.enqueue(input)
 		eventHub.publish("job.created", job)
 		runtime.queue.enqueue(job)
 		while (true) {
