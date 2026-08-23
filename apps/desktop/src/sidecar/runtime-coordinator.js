@@ -15,18 +15,11 @@ function failureReason(error) {
 	return error?.code || error?.message || "SIDECAR_UNAVAILABLE"
 }
 
-async function createDefaultInitBody({ app, secretService, getSettings }) {
-	const secrets = {}
-	const refs = await secretService?.listSecretRefs?.() || []
-	for (const ref of refs) {
-		if (!ref?.id || !ref.hasValue) continue
-		const value = await secretService?.getSecretValue?.(ref.id)
-		if (value) secrets[ref.id] = value
-	}
+async function createDefaultInitBody({ app, getSettings }) {
 	const settings = await getSettings?.()
 	return {
 		userDataDir: app?.getPath?.("userData"),
-		secrets,
+		secrets: {},
 		legacyToken: settings?.localHttp?.token || null,
 	}
 }

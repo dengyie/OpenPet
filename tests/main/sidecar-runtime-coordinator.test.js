@@ -26,18 +26,18 @@ function createHarness({ spawnError, getInitBody } = {}) {
 	return { coordinator, child, calls, getSpawnOptions: () => spawnOptions }
 }
 
-test("starts with safe init body and exposes connection", async () => {
+test("starts without reading or injecting secrets and exposes connection", async () => {
 	const harness = createHarness()
 	const backend = await harness.coordinator.start()
-	assert.deepEqual(harness.calls.initBodies, [{ userDataDir: "/tmp/openpet-user-data", secrets: { "ai.default": "existing-secret" }, legacyToken: "legacy-token" }])
+	assert.deepEqual(harness.calls.initBodies, [{ userDataDir: "/tmp/openpet-user-data", secrets: {}, legacyToken: "legacy-token" }])
 	assert.deepEqual(backend, { baseUrl: "http://127.0.0.1:3210/api/v1", sessionToken: "session-token" })
 	assert.equal(harness.coordinator.getState().status, "ready")
 })
 
-test("uses caller-provided init body", async () => {
-	const harness = createHarness({ getInitBody: async () => ({ custom: true }) })
+test("uses caller-provided init body including explicitly selected secrets", async () => {
+	const harness = createHarness({ getInitBody: async () => ({ custom: true, secrets: { "ai.default": "selected-secret" } }) })
 	await harness.coordinator.start()
-	assert.deepEqual(harness.calls.initBodies, [{ custom: true }])
+	assert.deepEqual(harness.calls.initBodies, [{ custom: true, secrets: { "ai.default": "selected-secret" } }])
 })
 
 test("startup failure becomes degraded without rejecting", async () => {
