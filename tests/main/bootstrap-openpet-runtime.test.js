@@ -15,6 +15,8 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
   const appHandlers = new Map()
   const screenHandlers = new Map()
   const registeredIpcDependencies = []
+  const safeLogs = []
+  let sidecarStartCalls = 0
   const settings = {
     scale: 1,
     autoStart: false,
@@ -67,7 +69,7 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
       appLogService.record({ event: 'app.ready' })
       appHandlers.set('before-quit', onBeforeQuit)
     },
-    safeRecordAppLog: () => {},
+    safeRecordAppLog: (_service, entry) => safeLogs.push(entry),
     registerIpcHandlers: (dependencies) => registeredIpcDependencies.push(dependencies),
     createPetRendererSettings: (input) => input,
     normalizeLocalHttpConfig: (_current, nextConfig) => nextConfig,
@@ -159,6 +161,19 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
       }),
       createSecretService: () => ({ id: 'secret' }),
       createSettingsService: ({ loadSettings }) => ({ get: loadSettings, save: () => {}, preview: () => ({}) }),
+      createSidecarRuntimeCoordinator: (dependencies) => {
+        assert.equal(Object.hasOwn(dependencies, 'secretService'), false)
+        assert.equal(dependencies.getSettings().localHttp, settings.localHttp)
+        return {
+          start: () => {
+            sidecarStartCalls += 1
+            return Promise.reject(new Error('unexpected coordinator rejection'))
+          },
+          stop: async () => {},
+          getBackend: () => null,
+          getState: () => ({ status: 'degraded', backend: null, reason: 'SIDECAR_UNAVAILABLE' })
+        }
+      },
       syncBundledPlugins: () => ({ synced: [] })
     }
   })
@@ -169,6 +184,10 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
   assert.equal(registeredIpcDependencies.length, 1)
   assert.equal(screenHandlers.has('display-added'), true)
   assert.equal(typeof appHandlers.get('activate'), 'function')
+  await setImmediatePromise()
+  assert.equal(sidecarStartCalls, 1)
+  assert.equal(runtime.sidecarRuntimeCoordinator.getState().status, 'degraded')
+  assert.equal(safeLogs.some((entry) => entry.event === 'sidecar.startup.failed' && entry.message === 'unexpected coordinator rejection'), true)
 
   const ipcDependencies = registeredIpcDependencies[0]
   assert.equal(ipcDependencies.hatchPetAgentService.id, 'hatch-pet-agent')
@@ -321,6 +340,7 @@ test('bootstrap runtime waits for plugin shutdown before allowing app quit', asy
       }),
       createSecretService: () => ({ id: 'secret' }),
       createSettingsService: ({ loadSettings }) => ({ get: loadSettings, save: () => {}, preview: () => ({}) }),
+      createSidecarRuntimeCoordinator: () => ({ start: async () => null, stop: async () => {}, getBackend: () => null, getState: () => ({ status: 'stopped', backend: null, reason: null }) }),
       syncBundledPlugins: () => ({ synced: [] })
     }
   })

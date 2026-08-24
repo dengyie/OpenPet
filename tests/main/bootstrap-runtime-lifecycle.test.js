@@ -54,6 +54,52 @@ test('runtime app lifecycle continues quit after plugin shutdown timeout', async
   assert.equal(safeLogs.some((entry) => entry.event === 'runtime.shutdown.timed_out' && entry.message.includes('5ms')), true)
 })
 
+test('runtime app lifecycle waits for sidecar shutdown and records sidecar failure', async () => {
+  const appHandlers = new Map()
+  const safeLogs = []
+  let resolveStop
+  let quitCalls = 0
+  const sidecarStop = new Promise((resolve) => { resolveStop = resolve })
+
+  registerRuntimeAppLifecycle({
+    app: { quit: () => { quitCalls += 1 } },
+    appLogService: { record: () => {} },
+    registerAppLifecycleLogs: ({ onBeforeQuit }) => appHandlers.set('before-quit', onBeforeQuit),
+    safeRecordAppLog: (_service, entry) => safeLogs.push(entry),
+    triggerRuleRuntimeService: { stop: () => {} },
+    systemCursorService: { dispose: async () => {} },
+    sidecarRuntimeCoordinator: { stop: () => sidecarStop },
+    getPluginService: () => ({ stopAllServices: async () => {} }),
+    shutdownTimeoutMs: 100
+  })
+
+  appHandlers.get('before-quit')({ preventDefault: () => {} })
+  await delay(10)
+  assert.equal(quitCalls, 0)
+
+  resolveStop()
+  await delay(10)
+  assert.equal(quitCalls, 1)
+
+  const failedLogs = []
+  registerRuntimeAppLifecycle({
+    app: { quit: () => { quitCalls += 1 } },
+    appLogService: { record: () => {} },
+    registerAppLifecycleLogs: ({ onBeforeQuit }) => appHandlers.set('failed-before-quit', onBeforeQuit),
+    safeRecordAppLog: (_service, entry) => failedLogs.push(entry),
+    triggerRuleRuntimeService: { stop: () => {} },
+    systemCursorService: { dispose: async () => {} },
+    sidecarRuntimeCoordinator: { stop: async () => { throw new Error('sidecar stop failed') } },
+    getPluginService: () => ({ stopAllServices: async () => {} }),
+    shutdownTimeoutMs: 100
+  })
+  appHandlers.get('failed-before-quit')({ preventDefault: () => {} })
+  await delay(10)
+  assert.equal(quitCalls, 2)
+  assert.equal(failedLogs.some((entry) => entry.event === 'sidecar.shutdown.failed' && entry.message === 'sidecar stop failed'), true)
+  assert.equal(safeLogs.some((entry) => entry.event === 'sidecar.shutdown.failed'), false)
+})
+
 test('runtime app lifecycle waits for system cursor restoration before quitting', async () => {
   const appHandlers = new Map()
   let resolveCursorDispose

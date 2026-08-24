@@ -5,6 +5,19 @@ const { registerDisplayLifecycle, registerPetWindowLifecycle, registerRuntimeApp
 const { registerCursorRepair, runPostPluginStartupSideEffects } = require('./startup-side-effects')
 const { IPC } = require('../../shared/ipc-channels')
 
+const createSidecarLogger = ({ appLogService, safeRecordAppLog }) => Object.fromEntries(
+  ['info', 'warn', 'error'].map((level) => [level, (message, details) => {
+    safeRecordAppLog(appLogService, {
+      scope: 'sidecar',
+      level,
+      actor: 'system',
+      event: `sidecar.runtime.${level}`,
+      message,
+      details
+    })
+  }])
+)
+
 const createOpenPetRuntime = ({
   app,
   BrowserWindow,
@@ -71,6 +84,13 @@ const createOpenPetRuntime = ({
     syncLoginItemSettings,
     setCatalogService
   } = core
+  const sidecarRuntimeCoordinator = factories.createSidecarRuntimeCoordinator({
+    app,
+    dialog,
+    petService,
+    getSettings: () => settingsService.get(),
+    logger: createSidecarLogger({ appLogService, safeRecordAppLog })
+  })
 
   const broadcastCursorSettings = (settings) => {
     const payload = createPetRendererSettings(settings, systemCursorService?.getStatus?.())
@@ -121,8 +141,21 @@ const createOpenPetRuntime = ({
     triggerRuleRuntimeService,
     aiTalkService,
     systemCursorService,
+    sidecarRuntimeCoordinator,
     getPluginService: () => pluginService
   })
+
+  void Promise.resolve()
+    .then(() => sidecarRuntimeCoordinator.start())
+    .catch((error) => {
+      safeRecordAppLog(appLogService, {
+        scope: 'sidecar',
+        level: 'error',
+        actor: 'system',
+        event: 'sidecar.startup.failed',
+        message: error?.message || 'Sidecar startup failed'
+      })
+    })
 
   const cursorRepairPromise = registerCursorRepair({ cursorAssetService, petService, appLogService })
 
@@ -262,7 +295,8 @@ const createOpenPetRuntime = ({
 
   return {
     appLogService,
-    pluginService
+    pluginService,
+    sidecarRuntimeCoordinator
   }
 }
 

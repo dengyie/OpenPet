@@ -55,6 +55,7 @@ const { maybeRunPackagedCreatorStudioEvidence } = require('./src/main/packaged-c
 const { maybeRunPackagedCreatorStudioUiE2e } = require('./src/main/packaged-creator-studio-ui-e2e-runner')
 const { maybeRunPackagedCreateUiSmoke } = require('./src/main/packaged-create-ui-smoke-runner')
 const { createBasicBehaviorPlugin } = require('./src/main/plugins/official/basic-behavior')
+const { createSidecarRuntimeCoordinator } = require('./apps/desktop/src/sidecar/runtime-coordinator')
 const packageJson = require('./package.json')
 
 let petWindow = null
@@ -136,7 +137,8 @@ const bootstrapOpenPet = () => {
       createPetMovementPolicy,
       createBasicBehaviorPlugin,
       createPetChatWindowManager,
-      createPetBubbleChatWindowManager
+      createPetBubbleChatWindowManager,
+      createSidecarRuntimeCoordinator
     }
   })
 }

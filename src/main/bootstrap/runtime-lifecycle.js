@@ -13,6 +13,7 @@ const registerRuntimeAppLifecycle = ({
   triggerRuleRuntimeService,
   aiTalkService,
   systemCursorService,
+  sidecarRuntimeCoordinator,
   getPluginService,
   shutdownTimeoutMs = PLUGIN_SHUTDOWN_TIMEOUT_MS
 }) => {
@@ -99,7 +100,18 @@ const registerRuntimeAppLifecycle = ({
             message: error?.message || 'System cursor restoration failed before app quit'
           })
         })
-      const runtimeShutdown = Promise.all([pluginShutdown, aiTalkShutdown, systemCursorShutdown])
+      const sidecarShutdown = Promise.resolve()
+        .then(() => sidecarRuntimeCoordinator?.stop?.())
+        .catch((error) => {
+          safeRecordAppLog(appLogService, {
+            scope: 'sidecar',
+            level: 'error',
+            actor: 'system',
+            event: 'sidecar.shutdown.failed',
+            message: error?.message || 'Sidecar shutdown failed before app quit'
+          })
+        })
+      const runtimeShutdown = Promise.all([pluginShutdown, aiTalkShutdown, systemCursorShutdown, sidecarShutdown])
       let shutdownTimedOut = false
       const shutdownTimeout = new Promise((resolve) => {
         const timeoutId = setTimeout(() => {
