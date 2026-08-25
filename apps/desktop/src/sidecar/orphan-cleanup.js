@@ -154,18 +154,18 @@ function inspectProcessIdentity(pid, { platform = process.platform, execFileSync
 		if (platform === "win32") {
 			const output = execFileSyncImpl("powershell.exe", [
 				"-NoProfile", "-Command",
-				`$p = Get-CimInstance Win32_Process -Filter \"ProcessId = ${pid}\"; if ($p) { $started = [System.Management.ManagementDateTimeConverter]::ToDateTime($p.CreationDate).ToUniversalTime().ToString('o'); \"$($p.Name)|$started\" }`,
+				`$p = Get-CimInstance Win32_Process -Filter \"ProcessId = ${pid}\"; if ($p) { $started = $p.CreationDate.ToUniversalTime().ToString('o'); \"$($p.Name)|$started\" }`,
 			], { ...commandOptions, windowsHide: true }).trim()
 			if (!output) return null
 			const [name, creationDate] = output.split("|")
 			const startedAt = creationDate ? Date.parse(creationDate) : NaN
-			return { processName: path.basename(name), ...(Number.isFinite(startedAt) ? { startedAt } : {}) }
+			return name && Number.isFinite(startedAt) ? { processName: path.basename(name), startedAt } : null
 		}
 		const name = execFileSyncImpl("ps", ["-p", String(pid), "-o", "comm="], commandOptions).trim()
 		const startText = execFileSyncImpl("ps", ["-p", String(pid), "-o", "lstart="], commandOptions).trim()
 		if (!name) return null
 		const startedAt = Date.parse(startText)
-		return { processName: path.basename(name), ...(Number.isFinite(startedAt) ? { startedAt } : {}) }
+		return Number.isFinite(startedAt) ? { processName: path.basename(name), startedAt } : null
 	} catch {
 		return null
 	}
@@ -187,12 +187,13 @@ function createDefaultSidecarPidLedger({
 		now,
 		isAlive(entry) {
 			try { killProcess(entry.pid, 0) } catch (error) {
+				if (error?.code === "ESRCH") return false
 				if (error?.code === "EPERM") {
 					const identity = inspectProcessIdentity(entry.pid, { platform, execFileSyncImpl })
 					if (!identity) throw new Error("SIDECAR_PROCESS_INSPECTION_FAILED")
 					return { pid: entry.pid, ...identity }
 				}
-				return false
+				throw error
 			}
 			const identity = inspectProcessIdentity(entry.pid, { platform, execFileSyncImpl })
 			if (!identity) throw new Error("SIDECAR_PROCESS_INSPECTION_FAILED")

@@ -1,6 +1,7 @@
 const test = require("node:test")
 const assert = require("node:assert/strict")
 const { createSidecarRuntimeCoordinator } = require("../../apps/desktop/src/sidecar/runtime-coordinator")
+const { spawnSidecar } = require("../../apps/desktop/src/sidecar/spawn")
 
 function createHarness({ spawnError, getInitBody } = {}) {
 	const child = { send() {} }
@@ -162,4 +163,31 @@ test("does not register or publish ready when the child exits before coordinator
 	assert.equal(await coordinator.start(), null)
 	assert.deepEqual(calls, [])
 	assert.deepEqual(coordinator.getState(), { status: "degraded", backend: null, reason: "SIDECAR_EXIT_9" })
+})
+
+test("version-mismatch retry does not forward the discarded child's exit", async () => {
+	const exits = []
+	const attemptExitHandlers = []
+	let attempts = 0
+	const child = { pid: 8002 }
+	const result = await spawnSidecar({
+		entry: "/tmp/backend.js",
+		onExit: (code) => exits.push(code),
+		launch: async (options) => {
+			attempts += 1
+			attemptExitHandlers.push(options.onExit)
+			if (attempts === 1) {
+				options.onExit(78)
+				throw Object.assign(new Error("mismatch"), { code: "SIDECAR_VERSION_MISMATCH" })
+			}
+			return {
+				child,
+				ready: { port: 3210, pid: child.pid, apiVersion: "v1", sessionToken: "token", startupMs: 1 },
+			}
+		},
+	})
+	assert.equal(result.pid, child.pid)
+	assert.deepEqual(exits, [])
+	attemptExitHandlers[1](9)
+	assert.deepEqual(exits, [9])
 })

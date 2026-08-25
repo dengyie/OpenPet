@@ -136,6 +136,7 @@ async function spawnSidecar(options) {
 	const opts = options || {}
 	const entry = opts.entry || resolveSidecarEntry(opts.app)
 	const logger = opts.logger
+	const launchSidecar = opts.launch || launch
 
 	let attempt = 0
 	let lastError = null
@@ -143,14 +144,18 @@ async function spawnSidecar(options) {
 	while (attempt <= MAX_VERSION_MISMATCH_RELAUNCHES) {
 		attempt += 1
 		try {
-			const started = await launch({
+			let accepted = false
+			const started = await launchSidecar({
 				entry: entry,
 				env: opts.env,
 				initBody: opts.initBody,
 				logger: logger,
 				onMessage: opts.onMessage,
-				onExit: opts.onExit,
+				onExit(code, signal) {
+					if (accepted) opts.onExit?.(code, signal)
+				},
 			})
+			accepted = true
 			const ready = started.ready
 			if (logger) {
 				logger.info("sidecar ready", {

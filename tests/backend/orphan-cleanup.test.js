@@ -183,7 +183,7 @@ describe("T13 Shell sidecar seams", () => {
 				return "OpenPet.exe|2026-08-25T04:05:06.0000000Z\n"
 			},
 		})
-		assert.match(command, /ToUniversalTime\(\)\.ToString\('o'\)/)
+		assert.match(command, /CreationDate\.ToUniversalTime\(\)\.ToString\('o'\)/)
 		assert.equal(optionsSeen.timeout, 1_000)
 		assert.equal(optionsSeen.maxBuffer, 64 * 1024)
 		assert.deepEqual(identity, {
