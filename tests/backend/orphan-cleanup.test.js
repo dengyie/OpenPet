@@ -25,10 +25,10 @@ describe("T13 Shell sidecar seams", () => {
 			send: (message) => sent.push(message),
 			logger: { warn: (...args) => warnings.push(args) },
 		})
-		assert.equal(await handler.handle({ v: 1, id: "bridge-1", body: { type: "dialog.request", requestId: "req-1", mode: "file" } }), true)
+		assert.equal(await handler.handle({ v: 1, id: "bridge-1", at: 1, body: { type: "dialog.request", requestId: "req-1", mode: "file" } }), true)
 		assert.equal(sent[0].id, "bridge-1")
 		assert.deepEqual(sent[0].body, { type: "dialog.result", requestId: "req-1", paths: ["/tmp/example.zip"] })
-		assert.equal(await handler.handle({ v: 1, id: "bridge-2", body: { type: "future.message" } }), false)
+		assert.equal(await handler.handle({ v: 1, id: "bridge-2", at: 2, body: { type: "future.message" } }), false)
 		assert.equal(warnings.length, 1)
 	})
 

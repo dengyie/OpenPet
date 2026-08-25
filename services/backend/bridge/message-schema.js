@@ -14,14 +14,14 @@ export const DIALOG_RESULT_TIMEOUT_MS = 60_000
 
 /** 后端 -> Shell。白名制:不在表里的类型发不出去(R15 反向通道提权)。 */
 export const BACKEND_TO_SHELL_TYPES = Object.freeze([
-	"ready",
-	"degraded",
 	"pet.say",
 	"pet.playAction",
 	"pet.event",
 	"window.openPluginDashboard",
 	"notify",
 	"tray.setBadge",
+	"ready",
+	"degraded",
 	"dialog.request",
 ])
 

@@ -60,6 +60,27 @@ test("degraded message and unexpected exit clear backend", async () => {
 	assert.equal(harness.coordinator.getState().reason, "SIDECAR_EXIT_9")
 })
 
+test("does not trust degraded messages rejected by the Shell allowlist", async () => {
+	const child = { send() {} }
+	let spawnOptions
+	const coordinator = createSidecarRuntimeCoordinator({
+		spawnSidecar: async (options) => {
+			spawnOptions = options
+			return { child, baseUrl: "http://127.0.0.1:3210/api/v1", sessionToken: "session-token" }
+		},
+		createMessageHandler: () => ({ handle: async () => false }),
+	})
+
+	await coordinator.start()
+	spawnOptions.onMessage({ v: 2, id: "forged", at: Date.now(), body: { type: "degraded", reason: "FORGED" } })
+	await new Promise((resolve) => setImmediate(resolve))
+	assert.deepEqual(coordinator.getState(), {
+		status: "ready",
+		backend: { baseUrl: "http://127.0.0.1:3210/api/v1", sessionToken: "session-token" },
+		reason: null,
+	})
+})
+
 test("stop is idempotent and unsubscribe removes listener", async () => {
 	const harness = createHarness()
 	const changes = []

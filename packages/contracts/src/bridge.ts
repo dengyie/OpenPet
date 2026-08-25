@@ -36,7 +36,7 @@ export const backendToShellSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("pet.say"), text: z.string(), durationMs: z.number().int().positive().optional() }),
   z.object({ type: z.literal("pet.playAction"), actionId: z.string(), loop: z.boolean().optional() }),
   z.object({ type: z.literal("pet.event"), name: z.string(), payload: z.unknown().optional() }),
-  z.object({ type: z.literal("window.openPluginDashboard"), pluginId: z.string(), url: z.string() }),
+  z.object({ type: z.literal("window.openPluginDashboard"), pluginId: z.string() }).strict(),
   z.object({ type: z.literal("notify"), level: z.enum(["info", "warn", "error"]), message: z.string() }),
   z.object({ type: z.literal("tray.setBadge"), count: z.number().int().nonnegative() }),
   z.object({

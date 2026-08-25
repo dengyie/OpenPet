@@ -2,6 +2,21 @@
 
 const BRIDGE_PROTOCOL_VERSION = 1
 
+// Keep this list frozen in the Shell as well as in the backend bridge client.
+// A backend message is untrusted input at this boundary: only these nine
+// capabilities may reach Electron/PetService.
+const BACKEND_TO_SHELL_TYPES = Object.freeze([
+	"pet.say",
+	"pet.playAction",
+	"pet.event",
+	"window.openPluginDashboard",
+	"notify",
+	"tray.setBadge",
+	"ready",
+	"degraded",
+	"dialog.request",
+])
+
 function log(logger, level, message, fields) {
 	try {
 		logger?.[level]?.(message, fields)
@@ -14,15 +29,65 @@ function dialogProperties(mode) {
 	return mode === "directory" ? ["openDirectory"] : ["openFile"]
 }
 
+function fail(reason, detail) {
+	return { ok: false, reason, detail: detail ?? null }
+}
+
+function parseEnvelope(raw) {
+	if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return fail("not-object")
+	if (raw.v !== BRIDGE_PROTOCOL_VERSION) return fail("version-mismatch", raw.v)
+	if (typeof raw.id !== "string" || raw.id.length === 0) return fail("bad-id", raw.id)
+	if (typeof raw.at !== "number" || !Number.isFinite(raw.at)) return fail("bad-at", raw.at)
+	const body = raw.body
+	if (body === null || typeof body !== "object" || Array.isArray(body) || typeof body.type !== "string") {
+		return fail("bad-body")
+	}
+	if (!BACKEND_TO_SHELL_TYPES.includes(body.type)) return fail("unknown-type", body.type)
+
+	switch (body.type) {
+		case "pet.say":
+			if (typeof body.text !== "string") return fail("bad-body", "pet.say.text")
+			if (body.durationMs !== undefined && (!Number.isInteger(body.durationMs) || body.durationMs <= 0)) return fail("bad-body", "pet.say.durationMs")
+			break
+		case "pet.playAction":
+			if (typeof body.actionId !== "string" || (body.loop !== undefined && typeof body.loop !== "boolean")) return fail("bad-body", "pet.playAction")
+			break
+		case "pet.event":
+			if (typeof body.name !== "string") return fail("bad-body", "pet.event.name")
+			break
+		case "window.openPluginDashboard":
+			if (typeof body.pluginId !== "string" || body.pluginId.length === 0) return fail("bad-body", "window.openPluginDashboard.pluginId")
+			break
+		case "notify":
+			if (!["info", "warn", "error"].includes(body.level) || typeof body.message !== "string") return fail("bad-body", "notify")
+			break
+		case "tray.setBadge":
+			if (!Number.isInteger(body.count) || body.count < 0) return fail("bad-body", "tray.setBadge.count")
+			break
+		case "ready":
+			if (!Number.isInteger(body.port) || body.port <= 0 || body.apiVersion !== "v1" || !Number.isInteger(body.pid) || body.pid <= 0) return fail("bad-body", "ready")
+			break
+		case "degraded":
+			if (typeof body.reason !== "string") return fail("bad-body", "degraded.reason")
+			break
+		case "dialog.request":
+			if (typeof body.requestId !== "string" || !["file", "directory"].includes(body.mode)) return fail("bad-body", "dialog.request")
+			break
+	}
+
+	return { ok: true, envelope: { v: raw.v, id: raw.id, at: raw.at, body } }
+}
+
 function createMessageHandler({ dialog, petService, logger, send, onNotify, onBadge, onDashboard } = {}) {
 	if (typeof send !== "function") throw new TypeError("createMessageHandler 需要 send")
 
 	async function handle(raw) {
-		const body = raw?.body
-		if (!body || typeof body !== "object" || typeof body.type !== "string") {
-			log(logger, "warn", "丢弃无效的 sidecar 消息")
+		const parsed = parseEnvelope(raw)
+		if (!parsed.ok) {
+			log(logger, "warn", "丢弃无效的 sidecar 消息", { reason: parsed.reason, detail: parsed.detail })
 			return false
 		}
+		const { body } = parsed.envelope
 
 		try {
 			switch (body.type) {
@@ -42,7 +107,9 @@ function createMessageHandler({ dialog, petService, logger, send, onNotify, onBa
 					onBadge?.(body.count)
 					return true
 				case "window.openPluginDashboard":
-					onDashboard?.(body)
+					// Shell owns all BrowserWindow options. The backend may identify the
+					// plugin only; URL/preload/webPreferences/path are deliberately dropped.
+					onDashboard?.({ pluginId: body.pluginId })
 					return true
 				case "ready":
 				case "degraded":
@@ -60,7 +127,7 @@ function createMessageHandler({ dialog, petService, logger, send, onNotify, onBa
 					return true
 				}
 				default:
-					log(logger, "warn", "丢弃未知的 sidecar 消息", { type: body.type })
+					// parseEnvelope's immutable allowlist makes this unreachable.
 					return false
 			}
 		} catch (error) {
@@ -72,4 +139,4 @@ function createMessageHandler({ dialog, petService, logger, send, onNotify, onBa
 	return { handle }
 }
 
-module.exports = { createMessageHandler }
+module.exports = { BACKEND_TO_SHELL_TYPES, createMessageHandler, parseEnvelope }

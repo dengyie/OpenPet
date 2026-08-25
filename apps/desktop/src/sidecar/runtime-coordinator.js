@@ -76,8 +76,9 @@ function createSidecarRuntimeCoordinator(options = {}) {
 					initBody,
 					logger: options.logger,
 					onMessage(raw) {
-						if (raw?.body?.type === "degraded") degrade(raw.body.reason, currentGeneration)
-						Promise.resolve(messageHandler?.handle?.(raw)).catch((error) => {
+						Promise.resolve(messageHandler?.handle?.(raw)).then((handled) => {
+							if (handled && raw?.body?.type === "degraded") degrade(raw.body.reason, currentGeneration)
+						}).catch((error) => {
 							safeLog(options.logger, "error", "sidecar message handling failed", { error: String(error) })
 						})
 					},
