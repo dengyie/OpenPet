@@ -47,6 +47,26 @@ export const IMPLEMENTED_API_ROUTES = Object.freeze([
 	"POST /jobs/:id/retry",
 	"GET /jobs/:id/events",
 	"DELETE /jobs/completed",
+	"GET /plugins",
+	"GET /plugins/:id",
+	"POST /plugins/install",
+	"POST /plugins/install/github",
+	"DELETE /plugins/:id",
+	"POST /plugins/:id/enable",
+	"POST /plugins/:id/start",
+	"POST /plugins/:id/stop",
+	"POST /plugins/:id/restart",
+	"GET /plugins/:id/status",
+	"GET /plugins/:id/logs",
+	"DELETE /plugins/:id/logs",
+	"POST /plugins/:id/commands/:cmd",
+	"GET /plugins/:id/permissions",
+	"PUT /plugins/:id/permissions",
+	"POST /plugins/:id/native-approval",
+	"POST /plugins/validate",
+	"POST /plugins/sync-bundled",
+	"GET /plugins/:id/config",
+	"PUT /plugins/:id/config",
 ])
 
 const noop = () => ({})
@@ -54,6 +74,7 @@ const service = new Proxy({}, { get: () => noop })
 const actions = new Proxy({}, { get: () => noop })
 const packs = new Proxy({}, { get: () => noop })
 const catalog = new Proxy({}, { get: () => noop })
+const plugins = new Proxy({}, { get: () => noop })
 
 export function registeredImplementedRoutes() {
 	const router = createRouter({ basePath: "/api/v1" })
@@ -65,6 +86,7 @@ export function registeredImplementedRoutes() {
 	registerPetPackRoutes(router, { packs })
 	registerCatalogRoutes(router, { catalog, jobs: { insert: noop } })
 	registerJobRoutes(router, { jobs: { byId: noop }, runner: { cancel: noop }, dispatcher: { resume: noop } })
+	registerPluginRoutes(router, { plugins })
 	return router.routes().map((route) => route.replace(" /api/v1/", " /"))
 }
 import { createRouter } from "../http/router.js"
@@ -76,3 +98,4 @@ import { registerJobRoutes } from "./jobs.js"
 import { registerPetPackRoutes } from "./pet-packs.js"
 import { registerServiceRoutes } from "./service.js"
 import { registerSettingsRoutes } from "./settings.js"
+import { registerPluginRoutes } from "./plugins.js"

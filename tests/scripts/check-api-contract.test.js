@@ -22,10 +22,13 @@ const fixtureFiles = [
 	'services/backend/routes/pet-packs.js',
 	'services/backend/routes/catalog.js',
 	'services/backend/routes/jobs.js',
+	'services/backend/routes/plugins.js',
+	'services/backend/jobs/state-machine.js',
 	'services/backend/http/router.js',
 	'services/backend/http/middleware.js',
 	'src/shared/ipc-channels.ts',
 	'src/shared/ipc-channels.js',
+	'scripts/api-contract-route-parser.mjs',
 	'scripts/check-api-contract.mjs'
 ]
 
@@ -91,4 +94,15 @@ test('CLI rejects route registration and registry omissions', (t) => {
 		assert.equal(result.status, 1, target)
 		assert.match(result.stderr, /注册表|实际已注册/)
 	}
+})
+
+test('route parser expands compact method/path cells without cross-pairing paths', async () => {
+	const { expandRouteMethodsAndPaths } = await import('../../scripts/api-contract-route-parser.mjs')
+	assert.deepEqual(expandRouteMethodsAndPaths('GET · POST', '`/ai/traces` · `/ai/traces/export`'), [['GET', '/ai/traces'], ['POST', '/ai/traces/export']])
+	assert.deepEqual(expandRouteMethodsAndPaths('GET · POST · DELETE', '`/ai/memories` · `/{id}`'), [['GET', '/ai/memories'], ['POST', '/ai/memories'], ['DELETE', '/ai/memories/{id}']])
+	assert.deepEqual(expandRouteMethodsAndPaths('POST · PATCH · DELETE', '`/creator/flows` · `/{id}`'), [['POST', '/creator/flows'], ['PATCH', '/creator/flows/{id}'], ['DELETE', '/creator/flows/{id}']])
+	assert.deepEqual(expandRouteMethodsAndPaths('GET · DELETE', '`/ai/conversations` · `/{id}`'), [['GET', '/ai/conversations'], ['DELETE', '/ai/conversations/{id}']])
+	assert.deepEqual(expandRouteMethodsAndPaths('PATCH · PUT', '`/items` · `/{id}`'), [])
+	assert.deepEqual(expandRouteMethodsAndPaths('GET · POST', '`/one` · `/two`'), [['GET', '/one'], ['POST', '/two']])
+	assert.deepEqual(expandRouteMethodsAndPaths('GET · POST · DELETE', '`/one` · `/two` · `/three` · `/four`'), [])
 })

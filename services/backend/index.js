@@ -45,6 +45,7 @@ import { registerPetPackRoutes } from "./routes/pet-packs.js"
 import { registerActionRoutes } from "./routes/actions.js"
 import { registerCatalogRoutes } from "./routes/catalog.js"
 import { registerJobRoutes } from "./routes/jobs.js"
+import { registerPluginRoutes } from "./routes/plugins.js"
 import { openDatabase } from "./store/db.js"
 import { migrate } from "./store/migrate.js"
 import { migrateFromJson, needsJsonImport } from "./store/migrate-from-json.js"
@@ -306,6 +307,17 @@ if (!runtime.degraded && runtime.jobs) {
 }
 
 registerJobRoutes(router, { jobs: runtime.jobs ?? { byId: () => null }, runner: runtime.runner, dispatcher: runtime.enqueueJob })
+// Plugin domain initializes after the HTTP listener is assembled. Keep route
+// handlers bound to the current runtime service instead of the initial null.
+const pluginRouteFacade = new Proxy({}, {
+	get: (_target, property) => {
+		if (property === "enqueueJob") return runtime.enqueueJob
+		const service = runtime.plugins
+		const value = service?.[property]
+		return typeof value === "function" ? value.bind(service) : value
+	},
+})
+registerPluginRoutes(router, { plugins: pluginRouteFacade })
 
 const address = server.address()
 

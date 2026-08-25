@@ -19,6 +19,7 @@
 import { readFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
+import { expandRouteMethodsAndPaths } from "./api-contract-route-parser.mjs"
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
 const DOC_PATH = "docs/refactor/03-api-contract.md"
@@ -249,9 +250,8 @@ try {
 const docRoutes = new Set()
 for (let i = 1; i <= 10; i += 1) {
   for (const cells of tableRows(section(doc, `### 4.${i} `))) {
-    const method = cells[0]
-    const routePath = backticked(cells[1] ?? "")[0]
-    if (/^(GET|POST|PUT|PATCH|DELETE)$/.test(method) && routePath?.startsWith("/")) docRoutes.add(`${method} ${routePath}`)
+    const pathCell = backticked(cells[1] ?? "").join(" · ")
+    for (const [method, routePath] of expandRouteMethodsAndPaths(cells[0], pathCell)) docRoutes.add(`${method} ${routePath}`)
   }
 }
 function normalizeRoute(route) { return route.replace(/:([A-Za-z][A-Za-z0-9_]*)/g, "{$1}") }
