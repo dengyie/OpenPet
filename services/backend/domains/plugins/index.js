@@ -15,6 +15,7 @@ import { createPluginProcessRuntime } from "./process-runtime.js"
 const require = createRequire(import.meta.url)
 const { createPluginInstallService } = require("../../../../src/main/services/plugin-install-service.js")
 const { syncBundledPlugins } = require("../../../../src/main/services/bundled-plugin-sync-service.js")
+const { sanitizeLogText } = require("../../../../src/main/services/log-safety.js")
 
 const PLUGIN_EVENTS = new Set(EVENT_NAMES.filter((name) => name.startsWith("plugin.")))
 
@@ -41,6 +42,41 @@ export function createPluginService({ db, jobs, logs, bridge, dialog, root, user
 	const publish = (name, payload) => {
 		if (!PLUGIN_EVENTS.has(name)) throw new TypeError(`Unknown plugin event: ${name}`)
 		emit?.(name, payload)
+	}
+	const appendLog = ({ pluginId, level = "info", message, at = now() } = {}) => {
+		const normalizedPluginId = String(pluginId ?? "")
+		const normalizedLevel = ["error", "warn"].includes(level) ? level : "info"
+		const normalizedMessage = sanitizeLogText(message, { maxChars: 240 })
+		if (!normalizedPluginId || !normalizedMessage) {
+			throw new ApiError("VALIDATION_FAILED", "插件日志字段无效")
+		}
+		const entry = {
+			pluginId: normalizedPluginId,
+			level: normalizedLevel,
+			message: normalizedMessage,
+			at: Number.isFinite(Number(at)) ? Math.trunc(Number(at)) : now(),
+		}
+		if (typeof logs?.appendPlugin !== "function") {
+			throw new ApiError("BACKEND_UNAVAILABLE", "Plugin logs repository is unavailable")
+		}
+		logs.appendPlugin(entry)
+		publish("plugin.log", entry)
+		return structuredClone(entry)
+	}
+	const getLogs = (pluginId, query = {}) => {
+		if (typeof logs?.listPlugin !== "function") {
+			throw new ApiError("BACKEND_UNAVAILABLE", "Plugin logs repository is unavailable")
+		}
+		return logs.listPlugin({ pluginId, ...query })
+	}
+	const clearLogs = (pluginId) => {
+		if (typeof db?.prepare !== "function" || typeof db?.transaction !== "function") {
+			throw new ApiError("BACKEND_UNAVAILABLE", "Plugin logs repository is unavailable")
+		}
+		const normalizedPluginId = String(pluginId ?? "")
+		if (!normalizedPluginId) throw new ApiError("VALIDATION_FAILED", "pluginId 不能为空")
+		const result = db.transaction(() => db.prepare("DELETE FROM plugin_logs WHERE plugin_id = ?").run(normalizedPluginId))
+		return { ok: true, pluginId: normalizedPluginId, deleted: result.changes ?? 0 }
 	}
 	const audit = (level, message, details) => logger?.[level]?.(message, details)
 	const lifecycle = createPluginLifecycle({
@@ -110,6 +146,9 @@ export function createPluginService({ db, jobs, logs, bridge, dialog, root, user
 		config: registry.config,
 		setConfig: registry.setConfig,
 		command: lifecycle.command,
+		appendLog,
+		getLogs,
+		clearLogs,
 		syncBundled,
 		inspectManifest,
 		stopAll: lifecycle.stopAll,

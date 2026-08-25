@@ -69,10 +69,10 @@ export function createEventHub({
 		if (client.closed) return
 		client.queue.push(item)
 		if (client.queue.length > MAX_BUFFERED_FRAMES) {
-			const index = client.queue.findIndex((entry) => entry.name === "log.appended")
-			if (index >= 0) client.queue.splice(index, 1)
-			else client.queue.shift()
-			client.dropped += 1
+			const index = client.queue.findIndex((entry) => entry.name === "log.appended" || entry.name === "plugin.log")
+			const [dropped] = index >= 0 ? client.queue.splice(index, 1) : client.queue.splice(0, 1)
+			const topic = dropped?.topic ?? "system"
+			client.dropped.set(topic, (client.dropped.get(topic) ?? 0) + 1)
 			reportDrops(client)
 		}
 		flush(client)
@@ -90,21 +90,23 @@ export function createEventHub({
 	}
 
 	function reportDrops(client) {
-		if (client.dropped === 0 || client.closed) return
-		const dropped = client.dropped
-		client.dropped = 0
-		const item = {
-			id: nextId++,
-			name: EVENT_SYSTEM_EVENTS_DROPPED,
-			topic: "system",
-			text: frame(nextId - 1, EVENT_SYSTEM_EVENTS_DROPPED, {
-				topic: "logs",
-				dropped,
-				since: new Date(now()).toISOString(),
-			}),
+		if (client.dropped.size === 0 || client.closed) return
+		const pending = [...client.dropped]
+		client.dropped.clear()
+		for (const [topic, dropped] of pending) {
+			const item = {
+				id: nextId++,
+				name: EVENT_SYSTEM_EVENTS_DROPPED,
+				topic: "system",
+				text: frame(nextId - 1, EVENT_SYSTEM_EVENTS_DROPPED, {
+					topic,
+					dropped,
+					since: new Date(now()).toISOString(),
+				}),
+			}
+			client.queue.push(item)
+			if (client.queue.length > MAX_BUFFERED_FRAMES) client.queue.shift()
 		}
-		client.queue.push(item)
-		if (client.queue.length > MAX_BUFFERED_FRAMES) client.queue.shift()
 		flush(client)
 	}
 
@@ -114,7 +116,7 @@ export function createEventHub({
 			topics: validateTopics(topics),
 			sink,
 			queue: [],
-			dropped: 0,
+			dropped: new Map(),
 			paused: false,
 			closed: false,
 			lastFrameAt: now(),
@@ -129,7 +131,7 @@ export function createEventHub({
 		clients.add(client)
 		return {
 			unsubscribe: () => close(client),
-			stats: () => ({ queued: client.queue.length, dropped: client.dropped, lastFrameAt: client.lastFrameAt }),
+			stats: () => ({ queued: client.queue.length, dropped: Object.fromEntries(client.dropped), lastFrameAt: client.lastFrameAt }),
 		}
 	}
 

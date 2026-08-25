@@ -26,6 +26,9 @@ export function createLogsRepository({ db, now = Date.now } = {}) {
 	const appendPluginStatement = db.prepare(
 		"INSERT INTO plugin_logs (plugin_id, level, message, at) VALUES (?, ?, ?, ?)",
 	)
+	const trimPluginStatement = db.prepare(
+		"DELETE FROM plugin_logs WHERE plugin_id = ? AND id NOT IN (SELECT id FROM plugin_logs WHERE plugin_id = ? ORDER BY at DESC, id DESC LIMIT ?)",
+	)
 
 	const appendHttp = (entry = {}) => {
 		const method = String(entry.method ?? "")
@@ -59,7 +62,12 @@ export function createLogsRepository({ db, now = Date.now } = {}) {
 		const level = String(entry.level ?? "")
 		const message = String(entry.message ?? "")
 		if (!pluginId || !level || !message) throw new ApiError("VALIDATION_FAILED", "插件日志字段无效")
-		appendPluginStatement.run(pluginId, level, message, normalizeAt(entry.at, now))
+		const at = normalizeAt(entry.at, now)
+		return db.transaction(() => {
+			appendPluginStatement.run(pluginId, level, message, at)
+			const trimmed = trimPluginStatement.run(pluginId, pluginId, PLUGIN_LOG_MAX_PER_PLUGIN).changes ?? 0
+			return { pluginId, level, message, at, trimmed }
+		})
 	}
 
 	const listPlugin = ({ pluginId, limit = 200, before } = {}) => {
