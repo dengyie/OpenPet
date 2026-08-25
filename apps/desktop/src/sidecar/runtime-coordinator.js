@@ -98,7 +98,9 @@ function createSidecarRuntimeCoordinator(options = {}) {
 					return null
 				}
 				child = result.child
-				const pid = Number(result.pid || result.child?.pid) || 0
+				// The fork handle is authoritative; the ready envelope PID is metadata
+				// supplied by the child and must not redirect ledger ownership.
+				const pid = Number(result.child?.pid || result.pid) || 0
 				if (pid > 0) {
 					try {
 						pidLedger?.register?.(pid, {

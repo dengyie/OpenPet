@@ -86,7 +86,7 @@ test("sweeps before spawn, registers ready PID, and unregisters after normal sto
 		},
 		spawnSidecar: async () => {
 			calls.push("spawn")
-			return { child, pid: child.pid, baseUrl: "http://127.0.0.1:3210/api/v1", sessionToken: "token" }
+			return { child, pid: 9999, baseUrl: "http://127.0.0.1:3210/api/v1", sessionToken: "token" }
 		},
 		stopSidecar: async () => calls.push("stop"),
 		createMessageHandler: () => ({ handle: async () => {} }),
