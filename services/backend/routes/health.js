@@ -135,6 +135,9 @@ export async function initializeBackendRuntime({ runtime, userDataDir, shell, lo
 			emit: deps.emit,
 			logger,
 		})
+		if (typeof deps.initializePlugins === "function") {
+			runtime.plugins = await deps.initializePlugins({ runtime, paths })
+		}
 	} catch (error) {
 		runtime.degraded = true
 		runtime.degradedReason = degradedReason(error)

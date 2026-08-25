@@ -29,6 +29,7 @@ import { createLocalHttpManager } from "./domains/local-http.js"
 import { createPetPackService } from "./domains/pet-packs.js"
 import { createActionService } from "./domains/actions.js"
 import { createCatalogService } from "./domains/catalog.js"
+import { createInitializedPluginService } from "./domains/plugins/index.js"
 import { createEventHub } from "./events/hub.js"
 import { recoverJobs } from "./jobs/recovery.js"
 import { createQueue } from "./jobs/queue.js"
@@ -127,6 +128,7 @@ const runtime = {
 	catalog: null,
 	petPacks: null,
 	actions: null,
+	plugins: null,
 	about: null,
 	queue: null,
 	runner: null,
@@ -243,7 +245,30 @@ await initializeBackendRuntime({
 	userDataDir: runtime.userDataDir,
 	shell,
 	logger,
-	deps: { createSettingsStore, openDatabase, migrate, migrateFromJson, needsJsonImport, createJobsRepository, createLogsRepository, recoverJobs },
+	deps: {
+		createSettingsStore,
+		openDatabase,
+		migrate,
+		migrateFromJson,
+		needsJsonImport,
+		createJobsRepository,
+		createLogsRepository,
+		recoverJobs,
+		initializePlugins: () => {
+			return createInitializedPluginService({
+				db: runtime.db,
+				jobs: runtime.jobs,
+				logs: runtime.logs,
+				bridge: shell,
+				dialog: shell,
+				root: join(dirname(fileURLToPath(import.meta.url)), "../.."),
+				userDataDir: runtime.userDataDir,
+				settings: runtime.settings,
+				logger,
+				emit: (name, payload) => eventHub.publish(name, payload),
+			})
+		},
+	},
 	bind: () => new Promise((resolve) => server.listen(0, "127.0.0.1", resolve)),
 })
 
@@ -332,6 +357,7 @@ async function shutdown(reason, code) {
 	// 03 篇 §5:关闭前通知订阅方,让前端切掉本地缓存并准备重连。
 	eventHub.publish(EVENT_BACKEND_SHUTTING_DOWN, { reason })
 	eventHub.closeAll()
+	await runtime.plugins?.stopAll?.()
 	await runtime.runner?.shutdown?.()
 	runtime.queue?.stop?.()
 	await new Promise((resolve) => server.close(resolve))
