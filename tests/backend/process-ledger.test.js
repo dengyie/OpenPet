@@ -84,12 +84,20 @@ test("T29 backend process runtime spawns plugin services and stops through the s
 	const children = []
 	const spawnCalls = []
 	const signals = []
+	const bridgeCalls = []
 	const runtime = createPluginProcessRuntime({
 		platform: "linux",
 		execPath: "/usr/bin/node",
 		electronVersion: undefined,
 		processEnv: { PATH: "/usr/bin" },
 		now: () => 99,
+		bridgeServer: {
+			listen: async ({ pluginId, token }) => {
+				bridgeCalls.push(["listen", pluginId, token])
+				return { url: "http://127.0.0.1:43210", token }
+			},
+			closePlugin: async (pluginId) => { bridgeCalls.push(["close", pluginId]) },
+		},
 		spawnProcess: (file, args, options) => {
 			const child = new EventEmitter()
 			child.pid = 100 + children.length
@@ -120,6 +128,10 @@ test("T29 backend process runtime spawns plugin services and stops through the s
 	])
 	assert.equal(spawnCalls.every((call) => call.options.detached === true && call.options.shell === false), true)
 	assert.equal(spawnCalls.every((call) => call.options.env.OPENPET_DATA_DIR.endsWith(path.join(".openpet", "demo", "data"))), true)
+	assert.equal(spawnCalls.every((call) => call.options.env.OPENPET_SERVICE_BRIDGE_URL === "http://127.0.0.1:43210"), true)
+	assert.equal(spawnCalls.every((call) => call.options.env.OPENPET_SERVICE_BRIDGE_TOKEN === bridgeCalls[0][2]), true)
+	assert.match(bridgeCalls[0][2], /^[A-Za-z0-9_-]{40,}$/)
 	await runtime.stop({ plugin: { id: "demo" } })
 	assert.deepEqual(signals, [[100, "SIGTERM"], [101, "SIGTERM"]])
+	assert.equal(bridgeCalls.some((call) => call[0] === "close" && call[1] === "demo"), true)
 })

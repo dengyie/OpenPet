@@ -8,6 +8,7 @@
 import { createServer } from "node:http"
 import { randomBytes } from "node:crypto"
 import { readFileSync } from "node:fs"
+import { createRequire } from "node:module"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { EVENT_BACKEND_SHUTTING_DOWN } from "@openpet/contracts"
@@ -23,6 +24,7 @@ import {
 	requestId,
 } from "./http/middleware.js"
 import { createShellClient } from "./bridge/shell-client.js"
+import { createPluginRuntimeServer } from "./bridge/plugin-runtime-server.js"
 import { createSettingsStore } from "./domains/settings.js"
 import { createAboutService } from "./domains/about.js"
 import { createLocalHttpManager } from "./domains/local-http.js"
@@ -52,6 +54,8 @@ import { migrateFromJson, needsJsonImport } from "./store/migrate-from-json.js"
 import { createJobsRepository } from "./store/repositories/jobs.js"
 import { createLogsRepository } from "./store/repositories/logs.js"
 import { createPluginJobHandlers } from "./jobs/handlers/index.js"
+const require = createRequire(import.meta.url)
+const { normalizeNetworkRequest, requestPluginNetwork } = require("../../src/main/services/plugin-network-client.js")
 
 const packageJson = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../package.json"), "utf8"))
 
@@ -259,6 +263,25 @@ await initializeBackendRuntime({
 		createLogsRepository,
 		recoverJobs,
 		initializePlugins: () => {
+			const pluginFacade = {
+				get: (id) => runtime.plugins?.get?.(id),
+				submitTriggerProposal: (pluginId, payload) => runtime.actions.submitProposal({ ...payload, sourcePluginId: pluginId }),
+			}
+			const runtimeBridgeServer = createPluginRuntimeServer({
+				shell,
+				plugins: pluginFacade,
+				settings: runtime.settings,
+				jobs: { insert: (input) => runtime.enqueueJob(input) },
+				logs: { appendPlugin: (entry) => runtime.plugins.appendLog(entry) },
+				network: {
+					fetch: (plugin, payload, { signal } = {}) => {
+						const manifest = plugin?.manifest ?? plugin
+						const { url, request } = normalizeNetworkRequest(manifest, payload)
+						return requestPluginNetwork({ manifest, url, request, signal })
+					},
+				},
+				logger,
+			})
 			return createInitializedPluginService({
 				db: runtime.db,
 				jobs: runtime.jobs,
@@ -270,6 +293,7 @@ await initializeBackendRuntime({
 				settings: runtime.settings,
 				logger,
 				emit: (name, payload) => eventHub.publish(name, payload),
+				runtimeBridgeServer,
 			})
 		},
 	},
@@ -379,6 +403,7 @@ async function shutdown(reason, code) {
 	eventHub.publish(EVENT_BACKEND_SHUTTING_DOWN, { reason })
 	eventHub.closeAll()
 	await runtime.plugins?.stopAll?.()
+	await runtime.plugins?.runtimeBridgeServer?.close?.()
 	await runtime.runner?.shutdown?.()
 	runtime.queue?.stop?.()
 	await new Promise((resolve) => server.close(resolve))

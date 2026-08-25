@@ -34,12 +34,12 @@ function installError(error) {
 	return new ApiError("INTERNAL", "Plugin installation failed", { cause: error })
 }
 
-export function createPluginService({ db, jobs, logs, bridge, dialog, root, userDataDir, settings, logger, now = Date.now, emit, processLedger: injectedProcessLedger, processRuntime: injectedProcessRuntime } = {}) {
+export function createPluginService({ db, jobs, logs, bridge, dialog, root, userDataDir, settings, logger, now = Date.now, emit, processLedger: injectedProcessLedger, processRuntime: injectedProcessRuntime, runtimeBridgeServer } = {}) {
 	if (typeof root !== "string" || !path.isAbsolute(root)) throw new TypeError("plugin root must be absolute")
 	const settingsStore = settings ?? createSettingsStore({ file: path.join(userDataDir, "backend", "settings.json"), logger })
 	const registry = createPluginRegistry({ userDataDir, settings: settingsStore, logger })
 	const processLedger = injectedProcessLedger ?? createProcessLedger({ userDataDir, logger, now })
-	const processRuntime = injectedProcessRuntime ?? createPluginProcessRuntime({ logger, now })
+	const processRuntime = injectedProcessRuntime ?? createPluginProcessRuntime({ logger, now, bridgeServer: runtimeBridgeServer })
 	const publish = (name, payload) => {
 		if (!PLUGIN_EVENTS.has(name)) throw new TypeError(`Unknown plugin event: ${name}`)
 		emit?.(name, payload)
@@ -193,6 +193,7 @@ export function createPluginService({ db, jobs, logs, bridge, dialog, root, user
 		inspectManifest,
 		stopAll: lifecycle.stopAll,
 		processLedger,
+		runtimeBridgeServer,
 		db,
 		jobs,
 		dialog,

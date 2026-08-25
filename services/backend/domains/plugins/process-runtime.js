@@ -1,5 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
+import { randomBytes } from "node:crypto"
 import { spawn } from "node:child_process"
 import { createRequire } from "node:module"
 
@@ -40,6 +41,7 @@ export function createPluginProcessRuntime({
 	processEnv = process.env,
 	now = Date.now,
 	logger,
+	bridgeServer,
 	stopGraceMs = STOP_GRACE_MS,
 	signalProcessTree,
 	setTimeoutImpl = setTimeout,
@@ -49,13 +51,20 @@ export function createPluginProcessRuntime({
 	const resolveCwd = createPluginEntryCwdResolver()
 	const tree = signalProcessTree ? null : createServiceProcessTree({ platform })
 	const signalTree = signalProcessTree ?? tree.signalServiceProcessTree
+	const bridgeSessions = new Map()
 
 	const start = async ({ plugin, definition }) => {
 		const entries = serviceEntries(definition)
 		if (entries.length === 0) return { processes: [] }
 		const dirs = creatorDirs(definition.manifest)
 		const started = []
+		let bridge = null
 		try {
+			if (bridgeServer?.listen) {
+				const token = randomBytes(32).toString("base64url")
+				bridge = await bridgeServer.listen({ pluginId: plugin.id, token })
+				bridgeSessions.set(plugin.id, bridge)
+			}
 			for (const entry of entries) {
 				const override = entry.platforms?.[platform] ?? {}
 				const launch = resolvePluginProcessLaunch(override.command || entry.command, { platform, execPath, electronVersion })
@@ -69,6 +78,10 @@ export function createPluginProcessRuntime({
 						OPENPET_DATA_DIR: dirs.dataDir,
 						OPENPET_CACHE_DIR: dirs.cacheDir,
 						OPENPET_LOG_DIR: dirs.logDir,
+						...(bridge ? {
+							OPENPET_SERVICE_BRIDGE_URL: bridge.url,
+							OPENPET_SERVICE_BRIDGE_TOKEN: bridge.token,
+						} : {}),
 					},
 					shell: false,
 					stdio: ["ignore", "pipe", "pipe"],
@@ -85,7 +98,13 @@ export function createPluginProcessRuntime({
 				child.once?.("exit", () => {
 					const remaining = (runtimes.get(plugin.id) ?? []).filter((item) => item !== runtime)
 					if (remaining.length) runtimes.set(plugin.id, remaining)
-					else runtimes.delete(plugin.id)
+					else {
+						runtimes.delete(plugin.id)
+						bridgeSessions.delete(plugin.id)
+						void Promise.resolve(bridgeServer?.closePlugin?.(plugin.id)).catch((error) => {
+							logger?.warn?.("Plugin runtime bridge cleanup failed", { pluginId: plugin.id, error: String(error) })
+						})
+					}
 				})
 				child.once?.("error", (error) => logger?.error?.("Plugin process failed", {
 					pluginId: plugin.id, serviceId: entry.id, error: String(error),
@@ -97,36 +116,49 @@ export function createPluginProcessRuntime({
 			for (const runtime of started) {
 				try { signalTree(runtime.pid, "SIGKILL") } catch {}
 			}
+			bridgeSessions.delete(plugin.id)
+			await bridgeServer?.closePlugin?.(plugin.id).catch?.(() => {})
 			throw error
 		}
 	}
 
 	const stop = async ({ plugin }) => {
 		const active = runtimes.get(plugin.id) ?? []
-		if (active.length === 0) return { ok: true, alreadyStopped: true }
+		if (active.length === 0) {
+			bridgeSessions.delete(plugin.id)
+			await bridgeServer?.closePlugin?.(plugin.id).catch?.(() => {})
+			return { ok: true, alreadyStopped: true }
+		}
 		const pending = active.filter((runtime) => runtime.pid > 0)
 		if (pending.length === 0) {
 			runtimes.delete(plugin.id)
+			bridgeSessions.delete(plugin.id)
+			await bridgeServer?.closePlugin?.(plugin.id).catch?.(() => {})
 			return { ok: true, alreadyStopped: true }
 		}
-		await Promise.all(pending.map((runtime) => new Promise((resolve, reject) => {
-			let settled = false
-			const finish = (error) => {
-				if (settled) return
-				settled = true
-				clearTimeoutImpl(timer)
-				if (error) reject(error)
-				else resolve()
-			}
-			const timer = setTimeoutImpl(() => {
-				try { signalTree(runtime.pid, "SIGKILL") } catch (error) { finish(error); return }
-				finish()
-			}, stopGraceMs)
-			timer?.unref?.()
-			runtime.child.once?.("exit", () => finish())
-			try { signalTree(runtime.pid, "SIGTERM") } catch (error) { finish(error) }
-		})))
-		runtimes.delete(plugin.id)
+		try {
+			await Promise.all(pending.map((runtime) => new Promise((resolve, reject) => {
+				let settled = false
+				const finish = (error) => {
+					if (settled) return
+					settled = true
+					clearTimeoutImpl(timer)
+					if (error) reject(error)
+					else resolve()
+				}
+				const timer = setTimeoutImpl(() => {
+					try { signalTree(runtime.pid, "SIGKILL") } catch (error) { finish(error); return }
+					finish()
+				}, stopGraceMs)
+				timer?.unref?.()
+				runtime.child.once?.("exit", () => finish())
+				try { signalTree(runtime.pid, "SIGTERM") } catch (error) { finish(error) }
+			})))
+		} finally {
+			runtimes.delete(plugin.id)
+			bridgeSessions.delete(plugin.id)
+			await bridgeServer?.closePlugin?.(plugin.id).catch?.(() => {})
+		}
 		return { ok: true }
 	}
 
