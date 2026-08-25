@@ -144,20 +144,25 @@ function createSidecarPidLedger({ file, isAlive, kill, logger, now = Date.now, w
 	}
 }
 
-function inspectProcessIdentity(pid) {
+function inspectProcessIdentity(pid, { platform = process.platform, execFileSyncImpl = execFileSync } = {}) {
+	const commandOptions = {
+		encoding: "utf8",
+		timeout: PROCESS_INSPECTION_TIMEOUT_MS,
+		maxBuffer: PROCESS_INSPECTION_MAX_BUFFER,
+	}
 	try {
-		if (process.platform === "win32") {
-			const output = execFileSync("powershell.exe", [
+		if (platform === "win32") {
+			const output = execFileSyncImpl("powershell.exe", [
 				"-NoProfile", "-Command",
-				`$p = Get-CimInstance Win32_Process -Filter \"ProcessId = ${pid}\"; if ($p) { \"$($p.Name)|$($p.CreationDate)\" }`,
-			], { encoding: "utf8", windowsHide: true }).trim()
+				`$p = Get-CimInstance Win32_Process -Filter \"ProcessId = ${pid}\"; if ($p) { $started = [System.Management.ManagementDateTimeConverter]::ToDateTime($p.CreationDate).ToUniversalTime().ToString('o'); \"$($p.Name)|$started\" }`,
+			], { ...commandOptions, windowsHide: true }).trim()
 			if (!output) return null
 			const [name, creationDate] = output.split("|")
 			const startedAt = creationDate ? Date.parse(creationDate) : NaN
 			return { processName: path.basename(name), ...(Number.isFinite(startedAt) ? { startedAt } : {}) }
 		}
-		const name = execFileSync("ps", ["-p", String(pid), "-o", "comm="], { encoding: "utf8" }).trim()
-		const startText = execFileSync("ps", ["-p", String(pid), "-o", "lstart="], { encoding: "utf8" }).trim()
+		const name = execFileSyncImpl("ps", ["-p", String(pid), "-o", "comm="], commandOptions).trim()
+		const startText = execFileSyncImpl("ps", ["-p", String(pid), "-o", "lstart="], commandOptions).trim()
 		if (!name) return null
 		const startedAt = Date.parse(startText)
 		return { processName: path.basename(name), ...(Number.isFinite(startedAt) ? { startedAt } : {}) }
@@ -166,7 +171,14 @@ function inspectProcessIdentity(pid) {
 	}
 }
 
-function createDefaultSidecarPidLedger({ app, logger, now = Date.now } = {}) {
+function createDefaultSidecarPidLedger({
+	app,
+	logger,
+	now = Date.now,
+	platform = process.platform,
+	execFileSyncImpl = execFileSync,
+	killProcess = process.kill,
+} = {}) {
 	const userDataDir = app?.getPath?.("userData")
 	if (typeof userDataDir !== "string" || userDataDir.length === 0) return null
 	return createSidecarPidLedger({
@@ -174,20 +186,29 @@ function createDefaultSidecarPidLedger({ app, logger, now = Date.now } = {}) {
 		logger,
 		now,
 		isAlive(entry) {
-			try { process.kill(entry.pid, 0) } catch (error) {
+			try { killProcess(entry.pid, 0) } catch (error) {
 				if (error?.code === "EPERM") {
-					const identity = inspectProcessIdentity(entry.pid)
-					return identity ? { pid: entry.pid, ...identity } : false
+					const identity = inspectProcessIdentity(entry.pid, { platform, execFileSyncImpl })
+					if (!identity) throw new Error("SIDECAR_PROCESS_INSPECTION_FAILED")
+					return { pid: entry.pid, ...identity }
 				}
 				return false
 			}
-			const identity = inspectProcessIdentity(entry.pid)
-			return identity ? { pid: entry.pid, ...identity } : false
+			const identity = inspectProcessIdentity(entry.pid, { platform, execFileSyncImpl })
+			if (!identity) throw new Error("SIDECAR_PROCESS_INSPECTION_FAILED")
+			return { pid: entry.pid, ...identity }
 		},
 		kill(pid) {
-			process.kill(pid, "SIGTERM")
+			killProcess(pid, "SIGTERM")
 		},
 	})
 }
 
-module.exports = { cleanupOrphans, createSidecarPidLedger, createDefaultSidecarPidLedger }
+module.exports = {
+	cleanupOrphans,
+	createSidecarPidLedger,
+	createDefaultSidecarPidLedger,
+	inspectProcessIdentity,
+	PROCESS_INSPECTION_TIMEOUT_MS,
+	PROCESS_INSPECTION_MAX_BUFFER,
+}

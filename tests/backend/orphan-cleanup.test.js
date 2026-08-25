@@ -6,7 +6,14 @@ const os = require("node:os")
 const path = require("node:path")
 const { describe, it } = require("node:test")
 
-const { cleanupOrphans, createSidecarPidLedger } = require("../../apps/desktop/src/sidecar/orphan-cleanup.js")
+const {
+	cleanupOrphans,
+	createSidecarPidLedger,
+	createDefaultSidecarPidLedger,
+	inspectProcessIdentity,
+	PROCESS_INSPECTION_TIMEOUT_MS,
+	PROCESS_INSPECTION_MAX_BUFFER,
+} = require("../../apps/desktop/src/sidecar/orphan-cleanup.js")
 const { createMessageHandler } = require("../../apps/desktop/src/sidecar/message-handler.js")
 
 describe("T13 Shell sidecar seams", () => {
@@ -35,10 +42,17 @@ describe("T13 Shell sidecar seams", () => {
 			{ pid: 12, startedAt: 3, processName: "backend" },
 		] }))
 		const killed = []
+		const live = new Set([11])
 		const result = cleanupOrphans({
 			file,
-			isAlive: (entry) => entry.pid === 10 ? false : entry.pid === 11 ? { pid: 11, startedAt: 2, processName: "backend" } : { pid: 12, startedAt: 99, processName: "other" },
-			kill: (pid) => killed.push(pid),
+			isAlive: (entry) => entry.pid === 10
+				? false
+				: entry.pid === 11 && live.has(11)
+					? { pid: 11, startedAt: 2, processName: "backend" }
+					: entry.pid === 12
+						? { pid: 12, startedAt: 99, processName: "other" }
+						: false,
+			kill: (pid) => { killed.push(pid); live.delete(pid) },
 		})
 		assert.deepEqual(result, { checked: 3, killed: 1 })
 		assert.deepEqual(killed, [11])
@@ -107,5 +121,92 @@ describe("T13 Shell sidecar seams", () => {
 		const killed = []
 		cleanupOrphans({ file, isAlive: () => ({ pid: 61, startedAt: 1 }), kill: (pid) => killed.push(pid) })
 		assert.deepEqual(killed, [])
+	})
+
+	it("retains a process when kill does not make it disappear", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-t13-ledger-"))
+		const file = path.join(dir, "pids.json")
+		const entry = { pid: 71, startedAt: 1, processName: "backend" }
+		fs.writeFileSync(file, JSON.stringify({ processes: [entry] }))
+		const result = cleanupOrphans({
+			file,
+			isAlive: () => ({ ...entry }),
+			kill: () => {},
+		})
+		assert.deepEqual(result, { checked: 1, killed: 0 })
+		assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf8")).processes, [entry])
+	})
+
+	it("retains a process when post-kill inspection fails", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-t13-ledger-"))
+		const file = path.join(dir, "pids.json")
+		const entry = { pid: 72, startedAt: 1, processName: "backend" }
+		fs.writeFileSync(file, JSON.stringify({ processes: [entry] }))
+		let checks = 0
+		cleanupOrphans({
+			file,
+			isAlive: () => {
+				checks += 1
+				if (checks === 2) throw new Error("inspection unavailable")
+				return { ...entry }
+			},
+			kill: () => {},
+		})
+		assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf8")).processes, [entry])
+	})
+
+	it("bounds process identity inspection commands", () => {
+		const optionsSeen = []
+		const identity = inspectProcessIdentity(73, {
+			platform: "linux",
+			execFileSyncImpl: (_file, args, options) => {
+				optionsSeen.push(options)
+				return args.includes("comm=") ? "backend\n" : "Mon Jan  2 03:04:05 2006\n"
+			},
+		})
+		assert.equal(identity.processName, "backend")
+		assert.equal(optionsSeen.length, 2)
+		for (const options of optionsSeen) {
+			assert.equal(options.timeout, PROCESS_INSPECTION_TIMEOUT_MS)
+			assert.equal(options.maxBuffer, PROCESS_INSPECTION_MAX_BUFFER)
+		}
+	})
+
+	it("uses bounded PowerShell inspection and parses an invariant start timestamp", () => {
+		let command
+		let optionsSeen
+		const identity = inspectProcessIdentity(74, {
+			platform: "win32",
+			execFileSyncImpl: (_file, args, options) => {
+				command = args.at(-1)
+				optionsSeen = options
+				return "OpenPet.exe|2026-08-25T04:05:06.0000000Z\n"
+			},
+		})
+		assert.match(command, /ToUniversalTime\(\)\.ToString\('o'\)/)
+		assert.equal(optionsSeen.timeout, 1_000)
+		assert.equal(optionsSeen.maxBuffer, 64 * 1024)
+		assert.deepEqual(identity, {
+			processName: "OpenPet.exe",
+			startedAt: Date.parse("2026-08-25T04:05:06.0000000Z"),
+		})
+	})
+
+	it("retains a live default-ledger entry when process inspection times out", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-t13-default-ledger-"))
+		const file = path.join(dir, "backend", "pids.json")
+		const entry = { pid: 75, startedAt: 1, processName: "backend" }
+		fs.mkdirSync(path.dirname(file), { recursive: true })
+		fs.writeFileSync(file, JSON.stringify({ processes: [entry] }))
+		const signals = []
+		const ledger = createDefaultSidecarPidLedger({
+			app: { getPath: () => dir },
+			platform: "linux",
+			killProcess: (pid, signal) => signals.push({ pid, signal }),
+			execFileSyncImpl: () => { throw Object.assign(new Error("timed out"), { code: "ETIMEDOUT" }) },
+		})
+		assert.deepEqual(ledger.sweep(), { checked: 1, killed: 0 })
+		assert.deepEqual(signals, [{ pid: 75, signal: 0 }])
+		assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf8")).processes, [entry])
 	})
 })
