@@ -169,6 +169,7 @@ async function spawnSidecar(options) {
 				pid: ready.pid,
 				startupMs: ready.startupMs,
 				attempt: attempt,
+				processName: path.basename(process.execPath),
 				baseUrl: "http://127.0.0.1:" + ready.port + "/api/v1",
 			}
 		} catch (error) {

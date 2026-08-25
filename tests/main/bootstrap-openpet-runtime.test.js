@@ -164,6 +164,9 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
       createSidecarRuntimeCoordinator: (dependencies) => {
         assert.equal(Object.hasOwn(dependencies, 'secretService'), false)
         assert.equal(dependencies.getSettings().localHttp, settings.localHttp)
+        assert.equal(typeof dependencies.pidLedger.sweep, 'function')
+        assert.equal(typeof dependencies.pidLedger.register, 'function')
+        assert.equal(typeof dependencies.pidLedger.unregister, 'function')
         return {
           start: () => {
             sidecarStartCalls += 1

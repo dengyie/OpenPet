@@ -4,6 +4,7 @@ const { createWindowServices } = require('./create-window-services')
 const { registerDisplayLifecycle, registerPetWindowLifecycle, registerRuntimeAppLifecycle } = require('./runtime-lifecycle')
 const { registerCursorRepair, runPostPluginStartupSideEffects } = require('./startup-side-effects')
 const { IPC } = require('../../shared/ipc-channels')
+const { createDefaultSidecarPidLedger } = require('../../../apps/desktop/src/sidecar/orphan-cleanup')
 
 const createSidecarLogger = ({ appLogService, safeRecordAppLog }) => Object.fromEntries(
   ['info', 'warn', 'error'].map((level) => [level, (message, details) => {
@@ -84,12 +85,16 @@ const createOpenPetRuntime = ({
     syncLoginItemSettings,
     setCatalogService
   } = core
+  const sidecarLogger = createSidecarLogger({ appLogService, safeRecordAppLog })
   const sidecarRuntimeCoordinator = factories.createSidecarRuntimeCoordinator({
     app,
     dialog,
     petService,
     getSettings: () => settingsService.get(),
-    logger: createSidecarLogger({ appLogService, safeRecordAppLog })
+    logger: sidecarLogger,
+    pidLedger: factories.createSidecarPidLedger
+      ? factories.createSidecarPidLedger({ app, logger: sidecarLogger })
+      : createDefaultSidecarPidLedger({ app, logger: sidecarLogger })
   })
 
   const broadcastCursorSettings = (settings) => {

@@ -56,6 +56,7 @@ const { maybeRunPackagedCreatorStudioUiE2e } = require('./src/main/packaged-crea
 const { maybeRunPackagedCreateUiSmoke } = require('./src/main/packaged-create-ui-smoke-runner')
 const { createBasicBehaviorPlugin } = require('./src/main/plugins/official/basic-behavior')
 const { createSidecarRuntimeCoordinator } = require('./apps/desktop/src/sidecar/runtime-coordinator')
+const { createDefaultSidecarPidLedger } = require('./apps/desktop/src/sidecar/orphan-cleanup')
 const packageJson = require('./package.json')
 
 let petWindow = null
@@ -136,6 +137,7 @@ const bootstrapOpenPet = () => {
       createCatalogService,
       createPetMovementPolicy,
       createBasicBehaviorPlugin,
+      createSidecarPidLedger: createDefaultSidecarPidLedger,
       createPetChatWindowManager,
       createPetBubbleChatWindowManager,
       createSidecarRuntimeCoordinator
