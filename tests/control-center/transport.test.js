@@ -173,6 +173,39 @@ describe("HTTP transport readiness gate", () => {
 			global.fetch = originalFetch
 		}
 	})
+
+	it("joins API paths and replaces caller authorization with the current session token", async () => {
+		const shell = createShell({
+			baseUrl: "http://backend.test/api/v1///",
+			sessionToken: "current-token",
+		})
+		const originalFetch = global.fetch
+		let captured
+		global.fetch = async (url, init) => {
+			captured = { url, init }
+			return { ok: true }
+		}
+		try {
+			const http = transport.createHttpTransport({ getBackend: shell.getBackend })
+			await http.request({
+				pathname: "///settings?view=all",
+				method: "POST",
+				headers: {
+					authorization: "Bearer stale-token",
+					"x-openpet-test": "preserved",
+				},
+				body: "payload",
+			})
+
+			assert.equal(captured.url, "http://backend.test/api/v1/settings?view=all")
+			assert.equal(captured.init.method, "POST")
+			assert.equal(captured.init.body, "payload")
+			assert.equal(captured.init.headers.get("authorization"), "Bearer current-token")
+			assert.equal(captured.init.headers.get("x-openpet-test"), "preserved")
+		} finally {
+			global.fetch = originalFetch
+		}
+	})
 })
 
 describe("mock and IPC transports", () => {

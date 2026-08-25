@@ -153,7 +153,7 @@ async function sendHttp(backend: BackendInfo, input: RequestInput) {
   const init = requestInit(input)
   const headers = new Headers(init.headers)
   headers.set("authorization", `Bearer ${backend.sessionToken}`)
-  return fetch(`${backend.baseUrl.replace(/\/$/, "")}/${path.replace(/^\//, "")}`, {
+  return fetch(`${backend.baseUrl.replace(/\/+$/, "")}/${path.replace(/^\/+/g, "")}`, {
     ...init,
     headers,
   })
