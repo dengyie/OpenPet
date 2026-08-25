@@ -185,10 +185,11 @@ const inspectZipArchive = (options) => zipArchiveUtils.inspectZipArchive({ ...op
 
 const extractZipArchive = zipArchiveUtils.extractZipArchive
 
-const extractZipToTemp = (zipPath, { limits, inspectArchive, extractArchive }) => zipArchiveUtils.extractZipToTemp(zipPath, {
+const extractZipToTemp = (zipPath, { limits, inspectArchive, extractArchive, tempRoot }) => zipArchiveUtils.extractZipToTemp(zipPath, {
   subject: PLUGIN_ZIP_SUBJECT,
   folderSubject: PLUGIN_FOLDER_SUBJECT,
   tempPrefix: 'openpet-plugin-package-',
+  tempRoot,
   limits,
   inspectArchive,
   extractArchive
@@ -215,6 +216,7 @@ const createPluginInstallService = ({
   settingsService,
   pluginDir,
   getPluginBlockStatus = () => ({ blocked: false, reasons: [] }),
+  tempRoot,
   zipLimits = {},
   inspectArchive = inspectZipArchive,
   extractArchive = extractZipArchive
@@ -311,7 +313,12 @@ const createPluginInstallService = ({
 
   const inspectPluginPackage = async (sourcePath, options = {}) => {
     pruneSelections()
-    const source = await normalizeSourceRoot(sourcePath, options, { limits, inspectArchive, extractArchive })
+    const source = await normalizeSourceRoot(sourcePath, options, {
+      limits,
+      inspectArchive,
+      extractArchive,
+      tempRoot: options.tempRoot || tempRoot
+    })
     try {
       return buildReview(source)
     } catch (error) {
@@ -322,7 +329,12 @@ const createPluginInstallService = ({
 
   const inspectPluginPackageSync = (sourcePath, options = {}) => {
     pruneSelections()
-    const source = normalizeSourceRoot(sourcePath, options, { limits, inspectArchive, extractArchive })
+    const source = normalizeSourceRoot(sourcePath, options, {
+      limits,
+      inspectArchive,
+      extractArchive,
+      tempRoot: options.tempRoot || tempRoot
+    })
     if (source && typeof source.then === 'function') {
       throw new Error('ZIP plugin inspection requires the asynchronous API')
     }

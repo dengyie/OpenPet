@@ -7,7 +7,17 @@ const zipArchiveUtils = require('./zip-archive-utils')
 
 const MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
 
-const createAbortController = () => (typeof AbortController === 'undefined' ? null : new AbortController())
+const createAbortController = (signal) => {
+  if (typeof AbortController === 'undefined') return { controller: null, dispose() {} }
+  const controller = new AbortController()
+  const abort = () => controller.abort(signal?.reason)
+  if (signal?.aborted) abort()
+  else signal?.addEventListener?.('abort', abort, { once: true })
+  return {
+    controller,
+    dispose: () => signal?.removeEventListener?.('abort', abort)
+  }
+}
 
 const withTimeout = async (promise, { controller, timeoutMs, message }) => {
   let timer = null
@@ -94,10 +104,12 @@ const createPluginGithubImportService = ({
   if (typeof fetchImpl !== 'function') throw new Error('GitHub repository import is not available')
   const limits = { ...zipArchiveUtils.DEFAULT_ZIP_LIMITS, ...zipLimits }
 
-  const lookupDefaultBranch = async ({ owner, repo }) => {
-    const controller = createAbortController()
+  const lookupDefaultBranch = async ({ owner, repo, signal }) => {
+    const linked = createAbortController(signal)
+    const { controller } = linked
     const errorMessage = 'Unable to read the repository default branch. Check that the repository exists and is publicly accessible.'
-    return withTimeout((async () => {
+    try {
+      return await withTimeout((async () => {
       const response = await fetchImpl(`https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`, {
         method: 'GET',
         headers: { Accept: 'application/vnd.github+json' },
@@ -115,30 +127,39 @@ const createPluginGithubImportService = ({
       const defaultBranch = String(payload?.default_branch || '').trim()
       if (!defaultBranch) throw new Error(errorMessage)
       return defaultBranch
-    })(), { controller, timeoutMs: archiveTimeoutMs, message: errorMessage })
+      })(), { controller, timeoutMs: archiveTimeoutMs, message: errorMessage })
+    } finally {
+      linked.dispose()
+    }
   }
 
-  const downloadArchive = async ({ owner, repo, defaultBranch }) => {
+  const downloadArchive = async ({ owner, repo, defaultBranch, signal }) => {
     const archiveUrl = `https://codeload.github.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/zip/refs/heads/${encodeURIComponent(defaultBranch)}`
-    const controller = createAbortController()
-    const response = await withTimeout(fetchImpl(archiveUrl, {
-      method: 'GET',
-      headers: { Accept: 'application/octet-stream' },
-      signal: controller?.signal
-    }), { controller, timeoutMs: archiveTimeoutMs, message: 'Failed to download the repository source archive' })
-    if (!response?.ok) {
-      cancelResponseBodyQuietly(response)
-      throw new Error('Failed to download the repository source archive')
+    const linked = createAbortController(signal)
+    const { controller } = linked
+    let buffer
+    try {
+      const response = await withTimeout(fetchImpl(archiveUrl, {
+        method: 'GET',
+        headers: { Accept: 'application/octet-stream' },
+        signal: controller?.signal
+      }), { controller, timeoutMs: archiveTimeoutMs, message: 'Failed to download the repository source archive' })
+      if (!response?.ok) {
+        cancelResponseBodyQuietly(response)
+        throw new Error('Failed to download the repository source archive')
+      }
+      buffer = await withTimeout(readBoundedResponseBuffer(response, {
+        maxBytes: maxArchiveBytes,
+        sizeErrorMessage: `GitHub repository archive exceeds ${maxArchiveBytes} bytes`,
+        controller
+      }), {
+        controller,
+        timeoutMs: archiveTimeoutMs,
+        message: 'Failed to download the repository source archive'
+      })
+    } finally {
+      linked.dispose()
     }
-    const buffer = await withTimeout(readBoundedResponseBuffer(response, {
-      maxBytes: maxArchiveBytes,
-      sizeErrorMessage: `GitHub repository archive exceeds ${maxArchiveBytes} bytes`,
-      controller
-    }), {
-      controller,
-      timeoutMs: archiveTimeoutMs,
-      message: 'Failed to download the repository source archive'
-    })
 
     const downloadDir = fs.mkdtempSync(path.join(tempRoot, 'openpet-github-plugin-import-'))
     const archivePath = path.join(downloadDir, 'repository.zip')
@@ -151,10 +172,10 @@ const createPluginGithubImportService = ({
     }
   }
 
-  const inspectRepositoryUrl = async (repositoryUrl) => {
+  const inspectRepositoryUrl = async (repositoryUrl, options = {}) => {
     const { owner, repo } = validateRepositoryUrl(repositoryUrl)
-    const defaultBranch = await lookupDefaultBranch({ owner, repo })
-    const downloaded = await downloadArchive({ owner, repo, defaultBranch })
+    const defaultBranch = await lookupDefaultBranch({ owner, repo, signal: options.signal })
+    const downloaded = await downloadArchive({ owner, repo, defaultBranch, signal: options.signal })
     try {
       const requestedExtractRoot = path.join(downloaded.cleanupPath, 'extract')
       const extractRoot = await extractArchive({

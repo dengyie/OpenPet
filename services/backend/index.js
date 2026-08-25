@@ -51,6 +51,7 @@ import { migrate } from "./store/migrate.js"
 import { migrateFromJson, needsJsonImport } from "./store/migrate-from-json.js"
 import { createJobsRepository } from "./store/repositories/jobs.js"
 import { createLogsRepository } from "./store/repositories/logs.js"
+import { createPluginJobHandlers } from "./jobs/handlers/index.js"
 
 const packageJson = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../package.json"), "utf8"))
 
@@ -282,12 +283,18 @@ if (!runtime.degraded && runtime.jobs) {
 		queue: runtime.queue,
 		logger,
 		emit: (name, payload) => eventHub.publish(name, payload),
+		tmpRoot: runtime.tmpDir ?? join(runtime.userDataDir, "backend", "tmp"),
 		handlers: {
 			"about.check-updates": async ({ report }) => { report({ phase: "checking", percent: 25 }); return runtime.about.checkUpdates() },
 			"catalog.install": async ({ job, report, signal }) => { report({ phase: "installing", percent: 25 }); if (signal.aborted) throw signal.reason ?? new Error("Job canceled"); return runtime.catalog.install(job.input?.id) },
 			"pet-pack.import": async ({ job, report, signal }) => runtime.petPacks.runImport({ ...job.input, signal, report }),
 			"pet-pack.export": async ({ job, report, signal }) => runtime.petPacks.runExport({ ...job.input, signal, report }),
 			"actions.import-frames": async ({ job, report, signal }) => runtime.actions.runImportFrames({ ...job.input, signal, report }),
+			...createPluginJobHandlers({
+				db: runtime.db,
+				plugins: runtime.plugins,
+				logger,
+			}),
 		},
 	})
 	runtime.enqueueJob = createJobDispatcher({

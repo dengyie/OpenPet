@@ -14,6 +14,7 @@ import { createPluginProcessRuntime } from "./process-runtime.js"
 
 const require = createRequire(import.meta.url)
 const { createPluginInstallService } = require("../../../../src/main/services/plugin-install-service.js")
+const { createPluginGithubImportService } = require("../../../../src/main/services/plugin-github-import-service.js")
 const { syncBundledPlugins } = require("../../../../src/main/services/bundled-plugin-sync-service.js")
 const { sanitizeLogText } = require("../../../../src/main/services/log-safety.js")
 
@@ -98,21 +99,54 @@ export function createPluginService({ db, jobs, logs, bridge, dialog, root, user
 	const list = () => registry.list().map((plugin) => ({ ...plugin, runtime: lifecycle.status(plugin.id) }))
 	const get = (id) => ({ ...registry.get(id), runtime: lifecycle.status(id) })
 	const inspectManifest = (sourcePath) => publicManifestInspection(inspectPluginManifest(sourcePath))
-	const install = async (source) => {
+	const inspectInstall = async (source, context = {}) => {
 		let selectionId
 		try {
-			selectionId = typeof source === "object" && source?.selectionId
-				? source.selectionId
-				: (await installer.inspectPluginPackage(String(source))).selectionId
+			return await installer.inspectPluginPackage(String(source), { tempRoot: context.tmpDir })
 		} catch (error) {
 			throw manifestError(error)
 		}
+	}
+	const commitInstall = (selectionId) => {
 		let result
 		try { result = installer.installPlugin(selectionId) } catch (error) { throw installError(error) }
 		const plugin = get(result.pluginId)
 		audit("info", "Plugin installed", { pluginId: result.pluginId })
 		publish("plugin.installed", { pluginId: result.pluginId, at: now() })
 		return plugin
+	}
+	const install = async (source, context = {}) => {
+		let selectionId
+		try {
+			selectionId = typeof source === "object" && source?.selectionId
+				? source.selectionId
+				: (await inspectInstall(source, context)).selectionId
+		} catch (error) {
+			throw manifestError(error)
+		}
+		return commitInstall(selectionId)
+	}
+	const inspectGithub = async (repositoryUrl, context = {}) => {
+		let review
+		try {
+			const githubImporter = createPluginGithubImportService({
+				pluginInstallService: installer,
+				tempRoot: context.tmpDir,
+			})
+			review = await githubImporter.inspectRepositoryUrl(repositoryUrl, { signal: context.signal })
+			return review
+		} catch (error) {
+			throw installError(error)
+		}
+	}
+	const commitGithubInstall = (selectionId) => {
+		const plugin = commitInstall(selectionId)
+		audit("info", "Plugin installed from GitHub", { pluginId: plugin.id })
+		return plugin
+	}
+	const installGithub = async (repositoryUrl, context = {}) => {
+		const review = await inspectGithub(repositoryUrl, context)
+		return commitGithubInstall(review.selectionId)
 	}
 	const remove = async (id, options = {}) => {
 		const current = lifecycle.status(id)
@@ -139,6 +173,12 @@ export function createPluginService({ db, jobs, logs, bridge, dialog, root, user
 		list,
 		get,
 		install,
+		installGithub,
+		inspectInstall,
+		inspectGithub,
+		commitInstall,
+		commitGithubInstall,
+		clearInstallSelection: installer.clearPendingSelection,
 		remove,
 		start: lifecycle.start,
 		stop: lifecycle.stop,

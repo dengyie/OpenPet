@@ -1,4 +1,6 @@
 import { execFileSync } from "node:child_process"
+import fs from "node:fs"
+import path from "node:path"
 
 import { ApiError } from "../http/middleware.js"
 import { createProgressThrottle } from "./progress.js"
@@ -78,6 +80,15 @@ function retryableStatus(error) {
 	return status === 429 || (status >= 500 && status <= 599)
 }
 
+function jobTmpDirectory(tmpRoot, jobId) {
+	if (typeof tmpRoot !== "string" || tmpRoot.length === 0) return null
+	const safeId = String(jobId).replace(/[^a-zA-Z0-9._-]/g, "_")
+	const root = path.resolve(tmpRoot)
+	const candidate = path.resolve(root, `job-${safeId}`)
+	if (path.dirname(candidate) !== root) throw new ApiError("INTERNAL", "Job 临时目录越界")
+	return candidate
+}
+
 function jobError(error) {
 	return {
 		code: String(error?.code ?? "INTERNAL"),
@@ -98,6 +109,7 @@ export function createRunner({
 	signalTree = signalProcessTree,
 	isRunning = isProcessRunning,
 	shutdownGraceMs = SHUTDOWN_GRACE_MS,
+	tmpRoot = null,
 } = {}) {
 	if (!repo || !queue || typeof queue.next !== "function" || typeof repo.byId !== "function") {
 		throw new ApiError("INTERNAL", "Job runner 需要 repository 与 queue")
@@ -138,6 +150,8 @@ export function createRunner({
 			throw error
 		}
 
+		const tmpDir = jobTmpDirectory(tmpRoot, job.id)
+		if (tmpDir !== null) fs.mkdirSync(tmpDir, { recursive: true })
 		const record = {
 			jobId: job.id,
 			controller: new AbortController(),
@@ -152,6 +166,7 @@ export function createRunner({
 
 		const context = {
 			job,
+			tmpDir,
 			signal: record.controller.signal,
 			report(frame) {
 				jobProgress.report(frame)
@@ -192,6 +207,11 @@ export function createRunner({
 			}
 		})()
 			.finally(() => {
+				if (tmpDir !== null) {
+					try { fs.rmSync(tmpDir, { recursive: true, force: true }) } catch (error) {
+						logger?.warn?.("清理 Job 临时目录失败", { jobId: job.id, tmpDir, error: String(error) })
+					}
+				}
 				active.delete(job.id)
 				if (shuttingDown) return
 				const nextJob = queue.release(job.id)

@@ -111,14 +111,22 @@ export function createPluginLifecycle({ registry, bridge, processRuntime, proces
 			throw error
 		}
 	})
-	const command = async (id, name, args = {}) => {
+	const command = async (id, name, args = {}, context = {}) => {
 		const definition = registry.definition(id)
 		assertNativeApproval(id, definition)
 		if (status(id).status !== "running" || !registry.get(id).enabled) {
 			throw new ApiError("CONFLICT", "Plugin is not running", { details: { pluginId: id } })
 		}
 		audit?.("info", "Plugin command requested", { pluginId: id, command: name })
-		return requireBridge(bridge, "command")({ plugin: registry.get(id), definition, name, args })
+		return requireBridge(bridge, "command")({
+			plugin: registry.get(id),
+			definition,
+			name,
+			args,
+			signal: context.signal,
+			tmpDir: context.tmpDir,
+			registerProcess: context.registerProcess,
+		})
 	}
 	const stopAll = async () => {
 		const pending = [...states].filter(([, state]) => ACTIVE.has(state.status)).map(([id]) => [id, stop(id)])
