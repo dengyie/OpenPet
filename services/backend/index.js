@@ -30,6 +30,7 @@ import { createPetPackService } from "./domains/pet-packs.js"
 import { createActionService } from "./domains/actions.js"
 import { createCatalogService } from "./domains/catalog.js"
 import { createInitializedPluginService } from "./domains/plugins/index.js"
+import { createProcessLedger } from "./domains/plugins/process-ledger.js"
 import { createEventHub } from "./events/hub.js"
 import { recoverJobs } from "./jobs/recovery.js"
 import { createQueue } from "./jobs/queue.js"
@@ -246,6 +247,7 @@ await initializeBackendRuntime({
 	shell,
 	logger,
 	deps: {
+		beforeStore: () => createProcessLedger({ userDataDir: runtime.userDataDir, logger }).sweep(),
 		createSettingsStore,
 		openDatabase,
 		migrate,

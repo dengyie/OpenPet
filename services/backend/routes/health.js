@@ -111,6 +111,9 @@ export async function initializeBackendRuntime({ runtime, userDataDir, shell, lo
 	let recovery = null
 	try {
 		paths = startupPaths(userDataDir)
+		// Plugin PID cleanup must happen before opening SQLite.  The ledger is a
+		// standalone atomic JSON file so degraded DB startup cannot strand plugins.
+		if (typeof deps.beforeStore === "function") await deps.beforeStore({ userDataDir, paths })
 		runtime.settings = deps.createSettingsStore({ file: paths.settingsFile, logger })
 		runtime.db = await deps.openDatabase({ file: paths.databaseFile, logger })
 		// Sample before schema migration: the import gate is intentionally based on

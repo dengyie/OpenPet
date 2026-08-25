@@ -111,6 +111,28 @@ test("plugin initialization failure degrades startup and still binds", async () 
 	assert.deepEqual(sent, [{ type: "degraded", reason: "PLUGIN_INIT_FAILED" }])
 })
 
+test("plugin PID cleanup runs before opening the backend store", async () => {
+	const calls = []
+	const runtime = { degraded: false, degradedReason: null, plugins: null }
+	await initializeBackendRuntime({
+		runtime,
+		userDataDir: "/tmp/openpet-plugin-order-test",
+		shell: { send: () => {} },
+		deps: {
+			beforeStore: () => calls.push("beforeStore"),
+			createSettingsStore: () => { calls.push("settings"); return {} },
+			openDatabase: async () => { calls.push("open"); return { driverName: "fake" } },
+			migrate: () => calls.push("migrate"),
+			createJobsRepository: () => { calls.push("jobs"); return {} },
+			createLogsRepository: () => { calls.push("logs"); return {} },
+			recoverJobs: () => { calls.push("recover"); return {} },
+			initializePlugins: () => { calls.push("plugins"); return {} },
+		},
+		bind: async () => calls.push("bind"),
+	})
+	assert.deepEqual(calls, ["beforeStore", "settings", "open", "migrate", "jobs", "logs", "recover", "plugins", "bind"])
+})
+
 test("initialized plugin service synchronizes bundled plugins before returning", () => {
 	const harness = createHarness({ id: "temporary", name: "Temporary", version: "1.0.0", main: "index.js" })
 	const initialized = createInitializedPluginService({

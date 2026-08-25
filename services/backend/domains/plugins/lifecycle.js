@@ -16,7 +16,7 @@ function requireBridge(bridge, method) {
 	return bridge[method].bind(bridge)
 }
 
-export function createPluginLifecycle({ registry, bridge, now = Date.now, onStatus, audit } = {}) {
+export function createPluginLifecycle({ registry, bridge, processRuntime, processLedger, now = Date.now, onStatus, audit } = {}) {
 	if (!registry?.get || !registry?.definition) throw new TypeError("plugin lifecycle requires registry")
 	const states = new Map()
 	const operations = new Map()
@@ -57,13 +57,35 @@ export function createPluginLifecycle({ registry, bridge, now = Date.now, onStat
 		if (ACTIVE.has(current.status)) {
 			throw new ApiError("PLUGIN_ALREADY_RUNNING", "Plugin is already running", { status: 409, details: { pluginId: id } })
 		}
-		const invoke = requireBridge(bridge, "start")
+		const invoke = processRuntime?.start && definition.manifest?.entries?.services?.length
+			? processRuntime.start.bind(processRuntime)
+			: requireBridge(bridge, "start")
 		registry.setEnabled(id, true)
 		publish(id, { ...current, status: "starting", error: null })
 		try {
-			await invoke({ plugin: registry.get(id), definition })
+			const started = await invoke({ plugin: registry.get(id), definition })
+			const processes = Array.isArray(started?.processes)
+				? started.processes
+				: [started?.process ?? started?.child ?? started]
+			const pids = []
+			try {
+				for (const process of processes) {
+					const pid = Number(process?.pid) || 0
+					if (pid <= 0) continue
+					const metadata = { pluginId: id }
+					if (process.serviceId !== undefined) metadata.serviceId = process.serviceId
+					if (process.startedAt !== undefined) metadata.startedAt = process.startedAt
+					if (process.processName !== undefined) metadata.processName = process.processName
+					processLedger?.register?.(pid, metadata)
+					pids.push(pid)
+				}
+			} catch (error) {
+				await processRuntime?.stop?.({ plugin: registry.get(id), definition }).catch?.(() => {})
+				for (const pid of pids) processLedger?.unregister?.(pid)
+				throw error
+			}
 			audit?.("info", "Plugin started", { pluginId: id })
-			return publish(id, { pluginId: id, status: "running", startedAt: now(), stoppedAt: null, error: null })
+			return publish(id, { pluginId: id, status: "running", startedAt: now(), stoppedAt: null, error: null, pids })
 		} catch (error) {
 			disableAfterFailure(id, "Plugin disable failed after start failure")
 			publish(id, { pluginId: id, status: "failed", startedAt: null, stoppedAt: now(), error: error?.message || "Plugin start failed" })
@@ -73,10 +95,13 @@ export function createPluginLifecycle({ registry, bridge, now = Date.now, onStat
 	const stop = (id) => serialize(id, async () => {
 		const current = status(id)
 		if (!ACTIVE.has(current.status)) throw new ApiError("CONFLICT", "Plugin is not running", { details: { pluginId: id } })
-		const invoke = requireBridge(bridge, "stop")
+		const invoke = processRuntime?.stop && registry.definition(id).manifest?.entries?.services?.length
+			? processRuntime.stop.bind(processRuntime)
+			: requireBridge(bridge, "stop")
 		publish(id, { ...current, status: "stopping" })
 		try {
 			await invoke({ plugin: registry.get(id), definition: registry.definition(id) })
+			for (const pid of current.pids ?? []) processLedger?.unregister?.(pid)
 			registry.setEnabled(id, false)
 			audit?.("info", "Plugin stopped", { pluginId: id })
 			return publish(id, { ...current, status: "stopped", stoppedAt: now(), error: null })
