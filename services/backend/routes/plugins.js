@@ -72,6 +72,15 @@ function enqueue(plugins, kind, input, resourceKey = null) {
 	return { jobId: job.id }
 }
 
+function inspectLocalPluginId(plugins, sourcePath) {
+	const inspection = requireMethod(plugins, "inspectManifest")(sourcePath)
+	const pluginId = inspection?.manifest?.id
+	if (typeof pluginId !== "string" || pluginId.trim().length === 0) {
+		throw new ApiError("PLUGIN_MANIFEST_INVALID", "Plugin manifest id is required", { status: 400 })
+	}
+	return pluginId.trim()
+}
+
 export function registerPluginRoutes(router, { plugins } = {}) {
 	if (!router || typeof router.register !== "function") throw new TypeError("registerPluginRoutes requires router")
 	if (!plugins || typeof plugins !== "object") throw new TypeError("registerPluginRoutes requires plugins service")
@@ -83,7 +92,14 @@ export function registerPluginRoutes(router, { plugins } = {}) {
 	router.get("/plugins/:id", (ctx) => sendSuccess(ctx, requireMethod(plugins, "get")(ctx.params.id)))
 	router.post("/plugins/install", (ctx) => {
 		const body = objectBody(ctx.body)
-		return sendSuccess(ctx, enqueue(plugins, "plugin.install", { path: requiredString(body.path, "path") }), 202)
+		const sourcePath = requiredString(body.path, "path")
+		const pluginId = inspectLocalPluginId(plugins, sourcePath)
+		return sendSuccess(ctx, enqueue(
+			plugins,
+			"plugin.install",
+			{ path: sourcePath, pluginId },
+			`plugin:${pluginId}`,
+		), 202)
 	})
 	router.post("/plugins/install/github", (ctx) => {
 		const body = objectBody(ctx.body)

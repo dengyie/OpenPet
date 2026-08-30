@@ -1,6 +1,9 @@
 "use strict"
 
 const assert = require("node:assert/strict")
+const fs = require("node:fs")
+const os = require("node:os")
+const path = require("node:path")
 const { describe, it } = require("node:test")
 
 describe("T25 plugin routes", () => {
@@ -77,7 +80,10 @@ describe("T25 plugin routes", () => {
 		const jobs = []
 		const router = createRouter({ basePath: "/api/v1" })
 		router.use(jsonBody())
-		registerPluginRoutes(router, { plugins: { enqueueJob: (input) => { jobs.push(input); return { id: input.id } } } })
+		registerPluginRoutes(router, { plugins: {
+			inspectManifest: () => ({ manifest: { id: "local-demo" } }),
+			enqueueJob: (input) => { jobs.push(input); return { id: input.id } },
+		} })
 		const request = async (url, body) => {
 			const res = { writableEnded: false, setHeader() {}, writeHead(status) { this.status = status }, end(data) { this.body = JSON.parse(data); this.writableEnded = true } }
 			const req = { method: "POST", url, headers: { "content-type": "application/json" }, socket: { remoteAddress: "127.0.0.1" }, async *[Symbol.asyncIterator]() { yield Buffer.from(JSON.stringify(body)) } }
@@ -88,10 +94,60 @@ describe("T25 plugin routes", () => {
 		assert.equal((await request("/api/v1/plugins/install/github", { repositoryUrl: "https://github.com/example/plugin" })).status, 202)
 		assert.equal((await request("/api/v1/plugins/sync-bundled", {})).status, 202)
 		assert.deepEqual(jobs.map(({ kind, input }) => ({ kind, input })), [
-			{ kind: "plugin.install", input: { path: "/tmp/plugin" } },
+			{ kind: "plugin.install", input: { path: "/tmp/plugin", pluginId: "local-demo" } },
 			{ kind: "plugin.install.github", input: { repositoryUrl: "https://github.com/example/plugin" } },
 			{ kind: "plugin.sync-bundled", input: {} },
 		])
+	})
+
+	it("locks duplicate local installs through the real route, queue, and repository", async () => {
+		const [{ createRouter }, { registerPluginRoutes }, { jsonBody }, { inspectPluginManifest, publicManifestInspection }, { openDatabase }, { migrate }, { createJobsRepository }, { createQueue }, { createJobDispatcher }] = await Promise.all([
+			import("../../services/backend/http/router.js"),
+			import("../../services/backend/routes/plugins.js"),
+			import("../../services/backend/http/middleware.js"),
+			import("../../services/backend/domains/plugins/manifest.js"),
+			import("../../services/backend/store/db.js"),
+			import("../../services/backend/store/migrate.js"),
+			import("../../services/backend/store/repositories/jobs.js"),
+			import("../../services/backend/jobs/queue.js"),
+			import("../../services/backend/jobs/dispatcher.js"),
+		])
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-t31-route-lock-"))
+		const pluginPath = path.join(root, "plugin")
+		fs.mkdirSync(pluginPath)
+		fs.writeFileSync(path.join(pluginPath, "plugin.json"), JSON.stringify({ id: "route-demo", name: "Route Demo", version: "1.0.0", main: "index.js" }))
+		fs.writeFileSync(path.join(pluginPath, "index.js"), "module.exports = {}\n")
+		const db = await openDatabase({ file: ":memory:" })
+		migrate({ db })
+		const jobs = createJobsRepository({ db })
+		const queue = createQueue({ repo: jobs, tickMs: 60_000 })
+		const runner = { run: () => Promise.resolve() }
+		const dispatcher = createJobDispatcher({ queue, runner })
+		const plugins = {
+			inspectManifest: (source) => publicManifestInspection(inspectPluginManifest(source)),
+			enqueueJob: dispatcher,
+		}
+		const router = createRouter({ basePath: "/api/v1" })
+		router.use(jsonBody())
+		registerPluginRoutes(router, { plugins })
+		const request = async () => {
+			const res = { writableEnded: false, setHeader() {}, writeHead(status) { this.status = status }, end(data) { this.body = JSON.parse(data); this.writableEnded = true } }
+			const req = { method: "POST", url: "/api/v1/plugins/install", headers: { "content-type": "application/json" }, socket: { remoteAddress: "127.0.0.1" }, async *[Symbol.asyncIterator]() { yield Buffer.from(JSON.stringify({ path: pluginPath })) } }
+			await router.handle(req, res)
+			return res
+		}
+		try {
+			const first = await request()
+			assert.equal(first.status, 202)
+			const second = await request()
+			assert.equal(second.status, 423)
+			assert.equal(second.body.error.code, "LOCKED")
+			assert.equal(second.body.error.details.resourceKey, "plugin:route-demo")
+		} finally {
+			queue.stop()
+			db.close()
+			fs.rmSync(root, { recursive: true, force: true })
+		}
 	})
 
 	it("rejects unsafe dashboard/window and filesystem-shaped route arguments", async () => {
