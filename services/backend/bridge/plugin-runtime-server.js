@@ -237,8 +237,15 @@ export function createPluginRuntimeServer({ shell, plugins, settings, jobs, netw
 				"/logs/write": "logs:write",
 				"/network/fetch": "network:fetch",
 			}[pathname]
-			const capability = String(request.headers[CAPABILITY_HEADER] ?? legacyCapability ?? "")
-			if (!capability || (pathname !== "/" && !legacyCapability)) {
+			const headerCapability = String(request.headers[CAPABILITY_HEADER] ?? "")
+			// Legacy paths are fixed aliases. Do not let a caller rewrite the
+			// operation by pairing a different capability header with the path.
+			if (pathname !== "/" && (!legacyCapability || (headerCapability && headerCapability !== legacyCapability))) {
+				sendJson(response, 404, { ok: false, error: "Not found" })
+				return
+			}
+			const capability = headerCapability || legacyCapability
+			if (!capability) {
 				sendJson(response, 404, { ok: false, error: "Not found" })
 				return
 			}

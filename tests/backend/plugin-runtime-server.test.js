@@ -54,9 +54,9 @@ function createHarness(permissions) {
 	return { calls, plugin, server }
 }
 
-function requestJson(url, { token = "secret-token", capability = "pet:say", body = {} } = {}) {
+function requestJson(url, { token = "secret-token", capability = "pet:say", body = {}, path = "/" } = {}) {
 	return new Promise((resolve, reject) => {
-		const request = http.request(url, {
+			const request = http.request(new URL(path, url), {
 			method: "POST",
 			headers: {
 				Authorization: `Bearer ${token}`,
@@ -246,5 +246,19 @@ test("supports concurrent plugin sessions and invalidates only the stopped plugi
 	await server.closePlugin(first.plugin.id)
 	assert.equal((await requestJson(one.url, { token: one.token, body: { text: "expired" } })).status, 401)
 	assert.equal((await requestJson(two.url, { token: two.token, body: { text: "two" } })).status, 200)
+	await server.close()
+})
+
+test("does not let a capability header rewrite a legacy route", async () => {
+	const { calls, plugin, server } = createHarness(["settings:read"])
+	const listening = await server.listen({ pluginId: plugin.id, token: "route-token" })
+	const response = await requestJson(listening.url, {
+		token: listening.token,
+		capability: "settings:read",
+		path: "/pet/say",
+		body: { text: "must not be sent" },
+	})
+	assert.equal(response.status, 404)
+	assert.deepEqual(calls, [])
 	await server.close()
 })
