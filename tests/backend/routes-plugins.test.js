@@ -78,6 +78,9 @@ describe("T25 plugin routes", () => {
 			import("../../services/backend/http/middleware.js"),
 		])
 		const jobs = []
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-t31-route-"))
+		const localPath = path.join(root, "plugin")
+		fs.mkdirSync(localPath)
 		const router = createRouter({ basePath: "/api/v1" })
 		router.use(jsonBody())
 		registerPluginRoutes(router, { plugins: {
@@ -90,14 +93,46 @@ describe("T25 plugin routes", () => {
 			await router.handle(req, res)
 			return res
 		}
-		assert.equal((await request("/api/v1/plugins/install", { path: "/tmp/plugin" })).status, 202)
-		assert.equal((await request("/api/v1/plugins/install/github", { repositoryUrl: "https://github.com/example/plugin" })).status, 202)
-		assert.equal((await request("/api/v1/plugins/sync-bundled", {})).status, 202)
-		assert.deepEqual(jobs.map(({ kind, input }) => ({ kind, input })), [
-			{ kind: "plugin.install", input: { path: "/tmp/plugin", pluginId: "local-demo" } },
-			{ kind: "plugin.install.github", input: { repositoryUrl: "https://github.com/example/plugin" } },
-			{ kind: "plugin.sync-bundled", input: {} },
+		try {
+			assert.equal((await request("/api/v1/plugins/install", { path: localPath })).status, 202)
+			assert.equal((await request("/api/v1/plugins/install/github", { repositoryUrl: "https://github.com/example/plugin" })).status, 202)
+			assert.equal((await request("/api/v1/plugins/sync-bundled", {})).status, 202)
+			assert.deepEqual(jobs.map(({ kind, input }) => ({ kind, input })), [
+				{ kind: "plugin.install", input: { path: localPath, pluginId: "local-demo" } },
+				{ kind: "plugin.install.github", input: { repositoryUrl: "https://github.com/example/plugin" } },
+				{ kind: "plugin.sync-bundled", input: {} },
+			])
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true })
+		}
+	})
+
+	it("defers ZIP package inspection to the Job and leaves resource locking unset", async () => {
+		const [{ createRouter }, { registerPluginRoutes }, { jsonBody }] = await Promise.all([
+			import("../../services/backend/http/router.js"),
+			import("../../services/backend/routes/plugins.js"),
+			import("../../services/backend/http/middleware.js"),
 		])
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-t31-route-zip-"))
+		const archivePath = path.join(root, "plugin.openpet-plugin.zip")
+		fs.writeFileSync(archivePath, "zip payload")
+		const jobs = []
+		const router = createRouter({ basePath: "/api/v1" })
+		router.use(jsonBody())
+		registerPluginRoutes(router, { plugins: {
+			enqueueJob: (input) => { jobs.push(input); return { id: input.id } },
+		} })
+		const res = { writableEnded: false, setHeader() {}, writeHead(status) { this.status = status }, end(data) { this.body = JSON.parse(data); this.writableEnded = true } }
+		const req = { method: "POST", url: "/api/v1/plugins/install", headers: { "content-type": "application/json" }, socket: { remoteAddress: "127.0.0.1" }, async *[Symbol.asyncIterator]() { yield Buffer.from(JSON.stringify({ path: archivePath })) } }
+		try {
+			await router.handle(req, res)
+			assert.equal(res.status, 202)
+			assert.deepEqual(jobs.map(({ kind, input, resourceKey }) => ({ kind, input, resourceKey })), [
+				{ kind: "plugin.install", input: { path: archivePath }, resourceKey: null },
+			])
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true })
+		}
 	})
 
 	it("locks duplicate local installs through the real route, queue, and repository", async () => {

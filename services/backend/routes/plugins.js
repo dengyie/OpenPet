@@ -1,3 +1,5 @@
+import fs from "node:fs"
+import path from "node:path"
 import { randomUUID } from "node:crypto"
 
 import { ApiError, sendList, sendSuccess } from "../http/middleware.js"
@@ -81,6 +83,16 @@ function inspectLocalPluginId(plugins, sourcePath) {
 	return pluginId.trim()
 }
 
+function sourceSupportsManifestPreflight(sourcePath) {
+	try {
+		const stats = fs.statSync(sourcePath)
+		if (stats.isDirectory()) return true
+		return stats.isFile() && path.basename(sourcePath) === "plugin.json"
+	} catch {
+		return false
+	}
+}
+
 export function registerPluginRoutes(router, { plugins } = {}) {
 	if (!router || typeof router.register !== "function") throw new TypeError("registerPluginRoutes requires router")
 	if (!plugins || typeof plugins !== "object") throw new TypeError("registerPluginRoutes requires plugins service")
@@ -93,13 +105,11 @@ export function registerPluginRoutes(router, { plugins } = {}) {
 	router.post("/plugins/install", (ctx) => {
 		const body = objectBody(ctx.body)
 		const sourcePath = requiredString(body.path, "path")
+		if (!sourceSupportsManifestPreflight(sourcePath)) {
+			return sendSuccess(ctx, enqueue(plugins, "plugin.install", { path: sourcePath }), 202)
+		}
 		const pluginId = inspectLocalPluginId(plugins, sourcePath)
-		return sendSuccess(ctx, enqueue(
-			plugins,
-			"plugin.install",
-			{ path: sourcePath, pluginId },
-			`plugin:${pluginId}`,
-		), 202)
+		return sendSuccess(ctx, enqueue(plugins, "plugin.install", { path: sourcePath, pluginId }, `plugin:${pluginId}`), 202)
 	})
 	router.post("/plugins/install/github", (ctx) => {
 		const body = objectBody(ctx.body)
