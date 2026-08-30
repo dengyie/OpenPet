@@ -135,3 +135,33 @@ test("T29 backend process runtime spawns plugin services and stops through the s
 	assert.deepEqual(signals, [[100, "SIGTERM"], [101, "SIGTERM"]])
 	assert.equal(bridgeCalls.some((call) => call[0] === "close" && call[1] === "demo"), true)
 })
+
+test("T26 refuses unsupported service bridge permissions before opening or spawning", async () => {
+	const { createPluginProcessRuntime } = await import("../../services/backend/domains/plugins/process-runtime.js")
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-t26-unsupported-"))
+	const spawnCalls = []
+	const bridgeCalls = []
+	const runtime = createPluginProcessRuntime({
+		platform: "linux",
+		processEnv: { PATH: "/usr/bin" },
+		bridgeServer: {
+			listen: async () => { bridgeCalls.push("listen"); return { url: "http://127.0.0.1:1", token: "unused" } },
+			closePlugin: async () => { bridgeCalls.push("close") },
+		},
+		spawnProcess: (...args) => { spawnCalls.push(args); throw new Error("must not spawn") },
+	})
+	const definition = {
+		manifest: {
+			id: "openpet.im-gateway",
+			basePath: root,
+			entries: { services: [{ id: "im-gateway", command: "node service.js", cwd: "." }] },
+		},
+	}
+	await assert.rejects(
+		() => runtime.start({ plugin: { id: definition.manifest.id, permissions: ["pet:say", "ai:chat"] }, definition }),
+		(error) => error?.code === "BACKEND_UNAVAILABLE" && error.status === 503 &&
+			error.details?.unsupportedPermissions?.includes("ai:chat"),
+	)
+	assert.deepEqual(bridgeCalls, [])
+	assert.deepEqual(spawnCalls, [])
+})

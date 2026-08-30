@@ -4,6 +4,9 @@ import { randomBytes } from "node:crypto"
 import { spawn } from "node:child_process"
 import { createRequire } from "node:module"
 
+import { ApiError } from "../../http/middleware.js"
+import { PLUGIN_RUNTIME_PERMISSIONS } from "../../bridge/plugin-runtime-server.js"
+
 const require = createRequire(import.meta.url)
 const {
 	createPluginEntryCwdResolver,
@@ -33,6 +36,12 @@ function creatorDirs(manifest) {
 	return dirs
 }
 
+function unsupportedBridgePermissions(plugin) {
+	const supported = new Set(PLUGIN_RUNTIME_PERMISSIONS)
+	return [...new Set(Array.isArray(plugin?.permissions) ? plugin.permissions : [])]
+		.filter((permission) => !supported.has(permission))
+}
+
 export function createPluginProcessRuntime({
 	spawnProcess = spawn,
 	platform = process.platform,
@@ -56,6 +65,14 @@ export function createPluginProcessRuntime({
 	const start = async ({ plugin, definition }) => {
 		const entries = serviceEntries(definition)
 		if (entries.length === 0) return { processes: [] }
+		if (bridgeServer?.listen) {
+			const unsupported = unsupportedBridgePermissions(plugin)
+			if (unsupported.length > 0) {
+				throw new ApiError("BACKEND_UNAVAILABLE", "Plugin service requires runtime bridge capabilities unavailable in the backend", {
+					details: { pluginId: plugin?.id ?? null, unsupportedPermissions: unsupported },
+				})
+			}
+		}
 		const dirs = creatorDirs(definition.manifest)
 		const started = []
 		let bridge = null

@@ -322,3 +322,4 @@ export function createPluginRuntimeServer({ shell, plugins, settings, jobs, netw
 }
 
 export { CAPABILITIES as PLUGIN_RUNTIME_CAPABILITIES, NETWORK_RESPONSE_MAX_BYTES as PLUGIN_NETWORK_RESPONSE_MAX_BYTES }
+export const PLUGIN_RUNTIME_PERMISSIONS = Object.freeze([...new Set(Object.values(PERMISSION_FOR_CAPABILITY))])
