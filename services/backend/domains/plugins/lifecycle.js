@@ -1,4 +1,5 @@
 import { ApiError } from "../../http/middleware.js"
+import { PLUGIN_RUNTIME_PERMISSIONS } from "../../bridge/plugin-runtime-server.js"
 
 const ACTIVE = new Set(["starting", "running", "stopping"])
 
@@ -16,7 +17,19 @@ function requireBridge(bridge, method) {
 	return bridge[method].bind(bridge)
 }
 
-export function createPluginLifecycle({ registry, bridge, processRuntime, processLedger, now = Date.now, onStatus, audit } = {}) {
+function isDeclarationOnly(definition) {
+	return !definition?.mainPath &&
+		(definition?.manifest?.entries?.commands?.length ?? 0) > 0 &&
+		(definition?.manifest?.entries?.services?.length ?? 0) === 0
+}
+
+function commandRunsInBackend(definition) {
+	if ((definition?.manifest?.entries?.commands?.length ?? 0) === 0) return false
+	const supported = new Set(PLUGIN_RUNTIME_PERMISSIONS)
+	return (definition.manifest.permissions ?? []).every((permission) => supported.has(permission))
+}
+
+export function createPluginLifecycle({ registry, bridge, commandServer, processRuntime, processLedger, now = Date.now, onStatus, audit } = {}) {
 	if (!registry?.get || !registry?.definition) throw new TypeError("plugin lifecycle requires registry")
 	const states = new Map()
 	const operations = new Map()
@@ -57,9 +70,11 @@ export function createPluginLifecycle({ registry, bridge, processRuntime, proces
 		if (ACTIVE.has(current.status)) {
 			throw new ApiError("PLUGIN_ALREADY_RUNNING", "Plugin is already running", { status: 409, details: { pluginId: id } })
 		}
-		const invoke = processRuntime?.start && definition.manifest?.entries?.services?.length
-			? processRuntime.start.bind(processRuntime)
-			: requireBridge(bridge, "start")
+		const invoke = isDeclarationOnly(definition) && typeof commandServer?.execute === "function"
+			? async () => ({ processes: [] })
+			: processRuntime?.start && definition.manifest?.entries?.services?.length
+				? processRuntime.start.bind(processRuntime)
+				: requireBridge(bridge, "start")
 		registry.setEnabled(id, true)
 		publish(id, { ...current, status: "starting", error: null })
 		try {
@@ -95,12 +110,15 @@ export function createPluginLifecycle({ registry, bridge, processRuntime, proces
 	const stop = (id) => serialize(id, async () => {
 		const current = status(id)
 		if (!ACTIVE.has(current.status)) throw new ApiError("CONFLICT", "Plugin is not running", { details: { pluginId: id } })
-		const invoke = processRuntime?.stop && registry.definition(id).manifest?.entries?.services?.length
-			? processRuntime.stop.bind(processRuntime)
-			: requireBridge(bridge, "stop")
+		const definition = registry.definition(id)
+		const invoke = isDeclarationOnly(definition) && typeof commandServer?.execute === "function"
+			? async () => ({ ok: true })
+			: processRuntime?.stop && definition.manifest?.entries?.services?.length
+				? processRuntime.stop.bind(processRuntime)
+				: requireBridge(bridge, "stop")
 		publish(id, { ...current, status: "stopping" })
 		try {
-			await invoke({ plugin: registry.get(id), definition: registry.definition(id) })
+			await invoke({ plugin: registry.get(id), definition })
 			for (const pid of current.pids ?? []) processLedger?.unregister?.(pid)
 			registry.setEnabled(id, false)
 			audit?.("info", "Plugin stopped", { pluginId: id })
@@ -118,6 +136,9 @@ export function createPluginLifecycle({ registry, bridge, processRuntime, proces
 			throw new ApiError("CONFLICT", "Plugin is not running", { details: { pluginId: id } })
 		}
 		audit?.("info", "Plugin command requested", { pluginId: id, command: name })
+		if (commandRunsInBackend(definition) && typeof commandServer?.execute === "function") {
+			return commandServer.execute(id, name, args, context)
+		}
 		return requireBridge(bridge, "command")({
 			plugin: registry.get(id),
 			definition,

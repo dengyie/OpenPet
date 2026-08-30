@@ -35,6 +35,7 @@ describe("T25 plugin routes", () => {
 			list: () => [{ id: "demo" }],
 			get: (id) => ({ id, permissions: ["pet:say"] }),
 			enqueueJob: (input) => { calls.push(["enqueue", input.kind, input.input]); return { id: "job-1" } },
+			dispatchCommand: (id, command, args) => { calls.push(["dispatch-command", id, command, args]); return { id: "job-command" } },
 			remove: async (id, options) => { calls.push(["remove", id, options]); return { ok: true } },
 			setEnabled: (id, enabled) => { calls.push(["enabled", id, enabled]); return { id, enabled } },
 			start: async (id) => { calls.push(["start", id]); return { id, status: "running" } },
@@ -63,11 +64,13 @@ describe("T25 plugin routes", () => {
 		assert.equal((await request("GET", "/api/v1/plugins")).body.data.items.length, 1)
 		assert.equal((await request("GET", "/api/v1/plugins/demo/status")).body.data.status, "running")
 		assert.equal((await request("POST", "/api/v1/plugins/demo/enable", { enabled: true })).body.data.enabled, true)
-		assert.equal((await request("POST", "/api/v1/plugins/demo/commands/run", { value: 1 })).status, 202)
+		const commandResponse = await request("POST", "/api/v1/plugins/demo/commands/run", { value: 1 })
+		assert.equal(commandResponse.status, 202)
+		assert.equal(commandResponse.body.data.jobId, "job-command")
 		assert.equal((await request("PUT", "/api/v1/plugins/demo/config", { greeting: "hi" })).body.data.config.greeting, "hi")
 		assert.deepEqual(calls, [
 			["enabled", "demo", true],
-			["enqueue", "plugin.command", { pluginId: "demo", command: "run", args: { value: 1 } }],
+			["dispatch-command", "demo", "run", { value: 1 }],
 		])
 	})
 

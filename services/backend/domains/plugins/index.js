@@ -1,3 +1,4 @@
+import fs from "node:fs"
 import path from "node:path"
 import { createRequire } from "node:module"
 import {
@@ -34,7 +35,7 @@ function installError(error) {
 	return new ApiError("INTERNAL", "Plugin installation failed", { cause: error })
 }
 
-export function createPluginService({ db, jobs, logs, bridge, dialog, root, userDataDir, settings, logger, now = Date.now, emit, processLedger: injectedProcessLedger, processRuntime: injectedProcessRuntime, runtimeBridgeServer } = {}) {
+export function createPluginService({ db, jobs, logs, bridge, commandServer, dialog, root, userDataDir, settings, logger, now = Date.now, emit, processLedger: injectedProcessLedger, processRuntime: injectedProcessRuntime, runtimeBridgeServer } = {}) {
 	if (typeof root !== "string" || !path.isAbsolute(root)) throw new TypeError("plugin root must be absolute")
 	const settingsStore = settings ?? createSettingsStore({ file: path.join(userDataDir, "backend", "settings.json"), logger })
 	const registry = createPluginRegistry({ userDataDir, settings: settingsStore, logger })
@@ -83,6 +84,7 @@ export function createPluginService({ db, jobs, logs, bridge, dialog, root, user
 	const lifecycle = createPluginLifecycle({
 		registry,
 		bridge,
+		commandServer,
 		processRuntime,
 		processLedger,
 		now,
@@ -95,6 +97,17 @@ export function createPluginService({ db, jobs, logs, bridge, dialog, root, user
 	})
 	const bundledPluginDirs = ["creator-studio", "agent-awareness", "im-gateway"]
 		.map((name) => path.join(root, "examples", "plugins", name))
+	const runtimeDirs = (id) => {
+		registry.definition(id)
+		const runtimeRoot = path.join(registry.pluginDir, ".openpet", id)
+		const dirs = {
+			dataDir: path.join(runtimeRoot, "data"),
+			cacheDir: path.join(runtimeRoot, "cache"),
+			logDir: path.join(runtimeRoot, "logs"),
+		}
+		for (const dir of Object.values(dirs)) fs.mkdirSync(dir, { recursive: true })
+		return dirs
+	}
 
 	const list = () => registry.list().map((plugin) => ({ ...plugin, runtime: lifecycle.status(plugin.id) }))
 	const get = (id) => ({ ...registry.get(id), runtime: lifecycle.status(id) })
@@ -185,7 +198,10 @@ export function createPluginService({ db, jobs, logs, bridge, dialog, root, user
 		status: lifecycle.status,
 		config: registry.config,
 		setConfig: registry.setConfig,
+		definition: registry.definition,
+		runtimeDirs,
 		command: lifecycle.command,
+		dispatchCommand: commandServer?.dispatch,
 		appendLog,
 		getLogs,
 		clearLogs,

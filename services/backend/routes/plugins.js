@@ -144,12 +144,19 @@ export function registerPluginRoutes(router, { plugins } = {}) {
 		return sendList(ctx, items)
 	})
 	router.delete("/plugins/:id/logs", (ctx) => sendSuccess(ctx, clearLogsFor(plugins, ctx.params.id)))
-	router.post("/plugins/:id/commands/:cmd", (ctx) => sendSuccess(ctx, enqueue(
-		plugins,
-		"plugin.command",
-		{ pluginId: ctx.params.id, command: ctx.params.cmd, args: ctx.body === null ? {} : objectBody(ctx.body) },
-		`plugin:${ctx.params.id}`,
-	), 202))
+	router.post("/plugins/:id/commands/:cmd", (ctx) => {
+		const args = ctx.body === null ? {} : objectBody(ctx.body)
+		if (typeof plugins.dispatchCommand === "function") {
+			const job = plugins.dispatchCommand(ctx.params.id, ctx.params.cmd, args)
+			return sendSuccess(ctx, { jobId: job.id }, 202)
+		}
+		return sendSuccess(ctx, enqueue(
+			plugins,
+			"plugin.command",
+			{ pluginId: ctx.params.id, command: ctx.params.cmd, args },
+			`plugin:${ctx.params.id}`,
+		), 202)
+	})
 	router.get("/plugins/:id/permissions", (ctx) => {
 		if (typeof plugins.permissions === "function") return sendSuccess(ctx, plugins.permissions(ctx.params.id))
 		return sendSuccess(ctx, requireMethod(plugins, "get")(ctx.params.id).permissions ?? [])

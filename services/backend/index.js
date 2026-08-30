@@ -25,6 +25,7 @@ import {
 } from "./http/middleware.js"
 import { createShellClient } from "./bridge/shell-client.js"
 import { createPluginRuntimeServer } from "./bridge/plugin-runtime-server.js"
+import { createPluginCommandServer } from "./bridge/plugin-command-server.js"
 import { createSettingsStore } from "./domains/settings.js"
 import { createAboutService } from "./domains/about.js"
 import { createLocalHttpManager } from "./domains/local-http.js"
@@ -136,6 +137,7 @@ const runtime = {
 	petPacks: null,
 	actions: null,
 	plugins: null,
+	commandServer: null,
 	about: null,
 	queue: null,
 	runner: null,
@@ -269,11 +271,17 @@ await initializeBackendRuntime({
 		createLogsRepository,
 		recoverJobs,
 		initializePlugins: () => {
+			let runtimeBridgeServer
 			const pluginFacade = {
 				get: (id) => runtime.plugins?.get?.(id),
+				definition: (id) => runtime.plugins?.definition?.(id),
+				config: (id) => runtime.plugins?.config?.(id),
+				runtimeDirs: (id) => runtime.plugins?.runtimeDirs?.(id),
+				appendLog: (entry) => runtime.plugins?.appendLog?.(entry),
 				submitTriggerProposal: (pluginId, payload) => runtime.actions.submitProposal({ ...payload, sourcePluginId: pluginId }),
+				handleCommandCapability: (pluginId, capability, payload, options) => runtimeBridgeServer.handleCapability(pluginId, capability, payload, options),
 			}
-			const runtimeBridgeServer = createPluginRuntimeServer({
+			runtimeBridgeServer = createPluginRuntimeServer({
 				shell,
 				plugins: pluginFacade,
 				settings: runtime.settings,
@@ -288,6 +296,12 @@ await initializeBackendRuntime({
 				},
 				logger,
 			})
+			const commandServer = createPluginCommandServer({
+				plugins: pluginFacade,
+				jobs: { insert: (input) => runtime.enqueueJob(input) },
+				logger,
+			})
+			runtime.commandServer = commandServer
 			return createInitializedPluginService({
 				db: runtime.db,
 				jobs: runtime.jobs,
@@ -300,6 +314,7 @@ await initializeBackendRuntime({
 				logger,
 				emit: (name, payload) => eventHub.publish(name, payload),
 				runtimeBridgeServer,
+				commandServer,
 			})
 		},
 	},
@@ -410,6 +425,7 @@ async function shutdown(reason, code) {
 	eventHub.closeAll()
 	await runtime.plugins?.stopAll?.()
 	await runtime.plugins?.runtimeBridgeServer?.close?.()
+	await runtime.commandServer?.close?.()
 	await runtime.runner?.shutdown?.()
 	runtime.queue?.stop?.()
 	await new Promise((resolve) => server.close(resolve))
