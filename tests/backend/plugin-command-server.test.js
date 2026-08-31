@@ -138,6 +138,115 @@ test("T27 preserves timeoutMs zero as an unlimited command timeout", async () =>
 	}
 })
 
+test("T27 preserves sanitized structured command errors from nonzero exits", async () => {
+	const { createPluginCommandServer } = await import("../../services/backend/bridge/plugin-command-server.js")
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-t27-structured-error-"))
+	const script = path.join(root, "fail.js")
+	fs.writeFileSync(script, [
+		"console.log(JSON.stringify({",
+		"  ok: false,",
+		"  error: 'command failed at /Users/demo/private with sk-secret123',",
+		"  code: 'COMMAND_FAILED',",
+		"  details: { apiKey: 'raw-secret', path: '/tmp/private-output' }",
+		"}))",
+		"process.exitCode = 7",
+	].join("\n") + "\n")
+	const definition = {
+		manifest: {
+			id: "structured-error-demo",
+			basePath: root,
+			entries: { commands: [{ id: "fail", command: "node fail.js", cwd: "." }] },
+		},
+	}
+	const server = createPluginCommandServer({
+		plugins: {
+			definition: () => definition,
+			config: () => ({}),
+			runtimeDirs: () => ({ dataDir: root, cacheDir: root, logDir: root }),
+		},
+		jobs: { insert: (input) => input },
+	})
+	try {
+		await assert.rejects(
+			server.execute("structured-error-demo", "fail"),
+			(error) => {
+				assert.equal(error.code, "PROVIDER_ERROR")
+				assert.equal(error.status, 502)
+				assert.equal(error.message, "command failed at [redacted-path] with [redacted-secret]")
+				assert.deepEqual(error.details, {
+					ok: false,
+					error: "command failed at [redacted-path] with [redacted-secret]",
+					code: "COMMAND_FAILED",
+					details: { apiKey: "[redacted-secret]", path: "[redacted-path]" },
+				})
+				assert.doesNotMatch(JSON.stringify(error.details), /raw-secret|\/Users\/demo|\/tmp\/private-output|sk-secret123/)
+				return true
+			},
+		)
+	} finally {
+		await server.close()
+		fs.rmSync(root, { recursive: true, force: true })
+	}
+})
+
+test("T27 bundled agent-awareness doctor receives live native approval state", async () => {
+	const [
+		{ createPluginCommandServer },
+		{ createPluginService },
+		{ createSettingsStore },
+	] = await Promise.all([
+		import("../../services/backend/bridge/plugin-command-server.js"),
+		import("../../services/backend/domains/plugins/index.js"),
+		import("../../services/backend/domains/settings.js"),
+	])
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-t27-agent-doctor-"))
+	const userDataDir = path.join(root, "user-data")
+	const settings = createSettingsStore({ file: path.join(userDataDir, "backend", "settings.json") })
+	let plugins
+	const pluginPort = new Proxy({}, {
+		get: (_target, property) => {
+			const value = plugins?.[property]
+			return typeof value === "function" ? value.bind(plugins) : value
+		},
+	})
+	const commandServer = createPluginCommandServer({
+		plugins: pluginPort,
+		jobs: { insert: (input) => input },
+	})
+	plugins = createPluginService({
+		root: path.resolve(__dirname, "../.."),
+		userDataDir,
+		settings,
+		logs: { appendPlugin() {}, listPlugin: () => [] },
+		bridge: {},
+		commandServer,
+	})
+	try {
+		plugins.syncBundled()
+		const unapproved = await commandServer.execute("openpet.agent-awareness", "doctor", { port: 65530 })
+		assert.equal(unapproved.result.nativeExecutionApproved, false)
+		assert.deepEqual(
+			unapproved.result.checks.find((check) => check.id === "native-execution-approval"),
+			{ id: "native-execution-approval", ok: false, value: "not-approved" },
+		)
+
+		const current = settings.read()
+		settings.patch({
+			ifVersion: current.version,
+			patch: { "plugins.nativeExecutionApproved": { "openpet.agent-awareness": true } },
+		})
+		const approved = await commandServer.execute("openpet.agent-awareness", "doctor", { port: 65530 })
+		assert.equal(approved.result.nativeExecutionApproved, true)
+		assert.deepEqual(
+			approved.result.checks.find((check) => check.id === "native-execution-approval"),
+			{ id: "native-execution-approval", ok: true, value: "approved" },
+		)
+	} finally {
+		await commandServer.close()
+		fs.rmSync(root, { recursive: true, force: true })
+	}
+})
+
 test("T27 timeout removes the full plugin command process tree", { timeout: 5_000 }, async () => {
 	const { createPluginCommandServer } = await import("../../services/backend/bridge/plugin-command-server.js")
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-t27-timeout-tree-"))
@@ -178,6 +287,189 @@ test("T27 timeout removes the full plugin command process tree", { timeout: 5_00
 	} finally {
 		if (descendantPid > 0) {
 			try { process.kill(descendantPid, "SIGKILL") } catch (_) {}
+		}
+		await server.close()
+		fs.rmSync(root, { recursive: true, force: true })
+	}
+})
+
+test("T27 abort during process registration removes the full plugin command process tree", { timeout: 8_000 }, async () => {
+	const { createPluginCommandServer } = await import("../../services/backend/bridge/plugin-command-server.js")
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-t27-register-abort-tree-"))
+	const pidFile = path.join(root, "descendant.pid")
+	const script = path.join(root, "spawn-descendant.js")
+	fs.writeFileSync(script, [
+		"const { spawn } = require('node:child_process')",
+		"const fs = require('node:fs')",
+		"const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' })",
+		"fs.writeFileSync('descendant.pid', String(child.pid))",
+		"setInterval(() => {}, 1000)",
+	].join("\n") + "\n")
+	const definition = {
+		manifest: {
+			id: "register-abort-tree-demo",
+			basePath: root,
+			entries: { commands: [{ id: "hang", command: "node spawn-descendant.js", cwd: ".", timeoutMs: 0 }] },
+		},
+	}
+	const server = createPluginCommandServer({
+		plugins: {
+			definition: () => definition,
+			config: () => ({}),
+			runtimeDirs: () => ({ dataDir: root, cacheDir: root, logDir: root }),
+		},
+		jobs: { insert: (input) => input },
+	})
+	const controller = new AbortController()
+	let parentPid = 0
+	let descendantPid = 0
+	try {
+		await assert.rejects(
+			server.execute("register-abort-tree-demo", "hang", {}, {
+				signal: controller.signal,
+				registerProcess(child) {
+					parentPid = child.pid
+					const waiter = spawnSync(process.execPath, [
+						"-e",
+						"const fs = require('node:fs'); const file = process.argv[1]; const deadline = Date.now() + 1500; while (!fs.existsSync(file) && Date.now() < deadline) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10); process.exit(fs.existsSync(file) ? 0 : 1)",
+						pidFile,
+					], { encoding: "utf8", timeout: 2_000 })
+					assert.equal(waiter.status, 0, waiter.stderr || "command child did not create its descendant")
+					descendantPid = Number(fs.readFileSync(pidFile, "utf8"))
+					assert.doesNotThrow(() => process.kill(parentPid, 0))
+					assert.doesNotThrow(() => process.kill(descendantPid, 0))
+					controller.abort(new Error("cancel during process registration"))
+				},
+			}),
+			/cancel during process registration/,
+		)
+		await eventually(() => {
+			try { process.kill(parentPid, 0); return false } catch (error) { return error.code === "ESRCH" }
+		})
+		await eventually(() => {
+			try { process.kill(descendantPid, 0); return false } catch (error) { return error.code === "ESRCH" }
+		})
+		assert.throws(() => process.kill(parentPid, 0), (error) => error.code === "ESRCH")
+		assert.throws(() => process.kill(descendantPid, 0), (error) => error.code === "ESRCH")
+	} finally {
+		if (descendantPid > 0) {
+			try { process.kill(descendantPid, "SIGKILL") } catch (_) {}
+		}
+		if (parentPid > 0) {
+			try { process.kill(parentPid, "SIGKILL") } catch (_) {}
+		}
+		await server.close()
+		fs.rmSync(root, { recursive: true, force: true })
+	}
+})
+
+test("T27 rejects an already-aborted command before spawning a process", async () => {
+	const { createPluginCommandServer } = await import("../../services/backend/bridge/plugin-command-server.js")
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-t27-pre-spawn-abort-"))
+	const pidFile = path.join(root, "command.pid")
+	const script = path.join(root, "write-pid.js")
+	fs.writeFileSync(script, [
+		"const fs = require('node:fs')",
+		"fs.writeFileSync('command.pid', String(process.pid))",
+		"setInterval(() => {}, 1000)",
+	].join("\n") + "\n")
+	const definition = {
+		manifest: {
+			id: "pre-spawn-abort-demo",
+			basePath: root,
+			entries: { commands: [{ id: "run", command: "node write-pid.js", cwd: ".", timeoutMs: 0 }] },
+		},
+	}
+	const server = createPluginCommandServer({
+		plugins: {
+			definition: () => definition,
+			config: () => ({}),
+			runtimeDirs: () => ({ dataDir: root, cacheDir: root, logDir: root }),
+		},
+		jobs: { insert: (input) => input },
+	})
+	const controller = new AbortController()
+	controller.abort(new Error("canceled before spawn"))
+	let registered = false
+	try {
+		await assert.rejects(
+			server.execute("pre-spawn-abort-demo", "run", {}, {
+				signal: controller.signal,
+				registerProcess() { registered = true },
+			}),
+			/canceled before spawn/,
+		)
+		await new Promise((resolve) => setTimeout(resolve, 100))
+		assert.equal(registered, false)
+		assert.equal(fs.existsSync(pidFile), false)
+	} finally {
+		await server.close()
+		fs.rmSync(root, { recursive: true, force: true })
+	}
+})
+
+test("T27 close removes every active plugin command process tree", { timeout: 8_000 }, async () => {
+	const { createPluginCommandServer } = await import("../../services/backend/bridge/plugin-command-server.js")
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-t27-close-tree-"))
+	const commands = ["first", "second"].map((id) => {
+		const parentPidFile = path.join(root, `${id}-parent.pid`)
+		const descendantPidFile = path.join(root, `${id}-descendant.pid`)
+		const scriptName = `${id}-spawn-descendant.js`
+		fs.writeFileSync(path.join(root, scriptName), [
+			"const { spawn } = require('node:child_process')",
+			"const fs = require('node:fs')",
+			`fs.writeFileSync('${id}-parent.pid', String(process.pid))`,
+			"const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' })",
+			`fs.writeFileSync('${id}-descendant.pid', String(child.pid))`,
+			"setInterval(() => {}, 1000)",
+		].join("\n") + "\n")
+		return { id, parentPidFile, descendantPidFile, scriptName }
+	})
+	const definition = {
+		manifest: {
+			id: "close-tree-demo",
+			basePath: root,
+			entries: {
+				commands: commands.map(({ id, scriptName }) => ({
+					id,
+					command: `node ${scriptName}`,
+					cwd: ".",
+					timeoutMs: 0,
+				})),
+			},
+		},
+	}
+	const server = createPluginCommandServer({
+		plugins: {
+			definition: () => definition,
+			config: () => ({}),
+			runtimeDirs: () => ({ dataDir: root, cacheDir: root, logDir: root }),
+		},
+		jobs: { insert: (input) => input },
+	})
+	const pids = []
+	try {
+		const executions = commands.map(({ id }) => server.execute("close-tree-demo", id))
+		await eventually(() => commands.every(({ parentPidFile, descendantPidFile }) => (
+			fs.existsSync(parentPidFile) && fs.existsSync(descendantPidFile)
+		)))
+		for (const { parentPidFile, descendantPidFile } of commands) {
+			pids.push(Number(fs.readFileSync(parentPidFile, "utf8")))
+			pids.push(Number(fs.readFileSync(descendantPidFile, "utf8")))
+		}
+		for (const pid of pids) assert.doesNotThrow(() => process.kill(pid, 0))
+
+		await server.close()
+		await Promise.all(executions.map((execution) => assert.rejects(execution)))
+		for (const pid of pids) {
+			await eventually(() => {
+				try { process.kill(pid, 0); return false } catch (error) { return error.code === "ESRCH" }
+			})
+			assert.throws(() => process.kill(pid, 0), (error) => error.code === "ESRCH")
+		}
+	} finally {
+		for (const pid of pids) {
+			try { process.kill(pid, "SIGKILL") } catch (_) {}
 		}
 		await server.close()
 		fs.rmSync(root, { recursive: true, force: true })

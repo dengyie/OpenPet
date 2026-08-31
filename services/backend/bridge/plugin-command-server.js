@@ -22,6 +22,7 @@ const HOST = "127.0.0.1"
 const MAX_BODY_BYTES = 1024 * 1024
 const MAX_OUTPUT_BYTES = 64 * 1024
 const DEFAULT_TIMEOUT_MS = 420_000
+const AGENT_AWARENESS_PLUGIN_ID = "openpet.agent-awareness"
 
 const CAPABILITY_BY_PATH = Object.freeze({
 	"/pet/say": "pet:say",
@@ -127,8 +128,11 @@ export function createPluginCommandServer({ plugins, jobs, logger, now = Date.no
 	if (typeof jobs?.insert !== "function") throw new TypeError("plugin command server requires jobs.insert")
 	const resolveCwd = createPluginEntryCwdResolver()
 	const runtimes = new Map()
+	const children = new Set()
 	let server = null
 	let starting = null
+	let closing = null
+	let closeGeneration = 0
 	let sequence = 0
 	const appendLog = (entry) => {
 		try { plugins.appendLog?.(entry) } catch (error) {
@@ -181,6 +185,7 @@ export function createPluginCommandServer({ plugins, jobs, logger, now = Date.no
 	}
 
 	async function listen() {
+		if (closing) await closing
 		if (server?.listening) {
 			const address = server.address()
 			return { host: HOST, port: address.port, url: `http://${HOST}:${address.port}` }
@@ -201,14 +206,25 @@ export function createPluginCommandServer({ plugins, jobs, logger, now = Date.no
 		return starting
 	}
 
-	async function close() {
-		const current = server
-		server = null
-		starting = null
-		runtimes.clear()
-		if (!current) return
-		current.closeAllConnections?.()
-		await new Promise((resolve) => current.close(() => resolve()))
+	function close() {
+		if (closing) return closing
+		closeGeneration += 1
+		closing = (async () => {
+			const activeChildren = [...children]
+			for (const child of activeChildren) killProcessTree(child)
+			const pending = starting
+			if (pending) {
+				try { await pending } catch {}
+			}
+			const current = server
+			server = null
+			starting = null
+			runtimes.clear()
+			if (!current) return
+			current.closeAllConnections?.()
+			await new Promise((resolve) => current.close(() => resolve()))
+		})().finally(() => { closing = null })
+		return closing
 	}
 
 	function dispatch(pluginId, command, args = {}) {
@@ -227,6 +243,8 @@ export function createPluginCommandServer({ plugins, jobs, logger, now = Date.no
 	}
 
 	async function execute(pluginId, command, args = {}, context = {}) {
+		if (context.signal?.aborted) throw context.signal.reason ?? new Error("Job canceled")
+		const executeGeneration = closeGeneration
 		const normalizedPluginId = requiredString(pluginId, "pluginId")
 		const normalizedCommand = requiredString(command, "command")
 		const definition = plugins.definition?.(normalizedPluginId)
@@ -239,11 +257,15 @@ export function createPluginCommandServer({ plugins, jobs, logger, now = Date.no
 			throw new ApiError("BACKEND_UNAVAILABLE", "Plugin runtime directories are unavailable")
 		}
 		const dirs = plugins.runtimeDirs(normalizedPluginId)
+		const plugin = normalizedPluginId === AGENT_AWARENESS_PLUGIN_ID ? plugins.get?.(normalizedPluginId) : null
 		const commandContext = {
 			pluginId: normalizedPluginId,
 			commandId: normalizedCommand,
 			payload: objectArgs(args),
 			config: plugins.config?.(normalizedPluginId) ?? {},
+			...(normalizedPluginId === AGENT_AWARENESS_PLUGIN_ID ? {
+				runtime: { nativeExecutionApproved: plugin?.nativeExecutionApproved === true },
+			} : {}),
 			paths: { extensionDir: cwd },
 		}
 		let commandInput
@@ -251,6 +273,8 @@ export function createPluginCommandServer({ plugins, jobs, logger, now = Date.no
 			throw new ApiError("VALIDATION_FAILED", "Plugin command context must be JSON serializable", { cause })
 		}
 		const address = await listen()
+		if (context.signal?.aborted) throw context.signal.reason ?? new Error("Job canceled")
+		if (executeGeneration !== closeGeneration) throw new ApiError("BACKEND_UNAVAILABLE", "Plugin command server closed before launch")
 		const runId = token()
 		const bridgeToken = token()
 		const child = spawn(launch.file, launch.args, {
@@ -268,8 +292,10 @@ export function createPluginCommandServer({ plugins, jobs, logger, now = Date.no
 			stdio: ["pipe", "pipe", "pipe"],
 			windowsHide: true,
 		})
+		children.add(child)
 		try { context.registerProcess?.(child) } catch (error) {
 			killProcessTree(child)
+			children.delete(child)
 			throw error
 		}
 		runtimes.set(runId, { pluginId: normalizedPluginId, command: normalizedCommand, token: bridgeToken })
@@ -289,9 +315,13 @@ export function createPluginCommandServer({ plugins, jobs, logger, now = Date.no
 				clearTimeout(timeout)
 				context.signal?.removeEventListener?.("abort", aborted)
 				runtimes.delete(runId)
+				children.delete(child)
 				callback()
 			}
-			const aborted = () => settle(() => reject(context.signal?.reason ?? new Error("Job canceled")))
+			const aborted = () => {
+				killProcessTree(child)
+				settle(() => reject(context.signal?.reason ?? new Error("Job canceled")))
+			}
 			if (context.signal?.aborted) {
 				aborted()
 				return
@@ -313,7 +343,12 @@ export function createPluginCommandServer({ plugins, jobs, logger, now = Date.no
 			child.once("error", (error) => settle(() => reject(error)))
 			child.once("exit", (code, signal) => settle(() => {
 				if (code !== 0 || signal) {
-					reject(new Error(sanitizePluginCommandText(stderr || `Plugin command exited with ${signal || code}`)))
+					const parsed = parseResult(stdout)
+					const structuredError = parsed?.ok === false ? parsed : null
+					const message = typeof structuredError?.error === "string" && structuredError.error
+						? structuredError.error
+						: sanitizePluginCommandText(stderr || `Plugin command exited with ${signal || code}`)
+					reject(new ApiError("PROVIDER_ERROR", message, { status: 502, details: structuredError }))
 					return
 				}
 				const parsed = parseResult(stdout)
