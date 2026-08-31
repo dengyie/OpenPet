@@ -179,9 +179,15 @@ registerHealthRoutes({
 	deps: { logger, cleanup: () => runtime.logs?.cleanup?.() },
 })
 
+// Routes are assembled before storage initialization, so resolve the store
+// from runtime when each request runs.
+const runtimeSettingsStore = {
+	read: (...args) => runtime.settings.read(...args),
+	patch: (...args) => runtime.settings.patch(...args),
+}
 registerSettingsRoutes({
 	router,
-	store: runtime.settings ?? { read: () => ({ version: 0, values: {} }), patch: () => { throw new Error("settings 尚未初始化") } },
+	store: runtimeSettingsStore,
 	emit: (name, payload) => eventHub.publish(name, payload),
 })
 runtime.about = createAboutService({ pkg: packageJson, runtime })
