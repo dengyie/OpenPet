@@ -169,6 +169,24 @@ export function createPluginService({ db, jobs, logs, bridge, commandServer, dia
 		publish("plugin.removed", { pluginId: id, at: now() })
 		return result
 	}
+	const setEnabled = async (id, enabled) => {
+		if (enabled) return registry.setEnabled(id, true)
+		const current = lifecycle.status(id)
+		if (["starting", "running", "stopping"].includes(current.status)) await lifecycle.stop(id)
+		else {
+			await commandServer?.stopPlugin?.(id)
+			registry.setEnabled(id, false)
+		}
+		return get(id)
+	}
+	const setNativeExecutionApproved = async (id, approved) => {
+		registry.setNativeExecutionApproved(id, approved)
+		if (approved) return get(id)
+		const current = lifecycle.status(id)
+		if (["starting", "running", "stopping"].includes(current.status)) await lifecycle.stop(id)
+		else await commandServer?.stopPlugin?.(id)
+		return get(id)
+	}
 	const syncBundled = () => {
 		const result = syncBundledPlugins({
 			pluginDir: registry.pluginDir,
@@ -196,6 +214,8 @@ export function createPluginService({ db, jobs, logs, bridge, commandServer, dia
 		start: lifecycle.start,
 		stop: lifecycle.stop,
 		status: lifecycle.status,
+		setEnabled,
+		setNativeExecutionApproved,
 		config: registry.config,
 		setConfig: registry.setConfig,
 		definition: registry.definition,

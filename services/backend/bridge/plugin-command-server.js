@@ -128,10 +128,12 @@ export function createPluginCommandServer({ plugins, jobs, logger, now = Date.no
 	if (typeof jobs?.insert !== "function") throw new TypeError("plugin command server requires jobs.insert")
 	const resolveCwd = createPluginEntryCwdResolver()
 	const runtimes = new Map()
-	const children = new Set()
+	const runsByPlugin = new Map()
+	const pluginGenerations = new Map()
 	let server = null
 	let starting = null
 	let closing = null
+	let closed = false
 	let closeGeneration = 0
 	let sequence = 0
 	const appendLog = (entry) => {
@@ -185,7 +187,7 @@ export function createPluginCommandServer({ plugins, jobs, logger, now = Date.no
 	}
 
 	async function listen() {
-		if (closing) await closing
+		if (closed || closing) throw new ApiError("BACKEND_UNAVAILABLE", "Plugin command server is closed")
 		if (server?.listening) {
 			const address = server.address()
 			return { host: HOST, port: address.port, url: `http://${HOST}:${address.port}` }
@@ -208,10 +210,14 @@ export function createPluginCommandServer({ plugins, jobs, logger, now = Date.no
 
 	function close() {
 		if (closing) return closing
+		if (closed) return Promise.resolve()
+		closed = true
 		closeGeneration += 1
 		closing = (async () => {
-			const activeChildren = [...children]
-			for (const child of activeChildren) killProcessTree(child)
+			const activeRuns = [...runsByPlugin.values()].flatMap((runs) => [...runs])
+			runtimes.clear()
+			for (const run of activeRuns) killProcessTree(run.child)
+			await Promise.allSettled(activeRuns.map((run) => run.done))
 			const pending = starting
 			if (pending) {
 				try { await pending } catch {}
@@ -219,12 +225,21 @@ export function createPluginCommandServer({ plugins, jobs, logger, now = Date.no
 			const current = server
 			server = null
 			starting = null
-			runtimes.clear()
 			if (!current) return
 			current.closeAllConnections?.()
 			await new Promise((resolve) => current.close(() => resolve()))
 		})().finally(() => { closing = null })
 		return closing
+	}
+
+	async function stopPlugin(pluginId) {
+		const normalizedPluginId = requiredString(pluginId, "pluginId")
+		pluginGenerations.set(normalizedPluginId, (pluginGenerations.get(normalizedPluginId) ?? 0) + 1)
+		const activeRuns = [...(runsByPlugin.get(normalizedPluginId) ?? [])]
+		for (const run of activeRuns) runtimes.delete(run.runId)
+		for (const run of activeRuns) killProcessTree(run.child)
+		await Promise.allSettled(activeRuns.map((run) => run.done))
+		return { ok: true, pluginId: normalizedPluginId }
 	}
 
 	function dispatch(pluginId, command, args = {}) {
@@ -244,8 +259,10 @@ export function createPluginCommandServer({ plugins, jobs, logger, now = Date.no
 
 	async function execute(pluginId, command, args = {}, context = {}) {
 		if (context.signal?.aborted) throw context.signal.reason ?? new Error("Job canceled")
+		if (closed || closing) throw new ApiError("BACKEND_UNAVAILABLE", "Plugin command server is closed")
 		const executeGeneration = closeGeneration
 		const normalizedPluginId = requiredString(pluginId, "pluginId")
+		const pluginGeneration = pluginGenerations.get(normalizedPluginId) ?? 0
 		const normalizedCommand = requiredString(command, "command")
 		const definition = plugins.definition?.(normalizedPluginId)
 		if (!definition?.manifest) throw new ApiError("NOT_FOUND", "Plugin not found", { details: { pluginId: normalizedPluginId } })
@@ -274,7 +291,10 @@ export function createPluginCommandServer({ plugins, jobs, logger, now = Date.no
 		}
 		const address = await listen()
 		if (context.signal?.aborted) throw context.signal.reason ?? new Error("Job canceled")
-		if (executeGeneration !== closeGeneration) throw new ApiError("BACKEND_UNAVAILABLE", "Plugin command server closed before launch")
+		if (closed || executeGeneration !== closeGeneration) throw new ApiError("BACKEND_UNAVAILABLE", "Plugin command server closed before launch")
+		if (pluginGeneration !== (pluginGenerations.get(normalizedPluginId) ?? 0)) {
+			throw new ApiError("CONFLICT", "Plugin stopped before command launch", { details: { pluginId: normalizedPluginId } })
+		}
 		const runId = token()
 		const bridgeToken = token()
 		const child = spawn(launch.file, launch.args, {
@@ -292,10 +312,8 @@ export function createPluginCommandServer({ plugins, jobs, logger, now = Date.no
 			stdio: ["pipe", "pipe", "pipe"],
 			windowsHide: true,
 		})
-		children.add(child)
 		try { context.registerProcess?.(child) } catch (error) {
 			killProcessTree(child)
-			children.delete(child)
 			throw error
 		}
 		runtimes.set(runId, { pluginId: normalizedPluginId, command: normalizedCommand, token: bridgeToken })
@@ -304,7 +322,10 @@ export function createPluginCommandServer({ plugins, jobs, logger, now = Date.no
 			? Math.max(0, Number(commandEntry.timeoutMs))
 			: DEFAULT_TIMEOUT_MS
 
-		return new Promise((resolve, reject) => {
+		const run = { pluginId: normalizedPluginId, runId, child, done: null }
+		if (!runsByPlugin.has(normalizedPluginId)) runsByPlugin.set(normalizedPluginId, new Set())
+		runsByPlugin.get(normalizedPluginId).add(run)
+		const execution = new Promise((resolve, reject) => {
 			let settled = false
 			let stdout = ""
 			let stderr = ""
@@ -315,7 +336,9 @@ export function createPluginCommandServer({ plugins, jobs, logger, now = Date.no
 				clearTimeout(timeout)
 				context.signal?.removeEventListener?.("abort", aborted)
 				runtimes.delete(runId)
-				children.delete(child)
+				const pluginRuns = runsByPlugin.get(normalizedPluginId)
+				pluginRuns?.delete(run)
+				if (pluginRuns?.size === 0) runsByPlugin.delete(normalizedPluginId)
 				callback()
 			}
 			const aborted = () => {
@@ -370,7 +393,9 @@ export function createPluginCommandServer({ plugins, jobs, logger, now = Date.no
 				settle(() => reject(error))
 			}
 		})
+		run.done = execution
+		return execution
 	}
 
-	return { listen, close, dispatch, execute }
+	return { listen, close, stopPlugin, dispatch, execute }
 }

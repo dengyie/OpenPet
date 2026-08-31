@@ -112,13 +112,18 @@ export function createPluginLifecycle({ registry, bridge, commandServer, process
 		if (!ACTIVE.has(current.status)) throw new ApiError("CONFLICT", "Plugin is not running", { details: { pluginId: id } })
 		const definition = registry.definition(id)
 		const invoke = isDeclarationOnly(definition) && typeof commandServer?.execute === "function"
-			? async () => ({ ok: true })
+			? null
 			: processRuntime?.stop && definition.manifest?.entries?.services?.length
 				? processRuntime.stop.bind(processRuntime)
 				: requireBridge(bridge, "stop")
 		publish(id, { ...current, status: "stopping" })
 		try {
-			await invoke({ plugin: registry.get(id), definition })
+			const operations = []
+			if (invoke) operations.push(invoke({ plugin: registry.get(id), definition }))
+			if (typeof commandServer?.stopPlugin === "function") operations.push(commandServer.stopPlugin(id))
+			const results = await Promise.allSettled(operations)
+			const failure = results.find((result) => result.status === "rejected")
+			if (failure) throw failure.reason
 			for (const pid of current.pids ?? []) processLedger?.unregister?.(pid)
 			registry.setEnabled(id, false)
 			audit?.("info", "Plugin stopped", { pluginId: id })

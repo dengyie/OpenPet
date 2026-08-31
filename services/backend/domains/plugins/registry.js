@@ -141,6 +141,11 @@ export function createPluginRegistry({ userDataDir, settings, logger } = {}) {
 		updateSection("enabled", (current) => ({ ...current, [id]: Boolean(enabled) }))
 		return get(id)
 	}
+	const setNativeExecutionApproved = (id, approved) => {
+		requireDefinition(id)
+		updateSection("nativeExecutionApproved", (current) => ({ ...current, [id]: Boolean(approved) }))
+		return get(id)
+	}
 	const get = (id) => view(requireDefinition(id))
 	const list = () => definitions().map(view)
 	const setConfig = (id, patch = {}) => {
@@ -158,5 +163,5 @@ export function createPluginRegistry({ userDataDir, settings, logger } = {}) {
 		return normalized
 	}
 
-	return { pluginDir, settingsService, list, get, definition: requireDefinition, config, setConfig, setEnabled, isNativeApproved, requiresNative }
+	return { pluginDir, settingsService, list, get, definition: requireDefinition, config, setConfig, setEnabled, setNativeExecutionApproved, isNativeApproved, requiresNative }
 }

@@ -80,6 +80,28 @@ function retryableStatus(error) {
 	return status === 429 || (status >= 500 && status <= 599)
 }
 
+const SENSITIVE_ERROR_DETAIL_KEY = /^(?:api[_ -]?key|password|authorization|access[_ -]?token|refresh[_ -]?token|secret)$/i
+const SECRET_ASSIGNMENT = /\b(api[_ -]?key|password|authorization)\b\s*[:=]\s*(?:bearer\s+)?(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;)}\]]+)/gi
+const BEARER_VALUE = /\bbearer\s+[A-Za-z0-9._~+/-]{8,}={0,2}\b/gi
+
+function sanitizeErrorText(value) {
+	return String(value ?? "")
+		.replace(SECRET_ASSIGNMENT, "$1=[redacted-secret]")
+		.replace(BEARER_VALUE, "Bearer [redacted-secret]")
+}
+
+function sanitizeErrorDetails(value, key = "") {
+	if (typeof value === "string") {
+		return SENSITIVE_ERROR_DETAIL_KEY.test(key) && value ? "[redacted-secret]" : sanitizeErrorText(value)
+	}
+	if (Array.isArray(value)) return value.map((entry) => sanitizeErrorDetails(entry, key))
+	if (!value || typeof value !== "object") return value
+	return Object.fromEntries(Object.entries(value).map(([entryKey, entryValue]) => [
+		entryKey,
+		sanitizeErrorDetails(entryValue, entryKey),
+	]))
+}
+
 function jobTmpDirectory(tmpRoot, jobId) {
 	if (typeof tmpRoot !== "string" || tmpRoot.length === 0) return null
 	const safeId = String(jobId).replace(/[^a-zA-Z0-9._-]/g, "_")
@@ -92,8 +114,8 @@ function jobTmpDirectory(tmpRoot, jobId) {
 function jobError(error) {
 	return {
 		code: String(error?.code ?? "INTERNAL"),
-		message: String(error?.message ?? "Job 执行失败"),
-		details: error?.details ?? null,
+		message: sanitizeErrorText(error?.message ?? "Job 执行失败"),
+		details: sanitizeErrorDetails(error?.details ?? null),
 		retryable: retryableStatus(error),
 	}
 }

@@ -459,8 +459,9 @@ test("T27 close removes every active plugin command process tree", { timeout: 8_
 		}
 		for (const pid of pids) assert.doesNotThrow(() => process.kill(pid, 0))
 
+		const rejectedExecutions = executions.map((execution) => assert.rejects(execution))
 		await server.close()
-		await Promise.all(executions.map((execution) => assert.rejects(execution)))
+		await Promise.all(rejectedExecutions)
 		for (const pid of pids) {
 			await eventually(() => {
 				try { process.kill(pid, 0); return false } catch (error) { return error.code === "ESRCH" }
@@ -471,6 +472,227 @@ test("T27 close removes every active plugin command process tree", { timeout: 8_
 		for (const pid of pids) {
 			try { process.kill(pid, "SIGKILL") } catch (_) {}
 		}
+		await server.close()
+		fs.rmSync(root, { recursive: true, force: true })
+	}
+})
+
+test("T27 stopPlugin awaits only that plugin's commands and expires their bridge authorization", { timeout: 8_000 }, async () => {
+	const { createPluginCommandServer } = await import("../../services/backend/bridge/plugin-command-server.js")
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-t27-stop-plugin-"))
+	const definitions = new Map()
+	for (const pluginId of ["first-plugin", "second-plugin"]) {
+		const pluginRoot = path.join(root, pluginId)
+		fs.mkdirSync(pluginRoot, { recursive: true })
+		fs.writeFileSync(path.join(pluginRoot, "hang.js"), [
+			"const fs = require('node:fs')",
+			"fs.writeFileSync('runtime.json', JSON.stringify({ pid: process.pid, url: process.env.OPENPET_BRIDGE_URL, token: process.env.OPENPET_BRIDGE_TOKEN }))",
+			"setInterval(() => {}, 1000)",
+		].join("\n") + "\n")
+		definitions.set(pluginId, {
+			manifest: {
+				id: pluginId,
+				basePath: pluginRoot,
+				entries: { commands: [{ id: "hang", command: "node hang.js", cwd: ".", timeoutMs: 0 }] },
+			},
+		})
+	}
+	const server = createPluginCommandServer({
+		plugins: {
+			definition: (id) => definitions.get(id),
+			config: () => ({}),
+			runtimeDirs: (id) => ({ dataDir: path.join(root, id), cacheDir: path.join(root, id), logDir: path.join(root, id) }),
+			handleCommandCapability: async () => ({ ok: true }),
+		},
+		jobs: { insert: (input) => input },
+	})
+	const executions = new Map()
+	const runtime = new Map()
+	try {
+		for (const pluginId of definitions.keys()) executions.set(pluginId, server.execute(pluginId, "hang"))
+		await eventually(() => [...definitions.keys()].every((id) => fs.existsSync(path.join(root, id, "runtime.json"))))
+		for (const pluginId of definitions.keys()) {
+			runtime.set(pluginId, JSON.parse(fs.readFileSync(path.join(root, pluginId, "runtime.json"), "utf8")))
+		}
+
+		await server.stopPlugin("first-plugin")
+		await assert.rejects(executions.get("first-plugin"))
+		assert.throws(() => process.kill(runtime.get("first-plugin").pid, 0), (error) => error.code === "ESRCH")
+		assert.doesNotThrow(() => process.kill(runtime.get("second-plugin").pid, 0))
+
+		const first = runtime.get("first-plugin")
+		const response = await fetch(first.url + "/pet/say", {
+			method: "POST",
+			headers: { authorization: `Bearer ${first.token}`, "content-type": "application/json" },
+			body: JSON.stringify({ text: "must not run" }),
+		})
+		assert.equal(response.status, 401)
+	} finally {
+		for (const value of runtime.values()) {
+			try { process.kill(value.pid, "SIGKILL") } catch (_) {}
+		}
+		await server.close()
+		await Promise.allSettled(executions.values())
+		fs.rmSync(root, { recursive: true, force: true })
+	}
+})
+
+test("T27 lifecycle stop awaits command revocation for declaration-only and mixed plugins", async () => {
+	const { createPluginLifecycle } = await import("../../services/backend/domains/plugins/lifecycle.js")
+	for (const mixed of [false, true]) {
+		const pluginId = mixed ? "mixed-stop" : "declaration-stop"
+		const definition = {
+			mainPath: "",
+			manifest: {
+				id: pluginId,
+				permissions: [],
+				entries: {
+					commands: [{ id: "run", command: "node command.js" }],
+					services: mixed ? [{ id: "service", command: "node service.js" }] : [],
+				},
+			},
+		}
+		let enabled = false
+		let releaseCommands
+		let stopped = false
+		const commandStopped = new Promise((resolve) => { releaseCommands = resolve })
+		const calls = []
+		const lifecycle = createPluginLifecycle({
+			registry: {
+				definition: () => definition,
+				get: () => ({ id: pluginId, enabled }),
+				requiresNative: () => false,
+				isNativeApproved: () => true,
+				setEnabled: (_id, value) => { enabled = value },
+			},
+			processRuntime: {
+				start: async () => ({ processes: [] }),
+				stop: async () => { calls.push("service"); return { ok: true } },
+			},
+			commandServer: {
+				execute: async () => ({ ok: true }),
+				stopPlugin: async (id) => { calls.push(`commands:${id}`); await commandStopped },
+			},
+		})
+		await lifecycle.start(pluginId)
+		const stopping = lifecycle.stop(pluginId).then(() => { stopped = true })
+		await new Promise((resolve) => setImmediate(resolve))
+		assert.equal(stopped, false)
+		assert.deepEqual(calls, mixed ? ["service", `commands:${pluginId}`] : [`commands:${pluginId}`])
+		releaseCommands()
+		await stopping
+		assert.equal(enabled, false)
+	}
+})
+
+test("T27 plugin disable and native approval revoke await command termination", async () => {
+	const [{ createPluginService }, { createSettingsStore }] = await Promise.all([
+		import("../../services/backend/domains/plugins/index.js"),
+		import("../../services/backend/domains/settings.js"),
+	])
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-t27-revoke-"))
+	const userDataDir = path.join(root, "user-data")
+	const settings = createSettingsStore({ file: path.join(userDataDir, "backend", "settings.json") })
+	const pending = []
+	const stopped = []
+	const commandServer = {
+		execute: async () => ({ ok: true }),
+		stopPlugin(id) {
+			stopped.push(id)
+			let resolve
+			const promise = new Promise((done) => { resolve = done })
+			pending.push(resolve)
+			return promise
+		},
+	}
+	const source = path.join(root, "source")
+	fs.mkdirSync(source, { recursive: true })
+	fs.writeFileSync(path.join(source, "plugin.json"), JSON.stringify({
+		id: "revoke-demo", name: "Revoke Demo", version: "1.0.0", permissions: [],
+		entries: { commands: [{ id: "run", command: "node command.js" }], services: [], setup: [], dashboards: [] },
+	}))
+	fs.writeFileSync(path.join(source, "command.js"), "")
+	const plugins = createPluginService({
+		root: path.resolve(__dirname, "../.."), userDataDir, settings, commandServer,
+		logs: { appendPlugin() {}, listPlugin: () => [] }, bridge: {},
+	})
+	try {
+		await plugins.install(source)
+		settings.patch({
+			ifVersion: settings.read().version,
+			patch: { "plugins.nativeExecutionApproved": { "revoke-demo": true } },
+		})
+		await plugins.start("revoke-demo")
+		let disabled = false
+		const disabling = plugins.setEnabled("revoke-demo", false).then(() => { disabled = true })
+		await new Promise((resolve) => setImmediate(resolve))
+		assert.equal(disabled, false)
+		pending.shift()()
+		await disabling
+		assert.equal(plugins.get("revoke-demo").enabled, false)
+
+		await plugins.start("revoke-demo")
+		let revoked = false
+		const revoking = plugins.setNativeExecutionApproved("revoke-demo", false).then(() => { revoked = true })
+		await new Promise((resolve) => setImmediate(resolve))
+		assert.equal(revoked, false)
+		assert.equal(plugins.get("revoke-demo").nativeExecutionApproved, false)
+		pending.shift()()
+		await revoking
+		assert.deepEqual(stopped, ["revoke-demo", "revoke-demo"])
+	} finally {
+		fs.rmSync(root, { recursive: true, force: true })
+	}
+})
+
+test("T27 close is a terminal barrier for concurrent and later listen or execute calls", async () => {
+	const { createPluginCommandServer } = await import("../../services/backend/bridge/plugin-command-server.js")
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-t27-close-barrier-"))
+	const pidFile = path.join(root, "spawned.pid")
+	fs.writeFileSync(path.join(root, "run.js"), "require('node:fs').writeFileSync('spawned.pid', String(process.pid))\n")
+	const server = createPluginCommandServer({
+		plugins: {
+			definition: () => ({ manifest: { id: "barrier", basePath: root, entries: { commands: [{ id: "run", command: "node run.js", cwd: "." }] } } }),
+			config: () => ({}),
+			runtimeDirs: () => ({ dataDir: root, cacheDir: root, logDir: root }),
+		},
+		jobs: { insert: (input) => input },
+	})
+	try {
+		await server.listen()
+		const closing = server.close()
+		const concurrentListen = server.listen()
+		await closing
+		await assert.rejects(concurrentListen, (error) => error.code === "BACKEND_UNAVAILABLE")
+		await assert.rejects(server.listen(), (error) => error.code === "BACKEND_UNAVAILABLE")
+		await assert.rejects(server.execute("barrier", "run"), (error) => error.code === "BACKEND_UNAVAILABLE")
+		assert.equal(fs.existsSync(pidFile), false)
+	} finally {
+		await server.close()
+		fs.rmSync(root, { recursive: true, force: true })
+	}
+})
+
+test("T27 execute already waiting on listen cannot spawn across the close barrier", async () => {
+	const { createPluginCommandServer } = await import("../../services/backend/bridge/plugin-command-server.js")
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-t27-execute-close-race-"))
+	const pidFile = path.join(root, "spawned.pid")
+	fs.writeFileSync(path.join(root, "run.js"), "require('node:fs').writeFileSync('spawned.pid', String(process.pid))\n")
+	const server = createPluginCommandServer({
+		plugins: {
+			definition: () => ({ manifest: { id: "race", basePath: root, entries: { commands: [{ id: "run", command: "node run.js", cwd: "." }] } } }),
+			config: () => ({}),
+			runtimeDirs: () => ({ dataDir: root, cacheDir: root, logDir: root }),
+		},
+		jobs: { insert: (input) => input },
+	})
+	try {
+		const executing = server.execute("race", "run")
+		const closing = server.close()
+		await assert.rejects(executing, (error) => error.code === "BACKEND_UNAVAILABLE")
+		await closing
+		assert.equal(fs.existsSync(pidFile), false)
+	} finally {
 		await server.close()
 		fs.rmSync(root, { recursive: true, force: true })
 	}

@@ -108,6 +108,39 @@ describe("Job runner · finalizing and cancellation", () => {
 })
 
 describe("Job runner · retry policy", () => {
+	it("redacts structured error secrets before persisted Jobs are returned publicly", async () => {
+		await withRunner({
+			"creator.export": async () => {
+				throw new ApiError("VALIDATION_FAILED", "provider rejected Authorization: Bearer public-secret-123", {
+					status: 400,
+					details: {
+						apiKey: "api-key-secret",
+						password: "password-secret",
+						authorization: "Bearer authorization-secret",
+						message: "apiKey=inline-secret password: quoted-secret Authorization: Bearer bearer-secret-123",
+						safe: "monkey passwordPolicy tokenCount",
+					},
+				})
+			},
+		}, async ({ queue, repo, runner }) => {
+			enqueue(queue, "sanitized-error", "creator.export")
+			const result = await runner.run()
+			const persisted = repo.byId("sanitized-error")
+			const listed = repo.list().find((job) => job.id === "sanitized-error")
+			for (const job of [result, persisted, listed]) {
+				assert.equal(job.error.message, "provider rejected Authorization=[redacted-secret]")
+				assert.deepEqual(job.error.details, {
+					apiKey: "[redacted-secret]",
+					password: "[redacted-secret]",
+					authorization: "[redacted-secret]",
+					message: "apiKey=[redacted-secret] password=[redacted-secret] Authorization=[redacted-secret]",
+					safe: "monkey passwordPolicy tokenCount",
+				})
+				assert.doesNotMatch(JSON.stringify(job), /api-key-secret|password-secret|authorization-secret|inline-secret|quoted-secret|bearer-secret/)
+			}
+		})
+	})
+
 	it("retries 429/5xx failures within maxAttempts using repository transitions", async () => {
 		for (const status of [429, 503]) {
 			let calls = 0

@@ -121,9 +121,9 @@ export function registerPluginRoutes(router, { plugins } = {}) {
 		ctx.params.id,
 		{ removeStorage: ctx.query.removeStorage === "true" },
 	)))
-	router.post("/plugins/:id/enable", (ctx) => {
+	router.post("/plugins/:id/enable", async (ctx) => {
 		const body = objectBody(ctx.body)
-		return sendSuccess(ctx, requireMethod(plugins, "setEnabled")(
+		return sendSuccess(ctx, await requireMethod(plugins, "setEnabled")(
 			ctx.params.id,
 			requiredBoolean(body.enabled, "enabled"),
 		))
@@ -168,9 +168,9 @@ export function registerPluginRoutes(router, { plugins } = {}) {
 		}
 		return sendSuccess(ctx, requireMethod(plugins, "setPermissions")(ctx.params.id, body.permissions))
 	})
-	router.post("/plugins/:id/native-approval", (ctx) => {
+	router.post("/plugins/:id/native-approval", async (ctx) => {
 		const body = objectBody(ctx.body)
-		return sendSuccess(ctx, requireMethod(plugins, "setNativeExecutionApproved")(
+		return sendSuccess(ctx, await requireMethod(plugins, "setNativeExecutionApproved")(
 			ctx.params.id,
 			requiredBoolean(body.approved, "approved"),
 		))
