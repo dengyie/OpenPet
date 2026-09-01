@@ -98,6 +98,7 @@
     "test:core": "node --test \"tests/main/*.test.js\" \"tests/services/*.test.js\" \"tests/shared/*.test.js\" \"tests/pet-pack/*.test.js\" \"tests/plugins/*.test.js\" \"tests/examples/*.test.js\" \"tests/renderer-*.test.js\" \"tests/control-center/*.test.js\"",
     "test:core:all": "npm run test:core && npm run test:control-center",
     "test:backend": "node --test \"tests/backend/*.test.js\"",
+    "test:resilience": "node --test tests/integration/resilience.test.js",
     "test:degraded": "node --test tests/backend/degraded.test.js",
     "check:preload-size": "node scripts/check-preload-size.mjs",
     "test:tools": "node --test \"tests/scripts/*.test.js\" \"tests/release/*.test.js\" \"tests/docs/*.test.js\"",

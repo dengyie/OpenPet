@@ -186,6 +186,10 @@ export function assertCancelable(job = {}) {
 
 /** 可重试 = 状态可回到 queued 且还有剩余尝试次数。 */
 export function canRetry(job = {}) {
+	// A backend restart is not a provider attempt. Recovery must leave the
+	// interrupted job explicitly retryable even when its kind normally allows
+	// only one execution attempt.
+	if (job.status === "interrupted") return true
 	if (!RETRYABLE_STATUSES.has(job.status)) return false
 	if (job.kind === "plugin.command" && job.input?.redacted === true) return false
 	const attempt = Number.isFinite(job.attempt) ? job.attempt : 1

@@ -269,7 +269,7 @@ await initializeBackendRuntime({
 		needsJsonImport,
 		createJobsRepository,
 		createLogsRepository,
-		recoverJobs,
+		recoverJobs: (options) => recoverJobs({ ...options, requeueRecovered: false }),
 		initializePlugins: () => {
 			let runtimeBridgeServer
 			const processLedger = createProcessLedger({ userDataDir: runtime.userDataDir, logger })
@@ -351,7 +351,9 @@ if (!runtime.degraded && runtime.jobs) {
 		publish: (name, payload) => eventHub.publish(name, payload),
 		logger,
 	})
-	for (const job of runtime.jobs.list({ status: "queued", limit: 1_000 })) runtime.queue.enqueue(job)
+	// Recovery already persisted queued jobs. Enqueue by id so the queue does
+	// not attempt to insert an existing SQLite row a second time.
+	for (const job of runtime.jobs.list({ status: "queued", limit: 1_000 })) runtime.queue.enqueue(job.id)
 	while (true) {
 		const next = runtime.queue.next()
 		if (!next) break

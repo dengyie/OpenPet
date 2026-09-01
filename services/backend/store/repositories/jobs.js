@@ -1,6 +1,7 @@
 import { ApiError } from "../../http/middleware.js"
 import {
 	assertTransition,
+	canRetry,
 	isTerminal,
 	maxAttemptsFor,
 } from "../../jobs/state-machine.js"
@@ -57,6 +58,7 @@ function toJob(row) {
 		createdAt: row.created_at,
 		startedAt: row.started_at,
 		finishedAt: row.finished_at,
+		canRetry: canRetry({ status: row.status, kind: row.kind, attempt: row.attempt, maxAttempts: row.max_attempts }),
 	}
 }
 
