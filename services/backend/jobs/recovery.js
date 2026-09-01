@@ -37,7 +37,7 @@ function removeJobTmpEntries(entries, logger) {
  * All writes go through the repository so state-machine and CAS checks remain
  * the single authority for job transitions.
  */
-export function recoverJobs({ repo, tmpDir, emit, logger } = {}) {
+export function recoverJobs({ repo, tmpDir, emit, logger, requeueRecovered = true } = {}) {
 	if (!repo || typeof repo.list !== "function" || typeof repo.finish !== "function" ||
 		typeof repo.transition !== "function") {
 		throw new TypeError("recoverJobs 需要完整的 jobs repository")
@@ -48,7 +48,7 @@ export function recoverJobs({ repo, tmpDir, emit, logger } = {}) {
 	for (const job of repo.list({ status: "running" })) {
 		repo.finish(job.id, { status: "interrupted", error: interruptionError() })
 		interrupted.push(job.id)
-		if (job.kind !== "plugin.command" || job.input?.redacted !== true) {
+		if (requeueRecovered && (job.kind !== "plugin.command" || job.input?.redacted !== true)) {
 			repo.transition(job.id, "queued")
 			requeued.push(job.id)
 		}

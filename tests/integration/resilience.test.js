@@ -65,9 +65,13 @@ async function waitForJob(backend, jobId, predicate, timeoutMs = 10000) {
   throw new Error(`job ${jobId} did not reach expected state: ${JSON.stringify(last)}`)
 }
 async function stop(child, signal = "SIGTERM") {
-  if (child.exitCode !== null) return
-  child.kill(signal)
-  await once(child, "exit")
+  child = child?.child ?? child
+  if (child.exitCode !== null || child.signalCode !== null) return
+  await new Promise((resolve) => {
+    const finish = () => { child.removeListener("exit", finish); resolve() }
+    child.once("exit", finish)
+    if (!child.kill(signal) && child.exitCode !== null) finish()
+  })
 }
 
 test("real backend restart interrupts a running job and exposes retryability", async () => {
