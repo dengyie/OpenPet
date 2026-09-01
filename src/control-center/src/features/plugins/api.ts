@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { backendClient } from '../../api/backend-client.ts'
+import { controlCenterAPI } from '../../api/control-center-api.ts'
 import type { ApiClient } from '../../api/client.ts'
 import type { JsonObject } from '../../../../shared/openpet-contracts'
 
@@ -93,4 +94,73 @@ export function createPluginHttpApi(client: ApiClient = backendClient) {
   }
 }
 
-export const pluginHttpApi = createPluginHttpApi()
+const pluginHttpApiTransport = createPluginHttpApi()
+
+type PluginApi = typeof pluginHttpApiTransport
+
+const usePluginDemoApi = () => shouldUsePluginDemoApi(
+  import.meta.env?.DEV === true,
+  Boolean((globalThis as any).openpetBackend)
+)
+
+// The Control Center also runs in a plain browser under Vite, where no
+// Electron backend bridge is present. Keep the public API stable while
+// routing plugin pane operations to the in-memory demo API in that mode.
+export const pluginHttpApi: PluginApi = {
+  ...pluginHttpApiTransport,
+  list: () => usePluginDemoApi() ? controlCenterAPI.getPlugins() : pluginHttpApiTransport.list(),
+  enable: (pluginId, enabled) => usePluginDemoApi()
+    ? controlCenterAPI.setPluginEnabled(pluginId, enabled)
+    : pluginHttpApiTransport.enable(pluginId, enabled),
+  nativeApproval: (pluginId, approved) => usePluginDemoApi()
+    ? controlCenterAPI.setPluginNativeExecutionApproved(pluginId, approved)
+    : pluginHttpApiTransport.nativeApproval(pluginId, approved),
+  logs: (pluginId, query = {}) => usePluginDemoApi()
+    ? controlCenterAPI.getPluginLogs({ ...query, pluginId } as any)
+    : pluginHttpApiTransport.logs(pluginId, query),
+  setConfig: (pluginId, config) => usePluginDemoApi()
+    ? controlCenterAPI.savePluginConfig(pluginId, config)
+    : pluginHttpApiTransport.setConfig(pluginId, config),
+  inspectGithub: (repositoryUrl) => usePluginDemoApi()
+    ? controlCenterAPI.inspectPluginGithubRepository(repositoryUrl)
+    : pluginHttpApiTransport.inspectGithub(repositoryUrl),
+  install: (selectionId) => usePluginDemoApi()
+    ? controlCenterAPI.installPlugin(selectionId)
+    : pluginHttpApiTransport.install(selectionId),
+  update: (selectionId) => usePluginDemoApi()
+    ? controlCenterAPI.updatePlugin(selectionId)
+    : pluginHttpApiTransport.update(selectionId),
+  uninstall: (pluginId, removeStorage = false) => usePluginDemoApi()
+    ? controlCenterAPI.uninstallPlugin(pluginId, { removeStorage })
+    : pluginHttpApiTransport.uninstall(pluginId, removeStorage),
+  setup: (pluginId, setupId) => usePluginDemoApi()
+    ? controlCenterAPI.runPluginSetup(pluginId, setupId)
+    : pluginHttpApiTransport.setup(pluginId, setupId),
+  service: (pluginId, serviceId, operation) => {
+    if (!usePluginDemoApi()) return pluginHttpApiTransport.service(pluginId, serviceId, operation)
+    if (operation === 'start') return controlCenterAPI.startPluginService(pluginId, serviceId)
+    if (operation === 'stop') return controlCenterAPI.stopPluginService(pluginId, serviceId)
+    return controlCenterAPI.checkPluginServiceHealth(pluginId, serviceId)
+  },
+  servicePolicy: (pluginId, serviceId, policy) => usePluginDemoApi()
+    ? controlCenterAPI.savePluginServiceHealthPolicy(pluginId, serviceId, policy as any)
+    : pluginHttpApiTransport.servicePolicy(pluginId, serviceId, policy),
+  storage: (pluginId) => usePluginDemoApi()
+    ? controlCenterAPI.clearPluginStorage(pluginId)
+    : pluginHttpApiTransport.storage(pluginId),
+  creatorFlow: (prompt) => usePluginDemoApi()
+    ? controlCenterAPI.runCreatorStudioDefaultFlow(prompt)
+    : pluginHttpApiTransport.creatorFlow(prompt),
+  imSecret: (operation, token) => {
+    if (!usePluginDemoApi()) return pluginHttpApiTransport.imSecret(operation, token)
+    if (operation === 'state') return controlCenterAPI.getImGatewaySecretState()
+    if (operation === 'save') return controlCenterAPI.saveImGatewayTelegramBotToken(token || '')
+    return controlCenterAPI.clearImGatewayTelegramBotToken()
+  },
+  exportLogs: (query = {}) => usePluginDemoApi()
+    ? controlCenterAPI.exportPluginLogs(query as any)
+    : pluginHttpApiTransport.exportLogs(query),
+  clearLogs: () => usePluginDemoApi()
+    ? controlCenterAPI.clearPluginLogs()
+    : pluginHttpApiTransport.clearLogs(),
+}
