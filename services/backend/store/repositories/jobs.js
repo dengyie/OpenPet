@@ -21,6 +21,16 @@ function fromJson(value) {
 	}
 }
 
+function persistedInput(input, kind) {
+	if (kind !== "plugin.command") return input ?? {}
+	if (input && input.redacted === true && typeof input.summary === "string") {
+		return { redacted: true, summary: input.summary }
+	}
+	const pluginId = typeof input?.pluginId === "string" ? input.pluginId : "unknown"
+	const command = typeof input?.command === "string" ? input.command : "unknown"
+	return { redacted: true, summary: `Plugin command ${pluginId}/${command}` }
+}
+
 function normalizeError(error) {
 	if (error === null || error === undefined) return null
 	return {
@@ -117,7 +127,7 @@ export function createJobsRepository({ db, now = Date.now } = {}) {
 				kind,
 					"queued",
 				resourceKey,
-				asJson(input.input ?? {}),
+				asJson(persistedInput(input.input, kind)),
 				attempt,
 				maxAttempts,
 				createdAt,

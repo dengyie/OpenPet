@@ -107,7 +107,7 @@ export function createPluginLifecycle({ registry, bridge, commandServer, process
 			throw error
 		}
 	})
-	const stop = (id) => serialize(id, async () => {
+	const stopUnlocked = async (id) => {
 		const current = status(id)
 		if (!ACTIVE.has(current.status)) throw new ApiError("CONFLICT", "Plugin is not running", { details: { pluginId: id } })
 		const definition = registry.definition(id)
@@ -133,6 +133,24 @@ export function createPluginLifecycle({ registry, bridge, commandServer, process
 			publish(id, { ...current, status: "failed", stoppedAt: now(), error: error?.message || "Plugin stop failed" })
 			throw error
 		}
+	}
+	const stop = (id) => serialize(id, () => stopUnlocked(id))
+	const setEnabled = (id, enabled) => serialize(id, async () => {
+		registry.get(id)
+		if (enabled) return registry.setEnabled(id, true)
+		const current = status(id)
+		if (ACTIVE.has(current.status)) await stopUnlocked(id)
+		else registry.setEnabled(id, false)
+		return registry.get(id)
+	})
+	const setNativeExecutionApproved = (id, approved) => serialize(id, async () => {
+		registry.setNativeExecutionApproved(id, approved)
+		if (!approved) {
+			const current = status(id)
+			if (ACTIVE.has(current.status)) await stopUnlocked(id)
+			else await commandServer?.stopPlugin?.(id)
+		}
+		return registry.get(id)
 	})
 	const command = async (id, name, args = {}, context = {}) => {
 		const definition = registry.definition(id)
@@ -164,5 +182,5 @@ export function createPluginLifecycle({ registry, bridge, commandServer, process
 		})
 		return { ok: results.every((result) => result.status === "fulfilled"), results }
 	}
-	return { start, stop, status, command, stopAll }
+	return { start, stop, status, command, stopAll, setEnabled, setNativeExecutionApproved }
 }

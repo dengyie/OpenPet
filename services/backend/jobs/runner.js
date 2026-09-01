@@ -1,10 +1,14 @@
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
+import { createRequire } from "node:module"
 
 import { ApiError } from "../http/middleware.js"
 import { createProgressThrottle } from "./progress.js"
 import { assertCancelable, canRetry, interruptionError } from "./state-machine.js"
+
+const require = createRequire(import.meta.url)
+const { sanitizePluginCommandResultValue, sanitizePluginCommandText } = require("../../../src/main/services/plugin-runtime-safety.js")
 
 export const SIGKILL_DELAY_MS = 2_000
 export const SHUTDOWN_GRACE_MS = 5_000
@@ -80,26 +84,12 @@ function retryableStatus(error) {
 	return status === 429 || (status >= 500 && status <= 599)
 }
 
-const SENSITIVE_ERROR_DETAIL_KEY = /^(?:api[_ -]?key|password|authorization|access[_ -]?token|refresh[_ -]?token|secret)$/i
-const SECRET_ASSIGNMENT = /\b(api[_ -]?key|password|authorization)\b\s*[:=]\s*(?:bearer\s+)?(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;)}\]]+)/gi
-const BEARER_VALUE = /\bbearer\s+[A-Za-z0-9._~+/-]{8,}={0,2}\b/gi
-
 function sanitizeErrorText(value) {
-	return String(value ?? "")
-		.replace(SECRET_ASSIGNMENT, "$1=[redacted-secret]")
-		.replace(BEARER_VALUE, "Bearer [redacted-secret]")
+	return sanitizePluginCommandText(value)
 }
 
 function sanitizeErrorDetails(value, key = "") {
-	if (typeof value === "string") {
-		return SENSITIVE_ERROR_DETAIL_KEY.test(key) && value ? "[redacted-secret]" : sanitizeErrorText(value)
-	}
-	if (Array.isArray(value)) return value.map((entry) => sanitizeErrorDetails(entry, key))
-	if (!value || typeof value !== "object") return value
-	return Object.fromEntries(Object.entries(value).map(([entryKey, entryValue]) => [
-		entryKey,
-		sanitizeErrorDetails(entryValue, entryKey),
-	]))
+	return sanitizePluginCommandResultValue(value, key)
 }
 
 function jobTmpDirectory(tmpRoot, jobId) {

@@ -21,6 +21,7 @@ export function createPluginJobHandlers({ db, plugins, logger } = {}) {
 			tmpDir: runnerContext.tmpDir,
 			registerProcess: runnerContext.registerProcess,
 			finalize: runnerContext.finalize,
+			jobId: runnerContext.job.id,
 		})
 	}]))
 }

@@ -61,3 +61,20 @@ test('plugin runtime safety redacts output fields and sensitive result values', 
     }
   )
 })
+
+test('plugin runtime safety replaces sensitive subtrees and short bearer values', () => {
+  const sanitized = sanitizePluginCommandResultValue({
+    clientSecret: { nested: 'raw-client-secret' },
+    credential: ['raw-credential'],
+    authToken: { raw: 'short' },
+    error: 'Authorization: Bearer x password=raw-password',
+    safe: { passwordPolicy: 'keep', tokenCount: 2 }
+  })
+  assert.deepEqual(sanitized, {
+    clientSecret: '[redacted-secret]',
+    credential: '[redacted-secret]',
+    authToken: '[redacted-secret]',
+    error: 'Authorization=[redacted-secret] password=[redacted-secret]',
+    safe: { passwordPolicy: 'keep', tokenCount: 2 }
+  })
+})

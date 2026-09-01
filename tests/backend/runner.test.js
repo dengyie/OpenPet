@@ -114,10 +114,13 @@ describe("Job runner · retry policy", () => {
 				throw new ApiError("VALIDATION_FAILED", "provider rejected Authorization: Bearer public-secret-123", {
 					status: 400,
 					details: {
-						apiKey: "api-key-secret",
+						apiKey: { nested: "api-key-secret" },
 						password: "password-secret",
 						authorization: "Bearer authorization-secret",
-						message: "apiKey=inline-secret password: quoted-secret Authorization: Bearer bearer-secret-123",
+						clientSecret: ["client-secret", { deeper: "still-secret" }],
+						credential: { value: "credential-secret" },
+						authToken: { raw: "auth-token-secret" },
+						message: "apiKey=inline-secret password: quoted-secret Authorization: Bearer x",
 						safe: "monkey passwordPolicy tokenCount",
 					},
 				})
@@ -133,10 +136,13 @@ describe("Job runner · retry policy", () => {
 					apiKey: "[redacted-secret]",
 					password: "[redacted-secret]",
 					authorization: "[redacted-secret]",
+					clientSecret: "[redacted-secret]",
+					credential: "[redacted-secret]",
+					authToken: "[redacted-secret]",
 					message: "apiKey=[redacted-secret] password=[redacted-secret] Authorization=[redacted-secret]",
 					safe: "monkey passwordPolicy tokenCount",
 				})
-				assert.doesNotMatch(JSON.stringify(job), /api-key-secret|password-secret|authorization-secret|inline-secret|quoted-secret|bearer-secret/)
+				assert.doesNotMatch(JSON.stringify(job), /api-key-secret|password-secret|authorization-secret|client-secret|still-secret|credential-secret|auth-token-secret|inline-secret|quoted-secret|Bearer x/)
 			}
 		})
 	})

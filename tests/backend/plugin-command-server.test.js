@@ -645,6 +645,179 @@ test("T27 plugin disable and native approval revoke await command termination", 
 	}
 })
 
+test("T27 queued mixed-plugin start is serialized before later disable and native revoke", async () => {
+	const [{ createPluginService }, { createSettingsStore }] = await Promise.all([
+		import("../../services/backend/domains/plugins/index.js"),
+		import("../../services/backend/domains/settings.js"),
+	])
+	for (const mutation of ["disable", "revoke"]) {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), `openpet-t27-${mutation}-race-`))
+		const userDataDir = path.join(root, "user-data")
+		const source = path.join(root, "source")
+		fs.mkdirSync(source, { recursive: true })
+		fs.writeFileSync(path.join(source, "plugin.json"), JSON.stringify({
+			id: "race-demo", name: "Race Demo", version: "1.0.0", permissions: [],
+			entries: {
+				commands: [{ id: "run", command: "node command.js" }],
+				services: [{ id: "service", command: "node service.js" }],
+				setup: [], dashboards: [],
+			},
+		}))
+		fs.writeFileSync(path.join(source, "command.js"), "")
+		fs.writeFileSync(path.join(source, "service.js"), "")
+		const settings = createSettingsStore({ file: path.join(userDataDir, "backend", "settings.json") })
+		let releaseStart
+		let markStartEntered
+		const startEntered = new Promise((resolve) => { markStartEntered = resolve })
+		const startGate = new Promise((resolve) => { releaseStart = resolve })
+		let serviceStops = 0
+		let commandStops = 0
+		const plugins = createPluginService({
+			root: path.resolve(__dirname, "../.."), userDataDir, settings,
+			logs: { appendPlugin() {}, listPlugin: () => [] }, bridge: {},
+			processRuntime: {
+				start: async () => { markStartEntered(); await startGate; return { processes: [] } },
+				stop: async () => { serviceStops += 1; return { ok: true } },
+			},
+			commandServer: {
+				execute: async () => ({ ok: true }),
+				stopPlugin: async () => { commandStops += 1; return { ok: true } },
+			},
+		})
+		try {
+			await plugins.install(source)
+			settings.patch({
+				ifVersion: settings.read().version,
+				patch: { "plugins.nativeExecutionApproved": { "race-demo": true } },
+			})
+			const starting = plugins.start("race-demo")
+			const mutating = mutation === "disable"
+				? plugins.setEnabled("race-demo", false)
+				: plugins.setNativeExecutionApproved("race-demo", false)
+			await startEntered
+			releaseStart()
+			await Promise.all([starting, mutating])
+			assert.equal(plugins.status("race-demo").status, "stopped")
+			assert.equal(plugins.get("race-demo").enabled, false)
+			assert.equal(plugins.get("race-demo").nativeExecutionApproved, mutation !== "revoke")
+			assert.equal(serviceStops, 1)
+			assert.equal(commandStops, 1)
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true })
+		}
+	}
+})
+
+test("T27 stopPlugin and close return only after reparented command descendants exit", { timeout: 10_000 }, async () => {
+	const { createPluginCommandServer } = await import("../../services/backend/bridge/plugin-command-server.js")
+	for (const operation of ["stopPlugin", "close"]) {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), `openpet-t27-${operation}-descendants-`))
+		const parentPidFile = path.join(root, "parent.pid")
+		const grandchildPidFile = path.join(root, "grandchild.pid")
+		fs.writeFileSync(path.join(root, "intermediate.js"), [
+			"const { spawn } = require('node:child_process')",
+			"const fs = require('node:fs')",
+			"const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' })",
+			"fs.writeFileSync('grandchild.pid', String(child.pid))",
+			"child.unref()",
+		].join("\n") + "\n")
+		fs.writeFileSync(path.join(root, "parent.js"), [
+			"const { spawn } = require('node:child_process')",
+			"const fs = require('node:fs')",
+			"fs.writeFileSync('parent.pid', String(process.pid))",
+			"const child = spawn(process.execPath, ['intermediate.js'], { stdio: 'ignore' })",
+			"child.unref()",
+			"setInterval(() => {}, 1000)",
+		].join("\n") + "\n")
+		const server = createPluginCommandServer({
+			plugins: {
+				definition: () => ({ manifest: { id: "tree-demo", basePath: root, entries: { commands: [{ id: "run", command: "node parent.js", cwd: ".", timeoutMs: 0 }] } } }),
+				config: () => ({}),
+				runtimeDirs: () => ({ dataDir: root, cacheDir: root, logDir: root }),
+			},
+			jobs: { insert: (input) => input },
+		})
+		let parentPid = 0
+		let grandchildPid = 0
+		try {
+			const executing = server.execute("tree-demo", "run")
+			const rejected = assert.rejects(executing)
+			await eventually(() => fs.existsSync(parentPidFile) && fs.existsSync(grandchildPidFile))
+			parentPid = Number(fs.readFileSync(parentPidFile, "utf8"))
+			grandchildPid = Number(fs.readFileSync(grandchildPidFile, "utf8"))
+			await eventually(() => {
+				const output = spawnSync("ps", ["-o", "ppid=", "-p", String(grandchildPid)], { encoding: "utf8" }).stdout.trim()
+				return output && Number(output) !== parentPid
+			})
+			if (operation === "close") await server.close()
+			else await server.stopPlugin("tree-demo")
+			await rejected
+			assert.throws(() => process.kill(parentPid, 0), (error) => error.code === "ESRCH")
+			assert.throws(() => process.kill(grandchildPid, 0), (error) => error.code === "ESRCH")
+		} finally {
+			for (const pid of [grandchildPid, parentPid]) {
+				try { process.kill(pid, "SIGKILL") } catch (_) {}
+			}
+			await server.close()
+			fs.rmSync(root, { recursive: true, force: true })
+		}
+	}
+})
+
+test("T27 dispatch persists only redacted Job input while executing transient original args", async () => {
+	const [
+		{ createPluginCommandServer }, { createPluginJobHandlers }, { createJobDispatcher }, { createQueue },
+		{ createRunner }, { createJobsRepository }, { openDatabase }, { migrate },
+	] = await Promise.all([
+		import("../../services/backend/bridge/plugin-command-server.js"),
+		import("../../services/backend/jobs/handlers/index.js"),
+		import("../../services/backend/jobs/dispatcher.js"),
+		import("../../services/backend/jobs/queue.js"),
+		import("../../services/backend/jobs/runner.js"),
+		import("../../services/backend/store/repositories/jobs.js"),
+		import("../../services/backend/store/db.js"),
+		import("../../services/backend/store/migrate.js"),
+	])
+	const db = await openDatabase({ file: ":memory:" })
+	migrate({ db })
+	const jobs = createJobsRepository({ db })
+	const queue = createQueue({ repo: jobs, tickMs: 60_000 })
+	let received = null
+	const runner = createRunner({
+		repo: jobs,
+		queue,
+		handlers: createPluginJobHandlers({ plugins: {
+			commandInput: (jobId) => commandServer.takeInput(jobId),
+			command: async (pluginId, command, args) => {
+				received = { pluginId, command, args }
+				return { ok: true }
+			},
+		} }),
+	})
+	const dispatcher = createJobDispatcher({ queue, runner })
+	const commandServer = createPluginCommandServer({
+		plugins: { get: (id) => ({ id }) },
+		jobs: { insert: (input) => dispatcher(input) },
+		now: () => 12_345,
+	})
+	const secrets = { telegramToken: "tg-short", apiKey: "api-secret", nested: { password: "pass-secret" } }
+	try {
+		const job = commandServer.dispatch("secret-demo", "send", secrets)
+		const raw = db.prepare("SELECT input_json FROM jobs WHERE id = ?").get(job.id).input_json
+		assert.doesNotMatch(raw, /tg-short|api-secret|pass-secret|telegramToken|apiKey|password/)
+		assert.deepEqual(JSON.parse(raw), { redacted: true, summary: "Plugin command secret-demo/send" })
+		await eventually(() => jobs.byId(job.id).status === "succeeded")
+		assert.deepEqual(received, { pluginId: "secret-demo", command: "send", args: secrets })
+		assert.equal(jobs.byId(job.id).maxAttempts, 1)
+		assert.doesNotMatch(JSON.stringify(jobs.byId(job.id)), /tg-short|api-secret|pass-secret/)
+	} finally {
+		await commandServer.close()
+		queue.stop()
+		await runner.shutdown()
+		db.close()
+	}
+})
+
 test("T27 close is a terminal barrier for concurrent and later listen or execute calls", async () => {
 	const { createPluginCommandServer } = await import("../../services/backend/bridge/plugin-command-server.js")
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-t27-close-barrier-"))

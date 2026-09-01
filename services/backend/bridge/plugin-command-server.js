@@ -118,9 +118,23 @@ function errorStatus(error) {
 }
 
 function killProcessTree(child) {
+	if (process.platform !== "win32" && Number(child?.pid) > 0) {
+		try { process.kill(-Number(child.pid), "SIGKILL") } catch {}
+	}
 	try { signalProcessTree(child, "SIGKILL") } catch {
 		try { child.kill("SIGKILL") } catch {}
 	}
+}
+
+function processGroupExists(pid) {
+	if (process.platform === "win32" || !Number.isInteger(Number(pid)) || Number(pid) <= 0) return false
+	try { process.kill(-Number(pid), 0); return true } catch (error) { return error?.code !== "ESRCH" }
+}
+
+async function waitForProcessBoundary(child, maxMs = 2_000) {
+	if (process.platform === "win32") return
+	const deadline = Date.now() + maxMs
+	while (processGroupExists(child?.pid) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 10))
 }
 
 export function createPluginCommandServer({ plugins, jobs, logger, now = Date.now } = {}) {
@@ -129,6 +143,7 @@ export function createPluginCommandServer({ plugins, jobs, logger, now = Date.no
 	const resolveCwd = createPluginEntryCwdResolver()
 	const runtimes = new Map()
 	const runsByPlugin = new Map()
+	const transientInputs = new Map()
 	const pluginGenerations = new Map()
 	let server = null
 	let starting = null
@@ -216,8 +231,9 @@ export function createPluginCommandServer({ plugins, jobs, logger, now = Date.no
 		closing = (async () => {
 			const activeRuns = [...runsByPlugin.values()].flatMap((runs) => [...runs])
 			runtimes.clear()
+			transientInputs.clear()
 			for (const run of activeRuns) killProcessTree(run.child)
-			await Promise.allSettled(activeRuns.map((run) => run.done))
+			await Promise.allSettled(activeRuns.map(async (run) => { await run.done; await waitForProcessBoundary(run.child) }))
 			const pending = starting
 			if (pending) {
 				try { await pending } catch {}
@@ -238,7 +254,7 @@ export function createPluginCommandServer({ plugins, jobs, logger, now = Date.no
 		const activeRuns = [...(runsByPlugin.get(normalizedPluginId) ?? [])]
 		for (const run of activeRuns) runtimes.delete(run.runId)
 		for (const run of activeRuns) killProcessTree(run.child)
-		await Promise.allSettled(activeRuns.map((run) => run.done))
+		await Promise.allSettled(activeRuns.map(async (run) => { await run.done; await waitForProcessBoundary(run.child) }))
 		return { ok: true, pluginId: normalizedPluginId }
 	}
 
@@ -248,13 +264,26 @@ export function createPluginCommandServer({ plugins, jobs, logger, now = Date.no
 		plugins.get?.(normalizedPluginId)
 		const createdAt = now()
 		sequence += 1
-		return jobs.insert({
-			id: `plugin.command:${normalizedPluginId}:${createdAt}:${sequence}`,
+		const id = `plugin.command:${normalizedPluginId}:${createdAt}:${sequence}`
+		transientInputs.set(id, { pluginId: normalizedPluginId, command: normalizedCommand, args: objectArgs(args) })
+		try {
+			return jobs.insert({
+			id,
 			kind: "plugin.command",
 			input: { pluginId: normalizedPluginId, command: normalizedCommand, args: objectArgs(args) },
 			resourceKey: `plugin:${normalizedPluginId}`,
 			createdAt,
-		})
+			})
+		} catch (error) {
+			transientInputs.delete(id)
+			throw error
+		}
+	}
+
+	function takeInput(jobId) {
+		const value = transientInputs.get(jobId)
+		transientInputs.delete(jobId)
+		return value
 	}
 
 	async function execute(pluginId, command, args = {}, context = {}) {
@@ -299,7 +328,7 @@ export function createPluginCommandServer({ plugins, jobs, logger, now = Date.no
 		const bridgeToken = token()
 		const child = spawn(launch.file, launch.args, {
 			cwd,
-			detached: false,
+			detached: process.platform !== "win32",
 			env: {
 				...createPluginProcessEnv({ runAsNode: launch.runAsNode }),
 				OPENPET_DATA_DIR: dirs.dataDir,
@@ -397,5 +426,5 @@ export function createPluginCommandServer({ plugins, jobs, logger, now = Date.no
 		return execution
 	}
 
-	return { listen, close, stopPlugin, dispatch, execute }
+	return { listen, close, stopPlugin, dispatch, takeInput, execute }
 }
