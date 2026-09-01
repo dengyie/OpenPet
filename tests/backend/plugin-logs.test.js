@@ -12,6 +12,7 @@ let createLogsRepository
 let createPluginService
 let createEventHub
 let MAX_BUFFERED_FRAMES
+let createPluginLogWriter
 
 before(async () => {
 	;({ openDatabase } = await import("../../services/backend/store/db.js"))
@@ -19,9 +20,10 @@ before(async () => {
 	;({ createLogsRepository } = await import("../../services/backend/store/repositories/logs.js"))
 	;({ createPluginService } = await import("../../services/backend/domains/plugins/index.js"))
 	;({ createEventHub, MAX_BUFFERED_FRAMES } = await import("../../services/backend/events/hub.js"))
+	;({ createPluginLogWriter } = await import("../../services/backend/domains/plugins/plugin-log-writer.js"))
 })
 
-async function createHarness() {
+async function createHarness({ logs: injectedLogs } = {}) {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-plugin-logs-"))
 	const userDataDir = path.join(root, "user-data")
 	fs.mkdirSync(userDataDir, { recursive: true })
@@ -32,7 +34,7 @@ async function createHarness() {
 		root: path.resolve(__dirname, "../.."),
 		userDataDir,
 		db,
-		logs: createLogsRepository({ db, now: () => 1_700_000_000_000 }),
+		logs: injectedLogs ?? createLogsRepository({ db, now: () => 1_700_000_000_000 }),
 		settings: {
 			read: () => ({ version: 0, values: {} }),
 			patch: () => ({ version: 1, values: {} }),
@@ -43,6 +45,26 @@ async function createHarness() {
 	})
 	return { db, service, events }
 }
+
+test("T30 plugin log ingestion does not synchronously wait for SQLite", async () => {
+	let appendCalls = 0
+	const { service } = await createHarness({
+		logs: {
+			appendPlugin() {
+				appendCalls += 1
+				const end = Date.now() + 40
+				while (Date.now() < end) {}
+			},
+		},
+	})
+	const started = Date.now()
+	service.appendLog({ pluginId: "demo", message: "queued" })
+	const elapsed = Date.now() - started
+
+	assert.equal(appendCalls, 0)
+	assert.ok(elapsed < 20, `appendLog synchronously blocked for ${elapsed}ms`)
+	await service.closeLogs()
+})
 
 test("T30 appends sanitized plugin logs to SQLite and emits plugin.log", async () => {
 	const { db, service, events } = await createHarness()
@@ -59,6 +81,7 @@ test("T30 appends sanitized plugin logs to SQLite and emits plugin.log", async (
 		assert.equal(entry.level, "warn")
 		assert.match(entry.message, /\[redacted-token\]=\[redacted-secret\]/)
 		assert.doesNotMatch(entry.message, /super-secret|\/Users\/mango|127\.0\.0\.1/)
+		await service.flushLogs()
 		assert.deepEqual(JSON.parse(JSON.stringify(db.prepare("SELECT plugin_id, level, message, at FROM plugin_logs").all())), [{
 			plugin_id: "demo",
 			level: "warn",
@@ -75,6 +98,7 @@ test("T30 appends sanitized plugin logs to SQLite and emits plugin.log", async (
 			},
 		}])
 	} finally {
+		await service.closeLogs()
 		db.close()
 	}
 })
@@ -85,9 +109,11 @@ test("T30 bounds each plugin log stream to 5000 rows", async () => {
 		for (let index = 0; index < 5_001; index += 1) {
 			service.appendLog({ pluginId: "demo", message: `line-${index}` })
 		}
+		await service.flushLogs()
 		assert.equal(db.prepare("SELECT COUNT(*) AS count FROM plugin_logs WHERE plugin_id = 'demo'").get().count, 5_000)
 		assert.equal(db.prepare("SELECT message FROM plugin_logs WHERE plugin_id = 'demo' ORDER BY at ASC, id ASC LIMIT 1").get().message, "line-1")
 	} finally {
+		await service.closeLogs()
 		db.close()
 	}
 })
@@ -98,6 +124,7 @@ test("T30 lists and clears logs through the plugin domain", async () => {
 		service.appendLog({ pluginId: "demo", message: "first", at: 1 })
 		service.appendLog({ pluginId: "demo", level: "error", message: "second", at: 2 })
 		service.appendLog({ pluginId: "other", message: "keep", at: 3 })
+		await service.flushLogs()
 		assert.deepEqual(JSON.parse(JSON.stringify(service.getLogs("demo"))), [
 			{ id: 2, pluginId: "demo", level: "error", message: "second", at: 2 },
 			{ id: 1, pluginId: "demo", level: "info", message: "first", at: 1 },
@@ -106,6 +133,7 @@ test("T30 lists and clears logs through the plugin domain", async () => {
 		assert.deepEqual(service.getLogs("demo"), [])
 		assert.equal(service.getLogs("other").length, 1)
 	} finally {
+		await service.closeLogs()
 		db.close()
 	}
 })
@@ -130,4 +158,31 @@ test("T30 plugin.log bursts stay behind the T11 buffer and report dropped events
 	assert.match(sink.writes.join(""), /event: system\.events-dropped/)
 	assert.match(sink.writes.join(""), /"topic":"plugins"/)
 	subscription.unsubscribe()
+})
+
+test("T30 async plugin log writer bounds overflow, preserves order, flushes, and reports errors", async () => {
+	const persisted = []
+	const errors = []
+	const writer = createPluginLogWriter({
+		maxQueue: 2,
+		append: (entry) => {
+			if (entry.message === "bad") throw new Error("sqlite unavailable")
+			persisted.push(entry.message)
+		},
+		logger: { error: (_message, details) => errors.push(details) },
+	})
+
+	assert.deepEqual(writer.append({ message: "first" }), { accepted: true })
+	assert.deepEqual(writer.append({ message: "second" }), { accepted: true })
+	assert.deepEqual(writer.append({ message: "third" }), { accepted: false, reason: "queue-full" })
+	await writer.flush()
+	assert.deepEqual(persisted, ["first", "second"])
+	assert.equal(writer.stats().dropped, 1)
+
+	writer.append({ message: "bad" })
+	await assert.rejects(writer.flush(), /sqlite unavailable/)
+	assert.equal(writer.stats().failed, 1)
+	assert.equal(errors.length, 1)
+	await writer.close().catch(() => {})
+	assert.deepEqual(writer.append({ message: "after-close" }), { accepted: false, reason: "closed" })
 })
