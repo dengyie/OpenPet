@@ -137,9 +137,8 @@ contextBridge.exposeInMainWorld('controlCenterAPI', {
   saveSettings: (settings) => ipcRenderer.invoke(IPC.SETTINGS_SAVE, settings),
   onSettingsChanged: (listener) => {
     if (typeof listener !== 'function') return () => {}
-    const handler = (_event, settings) => listener(settings)
-    ipcRenderer.on(IPC.SETTINGS_CHANGED, handler)
-    return () => ipcRenderer.removeListener(IPC.SETTINGS_CHANGED, handler)
+    settingsListeners.add(listener)
+    return () => settingsListeners.delete(listener)
   },
   importCursor: () => ipcRenderer.invoke(IPC.SETTINGS_IMPORT_CURSOR),
   previewScale: (scale) => ipcRenderer.send(IPC.SETTINGS_PREVIEW_SCALE, scale),
@@ -273,3 +272,35 @@ contextBridge.exposeInMainWorld('controlCenterAPI', {
   removeCatalogBlocklistEntry: (payload) => ipcRenderer.invoke(IPC.CATALOG_REMOVE_BLOCKLIST, payload),
   close: () => ipcRenderer.send(IPC.SETTINGS_CLOSE)
 })
+
+let currentBackend = null
+const backendListeners = new Set()
+const settingsListeners = new Set()
+const isBackendPayload = (payload) => Boolean(
+  payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, '__openpetBackend')
+)
+const notifyBackend = (backend) => {
+  currentBackend = backend || null
+  for (const listener of backendListeners) listener(currentBackend)
+}
+contextBridge.exposeInMainWorld('openpetBackend', {
+  getBackend: () => currentBackend,
+  onChanged: (listener) => {
+    if (typeof listener !== 'function') return () => {}
+    backendListeners.add(listener)
+    return () => backendListeners.delete(listener)
+  }
+})
+const settingsChangedHandler = (_event, payload) => {
+  if (isBackendPayload(payload)) {
+    notifyBackend(payload.__openpetBackend)
+    return
+  }
+  for (const listener of settingsListeners) listener(payload)
+}
+ipcRenderer.on(IPC.SETTINGS_CHANGED, settingsChangedHandler)
+ipcRenderer.invoke(IPC.SETTINGS_GET, { includeBackend: true }).then((payload) => {
+  if (payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'backend')) {
+    notifyBackend(payload.backend)
+  }
+}).catch(() => {})

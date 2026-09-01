@@ -16,6 +16,7 @@ import { CreatorPane } from './panes/CreatorPane'
 import { PetPane } from './panes/PetPane'
 import { PluginsPane } from './panes/PluginsPane'
 import { ServicePane } from './panes/ServicePane'
+import { JobPanel } from './features/jobs/JobPanel'
 
 export function App() {
   const [activeTab, setActiveTab] = useState('pet')
@@ -60,6 +61,7 @@ export function App() {
       </aside>
       <div className="content">
         {loading ? <div className="loading">加载中</div> : page}
+        <JobPanel />
       </div>
     </main>
   )

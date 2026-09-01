@@ -17,6 +17,7 @@ import { createRouter } from "./http/router.js"
 import {
 	accessLog,
 	bearerAuth,
+	cors,
 	createAccessLogBuffer,
 	errorBoundary,
 	jsonBody,
@@ -164,6 +165,7 @@ router.use(requestId())
 router.use(errorBoundary({ logger }))
 router.use(accessLog({ buffer: accessLogs, logger, appendHttp: (entry) => runtime.logs?.appendHttp?.(entry) }))
 router.use(loopbackOnly())
+router.use(cors())
 router.use(
 	bearerAuth({
 		getSessionToken: () => runtime.sessionToken,
@@ -181,15 +183,9 @@ registerHealthRoutes({
 	deps: { logger, cleanup: () => runtime.logs?.cleanup?.() },
 })
 
-// Routes are assembled before storage initialization, so resolve the store
-// from runtime when each request runs.
-const runtimeSettingsStore = {
-	read: (...args) => runtime.settings.read(...args),
-	patch: (...args) => runtime.settings.patch(...args),
-}
 registerSettingsRoutes({
 	router,
-	store: runtimeSettingsStore,
+	store: runtime.settings ?? { read: () => ({ version: 0, values: {} }), patch: () => { throw new Error("settings 尚未初始化") } },
 	emit: (name, payload) => eventHub.publish(name, payload),
 })
 runtime.about = createAboutService({ pkg: packageJson, runtime })

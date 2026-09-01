@@ -12,7 +12,6 @@ import { inspectPluginManifest, publicManifestInspection } from "./manifest.js"
 import { createPluginRegistry } from "./registry.js"
 import { createProcessLedger } from "./process-ledger.js"
 import { createPluginProcessRuntime } from "./process-runtime.js"
-import { createPluginLogWriter } from "./plugin-log-writer.js"
 
 const require = createRequire(import.meta.url)
 const { createPluginInstallService } = require("../../../../src/main/services/plugin-install-service.js")
@@ -36,13 +35,12 @@ function installError(error) {
 	return new ApiError("INTERNAL", "Plugin installation failed", { cause: error })
 }
 
-export function createPluginService({ db, jobs, logs, bridge, commandServer, dialog, root, userDataDir, settings, logger, now = Date.now, emit, processLedger: injectedProcessLedger, processRuntime: injectedProcessRuntime, runtimeBridgeServer, logWriter: injectedLogWriter } = {}) {
+export function createPluginService({ db, jobs, logs, bridge, commandServer, dialog, root, userDataDir, settings, logger, now = Date.now, emit, processLedger: injectedProcessLedger, processRuntime: injectedProcessRuntime, runtimeBridgeServer } = {}) {
 	if (typeof root !== "string" || !path.isAbsolute(root)) throw new TypeError("plugin root must be absolute")
 	const settingsStore = settings ?? createSettingsStore({ file: path.join(userDataDir, "backend", "settings.json"), logger })
 	const registry = createPluginRegistry({ userDataDir, settings: settingsStore, logger })
 	const processLedger = injectedProcessLedger ?? createProcessLedger({ userDataDir, logger, now })
 	const processRuntime = injectedProcessRuntime ?? createPluginProcessRuntime({ logger, now, bridgeServer: runtimeBridgeServer })
-	const logWriter = injectedLogWriter ?? createPluginLogWriter({ append: (entry) => logs.appendPlugin(entry), logger })
 	const publish = (name, payload) => {
 		if (!PLUGIN_EVENTS.has(name)) throw new TypeError(`Unknown plugin event: ${name}`)
 		emit?.(name, payload)
@@ -63,12 +61,7 @@ export function createPluginService({ db, jobs, logs, bridge, commandServer, dia
 		if (typeof logs?.appendPlugin !== "function") {
 			throw new ApiError("BACKEND_UNAVAILABLE", "Plugin logs repository is unavailable")
 		}
-		const queued = logWriter.append(entry)
-		if (!queued.accepted) {
-			const rejected = { ...structuredClone(entry), accepted: false, reason: queued.reason }
-			publish("plugin.log", rejected)
-			return rejected
-		}
+		logs.appendPlugin(entry)
 		publish("plugin.log", entry)
 		return structuredClone(entry)
 	}
@@ -87,13 +80,13 @@ export function createPluginService({ db, jobs, logs, bridge, commandServer, dia
 		const result = db.transaction(() => db.prepare("DELETE FROM plugin_logs WHERE plugin_id = ?").run(normalizedPluginId))
 		return { ok: true, pluginId: normalizedPluginId, deleted: result.changes ?? 0 }
 	}
-	let logsClosed = false
-	let logsClosePromise
-	const closeLogs = () => {
-		if (logsClosed) return logsClosePromise ?? Promise.resolve()
-		logsClosed = true
-		logsClosePromise = Promise.resolve().then(() => logWriter.close())
-		return logsClosePromise
+	const exportLogs = (filters = {}) => {
+		const requested = String(filters.format || "json").toLowerCase()
+		const entries = filters.pluginId ? getLogs(filters.pluginId, filters) : []
+		if (requested === "csv") {
+			return ["id,pluginId,level,message,at", ...entries.map((entry) => [entry.id, entry.pluginId, entry.level, entry.message, entry.at].map((value) => JSON.stringify(value ?? "")).join(","))].join("\n")
+		}
+		return JSON.stringify(entries)
 	}
 	const audit = (level, message, details) => logger?.[level]?.(message, details)
 	const lifecycle = createPluginLifecycle({
@@ -115,13 +108,17 @@ export function createPluginService({ db, jobs, logs, bridge, commandServer, dia
 	const runtimeDirs = (id) => {
 		registry.definition(id)
 		const runtimeRoot = path.join(registry.pluginDir, ".openpet", id)
-		const dirs = {
-			dataDir: path.join(runtimeRoot, "data"),
-			cacheDir: path.join(runtimeRoot, "cache"),
-			logDir: path.join(runtimeRoot, "logs"),
-		}
+		const dirs = { dataDir: path.join(runtimeRoot, "data"), cacheDir: path.join(runtimeRoot, "cache"), logDir: path.join(runtimeRoot, "logs") }
 		for (const dir of Object.values(dirs)) fs.mkdirSync(dir, { recursive: true })
 		return dirs
+	}
+	const clearStorage = (id) => {
+		const dirs = runtimeDirs(id)
+		for (const dir of Object.values(dirs)) {
+			fs.rmSync(dir, { recursive: true, force: true })
+			fs.mkdirSync(dir, { recursive: true })
+		}
+		return get(id)
 	}
 
 	const list = () => registry.list().map((plugin) => ({ ...plugin, runtime: lifecycle.status(plugin.id) }))
@@ -141,6 +138,14 @@ export function createPluginService({ db, jobs, logs, bridge, commandServer, dia
 		const plugin = get(result.pluginId)
 		audit("info", "Plugin installed", { pluginId: result.pluginId })
 		publish("plugin.installed", { pluginId: result.pluginId, at: now() })
+		return plugin
+	}
+	const commitUpdate = (selectionId) => {
+		let result
+		try { result = installer.updatePlugin(selectionId) } catch (error) { throw installError(error) }
+		const plugin = get(result.pluginId)
+		audit("info", "Plugin updated", { pluginId: result.pluginId })
+		publish("plugin.updated", { pluginId: result.pluginId, at: now() })
 		return plugin
 	}
 	const install = async (source, context = {}) => {
@@ -196,16 +201,6 @@ export function createPluginService({ db, jobs, logs, bridge, commandServer, dia
 		}
 		return result
 	}
-	const stopAll = async () => {
-		const result = await lifecycle.stopAll()
-		try {
-			await closeLogs()
-		} catch (error) {
-			audit("error", "Plugin log writer failed during shutdown", { error: String(error) })
-			return { ...result, ok: false, logError: error }
-		}
-		return result
-	}
 
 	return {
 		list,
@@ -215,6 +210,7 @@ export function createPluginService({ db, jobs, logs, bridge, commandServer, dia
 		inspectInstall,
 		inspectGithub,
 		commitInstall,
+		commitUpdate,
 		commitGithubInstall,
 		clearInstallSelection: installer.clearPendingSelection,
 		remove,
@@ -226,19 +222,28 @@ export function createPluginService({ db, jobs, logs, bridge, commandServer, dia
 		commandInput: commandServer?.takeInput,
 		config: registry.config,
 		setConfig: registry.setConfig,
+		permissions: (id) => registry.definition(id).manifest.permissions ?? [],
+		setPermissions: (id, permissions) => {
+			if (!Array.isArray(permissions)) throw new ApiError("VALIDATION_FAILED", "permissions must be an array")
+			const definition = registry.definition(id)
+			if (!definition.manifest.permissions) throw new ApiError("VALIDATION_FAILED", "Plugin permissions are immutable")
+			if (JSON.stringify([...permissions].sort()) !== JSON.stringify([...definition.manifest.permissions].sort())) {
+				throw new ApiError("VALIDATION_FAILED", "Plugin permissions must match its signed manifest")
+			}
+			return get(id)
+		},
 		definition: registry.definition,
 		runtimeDirs,
+		clearStorage,
 		command: lifecycle.command,
 		dispatchCommand: commandServer?.dispatch,
 		appendLog,
-		flushLogs: logWriter.flush,
-		closeLogs,
-		logWriter,
 		getLogs,
 		clearLogs,
+		exportLogs,
 		syncBundled,
 		inspectManifest,
-		stopAll,
+		stopAll: lifecycle.stopAll,
 		processLedger,
 		runtimeBridgeServer,
 		db,

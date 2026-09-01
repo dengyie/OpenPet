@@ -104,6 +104,10 @@ export function registerPluginRoutes(router, { plugins } = {}) {
 	router.get("/plugins/:id", (ctx) => sendSuccess(ctx, requireMethod(plugins, "get")(ctx.params.id)))
 	router.post("/plugins/install", (ctx) => {
 		const body = objectBody(ctx.body)
+		if (body.selectionId !== undefined) {
+			const selectionId = requiredString(body.selectionId, "selectionId")
+			return sendSuccess(ctx, enqueue(plugins, "plugin.install", { selectionId, update: body.update === true }, null), 202)
+		}
 		const sourcePath = requiredString(body.path, "path")
 		if (!sourceSupportsManifestPreflight(sourcePath)) {
 			return sendSuccess(ctx, enqueue(plugins, "plugin.install", { path: sourcePath }), 202)
@@ -144,19 +148,12 @@ export function registerPluginRoutes(router, { plugins } = {}) {
 		return sendList(ctx, items)
 	})
 	router.delete("/plugins/:id/logs", (ctx) => sendSuccess(ctx, clearLogsFor(plugins, ctx.params.id)))
-	router.post("/plugins/:id/commands/:cmd", (ctx) => {
-		const args = ctx.body === null ? {} : objectBody(ctx.body)
-		if (typeof plugins.dispatchCommand === "function") {
-			const job = plugins.dispatchCommand(ctx.params.id, ctx.params.cmd, args)
-			return sendSuccess(ctx, { jobId: job.id }, 202)
-		}
-		return sendSuccess(ctx, enqueue(
-			plugins,
-			"plugin.command",
-			{ pluginId: ctx.params.id, command: ctx.params.cmd, args },
-			`plugin:${ctx.params.id}`,
-		), 202)
-	})
+	router.post("/plugins/:id/commands/:cmd", (ctx) => sendSuccess(ctx, enqueue(
+		plugins,
+		"plugin.command",
+		{ pluginId: ctx.params.id, command: ctx.params.cmd, args: ctx.body === null ? {} : objectBody(ctx.body) },
+		`plugin:${ctx.params.id}`,
+	), 202))
 	router.get("/plugins/:id/permissions", (ctx) => {
 		if (typeof plugins.permissions === "function") return sendSuccess(ctx, plugins.permissions(ctx.params.id))
 		return sendSuccess(ctx, requireMethod(plugins, "get")(ctx.params.id).permissions ?? [])
@@ -177,6 +174,9 @@ export function registerPluginRoutes(router, { plugins } = {}) {
 	})
 	router.post("/plugins/validate", (ctx) => {
 		const body = objectBody(ctx.body)
+		if (body.repositoryUrl !== undefined) {
+			return sendSuccess(ctx, requireMethod(plugins, "inspectGithub")(requiredString(body.repositoryUrl, "repositoryUrl")))
+		}
 		return sendSuccess(ctx, requireMethod(plugins, "inspectManifest")(requiredString(body.path, "path")))
 	})
 	router.post("/plugins/sync-bundled", (ctx) => sendSuccess(ctx, enqueue(plugins, "plugin.sync-bundled", {}), 202))

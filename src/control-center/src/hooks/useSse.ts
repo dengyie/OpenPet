@@ -20,10 +20,19 @@ export type SseRuntime = {
   clearTimeout?: typeof clearTimeout
 }
 
+type BackendBridge = {
+  getBackend: () => BackendInfo | null
+  onChanged?: (listener: (backend: BackendInfo | null) => void) => () => void
+}
+
+function backendBridge(): BackendBridge | null {
+  return (globalThis as { openpetBackend?: BackendBridge }).openpetBackend || null
+}
+
 const defaultRuntime: SseRuntime = {
   getBackend: () => {
-    const value = (globalThis as { openpetBackend?: BackendInfo }).openpetBackend
-    return value?.baseUrl && value.sessionToken ? value : null
+    const backend = backendBridge()?.getBackend?.() || null
+    return backend?.baseUrl && backend.sessionToken ? backend : null
   },
 }
 
@@ -65,6 +74,13 @@ class SseManager {
   private running = false
   private controller: AbortController | null = null
   private retryIndex = 0
+
+  constructor() {
+    backendBridge()?.onChanged?.(() => {
+      this.controller?.abort()
+      if (this.listeners.size > 0 && !this.running) void this.run()
+    })
+  }
 
   configure(runtime: Partial<SseRuntime>) { this.runtime = { ...this.runtime, ...runtime } }
   snapshot() { return { state: this.state, lastEventId: this.lastEventId } }
@@ -171,7 +187,17 @@ class SseManager {
     const headers = new Headers(init.headers)
     headers.set('authorization', `Bearer ${backend.sessionToken}`)
     const response = await (this.runtime.fetchImpl ?? globalThis.fetch)(`${backend.baseUrl.replace(/\/$/, '')}/${path.replace(/^\//, '')}`, { ...init, headers })
-    if (!response.ok) throw new Error(`Backend request failed: ${response.status}`)
+    if (!response.ok) {
+      let payload: unknown = null
+      try { payload = await response.json() } catch { /* preserve status when body is not JSON */ }
+      const errorPayload = payload && typeof payload === 'object' && 'error' in payload
+        ? (payload as { error?: { code?: string; message?: string } }).error
+        : undefined
+      const code = errorPayload?.code
+      const message = errorPayload?.message || `Backend request failed: ${response.status}`
+      const error = Object.assign(new Error(message), { code, status: response.status })
+      throw error
+    }
     return response.json()
   }
 

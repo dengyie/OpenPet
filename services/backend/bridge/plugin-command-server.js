@@ -42,7 +42,6 @@ function requiredString(value, field) {
 	}
 	return value.trim()
 }
-
 function objectArgs(value) {
 	if (value === undefined || value === null) return {}
 	if (typeof value !== "object" || Array.isArray(value)) {

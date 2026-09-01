@@ -113,6 +113,7 @@ const registerSettingsIpc = ({
   showOpenDialogForEvent,
   sendToPetWindow,
   createPetRendererSettings,
+  sidecarRuntimeCoordinator = null,
   collectCustomCursorAssetPaths,
   mergePetSettingsViewIntoHostSettings,
   recordAppLog
@@ -200,10 +201,17 @@ const registerSettingsIpc = ({
     return repairedSettings
   }
 
-  ipcMainService.handle(IPC.SETTINGS_GET, async () => createPetRendererSettings(
-    await maybeRepairStoredCustomCursorRecords(),
-    systemCursorService?.getStatus?.()
-  ))
+  ipcMainService.handle(IPC.SETTINGS_GET, async (_event, options) => {
+    const settings = createPetRendererSettings(
+      await maybeRepairStoredCustomCursorRecords(),
+      systemCursorService?.getStatus?.()
+    )
+    if (options?.includeBackend === true) return {
+      settings,
+      backend: sidecarRuntimeCoordinator?.getBackend?.() || null
+    }
+    return settings
+  })
 
   ipcMainService.handle(IPC.SETTINGS_IMPORT_CURSOR, async (event) => {
     if (!cursorAssetService?.importCursor) throw new Error('Cursor asset import is not available')

@@ -20,8 +20,8 @@ export function createPluginJobHandlers({ db, plugins, logger } = {}) {
 			signal: runnerContext.signal,
 			tmpDir: runnerContext.tmpDir,
 			registerProcess: runnerContext.registerProcess,
+			commandInput: plugins?.commandInput ? () => plugins.commandInput(runnerContext.job.id) : undefined,
 			finalize: runnerContext.finalize,
-			jobId: runnerContext.job.id,
 		})
 	}]))
 }

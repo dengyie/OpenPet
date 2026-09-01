@@ -42,6 +42,18 @@ const KNOWN_CLIENTS = Object.freeze(new Set(["control-center", "pet-window", "mc
 const LOOPBACK_HOSTS = Object.freeze(new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]))
 const BEARER_PREFIX = "bearer "
 const BODYLESS_METHODS = Object.freeze(new Set(["GET", "HEAD", "DELETE", "OPTIONS"]))
+const CORS_METHODS = Object.freeze(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+const CORS_HEADERS = Object.freeze([
+	"accept",
+	"authorization",
+	"content-type",
+	"idempotency-key",
+	"last-event-id",
+	"x-client",
+	"x-request-id",
+])
+const CORS_METHOD_SET = new Set(CORS_METHODS)
+const CORS_HEADER_SET = new Set(CORS_HEADERS)
 
 export class ApiError extends Error {
 	constructor(code, message, options = {}) {
@@ -131,6 +143,78 @@ export function loopbackOnly() {
 			throw new ApiError("PERMISSION_DENIED", "只接受来自回环地址的请求", { details: { remoteAddress: remote } })
 		}
 		await next()
+	}
+}
+
+function trustedRendererOrigin(origin) {
+	if (origin === "null") return true
+	if (typeof origin !== "string") return false
+	try {
+		const parsed = new URL(origin)
+		return parsed.protocol === "http:" &&
+			parsed.hostname === "127.0.0.1" &&
+			parsed.username === "" &&
+			parsed.password === "" &&
+			parsed.pathname === "/" &&
+			parsed.search === "" &&
+			parsed.hash === ""
+	} catch {
+		return false
+	}
+}
+
+function appendVary(res, names) {
+	const existing = String(res.getHeader("vary") ?? "")
+	const values = new Map()
+	for (const name of [...existing.split(","), ...names]) {
+		const trimmed = name.trim()
+		if (trimmed.length > 0) values.set(trimmed.toLowerCase(), trimmed)
+	}
+	res.setHeader("vary", Array.from(values.values()).join(", "))
+}
+
+function requestedCorsHeaders(value) {
+	if (typeof value !== "string" || value.trim() === "") return []
+	return value.split(",").map((header) => header.trim().toLowerCase()).filter(Boolean)
+}
+
+/**
+ * Electron 的 file:// renderer 会以 Origin:null 跨源访问随机端口 sidecar；开发态
+ * Control Center 则从 127.0.0.1 的 Vite 端口访问。只为这两类 origin 回显 CORS，
+ * 预检仍须来自回环 socket，实际请求仍继续经过 bearerAuth。
+ */
+export function cors() {
+	return async (ctx, next) => {
+		const origin = ctx.req.headers.origin
+		if (!trustedRendererOrigin(origin)) {
+			await next()
+			return
+		}
+
+		ctx.res.setHeader("access-control-allow-origin", origin)
+		ctx.res.setHeader("access-control-expose-headers", "x-request-id")
+		appendVary(ctx.res, ["Origin"])
+
+		const requestedMethod = ctx.req.headers["access-control-request-method"]
+		if (ctx.method !== "OPTIONS" || typeof requestedMethod !== "string") {
+			await next()
+			return
+		}
+
+		const method = requestedMethod.toUpperCase()
+		const headers = requestedCorsHeaders(ctx.req.headers["access-control-request-headers"])
+		if (!CORS_METHOD_SET.has(method) || headers.some((header) => !CORS_HEADER_SET.has(header))) {
+			throw new ApiError("PERMISSION_DENIED", "CORS 预检请求包含不允许的方法或头部", {
+				details: { method, headers },
+			})
+		}
+
+		ctx.res.setHeader("access-control-allow-methods", CORS_METHODS.join(", "))
+		ctx.res.setHeader("access-control-allow-headers", CORS_HEADERS.join(", "))
+		ctx.res.setHeader("access-control-max-age", "600")
+		appendVary(ctx.res, ["Access-Control-Request-Method", "Access-Control-Request-Headers"])
+		ctx.res.writeHead(204)
+		ctx.res.end()
 	}
 }
 

@@ -1,14 +1,10 @@
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
-import { createRequire } from "node:module"
 
 import { ApiError } from "../http/middleware.js"
 import { createProgressThrottle } from "./progress.js"
 import { assertCancelable, canRetry, interruptionError } from "./state-machine.js"
-
-const require = createRequire(import.meta.url)
-const { sanitizePluginCommandResultValue, sanitizePluginCommandText } = require("../../../src/main/services/plugin-runtime-safety.js")
 
 export const SIGKILL_DELAY_MS = 2_000
 export const SHUTDOWN_GRACE_MS = 5_000
@@ -85,14 +81,6 @@ function retryableStatus(error) {
 	return status === 429 || (status >= 500 && status <= 599)
 }
 
-function sanitizeErrorText(value) {
-	return sanitizePluginCommandText(value)
-}
-
-function sanitizeErrorDetails(value, key = "") {
-	return sanitizePluginCommandResultValue(value, key)
-}
-
 function jobTmpDirectory(tmpRoot, jobId) {
 	if (typeof tmpRoot !== "string" || tmpRoot.length === 0) return null
 	const safeId = String(jobId).replace(/[^a-zA-Z0-9._-]/g, "_")
@@ -105,8 +93,8 @@ function jobTmpDirectory(tmpRoot, jobId) {
 function jobError(error) {
 	return {
 		code: String(error?.code ?? "INTERNAL"),
-		message: sanitizeErrorText(error?.message ?? "Job 执行失败"),
-		details: sanitizeErrorDetails(error?.details ?? null),
+		message: String(error?.message ?? "Job 执行失败"),
+		details: error?.details ?? null,
 		retryable: retryableStatus(error),
 	}
 }

@@ -39,5 +39,6 @@ export function operationContext(ctx = {}) {
 		tmpDir: ctx.tmpDir,
 		progress: ctx.progress,
 		registerProcess: ctx.registerProcess,
+		commandInput: ctx.commandInput,
 	}
 }

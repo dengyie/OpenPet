@@ -9,10 +9,12 @@ export function resourceKey(input) {
 export async function run(input = {}, ctx = {}) {
 	report(ctx, { phase: "installing", percent: 25 })
 	if (input.selectionId) {
-		const commit = typeof ctx.plugins?.commitInstall === "function"
+		const commit = input.update && typeof ctx.plugins?.commitUpdate === "function"
+			? ctx.plugins.commitUpdate.bind(ctx.plugins)
+			: typeof ctx.plugins?.commitInstall === "function"
 			? ctx.plugins.commitInstall.bind(ctx.plugins)
 			: requirePluginMethod(ctx.plugins, "install")
-		return finalizing(ctx, () => ctx.plugins?.commitInstall
+		return finalizing(ctx, () => (input.update ? ctx.plugins?.commitUpdate : ctx.plugins?.commitInstall)
 			? commit(input.selectionId)
 			: commit({ selectionId: input.selectionId }))
 	}

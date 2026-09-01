@@ -3,13 +3,6 @@ import { PLUGIN_RUNTIME_PERMISSIONS } from "../../bridge/plugin-runtime-server.j
 
 const ACTIVE = new Set(["starting", "running", "stopping"])
 
-function nativeApprovalError(pluginId) {
-	return new ApiError("PLUGIN_NATIVE_NOT_APPROVED", "Plugin native execution is not approved", {
-		status: 403,
-		details: { pluginId },
-	})
-}
-
 function requireBridge(bridge, method) {
 	if (typeof bridge?.[method] !== "function") {
 		throw new ApiError("BACKEND_UNAVAILABLE", `Plugin ${method} bridge is unavailable`)
@@ -17,10 +10,12 @@ function requireBridge(bridge, method) {
 	return bridge[method].bind(bridge)
 }
 
+function nativeApprovalError(pluginId) {
+	return new ApiError("PLUGIN_NATIVE_NOT_APPROVED", "Plugin native execution is not approved", { status: 403, details: { pluginId } })
+}
+
 function isDeclarationOnly(definition) {
-	return !definition?.mainPath &&
-		(definition?.manifest?.entries?.commands?.length ?? 0) > 0 &&
-		(definition?.manifest?.entries?.services?.length ?? 0) === 0
+	return !definition?.mainPath && (definition?.manifest?.entries?.commands?.length ?? 0) > 0 && (definition?.manifest?.entries?.services?.length ?? 0) === 0
 }
 
 function commandRunsInBackend(definition) {
@@ -74,7 +69,7 @@ export function createPluginLifecycle({ registry, bridge, commandServer, process
 			? async () => ({ processes: [] })
 			: processRuntime?.start && definition.manifest?.entries?.services?.length
 				? processRuntime.start.bind(processRuntime)
-				: requireBridge(bridge, "start")
+			: requireBridge(bridge, "start")
 		registry.setEnabled(id, true)
 		publish(id, { ...current, status: "starting", error: null })
 		try {
@@ -118,10 +113,10 @@ export function createPluginLifecycle({ registry, bridge, commandServer, process
 				: requireBridge(bridge, "stop")
 		publish(id, { ...current, status: "stopping" })
 		try {
-			const operations = []
-			if (invoke) operations.push(invoke({ plugin: registry.get(id), definition }))
-			if (typeof commandServer?.stopPlugin === "function") operations.push(commandServer.stopPlugin(id))
-			const results = await Promise.allSettled(operations)
+			const pending = []
+			if (invoke) pending.push(invoke({ plugin: registry.get(id), definition }))
+			if (typeof commandServer?.stopPlugin === "function") pending.push(commandServer.stopPlugin(id))
+			const results = await Promise.allSettled(pending)
 			const failure = results.find((result) => result.status === "rejected")
 			if (failure) throw failure.reason
 			for (const pid of current.pids ?? []) processLedger?.unregister?.(pid)
@@ -135,23 +130,6 @@ export function createPluginLifecycle({ registry, bridge, commandServer, process
 		}
 	}
 	const stop = (id) => serialize(id, () => stopUnlocked(id))
-	const setEnabled = (id, enabled) => serialize(id, async () => {
-		registry.get(id)
-		if (enabled) return registry.setEnabled(id, true)
-		const current = status(id)
-		if (ACTIVE.has(current.status)) await stopUnlocked(id)
-		else registry.setEnabled(id, false)
-		return registry.get(id)
-	})
-	const setNativeExecutionApproved = (id, approved) => serialize(id, async () => {
-		registry.setNativeExecutionApproved(id, approved)
-		if (!approved) {
-			const current = status(id)
-			if (ACTIVE.has(current.status)) await stopUnlocked(id)
-			else await commandServer?.stopPlugin?.(id)
-		}
-		return registry.get(id)
-	})
 	const command = async (id, name, args = {}, context = {}) => {
 		const definition = registry.definition(id)
 		assertNativeApproval(id, definition)
@@ -172,6 +150,22 @@ export function createPluginLifecycle({ registry, bridge, commandServer, process
 			registerProcess: context.registerProcess,
 		})
 	}
+	const setEnabled = (id, enabled) => serialize(id, async () => {
+		registry.get(id)
+		if (enabled) return registry.setEnabled(id, true)
+		const current = status(id)
+		if (ACTIVE.has(current.status)) await stopUnlocked(id)
+		else registry.setEnabled(id, false)
+		return registry.get(id)
+	})
+	const setNativeExecutionApproved = (id, approved) => serialize(id, async () => {
+		registry.setNativeExecutionApproved(id, approved)
+		if (!approved) {
+			if (ACTIVE.has(status(id).status)) await stopUnlocked(id)
+			else await commandServer?.stopPlugin?.(id)
+		}
+		return registry.get(id)
+	})
 	const stopAll = async () => {
 		const pending = [...states].filter(([, state]) => ACTIVE.has(state.status)).map(([id]) => [id, stop(id)])
 		const results = await Promise.allSettled(pending.map(([, operation]) => operation))

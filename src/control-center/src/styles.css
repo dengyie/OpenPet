@@ -15,6 +15,66 @@
 @import './styles/layout.css';
 @import './styles/components.css';
 
+.job-panel {
+  width: 100%;
+  max-width: 860px;
+  margin-top: var(--op-space-7);
+}
+
+.job-panel .card-header {
+  min-height: 0;
+}
+
+.job-panel-muted {
+  color: var(--op-color-text-muted);
+  font-size: var(--op-font-size-md);
+}
+
+.job-list {
+  display: grid;
+  gap: var(--op-space-3);
+}
+
+.job-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--op-space-5);
+  min-width: 0;
+  padding: var(--op-space-3) 0;
+  border-bottom: 1px solid var(--op-color-border-soft);
+}
+
+.job-row:last-child {
+  border-bottom: 0;
+}
+
+.job-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.job-copy strong,
+.job-copy span,
+.job-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.job-copy span,
+.job-copy small {
+  color: var(--op-color-text-muted);
+  font-size: var(--op-font-size-md);
+}
+
+.job-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--op-space-2);
+}
+
 /* ═══ 旧兼容层（migration in progress） ═══
    以下选择器仍被各 pane 使用；迁移到共享组件/令牌后逐块移除。
    与新分层重复的基础选择器（shell/sidebar/nav/content/pane/pane-header/

@@ -7,14 +7,13 @@ export function resourceKey(input) {
 }
 
 export async function run(input = {}, ctx = {}) {
+	if (input.redacted === true && typeof ctx.commandInput === "function") {
+		input = ctx.commandInput() ?? input
+	}
 	throwIfAborted(ctx.signal)
 	report(ctx, { phase: "running", percent: 10 })
 	const command = requirePluginMethod(ctx.plugins, "command")
-	const transient = ctx.plugins.commandInput?.(ctx.jobId)
-	const pluginId = transient?.pluginId ?? input.pluginId
-	const commandId = transient?.command ?? input.command
-	const args = transient?.args ?? input.args ?? {}
-	const result = await command(pluginId, commandId, args, operationContext(ctx))
+	const result = await command(input.pluginId, input.command, input.args ?? {}, operationContext(ctx))
 	throwIfAborted(ctx.signal)
 	return result
 }

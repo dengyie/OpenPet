@@ -91,6 +91,20 @@ describe("T21 API client contract boundary", () => {
 		})
 	})
 
+	it("preserves pre-dispatch transport evidence on the typed error", async () => {
+		const transport = transportModule.createMockTransport({ handlers: [() => {
+			throw new transportModule.TransportError(new Error("backend not ready"), false)
+		}] })
+		const api = settingsApiModule.createSettingsApi(clientModule.createApiClient(transport))
+
+		await assert.rejects(api.get(), (error) => {
+			assert.equal(error instanceof clientModule.ApiError, true)
+			assert.equal(error.code, "BACKEND_UNAVAILABLE")
+			assert.equal(error.dispatched, false)
+			return true
+		})
+	})
+
 	it("retries an idempotent retryable request at most twice", async () => {
 		let attempts = 0
 		const transport = transportModule.createMockTransport({ handlers: [() => {

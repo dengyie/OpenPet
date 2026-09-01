@@ -27,12 +27,27 @@ export type Transport = {
   readonly state: "pending" | "ready" | "unavailable"
 }
 
+export class TransportError extends Error {
+  readonly code: string
+  readonly dispatched: boolean
+
+  constructor(error: unknown, dispatched: boolean) {
+    super(error instanceof Error ? error.message : "BACKEND_UNAVAILABLE", { cause: error })
+    this.name = "TransportError"
+    this.code = typeof (error as { code?: unknown } | null)?.code === "string"
+      ? (error as { code: string }).code
+      : "BACKEND_UNAVAILABLE"
+    this.dispatched = dispatched
+  }
+}
+
 type TimerHandle = ReturnType<typeof setTimeout>
 type BackendChanged = (listener: (backend: BackendInfo | null) => void) => Unsubscribe | void
 
 type TransportOptions = {
   getBackend: () => BackendInfo | null
   onBackendChanged?: BackendChanged
+  fetchImpl?: typeof fetch
   // These seams are only for deterministic tests; production uses the platform globals.
   setTimeout?: typeof setTimeout
   clearTimeout?: typeof clearTimeout
@@ -45,9 +60,7 @@ type QueuedRequest = {
 }
 
 function unavailableError() {
-  const error = new Error("BACKEND_UNAVAILABLE") as Error & { code: string }
-  error.code = "BACKEND_UNAVAILABLE"
-  return error
+  return new TransportError(new Error("BACKEND_UNAVAILABLE"), false)
 }
 
 function requestPath(input: RequestInput) {
@@ -148,19 +161,28 @@ function createQueueTransport(
   }
 }
 
-async function sendHttp(backend: BackendInfo, input: RequestInput) {
+async function sendHttp(backend: BackendInfo, input: RequestInput, fetchImpl: typeof fetch = fetch) {
   const path = requestPath(input)
   const init = requestInit(input)
   const headers = new Headers(init.headers)
   headers.set("authorization", `Bearer ${backend.sessionToken}`)
-  return fetch(`${backend.baseUrl.replace(/\/+$/, "")}/${path.replace(/^\/+/g, "")}`, {
-    ...init,
-    headers,
-  })
+  try {
+    return await fetchImpl(`${backend.baseUrl.replace(/\/+$/, "")}/${path.replace(/^\/+/g, "")}`, {
+      ...init,
+      headers,
+    })
+  } catch (error) {
+    throw new TransportError(error, true)
+  }
 }
 
 export function createHttpTransport(opts: TransportOptions): Transport {
-  return createQueueTransport(opts.getBackend, opts.onBackendChanged, opts, sendHttp)
+  return createQueueTransport(
+    opts.getBackend,
+    opts.onBackendChanged,
+    opts,
+    (backend, input) => sendHttp(backend, input, opts.fetchImpl),
+  )
 }
 
 export function createMockTransport(opts: { handlers?: unknown[] } = {}): Transport {

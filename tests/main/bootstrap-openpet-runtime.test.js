@@ -193,6 +193,8 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
   assert.equal(safeLogs.some((entry) => entry.event === 'sidecar.startup.failed' && entry.message === 'unexpected coordinator rejection'), true)
 
   const ipcDependencies = registeredIpcDependencies[0]
+  assert.ok(ipcDependencies.sidecarRuntimeCoordinator)
+  assert.equal(typeof ipcDependencies.sidecarRuntimeCoordinator.getBackend, 'function')
   assert.equal(ipcDependencies.hatchPetAgentService.id, 'hatch-pet-agent')
   assert.equal(ipcDependencies.creatorWorkflowService.id, 'creator-workflow')
   assert.deepEqual(ipcDependencies.pluginInstallService.readBlockStatus('blocked-plugin'), { blocked: true, reasons: ['policy'] })

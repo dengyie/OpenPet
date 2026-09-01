@@ -2100,7 +2100,7 @@ test.describe('Control Center smoke', () => {
     expect(widths.body).toBeLessThanOrEqual(widths.viewport)
   })
 
-  test('installs manual plugin packages from the Plugins review panel with the demo API', async ({ page }) => {
+  test('installs manual plugin packages and immediately runs commands with the demo API', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'Plugins' }).click()
 
@@ -2179,8 +2179,10 @@ test.describe('Control Center smoke', () => {
     await approvalToggle.click()
     await expect(page.locator('.status-line')).toContainText('已允许原生进程执行')
     await expect(approvalToggle).toHaveAttribute('aria-checked', 'true')
+    const commandStartedAt = Date.now()
     await pluginRow.getByRole('button', { name: 'Say hello' }).click()
-    await expect(page.locator('.status-line')).toContainText('Demo command completed')
+    await expect(page.locator('.status-line')).toContainText('Demo command completed', { timeout: 1_500 })
+    expect(Date.now() - commandStartedAt).toBeLessThan(1_500)
     await expect(pluginRow).toContainText('最近命令结果')
     await expect(pluginRow).toContainText('hello · exit 0')
     await expect(pluginRow).toContainText('{"ok":true,"message":"Demo command completed","petSay":"hello"}')

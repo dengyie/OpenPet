@@ -13,6 +13,18 @@ function asJson(value) {
 	return value === null || value === undefined ? null : JSON.stringify(value)
 }
 
+function persistedInput(kind, input) {
+  if (typeof kind === "string" && kind.startsWith("plugin.")) {
+    return {
+      redacted: true,
+      summary: kind === "plugin.command" && input && typeof input === "object"
+        ? `Plugin command ${String(input.pluginId || "unknown")}/${String(input.command || "unknown")}`
+        : kind,
+    }
+	}
+	return input ?? {}
+}
+
 function fromJson(value) {
 	if (value === null || value === undefined) return null
 	try {
@@ -20,16 +32,6 @@ function fromJson(value) {
 	} catch (cause) {
 		throw new ApiError("INTERNAL", "Job JSON 字段损坏", { cause })
 	}
-}
-
-function persistedInput(input, kind) {
-	if (kind !== "plugin.command") return input ?? {}
-	if (input && input.redacted === true && typeof input.summary === "string") {
-		return { redacted: true, summary: input.summary }
-	}
-	const pluginId = typeof input?.pluginId === "string" ? input.pluginId : "unknown"
-	const command = typeof input?.command === "string" ? input.command : "unknown"
-	return { redacted: true, summary: `Plugin command ${pluginId}/${command}` }
 }
 
 function normalizeError(error) {
@@ -107,7 +109,9 @@ export function createJobsRepository({ db, now = Date.now } = {}) {
 	}
 
 	function byId(id) {
-		return toJob(db.prepare("SELECT * FROM jobs WHERE id = ?").get(id))
+		const row = db.prepare("SELECT * FROM jobs WHERE id = ?").get(id)
+		if (!row) return null
+		return toJob(row)
 	}
 
 	function insert(input = {}) {
@@ -129,7 +133,7 @@ export function createJobsRepository({ db, now = Date.now } = {}) {
 				kind,
 					"queued",
 				resourceKey,
-				asJson(persistedInput(input.input, kind)),
+				asJson(persistedInput(kind, input.input)),
 				attempt,
 				maxAttempts,
 				createdAt,

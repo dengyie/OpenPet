@@ -5,13 +5,17 @@ const { createServer } = require("node:http")
 const { before, describe, it } = require("node:test")
 
 let createRouter
+let jobSchema
 let middleware
 let registerJobRoutes
 
 before(async () => {
-	;({ createRouter } = await import("../../services/backend/http/router.js"))
-	middleware = await import("../../services/backend/http/middleware.js")
-	;({ registerJobRoutes } = await import("../../services/backend/routes/jobs.js"))
+	;([{ createRouter }, middleware, { registerJobRoutes }, { jobSchema }] = await Promise.all([
+		import("../../services/backend/http/router.js"),
+		import("../../services/backend/http/middleware.js"),
+		import("../../services/backend/routes/jobs.js"),
+		import("@openpet/contracts"),
+	]))
 })
 
 async function withServer(deps, run) {
@@ -28,19 +32,46 @@ async function withServer(deps, run) {
 
 const headers = { authorization: "Bearer token" }
 const json = async (response) => ({ response, body: await response.json() })
+const internalJob = (overrides = {}) => ({
+	id: "job-1",
+	kind: "about.check-updates",
+	status: "queued",
+	resourceKey: null,
+	input: { secret: "must-not-leak" },
+	result: null,
+	error: null,
+	progress: null,
+	attempt: 1,
+	maxAttempts: 2,
+	createdAt: Date.UTC(2026, 7, 30, 10, 0, 0),
+	startedAt: null,
+	finishedAt: null,
+	...overrides,
+})
+
+function assertPublicJob(value) {
+	const parsed = jobSchema.safeParse(value)
+	assert.equal(parsed.success, true, parsed.success ? "" : JSON.stringify(parsed.error.issues))
+	assert.equal(Object.hasOwn(value, "id"), false)
+	assert.equal(JSON.stringify(value).includes("must-not-leak"), false)
+	return value
+}
 
 describe("Job HTTP contract", () => {
 	it("lists with validated filters and pagination boundaries", async () => {
 		const received = []
 		const jobs = {
 			byId: () => null,
-			list(options) { received.push(["list", options]); return [{ id: "job-1" }] },
+			list(options) { received.push(["list", options]); return [internalJob()] },
 			count(options) { received.push(["count", options]); return 7 },
 		}
 		await withServer({ jobs, runner: {}, dispatcher: {} }, async (url) => {
 			const listed = await json(await fetch(`${url}/jobs?status=failed&kind=about.check-updates&limit=25&offset=50`, { headers }))
 			assert.equal(listed.response.status, 200)
-			assert.deepEqual(listed.body.data, { items: [{ id: "job-1" }], total: 7, cursor: null })
+			assert.equal(listed.body.data.total, 7)
+			assert.equal(listed.body.data.cursor, null)
+			assert.equal(listed.body.data.items.length, 1)
+			assert.equal(assertPublicJob(listed.body.data.items[0]).jobId, "job-1")
 			assert.deepEqual(received[0][1], { status: "failed", kind: "about.check-updates", limit: 25, offset: 50 })
 			for (const query of ["status=bad", "kind=bad", "limit=0", "limit=1001", "offset=-1", "offset=x"]) {
 				assert.equal((await fetch(`${url}/jobs?${query}`, { headers })).status, 400, query)
@@ -49,12 +80,16 @@ describe("Job HTTP contract", () => {
 	})
 
 	it("gets, cancels, and returns historical events", async () => {
-		const job = { id: "job-1", kind: "about.check-updates", status: "queued" }
+		const job = internalJob()
 		let canceled = null
 		const jobs = { byId: (id) => id === job.id ? job : null, list: () => [], count: () => 0, listEvents: () => [{ phase: "checking" }], countEvents: () => 3, removeCompleted: () => 0 }
 		await withServer({ jobs, runner: { cancel: async (id) => { canceled = id; return { ...job, status: "canceled" } } }, dispatcher: {} }, async (url) => {
-			assert.deepEqual((await json(await fetch(`${url}/jobs/job-1`, { headers }))).body.data, job)
-			assert.equal((await json(await fetch(`${url}/jobs/job-1/cancel`, { method: "POST", headers }))).body.data.status, "canceled")
+			const detail = (await json(await fetch(`${url}/jobs/job-1`, { headers }))).body.data
+			assert.equal(assertPublicJob(detail).cancelable, true)
+			assert.deepEqual(detail.input, { redacted: true, summary: "about.check-updates" })
+			const canceledJob = (await json(await fetch(`${url}/jobs/job-1/cancel`, { method: "POST", headers }))).body.data
+			assert.equal(assertPublicJob(canceledJob).status, "canceled")
+			assert.equal(canceledJob.cancelable, false)
 			assert.equal(canceled, "job-1")
 			const events = await json(await fetch(`${url}/jobs/job-1/events?limit=10`, { headers }))
 			assert.deepEqual(events.body.data.items, [{ phase: "checking" }])
@@ -64,7 +99,7 @@ describe("Job HTTP contract", () => {
 	})
 
 	it("retries through transition and dispatcher so queued work starts", async () => {
-		const current = { id: "retry", kind: "about.check-updates", status: "failed", attempt: 1, maxAttempts: 2 }
+		const current = internalJob({ id: "retry", status: "failed", attempt: 1, maxAttempts: 2 })
 		const calls = []
 		const jobs = {
 			byId: () => current, list: () => [], count: () => 0, listEvents: () => [], removeCompleted: () => 0,
@@ -73,7 +108,7 @@ describe("Job HTTP contract", () => {
 		await withServer({ jobs, runner: {}, dispatcher: { resume(id) { calls.push(["resume", id]); current.status = "running"; return current } } }, async (url) => {
 			const retried = await json(await fetch(`${url}/jobs/retry/retry`, { method: "POST", headers }))
 			assert.equal(retried.response.status, 202)
-			assert.equal(retried.body.data.status, "running")
+			assert.equal(assertPublicJob(retried.body.data).status, "running")
 			assert.deepEqual(calls, [["transition", "retry", "queued"], ["resume", "retry"]])
 		})
 	})

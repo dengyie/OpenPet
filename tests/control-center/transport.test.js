@@ -125,10 +125,12 @@ describe("HTTP transport readiness gate", () => {
 		for (const result of results) {
 			assert.equal(result.status, "rejected")
 			assert.equal(result.reason.code, "BACKEND_UNAVAILABLE")
+			assert.equal(result.reason.dispatched, false)
 		}
 		const afterTimeout = await Promise.allSettled([http.request({ path: "/late" })])
 		assert.equal(afterTimeout[0].status, "rejected")
 		assert.equal(afterTimeout[0].reason.code, "BACKEND_UNAVAILABLE")
+		assert.equal(afterTimeout[0].reason.dispatched, false)
 
 		const originalFetch = global.fetch
 		global.fetch = async () => ({ recovered: true })
@@ -139,6 +141,22 @@ describe("HTTP transport readiness gate", () => {
 		} finally {
 			global.fetch = originalFetch
 		}
+	})
+
+	it("marks fetch failures as dispatched", async () => {
+		const shell = createShell({
+			baseUrl: "http://backend.test/api/v1",
+			sessionToken: "token",
+		})
+		const http = transport.createHttpTransport({
+			getBackend: shell.getBackend,
+			fetchImpl: async () => { throw new Error("connection lost") },
+		})
+
+		await assert.rejects(
+			http.request({ path: "/commands/run", method: "POST" }),
+			(error) => error.code === "BACKEND_UNAVAILABLE" && error.dispatched === true,
+		)
 	})
 
 	it("keeps the newest 50 requests and rejects the oldest immediately", async () => {

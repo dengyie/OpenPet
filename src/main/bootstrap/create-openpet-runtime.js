@@ -97,6 +97,10 @@ const createOpenPetRuntime = ({
       : createDefaultSidecarPidLedger({ app, logger: sidecarLogger })
   })
 
+  const createControlCenterWindow = () => {
+    return createSettingsWindow(getPetWindow())
+  }
+
   const broadcastCursorSettings = (settings) => {
     const payload = createPetRendererSettings(settings, systemCursorService?.getStatus?.())
     const activePetWindow = getPetWindow()
@@ -109,6 +113,14 @@ const createOpenPetRuntime = ({
     }
     return payload
   }
+
+  sidecarRuntimeCoordinator.onChanged?.((backend) => {
+    const activePetWindow = getPetWindow()
+    const settingsWindow = activePetWindow?.settingsWindow
+    if (settingsWindow && !settingsWindow.isDestroyed?.()) {
+      settingsWindow.webContents?.send?.(IPC.SETTINGS_CHANGED, { __openpetBackend: backend })
+    }
+  })
 
   handleSystemCursorUnexpectedExit = async () => {
     const currentSettings = petService.getSettings()
@@ -123,7 +135,7 @@ const createOpenPetRuntime = ({
     app,
     screen,
     getPetWindow,
-    createSettingsWindow,
+    createSettingsWindow: createControlCenterWindow,
     createPetChatWindowManager: factories.createPetChatWindowManager,
     createPetBubbleChatWindowManager: factories.createPetBubbleChatWindowManager,
     petMovementPolicy,
@@ -258,9 +270,10 @@ const createOpenPetRuntime = ({
     applyPetViewport,
     clampToWorkArea,
     getMovementState,
-    createSettingsWindow: () => createSettingsWindow(getPetWindow()),
+    createSettingsWindow: createControlCenterWindow,
     petMovementPolicy,
-    petChatWindowService
+    petChatWindowService,
+    sidecarRuntimeCoordinator
   }) || ipcRuntimeHelpers
 
   let petWindow = createWindow({ load: false })

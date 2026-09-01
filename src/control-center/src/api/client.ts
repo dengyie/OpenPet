@@ -29,6 +29,7 @@ type RequestBase<TResponseSchema extends ContractSchema> = {
   timeoutMs?: number
   idempotencyKey?: string
   job?: boolean
+  retry?: boolean
 }
 
 export type ApiRequest<
@@ -50,14 +51,16 @@ export class ApiError extends Error implements ContractApiError {
   readonly details?: Record<string, unknown>
   readonly retryable: boolean
   readonly requestId: string
+  readonly dispatched: boolean
 
-  constructor(error: ContractApiError, options?: ErrorOptions) {
+  constructor(error: ContractApiError, options?: ErrorOptions & { dispatched?: boolean }) {
     super(error.message, options)
     this.name = 'ApiError'
     this.code = error.code
     this.details = error.details
     this.retryable = error.retryable
     this.requestId = error.requestId
+    this.dispatched = options?.dispatched ?? true
   }
 }
 
@@ -75,14 +78,17 @@ function isErrorCode(value: unknown): value is ErrorCode {
 
 function normalizeTransportError(error: unknown, requestId: string) {
   if (error instanceof ApiError) return error
-  const abortName = error instanceof DOMException ? error.name : ''
+  const dispatched = (error as { dispatched?: unknown } | null)?.dispatched !== false
+  const cause = (error as { cause?: unknown } | null)?.cause
+  const source = cause instanceof Error ? cause : error
+  const abortName = source instanceof DOMException ? source.name : ''
   if (abortName === 'TimeoutError') {
     return new ApiError({
       code: 'PROVIDER_TIMEOUT',
       message: 'Backend request timed out',
       retryable: true,
       requestId,
-    }, { cause: error })
+    }, { cause: error, dispatched })
   }
   if (abortName === 'AbortError') {
     return new ApiError({
@@ -90,17 +96,17 @@ function normalizeTransportError(error: unknown, requestId: string) {
       message: 'Backend request was canceled',
       retryable: false,
       requestId,
-    }, { cause: error })
+    }, { cause: error, dispatched })
   }
   const code = isErrorCode((error as { code?: unknown } | null)?.code)
     ? (error as { code: ErrorCode }).code
     : 'BACKEND_UNAVAILABLE'
   return new ApiError({
     code,
-    message: error instanceof Error ? error.message : 'Backend request failed',
+    message: source instanceof Error ? source.message : 'Backend request failed',
     retryable: code === 'BACKEND_UNAVAILABLE',
     requestId,
-  }, { cause: error })
+  }, { cause: error, dispatched })
 }
 
 async function responsePayload(response: unknown): Promise<unknown> {
@@ -113,7 +119,7 @@ async function responsePayload(response: unknown): Promise<unknown> {
         message: 'Backend returned a non-JSON response',
         retryable: false,
         requestId: response.headers.get(HEADER.requestId) || 'unknown',
-      }, { cause: error })
+      }, { cause: error, dispatched: true })
     }
   }
   return response
@@ -125,7 +131,7 @@ function unpack<TSchema extends ContractSchema>(
   requestId: string,
 ): SchemaValue<TSchema> {
   const failure = apiFailureSchema.safeParse(payload)
-  if (failure.success) throw new ApiError(failure.data.error)
+  if (failure.success) throw new ApiError(failure.data.error, { dispatched: true })
 
   const success = apiSuccessSchema(responseSchema).safeParse(payload)
   if (success.success) {
@@ -138,7 +144,7 @@ function unpack<TSchema extends ContractSchema>(
     details: { issues: success.error.issues },
     retryable: false,
     requestId,
-  }, { cause: success.error })
+  }, { cause: success.error, dispatched: true })
 }
 
 function delay(ms: number, signal: AbortSignal) {
@@ -183,7 +189,7 @@ export function createApiClient(transport: Transport): ApiClient {
       const timeoutMs = input.timeoutMs ?? (input.job ? JOB_TIMEOUT_MS : DEFAULT_TIMEOUT_MS)
       const timeoutSignal = AbortSignal.timeout(timeoutMs)
       const signal = input.signal ? AbortSignal.any([input.signal, timeoutSignal]) : timeoutSignal
-      const idempotent = SAFE_METHODS.has(method) || headers.has(HEADER.idempotencyKey)
+      const idempotent = input.retry !== false && (SAFE_METHODS.has(method) || headers.has(HEADER.idempotencyKey))
 
       const request: RequestInput = {
         path: input.path,

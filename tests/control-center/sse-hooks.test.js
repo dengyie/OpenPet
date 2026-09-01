@@ -16,4 +16,156 @@ describe("T22 SSE hook seams", () => {
 		const job = await import("../../src/control-center/src/hooks/useJob.ts")
 		assert.equal(typeof job.useJob, "function")
 	})
+
+	it("T32 migrates only plugin.command while Shell IPC remains authoritative elsewhere", async () => {
+		const source = require("node:fs").readFileSync("src/control-center/src/features/plugins/api.ts", "utf8")
+		assert.match(source, /\/plugins\/\$\{encodeURIComponent\(pluginId\)\}\/commands\/\$\{encodeURIComponent\(command\)\}/)
+		assert.match(source, /job: true, retry: false/)
+		const { pluginHttpApi } = await import("../../src/control-center/src/features/plugins/api.ts")
+		assert.deepEqual(Object.keys(pluginHttpApi), ["command"])
+		const app = require("node:fs").readFileSync("src/control-center/src/hooks/usePluginsPane.ts", "utf8")
+		assert.match(app, /const getPlugins = async \(\) => api\.getPlugins\(\)/)
+		assert.match(app, /api\.getPluginLogs\(/)
+		assert.match(app, /api\.uninstallPlugin\(/)
+		assert.match(app, /api\.setPluginEnabled\(/)
+		assert.match(app, /api\.setPluginNativeExecutionApproved\(/)
+		assert.match(app, /api\.savePluginConfig\(/)
+		assert.match(app, /pluginHttpApi\.command\(/)
+		const pane = require("node:fs").readFileSync("src/control-center/src/panes/PluginsPane.tsx", "utf8")
+		assert.match(pane, /onOpenDashboard/)
+		assert.match(pane, /onInspectPluginPackage/)
+	})
+
+	it("T32 JobPanel uses SSE events and 202 job controls without polling", () => {
+		const source = require("node:fs").readFileSync("src/control-center/src/features/jobs/JobPanel.tsx", "utf8")
+		assert.match(source, /useSse\(\['jobs'\]\)/)
+		assert.match(source, /backendClient\.request/)
+		assert.match(source, /\/cancel/)
+		assert.match(source, /\/retry/)
+		assert.doesNotMatch(source, /setInterval|setTimeout/)
+		const app = require("node:fs").readFileSync("src/control-center/src/App.jsx", "utf8")
+		assert.match(app, /<JobPanel \/>/)
+	})
+
+	it("T32 plugin command preserves returned jobId for the global panel", () => {
+		const source = require("node:fs").readFileSync("src/control-center/src/features/plugins/api.ts", "utf8")
+		assert.match(source, /Promise<PluginJobCreated>/)
+		assert.match(source, /command\(pluginId: string, command: string/)
+	})
+
+	it("T32 HTTP plugin command unwraps and preserves queued job ids", async () => {
+		const calls = []
+		const { configureBackendClient } = await import("../../src/control-center/src/api/backend-client.ts")
+		const { pluginHttpApi } = await import("../../src/control-center/src/features/plugins/api.ts")
+		const success = (data, status = 200) => new Response(JSON.stringify({ ok: true, data, meta: { requestId: "r_test" } }), {
+			status,
+			headers: { "content-type": "application/json" },
+		})
+		try {
+			configureBackendClient({
+				getBackend: () => ({ baseUrl: "http://127.0.0.1:4321", sessionToken: "test-token" }),
+				fetchImpl: async (url, init = {}) => {
+					calls.push({ url: String(url), init })
+					const pathname = new URL(String(url)).pathname
+					if (pathname === "/plugins/demo/commands/run") return success({ jobId: "plugin.command:1" }, 202)
+					throw new Error(`unexpected request: ${pathname}`)
+				}
+			})
+			assert.deepEqual(await pluginHttpApi.command("demo", "run", { value: 1 }), { jobId: "plugin.command:1" })
+			assert.equal(calls.every(({ init }) => new Headers(init.headers).get("authorization") === "Bearer test-token"), true)
+			assert.equal(calls.find(({ url }) => url.endsWith("/commands/run")).init.method, "POST")
+		} finally {
+			configureBackendClient()
+		}
+	})
+
+	it("T32 falls back only when the backend is unavailable before dispatch", async () => {
+		const { isBackendUnavailableBeforeDispatch } = await import("../../src/control-center/src/features/plugins/api.ts")
+		assert.equal(isBackendUnavailableBeforeDispatch({ code: "BACKEND_UNAVAILABLE" }), false)
+		assert.equal(isBackendUnavailableBeforeDispatch({ code: "BACKEND_UNAVAILABLE", dispatched: false }), true)
+		assert.equal(isBackendUnavailableBeforeDispatch({ code: "BACKEND_UNAVAILABLE", dispatched: true }), false)
+		assert.equal(isBackendUnavailableBeforeDispatch({ code: "NOT_FOUND", dispatched: false }), false)
+		assert.equal(isBackendUnavailableBeforeDispatch({ code: "PERMISSION_DENIED", dispatched: false }), false)
+	})
+
+	it("T32 immediately falls back only for development without a backend bridge", async () => {
+		const { shouldUseImmediatePluginCommandFallback } = await import("../../src/control-center/src/features/plugins/api.ts")
+		assert.equal(shouldUseImmediatePluginCommandFallback(true, false), true)
+		assert.equal(shouldUseImmediatePluginCommandFallback(true, true), false)
+		assert.equal(shouldUseImmediatePluginCommandFallback(false, false), false)
+		assert.equal(shouldUseImmediatePluginCommandFallback(false, true), false)
+	})
+
+	it("T32 backend API errors retain codes for IPC fallback", async () => {
+		const { configureSse, requestBackend } = await import("../../src/control-center/src/hooks/useSse.ts")
+		configureSse({
+			getBackend: () => ({ baseUrl: "http://127.0.0.1:4321", sessionToken: "test-token" }),
+			fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({ ok: false, error: { code: "BACKEND_UNAVAILABLE", message: "Plugin service unavailable" } }) })
+		})
+		await assert.rejects(requestBackend("/plugins"), (error) => {
+			assert.equal(error.code, "BACKEND_UNAVAILABLE")
+			assert.equal(error.status, 503)
+			return true
+		})
+	})
+
+	it("T32 backend bootstrap stays outside the frozen IPC channel contract", () => {
+		const preload = require("node:fs").readFileSync("control-center-preload.js", "utf8")
+		const runtime = require("node:fs").readFileSync("src/main/bootstrap/create-openpet-runtime.js", "utf8")
+		assert.match(preload, /__openpetBackend/)
+		assert.match(runtime, /SETTINGS_CHANGED/)
+		assert.doesNotMatch(preload, /BACKEND_GET|BACKEND_CHANGED/)
+		assert.doesNotMatch(runtime, /IPC\.BACKEND_GET|IPC\.BACKEND_CHANGED/)
+	})
+
+	it("T32 settings IPC multiplex keeps backend payloads out of settings listeners", async () => {
+		const vm = require("node:vm")
+		const source = require("node:fs").readFileSync("control-center-preload.js", "utf8")
+		const exposed = {}
+		const handlers = {}
+		const ipcRenderer = {
+			on: (channel, handler) => { handlers[channel] = handler },
+			removeListener: () => {},
+			invoke: async (_channel, payload) => payload?.includeBackend
+				? { settings: {}, backend: { baseUrl: "http://127.0.0.1:4321", sessionToken: "ready" } }
+				: {},
+			send: () => {}
+		}
+		vm.runInNewContext(source, {
+			require: (name) => name === "electron"
+				? { contextBridge: { exposeInMainWorld: (key, value) => { exposed[key] = value } }, ipcRenderer }
+				: require(name),
+			console,
+			setTimeout
+		})
+		const settings = []
+		const backend = []
+		exposed.controlCenterAPI.onSettingsChanged((value) => settings.push(value))
+		exposed.openpetBackend.onChanged((value) => backend.push(value))
+		await new Promise((resolve) => setImmediate(resolve))
+		handlers["settings:changed"]({}, { __openpetBackend: { baseUrl: "http://127.0.0.1:4321", sessionToken: "next" } })
+		handlers["settings:changed"]({}, { scale: 0.8 })
+		await new Promise((resolve) => setImmediate(resolve))
+		assert.deepEqual(settings, [{ scale: 0.8 }])
+		assert.deepEqual(backend, [
+			{ baseUrl: "http://127.0.0.1:4321", sessionToken: "ready" },
+			{ baseUrl: "http://127.0.0.1:4321", sessionToken: "next" }
+		])
+	})
+
+	it("T32 JobPanel refreshes when a late backend opens without a business event", async () => {
+		const { shouldRefreshOnSseState } = await import("../../src/control-center/src/features/jobs/policy.ts")
+		assert.equal(shouldRefreshOnSseState("unavailable", "open"), true)
+		assert.equal(shouldRefreshOnSseState("reconnecting", "open"), true)
+		assert.equal(shouldRefreshOnSseState("open", "open"), false)
+		assert.equal(shouldRefreshOnSseState("connecting", "reconnecting"), false)
+	})
+
+	it("T32 retry action is hidden after max attempts are exhausted", async () => {
+		const { canRetryJob } = await import("../../src/control-center/src/features/jobs/policy.ts")
+		assert.equal(canRetryJob({ status: "failed", attempt: 1, maxAttempts: 2 }), true)
+		assert.equal(canRetryJob({ status: "interrupted", attempt: 1, maxAttempts: 1 }), false)
+		assert.equal(canRetryJob({ status: "failed", attempt: 2, maxAttempts: 2 }), false)
+		assert.equal(canRetryJob({ status: "running", attempt: 1, maxAttempts: 2 }), false)
+	})
 })
