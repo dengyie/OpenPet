@@ -23,7 +23,6 @@ export const BACKEND_TO_SHELL_TYPES = Object.freeze([
 	"ready",
 	"degraded",
 	"dialog.request",
-	"plugin.production.request",
 ])
 
 /** Shell -> 后端。 */
@@ -32,7 +31,6 @@ export const SHELL_TO_BACKEND_TYPES = Object.freeze([
 	"shutdown",
 	"pet.stateSnapshot",
 	"dialog.result",
-	"plugin.production.result",
 	"power.suspend",
 	"power.resume",
 ])

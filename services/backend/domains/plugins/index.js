@@ -12,6 +12,7 @@ import { inspectPluginManifest, publicManifestInspection } from "./manifest.js"
 import { createPluginRegistry } from "./registry.js"
 import { createProcessLedger } from "./process-ledger.js"
 import { createPluginProcessRuntime } from "./process-runtime.js"
+import { createPluginLogWriter } from "./plugin-log-writer.js"
 
 const require = createRequire(import.meta.url)
 const { createPluginInstallService } = require("../../../../src/main/services/plugin-install-service.js")
@@ -35,12 +36,13 @@ function installError(error) {
 	return new ApiError("INTERNAL", "Plugin installation failed", { cause: error })
 }
 
-export function createPluginService({ db, jobs, logs, bridge, commandServer, dialog, root, userDataDir, settings, logger, now = Date.now, emit, processLedger: injectedProcessLedger, processRuntime: injectedProcessRuntime, runtimeBridgeServer } = {}) {
+export function createPluginService({ db, jobs, logs, bridge, commandServer, dialog, root, userDataDir, settings, logger, now = Date.now, emit, processLedger: injectedProcessLedger, processRuntime: injectedProcessRuntime, runtimeBridgeServer, logWriter: injectedLogWriter } = {}) {
 	if (typeof root !== "string" || !path.isAbsolute(root)) throw new TypeError("plugin root must be absolute")
 	const settingsStore = settings ?? createSettingsStore({ file: path.join(userDataDir, "backend", "settings.json"), logger })
 	const registry = createPluginRegistry({ userDataDir, settings: settingsStore, logger })
 	const processLedger = injectedProcessLedger ?? createProcessLedger({ userDataDir, logger, now })
 	const processRuntime = injectedProcessRuntime ?? createPluginProcessRuntime({ logger, now, bridgeServer: runtimeBridgeServer })
+	const logWriter = injectedLogWriter ?? createPluginLogWriter({ append: (entry) => logs.appendPlugin(entry), logger })
 	const publish = (name, payload) => {
 		if (!PLUGIN_EVENTS.has(name)) throw new TypeError(`Unknown plugin event: ${name}`)
 		emit?.(name, payload)
@@ -61,7 +63,12 @@ export function createPluginService({ db, jobs, logs, bridge, commandServer, dia
 		if (typeof logs?.appendPlugin !== "function") {
 			throw new ApiError("BACKEND_UNAVAILABLE", "Plugin logs repository is unavailable")
 		}
-		logs.appendPlugin(entry)
+		const queued = logWriter.append(entry)
+		if (!queued.accepted) {
+			const rejected = { ...structuredClone(entry), accepted: false, reason: queued.reason }
+			publish("plugin.log", rejected)
+			return rejected
+		}
 		publish("plugin.log", entry)
 		return structuredClone(entry)
 	}
@@ -79,6 +86,14 @@ export function createPluginService({ db, jobs, logs, bridge, commandServer, dia
 		if (!normalizedPluginId) throw new ApiError("VALIDATION_FAILED", "pluginId 不能为空")
 		const result = db.transaction(() => db.prepare("DELETE FROM plugin_logs WHERE plugin_id = ?").run(normalizedPluginId))
 		return { ok: true, pluginId: normalizedPluginId, deleted: result.changes ?? 0 }
+	}
+	let logsClosed = false
+	let logsClosePromise
+	const closeLogs = () => {
+		if (logsClosed) return logsClosePromise ?? Promise.resolve()
+		logsClosed = true
+		logsClosePromise = Promise.resolve().then(() => logWriter.close())
+		return logsClosePromise
 	}
 	const exportLogs = (filters = {}) => {
 		const requested = String(filters.format || "json").toLowerCase()
@@ -198,6 +213,16 @@ export function createPluginService({ db, jobs, logs, bridge, commandServer, dia
 		}
 		return result
 	}
+	const stopAll = async () => {
+		const result = await lifecycle.stopAll()
+		try {
+			await closeLogs()
+		} catch (error) {
+			audit("error", "Plugin log writer failed during shutdown", { error: String(error) })
+			return { ...result, ok: false, logError: error }
+		}
+		return result
+	}
 
 	return {
 		list,
@@ -245,12 +270,15 @@ export function createPluginService({ db, jobs, logs, bridge, commandServer, dia
 		command: lifecycle.command,
 		dispatchCommand: commandServer?.dispatch,
 		appendLog,
+		flushLogs: logWriter.flush,
+		closeLogs,
+		logWriter,
 		getLogs,
 		clearLogs,
 		exportLogs,
 		syncBundled,
 		inspectManifest,
-		stopAll: lifecycle.stopAll,
+		stopAll,
 		processLedger,
 		runtimeBridgeServer,
 		db,

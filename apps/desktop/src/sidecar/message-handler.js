@@ -15,7 +15,6 @@ const BACKEND_TO_SHELL_TYPES = Object.freeze([
 	"ready",
 	"degraded",
 	"dialog.request",
-	"plugin.production.request",
 ])
 
 function log(logger, level, message, fields) {
