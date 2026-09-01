@@ -18,6 +18,10 @@ export function shouldUseImmediatePluginCommandFallback(isDevelopment: boolean, 
   return isDevelopment && !hasBackendBridge
 }
 
+export function shouldUsePluginDemoApi(isDevelopment: boolean, hasBackendBridge: boolean): boolean {
+  return isDevelopment && !hasBackendBridge
+}
+
 export function createPluginHttpApi(client: ApiClient = backendClient) {
   const anyResponse = z.unknown()
   const request = (method: string, path: string, body?: JsonObject): Promise<any> => body === undefined

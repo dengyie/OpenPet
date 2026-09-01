@@ -93,11 +93,19 @@ describe("T22 SSE hook seams", () => {
 	})
 
 	it("T32 immediately falls back only for development without a backend bridge", async () => {
-		const { shouldUseImmediatePluginCommandFallback } = await import("../../src/control-center/src/features/plugins/api.ts")
+		const { shouldUseImmediatePluginCommandFallback, shouldUsePluginDemoApi } = await import("../../src/control-center/src/features/plugins/api.ts")
 		assert.equal(shouldUseImmediatePluginCommandFallback(true, false), true)
 		assert.equal(shouldUseImmediatePluginCommandFallback(true, true), false)
 		assert.equal(shouldUseImmediatePluginCommandFallback(false, false), false)
 		assert.equal(shouldUseImmediatePluginCommandFallback(false, true), false)
+		assert.equal(shouldUsePluginDemoApi(true, false), true)
+		assert.equal(shouldUsePluginDemoApi(true, true), false)
+		assert.equal(shouldUsePluginDemoApi(false, false), false)
+		assert.equal(shouldUsePluginDemoApi(false, true), false)
+		const dataHook = require("node:fs").readFileSync("src/control-center/src/hooks/usePluginsPaneData.ts", "utf8")
+		assert.match(dataHook, /useDemoApi\(\) \? api\.getPlugins\(\) : pluginHttpApi\.list\(\)/)
+		assert.match(dataHook, /api\.getPluginLogs\(/)
+		assert.match(dataHook, /useDemoApi\(\) \? api\.getImGatewaySecretState\(\) : pluginHttpApi\.imSecret\('state'\)/)
 	})
 
 	it("T32 backend API errors retain codes for IPC fallback", async () => {
