@@ -38,3 +38,45 @@ test("CI and release packaging explicitly build contracts", () => {
 		/^          - platform: windows\n            runner: windows-latest\n            pack_command: npm run build:contracts/m,
 	)
 })
+
+test("macOS release builds contracts before release dependencies and packaging", () => {
+	const release = fs.readFileSync(path.join(repoRoot, ".github/workflows/release.yml"), "utf8")
+	const macosStart = release.indexOf("  release-macos:")
+	const windowsStart = release.indexOf("  release-windows:")
+	assert.ok(macosStart >= 0, "release workflow should define the macOS release job")
+	assert.ok(windowsStart > macosStart, "Windows release job should follow the macOS release job")
+
+	const macos = release.slice(macosStart, windowsStart)
+	const contractsStep = "      - name: Build contracts\n        run: npm run build:contracts"
+	const contractsIndex = macos.indexOf(contractsStep)
+	assert.notEqual(contractsIndex, -1, "macOS release should explicitly build contracts")
+	assert.equal(
+		macos.match(/run: npm run build:contracts/g)?.length,
+		1,
+		"macOS release should have one explicit contracts build step",
+	)
+	assert.ok(
+		macos.indexOf("      - name: Install dependencies") < contractsIndex,
+		"macOS contracts build must happen after dependency installation",
+	)
+	assert.ok(
+		contractsIndex < macos.indexOf("      - name: Install Playwright Chromium"),
+		"macOS contracts build must precede release checks",
+	)
+	assert.ok(
+		contractsIndex < macos.indexOf("run: npm run dist -- --publish never"),
+		"macOS contracts build must precede distribution packaging",
+	)
+
+	const testBuild = release.slice(0, macosStart)
+	assert.match(testBuild, /platform: macos\n\s+runner: macos-latest\n\s+pack_command: npm run pack/)
+	assert.match(
+		testBuild,
+		/platform: windows\n\s+runner: windows-latest\n\s+pack_command: npm run build:contracts && npm run build:control-center/,
+	)
+	assert.doesNotMatch(
+		release.slice(windowsStart),
+		/^      - name: Build contracts$/m,
+		"Windows release job should retain its existing distribution wiring",
+	)
+})
