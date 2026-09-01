@@ -383,7 +383,7 @@ const createDashboardRuntime = ({
     contextText: peakContextUsedPercent != null ? `${formatPercent(peakContextUsedPercent)} peak` : 'No context metadata'
   })
 
-  const buildUsageWorkbenchViewModel = ({ dailyUsageRollups = [], sessionSummaries = [] } = {}) => {
+  const buildUsageWorkbenchViewModel = ({ dailyUsageRollups = [], sessionSummaries = [], usageLifetime = null } = {}) => {
     const normalizedRows = Array.isArray(dailyUsageRollups) ? dailyUsageRollups : []
     const sessionSummaryMap = new Map(
       (Array.isArray(sessionSummaries) ? sessionSummaries : [])
@@ -494,6 +494,19 @@ const createDashboardRuntime = ({
       })
     }
 
+    const lifetime = usageLifetime && typeof usageLifetime === 'object' ? usageLifetime : null
+    if (lifetime) {
+      Object.assign(usageTotals, formatUsageDelta({
+        totalTokens: Number(lifetime.tokenDelta) || 0,
+        costDeltaUsd: hasFiniteMetadataNumber(lifetime.costDeltaUsd) ? Number(lifetime.costDeltaUsd) : null,
+        currency: sanitizeDisplayText(lifetime.currency || '').toUpperCase(),
+        peakContextUsedPercent: hasFiniteMetadataNumber(lifetime.peakContextUsedPercent)
+          ? Number(lifetime.peakContextUsedPercent)
+          : null
+      }))
+      usageTotals.eventsText = pluralize(Number(lifetime.eventCount) || 0, 'event')
+    }
+
     const usageRows = normalizedRows.map((row) => {
       const rowTotals = row?.totals && typeof row.totals === 'object' ? row.totals : {}
       return {
@@ -590,7 +603,11 @@ const createDashboardRuntime = ({
       : 'No active attention session'
     const selectedSessionId = requestedSessionId || liveSessions[0]?.sessionId || sessionSummaries[0]?.sessionId || ''
     const selectedSummary = sessionSummaries.find((item) => String(item.sessionId || '') === String(selectedSessionId)) || null
-    const usageWorkbench = buildUsageWorkbenchViewModel({ dailyUsageRollups, sessionSummaries })
+    const usageWorkbench = buildUsageWorkbenchViewModel({
+      dailyUsageRollups,
+      sessionSummaries,
+      usageLifetime: sessionsPayload.usageLifetime
+    })
     const trackedSessionCount = Number.isFinite(Number(diagnostics.sessionCount))
       ? Number(diagnostics.sessionCount)
       : (sessionSummaries.length || liveSessions.length)

@@ -23,6 +23,19 @@ const createEmptyDayTotals = () => ({
   projectCount: 0
 })
 
+const createEmptyLifetimeTotals = () => ({
+  tokenDelta: 0,
+  inputTokenDelta: 0,
+  outputTokenDelta: 0,
+  cachedInputTokenDelta: 0,
+  costDeltaUsd: 0,
+  currency: '',
+  peakContextUsedPercent: 0,
+  eventCount: 0,
+  firstSeenAt: '',
+  lastSeenAt: ''
+})
+
 const createEmptySessionRow = ({ sessionId, project }) => ({
   sessionId,
   project,
@@ -68,6 +81,62 @@ const updateCounts = (day) => {
 }
 
 const cloneJson = (value) => JSON.parse(JSON.stringify(value))
+
+const updateLifetimeBounds = (lifetime, timestamp) => {
+  const value = String(timestamp || '')
+  if (!value) return
+  const timestampMs = Date.parse(value)
+  const firstMs = Date.parse(String(lifetime.firstSeenAt || ''))
+  const lastMs = Date.parse(String(lifetime.lastSeenAt || ''))
+  if (!lifetime.firstSeenAt || (Number.isFinite(timestampMs) && (!Number.isFinite(firstMs) || timestampMs < firstMs))) {
+    lifetime.firstSeenAt = value
+  }
+  if (!lifetime.lastSeenAt || (Number.isFinite(timestampMs) && (!Number.isFinite(lastMs) || timestampMs > lastMs))) {
+    lifetime.lastSeenAt = value
+  }
+}
+
+const applyLifetimeUsageDelta = ({ lifetime, sessionSummary, usage, timestamp }) => {
+  if (!lifetime || !sessionSummary?.sessionId || !usage || typeof usage !== 'object') return lifetime
+
+  const previous = sessionSummary.lastUsageSnapshot || {}
+  const deltaTotal = Math.max(0, toFiniteNumber(usage.totalTokens) - toFiniteNumber(previous.totalTokens))
+  const deltaInput = Math.max(0, toFiniteNumber(usage.inputTokens) - toFiniteNumber(previous.inputTokens))
+  const deltaOutput = Math.max(0, toFiniteNumber(usage.outputTokens) - toFiniteNumber(previous.outputTokens))
+  const deltaCached = Math.max(0, toFiniteNumber(usage.cachedInputTokens) - toFiniteNumber(previous.cachedInputTokens))
+  const deltaCost = Math.max(0, toFiniteNumber(usage.estimatedCostUsd) - toFiniteNumber(previous.estimatedCostUsd))
+  const contextUsedPercent = toFiniteNumber(usage.contextUsedPercent)
+
+  lifetime.tokenDelta += deltaTotal
+  lifetime.inputTokenDelta += deltaInput
+  lifetime.outputTokenDelta += deltaOutput
+  lifetime.cachedInputTokenDelta += deltaCached
+  lifetime.costDeltaUsd = roundSix(lifetime.costDeltaUsd + deltaCost)
+  lifetime.currency = usage.currency || lifetime.currency || ''
+  lifetime.peakContextUsedPercent = Math.max(lifetime.peakContextUsedPercent || 0, contextUsedPercent)
+  lifetime.eventCount += 1
+  updateLifetimeBounds(lifetime, timestamp)
+  return lifetime
+}
+
+const rebuildLifetimeUsageFromDailyRollups = (dailyUsageRollups = []) => {
+  const lifetime = createEmptyLifetimeTotals()
+  const rows = Array.isArray(dailyUsageRollups) ? dailyUsageRollups : []
+  for (const row of rows) {
+    const totals = row?.totals && typeof row.totals === 'object' ? row.totals : {}
+    lifetime.tokenDelta += toFiniteNumber(totals.tokenDelta)
+    lifetime.inputTokenDelta += toFiniteNumber(totals.inputTokenDelta)
+    lifetime.outputTokenDelta += toFiniteNumber(totals.outputTokenDelta)
+    lifetime.cachedInputTokenDelta += toFiniteNumber(totals.cachedInputTokenDelta)
+    lifetime.costDeltaUsd = roundSix(lifetime.costDeltaUsd + toFiniteNumber(totals.costDeltaUsd))
+    lifetime.currency = totals.currency || lifetime.currency || ''
+    lifetime.peakContextUsedPercent = Math.max(lifetime.peakContextUsedPercent || 0, toFiniteNumber(totals.peakContextUsedPercent))
+    lifetime.eventCount += toFiniteNumber(totals.eventCount)
+    const date = String(row?.date || '')
+    updateLifetimeBounds(lifetime, date)
+  }
+  return lifetime
+}
 
 const applyUsageSnapshotDelta = ({ state, sessionSummary, usage, timestamp, project }) => {
   const date = toDateKey(timestamp)
@@ -170,7 +239,10 @@ const rebuildUsageRollupsFromLegacySessions = ({ sessions = [], sessionSummaries
 
 module.exports = {
   applyUsageSnapshotDelta,
+  applyLifetimeUsageDelta,
+  createEmptyLifetimeTotals,
   pruneRetainedHistory,
+  rebuildLifetimeUsageFromDailyRollups,
   rebuildUsageRollupsFromLegacySessions,
   toDateKey
 }

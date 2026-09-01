@@ -1340,6 +1340,35 @@ test('agent awareness server exposes unified workbench payload and retained-hist
   assert.equal(JSON.stringify(payload).includes('/Users/mango'), false)
 })
 
+test('agent awareness health and sessions expose durable lifetime usage totals', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-lifetime-api-'))
+  const service = createAgentAwarenessServer({
+    dataDir,
+    bridgeClient: { event: async () => {}, say: async () => {} },
+    createRolloutPoller: () => ({ getStatus: () => ({ enabled: false }), start: () => {}, stop: () => {} })
+  })
+
+  await service.start(0)
+  await service.handleEvent({
+    sessionId: 'lifetime-api-session',
+    type: 'turn.usage',
+    status: 'completed',
+    project: 'OpenPet #111111',
+    usage: { totalTokens: 1200, inputTokens: 900, outputTokens: 300, estimatedCostUsd: 0.012, currency: 'USD', contextUsedPercent: 0.6 },
+    timestamp: '2026-07-09T11:00:00.000Z'
+  })
+
+  const port = service.server.address().port
+  const health = await fetch(`http://127.0.0.1:${port}/health`).then((response) => response.json())
+  const payload = await fetch(`http://127.0.0.1:${port}/api/sessions`).then((response) => response.json())
+  await service.close()
+
+  assert.equal(health.diagnostics.usageTotalTokens, 1200)
+  assert.equal(health.diagnostics.usageEstimatedCostUsd, 0.012)
+  assert.equal(payload.usageLifetime.tokenDelta, 1200)
+  assert.equal(payload.usageLifetime.eventCount, 1)
+})
+
 test('agent awareness diagnostics prefer retained tracked session counts over current live sessions', () => {
   const diagnostics = buildDiagnostics({
     store: {

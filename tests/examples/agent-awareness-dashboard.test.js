@@ -536,6 +536,30 @@ test('agent awareness dashboard builds a 30-day usage workbench view', () => {
   assert.equal(viewModel.topProjects[0].project, 'OpenPet #111111')
 })
 
+test('agent awareness dashboard prefers durable lifetime totals for the usage workbench', () => {
+  const runtime = createDashboardRuntime({ documentRef: null, fetchImpl: null })
+  const viewModel = runtime.buildDashboardViewModel({
+    query: { view: 'usage' },
+    health: { ok: true, diagnostics: {} },
+    sessionsPayload: {
+      liveSessions: [],
+      sessionSummaries: [],
+      dailyUsageRollups: [],
+      usageLifetime: {
+        tokenDelta: 12345,
+        costDeltaUsd: 0.123456,
+        currency: 'USD',
+        peakContextUsedPercent: 0.88,
+        eventCount: 17
+      }
+    }
+  })
+
+  assert.equal(viewModel.usageTotals.tokensText, '12,345 tokens')
+  assert.equal(viewModel.usageTotals.costText, '$0.123456 USD')
+  assert.equal(viewModel.usageTotals.eventsText, '17 events')
+})
+
 test('agent awareness dashboard renders sanitized current step summaries', () => {
   const runtime = createDashboardRuntime({ documentRef: null, fetchImpl: null })
   const viewModel = runtime.buildDashboardViewModel({

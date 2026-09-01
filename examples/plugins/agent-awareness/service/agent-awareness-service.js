@@ -128,7 +128,7 @@ const toTimestampMs = (value) => {
   return Number.isFinite(numeric) ? numeric : 0
 }
 
-const buildUsageDiagnostics = (sessions = []) => {
+const buildUsageDiagnostics = (sessions = [], lifetime = null) => {
   const totals = {
     usageTotalTokens: 0,
     usageInputTokens: 0,
@@ -139,6 +139,16 @@ const buildUsageDiagnostics = (sessions = []) => {
     usagePeakContextUsedPercent: null
   }
   const currencies = new Set()
+  const durable = lifetime && typeof lifetime === 'object' ? lifetime : null
+  if (durable) {
+    totals.usageTotalTokens = Math.round(toFiniteNumber(durable.tokenDelta) || 0)
+    totals.usageInputTokens = Math.round(toFiniteNumber(durable.inputTokenDelta) || 0)
+    totals.usageOutputTokens = Math.round(toFiniteNumber(durable.outputTokenDelta) || 0)
+    totals.usageCachedInputTokens = Math.round(toFiniteNumber(durable.cachedInputTokenDelta) || 0)
+    totals.usageEstimatedCostUsd = toFiniteNumber(durable.costDeltaUsd)
+    totals.usagePeakContextUsedPercent = toFiniteNumber(durable.peakContextUsedPercent)
+    if (durable.currency) currencies.add(sanitizeText(durable.currency, 8).toUpperCase())
+  }
   for (const session of sessions) {
     const usage = session?.usage && typeof session.usage === 'object' ? session.usage : null
     if (!usage) continue
@@ -148,17 +158,17 @@ const buildUsageDiagnostics = (sessions = []) => {
     const cachedInputTokens = toFiniteNumber(usage.cachedInputTokens)
     const estimatedCostUsd = toFiniteNumber(usage.estimatedCostUsd)
     const contextUsedPercent = toFiniteNumber(usage.contextUsedPercent)
-    if (totalTokens != null) totals.usageTotalTokens += Math.round(totalTokens)
-    if (inputTokens != null) totals.usageInputTokens += Math.round(inputTokens)
-    if (outputTokens != null) totals.usageOutputTokens += Math.round(outputTokens)
-    if (cachedInputTokens != null) totals.usageCachedInputTokens += Math.round(cachedInputTokens)
-    if (estimatedCostUsd != null) totals.usageEstimatedCostUsd = roundSix((totals.usageEstimatedCostUsd || 0) + estimatedCostUsd)
-    if (contextUsedPercent != null) {
+    if (!durable && totalTokens != null) totals.usageTotalTokens += Math.round(totalTokens)
+    if (!durable && inputTokens != null) totals.usageInputTokens += Math.round(inputTokens)
+    if (!durable && outputTokens != null) totals.usageOutputTokens += Math.round(outputTokens)
+    if (!durable && cachedInputTokens != null) totals.usageCachedInputTokens += Math.round(cachedInputTokens)
+    if (!durable && estimatedCostUsd != null) totals.usageEstimatedCostUsd = roundSix((totals.usageEstimatedCostUsd || 0) + estimatedCostUsd)
+    if (!durable && contextUsedPercent != null) {
       totals.usagePeakContextUsedPercent = totals.usagePeakContextUsedPercent == null
         ? contextUsedPercent
         : Math.max(totals.usagePeakContextUsedPercent, contextUsedPercent)
     }
-    if (usage.currency) currencies.add(sanitizeText(usage.currency, 8).toUpperCase())
+    if (!durable && usage.currency) currencies.add(sanitizeText(usage.currency, 8).toUpperCase())
   }
   totals.usageCurrency = currencies.size === 1 ? [...currencies][0] : currencies.size > 1 ? 'MIXED' : ''
   return totals
@@ -205,7 +215,7 @@ const buildDiagnostics = ({ store, rolloutPoller }) => {
       }
   const trackedSessions = Array.isArray(dashboardState.liveSessions) ? dashboardState.liveSessions : []
   const sessionSummaries = Array.isArray(dashboardState.sessionSummaries) ? dashboardState.sessionSummaries : []
-  const usageDiagnostics = buildUsageDiagnostics(trackedSessions)
+  const usageDiagnostics = buildUsageDiagnostics(trackedSessions, dashboardState.usageLifetime)
   const codexPoller = sanitizePollerStatus(rolloutPoller?.getStatus?.() || { enabled: false })
   const retainedProjects = new Set(sessionSummaries.map((item) => sanitizeText(item?.project || '', 96)).filter(Boolean))
   const liveSessionCount = status.sessions || trackedSessions.length
@@ -322,6 +332,7 @@ const createAgentAwarenessServer = ({
         liveSessions: dashboardState.liveSessions,
         sessionSummaries: dashboardState.sessionSummaries,
         dailyUsageRollups: dashboardState.dailyUsageRollups,
+        usageLifetime: dashboardState.usageLifetime,
         sessions: dashboardState.liveSessions
       })
       return

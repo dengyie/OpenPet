@@ -7,7 +7,7 @@ const {
   STORE_FILE,
   writeStoreStateAtomically
 } = require('./session-store-schema')
-const { applyUsageSnapshotDelta, pruneRetainedHistory } = require('./usage-rollups')
+const { applyLifetimeUsageDelta, applyUsageSnapshotDelta, pruneRetainedHistory } = require('./usage-rollups')
 
 const DEFAULT_MAX_SESSIONS = 100
 const DEFAULT_MAX_EVENTS = 1000
@@ -303,7 +303,8 @@ const createSessionStore = ({
     getDashboardState: () => ({
       liveSessions: [...state.liveSessions],
       sessionSummaries: [...state.sessionSummaries],
-      dailyUsageRollups: [...state.dailyUsageRollups]
+      dailyUsageRollups: [...state.dailyUsageRollups],
+      usageLifetime: clone(state.usageLifetime)
     }),
     upsertEvent: (event, options = {}) => {
       const eventId = String(options.eventId || '')
@@ -369,6 +370,12 @@ const createSessionStore = ({
       state.liveSessions = evictLiveSessions({ liveSessions: state.liveSessions, maxSessions, maxEvents })
       const summary = syncSessionSummary(session)
       if (session.usage) {
+        state.usageLifetime = applyLifetimeUsageDelta({
+          lifetime: state.usageLifetime,
+          sessionSummary: summary,
+          usage: session.usage,
+          timestamp: session.timestamp
+        })
         state = applyUsageSnapshotDelta({
           state,
           sessionSummary: summary,

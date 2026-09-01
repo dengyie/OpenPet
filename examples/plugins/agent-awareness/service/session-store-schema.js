@@ -1,6 +1,10 @@
 const fs = require('fs')
 const path = require('path')
-const { rebuildUsageRollupsFromLegacySessions } = require('./usage-rollups')
+const {
+  createEmptyLifetimeTotals,
+  rebuildLifetimeUsageFromDailyRollups,
+  rebuildUsageRollupsFromLegacySessions
+} = require('./usage-rollups')
 
 const SCHEMA_VERSION = 2
 const STORE_FILE = 'sessions.json'
@@ -37,6 +41,7 @@ const createEmptyStoreState = ({
   liveSessions: [],
   sessionSummaries: [],
   dailyUsageRollups: [],
+  usageLifetime: createEmptyLifetimeTotals(),
   eventDedupe: [],
   stats: {
     totalEvents: 0,
@@ -104,6 +109,7 @@ const migrateLegacyStore = ({
     sessions: legacySessions,
     sessionSummaries: migrated.sessionSummaries
   })
+  migrated.usageLifetime = rebuildLifetimeUsageFromDailyRollups(migrated.dailyUsageRollups)
   migrated.stats.totalEvents = Number(parsed?.stats?.totalEvents) || legacySessions.reduce((sum, session) => {
     return sum + (Array.isArray(session.history) ? session.history.length : 0)
   }, 0)
@@ -128,6 +134,9 @@ const normalizeLoadedState = ({
   state.liveSessions = Array.isArray(parsed?.liveSessions) ? parsed.liveSessions.map((session) => cloneJson(session)) : []
   state.sessionSummaries = Array.isArray(parsed?.sessionSummaries) ? parsed.sessionSummaries.map((summary) => cloneJson(summary)) : []
   state.dailyUsageRollups = Array.isArray(parsed?.dailyUsageRollups) ? parsed.dailyUsageRollups.map((row) => cloneJson(row)) : []
+  state.usageLifetime = parsed?.usageLifetime && typeof parsed.usageLifetime === 'object'
+    ? { ...createEmptyLifetimeTotals(), ...cloneJson(parsed.usageLifetime) }
+    : rebuildLifetimeUsageFromDailyRollups(state.dailyUsageRollups)
   state.eventDedupe = Array.isArray(parsed?.eventDedupe) ? parsed.eventDedupe.map((entry) => cloneJson(entry)) : []
   state.stats.totalEvents = Number(parsed?.stats?.totalEvents) || 0
   state.stats.lastEventAt = String(parsed?.stats?.lastEventAt || '')

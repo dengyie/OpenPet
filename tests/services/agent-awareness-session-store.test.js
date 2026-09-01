@@ -221,6 +221,56 @@ test('session store prunes expired retained history on load without new events',
   assert.equal(status.historyWindowEnd, '')
 })
 
+test('session store keeps durable lifetime usage totals after daily retention and restart', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-lifetime-usage-'))
+  let store = createSessionStore({
+    dataDir,
+    now: () => '2026-07-01T12:00:00.000Z',
+    retentionDays: 2,
+    maxSessions: 5,
+    maxEvents: 10
+  })
+
+  store.upsertEvent({
+    sessionId: 'session-a',
+    project: 'OpenPet #111111',
+    status: 'completed',
+    type: 'turn.usage',
+    timestamp: '2026-06-01T10:00:00.000Z',
+    usage: {
+      totalTokens: 1000,
+      inputTokens: 700,
+      outputTokens: 300,
+      estimatedCostUsd: 0.01,
+      currency: 'USD',
+      contextUsedPercent: 0.5
+    }
+  })
+
+  store = createSessionStore({
+    dataDir,
+    now: () => '2026-07-01T12:00:00.000Z',
+    retentionDays: 2,
+    maxSessions: 5,
+    maxEvents: 10
+  })
+
+  const state = store.getDashboardState()
+  assert.equal(state.dailyUsageRollups.length, 0)
+  assert.deepEqual(state.usageLifetime, {
+    tokenDelta: 1000,
+    inputTokenDelta: 700,
+    outputTokenDelta: 300,
+    cachedInputTokenDelta: 0,
+    costDeltaUsd: 0.01,
+    currency: 'USD',
+    peakContextUsedPercent: 0.5,
+    eventCount: 1,
+    firstSeenAt: '2026-06-01T10:00:00.000Z',
+    lastSeenAt: '2026-06-01T10:00:00.000Z'
+  })
+})
+
 test('session store reapplies live event retention on load without new events', () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-live-evict-load-'))
   let store = createSessionStore({
