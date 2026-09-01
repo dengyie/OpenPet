@@ -88,7 +88,8 @@ test("real backend restart interrupts a running job and exposes retryability", a
     second = await startBackend(dir)
     const job = await waitForJob(second, jobId, (value) => value.status === "interrupted")
     assert.equal(job.error.code, "BACKEND_RESTARTED")
-    assert.equal(job.canRetry, true)
+    // Redacted plugin command inputs cannot be replayed after restart.
+    assert.equal(job.canRetry, false)
     assert.equal(job.attempt, 1)
   } finally {
     if (first) await stop(first).catch(() => {})

@@ -47,10 +47,12 @@ function publicJob(job) {
 		createdAt: isoTime(job.createdAt, "createdAt"),
 		startedAt: isoTime(job.startedAt, "startedAt", { nullable: true }),
 		finishedAt: isoTime(job.finishedAt, "finishedAt", { nullable: true }),
+		canRetry: Boolean(job.canRetry),
 		result: job.result ?? null,
 		error: job.error == null ? null : {
 			code: String(job.error.code || "INTERNAL"),
 			message: String(job.error.message || job.error.code || "Job failed"),
+			retryable: Boolean(job.error.retryable),
 		},
 		input,
 	}

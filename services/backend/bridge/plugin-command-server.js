@@ -403,7 +403,7 @@ export function createPluginCommandServer({ plugins, jobs, logger, processLedger
 			if (timeoutMs > 0) {
 				timeout = setTimeout(() => {
 					killProcessTree(child)
-					settle(() => reject(new ApiError("PROVIDER_TIMEOUT", `Plugin command timed out after ${timeoutMs}ms`, { status: 504 })))
+					settle(() => reject(new ApiError("PROVIDER_TIMEOUT", `Plugin command timed out after ${timeoutMs}ms`, { status: 504, retryable: true })))
 				}, timeoutMs)
 				timeout.unref?.()
 			}

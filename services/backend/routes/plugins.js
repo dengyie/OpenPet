@@ -100,6 +100,10 @@ function clearLogsFor(plugins, pluginId) {
 }
 
 function enqueue(plugins, kind, input, resourceKey = null) {
+	if (kind === "plugin.command" && typeof plugins?.dispatchCommand === "function") {
+		const job = plugins.dispatchCommand(input.pluginId, input.command, input.args ?? {})
+		return { jobId: job.id }
+	}
 	const dispatch = requireMethod(plugins, "enqueueJob")
 	const job = dispatch({ id: `${kind}:${randomUUID()}`, kind, input, resourceKey })
 	return { jobId: job.id }

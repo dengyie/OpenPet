@@ -86,7 +86,8 @@ export const jobSchema = z.object({
   startedAt: z.string().nullable(),
   finishedAt: z.string().nullable(),
   result: z.unknown().nullable(),
-  error: z.object({ code: z.string(), message: z.string() }).nullable(),
+	error: z.object({ code: z.string(), message: z.string(), retryable: z.boolean() }).nullable(),
+	canRetry: z.boolean(),
   /** input 一律脱敏后存储,不得落 prompt 全文以外的密钥类字段 */
   input: z.object({ redacted: z.literal(true), summary: z.string() }),
 })
