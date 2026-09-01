@@ -64,7 +64,11 @@ export function createPluginService({ db, jobs, logs, bridge, commandServer, dia
 			throw new ApiError("BACKEND_UNAVAILABLE", "Plugin logs repository is unavailable")
 		}
 		const queued = logWriter.append(entry)
-		if (!queued.accepted) return { ...structuredClone(entry), accepted: false, reason: queued.reason }
+		if (!queued.accepted) {
+			const rejected = { ...structuredClone(entry), accepted: false, reason: queued.reason }
+			publish("plugin.log", rejected)
+			return rejected
+		}
 		publish("plugin.log", entry)
 		return structuredClone(entry)
 	}
@@ -82,6 +86,14 @@ export function createPluginService({ db, jobs, logs, bridge, commandServer, dia
 		if (!normalizedPluginId) throw new ApiError("VALIDATION_FAILED", "pluginId 不能为空")
 		const result = db.transaction(() => db.prepare("DELETE FROM plugin_logs WHERE plugin_id = ?").run(normalizedPluginId))
 		return { ok: true, pluginId: normalizedPluginId, deleted: result.changes ?? 0 }
+	}
+	let logsClosed = false
+	let logsClosePromise
+	const closeLogs = () => {
+		if (logsClosed) return logsClosePromise ?? Promise.resolve()
+		logsClosed = true
+		logsClosePromise = Promise.resolve().then(() => logWriter.close())
+		return logsClosePromise
 	}
 	const audit = (level, message, details) => logger?.[level]?.(message, details)
 	const lifecycle = createPluginLifecycle({
@@ -187,7 +199,7 @@ export function createPluginService({ db, jobs, logs, bridge, commandServer, dia
 	const stopAll = async () => {
 		const result = await lifecycle.stopAll()
 		try {
-			await logWriter.close()
+			await closeLogs()
 		} catch (error) {
 			audit("error", "Plugin log writer failed during shutdown", { error: String(error) })
 			return { ...result, ok: false, logError: error }
@@ -220,7 +232,7 @@ export function createPluginService({ db, jobs, logs, bridge, commandServer, dia
 		dispatchCommand: commandServer?.dispatch,
 		appendLog,
 		flushLogs: logWriter.flush,
-		closeLogs: logWriter.close,
+		closeLogs,
 		logWriter,
 		getLogs,
 		clearLogs,

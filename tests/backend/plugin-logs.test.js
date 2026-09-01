@@ -23,13 +23,13 @@ before(async () => {
 	;({ createPluginLogWriter } = await import("../../services/backend/domains/plugins/plugin-log-writer.js"))
 })
 
-async function createHarness({ logs: injectedLogs } = {}) {
+async function createHarness({ logs: injectedLogs, logWriter: injectedLogWriter, events: injectedEvents } = {}) {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-plugin-logs-"))
 	const userDataDir = path.join(root, "user-data")
 	fs.mkdirSync(userDataDir, { recursive: true })
 	const db = await openDatabase({ file: path.join(root, "openpet.db") })
 	migrate({ db })
-	const events = []
+	const events = injectedEvents ?? []
 	const service = createPluginService({
 		root: path.resolve(__dirname, "../.."),
 		userDataDir,
@@ -42,6 +42,7 @@ async function createHarness({ logs: injectedLogs } = {}) {
 		bridge: {},
 		emit: (name, payload) => events.push({ name, payload }),
 		now: () => 1_700_000_000_000,
+		logWriter: injectedLogWriter,
 	})
 	return { db, service, events }
 }
@@ -185,4 +186,77 @@ test("T30 async plugin log writer bounds overflow, preserves order, flushes, and
 	assert.equal(errors.length, 1)
 	await writer.close().catch(() => {})
 	assert.deepEqual(writer.append({ message: "after-close" }), { accepted: false, reason: "closed" })
+})
+
+test("T30 async plugin log writer yields between bounded drain batches", async () => {
+	const persisted = []
+	const scheduled = []
+	const writer = createPluginLogWriter({
+		maxQueue: 10,
+		batchSize: 2,
+		append: (entry) => persisted.push(entry.message),
+		setImmediate: (callback) => scheduled.push(callback),
+	})
+	for (let index = 0; index < 5; index += 1) writer.append({ message: `line-${index}` })
+	assert.equal(scheduled.length, 1)
+	scheduled.shift()()
+	assert.deepEqual(persisted, ["line-0", "line-1"])
+	assert.equal(writer.stats().queued, 3)
+	assert.equal(scheduled.length, 1)
+	while (scheduled.length > 0) scheduled.shift()()
+	assert.deepEqual(persisted, ["line-0", "line-1", "line-2", "line-3", "line-4"])
+	await writer.close()
+})
+
+test("T30 plugin log overflow is observable through the plugin event stream", async () => {
+	const events = []
+	const scheduled = []
+	const writer = createPluginLogWriter({
+		maxQueue: 1,
+		append: () => {},
+		setImmediate: (callback) => scheduled.push(callback),
+	})
+	const { service } = await createHarness({ logWriter: writer, events })
+	const first = service.appendLog({ pluginId: "demo", message: "first" })
+	const second = service.appendLog({ pluginId: "demo", message: "second" })
+	assert.equal(first.accepted, undefined)
+	assert.equal(second.accepted, false)
+	assert.deepEqual(events.map((event) => event.name), ["plugin.log", "plugin.log"])
+	assert.equal(events[1].payload.accepted, false)
+	assert.equal(events[1].payload.reason, "queue-full")
+	scheduled.shift()()
+	await service.closeLogs()
+})
+
+test("T30 plugin log writer clears lastError after a later successful drain", async () => {
+	let failuresRemaining = 1
+	const writer = createPluginLogWriter({
+		append: (entry) => {
+			if (failuresRemaining > 0) {
+				failuresRemaining -= 1
+				throw new Error("temporary sqlite unavailable")
+			}
+			return entry
+		},
+	})
+	writer.append({ message: "bad" })
+	await assert.rejects(writer.flush(), /temporary sqlite unavailable/)
+	assert.equal(writer.stats().lastError.message, "temporary sqlite unavailable")
+	writer.append({ message: "good" })
+	await writer.flush()
+	assert.equal(writer.stats().lastError, null)
+	await writer.close()
+})
+
+test("T30 plugin service closes the log writer once across stopAll and shutdown cleanup", async () => {
+	let closeCalls = 0
+	const writer = {
+		append: () => ({ accepted: true }),
+		flush: async () => {},
+		close: async () => { closeCalls += 1 },
+	}
+	const { service } = await createHarness({ logWriter: writer })
+	await service.stopAll()
+	await service.closeLogs()
+	assert.equal(closeCalls, 1)
 })

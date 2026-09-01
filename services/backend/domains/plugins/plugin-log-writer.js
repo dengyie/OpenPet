@@ -7,10 +7,13 @@ export function createPluginLogWriter({
 	append,
 	logger,
 	maxQueue = PLUGIN_LOG_QUEUE_MAX,
+	batchSize = 100,
+	onOverflow,
 	setImmediate: schedule = setImmediate,
 } = {}) {
 	if (typeof append !== "function") throw new TypeError("plugin log writer requires append")
 	if (!Number.isInteger(maxQueue) || maxQueue < 1) throw new TypeError("plugin log writer maxQueue must be positive")
+	if (!Number.isInteger(batchSize) || batchSize < 1) throw new TypeError("plugin log writer batchSize must be positive")
 
 	const queue = []
 	const waiters = []
@@ -22,6 +25,7 @@ export function createPluginLogWriter({
 	let dropped = 0
 	let failed = 0
 	let lastError = null
+	let cycleError = null
 
 	const settle = () => {
 		if (draining || queue.length > 0 || !closed && scheduled) return
@@ -37,14 +41,17 @@ export function createPluginLogWriter({
 		if (draining) return
 		scheduled = false
 		draining = true
+		let processed = 0
 		try {
-			while (queue.length > 0) {
+			while (queue.length > 0 && processed < batchSize) {
 				const entry = queue.shift()
+				processed += 1
 				try {
 					append(entry)
 					persisted += 1
 				} catch (error) {
 					failed += 1
+					cycleError = error
 					lastError = error
 					logger?.error?.("插件日志写入 SQLite 失败", {
 						pluginId: entry.pluginId,
@@ -54,6 +61,7 @@ export function createPluginLogWriter({
 			}
 		} finally {
 			draining = false
+			if (queue.length > 0) scheduleDrain()
 			settle()
 		}
 	}
@@ -68,8 +76,18 @@ export function createPluginLogWriter({
 		if (closed) return { accepted: false, reason: "closed" }
 		if (queue.length >= maxQueue) {
 			dropped += 1
-			logger?.warn?.("插件日志队列已满,丢弃日志", { pluginId: entry.pluginId, maxQueue })
+			const details = { pluginId: entry.pluginId, maxQueue, dropped, reason: "queue-full" }
+			logger?.warn?.("插件日志队列已满,丢弃日志", details)
+			try {
+				onOverflow?.({ entry: structuredClone(entry), ...details })
+			} catch (error) {
+				logger?.warn?.("插件日志溢出通知失败", { pluginId: entry.pluginId, error: String(error) })
+			}
 			return { accepted: false, reason: "queue-full" }
+		}
+		if (queue.length === 0 && !draining) {
+			cycleError = null
+			lastError = null
 		}
 		queue.push(entry)
 		accepted += 1
@@ -79,7 +97,7 @@ export function createPluginLogWriter({
 
 	const flush = () => {
 		if (!draining && queue.length > 0) drain()
-		if (!draining && queue.length === 0) return lastError ? Promise.reject(lastError) : Promise.resolve()
+		if (!draining && queue.length === 0) return cycleError ? Promise.reject(cycleError) : Promise.resolve()
 		return new Promise((resolve, reject) => waiters.push({ resolve, reject }))
 	}
 

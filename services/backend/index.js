@@ -424,6 +424,11 @@ async function shutdown(reason, code) {
 	eventHub.publish(EVENT_BACKEND_SHUTTING_DOWN, { reason })
 	eventHub.closeAll()
 	await runtime.plugins?.stopAll?.()
+	try {
+		await runtime.plugins?.closeLogs?.()
+	} catch (error) {
+		logger.error("插件日志关闭失败", { error: String(error) })
+	}
 	await runtime.plugins?.runtimeBridgeServer?.close?.()
 	await runtime.commandServer?.close?.()
 	await runtime.runner?.shutdown?.()
