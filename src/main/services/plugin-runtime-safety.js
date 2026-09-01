@@ -30,7 +30,16 @@ const sanitizePluginCommandText = (value = '', options = {}) => {
 
 const isPluginCommandOutputKey = (key = '') => /^(error|stderr|stdout)$/i.test(String(key || ''))
 
-const isSensitivePluginResultKey = (key = '') => /^(?:api[_-]?key|authorization|credential|password|secret|.*(?:secret|token))$/i.test(String(key || ''))
+const isSensitivePluginResultKey = (key = '') => /^(?:api[_-]?key|authorization|credential|password|secret|.*(?:secret|token)|authorization\s*:\s*bearer\s+\S+)$/i.test(String(key || ''))
+
+const REDACTED_KEY = '[redacted-key]'
+
+const uniqueRedactedKey = (usedKeys) => {
+  if (!usedKeys.has(REDACTED_KEY)) return REDACTED_KEY
+  let suffix = 2
+  while (usedKeys.has(`${REDACTED_KEY.slice(0, -1)}-${suffix}]`)) suffix += 1
+  return `${REDACTED_KEY.slice(0, -1)}-${suffix}]`
+}
 
 const sanitizePluginCommandResultValue = (value, key = '') => {
   if (isSensitivePluginResultKey(key) && value !== null && value !== undefined) return '[redacted-secret]'
@@ -44,10 +53,15 @@ const sanitizePluginCommandResultValue = (value, key = '') => {
     return value.map((entry) => sanitizePluginCommandResultValue(entry, entryKey))
   }
   if (!value || typeof value !== 'object') return value
-  return Object.fromEntries(Object.entries(value).map(([entryKey, entryValue]) => [
-    entryKey,
-    sanitizePluginCommandResultValue(entryValue, entryKey)
-  ]))
+  const entries = Object.entries(value)
+  const usedKeys = new Set(entries
+    .filter(([entryKey]) => !isSensitivePluginResultKey(entryKey))
+    .map(([entryKey]) => entryKey))
+  return Object.fromEntries(entries.map(([entryKey, entryValue]) => {
+    const outputKey = isSensitivePluginResultKey(entryKey) ? uniqueRedactedKey(usedKeys) : entryKey
+    usedKeys.add(outputKey)
+    return [outputKey, sanitizePluginCommandResultValue(entryValue, entryKey)]
+  }))
 }
 
 module.exports = {

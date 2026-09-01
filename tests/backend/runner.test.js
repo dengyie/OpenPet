@@ -133,12 +133,12 @@ describe("Job runner · retry policy", () => {
 			for (const job of [result, persisted, listed]) {
 				assert.equal(job.error.message, "provider rejected Authorization=[redacted-secret]")
 				assert.deepEqual(job.error.details, {
-					apiKey: "[redacted-secret]",
-					password: "[redacted-secret]",
-					authorization: "[redacted-secret]",
-					clientSecret: "[redacted-secret]",
-					credential: "[redacted-secret]",
-					authToken: "[redacted-secret]",
+					"[redacted-key]": "[redacted-secret]",
+					"[redacted-key-2]": "[redacted-secret]",
+					"[redacted-key-3]": "[redacted-secret]",
+					"[redacted-key-4]": "[redacted-secret]",
+					"[redacted-key-5]": "[redacted-secret]",
+					"[redacted-key-6]": "[redacted-secret]",
 					message: "apiKey=[redacted-secret] password=[redacted-secret] Authorization=[redacted-secret]",
 					safe: "monkey passwordPolicy tokenCount",
 				})

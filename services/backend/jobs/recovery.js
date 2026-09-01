@@ -48,10 +48,18 @@ export function recoverJobs({ repo, tmpDir, emit, logger } = {}) {
 	for (const job of repo.list({ status: "running" })) {
 		repo.finish(job.id, { status: "interrupted", error: interruptionError() })
 		interrupted.push(job.id)
-		repo.transition(job.id, "queued")
-		requeued.push(job.id)
+		if (job.kind !== "plugin.command" || job.input?.redacted !== true) {
+			repo.transition(job.id, "queued")
+			requeued.push(job.id)
+		}
 	}
 	for (const job of repo.list({ status: "queued" })) {
+		if (job.kind === "plugin.command" && job.input?.redacted === true) {
+			repo.transition(job.id, "running")
+			repo.finish(job.id, { status: "interrupted", error: interruptionError() })
+			interrupted.push(job.id)
+			continue
+		}
 		if (!requeued.includes(job.id)) requeued.push(job.id)
 	}
 

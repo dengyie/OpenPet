@@ -137,7 +137,7 @@ async function waitForProcessBoundary(child, maxMs = 2_000) {
 	while (processGroupExists(child?.pid) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 10))
 }
 
-export function createPluginCommandServer({ plugins, jobs, logger, now = Date.now } = {}) {
+export function createPluginCommandServer({ plugins, jobs, logger, processLedger, now = Date.now } = {}) {
 	if (!plugins || typeof plugins !== "object") throw new TypeError("plugin command server requires plugins")
 	if (typeof jobs?.insert !== "function") throw new TypeError("plugin command server requires jobs.insert")
 	const resolveCwd = createPluginEntryCwdResolver()
@@ -341,7 +341,24 @@ export function createPluginCommandServer({ plugins, jobs, logger, now = Date.no
 			stdio: ["pipe", "pipe", "pipe"],
 			windowsHide: true,
 		})
-		try { context.registerProcess?.(child) } catch (error) {
+		let ledgerRegistered = false
+		try {
+			if (typeof processLedger?.register === "function") {
+				processLedger.register(child.pid, {
+					pluginId: normalizedPluginId,
+					commandId: normalizedCommand,
+					startedAt: now(),
+					processName: path.basename(launch.file),
+				})
+				ledgerRegistered = true
+			}
+			context.registerProcess?.(child)
+		} catch (error) {
+			if (ledgerRegistered) {
+				try { processLedger.unregister(child.pid) } catch (unregisterError) {
+					logger?.warn?.("Plugin command process ledger cleanup failed", { pid: child.pid, error: String(unregisterError) })
+				}
+			}
 			killProcessTree(child)
 			throw error
 		}
@@ -364,10 +381,15 @@ export function createPluginCommandServer({ plugins, jobs, logger, now = Date.no
 				settled = true
 				clearTimeout(timeout)
 				context.signal?.removeEventListener?.("abort", aborted)
-				runtimes.delete(runId)
-				const pluginRuns = runsByPlugin.get(normalizedPluginId)
-				pluginRuns?.delete(run)
-				if (pluginRuns?.size === 0) runsByPlugin.delete(normalizedPluginId)
+					runtimes.delete(runId)
+					const pluginRuns = runsByPlugin.get(normalizedPluginId)
+					pluginRuns?.delete(run)
+					if (pluginRuns?.size === 0) runsByPlugin.delete(normalizedPluginId)
+				if (ledgerRegistered) {
+					try { processLedger.unregister(child.pid) } catch (error) {
+						logger?.warn?.("Plugin command process ledger cleanup failed", { pid: child.pid, error: String(error) })
+					}
+				}
 				callback()
 			}
 			const aborted = () => {

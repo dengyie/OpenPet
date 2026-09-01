@@ -47,6 +47,47 @@ test("T27 command server dispatches plugin commands through the Job engine", asy
 	}])
 })
 
+test("T27 command child is registered in and removed from the process ledger", async () => {
+	const { createPluginCommandServer } = await import("../../services/backend/bridge/plugin-command-server.js")
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-t27-command-ledger-"))
+	fs.writeFileSync(path.join(root, "complete.js"), "console.log(JSON.stringify({ ok: true }))\n")
+	const events = []
+	const server = createPluginCommandServer({
+		plugins: {
+			definition: () => ({
+				manifest: {
+					id: "ledger-demo",
+					basePath: root,
+					entries: { commands: [{ id: "complete", command: "node complete.js", cwd: "." }] },
+				},
+			}),
+			runtimeDirs: () => ({ dataDir: root, cacheDir: root, logDir: root }),
+		},
+		jobs: { insert: (input) => input },
+		processLedger: {
+			register(pid, metadata) { events.push(["register", pid, metadata]); return metadata },
+			unregister(pid) { events.push(["unregister", pid]); return true },
+		},
+	})
+	try {
+		const result = await server.execute("ledger-demo", "complete")
+		assert.equal(result.ok, true)
+		assert.equal(events.length, 2)
+		assert.equal(events[0][0], "register")
+		assert.ok(events[0][1] > 0)
+		assert.deepEqual(events[0][2], {
+			pluginId: "ledger-demo",
+			commandId: "complete",
+			startedAt: events[0][2].startedAt,
+			processName: "node",
+		})
+		assert.deepEqual(events[1], ["unregister", events[0][1]])
+	} finally {
+		await server.close()
+		fs.rmSync(root, { recursive: true, force: true })
+	}
+})
+
 test("T27 command bridge serves frozen backend capabilities to the command child", async () => {
 	const { createPluginCommandServer } = await import("../../services/backend/bridge/plugin-command-server.js")
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-t27-bridge-"))
@@ -177,7 +218,7 @@ test("T27 preserves sanitized structured command errors from nonzero exits", asy
 					ok: false,
 					error: "command failed at [redacted-path] with [redacted-secret]",
 					code: "COMMAND_FAILED",
-					details: { apiKey: "[redacted-secret]", path: "[redacted-path]" },
+					details: { "[redacted-key]": "[redacted-secret]", path: "[redacted-path]" },
 				})
 				assert.doesNotMatch(JSON.stringify(error.details), /raw-secret|\/Users\/demo|\/tmp\/private-output|sk-secret123/)
 				return true

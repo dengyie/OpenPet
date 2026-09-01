@@ -50,8 +50,8 @@ test('plugin runtime safety redacts output fields and sensitive result values', 
     }),
     {
       ok: true,
-      token: '[redacted-secret]',
-      apiKey: '[redacted-secret]',
+      '[redacted-key]': '[redacted-secret]',
+      '[redacted-key-2]': '[redacted-secret]',
       stdout: '[redacted-token]=[redacted-secret] [redacted-path]',
       nested: {
         stderr: '[redacted-local-url]',
@@ -71,10 +71,29 @@ test('plugin runtime safety replaces sensitive subtrees and short bearer values'
     safe: { passwordPolicy: 'keep', tokenCount: 2 }
   })
   assert.deepEqual(sanitized, {
-    clientSecret: '[redacted-secret]',
-    credential: '[redacted-secret]',
-    authToken: '[redacted-secret]',
+    '[redacted-key]': '[redacted-secret]',
+    '[redacted-key-2]': '[redacted-secret]',
+    '[redacted-key-3]': '[redacted-secret]',
     error: 'Authorization=[redacted-secret] password=[redacted-secret]',
     safe: { passwordPolicy: 'keep', tokenCount: 2 }
   })
+})
+
+test('plugin runtime safety redacts bearer secrets embedded in keys without dropping collisions', () => {
+  const sanitized = sanitizePluginCommandResultValue({
+    'Authorization: Bearer secret': 'first-value',
+    Authorization: 'second-value',
+    '[redacted-key]': 'safe-value',
+    nested: {
+      'Authorization: Bearer another-secret': 'nested-value'
+    }
+  })
+
+  assert.equal(Object.keys(sanitized).length, 4)
+  assert.equal(Object.keys(sanitized.nested).length, 1)
+  assert.equal(sanitized['[redacted-key]'], 'safe-value')
+  assert.equal(sanitized['[redacted-key-2]'], '[redacted-secret]')
+  assert.equal(sanitized['[redacted-key-3]'], '[redacted-secret]')
+  assert.equal(sanitized.nested['[redacted-key]'], '[redacted-secret]')
+  assert.doesNotMatch(JSON.stringify(sanitized), /Authorization: Bearer secret|Authorization: Bearer another-secret|first-value|second-value|nested-value/)
 })

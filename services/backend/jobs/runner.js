@@ -80,6 +80,7 @@ function isProcessRunning(processHandle) {
 }
 
 function retryableStatus(error) {
+	if (typeof error?.retryable === "boolean") return error.retryable
 	const status = Number(error?.status)
 	return status === 429 || (status >= 500 && status <= 599)
 }

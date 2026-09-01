@@ -87,4 +87,29 @@ describe("Job 启动恢复", () => {
 			assert.deepEqual(repo.byId("succeeded").result, { ok: true })
 		})
 	})
+
+	it("redacted plugin commands cannot survive restart as queued work", async () => {
+		await withRepository((repo) => {
+			for (const [id, running] of [["running-command", true], ["queued-command", false]]) {
+				repo.insert({
+					id,
+					kind: "plugin.command",
+					input: { pluginId: "demo", command: "send", args: { secret: "must-not-persist" } },
+					resourceKey: null,
+				})
+				if (running) repo.transition(id, "running")
+			}
+
+			const result = recoverJobs({ repo })
+			assert.deepEqual(result.interrupted.sort(), ["queued-command", "running-command"])
+			assert.deepEqual(result.requeued, [])
+			for (const id of ["running-command", "queued-command"]) {
+				const job = repo.byId(id)
+				assert.equal(job.status, "interrupted")
+				assert.equal(job.error.code, "BACKEND_RESTARTED")
+				assert.equal(job.error.retryable, true)
+				assert.equal(job.input.redacted, true)
+			}
+		})
+	})
 })

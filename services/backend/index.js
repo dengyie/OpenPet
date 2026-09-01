@@ -272,6 +272,7 @@ await initializeBackendRuntime({
 		recoverJobs,
 		initializePlugins: () => {
 			let runtimeBridgeServer
+			const processLedger = createProcessLedger({ userDataDir: runtime.userDataDir, logger })
 			const pluginFacade = {
 				get: (id) => runtime.plugins?.get?.(id),
 				definition: (id) => runtime.plugins?.definition?.(id),
@@ -299,6 +300,7 @@ await initializeBackendRuntime({
 			const commandServer = createPluginCommandServer({
 				plugins: pluginFacade,
 				jobs: { insert: (input) => runtime.enqueueJob(input) },
+				processLedger,
 				logger,
 			})
 			runtime.commandServer = commandServer
@@ -315,6 +317,7 @@ await initializeBackendRuntime({
 				emit: (name, payload) => eventHub.publish(name, payload),
 				runtimeBridgeServer,
 				commandServer,
+				processLedger,
 			})
 		},
 	},

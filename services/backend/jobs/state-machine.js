@@ -187,6 +187,7 @@ export function assertCancelable(job = {}) {
 /** 可重试 = 状态可回到 queued 且还有剩余尝试次数。 */
 export function canRetry(job = {}) {
 	if (!RETRYABLE_STATUSES.has(job.status)) return false
+	if (job.kind === "plugin.command" && job.input?.redacted === true) return false
 	const attempt = Number.isFinite(job.attempt) ? job.attempt : 1
 	const maxAttempts = Number.isFinite(job.maxAttempts) ? job.maxAttempts : maxAttemptsFor(job.kind)
 	return attempt < maxAttempts
