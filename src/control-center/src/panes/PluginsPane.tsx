@@ -1,2 +1,2 @@
 export { PluginsPane } from './PluginsPaneBody'
-export type { PluginsPaneProps } from './PluginsPaneBody'
+export type { PluginsPaneProps } from './PluginsPaneTypes'

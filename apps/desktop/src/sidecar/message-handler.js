@@ -15,6 +15,7 @@ const BACKEND_TO_SHELL_TYPES = Object.freeze([
 	"ready",
 	"degraded",
 	"dialog.request",
+	"plugin.production.request",
 ])
 
 function log(logger, level, message, fields) {
@@ -78,7 +79,7 @@ function parseEnvelope(raw) {
 	return { ok: true, envelope: { v: raw.v, id: raw.id, at: raw.at, body } }
 }
 
-function createMessageHandler({ dialog, petService, logger, send, onNotify, onBadge, onDashboard } = {}) {
+function createMessageHandler({ dialog, petService, logger, send, onNotify, onBadge, onDashboard, productionService } = {}) {
 	if (typeof send !== "function") throw new TypeError("createMessageHandler 需要 send")
 
 	async function handle(raw) {
@@ -90,7 +91,13 @@ function createMessageHandler({ dialog, petService, logger, send, onNotify, onBa
 		const { body } = parsed.envelope
 
 		try {
-			switch (body.type) {
+				switch (body.type) {
+				case "plugin.production.request": {
+					if (typeof productionService !== "function") throw new Error("Plugin production service unavailable")
+					const result = await productionService(body)
+					send({ v: BRIDGE_PROTOCOL_VERSION, id: raw.id, at: Date.now(), body: { type: "plugin.production.result", requestId: raw.id, result } })
+					return true
+				}
 				case "pet.say":
 					petService?.say?.({ text: body.text, durationMs: body.durationMs, source: "backend" })
 					return true

@@ -92,6 +92,23 @@ const createOpenPetRuntime = ({
     petService,
     getSettings: () => settingsService.get(),
     logger: sidecarLogger,
+    productionService: async (request) => {
+      const pluginId = String(request?.pluginId || '').trim()
+      const serviceId = String(request?.serviceId || '').trim()
+      switch (request?.operation) {
+        case 'setup': return pluginService.runSetup(pluginId, String(request.setupId || '').trim())
+        case 'service.start': return pluginService.startService(pluginId, serviceId)
+        case 'service.stop': return pluginService.stopService(pluginId, serviceId)
+        case 'service.health': return pluginService.checkServiceHealth(pluginId, serviceId)
+        case 'service.health-policy': return pluginService.saveServiceHealthPolicy(pluginId, serviceId, request.policy || {})
+        case 'storage.clear': return pluginService.clearStorage(pluginId)
+        case 'secret.state': return pluginService.getImGatewaySecretState()
+        case 'secret.save': return pluginService.saveImGatewayTelegramBotToken(request.token)
+        case 'secret.clear': return pluginService.clearImGatewayTelegramBotToken()
+        case 'creator.default-flow': return creatorStudioDefaultFlowService.runDefaultFlow({ prompt: request.prompt })
+        default: throw new Error('Unsupported plugin production operation')
+      }
+    },
     pidLedger: factories.createSidecarPidLedger
       ? factories.createSidecarPidLedger({ app, logger: sidecarLogger })
       : createDefaultSidecarPidLedger({ app, logger: sidecarLogger })

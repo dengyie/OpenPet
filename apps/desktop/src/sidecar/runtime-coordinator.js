@@ -119,8 +119,9 @@ function createSidecarRuntimeCoordinator(options = {}) {
 					send: (message) => child?.send?.(message),
 					onNotify: options.onNotify,
 					onBadge: options.onBadge,
-					onDashboard: options.onDashboard,
-				})
+						onDashboard: options.onDashboard,
+						productionService: options.productionService,
+					})
 				const backend = { baseUrl: result.baseUrl, sessionToken: result.sessionToken }
 				publish({ status: "ready", backend, reason: null })
 				return backend

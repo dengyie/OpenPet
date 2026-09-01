@@ -112,14 +112,11 @@ export function createPluginService({ db, jobs, logs, bridge, commandServer, dia
 		for (const dir of Object.values(dirs)) fs.mkdirSync(dir, { recursive: true })
 		return dirs
 	}
-	const clearStorage = (id) => {
-		const dirs = runtimeDirs(id)
-		for (const dir of Object.values(dirs)) {
-			fs.rmSync(dir, { recursive: true, force: true })
-			fs.mkdirSync(dir, { recursive: true })
-		}
-		return get(id)
+	const productionRequest = (operation, payload) => {
+		if (typeof bridge?.request !== "function") throw new ApiError("BACKEND_UNAVAILABLE", "Plugin production service is unavailable")
+		return bridge.request({ type: "plugin.production.request", operation, ...payload })
 	}
+	const clearStorage = (id) => productionRequest("storage.clear", { pluginId: id })
 
 	const list = () => registry.list().map((plugin) => ({ ...plugin, runtime: lifecycle.status(plugin.id) }))
 	const get = (id) => ({ ...registry.get(id), runtime: lifecycle.status(id) })
@@ -235,6 +232,16 @@ export function createPluginService({ db, jobs, logs, bridge, commandServer, dia
 		definition: registry.definition,
 		runtimeDirs,
 		clearStorage,
+		runSetup: (pluginId, setupId) => productionRequest("setup", { pluginId, setupId }),
+		serviceStart: (pluginId, serviceId) => productionRequest("service.start", { pluginId, serviceId }),
+		serviceStop: (pluginId, serviceId) => productionRequest("service.stop", { pluginId, serviceId }),
+		serviceHealth: (pluginId, serviceId) => productionRequest("service.health", { pluginId, serviceId }),
+		saveServiceHealthPolicy: (pluginId, serviceId, policy) => productionRequest("service.health-policy", { pluginId, serviceId, policy }),
+		getSecretState: () => productionRequest("secret.state", {}),
+		saveSecret: (_id, token) => productionRequest("secret.save", { token }),
+		clearSecret: () => productionRequest("secret.clear", {}),
+		creatorDefaultFlow: (_id, prompt) => productionRequest("creator.default-flow", { prompt }),
+		clearInstallSelection: installer.clearPendingSelection,
 		command: lifecycle.command,
 		dispatchCommand: commandServer?.dispatch,
 		appendLog,

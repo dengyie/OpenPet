@@ -7,7 +7,7 @@ const path = require("node:path")
 const { describe, it } = require("node:test")
 
 describe("T25 plugin routes", () => {
-	it("registers the 20 route rows from §4.7 and excludes shell-only capabilities", async () => {
+	it("registers every production route row and excludes shell-only capabilities", async () => {
 		const [{ createRouter }, routes] = await Promise.all([
 			import("../../services/backend/http/router.js"),
 			import("../../services/backend/routes/plugins.js"),
@@ -22,6 +22,18 @@ describe("T25 plugin routes", () => {
 		assert.equal(routes.PLUGIN_ROUTES.length, 20)
 		assert.equal(router.routes().some((route) => route.includes("open-dashboard")), false)
 		assert.equal(router.routes().some((route) => route.includes("inspect-package")), false)
+	})
+
+	it("mechanically covers all 25 real plugin channels: 23 HTTP and 2 IPC", async () => {
+		const [{ IPC }, routes] = await Promise.all([
+			import("../../src/shared/ipc-channels.js"),
+			import("../../services/backend/routes/plugins.js"),
+		])
+		const channels = Object.keys(IPC).filter((key) => key.startsWith("PLUGINS_"))
+		assert.equal(channels.length, 25)
+		assert.deepEqual(routes.PLUGIN_IPC_CHANNELS.slice().sort(), ["PLUGINS_INSPECT_PACKAGE", "PLUGINS_OPEN_DASHBOARD"])
+		assert.deepEqual(Object.keys(routes.PLUGIN_CHANNEL_ROUTES).slice().sort(), channels.filter((key) => !routes.PLUGIN_IPC_CHANNELS.includes(key)).sort())
+		for (const route of Object.values(routes.PLUGIN_CHANNEL_ROUTES)) assert.ok(routes.PLUGIN_ROUTES.includes(route), route)
 	})
 
 	it("dispatches plugin reads, mutations, commands, logs and config through the domain service", async () => {

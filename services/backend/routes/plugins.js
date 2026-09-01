@@ -27,6 +27,37 @@ export const PLUGIN_ROUTES = Object.freeze([
 	"PUT /plugins/:id/config",
 ])
 
+export const PLUGIN_CHANNEL_ROUTES = Object.freeze({
+	PLUGINS_LIST: "GET /plugins",
+	PLUGINS_SET_ENABLED: "POST /plugins/:id/enable",
+	PLUGINS_SET_NATIVE_EXECUTION_APPROVED: "POST /plugins/:id/native-approval",
+	PLUGINS_SAVE_CONFIG: "PUT /plugins/:id/config",
+	PLUGINS_GET_IM_GATEWAY_SECRET_STATE: "GET /plugins/:id/config",
+	PLUGINS_SAVE_IM_GATEWAY_TELEGRAM_TOKEN: "PUT /plugins/:id/config",
+	PLUGINS_CLEAR_IM_GATEWAY_TELEGRAM_TOKEN: "PUT /plugins/:id/config",
+	PLUGINS_RUN_CREATOR_STUDIO_DEFAULT_FLOW: "POST /plugins/:id/commands/:cmd",
+	PLUGINS_RUN_COMMAND: "POST /plugins/:id/commands/:cmd",
+	PLUGINS_RUN_SETUP: "POST /plugins/:id/commands/:cmd",
+	PLUGINS_START_SERVICE: "POST /plugins/:id/start",
+	PLUGINS_STOP_SERVICE: "POST /plugins/:id/stop",
+	PLUGINS_CHECK_SERVICE_HEALTH: "POST /plugins/:id/start",
+	PLUGINS_SAVE_SERVICE_HEALTH_POLICY: "PUT /plugins/:id/config",
+	PLUGINS_INSPECT_GITHUB_REPOSITORY: "POST /plugins/validate",
+	PLUGINS_CLEAR_SELECTION: "POST /plugins/install",
+	PLUGINS_INSTALL: "POST /plugins/install",
+	PLUGINS_UPDATE: "POST /plugins/install",
+	PLUGINS_UNINSTALL: "DELETE /plugins/:id",
+	PLUGINS_GET_LOGS: "GET /plugins/:id/logs",
+	PLUGINS_EXPORT_LOGS: "GET /plugins/:id/logs",
+	PLUGINS_CLEAR_LOGS: "DELETE /plugins/:id/logs",
+	PLUGINS_CLEAR_STORAGE: "POST /plugins/:id/enable",
+})
+
+export const PLUGIN_IPC_CHANNELS = Object.freeze([
+	"PLUGINS_OPEN_DASHBOARD",
+	"PLUGINS_INSPECT_PACKAGE",
+])
+
 function requireMethod(plugins, name) {
 	if (typeof plugins?.[name] !== "function") {
 		throw new ApiError("BACKEND_UNAVAILABLE", `Plugin ${name} service is unavailable`)
@@ -104,6 +135,11 @@ export function registerPluginRoutes(router, { plugins } = {}) {
 	router.get("/plugins/:id", (ctx) => sendSuccess(ctx, requireMethod(plugins, "get")(ctx.params.id)))
 	router.post("/plugins/install", (ctx) => {
 		const body = objectBody(ctx.body)
+		if (ctx.query.operation === "clear-selection") {
+			return sendSuccess(ctx, requireMethod(plugins, "clearInstallSelection")(
+				requiredString(body.selectionId, "selectionId"),
+			))
+		}
 		if (body.selectionId !== undefined) {
 			const selectionId = requiredString(body.selectionId, "selectionId")
 			return sendSuccess(ctx, enqueue(plugins, "plugin.install", { selectionId, update: body.update === true }, null), 202)
@@ -127,13 +163,30 @@ export function registerPluginRoutes(router, { plugins } = {}) {
 	)))
 	router.post("/plugins/:id/enable", async (ctx) => {
 		const body = objectBody(ctx.body)
+		if (ctx.query.operation === "storage-clear") {
+			return sendSuccess(ctx, await requireMethod(plugins, "clearStorage")(ctx.params.id))
+		}
 		return sendSuccess(ctx, await requireMethod(plugins, "setEnabled")(
 			ctx.params.id,
 			requiredBoolean(body.enabled, "enabled"),
 		))
 	})
-	router.post("/plugins/:id/start", async (ctx) => sendSuccess(ctx, await requireMethod(plugins, "start")(ctx.params.id)))
-	router.post("/plugins/:id/stop", async (ctx) => sendSuccess(ctx, await requireMethod(plugins, "stop")(ctx.params.id)))
+	router.post("/plugins/:id/start", async (ctx) => {
+		const body = ctx.body == null ? {} : objectBody(ctx.body)
+		if (ctx.query.operation === "health") {
+			return sendSuccess(ctx, await requireMethod(plugins, "serviceHealth")(
+				ctx.params.id,
+				requiredString(body.serviceId, "serviceId"),
+			))
+		}
+		if (body.serviceId !== undefined) return sendSuccess(ctx, await requireMethod(plugins, "serviceStart")(ctx.params.id, requiredString(body.serviceId, "serviceId")))
+		return sendSuccess(ctx, await requireMethod(plugins, "start")(ctx.params.id))
+	})
+	router.post("/plugins/:id/stop", async (ctx) => {
+		const body = ctx.body == null ? {} : objectBody(ctx.body)
+		if (body.serviceId !== undefined) return sendSuccess(ctx, await requireMethod(plugins, "serviceStop")(ctx.params.id, requiredString(body.serviceId, "serviceId")))
+		return sendSuccess(ctx, await requireMethod(plugins, "stop")(ctx.params.id))
+	})
 	router.post("/plugins/:id/restart", async (ctx) => {
 		if (typeof plugins.restart === "function") return sendSuccess(ctx, await plugins.restart(ctx.params.id))
 		const current = requireMethod(plugins, "status")(ctx.params.id)
@@ -144,16 +197,31 @@ export function registerPluginRoutes(router, { plugins } = {}) {
 	})
 	router.get("/plugins/:id/status", (ctx) => sendSuccess(ctx, requireMethod(plugins, "status")(ctx.params.id)))
 	router.get("/plugins/:id/logs", (ctx) => {
+		if (ctx.query.operation === "export") {
+			return sendSuccess(ctx, requireMethod(plugins, "exportLogs")({ ...ctx.query, pluginId: ctx.params.id }))
+		}
 		const items = logsFor(plugins, ctx.params.id, ctx.query)
 		return sendList(ctx, items)
 	})
 	router.delete("/plugins/:id/logs", (ctx) => sendSuccess(ctx, clearLogsFor(plugins, ctx.params.id)))
-	router.post("/plugins/:id/commands/:cmd", (ctx) => sendSuccess(ctx, enqueue(
-		plugins,
-		"plugin.command",
-		{ pluginId: ctx.params.id, command: ctx.params.cmd, args: ctx.body === null ? {} : objectBody(ctx.body) },
-		`plugin:${ctx.params.id}`,
-	), 202))
+	router.post("/plugins/:id/commands/:cmd", (ctx) => {
+		const body = ctx.body === null ? {} : objectBody(ctx.body)
+		if (ctx.query.operation === "setup") {
+			return sendSuccess(ctx, requireMethod(plugins, "runSetup")(ctx.params.id, ctx.params.cmd))
+		}
+		if (ctx.query.operation === "creator-default-flow") {
+			return sendSuccess(ctx, requireMethod(plugins, "creatorDefaultFlow")(
+				ctx.params.id,
+				requiredString(body.prompt, "prompt"),
+			))
+		}
+		return sendSuccess(ctx, enqueue(
+			plugins,
+			"plugin.command",
+			{ pluginId: ctx.params.id, command: ctx.params.cmd, args: body },
+			`plugin:${ctx.params.id}`,
+		), 202)
+	})
 	router.get("/plugins/:id/permissions", (ctx) => {
 		if (typeof plugins.permissions === "function") return sendSuccess(ctx, plugins.permissions(ctx.params.id))
 		return sendSuccess(ctx, requireMethod(plugins, "get")(ctx.params.id).permissions ?? [])
@@ -180,9 +248,22 @@ export function registerPluginRoutes(router, { plugins } = {}) {
 		return sendSuccess(ctx, requireMethod(plugins, "inspectManifest")(requiredString(body.path, "path")))
 	})
 	router.post("/plugins/sync-bundled", (ctx) => sendSuccess(ctx, enqueue(plugins, "plugin.sync-bundled", {}), 202))
-	router.get("/plugins/:id/config", (ctx) => sendSuccess(ctx, requireMethod(plugins, "config")(ctx.params.id)))
-	router.put("/plugins/:id/config", (ctx) => sendSuccess(ctx, requireMethod(plugins, "setConfig")(
-		ctx.params.id,
-		objectBody(ctx.body),
-	)))
+	router.get("/plugins/:id/config", (ctx) => {
+		if (ctx.query.operation === "secret-state") return sendSuccess(ctx, requireMethod(plugins, "getSecretState")(ctx.params.id))
+		return sendSuccess(ctx, requireMethod(plugins, "config")(ctx.params.id))
+	})
+	router.put("/plugins/:id/config", (ctx) => {
+		const body = objectBody(ctx.body)
+		switch (ctx.query.operation) {
+			case "secret-save": return sendSuccess(ctx, requireMethod(plugins, "saveSecret")(ctx.params.id, requiredString(body.token, "token")))
+			case "secret-clear": return sendSuccess(ctx, requireMethod(plugins, "clearSecret")(ctx.params.id))
+			case "storage-clear": return sendSuccess(ctx, requireMethod(plugins, "clearStorage")(ctx.params.id))
+			case "health-policy": return sendSuccess(ctx, requireMethod(plugins, "saveServiceHealthPolicy")(
+				ctx.params.id,
+				requiredString(body.serviceId, "serviceId"),
+				body.policy === undefined ? body : objectBody(body.policy, "policy"),
+			))
+			default: return sendSuccess(ctx, requireMethod(plugins, "setConfig")(ctx.params.id, body))
+		}
+	})
 }

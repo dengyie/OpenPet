@@ -20,10 +20,9 @@ export function shouldUseImmediatePluginCommandFallback(isDevelopment: boolean, 
 
 export function createPluginHttpApi(client: ApiClient = backendClient) {
   const anyResponse = z.unknown()
-  const request = (method: string, path: string, body?: JsonObject) => client.request({
-    method, path, ...(body === undefined ? {} : { requestSchema: jsonObject, body }),
-    responseSchema: anyResponse, retry: method === 'GET'
-  }) as Promise<any>
+  const request = (method: string, path: string, body?: JsonObject): Promise<any> => body === undefined
+    ? client.request({ method, path, responseSchema: anyResponse, retry: method === 'GET' })
+    : client.request({ method, path, requestSchema: jsonObject, body, responseSchema: anyResponse, retry: method === 'GET' })
   return {
     list: async () => {
       const result = await request('GET', '/plugins')
@@ -41,6 +40,11 @@ export function createPluginHttpApi(client: ApiClient = backendClient) {
       return request('GET', `/plugins/${encodeURIComponent(pluginId)}/logs${params.size ? `?${params}` : ''}`)
     },
     clearLogsFor: (pluginId: string) => request('DELETE', `/plugins/${encodeURIComponent(pluginId)}/logs`),
+    clearSelection: (selectionId: string) => request('POST', '/plugins/install?operation=clear-selection', { selectionId }),
+    exportLogsHttp: (query: Record<string, unknown> = {}) => {
+      const params = new URLSearchParams({ operation: 'export', ...Object.fromEntries(Object.entries(query).filter(([, value]) => value != null).map(([key, value]) => [key, String(value)])) })
+      return request('GET', `/plugins/${encodeURIComponent(String(query.pluginId || ''))}/logs?${params}`)
+    },
     permissions: (pluginId: string) => request('GET', `/plugins/${encodeURIComponent(pluginId)}/permissions`),
     setPermissions: (pluginId: string, permissions: string[]) => request('PUT', `/plugins/${encodeURIComponent(pluginId)}/permissions`, { permissions }),
     config: (pluginId: string) => request('GET', `/plugins/${encodeURIComponent(pluginId)}/config`),
@@ -51,14 +55,16 @@ export function createPluginHttpApi(client: ApiClient = backendClient) {
     uninstall: (pluginId: string, removeStorage = false) => request('DELETE', `/plugins/${encodeURIComponent(pluginId)}?removeStorage=${removeStorage}`),
     validate: (path: string) => request('POST', '/plugins/validate', { path }),
     syncBundled: () => request('POST', '/plugins/sync-bundled', {}),
-    setup: (pluginId: string, setupId: string) => request('POST', '/plugins/' + encodeURIComponent(pluginId) + '/commands/setup:' + encodeURIComponent(setupId), {}),
-    service: (pluginId: string, serviceId: string, operation: 'start' | 'stop' | 'health') => request('POST', '/plugins/' + encodeURIComponent(pluginId) + '/commands/service:' + operation + ':' + encodeURIComponent(serviceId), {}),
-    servicePolicy: (pluginId: string, serviceId: string, policy: JsonObject) => request('POST', '/plugins/' + encodeURIComponent(pluginId) + '/commands/service-policy:' + encodeURIComponent(serviceId), policy),
-    storage: (pluginId: string) => request('POST', '/plugins/' + encodeURIComponent(pluginId) + '/commands/storage:clear', {}),
-    creatorFlow: (prompt: string) => request('POST', '/plugins/openpet.creator-studio/commands/default-flow', { prompt }),
+    setup: (pluginId: string, setupId: string) => request('POST', `/plugins/${encodeURIComponent(pluginId)}/commands/${encodeURIComponent(setupId)}?operation=setup`, {}),
+    service: (pluginId: string, serviceId: string, operation: 'start' | 'stop' | 'health') => operation === 'health'
+      ? request('POST', `/plugins/${encodeURIComponent(pluginId)}/start?operation=health`, { serviceId })
+      : request('POST', `/plugins/${encodeURIComponent(pluginId)}/${operation}`, { serviceId }),
+    servicePolicy: (pluginId: string, serviceId: string, policy: JsonObject) => request('PUT', `/plugins/${encodeURIComponent(pluginId)}/config?operation=health-policy`, { serviceId, policy }),
+    storage: (pluginId: string) => request('POST', `/plugins/${encodeURIComponent(pluginId)}/enable?operation=storage-clear`, {}),
+    creatorFlow: (prompt: string) => request('POST', '/plugins/openpet.creator-studio/commands/default-flow?operation=creator-default-flow', { prompt }),
     imSecret: (operation: 'state' | 'save' | 'clear', token?: string) => operation === 'state'
-      ? request('GET', '/plugins/openpet.im-gateway/config')
-      : request('POST', '/plugins/openpet.im-gateway/commands/secret:' + operation, token ? { token } : {}),
+      ? request('GET', '/plugins/openpet.im-gateway/config?operation=secret-state')
+      : request('PUT', `/plugins/openpet.im-gateway/config?operation=secret-${operation}`, token ? { token } : {}),
     update: (selectionId: string) => request('POST', '/plugins/install', { selectionId, update: true }),
     exportLogs: async (query: Record<string, unknown> = {}) => {
       const plugins = await (async () => {
