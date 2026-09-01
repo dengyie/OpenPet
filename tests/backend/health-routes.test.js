@@ -225,4 +225,35 @@ describe("T09 启动编排", () => {
 		assert.equal(intervals[0].delay, health.LOG_CLEANUP_INTERVAL_MS)
 		assert.equal(timer.unrefCalled, true)
 	})
+
+	it("等待异步迁移与恢复完成后再 bind", async () => {
+		const calls = []
+		let releaseMigration
+		let releaseRecovery
+		const migration = new Promise((resolve) => { releaseMigration = resolve })
+		const recovery = new Promise((resolve) => { releaseRecovery = resolve })
+		const runtime = createRuntime({ db: null, settings: null, jobs: null })
+		const initialize = health.initializeBackendRuntime({
+			runtime,
+			userDataDir: "/tmp/openpet-async-startup",
+			deps: {
+				createSettingsStore: () => { calls.push("settings"); return {} },
+				openDatabase: async () => { calls.push("open"); return { driverName: "fake" } },
+				migrate: () => { calls.push("migrate"); return migration },
+				createJobsRepository: () => { calls.push("jobs"); return {} },
+				createLogsRepository: () => { calls.push("logs"); return {} },
+				recoverJobs: () => { calls.push("recover"); return recovery },
+			},
+			bind: async () => { calls.push("bind") },
+		})
+
+		await Promise.resolve()
+		assert.deepEqual(calls, ["settings", "open", "migrate"])
+		releaseMigration()
+		await Promise.resolve()
+		assert.deepEqual(calls, ["settings", "open", "migrate", "jobs", "logs", "recover"])
+		releaseRecovery()
+		await initialize
+		assert.deepEqual(calls, ["settings", "open", "migrate", "jobs", "logs", "recover", "bind"])
+	})
 })
