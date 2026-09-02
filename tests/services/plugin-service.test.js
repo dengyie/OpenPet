@@ -4093,11 +4093,11 @@ test('plugin service stores IM Gateway Telegram token without exposing its value
     }
   })
 
-  assert.deepEqual(service.getImGatewaySecretState(), { hasTelegramBotToken: false })
+  assert.deepEqual(service.getImGatewaySecretState(), { hasTelegramBotToken: false, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false })
 
   const saved = service.saveImGatewayTelegramBotToken('telegram-token')
 
-  assert.deepEqual(saved, { hasTelegramBotToken: true })
+  assert.deepEqual(saved, { hasTelegramBotToken: true, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false })
   assert.deepEqual(secretCalls[0], {
     id: 'im.telegram.botToken',
     value: 'telegram-token',
@@ -4107,7 +4107,7 @@ test('plugin service stores IM Gateway Telegram token without exposing its value
 
   const cleared = service.clearImGatewayTelegramBotToken()
 
-  assert.deepEqual(cleared, { hasTelegramBotToken: false })
+  assert.deepEqual(cleared, { hasTelegramBotToken: false, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false })
   assert.deepEqual(secretCalls[1], { id: 'im.telegram.botToken', deleted: true })
 })
 
@@ -4174,7 +4174,11 @@ test('plugin service injects Telegram secret and config only for IM Gateway serv
   const imGatewayChild = createSlowStoppingServiceProcess()
   const weatherChild = createSlowStoppingServiceProcess()
   const secretService = {
-    getSecretValue: (id) => id === 'im.telegram.botToken' ? 'telegram-token' : ''
+    getSecretValue: (id) => ({
+      'im.telegram.botToken': 'telegram-token',
+      'im.qq.appId': 'qq-app-id-secret',
+      'im.qq.clientSecret': 'qq-client-secret-value'
+    }[id] || '')
   }
   const imGatewayService = createPluginService({
     settingsService: createSettingsService({
@@ -4202,6 +4206,8 @@ test('plugin service injects Telegram secret and config only for IM Gateway serv
   await imGatewayService.startService('openpet.im-gateway', 'im-gateway')
 
   assert.equal(imGatewaySpawned[0].options.env.OPENPET_IM_TELEGRAM_BOT_TOKEN, 'telegram-token')
+  assert.equal(imGatewaySpawned[0].options.env.OPENPET_IM_QQ_APP_ID, 'qq-app-id-secret')
+  assert.equal(imGatewaySpawned[0].options.env.OPENPET_IM_QQ_CLIENT_SECRET, 'qq-client-secret-value')
   assert.equal(JSON.stringify(imGatewaySpawned[0].options.env).includes('telegram-token'), true)
   const config = JSON.parse(imGatewaySpawned[0].options.env.OPENPET_IM_GATEWAY_CONFIG_JSON)
   assert.equal(config.telegramEnabled, true)
@@ -4227,6 +4233,29 @@ test('plugin service injects Telegram secret and config only for IM Gateway serv
 
   assert.equal(weatherSpawned[0].options.env.OPENPET_IM_TELEGRAM_BOT_TOKEN, undefined)
   assert.equal(weatherSpawned[0].options.env.OPENPET_IM_GATEWAY_CONFIG_JSON, undefined)
+})
+
+test('plugin service saves QQ official credentials as separate host secrets without exposing values', () => {
+  const values = new Map()
+  const secretService = {
+    getSecretValue: (id) => values.get(id) || '',
+    setSecret: ({ id, value }) => values.set(id, value),
+    deleteSecret: (id) => values.delete(id)
+  }
+  const service = createPluginService({
+    settingsService: createSettingsService(),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [path.resolve(__dirname, '../../examples/plugins')],
+    secretService
+  })
+  const saved = service.saveImGatewayQqOfficialCredentials({ appId: 'qq-app-id-secret', clientSecret: 'qq-client-secret-value' })
+  assert.deepEqual(saved, { hasTelegramBotToken: false, hasQqOfficialAppId: true, hasQqOfficialClientSecret: true, hasQqOfficialCredentials: true })
+  assert.equal(JSON.stringify(saved).includes('qq-client-secret-value'), false)
+  assert.equal(values.get('im.qq.appId'), 'qq-app-id-secret')
+  assert.equal(values.get('im.qq.clientSecret'), 'qq-client-secret-value')
+  const cleared = service.clearImGatewayQqOfficialCredentials()
+  assert.equal(cleared.hasQqOfficialCredentials, false)
 })
 
 test('plugin service registers service bridge runtime before spawning child process', async () => {

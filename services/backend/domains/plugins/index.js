@@ -265,6 +265,8 @@ export function createPluginService({ db, jobs, logs, bridge, commandServer, dia
 		getSecretState: () => productionRequest("secret.state", {}),
 		saveSecret: (_id, token) => productionRequest("secret.save", { token }),
 		clearSecret: () => productionRequest("secret.clear", {}),
+		saveQqCredentials: (_id, credentials) => productionRequest("secret.qq.save", { credentials }),
+		clearQqCredentials: () => productionRequest("secret.qq.clear", {}),
 		creatorDefaultFlow: (_id, prompt) => productionRequest("creator.default-flow", { prompt }),
 		clearInstallSelection: installer.clearPendingSelection,
 		command: lifecycle.command,

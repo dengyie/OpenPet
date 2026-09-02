@@ -105,6 +105,8 @@ const createOpenPetRuntime = ({
         case 'secret.state': return pluginService.getImGatewaySecretState()
         case 'secret.save': return pluginService.saveImGatewayTelegramBotToken(request.token)
         case 'secret.clear': return pluginService.clearImGatewayTelegramBotToken()
+        case 'secret.qq.save': return pluginService.saveImGatewayQqOfficialCredentials(request.credentials || {})
+        case 'secret.qq.clear': return pluginService.clearImGatewayQqOfficialCredentials()
         case 'creator.default-flow': return creatorStudioDefaultFlowService.runDefaultFlow({ prompt: request.prompt })
         default: throw new Error('Unsupported plugin production operation')
       }

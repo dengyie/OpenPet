@@ -3,8 +3,21 @@
 `openpet.im-gateway` is the bundled official runtime plugin that connects IM
 messages to OpenPet pet behavior.
 
-The current runtime supports Telegram through long polling. QQ, WeChat, WeCom,
-and OneBot are out of scope and have no adapter implementation in this plugin.
+The current runtime supports Telegram through long polling and includes a
+development/test-boundary adapter for the official QQ Robot route. The QQ
+adapter uses an injected official-protocol transport seam (WebSocket events,
+token HTTP exchange, and HTTPS replies); it does not claim real-account
+support, and it never falls back to OneBot. WeCom and personal WeChat routes
+are out of scope here.
+
+## QQ Official Robot (development/test boundary)
+
+QQ is disabled by default and requires both plugin enablement and native
+execution approval. The host stores `appId` and `clientSecret` separately and
+injects them only while this service starts. Plugin config contains routing
+policy and optional fake-transport URLs only; it never contains credentials.
+Automated tests use fake HTTP/WebSocket clients. Real QQ credentials and
+account smoke are not part of the development test gate.
 
 ## Telegram Setup
 

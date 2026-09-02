@@ -79,6 +79,8 @@ const sanitizePluginHealthDetailValue = (value = '') => sanitizePluginCommandTex
 const IM_GATEWAY_PLUGIN_ID = 'openpet.im-gateway'
 const IM_GATEWAY_SERVICE_ID = 'im-gateway'
 const IM_GATEWAY_TELEGRAM_BOT_TOKEN_SECRET_ID = 'im.telegram.botToken'
+const IM_GATEWAY_QQ_APP_ID_SECRET_ID = 'im.qq.appId'
+const IM_GATEWAY_QQ_CLIENT_SECRET_SECRET_ID = 'im.qq.clientSecret'
 const IM_GATEWAY_HEALTH_MESSAGES = new Map([
   ['missing-token', 'Telegram token missing'],
   ['telegram-polling-conflict', 'Telegram polling conflict'],
@@ -1154,8 +1156,14 @@ const createPluginService = ({ settingsService, petService, actionService, actio
 
   const getPluginConfig = (pluginId, schema) => normalizePluginConfig(schema, getConfigMap()[pluginId] || {})
 
-  const getImGatewaySecretState = () => ({
-    hasTelegramBotToken: Boolean(secretService?.getSecretValue?.(IM_GATEWAY_TELEGRAM_BOT_TOKEN_SECRET_ID))
+const getImGatewaySecretState = () => ({
+    hasTelegramBotToken: Boolean(secretService?.getSecretValue?.(IM_GATEWAY_TELEGRAM_BOT_TOKEN_SECRET_ID)),
+    hasQqOfficialAppId: Boolean(secretService?.getSecretValue?.(IM_GATEWAY_QQ_APP_ID_SECRET_ID)),
+    hasQqOfficialClientSecret: Boolean(secretService?.getSecretValue?.(IM_GATEWAY_QQ_CLIENT_SECRET_SECRET_ID)),
+    hasQqOfficialCredentials: Boolean(
+      secretService?.getSecretValue?.(IM_GATEWAY_QQ_APP_ID_SECRET_ID) &&
+      secretService?.getSecretValue?.(IM_GATEWAY_QQ_CLIENT_SECRET_SECRET_ID)
+    )
   })
 
   const assertImGatewayRuntimeMutationAllowed = (message) => {
@@ -1189,6 +1197,39 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     return getImGatewaySecretState()
   }
 
+  const saveImGatewayQqOfficialCredentials = ({ appId, clientSecret } = {}) => {
+    assertImGatewaySecretService()
+    assertImGatewayRuntimeMutationAllowed('Stop IM Gateway before changing QQ credentials')
+    const normalizedAppId = String(appId || '').trim()
+    const normalizedClientSecret = String(clientSecret || '').trim()
+    if (!normalizedAppId || !normalizedClientSecret) throw new Error('QQ appId and clientSecret are required')
+    const previousAppId = secretService.getSecretValue?.(IM_GATEWAY_QQ_APP_ID_SECRET_ID) || ''
+    const previousClientSecret = secretService.getSecretValue?.(IM_GATEWAY_QQ_CLIENT_SECRET_SECRET_ID) || ''
+    try {
+      secretService.setSecret({ id: IM_GATEWAY_QQ_APP_ID_SECRET_ID, value: normalizedAppId, label: 'QQ Official App ID' })
+      secretService.setSecret({ id: IM_GATEWAY_QQ_CLIENT_SECRET_SECRET_ID, value: normalizedClientSecret, label: 'QQ Official Client Secret' })
+    } catch (error) {
+      try {
+        if (previousAppId) secretService.setSecret({ id: IM_GATEWAY_QQ_APP_ID_SECRET_ID, value: previousAppId, label: 'QQ Official App ID' })
+        else secretService.deleteSecret?.(IM_GATEWAY_QQ_APP_ID_SECRET_ID)
+        if (previousClientSecret) secretService.setSecret({ id: IM_GATEWAY_QQ_CLIENT_SECRET_SECRET_ID, value: previousClientSecret, label: 'QQ Official Client Secret' })
+        else secretService.deleteSecret?.(IM_GATEWAY_QQ_CLIENT_SECRET_SECRET_ID)
+      } catch (_) {}
+      throw error
+    }
+    appendLog({ pluginId: IM_GATEWAY_PLUGIN_ID, level: 'info', message: 'IM Gateway QQ official credentials saved' })
+    return getImGatewaySecretState()
+  }
+
+  const clearImGatewayQqOfficialCredentials = () => {
+    assertImGatewaySecretService()
+    assertImGatewayRuntimeMutationAllowed('Stop IM Gateway before changing QQ credentials')
+    secretService.deleteSecret?.(IM_GATEWAY_QQ_APP_ID_SECRET_ID)
+    secretService.deleteSecret?.(IM_GATEWAY_QQ_CLIENT_SECRET_SECRET_ID)
+    appendLog({ pluginId: IM_GATEWAY_PLUGIN_ID, level: 'info', message: 'IM Gateway QQ official credentials cleared' })
+    return getImGatewaySecretState()
+  }
+
   const createImGatewayServiceEnv = (plugin, serviceId) => {
     if (plugin.manifest.id !== IM_GATEWAY_PLUGIN_ID || serviceId !== IM_GATEWAY_SERVICE_ID) return {}
     const env = {
@@ -1196,6 +1237,10 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     }
     const token = secretService?.getSecretValue?.(IM_GATEWAY_TELEGRAM_BOT_TOKEN_SECRET_ID)
     if (token) env.OPENPET_IM_TELEGRAM_BOT_TOKEN = token
+    const qqAppId = secretService?.getSecretValue?.(IM_GATEWAY_QQ_APP_ID_SECRET_ID)
+    const qqClientSecret = secretService?.getSecretValue?.(IM_GATEWAY_QQ_CLIENT_SECRET_SECRET_ID)
+    if (qqAppId) env.OPENPET_IM_QQ_APP_ID = qqAppId
+    if (qqClientSecret) env.OPENPET_IM_QQ_CLIENT_SECRET = qqClientSecret
     return env
   }
 
@@ -2459,7 +2504,9 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     setHatchPetAgentService,
     getImGatewaySecretState,
     saveImGatewayTelegramBotToken,
-    clearImGatewayTelegramBotToken
+    clearImGatewayTelegramBotToken,
+    saveImGatewayQqOfficialCredentials,
+    clearImGatewayQqOfficialCredentials
   }
 }
 

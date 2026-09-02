@@ -22,6 +22,10 @@ const createImGatewayServer = ({
   adapters = createDefaultAdapters({
     config,
     token: process.env.OPENPET_IM_TELEGRAM_BOT_TOKEN || '',
+    secrets: {
+      appId: process.env.OPENPET_IM_QQ_APP_ID || '',
+      clientSecret: process.env.OPENPET_IM_QQ_CLIENT_SECRET || ''
+    },
     logEvent
   }),
   createServer = http.createServer

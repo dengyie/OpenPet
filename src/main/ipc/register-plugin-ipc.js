@@ -34,6 +34,12 @@ const registerPluginIpc = ({
   ipcMainService.handle(IPC.PLUGINS_CLEAR_IM_GATEWAY_TELEGRAM_TOKEN, () => (
     pluginService.clearImGatewayTelegramBotToken()
   ))
+  ipcMainService.handle(IPC.PLUGINS_SAVE_IM_GATEWAY_QQ_CREDENTIALS, (_event, payload) => (
+    pluginService.saveImGatewayQqOfficialCredentials(payload || {})
+  ))
+  ipcMainService.handle(IPC.PLUGINS_CLEAR_IM_GATEWAY_QQ_CREDENTIALS, () => (
+    pluginService.clearImGatewayQqOfficialCredentials()
+  ))
   ipcMainService.handle(IPC.PLUGINS_RUN_CREATOR_STUDIO_DEFAULT_FLOW, (_event, payload) => {
     if (!creatorStudioDefaultFlowService?.runDefaultFlow) {
       throw new Error('Creator Studio default flow is not available')

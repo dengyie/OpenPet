@@ -1717,6 +1717,9 @@ export interface PluginViewState {
 
 export interface ImGatewaySecretState {
   hasTelegramBotToken: boolean
+  hasQqOfficialAppId: boolean
+  hasQqOfficialClientSecret: boolean
+  hasQqOfficialCredentials: boolean
 }
 
 export interface PluginLogEntry {
@@ -3786,6 +3789,8 @@ export interface ControlCenterApi {
   getImGatewaySecretState: () => Promise<ImGatewaySecretState>
   saveImGatewayTelegramBotToken: (token: string) => Promise<ImGatewaySecretState>
   clearImGatewayTelegramBotToken: () => Promise<ImGatewaySecretState>
+  saveImGatewayQqOfficialCredentials: (credentials: { appId: string; clientSecret: string }) => Promise<ImGatewaySecretState>
+  clearImGatewayQqOfficialCredentials: () => Promise<ImGatewaySecretState>
   savePluginServiceHealthPolicy: (pluginId: string, serviceId: string, policy: PluginServiceHealthPolicyViewState) => Promise<PluginViewState>
   getCreatorState: () => Promise<CreatorStateViewState>
   pickCreatorReferenceImage: () => Promise<CreatorReferencePickerResult>

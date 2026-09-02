@@ -1822,14 +1822,14 @@ test('plugins IM Gateway secret IPC returns renderer-safe token state', async ()
       },
       pluginService: {
         listPlugins: () => [],
-        getImGatewaySecretState: () => ({ hasTelegramBotToken: false }),
+        getImGatewaySecretState: () => ({ hasTelegramBotToken: false, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false }),
         saveImGatewayTelegramBotToken: (token) => {
           calls.push(['save-token', token])
-          return { hasTelegramBotToken: true }
+          return { hasTelegramBotToken: true, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false }
         },
         clearImGatewayTelegramBotToken: () => {
           calls.push(['clear-token'])
-          return { hasTelegramBotToken: false }
+          return { hasTelegramBotToken: false, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false }
         }
       },
       dialogService: {
@@ -1843,9 +1843,9 @@ test('plugins IM Gateway secret IPC returns renderer-safe token state', async ()
   const saved = await ipcMain.handlers.get(IPC.PLUGINS_SAVE_IM_GATEWAY_TELEGRAM_TOKEN)(null, { token: 'telegram-token' })
   const cleared = await ipcMain.handlers.get(IPC.PLUGINS_CLEAR_IM_GATEWAY_TELEGRAM_TOKEN)()
 
-  assert.deepEqual(state, { hasTelegramBotToken: false })
-  assert.deepEqual(saved, { hasTelegramBotToken: true })
-  assert.deepEqual(cleared, { hasTelegramBotToken: false })
+  assert.deepEqual(state, { hasTelegramBotToken: false, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false })
+  assert.deepEqual(saved, { hasTelegramBotToken: true, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false })
+  assert.deepEqual(cleared, { hasTelegramBotToken: false, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false })
   assert.deepEqual(calls, [
     ['save-token', 'telegram-token'],
     ['clear-token']

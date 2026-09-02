@@ -9,6 +9,12 @@
       "description": "Enable the Telegram adapter when the IM Gateway service starts.",
       "default": false
     },
+    "qqEnabled": {
+      "type": "boolean",
+      "title": "Enable QQ official robot",
+      "description": "Enable the official QQ Robot adapter. Credentials are stored by the host and are never part of this config.",
+      "default": false
+    },
     "telegramMode": {
       "type": "string",
       "title": "Telegram mode",

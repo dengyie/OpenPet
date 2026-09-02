@@ -38,6 +38,10 @@ export interface PluginsPaneProps {
   installingPlugin: boolean
   uninstallingPlugin: string
   imGatewaySecretState: ImGatewaySecretState
+  imGatewayQqAppIdDraft: string
+  imGatewayQqClientSecretDraft: string
+  savingImGatewayQqCredentials: boolean
+  clearingImGatewayQqCredentials: boolean
   imGatewayTelegramTokenDraft: string
   savingImGatewayTelegramToken: boolean
   clearingImGatewayTelegramToken: boolean
@@ -56,6 +60,10 @@ export interface PluginsPaneProps {
   onSaveConfig: (pluginId: string) => void | Promise<void>
   onSaveImGatewayTelegramBotToken: () => void | Promise<void>
   onClearImGatewayTelegramBotToken: () => void | Promise<void>
+  onChangeImGatewayQqAppIdDraft: (value: string) => void
+  onChangeImGatewayQqClientSecretDraft: (value: string) => void
+  onSaveImGatewayQqCredentials: () => void | Promise<void>
+  onClearImGatewayQqCredentials: () => void | Promise<void>
   onRun: (pluginId: string, commandId: string) => void | Promise<void>
   onRunCreatorStudioDefaultFlow: () => void | Promise<void>
   onRunSetup: (pluginId: string, setupId: string) => void | Promise<void>

@@ -261,6 +261,8 @@ export function registerPluginRoutes(router, { plugins } = {}) {
 		switch (ctx.query.operation) {
 			case "secret-save": return sendSuccess(ctx, requireMethod(plugins, "saveSecret")(ctx.params.id, requiredString(body.token, "token")))
 			case "secret-clear": return sendSuccess(ctx, requireMethod(plugins, "clearSecret")(ctx.params.id))
+			case "secret-qq-save": return sendSuccess(ctx, requireMethod(plugins, "saveQqCredentials")(ctx.params.id, body))
+			case "secret-qq-clear": return sendSuccess(ctx, requireMethod(plugins, "clearQqCredentials")(ctx.params.id))
 			case "storage-clear": return sendSuccess(ctx, requireMethod(plugins, "clearStorage")(ctx.params.id))
 			case "health-policy": return sendSuccess(ctx, requireMethod(plugins, "saveServiceHealthPolicy")(
 				ctx.params.id,

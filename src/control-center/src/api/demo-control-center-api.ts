@@ -119,6 +119,8 @@ interface DemoState {
   plugins: PluginViewState[]
   secrets: {
     imGatewayTelegramBotToken: boolean
+    imGatewayQqOfficialAppId?: boolean
+    imGatewayQqOfficialClientSecret?: boolean
   }
   pluginLogs: Array<{
     id: string
@@ -4034,7 +4036,10 @@ export const demoControlCenterAPI: ControlCenterApi = {
     return updatedPlugin
   },
   getImGatewaySecretState: async () => ({
-    hasTelegramBotToken: Boolean(demoState.secrets?.imGatewayTelegramBotToken)
+    hasTelegramBotToken: Boolean(demoState.secrets?.imGatewayTelegramBotToken),
+    hasQqOfficialAppId: Boolean(demoState.secrets?.imGatewayQqOfficialAppId),
+    hasQqOfficialClientSecret: Boolean(demoState.secrets?.imGatewayQqOfficialClientSecret),
+    hasQqOfficialCredentials: Boolean(demoState.secrets?.imGatewayQqOfficialAppId && demoState.secrets?.imGatewayQqOfficialClientSecret)
   }),
   saveImGatewayTelegramBotToken: async (token) => {
     const normalized = String(token || '').trim()
@@ -4048,7 +4053,7 @@ export const demoControlCenterAPI: ControlCenterApi = {
       ...demoState.pluginLogs
     ]
     writeDemoState()
-    return { hasTelegramBotToken: true }
+    return { hasTelegramBotToken: true, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false }
   },
   clearImGatewayTelegramBotToken: async () => {
     demoState.secrets = {
@@ -4060,7 +4065,20 @@ export const demoControlCenterAPI: ControlCenterApi = {
       ...demoState.pluginLogs
     ]
     writeDemoState()
-    return { hasTelegramBotToken: false }
+    return { hasTelegramBotToken: false, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false }
+  },
+  saveImGatewayQqOfficialCredentials: async ({ appId, clientSecret }) => {
+    if (!String(appId || '').trim() || !String(clientSecret || '').trim()) throw new Error('QQ appId and clientSecret are required')
+    demoState.secrets = { ...(demoState.secrets || {}), imGatewayQqOfficialAppId: true, imGatewayQqOfficialClientSecret: true }
+    demoState.pluginLogs = [createDemoPluginLog('openpet.im-gateway', 'IM Gateway QQ official credentials saved'), ...demoState.pluginLogs]
+    writeDemoState()
+    return { hasTelegramBotToken: Boolean(demoState.secrets?.imGatewayTelegramBotToken), hasQqOfficialAppId: true, hasQqOfficialClientSecret: true, hasQqOfficialCredentials: true }
+  },
+  clearImGatewayQqOfficialCredentials: async () => {
+    demoState.secrets = { ...(demoState.secrets || {}), imGatewayQqOfficialAppId: false, imGatewayQqOfficialClientSecret: false }
+    demoState.pluginLogs = [createDemoPluginLog('openpet.im-gateway', 'IM Gateway QQ official credentials cleared'), ...demoState.pluginLogs]
+    writeDemoState()
+    return { hasTelegramBotToken: Boolean(demoState.secrets?.imGatewayTelegramBotToken), hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false }
   },
   getCreatorState: async () => createDemoCreatorState(),
   pickCreatorReferenceImage: async (): Promise<CreatorReferencePickerResult> => approveDemoCreatorReference(demoState.creatorReferencePickerPath || defaultDemoCreatorReferencePickerPath),

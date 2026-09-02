@@ -1,5 +1,7 @@
 const DEFAULT_CONFIG = {
   telegramEnabled: false,
+  qqEnabled: false,
+  qqIntents: 1107296256,
   telegramMode: 'polling',
   privateTextMode: 'command-only',
   groupChatPolicy: 'mention-or-command',
@@ -40,6 +42,8 @@ const normalizeBoolean = (value, fallback = false) => (
 
 const normalizeImGatewayConfig = (input = {}) => ({
   telegramEnabled: normalizeBoolean(input.telegramEnabled),
+  qqEnabled: normalizeBoolean(input.qqEnabled),
+  qqIntents: Number.isInteger(Number(input.qqIntents)) ? Number(input.qqIntents) : DEFAULT_CONFIG.qqIntents,
   telegramMode: normalizeEnum(input.telegramMode, ['polling'], DEFAULT_CONFIG.telegramMode),
   privateTextMode: normalizeEnum(input.privateTextMode, ['command-only', 'pet-say', 'ai-chat'], DEFAULT_CONFIG.privateTextMode),
   groupChatPolicy: normalizeEnum(input.groupChatPolicy, ['mention-or-command', 'command-only'], DEFAULT_CONFIG.groupChatPolicy),

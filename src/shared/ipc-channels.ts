@@ -107,6 +107,8 @@ export const IPC = Object.freeze({
   PLUGINS_GET_IM_GATEWAY_SECRET_STATE: 'plugins:im-gateway:get-secret-state',
   PLUGINS_SAVE_IM_GATEWAY_TELEGRAM_TOKEN: 'plugins:im-gateway:save-telegram-token',
   PLUGINS_CLEAR_IM_GATEWAY_TELEGRAM_TOKEN: 'plugins:im-gateway:clear-telegram-token',
+  PLUGINS_SAVE_IM_GATEWAY_QQ_CREDENTIALS: 'plugins:im-gateway:save-qq-credentials',
+  PLUGINS_CLEAR_IM_GATEWAY_QQ_CREDENTIALS: 'plugins:im-gateway:clear-qq-credentials',
   PLUGINS_RUN_CREATOR_STUDIO_DEFAULT_FLOW: 'plugins:run-creator-studio-default-flow',
   PLUGINS_RUN_COMMAND: 'plugins:run-command',
   PLUGINS_RUN_SETUP: 'plugins:run-setup',

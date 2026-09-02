@@ -19,7 +19,10 @@
     "dashboards": []
   },
   "manifest": {
-    "adapters": ["telegram"],
+    "adapters": ["telegram", "qq-official"],
+    "capabilities": {
+      "qq-official": "Official QQ Robot WebSocket/event transport (development/test boundary; no OneBot fallback)"
+    },
     "privacy": {
       "captures": ["platform", "adapter status", "hashed peer identifiers", "trigger type", "command name", "success/failure", "short error code", "timestamp"],
       "doesNotCapture": ["raw IM text", "attachments", "voice transcripts", "tokens", "full platform payloads", "local file paths"]

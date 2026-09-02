@@ -70,6 +70,9 @@ export function createPluginHttpApi(client: ApiClient = backendClient) {
     imSecret: (operation: 'state' | 'save' | 'clear', token?: string) => operation === 'state'
       ? request('GET', '/plugins/openpet.im-gateway/config?operation=secret-state')
       : request('PUT', `/plugins/openpet.im-gateway/config?operation=secret-${operation}`, token ? { token } : {}),
+    imQqCredentials: (operation: 'state' | 'save' | 'clear', credentials?: { appId: string; clientSecret: string }) => operation === 'state'
+      ? request('GET', '/plugins/openpet.im-gateway/config?operation=secret-state')
+      : request('PUT', `/plugins/openpet.im-gateway/config?operation=secret-qq-${operation}`, credentials || {}),
     update: (selectionId: string) => request('POST', '/plugins/install', { selectionId, update: true }),
     exportLogs: async (query: Record<string, unknown> = {}) => {
       const plugins = await (async () => {
@@ -156,6 +159,12 @@ export const pluginHttpApi: PluginApi = {
     if (operation === 'state') return controlCenterAPI.getImGatewaySecretState()
     if (operation === 'save') return controlCenterAPI.saveImGatewayTelegramBotToken(token || '')
     return controlCenterAPI.clearImGatewayTelegramBotToken()
+  },
+  imQqCredentials: (operation, credentials) => {
+    if (!usePluginDemoApi()) return pluginHttpApiTransport.imQqCredentials(operation, credentials)
+    if (operation === 'state') return controlCenterAPI.getImGatewaySecretState()
+    if (operation === 'save') return controlCenterAPI.saveImGatewayQqOfficialCredentials(credentials || { appId: '', clientSecret: '' })
+    return controlCenterAPI.clearImGatewayQqOfficialCredentials()
   },
   exportLogs: (query = {}) => usePluginDemoApi()
     ? controlCenterAPI.exportPluginLogs(query as any)
