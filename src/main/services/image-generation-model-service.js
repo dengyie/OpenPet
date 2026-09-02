@@ -244,6 +244,7 @@ const isTransientProviderHttpStatus = (status) => {
 }
 
 const isTransientProviderTransportError = (error) => {
+  if (error?.code === 'provider_timeout') return false
   const code = String(error?.cause?.code || error?.code || '').trim().toUpperCase()
   if (TRANSIENT_PROVIDER_TRANSPORT_CODES.has(code)) return true
   const message = String(error?.message || error || '').trim().toLowerCase()
@@ -316,7 +317,9 @@ const fetchWithTimeout = async ({
   } catch (error) {
     if (error?.code === 'provider_response_too_large') throw error
     if (isAbortError(error) || controller.signal.aborted) {
-      throw new Error(timeoutMessage)
+      const timeoutError = new Error(timeoutMessage)
+      timeoutError.code = 'provider_timeout'
+      throw timeoutError
     }
     throw error
   } finally {

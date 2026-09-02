@@ -2068,6 +2068,45 @@ test('image generation model service times out provider generation requests and 
   assert.equal(JSON.stringify(logs).includes(dataDir), false)
 })
 
+test('image generation model service does not retry an already classified provider timeout', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-timeout-'))
+  const logs = []
+  let calls = 0
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings()),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-secret', label: 'Image API Key' }
+    }),
+    appLogService: { record: (entry) => logs.push(entry) },
+    providerGenerationTimeoutMs: 25,
+    fetchImpl: async () => {
+      calls += 1
+      const error = new Error('Image Provider generation timed out after 25ms')
+      error.code = 'provider_timeout'
+      throw error
+    }
+  })
+
+  await assert.rejects(
+    () => service.generateImage({
+      prompt: 'private detailed custom pet prompt',
+      referenceImages: createReferenceImages(dataDir),
+      output: { dataDir, dataRelativeDir: 'runs/provider-timeout-classified/frames/base' },
+      constraints: { width: 1024, height: 1024, transparent: true }
+    }),
+    /timed out/i
+  )
+
+  assert.equal(calls, 1)
+  assert.deepEqual(logs.map((entry) => entry.event), [
+    'imageGeneration.request.started',
+    'imageGeneration.provider.request.started',
+    'imageGeneration.provider.request.failed',
+    'imageGeneration.request.failed'
+  ])
+  assert.equal(logs[2].details.errorCode, 'provider_timeout')
+})
+
 test('image generation model service times out while reading a stalled generation response body', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-'))
   const service = createImageGenerationModelService({
