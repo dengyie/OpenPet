@@ -216,7 +216,7 @@ const createQqOfficialAdapter = ({
   }
 
   const handleSocketMessage = (payload) => {
-    const data = payload && typeof payload === 'object' && Object.hasOwn(payload, 'data') ? payload.data : payload
+    const data = payload && typeof payload === 'object' && 'data' in payload ? payload.data : payload
     let update
     try {
       update = typeof data === 'string' || Buffer.isBuffer(data) || data instanceof ArrayBuffer || ArrayBuffer.isView(data)

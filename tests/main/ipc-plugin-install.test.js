@@ -1830,6 +1830,14 @@ test('plugins IM Gateway secret IPC returns renderer-safe token state', async ()
         clearImGatewayTelegramBotToken: () => {
           calls.push(['clear-token'])
           return { hasTelegramBotToken: false, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false }
+        },
+        saveImGatewayQqOfficialCredentials: (credentials) => {
+          calls.push(['save-qq-credentials', credentials])
+          return { hasTelegramBotToken: false, hasQqOfficialAppId: true, hasQqOfficialClientSecret: true, hasQqOfficialCredentials: true }
+        },
+        clearImGatewayQqOfficialCredentials: () => {
+          calls.push(['clear-qq-credentials'])
+          return { hasTelegramBotToken: false, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false }
         }
       },
       dialogService: {
@@ -1842,15 +1850,23 @@ test('plugins IM Gateway secret IPC returns renderer-safe token state', async ()
   const state = await ipcMain.handlers.get(IPC.PLUGINS_GET_IM_GATEWAY_SECRET_STATE)()
   const saved = await ipcMain.handlers.get(IPC.PLUGINS_SAVE_IM_GATEWAY_TELEGRAM_TOKEN)(null, { token: 'telegram-token' })
   const cleared = await ipcMain.handlers.get(IPC.PLUGINS_CLEAR_IM_GATEWAY_TELEGRAM_TOKEN)()
+  const qqSaved = await ipcMain.handlers.get(IPC.PLUGINS_SAVE_IM_GATEWAY_QQ_CREDENTIALS)(null, { appId: 'qq-app-id', clientSecret: 'qq-client-secret' })
+  const qqCleared = await ipcMain.handlers.get(IPC.PLUGINS_CLEAR_IM_GATEWAY_QQ_CREDENTIALS)()
 
   assert.deepEqual(state, { hasTelegramBotToken: false, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false })
   assert.deepEqual(saved, { hasTelegramBotToken: true, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false })
   assert.deepEqual(cleared, { hasTelegramBotToken: false, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false })
+  assert.deepEqual(qqSaved, { hasTelegramBotToken: false, hasQqOfficialAppId: true, hasQqOfficialClientSecret: true, hasQqOfficialCredentials: true })
+  assert.deepEqual(qqCleared, { hasTelegramBotToken: false, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false })
   assert.deepEqual(calls, [
     ['save-token', 'telegram-token'],
-    ['clear-token']
+    ['clear-token'],
+    ['save-qq-credentials', { appId: 'qq-app-id', clientSecret: 'qq-client-secret' }],
+    ['clear-qq-credentials']
   ])
-  assert.equal(JSON.stringify({ state, saved, cleared }).includes('telegram-token'), false)
+  assert.equal(JSON.stringify({ state, saved, cleared, qqSaved, qqCleared }).includes('telegram-token'), false)
+  assert.equal(JSON.stringify({ state, saved, cleared, qqSaved, qqCleared }).includes('qq-app-id'), false)
+  assert.equal(JSON.stringify({ state, saved, cleared, qqSaved, qqCleared }).includes('qq-client-secret'), false)
 })
 
 test('plugin mutation handlers return plugin mutation result with refreshed plugin list', async () => {

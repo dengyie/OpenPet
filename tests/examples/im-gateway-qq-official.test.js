@@ -103,6 +103,23 @@ test('QQ official adapter decodes WebSocket MessageEvent payloads and uses one g
   await adapter.stop()
 })
 
+test('QQ official adapter decodes MessageEvent data exposed through a prototype getter', async () => {
+  const { adapter, socket } = createAdapter()
+  const messages = []
+  adapter.onMessage((message) => { messages.push(message) })
+  await adapter.start()
+
+  const payload = JSON.stringify({ op: 0, t: 'C2C_MESSAGE_CREATE', d: {
+    id: 'prototype-message-event-1', author: { user_openid: 'user-1' }, content: 'from prototype getter'
+  } })
+  const event = Object.create({ get data() { return payload } })
+  socket.emit('message', event)
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.deepEqual(messages.map((message) => message.messageId), ['prototype-message-event-1'])
+  await adapter.stop()
+})
+
 test('QQ official adapter tracks sequence, acknowledges heartbeat, and reports reconnect or invalid-session opcodes', async () => {
   let heartbeat
   const { adapter, socket } = createAdapter({ clock: { setTimeout: (callback) => { heartbeat = callback; return 1 }, clearTimeout: () => {} } })
