@@ -7,7 +7,12 @@ export type { PluginsPaneProps } from './PluginsPaneTypes'
 
 export function PluginsPane(props: PluginsPaneProps) {
   const enabled = props.plugins.filter((plugin) => plugin.enabled).length
-  const attention = props.plugins.filter((plugin) => Boolean(plugin.blockStatus?.blocked) || (plugin.enabled && plugin.requiresNativeExecution && !plugin.nativeExecutionApproved)).length
+  const attention = props.plugins.filter((plugin) => Boolean(plugin.blockStatus?.blocked) || (
+    plugin.enabled && (
+      (plugin.requiresNativeExecution && !plugin.nativeExecutionApproved) ||
+      plugin.entries?.services?.some((service) => service.runtime?.status === 'failed')
+    )
+  )).length
   return <section className="pane">
     <header className="pane-header"><div><h1>Plugins</h1><p>查看状态、打开常用入口，需要时再展开高级管理</p></div><div className="header-actions"><button type="button" className="primary" disabled={props.inspectingPlugin} onClick={props.onInspectPluginPackage}>{props.inspectingPlugin ? '读取中' : 'Install plugin'}</button></div></header>
     <div className="plugins-overview" aria-label="插件概览"><div><strong>{props.plugins.length}</strong><span>已安装</span></div><div><strong>{enabled}</strong><span>已启用</span></div><div className={attention ? 'attention' : ''}><strong>{attention}</strong><span>需要处理</span></div></div>
