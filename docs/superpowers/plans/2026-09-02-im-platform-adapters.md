@@ -1,5 +1,7 @@
 # IM Platform Adapters Implementation Plan
 
+> **Status (2026-09-03): historical implementation record.** Tasks 1-4 are implemented and merged in `main` through `ab0ec234`. The reported development gates are green: `npm test` 2891 pass/1 skip, backend 207, core 2051 pass/1 skip, tools 630, Control Center 77, resilience 3, IM 3, and API contract 158. Remote push/CI confirmation is still pending. Task 5 is intentionally not complete: real Telegram/QQ/WeCom account smoke, packaged smoke, external-plugin checks, signature release checks, and manual desktop acceptance remain `not-run` evidence and are not blockers for this test-version development work.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Extend the bundled `openpet.im-gateway` plugin from its Telegram-first implementation to a shared, platform-neutral gateway with QQ official robot first and WeCom self-built application second, while keeping secrets and lifecycle host-owned.
@@ -90,21 +92,21 @@ createAdapter({ config, secrets, bridge, httpClient, websocketFactory, clock }) 
 - Consumes: existing Telegram adapter factory and bridge client.
 - Produces: `createAdapter()` registration keyed by adapter id; a platform-neutral `createGateway({ adapters, bridge, config })`; redacted health keyed by adapter id.
 
-- [ ] **Step 1: Capture the current contract in a failing regression.** Add tests that register a fake adapter under `qq-official`, route one normalized message through the gateway, and assert the gateway does not read `telegramEnabled` or `OPENPET_IM_TELEGRAM_BOT_TOKEN` for that adapter.
-- [ ] **Step 2: Run the focused test to verify the regression fails.**
+- [x] **Step 1: Capture the current contract in a failing regression.** Add tests that register a fake adapter under `qq-official`, route one normalized message through the gateway, and assert the gateway does not read `telegramEnabled` or `OPENPET_IM_TELEGRAM_BOT_TOKEN` for that adapter.
+- [x] **Step 2: Run the focused test to verify the regression fails.**
 
 Run: `node --test tests/examples/im-gateway-plugin.test.js`
 
 Expected: the new adapter-neutral test fails because the registry and config path currently only describe Telegram.
 
-- [ ] **Step 3: Implement the smallest shared boundary.** Make the registry accept adapter factories, make gateway dispatch by adapter id, and keep each credential lookup inside the adapter factory. Add `qqEnabled` and `wecomEnabled` defaults set to `false`; do not add secret-shaped schema properties.
-- [ ] **Step 4: Verify shared behavior and redaction.**
+- [x] **Step 3: Implement the smallest shared boundary.** Make the registry accept adapter factories, make gateway dispatch by adapter id, and keep each credential lookup inside the adapter factory. Add `qqEnabled` and `wecomEnabled` defaults set to `false`; do not add secret-shaped schema properties.
+- [x] **Step 4: Verify shared behavior and redaction.**
 
 Run: `node --test tests/examples/im-gateway-plugin.test.js tests/plugins/manifest.test.js`
 
 Expected: all focused tests pass and manifest validation still accepts the bundled plugin.
 
-- [ ] **Step 5: Commit the independently reviewable boundary.**
+- [x] **Step 5: Commit the independently reviewable boundary.** The shared boundary is included in the merged IM implementation history.
 
 ```bash
 git add examples/plugins/im-gateway tests/examples/im-gateway-plugin.test.js
@@ -139,28 +141,28 @@ git commit -m "refactor(im-gateway): make adapter registry platform neutral"
 - Consumes: Task 1's adapter registry and existing host plugin lifecycle.
 - Produces: `createQqOfficialAdapter({ config, secrets, bridge, websocketFactory, clock })`, separate host secret refs `im.qq.appId` and `im.qq.clientSecret`, and renderer-safe `hasQqOfficialCredentials` state.
 
-- [ ] **Step 1: Write failing adapter and host-isolation tests.** Cover official QQ authentication setup, private/group normalization, command receipt, disabled default, native approval requirement, and the invariant that QQ credentials are absent from plugin config, health, logs, and renderer payloads. Add a test that a future OneBot id is rejected by the selected official route.
-- [ ] **Step 2: Run the QQ tests and verify failure.**
+- [x] **Step 1: Write failing adapter and host-isolation tests.** Cover official QQ authentication setup, private/group normalization, command receipt, disabled default, native approval requirement, and the invariant that QQ credentials are absent from plugin config, health, logs, and renderer payloads. Add a test that a future OneBot id is rejected by the selected official route.
+- [x] **Step 2: Run the QQ tests and verify failure.**
 
 Run: `node --test tests/examples/im-gateway-qq-official.test.js tests/services/plugin-service.test.js tests/main/ipc-plugin-install.test.js`
 
 Expected: the new factory, secret state, and adapter behavior are missing.
 
-- [ ] **Step 3: Implement official QQ transport inside the plugin.** Use the official robot transport boundary selected for the supported API (WebSocket/event ingress plus HTTPS send calls where required), map only bounded fields into the private normalized message, use `pet:say`/`pet:action`/`pet:event` through the existing bridge, and emit stable redacted error codes. Do not add OneBot fallback behavior.
-- [ ] **Step 4: Implement host secret/config/UI wiring.** Persist only `im.qq.appId` and `im.qq.clientSecret` through the existing host secret service, inject them only when `openpet.im-gateway` starts, expose saved-state booleans only, add non-secret allowlist/policy fields to the plugin schema, and keep the adapter disabled until enablement and native approval are both true.
-- [ ] **Step 5: Run focused verification.**
+- [x] **Step 3: Implement official QQ transport inside the plugin.** Use the official robot transport boundary selected for the supported API (WebSocket/event ingress plus HTTPS send calls where required), map only bounded fields into the private normalized message, use `pet:say`/`pet:action`/`pet:event` through the existing bridge, and emit stable redacted error codes. Do not add OneBot fallback behavior.
+- [x] **Step 4: Implement host secret/config/UI wiring.** Persist only `im.qq.appId` and `im.qq.clientSecret` through the existing host secret service, inject them only when `openpet.im-gateway` starts, expose saved-state booleans only, add non-secret allowlist/policy fields to the plugin schema, and keep the adapter disabled until enablement and native approval are both true.
+- [x] **Step 5: Run focused verification.**
 
 Run: `node --test tests/examples/im-gateway-qq-official.test.js tests/examples/im-gateway-plugin.test.js tests/services/plugin-service.test.js tests/main/ipc-plugin-install.test.js`
 
 Expected: all QQ and shared plugin tests pass with no real credentials.
 
-- [ ] **Step 6: Run the Control Center regression.**
+- [x] **Step 6: Run the Control Center regression.**
 
 Run: `npx playwright test tests/control-center/control-center-smoke.spec.js --grep "IM Gateway|QQ"`
 
 Expected: the Plugins pane shows QQ official robot capability, saved-state-only credentials, disabled-by-default state, and service/native-approval controls without a token value.
 
-- [ ] **Step 7: Commit only the QQ implementation scope.**
+- [x] **Step 7: Commit only the QQ implementation scope.**
 
 ```bash
 git add examples/plugins/im-gateway src/main src/shared/openpet-contracts.ts src/control-center/src tests/examples/im-gateway-qq-official.test.js tests/services/plugin-service.test.js tests/main/ipc-plugin-install.test.js tests/control-center/control-center-smoke.spec.js
@@ -195,28 +197,28 @@ git commit -m "feat(im-gateway): add official QQ robot adapter"
 - Consumes: Task 1's adapter registry and Task 2's host lifecycle pattern.
 - Produces: `createWecomAdapter({ config, secrets, bridge, httpClient, clock })`, separate host secret refs `im.wecom.corpSecret`, `im.wecom.token`, and `im.wecom.encodingAesKey`, and renderer-safe `hasWecomCredentials` state.
 
-- [ ] **Step 1: Write failing WeCom protocol tests.** Cover callback signature verification, XML/JSON normalization, bounded reply delivery, callback failure codes, disabled default, native approval, and the invariant that raw callback bodies and credentials never reach health/logs/renderer state.
-- [ ] **Step 2: Run the focused test to verify failure.**
+- [x] **Step 1: Write failing WeCom protocol tests.** Cover callback signature verification, XML/JSON normalization, bounded reply delivery, callback failure codes, disabled default, native approval, and the invariant that raw callback bodies and credentials never reach health/logs/renderer state.
+- [x] **Step 2: Run the focused test to verify failure.**
 
 Run: `node --test tests/examples/im-gateway-wecom.test.js`
 
 Expected: the WeCom factory and callback/send implementation are absent.
 
-- [ ] **Step 3: Implement the WeCom adapter.** Keep callback verification and access-token handling within the plugin adapter, use an injected HTTP client for deterministic tests, normalize only in-memory message fields, send bounded receipts, and report stable redacted health/error codes. Do not add Official Account or personal-client transport.
-- [ ] **Step 4: Add separate host secret/config/UI paths.** Keep WeCom credentials separate from QQ and Telegram, expose saved-state booleans only, add non-secret callback/listener policy to plugin config, and require plugin enablement plus native approval before starting the route.
-- [ ] **Step 5: Run focused verification.**
+- [x] **Step 3: Implement the WeCom adapter.** Keep callback verification and access-token handling within the plugin adapter, use an injected HTTP client for deterministic tests, normalize only in-memory message fields, send bounded receipts, and report stable redacted health/error codes. Do not add Official Account or personal-client transport.
+- [x] **Step 4: Add separate host secret/config/UI paths.** Keep WeCom credentials separate from QQ and Telegram, expose saved-state booleans only, add non-secret callback/listener policy to plugin config, and require plugin enablement plus native approval before starting the route.
+- [x] **Step 5: Run focused verification.**
 
 Run: `node --test tests/examples/im-gateway-wecom.test.js tests/examples/im-gateway-qq-official.test.js tests/services/plugin-service.test.js tests/main/ipc-plugin-install.test.js`
 
 Expected: QQ, WeCom, and host-isolation tests pass without external network access.
 
-- [ ] **Step 6: Run the Control Center regression.**
+- [x] **Step 6: Run the Control Center regression.**
 
 Run: `npx playwright test tests/control-center/control-center-smoke.spec.js --grep "IM Gateway|WeCom"`
 
 Expected: the Plugins pane presents WeCom as the selected first WeChat route, keeps Official Account/personal automation out of the supported list, and never renders raw credentials.
 
-- [ ] **Step 7: Commit only the WeCom implementation scope.**
+- [x] **Step 7: Commit only the WeCom implementation scope.**
 
 ```bash
 git add examples/plugins/im-gateway src/main src/shared/openpet-contracts.ts src/control-center/src tests/examples/im-gateway-wecom.test.js tests/services/plugin-service.test.js tests/main/ipc-plugin-install.test.js tests/control-center/control-center-smoke.spec.js
@@ -236,22 +238,37 @@ git commit -m "feat(im-gateway): add WeCom application adapter"
 - Consumes: Tasks 1-3 adapter factories, host gates, and redacted contracts.
 - Produces: deterministic fake QQ/WeCom protocol coverage and integration-gate evidence. The scoped TypeScript evidence-summary tranche is already landed in `20ef3ebf` and is not reopened by this plan.
 
-- [ ] **Step 1: Add protocol matrix cases before implementation changes.** The matrix must cover allowed/rejected private and group messages, direct commands, receipts, duplicate callback/update handling, timeout/error paths, shutdown, redaction, and secret non-leakage for both adapters.
-- [ ] **Step 2: Run the matrix and record the expected failures.**
+#### Task 4 Protocol Matrix Status
+
+| Boundary | QQ official robot | WeCom application | Development status |
+| --- | --- | --- | --- |
+| Private/group normalization and policy rejection | covered | covered | green |
+| Command and bounded receipt delivery | covered | covered | green |
+| Duplicate update/callback suppression | covered | covered | green |
+| Timeout, transport error, and HTTP semantic failure | covered | covered | green |
+| Shutdown, abort, overload, and retry boundaries | covered | covered | green |
+| Redacted health/logs and host-secret isolation | covered | covered | green |
+| Disabled-by-default and native approval lifecycle | covered | covered | green |
+| Control Center saved-state/UI contract | covered | covered | green |
+
+This matrix is fake-client coverage only. It does not represent live Telegram, QQ, or WeCom account evidence.
+
+- [x] **Step 1: Add protocol matrix cases before implementation changes.** The matrix covers allowed/rejected private and group messages, direct commands, receipts, duplicate callback/update handling, timeout/error paths, shutdown, redaction, and secret non-leakage for both adapters.
+- [x] **Step 2: Run the matrix and record the expected failures.**
 
 Run: `node --test tests/examples/im-gateway-plugin.test.js tests/examples/im-gateway-qq-official.test.js tests/examples/im-gateway-wecom.test.js`
 
 Expected: only unsupported or not-yet-covered matrix cases fail; existing Telegram cases remain green.
 
-- [ ] **Step 3: Complete the protocol matrix and integration gates.** Cover allowed/rejected private and group messages, direct commands, receipts, duplicate callback/update handling, timeout/error paths, shutdown, redaction, secret non-leakage, shared registration, host-owned secret isolation, disabled defaults, native approval, lifecycle start/stop, and Control Center contract behavior for both adapters using fake protocol clients only.
+- [x] **Step 3: Complete the protocol matrix and integration gates.** Cover allowed/rejected private and group messages, direct commands, receipts, duplicate callback/update handling, timeout/error paths, shutdown, redaction, secret non-leakage, shared registration, host-owned secret isolation, disabled defaults, native approval, lifecycle start/stop, and Control Center contract behavior for both adapters using fake protocol clients only.
 
-- [ ] **Step 4: Run all simulated protocol and tooling gates.**
+- [x] **Step 4: Run all simulated protocol and tooling gates.**
 
 Run: `npm run test:tools`
 
 Expected: all tooling tests pass; no real QQ/WeCom credentials or network calls are attempted.
 
-- [ ] **Step 5: Commit the protocol matrix and integration gates.**
+- [x] **Step 5: Commit the protocol matrix and integration gates.** The protocol matrix and integration coverage are included in the merged implementation history.
 
 ```bash
 git add tests/examples tests/services/plugin-service.test.js tests/control-center/control-center-smoke.spec.js
@@ -286,19 +303,19 @@ Expected: all commands pass. The manual smoke record is supplementary evidence a
 
 ## Verification Checklist
 
-- [ ] `npm run test:tools`
-- [ ] `npm run check:docs-drift`
-- [ ] `git diff --check`
-- [ ] `node --test tests/examples/im-gateway-plugin.test.js tests/examples/im-gateway-qq-official.test.js tests/examples/im-gateway-wecom.test.js`
-- [ ] `node --test tests/services/plugin-service.test.js tests/main/ipc-plugin-install.test.js`
-- [ ] `npx playwright test tests/control-center/control-center-smoke.spec.js --grep "IM Gateway|QQ|WeCom"`
-- [ ] Confirm `git status --short` lists no staged or committed `node_modules` symlink.
+- [x] `npm run test:tools`
+- [x] `npm run check:docs-drift`
+- [x] `git diff --check`
+- [x] `node --test tests/examples/im-gateway-plugin.test.js tests/examples/im-gateway-qq-official.test.js tests/examples/im-gateway-wecom.test.js`
+- [x] `node --test tests/services/plugin-service.test.js tests/main/ipc-plugin-install.test.js`
+- [x] `npx playwright test tests/control-center/control-center-smoke.spec.js --grep "IM Gateway|QQ|WeCom"`
+- [x] Confirm `git status --short` lists no staged or committed `node_modules` symlink; final worktree is clean.
 
 ## Deliberate Non-Goals
 
 - QQ OneBot is not implemented as the first route and is not a fallback when official QQ is unavailable.
 - Personal WeChat client injection, iLink, and Official Account are not implemented by this plan.
-- No claim of QQ or WeChat support is valid before Tasks 2-4 pass; manual smoke in Task 5 is evidence, not a development completion gate.
+- Tasks 2-4 are complete and establish the implemented test-version development path. Task 5 manual smoke is evidence only, remains `not-run` without external accounts, and is not a development completion gate.
 - Agent Awareness Phase C and richer trigger semantics remain outside this plan.
 - Global TypeScript `checkJs` and main-process rewrites remain outside this plan.
 

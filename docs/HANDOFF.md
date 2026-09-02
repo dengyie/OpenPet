@@ -1,6 +1,6 @@
 # OpenPet Handoff
 
-> Last updated: 2026-09-02
+> Last updated: 2026-09-03
 > Canonical active queue: [`TODO.md`](./TODO.md)
 > Branch: `main`
 
@@ -33,8 +33,8 @@ This file is the compact maintainer continuation note. Historical phase-level de
 - Creator Studio imported review surfaces are phase-aware imported review guidance: after import they no longer mix pre-import QA, repair controls, or retry generation cues into the imported state.
 - The typed plugin view config schema/storage/signature payloads, action-frame `inspectionResult` payloads, and pet-pack mutation view payloads are already normalized through the TypeScript adapter boundary.
 - The current plugin host bridge keeps `trigger-proposals:write` and `model:image-generate` as the narrow generation/review permissions, and plugin-managed provider credentials are unsupported for host-managed generation.
-- IM platform decisions are now fixed: QQ's first real route is the official QQ robot, and WeChat's first real route is a WeCom self-built application. OneBot is reserved for a future experimental compatibility layer; personal-client injection and an Official Account first route are rejected for the initial WeChat path. Neither adapter is implemented yet, so this decision must not be reported as QQ or WeChat support.
-- Both future adapters stay inside the bundled `openpet.im-gateway` plugin. The host owns secret storage and service lifecycle; each route is disabled by default, requires native execution approval, does not persist raw messages, and must not add QQ/WeCom SDKs to the Electron main process. The implementation sequence is tracked in [`superpowers/plans/2026-09-02-im-platform-adapters.md`](./superpowers/plans/2026-09-02-im-platform-adapters.md).
+- IM platform decisions are now fixed and implemented: QQ's first route is the official QQ robot, and WeChat's first route is a WeCom self-built application. OneBot remains a future experimental compatibility layer; personal-client injection and an Official Account first route remain outside scope.
+- Both adapters are merged in `main` through `ab0ec234` inside bundled `openpet.im-gateway`. The host owns secret storage and service lifecycle; each route is disabled by default, requires native execution approval, does not persist raw messages, and does not add QQ/WeCom SDKs to the Electron main process. The deterministic protocol/UI/host gates are green; remote push/CI is pending, and real Telegram/QQ/WeCom account smoke is manual `not-run` evidence rather than a test-version development blocker. The implementation record is [`superpowers/plans/2026-09-02-im-platform-adapters.md`](./superpowers/plans/2026-09-02-im-platform-adapters.md).
 - Agent Awareness durable usage rollups are landed. The remaining Phase B work is human desktop acceptance for dashboard usefulness, pet speech/noise, and fresh Codex signal smoke/archive evidence; Phase C companion features remain deferred pending separate product approval.
 - Trigger editing is intentionally bounded: the current UI, contract, and runtime cover random mode/interval, state predicate/source, event name/source, summary, enable/disable, and delete. Expand it only when a new runtime semantic requires additional fields.
 - The scoped TypeScript evidence-summary tranche is landed in `20ef3ebf`: the two selected evidence-summary scripts use `// @ts-check` and shared contract JSDoc, with `tsconfig` limited to those files. There is no approval for a global `checkJs` rollout or a main-process rewrite.
@@ -61,7 +61,7 @@ This file is the compact maintainer continuation note. Historical phase-level de
 3. Collect real signed Windows smoke evidence.
 4. Collect packaged native picker evidence from real app runs; the archived packaged runtime smoke at `docs/release-evidence/packaged-runtime/2026-06-16T14-52-13-074Z-darwin-arm64/` still shows `plugin-picker-evidence-linked` pending, `pet-picker-evidence-linked` pending, and `invalid-package-feedback` blocked.
 5. Obtain a real compatible package from an external source; synthetic community-source rehearsal does not replace a real compatible third-party package.
-6. Execute the approved IM adapter sequence, beginning with shared gateway de-hardcoding, then QQ official robot and WeCom adapters. Simulated protocol tests are development gates; real QQ/WeCom account smoke is manual evidence and is not a current development completion gate.
+6. Keep the completed IM adapter path under regression review and finish the pending remote push/CI confirmation. Simulated protocol tests are development gates; real Telegram/QQ/WeCom account smoke is manual `not-run` evidence and is not a current test-version development completion gate.
 
 The packaged-provider rehearsal does not replace a real configured packaged provider session. Release rehearsal artifacts are not real signed or manually observed release evidence.
 

@@ -1,6 +1,6 @@
 # OpenPet TODO
 
-> Last updated: 2026-09-02
+> Last updated: 2026-09-03
 > Purpose: this is the single active maintainer work queue.
 
 Use this file for open work and priority changes. Keep phase docs, reviews, and old roadmap files as background only; do not split active planning across multiple TODO documents again.
@@ -33,8 +33,7 @@ Use this file for open work and priority changes. Keep phase docs, reviews, and 
 - [ ] Keep the current host-owned trigger-rule editor scope until a new runtime semantic requires expansion. The current UI, contract, and runtime already cover random mode/interval, state predicate/source, event name/source, summary, enable/disable, and delete; do not broaden the editor for fields the runtime does not yet support.
 - [x] Complete the scoped TypeScript evidence-summary tranche for the selected report boundaries. Commit `20ef3ebf` adds `// @ts-check` plus shared contract JSDoc to the two evidence-summary scripts, with `tsconfig` limited to those files; this does not authorize a global `checkJs` rollout or a main-process rewrite.
 - [ ] Expand packaged-app evidence where it improves confidence, especially around release smoke, cleanup behavior, and real-host validation gaps.
-- [ ] Implement the first QQ path as an official QQ robot adapter with a separate credential model, capability notes, Control Center configuration, and protocol-level tests. OneBot is not the first route; retain it only as a future experimental compatibility layer. Do not claim QQ support until the adapter is implemented and verified.
-- [ ] Implement the first WeChat path as a WeCom self-built application adapter with separate credential/config fields, capability notes, Control Center configuration, and protocol-level tests. Do not use personal-client injection or make Official Account the first route; do not claim WeChat support until the adapter is implemented and verified.
+- [x] Implement and verify the first QQ and WeCom routes inside bundled `openpet.im-gateway`: official QQ robot and WeCom self-built application, host-owned secrets, disabled-by-default/native-approval gates, Control Center saved-state UI, redaction, and deterministic protocol coverage. This is merged through `ab0ec234`; reported development gates are `npm test` 2891 pass/1 skip, backend 207, core 2051 pass/1 skip, tools 630, Control Center 77, resilience 3, IM 3, and API contract 158. Remote push/CI is still pending and real-account smoke remains manual `not-run` evidence.
 
 ## Watch Items
 
