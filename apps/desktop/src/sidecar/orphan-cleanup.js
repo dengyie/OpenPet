@@ -6,6 +6,8 @@ const { execFileSync } = require("node:child_process")
 
 const PROCESS_INSPECTION_TIMEOUT_MS = 1_000
 const PROCESS_INSPECTION_MAX_BUFFER = 64 * 1024
+const PROCESS_TERMINATION_TIMEOUT_MS = 1_000
+const PROCESS_TERMINATION_POLL_MS = 10
 
 function normalizeEntries(raw) {
 	const entries = Array.isArray(raw) ? raw : (Array.isArray(raw?.processes) ? raw.processes : [])
@@ -87,6 +89,72 @@ function cleanupOrphans({ file, isAlive, kill, logger, writeFile = fs.writeFileS
 	return { checked, killed }
 }
 
+async function waitForProcessTermination(entry, isAlive, {
+	timeoutMs = PROCESS_TERMINATION_TIMEOUT_MS,
+	pollMs = PROCESS_TERMINATION_POLL_MS,
+} = {}) {
+	const deadline = Date.now() + timeoutMs
+	while (true) {
+		await new Promise((resolve) => setTimeout(resolve, pollMs))
+		let observed
+		try {
+			observed = isAlive(entry)
+		} catch {
+			return { status: "unknown" }
+		}
+		if (!observed) return { status: "gone" }
+		if (!sameProcess(entry, observed)) return { status: "replaced" }
+		if (Date.now() >= deadline) return { status: "alive" }
+	}
+}
+
+async function cleanupOrphansAsync({ file, isAlive, kill, logger, writeFile = fs.writeFileSync, waitOptions } = {}) {
+	if (typeof file !== "string" || file.length === 0) throw new TypeError("cleanupOrphansAsync 需要 file")
+	if (typeof isAlive !== "function" || typeof kill !== "function") throw new TypeError("cleanupOrphansAsync 需要 isAlive 与 kill")
+	const entries = readEntries(file, logger)
+	const remaining = []
+	let checked = 0
+	let killed = 0
+	for (const entry of entries) {
+		checked += 1
+		let observed
+		try {
+			observed = isAlive(entry)
+		} catch (error) {
+			logger?.warn?.("检查 sidecar 孤儿失败", { pid: entry.pid, error: String(error) })
+			remaining.push(entry)
+			continue
+		}
+		if (!observed) continue
+		if (!sameProcess(entry, observed)) {
+			logger?.warn?.("跳过疑似 PID 复用的进程", { pid: entry.pid })
+			continue
+		}
+		try {
+			await kill(entry.pid)
+		} catch (error) {
+			logger?.warn?.("清理 sidecar 孤儿失败", { pid: entry.pid, error: String(error) })
+			remaining.push(entry)
+			continue
+		}
+		const termination = await waitForProcessTermination(entry, isAlive, waitOptions)
+		if (termination.status === "gone" || termination.status === "replaced") {
+			killed += 1
+			continue
+		}
+		if (termination.status === "alive") logger?.warn?.("sidecar 孤儿在终止后仍存活", { pid: entry.pid })
+		else logger?.warn?.("复核 sidecar 孤儿状态失败", { pid: entry.pid })
+		remaining.push(entry)
+	}
+
+	try {
+		writeEntries(file, remaining, writeFile)
+	} catch (error) {
+		logger?.warn?.("写入 sidecar 孤儿台账失败", { file, error: String(error) })
+	}
+	return { checked, killed }
+}
+
 function writeEntries(file, entries, writeFile = fs.writeFileSync) {
 	fs.mkdirSync(path.dirname(file), { recursive: true })
 	const temporary = `${file}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -103,7 +171,7 @@ function writeEntries(file, entries, writeFile = fs.writeFileSync) {
  * Owns the sidecar PID ledger. Process inspection and signalling remain
  * injected so startup cleanup can be tested without touching real processes.
  */
-function createSidecarPidLedger({ file, isAlive, kill, logger, now = Date.now, writeFile = fs.writeFileSync } = {}) {
+function createSidecarPidLedger({ file, isAlive, kill, logger, now = Date.now, writeFile = fs.writeFileSync, sweep } = {}) {
 	if (typeof file !== "string" || file.length === 0) throw new TypeError("createSidecarPidLedger 需要 file")
 	if (typeof isAlive !== "function" || typeof kill !== "function") {
 		throw new TypeError("createSidecarPidLedger 需要 isAlive 与 kill")
@@ -113,9 +181,7 @@ function createSidecarPidLedger({ file, isAlive, kill, logger, now = Date.now, w
 	const persist = (entries) => writeEntries(file, entries, writeFile)
 
 	return {
-		sweep() {
-			return cleanupOrphans({ file, isAlive, kill, logger, writeFile })
-		},
+		sweep: sweep || (() => cleanupOrphans({ file, isAlive, kill, logger, writeFile })),
 		register(pid, metadata = {}) {
 			const normalizedPid = Number(pid)
 			if (!Number.isInteger(normalizedPid) || normalizedPid <= 0) return null
@@ -181,32 +247,37 @@ function createDefaultSidecarPidLedger({
 } = {}) {
 	const userDataDir = app?.getPath?.("userData")
 	if (typeof userDataDir !== "string" || userDataDir.length === 0) return null
+	const file = path.join(userDataDir, "backend", "pids.json")
+	const isAlive = (entry) => {
+		try { killProcess(entry.pid, 0) } catch (error) {
+			if (error?.code === "ESRCH") return false
+			if (error?.code === "EPERM") {
+				const identity = inspectProcessIdentity(entry.pid, { platform, execFileSyncImpl })
+				if (!identity) throw new Error("SIDECAR_PROCESS_INSPECTION_FAILED")
+				return { pid: entry.pid, ...identity }
+			}
+			throw error
+		}
+		const identity = inspectProcessIdentity(entry.pid, { platform, execFileSyncImpl })
+		if (!identity) throw new Error("SIDECAR_PROCESS_INSPECTION_FAILED")
+		return { pid: entry.pid, ...identity }
+	}
+	const kill = (pid) => killProcess(pid, "SIGTERM")
 	return createSidecarPidLedger({
-		file: path.join(userDataDir, "backend", "pids.json"),
+		file,
 		logger,
 		now,
-		isAlive(entry) {
-			try { killProcess(entry.pid, 0) } catch (error) {
-				if (error?.code === "ESRCH") return false
-				if (error?.code === "EPERM") {
-					const identity = inspectProcessIdentity(entry.pid, { platform, execFileSyncImpl })
-					if (!identity) throw new Error("SIDECAR_PROCESS_INSPECTION_FAILED")
-					return { pid: entry.pid, ...identity }
-				}
-				throw error
-			}
-			const identity = inspectProcessIdentity(entry.pid, { platform, execFileSyncImpl })
-			if (!identity) throw new Error("SIDECAR_PROCESS_INSPECTION_FAILED")
-			return { pid: entry.pid, ...identity }
-		},
-		kill(pid) {
-			killProcess(pid, "SIGTERM")
+		isAlive,
+		kill,
+		sweep() {
+			return cleanupOrphansAsync({ file, logger, isAlive, kill })
 		},
 	})
 }
 
 module.exports = {
 	cleanupOrphans,
+	cleanupOrphansAsync,
 	createSidecarPidLedger,
 	createDefaultSidecarPidLedger,
 	inspectProcessIdentity,

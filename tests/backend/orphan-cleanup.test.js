@@ -13,6 +13,7 @@ const {
 	inspectProcessIdentity,
 	PROCESS_INSPECTION_TIMEOUT_MS,
 	PROCESS_INSPECTION_MAX_BUFFER,
+	cleanupOrphansAsync,
 } = require("../../apps/desktop/src/sidecar/orphan-cleanup.js")
 const { createMessageHandler } = require("../../apps/desktop/src/sidecar/message-handler.js")
 
@@ -192,7 +193,7 @@ describe("T13 Shell sidecar seams", () => {
 		})
 	})
 
-	it("retains a live default-ledger entry when process inspection times out", () => {
+	it("retains a live default-ledger entry when process inspection times out", async () => {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-t13-default-ledger-"))
 		const file = path.join(dir, "backend", "pids.json")
 		const entry = { pid: 75, startedAt: 1, processName: "backend" }
@@ -205,8 +206,58 @@ describe("T13 Shell sidecar seams", () => {
 			killProcess: (pid, signal) => signals.push({ pid, signal }),
 			execFileSyncImpl: () => { throw Object.assign(new Error("timed out"), { code: "ETIMEDOUT" }) },
 		})
-		assert.deepEqual(ledger.sweep(), { checked: 1, killed: 0 })
+		assert.deepEqual(await ledger.sweep(), { checked: 1, killed: 0 })
 		assert.deepEqual(signals, [{ pid: 75, signal: 0 }])
+		assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf8")).processes, [entry])
+	})
+
+	it("waits for asynchronous process termination before removing an orphan", async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-t13-async-sweep-"))
+		const file = path.join(dir, "pids.json")
+		const entry = { pid: 76, startedAt: 1, processName: "backend" }
+		fs.writeFileSync(file, JSON.stringify({ processes: [entry] }))
+		let alive = true
+		const result = await cleanupOrphansAsync({
+			file,
+			isAlive: () => alive ? { ...entry } : false,
+			kill: () => { setImmediate(() => { alive = false }) },
+		})
+		assert.deepEqual(result, { checked: 1, killed: 1 })
+		assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf8")).processes, [])
+	})
+
+	it("retains an asynchronous orphan that stays alive after termination", async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-t13-async-live-"))
+		const file = path.join(dir, "pids.json")
+		const entry = { pid: 77, startedAt: 1, processName: "backend" }
+		fs.writeFileSync(file, JSON.stringify({ processes: [entry] }))
+		const result = await cleanupOrphansAsync({
+			file,
+			isAlive: () => ({ ...entry }),
+			kill: () => {},
+			waitOptions: { timeoutMs: 0, pollMs: 0 },
+		})
+		assert.deepEqual(result, { checked: 1, killed: 0 })
+		assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf8")).processes, [entry])
+	})
+
+	it("retains an orphan when asynchronous post-kill inspection fails", async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-t13-async-unknown-"))
+		const file = path.join(dir, "pids.json")
+		const entry = { pid: 78, startedAt: 1, processName: "backend" }
+		fs.writeFileSync(file, JSON.stringify({ processes: [entry] }))
+		let checks = 0
+		const result = await cleanupOrphansAsync({
+			file,
+			isAlive: () => {
+				checks += 1
+				if (checks > 1) throw new Error("inspection unavailable")
+				return { ...entry }
+			},
+			kill: () => {},
+			waitOptions: { timeoutMs: 0, pollMs: 0 },
+		})
+		assert.deepEqual(result, { checked: 1, killed: 0 })
 		assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf8")).processes, [entry])
 	})
 })

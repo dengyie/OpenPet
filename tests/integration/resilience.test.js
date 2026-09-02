@@ -127,9 +127,10 @@ test("real orphan process is killed and ledger is emptied on startup sweep", asy
     assert.ok(identity)
     const ledger = createDefaultSidecarPidLedger({ app: { getPath: () => dir } })
     ledger.register(orphan.pid, identity)
-    const result = ledger.sweep()
+    const exited = once(orphan, "exit")
+    const result = await ledger.sweep()
     assert.equal(result.killed, 1)
-    await once(orphan, "exit")
+    await exited
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, "backend/pids.json"), "utf8")), { processes: [] })
   } finally {
     if (orphan.exitCode === null) orphan.kill("SIGKILL")
