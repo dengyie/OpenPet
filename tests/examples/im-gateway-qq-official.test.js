@@ -3,6 +3,7 @@ const assert = require('node:assert/strict')
 
 const { createQqOfficialAdapter } = require('../../examples/plugins/im-gateway/service/adapters/qq-official')
 const { createDefaultAdapters } = require('../../examples/plugins/im-gateway/service/adapters/registry')
+const { createImGatewayServer } = require('../../examples/plugins/im-gateway/service/im-gateway-service')
 
 class FakeSocket {
   constructor() {
@@ -202,6 +203,42 @@ test('QQ official adapter is disabled by default and reports bounded transport e
   const missing = createQqOfficialAdapter({ config: { qqEnabled: true }, secrets: {} })
   await missing.start()
   assert.equal(missing.getStatus().lastErrorCode, 'qq-credentials-missing')
+})
+
+test('default IM Gateway server keeps QQ HTTP request shape isolated from WeCom', async () => {
+  const previous = {
+    appId: process.env.OPENPET_IM_QQ_APP_ID,
+    clientSecret: process.env.OPENPET_IM_QQ_CLIENT_SECRET
+  }
+  const fetchCalls = []
+  const socket = new FakeSocket()
+  const websocketCalls = []
+  process.env.OPENPET_IM_QQ_APP_ID = 'qq-app-id'
+  process.env.OPENPET_IM_QQ_CLIENT_SECRET = 'qq-client-secret'
+  const service = createImGatewayServer({
+    config: { qqEnabled: true },
+    fetchImpl: async (url, options) => {
+      fetchCalls.push({ url, options })
+      return { status: 200, json: async () => ({ access_token: 'qq-access-token', expires_in: 3600 }) }
+    },
+    websocketFactory: (...args) => {
+      websocketCalls.push(args)
+      return socket
+    }
+  })
+  try {
+    await service.start(0)
+    assert.equal(fetchCalls[0].url, 'https://bots.qq.com/app/getAppAccessToken')
+    assert.equal(fetchCalls[0].options.method, 'POST')
+    assert.deepEqual(JSON.parse(fetchCalls[0].options.body), { app_id: 'qq-app-id', client_secret: 'qq-client-secret' })
+    assert.deepEqual(websocketCalls, [['wss://api.sgroup.qq.com/websocket']])
+  } finally {
+    await service.close()
+    if (previous.appId === undefined) delete process.env.OPENPET_IM_QQ_APP_ID
+    else process.env.OPENPET_IM_QQ_APP_ID = previous.appId
+    if (previous.clientSecret === undefined) delete process.env.OPENPET_IM_QQ_CLIENT_SECRET
+    else process.env.OPENPET_IM_QQ_CLIENT_SECRET = previous.clientSecret
+  }
 })
 
 test('QQ official adapter bounds pending handlers and aborts them during stop', async () => {

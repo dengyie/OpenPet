@@ -2454,6 +2454,7 @@ test.describe('Control Center smoke', () => {
     await openPluginManagement(pluginRow)
 
     const imCard = pluginRow.locator('[aria-label="IM Gateway 设置"]')
+    await expect(imCard).toHaveCount(1)
     const configCard = pluginRow.locator('.plugin-config-panel').filter({ hasText: 'IM Gateway Settings' })
     await expect(imCard).toContainText('Telegram token: not saved')
     await expect(imCard).toContainText('Telegram: polling')

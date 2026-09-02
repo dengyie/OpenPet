@@ -1273,9 +1273,22 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     const token = String(credentials.token || '').trim()
     const encodingAesKey = String(credentials.encodingAesKey || '').trim()
     if (!corpSecret || !token || !encodingAesKey) throw new Error('WeCom credentials are required')
-    secretService.setSecret({ id: IM_GATEWAY_WECOM_CORP_SECRET_ID, value: corpSecret, label: 'WeCom Corp Secret' })
-    secretService.setSecret({ id: IM_GATEWAY_WECOM_TOKEN_SECRET_ID, value: token, label: 'WeCom Callback Token' })
-    secretService.setSecret({ id: IM_GATEWAY_WECOM_ENCODING_AES_KEY_SECRET_ID, value: encodingAesKey, label: 'WeCom Encoding AES Key' })
+    const previous = [
+      { id: IM_GATEWAY_WECOM_CORP_SECRET_ID, value: secretService.getSecretValue?.(IM_GATEWAY_WECOM_CORP_SECRET_ID) || '', next: corpSecret, label: 'WeCom Corp Secret' },
+      { id: IM_GATEWAY_WECOM_TOKEN_SECRET_ID, value: secretService.getSecretValue?.(IM_GATEWAY_WECOM_TOKEN_SECRET_ID) || '', next: token, label: 'WeCom Callback Token' },
+      { id: IM_GATEWAY_WECOM_ENCODING_AES_KEY_SECRET_ID, value: secretService.getSecretValue?.(IM_GATEWAY_WECOM_ENCODING_AES_KEY_SECRET_ID) || '', next: encodingAesKey, label: 'WeCom Encoding AES Key' }
+    ]
+    try {
+      for (const entry of previous) secretService.setSecret({ id: entry.id, value: entry.next, label: entry.label })
+    } catch (error) {
+      try {
+        for (const entry of previous) {
+          if (entry.value) secretService.setSecret({ id: entry.id, value: entry.value, label: entry.label })
+          else secretService.deleteSecret?.(entry.id)
+        }
+      } catch (_) {}
+      throw error
+    }
     appendLog({ pluginId: IM_GATEWAY_PLUGIN_ID, level: 'info', message: 'IM Gateway WeCom credentials saved' })
     return getImGatewaySecretState()
   }
@@ -1283,9 +1296,21 @@ const createPluginService = ({ settingsService, petService, actionService, actio
   const clearImGatewayWecomCredentials = () => {
     assertImGatewaySecretService()
     assertImGatewayRuntimeMutationAllowed('Stop IM Gateway before changing WeCom credentials')
-    secretService.deleteSecret?.(IM_GATEWAY_WECOM_CORP_SECRET_ID)
-    secretService.deleteSecret?.(IM_GATEWAY_WECOM_TOKEN_SECRET_ID)
-    secretService.deleteSecret?.(IM_GATEWAY_WECOM_ENCODING_AES_KEY_SECRET_ID)
+    const previous = [
+      { id: IM_GATEWAY_WECOM_CORP_SECRET_ID, value: secretService.getSecretValue?.(IM_GATEWAY_WECOM_CORP_SECRET_ID) || '', label: 'WeCom Corp Secret' },
+      { id: IM_GATEWAY_WECOM_TOKEN_SECRET_ID, value: secretService.getSecretValue?.(IM_GATEWAY_WECOM_TOKEN_SECRET_ID) || '', label: 'WeCom Callback Token' },
+      { id: IM_GATEWAY_WECOM_ENCODING_AES_KEY_SECRET_ID, value: secretService.getSecretValue?.(IM_GATEWAY_WECOM_ENCODING_AES_KEY_SECRET_ID) || '', label: 'WeCom Encoding AES Key' }
+    ]
+    try {
+      for (const entry of previous) secretService.deleteSecret?.(entry.id)
+    } catch (error) {
+      try {
+        for (const entry of previous) {
+          if (entry.value) secretService.setSecret({ id: entry.id, value: entry.value, label: entry.label })
+        }
+      } catch (_) {}
+      throw error
+    }
     appendLog({ pluginId: IM_GATEWAY_PLUGIN_ID, level: 'info', message: 'IM Gateway WeCom credentials cleared' })
     return getImGatewaySecretState()
   }

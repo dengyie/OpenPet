@@ -118,7 +118,8 @@ const createWecomAdapter = ({
   let duplicateUpdateCount = 0
   let accessToken = ''
   let accessTokenExpiresAt = 0
-  const seenUpdates = new Map()
+  const inFlightUpdates = new Map()
+  const committedUpdates = new Map()
   const tasks = new Set()
   const controllers = new Map()
   const maxPending = boundedNumber(maxPendingHandlers, 128, 1, 4096)
@@ -180,7 +181,15 @@ const createWecomAdapter = ({
     }
   }
 
-  const responseJson = async (response) => {
+  const responseJson = async (response, failureCode = 'wecom-http-failed') => {
+    const status = Number(response?.status)
+    if (response?.ok === false || (Number.isFinite(status) && (status < 200 || status >= 300))) {
+      const error = new Error(failureCode)
+      error.code = failureCode
+      error.status = status
+      error.httpCode = 'wecom-http-failed'
+      throw error
+    }
     if (response && typeof response.json === 'function') return response.json()
     return response || {}
   }
@@ -192,10 +201,18 @@ const createWecomAdapter = ({
     const response = typeof httpClient?.getAccessToken === 'function'
       ? await withTimeout((requestSignal) => httpClient.getAccessToken({ corpId: corpId(), corpSecret: corpSecret(), signal: requestSignal }), timeout, signal)
       : await request('GET', url, undefined, signal)
-    const data = await responseJson(response)
+    let data
+    try {
+      data = await responseJson(response, 'access-token-failed')
+    } catch (error) {
+      if (error?.code === 'access-token-failed') report('wecom-access-token-failed')
+      throw error
+    }
     if (!data || Number(data.errcode || 0) !== 0 || !textValue(data.access_token)) {
       report('wecom-access-token-failed')
-      throw new Error('access-token-failed')
+      const error = new Error('access-token-failed')
+      error.code = 'access-token-failed'
+      throw error
     }
     accessToken = textValue(data.access_token)
     accessTokenExpiresAt = currentTime + Math.max(60000, Number(data.expires_in || 7200) * 1000)
@@ -220,13 +237,35 @@ const createWecomAdapter = ({
     }
     if (typeof httpClient?.sendMessage === 'function') {
       const result = await withTimeout((requestSignal) => httpClient.sendMessage({ accessToken: access, payload, signal: requestSignal }), timeout, signal)
-      const data = await responseJson(result)
-      if (Number(data?.errcode || 0) !== 0) throw new Error('message-send-failed')
+      let data
+      try {
+        data = await responseJson(result, 'message-send-failed')
+      } catch (error) {
+        if (error?.code === 'message-send-failed') report('wecom-message-send-failed')
+        throw error
+      }
+      if (Number(data?.errcode || 0) !== 0) {
+        report('wecom-message-send-failed')
+        const error = new Error('message-send-failed')
+        error.code = 'message-send-failed'
+        throw error
+      }
       return
     }
     const response = await request('POST', `https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token=${encodeURIComponent(access)}`, payload, signal)
-    const data = await responseJson(response)
-    if (Number(data?.errcode || 0) !== 0) throw new Error('message-send-failed')
+    let data
+    try {
+      data = await responseJson(response, 'message-send-failed')
+    } catch (error) {
+      if (error?.code === 'message-send-failed') report('wecom-message-send-failed')
+      throw error
+    }
+    if (Number(data?.errcode || 0) !== 0) {
+      report('wecom-message-send-failed')
+      const error = new Error('message-send-failed')
+      error.code = 'message-send-failed'
+      throw error
+    }
   }
 
   const normalizeUpdate = (update = {}) => {
@@ -236,7 +275,8 @@ const createWecomAdapter = ({
     const chatId = textValue(body.ChatId || body.chatid || body.chat_id)
     const userId = textValue(body.FromUserName || body.from_user_name || body.userId)
     const messageId = textValue(body.MsgId || body.msgid || body.message_id)
-    const updateId = textValue(update.updateId || update.id || messageId || `${update.timestamp || ''}:${update.nonce || ''}`)
+    const callbackIdentity = [textValue(update.timestamp), textValue(update.nonce)].filter(Boolean).join(':')
+    const updateId = textValue(update.updateId || update.id || messageId || callbackIdentity)
     const chatType = textValue(body.ChatType || body.chat_type || body.conversation_type).toLowerCase() === 'group' || Boolean(chatId) ? 'group' : 'private'
     const normalized = normalizeImMessage({
       platform: 'wecom', adapterId: 'wecom', chatType, chatId: chatId || userId, userId,
@@ -256,11 +296,24 @@ const createWecomAdapter = ({
   const decryptEcho = (encrypted) => decryptWecom(encrypted, secrets.encodingAesKey || secrets.encoding_aes_key || secrets.aesKey, config.wecomCorpId || '')
 
   const claim = (id) => {
-    if (!id) return true
-    if (seenUpdates.has(id)) return false
-    seenUpdates.set(id, Date.now())
-    while (seenUpdates.size > seenLimit) seenUpdates.delete(seenUpdates.keys().next().value)
-    return true
+    if (!id) return { token: null }
+    if (inFlightUpdates.has(id) || committedUpdates.has(id)) return null
+    const claimToken = {}
+    inFlightUpdates.set(id, claimToken)
+    return { token: claimToken }
+  }
+
+  const releaseClaim = (id, claimToken) => {
+    if (!id || !claimToken) return
+    if (inFlightUpdates.get(id) === claimToken) inFlightUpdates.delete(id)
+  }
+
+  const commitClaim = (id, claimToken) => {
+    if (!id || !claimToken) return
+    if (inFlightUpdates.get(id) !== claimToken) return
+    inFlightUpdates.delete(id)
+    committedUpdates.set(id, Date.now())
+    while (committedUpdates.size > seenLimit) committedUpdates.delete(committedUpdates.keys().next().value)
   }
 
   const handleUpdate = async (update = {}) => {
@@ -269,15 +322,33 @@ const createWecomAdapter = ({
     if (errorCode) { report(errorCode); return { ok: false, error: errorCode } }
     if (!verify(update)) { report('invalid-signature', 'warn'); return { ok: false, error: 'invalid-signature' } }
     const message = normalizeUpdate(update)
-    if (!claim(message.updateId)) { duplicateUpdateCount += 1; report('duplicate-update', 'warn'); return { ok: true, duplicate: true } }
-    if (typeof handler !== 'function' || !acceptingUpdates) return { ok: true, accepted: false }
-    if (pendingHandlerCount >= maxPending) { droppedUpdateCount += 1; report('handler-overloaded', 'warn'); return { ok: false, error: 'handler-overloaded' } }
+    const claimResult = claim(message.updateId)
+    if (claimResult === null) { duplicateUpdateCount += 1; report('duplicate-update', 'warn'); return { ok: true, duplicate: true } }
+    const claimToken = claimResult.token
+    if (typeof handler !== 'function' || !acceptingUpdates) {
+      releaseClaim(message.updateId, claimToken)
+      return { ok: true, accepted: false }
+    }
+    if (pendingHandlerCount >= maxPending) {
+      releaseClaim(message.updateId, claimToken)
+      droppedUpdateCount += 1
+      report('handler-overloaded', 'warn')
+      return { ok: false, error: 'handler-overloaded' }
+    }
     const controller = new AbortController()
     pendingHandlerCount += 1
     const task = Promise.resolve().then(() => handler(message, { signal: controller.signal }))
     tasks.add(task)
     controllers.set(task, controller)
-    try { await task; return { ok: true, accepted: true } } catch (_) { report('handler-failed'); return { ok: false, error: 'handler-failed' } } finally { tasks.delete(task); controllers.delete(task); pendingHandlerCount -= 1 }
+    try {
+      await task
+      commitClaim(message.updateId, claimToken)
+      return { ok: true, accepted: true }
+    } catch (_) {
+      releaseClaim(message.updateId, claimToken)
+      report('handler-failed')
+      return { ok: false, error: 'handler-failed' }
+    } finally { tasks.delete(task); controllers.delete(task); pendingHandlerCount -= 1 }
   }
 
   const health = () => ({

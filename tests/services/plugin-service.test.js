@@ -4342,6 +4342,58 @@ test('plugin service rolls QQ credential clear back when the second secret delet
   assert.deepEqual(service.getImGatewaySecretState(), { hasTelegramBotToken: false, hasQqOfficialAppId: true, hasQqOfficialClientSecret: true, hasQqOfficialCredentials: true, hasWecomCredentials: false })
 })
 
+test('plugin service rolls WeCom credential save back when a middle secret write fails', () => {
+  const values = new Map([
+    ['im.wecom.corpSecret', 'old-corp-secret'],
+    ['im.wecom.token', 'old-callback-token'],
+    ['im.wecom.encodingAesKey', 'old-aes-key']
+  ])
+  let failTokenWrite = true
+  const secretService = {
+    getSecretValue: (id) => values.get(id) || '',
+    setSecret: ({ id, value }) => {
+      if (id === 'im.wecom.token' && failTokenWrite) {
+        failTokenWrite = false
+        throw new Error('callback token write failed')
+      }
+      values.set(id, value)
+    },
+    deleteSecret: (id) => values.delete(id)
+  }
+  const service = createPluginService({ settingsService: createSettingsService(), petService: { say: async () => {} }, officialPlugins: [], pluginDirs: [path.resolve(__dirname, '../../examples/plugins')], secretService })
+
+  assert.throws(() => service.saveImGatewayWecomCredentials({ corpSecret: 'new-corp-secret', token: 'new-callback-token', encodingAesKey: 'new-aes-key' }), /callback token write failed/)
+  assert.equal(values.get('im.wecom.corpSecret'), 'old-corp-secret')
+  assert.equal(values.get('im.wecom.token'), 'old-callback-token')
+  assert.equal(values.get('im.wecom.encodingAesKey'), 'old-aes-key')
+})
+
+test('plugin service rolls WeCom credential clear back when a middle secret delete fails', () => {
+  const values = new Map([
+    ['im.wecom.corpSecret', 'old-corp-secret'],
+    ['im.wecom.token', 'old-callback-token'],
+    ['im.wecom.encodingAesKey', 'old-aes-key']
+  ])
+  let failTokenDelete = true
+  const secretService = {
+    getSecretValue: (id) => values.get(id) || '',
+    setSecret: ({ id, value }) => values.set(id, value),
+    deleteSecret: (id) => {
+      if (id === 'im.wecom.token' && failTokenDelete) {
+        failTokenDelete = false
+        throw new Error('callback token delete failed')
+      }
+      values.delete(id)
+    }
+  }
+  const service = createPluginService({ settingsService: createSettingsService(), petService: { say: async () => {} }, officialPlugins: [], pluginDirs: [path.resolve(__dirname, '../../examples/plugins')], secretService })
+
+  assert.throws(() => service.clearImGatewayWecomCredentials(), /callback token delete failed/)
+  assert.equal(values.get('im.wecom.corpSecret'), 'old-corp-secret')
+  assert.equal(values.get('im.wecom.token'), 'old-callback-token')
+  assert.equal(values.get('im.wecom.encodingAesKey'), 'old-aes-key')
+})
+
 test('plugin service registers service bridge runtime before spawning child process', async () => {
   const child = createSlowStoppingServiceProcess()
   const originalMapSet = Map.prototype.set

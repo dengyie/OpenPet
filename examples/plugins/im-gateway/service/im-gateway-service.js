@@ -2,6 +2,7 @@ const http = require('node:http')
 const { createBridgeClient } = require('./bridge-client')
 const { readConfigFromEnv } = require('./config')
 const { createDefaultAdapters } = require('./adapters/registry')
+const { createQqHttpClient } = require('./adapters/qq-official')
 const { createWecomHttpClient } = require('./adapters/wecom')
 const { createImGateway } = require('./core/gateway')
 const { createRuntimeLogEvent } = require('./runtime-log')
@@ -21,7 +22,10 @@ const createImGatewayServer = ({
   bridgeClient = createBridgeClient(),
   logEvent = createRuntimeLogEvent(),
   fetchImpl = globalThis.fetch,
-  httpClient = createWecomHttpClient({ fetchImpl }),
+  httpClient,
+  qqHttpClient,
+  wecomHttpClient,
+  websocketFactory,
   adapters = createDefaultAdapters({
     config,
     token: process.env.OPENPET_IM_TELEGRAM_BOT_TOKEN || '',
@@ -35,7 +39,9 @@ const createImGatewayServer = ({
       token: process.env.OPENPET_IM_WECOM_TOKEN || '',
       encodingAesKey: process.env.OPENPET_IM_WECOM_ENCODING_AES_KEY || ''
     },
-    httpClient,
+    qqHttpClient: qqHttpClient || httpClient || createQqHttpClient({ fetchImpl }),
+    wecomHttpClient: wecomHttpClient || httpClient || createWecomHttpClient({ fetchImpl }),
+    websocketFactory,
     logEvent
   }),
   createServer = http.createServer

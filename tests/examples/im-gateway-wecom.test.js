@@ -85,6 +85,45 @@ test('WeCom sends bounded private and group receipts through injected clients an
   assert.equal(JSON.stringify(adapter.health()).includes('access-secret'), false)
 })
 
+test('WeCom rejects a non-2xx token response even when its body reports success', async () => {
+  const calls = []
+  const adapter = createWecomAdapter({
+    config: wecomConfig(),
+    secrets: credentials,
+    httpClient: {
+      request: async (request) => {
+        calls.push(request)
+        return { status: 503, ok: false, json: async () => ({ errcode: 0, access_token: 'must-not-use' }) }
+      }
+    }
+  })
+  await adapter.start()
+  await assert.rejects(
+    adapter.sendReceipt({ chatType: 'private', chatId: 'user-1' }, 'hello'),
+    (error) => error?.code === 'access-token-failed' && error?.status === 503
+  )
+  assert.equal(calls[0].method, 'GET')
+  assert.match(calls[0].url, /\/cgi-bin\/gettoken\?/)
+  assert.equal(adapter.health().lastErrorCode, 'wecom-access-token-failed')
+})
+
+test('WeCom rejects a non-2xx send response even when its body reports success', async () => {
+  const adapter = createWecomAdapter({
+    config: wecomConfig(),
+    secrets: credentials,
+    httpClient: {
+      getAccessToken: async () => ({ status: 200, ok: true, json: async () => ({ errcode: 0, access_token: 'access-token' }) }),
+      sendMessage: async () => ({ status: 503, ok: false, json: async () => ({ errcode: 0 }) })
+    }
+  })
+  await adapter.start()
+  await assert.rejects(
+    adapter.sendReceipt({ chatType: 'private', chatId: 'user-1' }, 'hello'),
+    (error) => error?.code === 'message-send-failed' && error?.status === 503
+  )
+  assert.equal(adapter.health().lastErrorCode, 'wecom-message-send-failed')
+})
+
 test('WeCom maps callbacks with ChatId to group conversations', async () => {
   let received
   const adapter = createWecomAdapter({ config: wecomConfig(), secrets: credentials })
@@ -288,4 +327,59 @@ test('WeCom overload health maps dropped updates to the shared handler counter',
   assert.equal(createGatewayHealth({ adapters: [adapter] }).adapters.wecom.droppedHandlerCount, 1)
   release()
   await first
+})
+
+test('WeCom releases update claims after handler failure so provider retries are accepted', async () => {
+  let calls = 0
+  const adapter = createWecomAdapter({ config: wecomConfig(), secrets: credentials })
+  adapter.onMessage(async () => {
+    calls += 1
+    if (calls === 1) throw new Error('transient-handler-failure')
+  })
+  await adapter.start()
+  const update = signed({ MsgId: 'retry-after-handler-failure', Content: 'hello' })
+  assert.deepEqual(await adapter.handleUpdate(update), { ok: false, error: 'handler-failed' })
+  assert.deepEqual(await adapter.handleUpdate(update), { ok: true, accepted: true })
+  assert.equal(calls, 2)
+  assert.equal(adapter.health().duplicateUpdateCount, 0)
+})
+
+test('WeCom releases overloaded update claims while retaining successful duplicate suppression', async () => {
+  let release
+  let calls = 0
+  const adapter = createWecomAdapter({ config: wecomConfig(), secrets: credentials, maxPendingHandlers: 1 })
+  adapter.onMessage(async () => {
+    calls += 1
+    if (calls === 1) await new Promise((resolve) => { release = resolve })
+  })
+  await adapter.start()
+  const firstUpdate = signed({ MsgId: 'in-flight-update', Content: 'one' })
+  const overloadedUpdate = signed({ MsgId: 'retry-after-overload', Content: 'two' }, { nonce: 'nonce-2' })
+  const first = adapter.handleUpdate(firstUpdate)
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(await adapter.handleUpdate(overloadedUpdate), { ok: false, error: 'handler-overloaded' })
+  release()
+  assert.deepEqual(await first, { ok: true, accepted: true })
+  assert.deepEqual(await adapter.handleUpdate(overloadedUpdate), { ok: true, accepted: true })
+  assert.equal(calls, 2)
+  assert.deepEqual(await adapter.handleUpdate(firstUpdate), { ok: true, duplicate: true })
+})
+
+test('WeCom handles concurrent callbacks without an update id without deduping them', async () => {
+  let calls = 0
+  const adapter = createWecomAdapter({ config: wecomConfig(), secrets: credentials })
+  adapter.onMessage(async () => { calls += 1 })
+  await adapter.start()
+  const update = {
+    body: { FromUserName: 'user-without-message-id', Content: 'hello' },
+    timestamp: '',
+    nonce: '',
+    signature: callbackSignature({ token: credentials.token })
+  }
+  assert.deepEqual(await Promise.all([adapter.handleUpdate(update), adapter.handleUpdate(update)]), [
+    { ok: true, accepted: true },
+    { ok: true, accepted: true }
+  ])
+  assert.equal(calls, 2)
+  assert.equal(adapter.health().duplicateUpdateCount, 0)
 })

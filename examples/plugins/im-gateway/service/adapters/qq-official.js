@@ -79,9 +79,10 @@ const requestJson = async (httpClient, url, options, timeoutMs = REQUEST_TIMEOUT
   return parseResponseBody(response)
 }
 
-const createFetchHttpClient = () => ({
+const createFetchHttpClient = ({ fetchImpl = globalThis.fetch } = {}) => ({
   request: async (url, options = {}) => {
-    const response = await fetch(url, {
+    if (typeof fetchImpl !== 'function') throw new Error('QQ HTTP client unavailable')
+    const response = await fetchImpl(url, {
       ...options,
       body: options.body && typeof options.body === 'object' ? JSON.stringify(options.body) : options.body
     })
@@ -89,6 +90,7 @@ const createFetchHttpClient = () => ({
       ok: response.ok,
       status: response.status,
       headers: response.headers,
+      json: typeof response.json === 'function' ? () => response.json() : undefined,
       text: () => response.text()
     }
   }
@@ -372,5 +374,6 @@ module.exports = {
   DEFAULT_GATEWAY_URL,
   DEFAULT_INTENTS,
   DEFAULT_TOKEN_URL,
+  createQqHttpClient: createFetchHttpClient,
   createQqOfficialAdapter
 }
