@@ -24,14 +24,19 @@ describe("T25 plugin routes", () => {
 		assert.equal(router.routes().some((route) => route.includes("inspect-package")), false)
 	})
 
-	it("mechanically covers all 25 real plugin channels: 23 HTTP and 2 IPC", async () => {
+	it("mechanically covers all 27 real plugin channels: 23 HTTP and 4 IPC", async () => {
 		const [{ IPC }, routes] = await Promise.all([
 			import("../../src/shared/ipc-channels.js"),
 			import("../../services/backend/routes/plugins.js"),
 		])
 		const channels = Object.keys(IPC).filter((key) => key.startsWith("PLUGINS_"))
-		assert.equal(channels.length, 25)
-		assert.deepEqual(routes.PLUGIN_IPC_CHANNELS.slice().sort(), ["PLUGINS_INSPECT_PACKAGE", "PLUGINS_OPEN_DASHBOARD"])
+		assert.equal(channels.length, 27)
+		assert.deepEqual(routes.PLUGIN_IPC_CHANNELS.slice().sort(), [
+			"PLUGINS_CLEAR_IM_GATEWAY_QQ_CREDENTIALS",
+			"PLUGINS_INSPECT_PACKAGE",
+			"PLUGINS_OPEN_DASHBOARD",
+			"PLUGINS_SAVE_IM_GATEWAY_QQ_CREDENTIALS",
+		])
 		assert.deepEqual(Object.keys(routes.PLUGIN_CHANNEL_ROUTES).slice().sort(), channels.filter((key) => !routes.PLUGIN_IPC_CHANNELS.includes(key)).sort())
 		for (const route of Object.values(routes.PLUGIN_CHANNEL_ROUTES)) assert.ok(routes.PLUGIN_ROUTES.includes(route), route)
 	})

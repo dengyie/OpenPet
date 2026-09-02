@@ -56,6 +56,8 @@ export const PLUGIN_CHANNEL_ROUTES = Object.freeze({
 export const PLUGIN_IPC_CHANNELS = Object.freeze([
 	"PLUGINS_OPEN_DASHBOARD",
 	"PLUGINS_INSPECT_PACKAGE",
+	"PLUGINS_SAVE_IM_GATEWAY_QQ_CREDENTIALS",
+	"PLUGINS_CLEAR_IM_GATEWAY_QQ_CREDENTIALS",
 ])
 
 function requireMethod(plugins, name) {
