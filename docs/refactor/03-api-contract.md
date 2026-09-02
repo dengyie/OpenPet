@@ -1,6 +1,6 @@
 # 03 · API 契约与通信协议
 
-> 🔌 本篇是前后端并行开发的唯一依据。契约未定稿前不得开始写业务代码。154 个 IPC 通道的去向已在本篇逐域定义。
+> 🔌 本篇是前后端并行开发的唯一依据。契约未定稿前不得开始写业务代码。156 个 IPC 通道的去向已在本篇逐域定义。
 
 ## 1. 协议基础
 
@@ -96,7 +96,7 @@
 
 **专用业务码**(搭配 400/409/423):`PLUGIN_MANIFEST_INVALID`、`PLUGIN_ALREADY_RUNNING`、`PLUGIN_NATIVE_NOT_APPROVED`、`PET_PACK_INCOMPATIBLE`、`ACTION_FRAMES_MISSING`、`AI_KEY_NOT_CONFIGURED`、`JOB_NOT_CANCELABLE`、`MIGRATION_REQUIRED`。
 
-## 3. 154 个通道的去向总表
+## 3. 156 个通道的去向总表
 
 | 域 | 通道数 | 留 IPC | 迁 HTTP | 备注 |
 | --- | --- | --- | --- | --- |
@@ -107,12 +107,12 @@
 | `ACTIONS_*` | 13 | 1 | 12 | `INSPECT_FRAMES` 弹框部分留 IPC,路径校验走 HTTP(两段式) |
 | `PET_PACKS_*` | 9 | 1 | 8 | 导入需弹框 |
 | AI 总域 | 37 | 0 | 37 | 全迁 |
-| `PLUGINS_*` | 25 | 2 | 23 | `OPEN_DASHBOARD`、`INSPECT_PACKAGE` 留 |
+| `PLUGINS_*` | 27 | 4 | 23 | `OPEN_DASHBOARD`、`INSPECT_PACKAGE`、QQ 凭据保存/清除留 |
 | `CREATOR_*` | 13 | 0 | 13 | 多数转 Job |
 | `SERVICE_*` | 7 | 0 | 7 | 全迁 |
 | `ABOUT_*` | 2 | 0 | 2 | 全迁 |
 | `CATALOG_*` | 6 | 0 | 6 | 全迁 |
-| **合计** | **154** | **41** | **113** | |
+| **合计** | **156** | **43** | **113** | |
 
 ## 4. 路由表
 
@@ -234,7 +234,7 @@
 | POST | `/plugins/sync-bundled` | `PLUGINS_SYNC_BUNDLED` | ✅ |
 | GET · PUT | `/plugins/{id}/config` | `PLUGINS_*_CONFIG` | |
 
-**保留在 IPC**:`PLUGINS_OPEN_DASHBOARD`(需开 `BrowserWindow`)、`PLUGINS_INSPECT_PACKAGE`(需 `dialog.showOpenDialog`)。
+**保留在 IPC**:`PLUGINS_OPEN_DASHBOARD`(需开 `BrowserWindow`)、`PLUGINS_INSPECT_PACKAGE`(需 `dialog.showOpenDialog`)、`PLUGINS_SAVE_IM_GATEWAY_QQ_CREDENTIALS`、`PLUGINS_CLEAR_IM_GATEWAY_QQ_CREDENTIALS`(host-secret,不迁 HTTP)。
 
 ### 4.8 Creator Studio
 
