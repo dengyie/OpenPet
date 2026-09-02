@@ -1,4 +1,5 @@
 const { hashIdentifier } = require('./log-safety')
+const { normalizePlatform } = require('./core/platform')
 
 const createAdapterHealth = (adapter = {}, state = {}) => {
   const adapterStatus = adapter.getStatus?.() || {}
@@ -35,7 +36,7 @@ const createGatewayHealth = ({ adapters = [], adapterState = new Map() } = {}) =
   }
 
   for (const adapter of adapters) {
-    const key = adapter.platform || adapter.id
+    const key = normalizePlatform(adapter.platform || adapter.id)
     if (!key) continue
     health.adapters[key] = createAdapterHealth(adapter, adapterState.get(adapter.id) || {})
   }

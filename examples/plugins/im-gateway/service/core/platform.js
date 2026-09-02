@@ -8,7 +8,7 @@ const normalizePlatform = (value = '') => {
   return normalized || DEFAULT_PLATFORM
 }
 
-const resolvePlatform = (message = {}, adapter = {}) => normalizePlatform(message.platform || adapter.platform)
+const resolvePlatform = (message = {}, adapter = {}) => normalizePlatform(adapter.platform || adapter.id || message.platform)
 
 const platformLabel = (platform = DEFAULT_PLATFORM) => {
   const normalized = normalizePlatform(platform)

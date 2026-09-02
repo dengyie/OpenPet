@@ -342,6 +342,62 @@ test('im gateway keeps the fake QQ official protocol platform-neutral and redact
   assert.equal(encoded.includes('qq-ai-failure'), false)
 })
 
+test('im gateway treats adapter platform as authoritative and falls back when message platform is absent', async () => {
+  const aiCalls = []
+  const adapter = {
+    id: 'qq-official',
+    platform: 'qq-official',
+    sendReceipt: async () => {}
+  }
+  const gateway = createImGateway({
+    bridgeClient: {
+      aiChat: async (payload) => {
+        aiCalls.push(payload)
+        return { reply: 'ok' }
+      }
+    },
+    config: normalizeImGatewayConfig({
+      privateTextMode: 'ai-chat',
+      allowAllPrivateChats: true
+    })
+  })
+
+  await gateway.handleMessage(adapter, {
+    platform: 'telegram',
+    chatType: 'private',
+    chatId: 'shared-chat',
+    userId: 'shared-user',
+    messageId: 'conflicting-platform',
+    text: 'wrong platform'
+  })
+  await gateway.handleMessage(adapter, {
+    chatType: 'private',
+    chatId: 'shared-chat',
+    userId: 'shared-user',
+    messageId: 'missing-platform',
+    text: 'adapter fallback'
+  })
+
+  assert.equal(aiCalls.length, 2)
+  for (const call of aiCalls) {
+    assert.match(call.conversationKey, /^qq-official:private:/)
+    assert.match(call.requestId, /^qq-official-request:/)
+  }
+})
+
+test('im gateway health uses the normalized platform key', () => {
+  const adapter = {
+    id: 'qq-official',
+    platform: 'QQ.Official',
+    getStatus: () => ({ enabled: true, status: 'connected' })
+  }
+  const gateway = createImGateway({ adapters: [adapter] })
+  const health = gateway.getHealth()
+
+  assert.equal(health.adapters['qq-official'].status, 'connected')
+  assert.equal(Object.hasOwn(health.adapters, 'QQ.Official'), false)
+})
+
 test('im gateway health redacts message content and peer identifiers', async () => {
   const adapter = createFakeAdapter({ id: 'fake', platform: 'telegram' })
   const gateway = createImGateway({
