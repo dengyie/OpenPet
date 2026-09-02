@@ -3,9 +3,10 @@ const crypto = require('node:crypto')
 const { test } = require('node:test')
 const { callbackSignature, createWecomAdapter, decryptWecom, parseCallbackBody } = require('../../examples/plugins/im-gateway/service/adapters/wecom')
 const { createImGatewayServer } = require('../../examples/plugins/im-gateway/service/im-gateway-service')
+const { createGatewayHealth } = require('../../examples/plugins/im-gateway/service/health')
 
 const credentials = { corpId: 'corp-id', corpSecret: 'corp-secret', token: 'callback-token', encodingAesKey: Buffer.alloc(32, 7).toString('base64').replace(/=+$/, '') }
-const wecomConfig = (extra = {}) => ({ wecomEnabled: true, wecomCorpId: credentials.corpId, ...extra })
+const wecomConfig = (extra = {}) => ({ wecomEnabled: true, wecomCorpId: credentials.corpId, wecomAgentId: 1, ...extra })
 const signed = (body, extra = {}) => ({
   ...extra,
   body,
@@ -157,6 +158,82 @@ test('WeCom encrypted GET echo returns plaintext and decrypt failures are non-su
   }
 })
 
+test('WeCom default server construction sends receipts and acknowledges plain POST callbacks', async () => {
+  const previous = {
+    corpId: process.env.OPENPET_IM_WECOM_CORP_ID,
+    corpSecret: process.env.OPENPET_IM_WECOM_CORP_SECRET,
+    token: process.env.OPENPET_IM_WECOM_TOKEN,
+    encodingAesKey: process.env.OPENPET_IM_WECOM_ENCODING_AES_KEY
+  }
+  const fetchCalls = []
+  Object.assign(process.env, {
+    OPENPET_IM_WECOM_CORP_ID: credentials.corpId,
+    OPENPET_IM_WECOM_CORP_SECRET: credentials.corpSecret,
+    OPENPET_IM_WECOM_TOKEN: credentials.token,
+    OPENPET_IM_WECOM_ENCODING_AES_KEY: credentials.encodingAesKey
+  })
+  const service = createImGatewayServer({
+    config: wecomConfig({ allowAllPrivateChats: true }),
+    fetchImpl: async (url, options) => {
+      fetchCalls.push({ url, options })
+      return String(url).includes('/gettoken')
+        ? { json: async () => ({ errcode: 0, access_token: 'access-token', expires_in: 7200 }) }
+        : { json: async () => ({ errcode: 0 }) }
+    }
+  })
+  try {
+    await service.start(0)
+    const port = service.server.address().port
+    const timestamp = '1710000000'
+    const nonce = 'default-construction'
+    const body = JSON.stringify({ MsgId: 'default-post-1', FromUserName: 'user-1', Content: '/openpet status' })
+    const response = await fetch(`http://127.0.0.1:${port}/wecom/callback?timestamp=${timestamp}&nonce=${nonce}&signature=${callbackSignature({ token: credentials.token, timestamp, nonce, encrypt: '' })}`, { method: 'POST', body })
+    assert.equal(response.status, 200)
+    assert.match(response.headers.get('content-type'), /^text\/plain/)
+    assert.equal(await response.text(), 'success')
+    assert.equal(fetchCalls.length, 2)
+    assert.equal(fetchCalls[1].options.method, 'POST')
+  } finally {
+    await service.close()
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[{ corpId: 'OPENPET_IM_WECOM_CORP_ID', corpSecret: 'OPENPET_IM_WECOM_CORP_SECRET', token: 'OPENPET_IM_WECOM_TOKEN', encodingAesKey: 'OPENPET_IM_WECOM_ENCODING_AES_KEY' }[key]]
+      else process.env[{ corpId: 'OPENPET_IM_WECOM_CORP_ID', corpSecret: 'OPENPET_IM_WECOM_CORP_SECRET', token: 'OPENPET_IM_WECOM_TOKEN', encodingAesKey: 'OPENPET_IM_WECOM_ENCODING_AES_KEY' }[key]] = value
+    }
+  }
+})
+
+test('WeCom encrypted POST callbacks acknowledge success and suppress duplicates', async () => {
+  const bridgeCalls = []
+  const adapter = createWecomAdapter({
+    config: wecomConfig({ allowAllPrivateChats: true }),
+    secrets: credentials,
+    httpClient: {
+      getAccessToken: async () => ({ errcode: 0, access_token: 'access-token' }),
+      sendMessage: async () => ({ errcode: 0 })
+    }
+  })
+  const service = createImGatewayServer({ config: wecomConfig({ allowAllPrivateChats: true }), adapters: [adapter], bridgeClient: { say: async (payload) => bridgeCalls.push(payload) } })
+  try {
+    await service.start(0)
+    const port = service.server.address().port
+    const timestamp = '1710000000'
+    const nonce = 'encrypted-post'
+    const encrypted = encryptCallback(JSON.stringify({ MsgId: 'encrypted-post-1', FromUserName: 'user-1', Content: '/openpet say hello' }))
+    const query = new URLSearchParams({ timestamp, nonce, msg_signature: callbackSignature({ token: credentials.token, timestamp, nonce, encrypt: encrypted }) })
+    const request = () => fetch(`http://127.0.0.1:${port}/wecom/callback?${query}`, { method: 'POST', body: JSON.stringify({ Encrypt: encrypted }) })
+    const first = await request()
+    const second = await request()
+    assert.equal(first.status, 200)
+    assert.equal(second.status, 200)
+    assert.equal(await first.text(), 'success')
+    assert.equal(await second.text(), 'success')
+    assert.equal(bridgeCalls.length, 1)
+    assert.equal(adapter.health().duplicateUpdateCount, 1)
+  } finally {
+    await service.close()
+  }
+})
+
 test('WeCom request timeout aborts the injected HTTP client signal', async () => {
   let requestSignal
   const adapter = createWecomAdapter({
@@ -176,7 +253,39 @@ test('WeCom request timeout aborts the injected HTTP client signal', async () =>
 })
 
 test('WeCom requires CorpID in configuration before reporting connected', async () => {
-  const adapter = createWecomAdapter({ config: { wecomEnabled: true }, secrets: credentials })
+  const adapter = createWecomAdapter({ config: { wecomEnabled: true, wecomAgentId: 1 }, secrets: credentials })
   await adapter.start()
   assert.equal(adapter.health().status, 'missing-credentials')
+})
+
+test('WeCom requires a positive Agent ID before connecting or sending', async () => {
+  let tokenRequests = 0
+  const adapter = createWecomAdapter({
+    config: { wecomEnabled: true, wecomCorpId: credentials.corpId, wecomAgentId: 0 },
+    secrets: credentials,
+    httpClient: {
+      getAccessToken: async () => { tokenRequests += 1; return { errcode: 0, access_token: 'access-token' } },
+      sendMessage: async () => ({ errcode: 0 })
+    }
+  })
+  await adapter.start()
+  assert.equal(adapter.health().status, 'invalid-agent-id')
+  assert.equal(adapter.health().lastErrorCode, 'invalid-agent-id')
+  await assert.rejects(adapter.sendReceipt({ chatType: 'private', chatId: 'user-1' }, 'hello'), /invalid-agent-id/)
+  assert.equal(tokenRequests, 0)
+})
+
+test('WeCom overload health maps dropped updates to the shared handler counter', async () => {
+  let release
+  const adapter = createWecomAdapter({ config: wecomConfig(), secrets: credentials, maxPendingHandlers: 1 })
+  adapter.onMessage(() => new Promise((resolve) => { release = resolve }))
+  await adapter.start()
+  const first = adapter.handleUpdate(signed({ MsgId: 'overload-1', Content: 'one' }))
+  await new Promise((resolve) => setImmediate(resolve))
+  const overloaded = await adapter.handleUpdate(signed({ MsgId: 'overload-2', Content: 'two' }, { nonce: 'nonce-2' }))
+  assert.deepEqual(overloaded, { ok: false, error: 'handler-overloaded' })
+  assert.equal(adapter.health().droppedUpdateCount, 1)
+  assert.equal(createGatewayHealth({ adapters: [adapter] }).adapters.wecom.droppedHandlerCount, 1)
+  release()
+  await first
 })

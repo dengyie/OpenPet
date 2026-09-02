@@ -2,6 +2,7 @@ const http = require('node:http')
 const { createBridgeClient } = require('./bridge-client')
 const { readConfigFromEnv } = require('./config')
 const { createDefaultAdapters } = require('./adapters/registry')
+const { createWecomHttpClient } = require('./adapters/wecom')
 const { createImGateway } = require('./core/gateway')
 const { createRuntimeLogEvent } = require('./runtime-log')
 
@@ -19,6 +20,8 @@ const createImGatewayServer = ({
   config = readConfigFromEnv(),
   bridgeClient = createBridgeClient(),
   logEvent = createRuntimeLogEvent(),
+  fetchImpl = globalThis.fetch,
+  httpClient = createWecomHttpClient({ fetchImpl }),
   adapters = createDefaultAdapters({
     config,
     token: process.env.OPENPET_IM_TELEGRAM_BOT_TOKEN || '',
@@ -32,6 +35,7 @@ const createImGatewayServer = ({
       token: process.env.OPENPET_IM_WECOM_TOKEN || '',
       encodingAesKey: process.env.OPENPET_IM_WECOM_ENCODING_AES_KEY || ''
     },
+    httpClient,
     logEvent
   }),
   createServer = http.createServer
@@ -79,7 +83,12 @@ const createImGatewayServer = ({
         signature: url.searchParams.get('msg_signature') || url.searchParams.get('signature')
       })
       const accepted = result?.ok === true
-      sendJson(response, accepted ? 200 : 403, result || { ok: false, error: 'callback-failed' })
+      if (accepted) {
+        response.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' })
+        response.end('success')
+      } else {
+        sendJson(response, 403, result || { ok: false, error: 'callback-failed' })
+      }
       return
     }
     sendJson(response, 404, { ok: false, error: 'Not found' })

@@ -7,6 +7,18 @@ const DEFAULT_CALLBACK_PATH = '/wecom/callback'
 const MAX_BODY_LENGTH = 1024 * 1024
 const MAX_SEEN_UPDATES = 4096
 
+const createWecomHttpClient = ({ fetchImpl = globalThis.fetch } = {}) => ({
+  request: async ({ method, url, body, headers, signal } = {}) => {
+    if (typeof fetchImpl !== 'function') throw new Error('missing-fetch')
+    return fetchImpl(url, {
+      method,
+      headers,
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      ...(signal ? { signal } : {})
+    })
+  }
+})
+
 const textValue = (value) => String(value == null ? '' : value).trim()
 
 const parseXml = (input = '') => {
@@ -88,7 +100,7 @@ const decryptWecom = (encrypted, encodingAesKey, receiveId = '') => {
 const createWecomAdapter = ({
   config = {},
   secrets = {},
-  httpClient = null,
+  httpClient = createWecomHttpClient(),
   clock = {},
   now = typeof clock === 'function' ? clock : (clock.now || (() => new Date().toISOString())),
   logEvent = () => {},
@@ -118,7 +130,14 @@ const createWecomAdapter = ({
   const token = () => textValue(secrets.token || secrets.callbackToken || secrets.wecomToken)
   const corpSecret = () => textValue(secrets.corpSecret || secrets.secret)
   const corpId = () => textValue(config.wecomCorpId)
+  const agentId = () => Number(config.wecomAgentId)
+  const hasValidAgentId = () => Number.isInteger(agentId()) && agentId() > 0 && agentId() <= 2147483647
   const hasCredentials = () => Boolean(corpId() && token() && corpSecret() && textValue(secrets.encodingAesKey || secrets.encoding_aes_key || secrets.aesKey))
+  const configurationError = () => {
+    if (!hasValidAgentId()) return 'invalid-agent-id'
+    if (!hasCredentials()) return 'missing-credentials'
+    return ''
+  }
   const report = (code, level = 'error') => {
     lastErrorCode = code
     try { logEvent({ level, event: `wecom.${code}`, code }) } catch (_) {}
@@ -187,12 +206,16 @@ const createWecomAdapter = ({
     const recipient = textValue(message?.chatId || message?.userId)
     const content = sanitizeReceiptText(text, 1998)
     if (!recipient || !content) return
+    if (!hasValidAgentId()) {
+      report('invalid-agent-id')
+      throw new Error('invalid-agent-id')
+    }
     const access = await getAccessToken(signal)
     const payload = {
       touser: message?.chatType === 'group' ? undefined : recipient,
       chatid: message?.chatType === 'group' ? recipient : undefined,
       msgtype: 'text',
-      agentid: boundedNumber(config.wecomAgentId, 0, 0, 2147483647),
+      agentid: agentId(),
       text: { content }
     }
     if (typeof httpClient?.sendMessage === 'function') {
@@ -242,7 +265,8 @@ const createWecomAdapter = ({
 
   const handleUpdate = async (update = {}) => {
     if (!enabled()) { status = 'disabled'; return { ok: false, error: 'wecom-disabled' } }
-    if (!hasCredentials()) { report('missing-credentials'); return { ok: false, error: 'missing-credentials' } }
+    const errorCode = configurationError()
+    if (errorCode) { report(errorCode); return { ok: false, error: errorCode } }
     if (!verify(update)) { report('invalid-signature', 'warn'); return { ok: false, error: 'invalid-signature' } }
     const message = normalizeUpdate(update)
     if (!claim(message.updateId)) { duplicateUpdateCount += 1; report('duplicate-update', 'warn'); return { ok: true, duplicate: true } }
@@ -267,7 +291,8 @@ const createWecomAdapter = ({
     onMessage: (nextHandler) => { handler = nextHandler },
     start: async () => {
       if (!enabled()) { status = 'disabled'; acceptingUpdates = false; return }
-      if (!hasCredentials()) { status = 'missing-credentials'; report('missing-credentials'); return }
+      const errorCode = configurationError()
+      if (errorCode) { status = errorCode; report(errorCode); return }
       acceptingUpdates = true; status = 'connected'; lastErrorCode = ''
     },
     stop: async () => {
@@ -288,4 +313,4 @@ const createWecomAdapter = ({
   }
 }
 
-module.exports = { callbackSignature, createWecomAdapter, decryptWecom, parseCallbackBody }
+module.exports = { callbackSignature, createWecomAdapter, createWecomHttpClient, decryptWecom, parseCallbackBody }

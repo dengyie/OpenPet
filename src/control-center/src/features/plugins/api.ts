@@ -159,7 +159,6 @@ export const pluginHttpApi: PluginApi = {
     ? controlCenterAPI.runCreatorStudioDefaultFlow(prompt)
     : pluginHttpApiTransport.creatorFlow(prompt),
   imSecret: (operation, token, credentials) => {
-    if (!usePluginDemoApi()) return pluginHttpApiTransport.imSecret(operation, token)
     if (operation === 'state') return controlCenterAPI.getImGatewaySecretState()
     if (operation === 'save') return controlCenterAPI.saveImGatewayTelegramBotToken(token || '')
     if (operation === 'save-wecom') return controlCenterAPI.saveImGatewayWecomCredentials(credentials || { corpSecret: '', token: '', encodingAesKey: '' })
@@ -167,7 +166,6 @@ export const pluginHttpApi: PluginApi = {
     return controlCenterAPI.clearImGatewayTelegramBotToken()
   },
   imQqCredentials: (operation, credentials) => {
-    if (!usePluginDemoApi()) return pluginHttpApiTransport.imQqCredentials(operation, credentials)
     if (operation === 'state') return controlCenterAPI.getImGatewaySecretState()
     if (operation === 'save') return controlCenterAPI.saveImGatewayQqOfficialCredentials(credentials || { appId: '', clientSecret: '' })
     return controlCenterAPI.clearImGatewayQqOfficialCredentials()

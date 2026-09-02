@@ -15,7 +15,7 @@ const createAdapterHealth = (adapter = {}, state = {}) => {
     aiReplyCount: state.aiReplyCount || 0,
     aiRateLimitedCount: state.aiRateLimitedCount || 0,
     pendingHandlerCount: Math.max(0, Number(adapterStatus.pendingHandlerCount) || 0),
-    droppedHandlerCount: Math.max(0, Number(adapterStatus.droppedHandlerCount) || 0),
+    droppedHandlerCount: Math.max(0, Number(adapterStatus.droppedHandlerCount == null ? adapterStatus.droppedUpdateCount : adapterStatus.droppedHandlerCount) || 0),
     duplicateUpdateCount: Math.max(0, Number(adapterStatus.duplicateUpdateCount) || 0),
     lastAiErrorCode: state.lastAiErrorCode || '',
     lastAllowlistReason: state.lastAllowlistReason || '',

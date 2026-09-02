@@ -95,7 +95,9 @@ const IM_GATEWAY_HEALTH_MESSAGES = new Map([
   ['wecom-invalid-signature', 'WeCom callback signature invalid'],
   ['wecom-handler-failed', 'WeCom message handler failed'],
   ['wecom-stop-timeout', 'WeCom adapter stop timed out'],
-  ['wecom-missing-credentials', 'WeCom credentials missing']
+  ['wecom-missing-credentials', 'WeCom credentials missing'],
+  ['invalid-agent-id', 'WeCom Agent ID must be a positive integer'],
+  ['handler-overloaded', 'WeCom handler capacity exceeded']
 ])
 const IM_GATEWAY_SAFE_HEALTH_LOG_MESSAGES = new Set([
   ...IM_GATEWAY_HEALTH_MESSAGES.values(),
@@ -289,6 +291,13 @@ const summarizeImGatewayHealthBody = (body) => {
     (errorCode === 'telegram-handler-failed' || errorCode === 'telegram-handler-overloaded') &&
     (status === 'connected' || status === 'running')
   ) {
+    return {
+      healthy: true,
+      logLevel: 'warn',
+      message: IM_GATEWAY_HEALTH_MESSAGES.get(errorCode)
+    }
+  }
+  if (id === 'wecom' && errorCode === 'handler-overloaded' && status === 'connected') {
     return {
       healthy: true,
       logLevel: 'warn',
