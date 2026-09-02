@@ -51,8 +51,16 @@ const createImGatewayServer = ({
       const encrypted = String(url.searchParams.get('echostr') || '')
       const valid = wecom.verifyCallback?.({ timestamp: url.searchParams.get('timestamp'), nonce: url.searchParams.get('nonce'), encrypt: encrypted, signature: url.searchParams.get('msg_signature') || url.searchParams.get('signature') })
       let body = encrypted
-      try { if (valid && encrypted) body = wecom.decryptEcho?.(encrypted) || encrypted } catch (_) {}
-      response.writeHead(valid ? 200 : 403, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' })
+      let statusCode = valid ? 200 : 403
+      if (valid && encrypted) {
+        try {
+          body = wecom.decryptEcho?.(encrypted) || encrypted
+        } catch (_) {
+          statusCode = 400
+          body = 'invalid-encrypted-callback'
+        }
+      }
+      response.writeHead(statusCode, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' })
       response.end(body)
       return
     }

@@ -1860,29 +1860,28 @@ test('plugins IM Gateway secret IPC returns renderer-safe token state', async ()
   const cleared = await ipcMain.handlers.get(IPC.PLUGINS_CLEAR_IM_GATEWAY_TELEGRAM_TOKEN)()
   const qqSaved = await ipcMain.handlers.get(IPC.PLUGINS_SAVE_IM_GATEWAY_QQ_CREDENTIALS)(null, { appId: 'qq-app-id', clientSecret: 'qq-client-secret' })
   const qqCleared = await ipcMain.handlers.get(IPC.PLUGINS_CLEAR_IM_GATEWAY_QQ_CREDENTIALS)()
+  const wecomSaved = await ipcMain.handlers.get(IPC.PLUGINS_SAVE_IM_GATEWAY_WECOM_CREDENTIALS)(null, { corpSecret: 'corp-secret', token: 'callback-token', encodingAesKey: 'aes-key' })
+  const wecomCleared = await ipcMain.handlers.get(IPC.PLUGINS_CLEAR_IM_GATEWAY_WECOM_CREDENTIALS)()
 
   assert.deepEqual(state, { hasTelegramBotToken: false, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false, hasWecomCredentials: false })
   assert.deepEqual(saved, { hasTelegramBotToken: true, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false, hasWecomCredentials: false })
   assert.deepEqual(cleared, { hasTelegramBotToken: false, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false, hasWecomCredentials: false })
   assert.deepEqual(qqSaved, { hasTelegramBotToken: false, hasQqOfficialAppId: true, hasQqOfficialClientSecret: true, hasQqOfficialCredentials: true, hasWecomCredentials: false })
   assert.deepEqual(qqCleared, { hasTelegramBotToken: false, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false, hasWecomCredentials: false })
+  assert.deepEqual(wecomSaved, { hasTelegramBotToken: false, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false, hasWecomCredentials: true })
+  assert.deepEqual(wecomCleared, { hasTelegramBotToken: false, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false, hasWecomCredentials: false })
   assert.deepEqual(calls, [
     ['save-token', 'telegram-token'],
     ['clear-token'],
     ['save-qq-credentials', { appId: 'qq-app-id', clientSecret: 'qq-client-secret' }],
-    ['clear-qq-credentials']
+    ['clear-qq-credentials'],
+    ['save-wecom', { corpSecret: 'corp-secret', token: 'callback-token', encodingAesKey: 'aes-key' }],
+    ['clear-wecom']
   ])
-  assert.equal(JSON.stringify({ state, saved, cleared, qqSaved, qqCleared }).includes('telegram-token'), false)
-  assert.equal(JSON.stringify({ state, saved, cleared, qqSaved, qqCleared }).includes('qq-app-id'), false)
-  assert.equal(JSON.stringify({ state, saved, cleared, qqSaved, qqCleared }).includes('qq-client-secret'), false)
-  const wecomSaved = await ipcMain.handlers.get(IPC.PLUGINS_SAVE_IM_GATEWAY_WECOM_CREDENTIALS)(null, { corpSecret: 'corp-secret', token: 'callback-token', encodingAesKey: 'aes-key' })
-  const wecomCleared = await ipcMain.handlers.get(IPC.PLUGINS_CLEAR_IM_GATEWAY_WECOM_CREDENTIALS)()
-
-  assert.deepEqual(wecomSaved, { hasTelegramBotToken: false, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false, hasWecomCredentials: true })
-  assert.deepEqual(wecomCleared, { hasTelegramBotToken: false, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false, hasWecomCredentials: false })
-  assert.deepEqual(calls, [['save-token', 'telegram-token'], ['clear-token'], ['save-qq-credentials', { appId: 'qq-app-id', clientSecret: 'qq-client-secret' }], ['clear-qq-credentials'], ['save-wecom', { corpSecret: 'corp-secret', token: 'callback-token', encodingAesKey: 'aes-key' }], ['clear-wecom']])
-  assert.equal(JSON.stringify({ state, saved, cleared, wecomSaved, wecomCleared }).includes('telegram-token'), false)
-  assert.equal(JSON.stringify({ state, saved, cleared, wecomSaved, wecomCleared }).includes('corp-secret'), false)
+  assert.equal(JSON.stringify({ state, saved, cleared, qqSaved, qqCleared, wecomSaved, wecomCleared }).includes('telegram-token'), false)
+  assert.equal(JSON.stringify({ state, saved, cleared, qqSaved, qqCleared, wecomSaved, wecomCleared }).includes('qq-app-id'), false)
+  assert.equal(JSON.stringify({ state, saved, cleared, qqSaved, qqCleared, wecomSaved, wecomCleared }).includes('qq-client-secret'), false)
+  assert.equal(JSON.stringify({ state, saved, cleared, qqSaved, qqCleared, wecomSaved, wecomCleared }).includes('corp-secret'), false)
 })
 
 test('plugin mutation handlers return plugin mutation result with refreshed plugin list', async () => {

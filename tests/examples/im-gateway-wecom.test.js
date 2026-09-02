@@ -1,19 +1,38 @@
 const assert = require('node:assert/strict')
+const crypto = require('node:crypto')
 const { test } = require('node:test')
-const { callbackSignature, createWecomAdapter, parseCallbackBody } = require('../../examples/plugins/im-gateway/service/adapters/wecom')
+const { callbackSignature, createWecomAdapter, decryptWecom, parseCallbackBody } = require('../../examples/plugins/im-gateway/service/adapters/wecom')
+const { createImGatewayServer } = require('../../examples/plugins/im-gateway/service/im-gateway-service')
 
-const credentials = { corpId: 'corp-id', corpSecret: 'corp-secret', token: 'callback-token', encodingAesKey: 'aes-key' }
+const credentials = { corpId: 'corp-id', corpSecret: 'corp-secret', token: 'callback-token', encodingAesKey: Buffer.alloc(32, 7).toString('base64').replace(/=+$/, '') }
+const wecomConfig = (extra = {}) => ({ wecomEnabled: true, wecomCorpId: credentials.corpId, ...extra })
 const signed = (body, extra = {}) => ({
   ...extra,
   body,
   timestamp: extra.timestamp || '1710000000',
   nonce: extra.nonce || 'nonce-1',
-  signature: callbackSignature({ token: credentials.token, timestamp: extra.timestamp || '1710000000', nonce: extra.nonce || 'nonce-1' })
+  signature: callbackSignature({ token: credentials.token, timestamp: extra.timestamp || '1710000000', nonce: extra.nonce || 'nonce-1', encrypt: body?.Encrypt || body?.encrypt || extra.encrypt })
 })
+
+const encryptCallback = (message, receiveId = credentials.corpId, paddingByte = null, paddingValue = null) => {
+  const key = Buffer.from(`${credentials.encodingAesKey}=`, 'base64')
+  const content = Buffer.from(message)
+  const body = Buffer.alloc(20 + content.length + Buffer.byteLength(receiveId))
+  crypto.randomFillSync(body.subarray(0, 16))
+  body.writeUInt32BE(content.length, 16)
+  content.copy(body, 20)
+  Buffer.from(receiveId).copy(body, 20 + content.length)
+  const padLength = paddingByte || (32 - (body.length % 32))
+  const padding = Buffer.isBuffer(paddingValue) ? paddingValue : Buffer.alloc(padLength, paddingValue || padLength)
+  const padded = Buffer.concat([body, padding])
+  const cipher = crypto.createCipheriv('aes-256-cbc', key, key.subarray(0, 16))
+  cipher.setAutoPadding(false)
+  return Buffer.concat([cipher.update(padded), cipher.final()]).toString('base64')
+}
 
 test('WeCom verifies signatures and normalizes JSON and XML callbacks without retaining raw payloads', async () => {
   const messages = []
-  const adapter = createWecomAdapter({ config: { wecomEnabled: true }, secrets: credentials })
+  const adapter = createWecomAdapter({ config: wecomConfig(), secrets: credentials })
   adapter.onMessage(async (message) => { messages.push(message) })
   await adapter.start()
   const jsonResult = await adapter.handleUpdate(signed({ MsgId: 'msg-1', FromUserName: 'user-1', Content: '/openpet status' }))
@@ -31,7 +50,7 @@ test('WeCom verifies signatures and normalizes JSON and XML callbacks without re
 
 test('WeCom rejects invalid signatures, disabled callbacks, and duplicate updates with stable redacted codes', async () => {
   const events = []
-  const adapter = createWecomAdapter({ config: { wecomEnabled: true }, secrets: credentials, logEvent: (event) => events.push(event) })
+  const adapter = createWecomAdapter({ config: wecomConfig(), secrets: credentials, logEvent: (event) => events.push(event) })
   adapter.onMessage(async () => {})
   await adapter.start()
   const invalid = await adapter.handleUpdate({ body: { MsgId: 'secret-message-id', Content: 'secret-text' }, timestamp: '1', nonce: '2', signature: 'bad' })
@@ -47,7 +66,7 @@ test('WeCom rejects invalid signatures, disabled callbacks, and duplicate update
 test('WeCom sends bounded private and group receipts through injected clients and caches access tokens', async () => {
   const calls = []
   const adapter = createWecomAdapter({
-    config: { wecomEnabled: true, wecomAgentId: 9 },
+    config: wecomConfig({ wecomAgentId: 9 }),
     secrets: credentials,
     httpClient: {
       getAccessToken: async (request) => { calls.push(['token', request.corpSecret]); return { errcode: 0, access_token: 'access-secret', expires_in: 7200 } },
@@ -67,7 +86,7 @@ test('WeCom sends bounded private and group receipts through injected clients an
 
 test('WeCom maps callbacks with ChatId to group conversations', async () => {
   let received
-  const adapter = createWecomAdapter({ config: { wecomEnabled: true }, secrets: credentials })
+  const adapter = createWecomAdapter({ config: wecomConfig(), secrets: credentials })
   adapter.onMessage(async (message) => { received = message })
   await adapter.start()
   await adapter.handleUpdate(signed({ MsgId: 'group-msg', FromUserName: 'user-1', ChatId: 'group-1', Content: 'group text' }))
@@ -76,7 +95,7 @@ test('WeCom maps callbacks with ChatId to group conversations', async () => {
 })
 
 test('WeCom reports missing credentials and request failures without exposing secret values', async () => {
-  const adapter = createWecomAdapter({ config: { wecomEnabled: true }, secrets: { corpSecret: 'top-secret', token: 'token' } })
+  const adapter = createWecomAdapter({ config: wecomConfig(), secrets: { corpSecret: 'top-secret', token: 'token' } })
   await adapter.start()
   assert.equal(adapter.health().status, 'missing-credentials')
   assert.equal(adapter.health().lastErrorCode, 'missing-credentials')
@@ -91,10 +110,73 @@ test('WeCom remains disabled by default and stop prevents new callback work', as
   await adapter.start()
   assert.equal(adapter.health().status, 'disabled')
   assert.deepEqual(await adapter.handleUpdate(signed({ MsgId: 'disabled', Content: 'hello' })), { ok: false, error: 'wecom-disabled' })
-  const enabled = createWecomAdapter({ config: { wecomEnabled: true }, secrets: credentials })
+  const enabled = createWecomAdapter({ config: wecomConfig(), secrets: credentials })
   enabled.onMessage(async () => { handled += 1 })
   await enabled.start()
   await enabled.stop()
   assert.deepEqual(await enabled.handleUpdate(signed({ MsgId: 'stopped', Content: 'hello' })), { ok: true, accepted: false })
   assert.equal(handled, 0)
+})
+
+test('WeCom decrypts encrypted callbacks with the 32-byte block padding convention', async () => {
+  let received
+  const adapter = createWecomAdapter({ config: wecomConfig(), secrets: credentials })
+  adapter.onMessage(async (message) => { received = message })
+  await adapter.start()
+  const echoEncrypted = encryptCallback('hello')
+  assert.equal(decryptWecom(echoEncrypted, credentials.encodingAesKey, credentials.corpId), 'hello')
+  const encrypted = encryptCallback(`${JSON.stringify({ Content: 'hello' })}${' '.repeat(18)}`)
+  assert.deepEqual(await adapter.handleUpdate(signed({ Encrypt: encrypted })), { ok: true, accepted: true })
+  assert.equal(received.text, 'hello')
+})
+
+test('WeCom rejects encrypted callbacks with a wrong receiver or malformed padding', () => {
+  assert.throws(() => decryptWecom(encryptCallback('hello', 'wrong-corp-id'), credentials.encodingAesKey, credentials.corpId), /invalid-callback-receiver/)
+  const malformedPadding = Buffer.alloc(31, 31)
+  malformedPadding[30] = 30
+  assert.throws(() => decryptWecom(encryptCallback('hello!', credentials.corpId, null, malformedPadding), credentials.encodingAesKey, credentials.corpId), /invalid-encrypted-callback/)
+})
+
+test('WeCom encrypted GET echo returns plaintext and decrypt failures are non-success responses', async () => {
+  const adapter = createWecomAdapter({ config: wecomConfig(), secrets: credentials })
+  const service = createImGatewayServer({ config: wecomConfig(), adapters: [adapter], bridgeClient: {} })
+  try {
+    await service.start(0)
+    const port = service.server.address().port
+    const encrypted = encryptCallback('echo')
+    const query = new URLSearchParams({ echostr: encrypted, timestamp: '1710000000', nonce: 'nonce-1', msg_signature: callbackSignature({ token: credentials.token, timestamp: '1710000000', nonce: 'nonce-1', encrypt: encrypted }) })
+    const valid = await fetch(`http://127.0.0.1:${port}/wecom/callback?${query}`)
+    assert.equal(valid.status, 200)
+    assert.equal(await valid.text(), 'echo')
+    const brokenEncrypted = encryptCallback('echo', credentials.corpId, null, 5)
+    const brokenQuery = new URLSearchParams({ echostr: brokenEncrypted, timestamp: '1710000000', nonce: 'nonce-1', msg_signature: callbackSignature({ token: credentials.token, timestamp: '1710000000', nonce: 'nonce-1', encrypt: brokenEncrypted }) })
+    const broken = await fetch(`http://127.0.0.1:${port}/wecom/callback?${brokenQuery}`)
+    assert.notEqual(broken.status, 200)
+  } finally {
+    await service.close()
+  }
+})
+
+test('WeCom request timeout aborts the injected HTTP client signal', async () => {
+  let requestSignal
+  const adapter = createWecomAdapter({
+    config: wecomConfig({ wecomAgentId: 9 }),
+    secrets: credentials,
+    requestTimeoutMs: 250,
+    httpClient: {
+      getAccessToken: async (request) => {
+        requestSignal = request.signal
+        return new Promise(() => {})
+      }
+    }
+  })
+  await adapter.start()
+  await assert.rejects(adapter.sendReceipt({ chatType: 'private', chatId: 'user-1' }, 'hello'), /request-timeout/)
+  assert.equal(requestSignal?.aborted, true)
+})
+
+test('WeCom requires CorpID in configuration before reporting connected', async () => {
+  const adapter = createWecomAdapter({ config: { wecomEnabled: true }, secrets: credentials })
+  await adapter.start()
+  assert.equal(adapter.health().status, 'missing-credentials')
 })

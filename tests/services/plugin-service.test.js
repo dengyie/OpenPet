@@ -4283,12 +4283,13 @@ test('plugin service saves QQ official credentials as separate host secrets with
     secretService
   })
   const saved = service.saveImGatewayQqOfficialCredentials({ appId: 'qq-app-id-secret', clientSecret: 'qq-client-secret-value' })
-  assert.deepEqual(saved, { hasTelegramBotToken: false, hasQqOfficialAppId: true, hasQqOfficialClientSecret: true, hasQqOfficialCredentials: true })
+  assert.deepEqual(saved, { hasTelegramBotToken: false, hasQqOfficialAppId: true, hasQqOfficialClientSecret: true, hasQqOfficialCredentials: true, hasWecomCredentials: false })
   assert.equal(JSON.stringify(saved).includes('qq-client-secret-value'), false)
   assert.equal(values.get('im.qq.appId'), 'qq-app-id-secret')
   assert.equal(values.get('im.qq.clientSecret'), 'qq-client-secret-value')
   const cleared = service.clearImGatewayQqOfficialCredentials()
   assert.equal(cleared.hasQqOfficialCredentials, false)
+  assert.equal(cleared.hasWecomCredentials, false)
 })
 
 test('plugin service rolls QQ credential save back when the second secret write fails', () => {
@@ -4313,7 +4314,7 @@ test('plugin service rolls QQ credential save back when the second secret write 
   assert.throws(() => service.saveImGatewayQqOfficialCredentials({ appId: 'new-app-id', clientSecret: 'new-client-secret' }), /client secret write failed/)
   assert.equal(values.get('im.qq.appId'), 'old-app-id')
   assert.equal(values.get('im.qq.clientSecret'), 'old-client-secret')
-  assert.deepEqual(service.getImGatewaySecretState(), { hasTelegramBotToken: false, hasQqOfficialAppId: true, hasQqOfficialClientSecret: true, hasQqOfficialCredentials: true })
+  assert.deepEqual(service.getImGatewaySecretState(), { hasTelegramBotToken: false, hasQqOfficialAppId: true, hasQqOfficialClientSecret: true, hasQqOfficialCredentials: true, hasWecomCredentials: false })
 })
 
 test('plugin service rolls QQ credential clear back when the second secret delete fails', () => {
@@ -4338,7 +4339,7 @@ test('plugin service rolls QQ credential clear back when the second secret delet
   assert.throws(() => service.clearImGatewayQqOfficialCredentials(), /client secret delete failed/)
   assert.equal(values.get('im.qq.appId'), 'old-app-id')
   assert.equal(values.get('im.qq.clientSecret'), 'old-client-secret')
-  assert.deepEqual(service.getImGatewaySecretState(), { hasTelegramBotToken: false, hasQqOfficialAppId: true, hasQqOfficialClientSecret: true, hasQqOfficialCredentials: true })
+  assert.deepEqual(service.getImGatewaySecretState(), { hasTelegramBotToken: false, hasQqOfficialAppId: true, hasQqOfficialClientSecret: true, hasQqOfficialCredentials: true, hasWecomCredentials: false })
 })
 
 test('plugin service registers service bridge runtime before spawning child process', async () => {

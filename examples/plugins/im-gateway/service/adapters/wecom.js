@@ -58,15 +58,31 @@ const escapeXml = (value) => textValue(value)
 const decryptWecom = (encrypted, encodingAesKey, receiveId = '') => {
   const key = Buffer.from(`${textValue(encodingAesKey)}=`, 'base64')
   if (key.length !== 32) throw new Error('invalid-encoding-aes-key')
-  const decipher = crypto.createDecipheriv('aes-256-cbc', key, key.subarray(0, 16))
-  const decoded = Buffer.concat([decipher.update(Buffer.from(textValue(encrypted), 'base64')), decipher.final()])
-  if (decoded.length < 20) throw new Error('invalid-encrypted-callback')
-  const messageLength = decoded.readUInt32BE(16)
+  const ciphertext = Buffer.from(textValue(encrypted), 'base64')
+  if (!ciphertext.length || ciphertext.length % 16 !== 0) throw new Error('invalid-encrypted-callback')
+  let decoded
+  try {
+    const decipher = crypto.createDecipheriv('aes-256-cbc', key, key.subarray(0, 16))
+    decipher.setAutoPadding(false)
+    decoded = Buffer.concat([decipher.update(ciphertext), decipher.final()])
+  } catch (_) {
+    throw new Error('invalid-encrypted-callback')
+  }
+  if (decoded.length < 32 || decoded.length % 32 !== 0) throw new Error('invalid-encrypted-callback')
+  const paddingLength = decoded[decoded.length - 1]
+  if (paddingLength < 1 || paddingLength > 32 || paddingLength > decoded.length) throw new Error('invalid-encrypted-callback')
+  for (const paddingByte of decoded.subarray(decoded.length - paddingLength)) {
+    if (paddingByte !== paddingLength) throw new Error('invalid-encrypted-callback')
+  }
+  const unpadded = decoded.subarray(0, decoded.length - paddingLength)
+  if (unpadded.length < 20) throw new Error('invalid-encrypted-callback')
+  const messageLength = unpadded.readUInt32BE(16)
   const messageEnd = 20 + messageLength
-  if (messageEnd > decoded.length) throw new Error('invalid-encrypted-callback')
-  const receivedId = decoded.subarray(messageEnd).toString('utf8')
-  if (receiveId && receivedId !== receiveId) throw new Error('invalid-callback-receiver')
-  return decoded.subarray(20, messageEnd).toString('utf8')
+  if (messageEnd > unpadded.length) throw new Error('invalid-encrypted-callback')
+  const receivedId = unpadded.subarray(messageEnd)
+  const expectedId = Buffer.from(textValue(receiveId), 'utf8')
+  if (expectedId.length !== receivedId.length || !crypto.timingSafeEqual(expectedId, receivedId)) throw new Error('invalid-callback-receiver')
+  return unpadded.subarray(20, messageEnd).toString('utf8')
 }
 
 const createWecomAdapter = ({
@@ -101,7 +117,8 @@ const createWecomAdapter = ({
   const enabled = () => config.wecomEnabled === true
   const token = () => textValue(secrets.token || secrets.callbackToken || secrets.wecomToken)
   const corpSecret = () => textValue(secrets.corpSecret || secrets.secret)
-  const hasCredentials = () => Boolean(token() && corpSecret() && textValue(secrets.encodingAesKey || secrets.encoding_aes_key || secrets.aesKey))
+  const corpId = () => textValue(config.wecomCorpId)
+  const hasCredentials = () => Boolean(corpId() && token() && corpSecret() && textValue(secrets.encodingAesKey || secrets.encoding_aes_key || secrets.aesKey))
   const report = (code, level = 'error') => {
     lastErrorCode = code
     try { logEvent({ level, event: `wecom.${code}`, code }) } catch (_) {}
@@ -109,18 +126,17 @@ const createWecomAdapter = ({
 
   const request = async (method, url, body, signal) => {
     if (!httpClient) throw new Error('missing-http-client')
-    const options = { method, headers: { 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }), ...(signal ? { signal } : {}) }
-    let result
-    if (typeof httpClient.request === 'function') result = httpClient.request({ method, url, body, headers: options.headers, signal })
-    else if (typeof httpClient.fetch === 'function') result = httpClient.fetch(url, options)
-    else if (typeof httpClient === 'function') result = httpClient(url, options)
-    else if (typeof httpClient[method.toLowerCase()] === 'function') result = httpClient[method.toLowerCase()](url, options)
-    else throw new Error('invalid-http-client')
-    return await withTimeout(result, timeout, signal)
+    return await withTimeout((requestSignal) => {
+      const options = { method, headers: { 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }), ...(requestSignal ? { signal: requestSignal } : {}) }
+      if (typeof httpClient.request === 'function') return httpClient.request({ method, url, body, headers: options.headers, signal: requestSignal })
+      if (typeof httpClient.fetch === 'function') return httpClient.fetch(url, options)
+      if (typeof httpClient === 'function') return httpClient(url, options)
+      if (typeof httpClient[method.toLowerCase()] === 'function') return httpClient[method.toLowerCase()](url, options)
+      throw new Error('invalid-http-client')
+    }, timeout, signal)
   }
 
   const withTimeout = async (operation, duration, signal) => {
-    const pending = Promise.resolve(operation)
     let timeoutId = null
     let abortHandler = null
     const controller = typeof AbortController === 'function' ? new AbortController() : null
@@ -130,6 +146,7 @@ const createWecomAdapter = ({
       else signal.addEventListener('abort', abortHandler, { once: true })
     }
     const requestSignal = controller?.signal || signal
+    const pending = Promise.resolve().then(() => typeof operation === 'function' ? operation(requestSignal) : operation)
     const timed = new Promise((_, reject) => {
       timeoutId = setTimeout(() => {
         controller?.abort()
@@ -141,7 +158,6 @@ const createWecomAdapter = ({
     try { return await Promise.race([pending, timed]) } finally {
       if (timeoutId) clearTimeout(timeoutId)
       if (signal && abortHandler) signal.removeEventListener('abort', abortHandler)
-      void requestSignal
     }
   }
 
@@ -153,9 +169,9 @@ const createWecomAdapter = ({
   const getAccessToken = async (signal) => {
     const currentTime = Date.now()
     if (accessToken && accessTokenExpiresAt > currentTime + 30000) return accessToken
-    const url = `https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid=${encodeURIComponent(textValue(secrets.corpId || config.wecomCorpId))}&corpsecret=${encodeURIComponent(corpSecret())}`
+    const url = `https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid=${encodeURIComponent(corpId())}&corpsecret=${encodeURIComponent(corpSecret())}`
     const response = typeof httpClient?.getAccessToken === 'function'
-      ? await withTimeout(httpClient.getAccessToken({ corpId: textValue(secrets.corpId || config.wecomCorpId), corpSecret: corpSecret(), signal }), timeout, signal)
+      ? await withTimeout((requestSignal) => httpClient.getAccessToken({ corpId: corpId(), corpSecret: corpSecret(), signal: requestSignal }), timeout, signal)
       : await request('GET', url, undefined, signal)
     const data = await responseJson(response)
     if (!data || Number(data.errcode || 0) !== 0 || !textValue(data.access_token)) {
@@ -180,7 +196,7 @@ const createWecomAdapter = ({
       text: { content }
     }
     if (typeof httpClient?.sendMessage === 'function') {
-      const result = await withTimeout(httpClient.sendMessage({ accessToken: access, payload, signal }), timeout, signal)
+      const result = await withTimeout((requestSignal) => httpClient.sendMessage({ accessToken: access, payload, signal: requestSignal }), timeout, signal)
       const data = await responseJson(result)
       if (Number(data?.errcode || 0) !== 0) throw new Error('message-send-failed')
       return
