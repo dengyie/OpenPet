@@ -1,6 +1,6 @@
 # OpenPet Handoff
 
-> Last updated: 2026-07-17
+> Last updated: 2026-09-02
 > Canonical active queue: [`TODO.md`](./TODO.md)
 > Branch: `main`
 
@@ -33,6 +33,11 @@ This file is the compact maintainer continuation note. Historical phase-level de
 - Creator Studio imported review surfaces are phase-aware imported review guidance: after import they no longer mix pre-import QA, repair controls, or retry generation cues into the imported state.
 - The typed plugin view config schema/storage/signature payloads, action-frame `inspectionResult` payloads, and pet-pack mutation view payloads are already normalized through the TypeScript adapter boundary.
 - The current plugin host bridge keeps `trigger-proposals:write` and `model:image-generate` as the narrow generation/review permissions, and plugin-managed provider credentials are unsupported for host-managed generation.
+- IM platform decisions are now fixed: QQ's first real route is the official QQ robot, and WeChat's first real route is a WeCom self-built application. OneBot is reserved for a future experimental compatibility layer; personal-client injection and an Official Account first route are rejected for the initial WeChat path. Neither adapter is implemented yet, so this decision must not be reported as QQ or WeChat support.
+- Both future adapters stay inside the bundled `openpet.im-gateway` plugin. The host owns secret storage and service lifecycle; each route is disabled by default, requires native execution approval, does not persist raw messages, and must not add QQ/WeCom SDKs to the Electron main process. The implementation sequence is tracked in [`superpowers/plans/2026-09-02-im-platform-adapters.md`](./superpowers/plans/2026-09-02-im-platform-adapters.md).
+- Agent Awareness durable usage rollups are landed. The remaining Phase B work is human desktop acceptance for dashboard usefulness, pet speech/noise, and fresh Codex signal smoke/archive evidence; Phase C companion features remain deferred pending separate product approval.
+- Trigger editing is intentionally bounded: the current UI, contract, and runtime cover random mode/interval, state predicate/source, event name/source, summary, enable/disable, and delete. Expand it only when a new runtime semantic requires additional fields.
+- The scoped TypeScript evidence-summary tranche is landed in `20ef3ebf`: the two selected evidence-summary scripts use `// @ts-check` and shared contract JSDoc, with `tsconfig` limited to those files. There is no approval for a global `checkJs` rollout or a main-process rewrite.
 - The current public posture is macOS-first release track; the archived signed closure keeps official desktop, macOS, and Windows in a not-ready state until signed evidence is archived.
 - A real public macOS release-asset check now lives at `docs/release-evidence/macos-release-evidence/2026-07-06T15-57-51Z-v1.0.1-rc.3-public-release-asset-check/`; it verifies the public `v1.0.1-rc.3` ZIP and DMG without launching the app and both currently fail local `codesign`/`spctl` verification with `code has no resources but signature indicates they must be present`.
 - An authenticated import of the `openpet-macos-release-evidence-v1.0.1-rc.3` workflow artifact from release run `28060966745` now lives at `docs/release-evidence/macos-release-evidence-archive/2026-07-06T16-17-27Z-v1.0.1-rc.3-authenticated-artifact-import/`; it confirms the same negative release truth as the public asset check. A companion current-parser rerun now also lives at `docs/release-evidence/macos-release-evidence-archive/2026-07-06T17-32-13Z-v1.0.1-rc.3-authenticated-artifact-current-parser-rerun/` and makes the current local interpretation explicit: the archived codesign, Gatekeeper, and notarization texts now classify as `fail` / `fail` / `fail` rather than generic `pending`.
@@ -56,6 +61,7 @@ This file is the compact maintainer continuation note. Historical phase-level de
 3. Collect real signed Windows smoke evidence.
 4. Collect packaged native picker evidence from real app runs; the archived packaged runtime smoke at `docs/release-evidence/packaged-runtime/2026-06-16T14-52-13-074Z-darwin-arm64/` still shows `plugin-picker-evidence-linked` pending, `pet-picker-evidence-linked` pending, and `invalid-package-feedback` blocked.
 5. Obtain a real compatible package from an external source; synthetic community-source rehearsal does not replace a real compatible third-party package.
+6. Execute the approved IM adapter sequence, beginning with shared gateway de-hardcoding, then QQ official robot and WeCom adapters. Simulated protocol tests are development gates; real QQ/WeCom account smoke is manual evidence and is not a current development completion gate.
 
 The packaged-provider rehearsal does not replace a real configured packaged provider session. Release rehearsal artifacts are not real signed or manually observed release evidence.
 
@@ -65,6 +71,7 @@ The packaged-provider rehearsal does not replace a real configured packaged prov
 - Keep extension capability wording honest and conservative.
 - Keep local HTTP/MCP loopback-only and off by default.
 - Keep trigger proposal ownership on the host side; `random`, `state`, and `event` already create active host-owned durable trigger rules with minimal inline host editing in the Actions pane, while Creator Studio still submits reviewable proposals through the Trigger Proposal Inbox instead of mutating rules directly.
+- Keep IM platform SDKs inside bundled `openpet.im-gateway`; host-managed secrets and lifecycle, disabled-by-default routes, native approval, and raw-message non-persistence are mandatory for QQ official robot and WeCom work.
 
 ## High-Signal Commands
 
@@ -89,6 +96,7 @@ npm run pack
 - Engineering snapshot: [`development-summary.md`](./development-summary.md)
 - Product/release snapshot: [`project-status-review.md`](./project-status-review.md)
 - AI Talk and runtime TODO map: [`openpet-current-todo-architecture.md`](./openpet-current-todo-architecture.md)
+- IM adapter decisions and implementation sequence: [`superpowers/plans/2026-09-02-im-platform-adapters.md`](./superpowers/plans/2026-09-02-im-platform-adapters.md)
 - Extension authoring: [`plugin-development.md`](./plugin-development.md)
 - Release evidence index: [`release-evidence/README.md`](./release-evidence/README.md)
 - Release evidence and gates: [`desktop-release-design.md`](./desktop-release-design.md), [`release-checklist.md`](./release-checklist.md)

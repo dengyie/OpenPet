@@ -2,8 +2,9 @@
 
 > Date: 2026-07-08
 > Branch: `dev9`
-> Status: Phase 1 MVP complete on `dev9`; future work is tracked in `docs/TODO.md`
-> Scope: official privileged core plugin for IM integration with Telegram first, QQ and WeChat deferred
+> Last updated: 2026-09-02
+> Status: Telegram MVP and hardening are implemented; QQ official robot and WeCom are decided but not implemented
+> Scope: official privileged core plugin for IM integration with Telegram first, followed by QQ official robot and WeCom adapters
 
 ## 1. Purpose
 
@@ -14,7 +15,8 @@ The chosen route is an official privileged bundled plugin:
 - plugin id: `openpet.im-gateway`
 - runtime form: long-running plugin service
 - first platform: Telegram through long polling
-- later platforms: QQ and WeChat through adapter implementations behind the same internal gateway model
+- next platforms: QQ official robot and WeCom self-built application through adapter implementations behind the same internal gateway model
+- future compatibility: OneBot may be evaluated as an experimental QQ compatibility layer after the official route, but it is not the first QQ path
 
 The host remains the owner of pet state, secrets, plugin lifecycle, and Control Center entry points. The plugin owns IM platform adapters, reconnect behavior, trigger policy, command parsing, and platform-specific delivery details.
 
@@ -52,7 +54,10 @@ Phase 1 is not a full chat bot, and it is not a general third-party IM adapter f
 - The plugin is bundled with OpenPet but disabled by default.
 - Users must explicitly enable it, save credentials, approve native execution, and start the service.
 - Phase 1 supports Telegram only as a real adapter.
-- QQ and WeChat get internal adapter skeletons but remain disabled and experimental.
+- The first real QQ route is the official QQ robot. OneBot is deferred to a future experimental compatibility layer and is not the first implementation.
+- The first real WeChat route is a WeCom self-built application. Official Account is not the first route, and personal-client injection is rejected for the initial product path.
+- QQ and WeCom adapters are not implemented by this document update; until their implementation and protocol gates land, OpenPet must not claim QQ or WeChat support.
+- QQ and WeCom credentials, capability notes, and Control Center settings remain separate even though both adapters share the gateway lifecycle.
 - Telegram uses Node.js and `grammY`.
 - Telegram Phase 1 uses long polling only. Webhook mode is deferred.
 - The plugin has an internal lightweight adapter registry.
@@ -79,9 +84,10 @@ Phase 1 does not include:
 
 - bidirectional AI chat in IM;
 - Telegram webhook mode;
-- QQ OneBot real connection;
-- QQ official bot real connection;
-- WeChat official account, WeCom, iLink, or local-client automation real connection;
+- QQ official robot real connection (decided route, implementation pending);
+- QQ OneBot real connection as a first-class route (deferred; only a future experimental compatibility layer may be considered);
+- WeChat Official Account, iLink, or personal-client automation real connection;
+- WeCom real connection (decided route, implementation pending);
 - third-party IM adapter API;
 - generic plugin `secrets` or `privileged` permission;
 - persistence of raw messages, media, voice transcripts, or attachments;
@@ -142,8 +148,8 @@ examples/plugins/im-gateway/
       registry.js
       fake.js
       telegram.js
-      onebot.js
-      weixin.js
+      qq-official.js
+      wecom.js
     core/
       allowlist.js
       commands.js
@@ -152,7 +158,7 @@ examples/plugins/im-gateway/
       trigger-policy.js
 ```
 
-The fake adapter is required for tests. `onebot.js` and `weixin.js` should define disabled skeletons only in Phase 1.
+The fake adapter is required for tests. `qq-official.js` and `wecom.js` are the planned adapter modules for the next implementation sequence; they must remain disabled until their host secret/config paths, UI, and protocol tests are complete. A future `onebot.js` compatibility module must be separately gated as experimental.
 
 ## 7. Host Secret Model
 
@@ -161,8 +167,8 @@ IM tokens must not be represented as plain plugin config fields.
 Recommended secret ids:
 
 - `im.telegram.botToken`
-- future: `im.qq.appSecret`
-- future: `im.weixin.token`
+- future QQ official robot credentials: a separate host-owned app/bot credential set, with exact fields fixed by the official API integration task;
+- future WeCom credentials: a separate host-owned corp/app secret and callback verification set, with exact fields fixed by the WeCom integration task;
 
 Phase 1 should add a narrow host path:
 
@@ -447,7 +453,36 @@ Docs:
 - Phase 1 MVP foundation is complete on `dev9`; do not start Phase 2 without a new approval.
 - Active follow-up work should be tracked in `docs/TODO.md`, while the longer-term shape stays in the sections below.
 
-## 18. Future Work
+## 18. Cross-Cutting Decisions For Follow-Up Work
+
+These decisions constrain the next implementation plan and are intentionally
+separate from the Telegram MVP acceptance criteria:
+
+- Both QQ official robot and WeCom live only inside the bundled
+  `openpet.im-gateway` adapter registry. The Electron main process must not
+  import either platform SDK.
+- The host owns secret storage, configuration persistence, native execution
+  approval, enable/disable state, and service lifecycle. Renderer state exposes
+  saved-state and redacted health only.
+- Both routes are disabled by default and require native approval before start.
+  Raw messages, attachments, and platform payloads are not persisted.
+- The first development gates are simulated protocol tests and Control Center
+  contract/UI tests. A real QQ or WeCom account smoke is a manual follow-up
+  and does not count as the current development completion gate.
+- Agent Awareness is limited to a Phase B human desktop acceptance loop in the
+  current product scope. Durable rollups are already implemented; Phase C is
+  deferred.
+- The host-owned trigger editor remains bounded to the existing random
+  mode/interval, state predicate/source, event name/source, summary, enable/
+  disable, and delete fields. Expand it only when a new runtime semantic
+  requires additional data.
+- TypeScript migration work uses a scoped evidence-summary/report tranche. It
+  does not authorize global `checkJs` or a main-process rewrite.
+
+The implementation sequence is maintained in
+[`../plans/2026-09-02-im-platform-adapters.md`](../plans/2026-09-02-im-platform-adapters.md).
+
+## 19. Future Work
 
 ### Phase 2: AI chat bridge and IM replies
 
@@ -464,30 +499,31 @@ Development items:
 - define safe transcript retention rules;
 - add tests for AI bridge permission and conversation isolation.
 
-### Phase 3: QQ support
+### Phase 3: QQ official robot support
 
 Goal: add real QQ support after Telegram proves the gateway shape.
 
 Development items:
 
-- implement OneBot v11 adapter for NapCat/Lagrange-style deployments;
-- evaluate QQ official bot adapter separately for compliant bot scenarios;
-- keep OneBot and official QQ credentials and config separate;
+- implement the official QQ robot adapter inside `openpet.im-gateway`;
+- add a host-owned official QQ credential model and native-approval lifecycle;
+- keep official QQ credentials/config separate from any future OneBot experiment;
 - add QQ-specific allowlist handling;
 - add QQ command receipt support;
 - add platform capability notes in UI;
-- add fake and protocol-level tests.
+- add fake and protocol-level tests;
+- keep OneBot out of the first implementation; evaluate it later only as an explicitly experimental compatibility layer.
 
-### Phase 4: WeChat support
+### Phase 4: WeCom support
 
-Goal: support WeChat-like channels without pretending one implementation covers every WeChat surface.
+Goal: support a compliant WeChat-adjacent channel through a WeCom self-built application without pretending one implementation covers every WeChat surface.
 
 Development items:
 
-- split WeChat options into official account, WeCom, and experimental personal WeChat/iLink tracks;
-- document capability and risk differences clearly;
-- implement only official or semi-official routes by default;
-- keep personal WeChat/iLink behind explicit experimental settings if ever shipped;
+- implement the WeCom self-built application adapter inside `openpet.im-gateway`;
+- add a host-owned corp/app secret and callback verification config model;
+- document WeCom capability and risk boundaries clearly;
+- keep Official Account and personal WeChat/iLink outside the first implementation;
 - add strict privacy warnings and health limitations;
 - avoid ordinary group-chat claims unless verified by the selected backend.
 
@@ -544,7 +580,7 @@ These are deliberately not planned until a later design:
 - full IM session viewer in Control Center;
 - platform SDKs in the Electron main process.
 
-## 19. Risks
+## 20. Risks
 
 - Secret handling can accidentally leak if plugin config fields are used for tokens. Mitigation: host `SecretService` only, saved-state views only.
 - Telegram can fail due to token errors, polling conflicts, or network issues while the process remains alive. Mitigation: per-adapter health, explicit error codes, and command receipts.
@@ -552,7 +588,7 @@ These are deliberately not planned until a later design:
 - The Telegram-first implementation can bias the abstraction. Mitigation: keep base adapter and fake adapter tests platform-neutral.
 - The official privileged plugin can become a backdoor for generic secret access. Mitigation: hard-code Phase 1 privilege to `openpet.im-gateway` only.
 
-## 20. Acceptance Criteria
+## 21. Acceptance Criteria
 
 - `openpet.im-gateway` is bundled and visible in Plugins.
 - It is disabled by default.
