@@ -1,3 +1,5 @@
+// @ts-check
+
 const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
@@ -6,6 +8,17 @@ const { REQUIRED_CHECKS, validateReport } = require('./validate-desktop-picker-s
 
 const DEFAULT_EVIDENCE_DIR = 'desktop-picker-evidence'
 const STATUS_ORDER = ['pass', 'fail', 'pending', 'blocked']
+
+/** @typedef {import('../src/shared/openpet-contracts').DesktopPickerEvidenceSummary} DesktopPickerEvidenceSummary */
+/** @typedef {import('../src/shared/openpet-contracts').DesktopPickerEvidenceReport} DesktopPickerEvidenceReport */
+/** @typedef {import('../src/shared/openpet-contracts').DesktopPickerEvidenceFile} DesktopPickerEvidenceFile */
+/** @typedef {import('../src/shared/openpet-contracts').DesktopPickerSmokeCheck} DesktopPickerSmokeCheck */
+/** @typedef {import('../src/shared/openpet-contracts').DesktopPickerSmokeReport} DesktopPickerSmokeReport */
+/** @typedef {import('../src/shared/openpet-contracts').DesktopPickerValidationResult} DesktopPickerValidationResult */
+/** @typedef {{ evidenceDir: string, reportPath: string | null, requireSigned: boolean, outputPath: string | null, json: boolean, help: boolean }} CliOptions */
+/** @typedef {{ evidenceDir: string | null, reportPath: string | null, requireSigned: boolean, outputPath: string | null, json: boolean, help: boolean }} CliParseState */
+/** @typedef {{ evidenceDir?: string, reportPath?: string | null, requireSigned?: boolean, now?: () => Date, fsImpl?: typeof fs }} SummaryOptions */
+/** @typedef {{ summary: DesktopPickerEvidenceSummary, outputPath: string, json?: boolean, fsImpl?: typeof fs }} WriteSummaryOptions */
 
 const usage = () => [
   'Usage: node scripts/create-desktop-picker-evidence-summary.js [evidence-dir] [--evidence-dir <dir>] [--report <report.json>] [--require-signed] [--output <summary.md>] [--json]',
@@ -16,7 +29,9 @@ const usage = () => [
   '--json writes the structured summary instead of Markdown.'
 ].join('\n')
 
+/** @param {string[]} argv @returns {CliOptions} */
 const parseArgs = (argv) => {
+  /** @type {CliParseState} */
   const options = {
     evidenceDir: null,
     reportPath: null,
@@ -26,12 +41,14 @@ const parseArgs = (argv) => {
     help: false
   }
 
+  /** @param {number} index @param {string} flag */
   const readValue = (index, flag) => {
     const value = argv[index + 1]
     if (!value || value.startsWith('--')) throw new Error(`${flag} requires a value`)
     return value
   }
 
+  /** @param {string} value */
   const setEvidenceDir = (value) => {
     if (options.evidenceDir) throw new Error('Evidence directory was provided more than once')
     options.evidenceDir = value
@@ -62,11 +79,13 @@ const parseArgs = (argv) => {
   }
 
   if (!options.evidenceDir) options.evidenceDir = DEFAULT_EVIDENCE_DIR
-  return options
+  return /** @type {CliOptions} */ (options)
 }
 
+/** @param {crypto.BinaryLike} content @returns {string} */
 const sha256 = (content) => crypto.createHash('sha256').update(content).digest('hex')
 
+/** @param {string} evidenceDir @param {typeof fs} [fsImpl] @returns {DesktopPickerEvidenceFile[]} */
 const describeEvidenceFiles = (evidenceDir, fsImpl = fs) => {
   const absoluteEvidenceDir = path.resolve(evidenceDir)
   if (!fsImpl.existsSync(absoluteEvidenceDir)) return []
@@ -85,17 +104,21 @@ const describeEvidenceFiles = (evidenceDir, fsImpl = fs) => {
     .sort((a, b) => a.file.localeCompare(b.file))
 }
 
+/** @param {string} reportPath @param {typeof fs} [fsImpl] @returns {{ absoluteReportPath: string, report: DesktopPickerSmokeReport }} */
 const loadReport = (reportPath, fsImpl = fs) => {
   const absoluteReportPath = path.resolve(reportPath)
   return {
     absoluteReportPath,
-    report: JSON.parse(fsImpl.readFileSync(absoluteReportPath, 'utf-8'))
+    report: /** @type {DesktopPickerSmokeReport} */ (JSON.parse(fsImpl.readFileSync(absoluteReportPath, 'utf-8')))
   }
 }
 
+/** @param {DesktopPickerSmokeCheck[]} [checks] */
 const countChecksByStatus = (checks = []) => {
-  const counts = Object.fromEntries(STATUS_ORDER.map((status) => [status, 0]))
-  const byStatus = Object.fromEntries(STATUS_ORDER.map((status) => [status, []]))
+  /** @type {{ pass: number, fail: number, pending: number, blocked: number } & Record<string, number>} */
+  const counts = { pass: 0, fail: 0, pending: 0, blocked: 0 }
+  /** @type {{ pass: string[], fail: string[], pending: string[], blocked: string[] } & Record<string, string[]>} */
+  const byStatus = { pass: [], fail: [], pending: [], blocked: [] }
 
   for (const check of checks) {
     const status = STATUS_ORDER.includes(check?.status) ? check.status : 'unknown'
@@ -108,13 +131,17 @@ const countChecksByStatus = (checks = []) => {
   return { counts, byStatus }
 }
 
+/**
+ * @param {{ reportPath: string | null, requireSigned: boolean, fsImpl?: typeof fs }} options
+ * @returns {DesktopPickerEvidenceReport | null}
+ */
 const summarizeReport = ({ reportPath, requireSigned, fsImpl = fs }) => {
   if (!reportPath) return null
 
   try {
     const { absoluteReportPath, report } = loadReport(reportPath, fsImpl)
-    const structuralValidation = validateReport(report, { allowPending: true, requireSigned })
-    const readinessValidation = validateReport(report, { allowPending: false, requireSigned })
+    const structuralValidation = /** @type {DesktopPickerValidationResult} */ (validateReport(report, { allowPending: true, requireSigned }))
+    const readinessValidation = /** @type {DesktopPickerValidationResult} */ (validateReport(report, { allowPending: false, requireSigned }))
     const checks = Array.isArray(report.checks) ? report.checks : []
     const checkSummary = countChecksByStatus(checks)
 
@@ -133,7 +160,7 @@ const summarizeReport = ({ reportPath, requireSigned, fsImpl = fs }) => {
         signatureStatus: report.artifact?.signatureStatus || '',
         authenticodeStatus: report.artifact?.authenticodeStatus || ''
       },
-      fixtures: report.fixture || {},
+      fixtures: { ...report.fixture },
       checks: {
         total: REQUIRED_CHECKS.length,
         present: checks.length,
@@ -156,11 +183,12 @@ const summarizeReport = ({ reportPath, requireSigned, fsImpl = fs }) => {
   } catch (err) {
     return {
       reportPath: path.resolve(reportPath),
-      error: err.message || String(err)
+      error: err instanceof Error ? err.message : String(err)
     }
   }
 }
 
+/** @param {SummaryOptions} [options] @returns {DesktopPickerEvidenceSummary} */
 const createDesktopPickerEvidenceSummary = ({
   evidenceDir = DEFAULT_EVIDENCE_DIR,
   reportPath = null,
@@ -171,15 +199,16 @@ const createDesktopPickerEvidenceSummary = ({
   const absoluteEvidenceDir = path.resolve(evidenceDir)
   const presentFiles = describeEvidenceFiles(absoluteEvidenceDir, fsImpl)
   const report = summarizeReport({ reportPath, requireSigned, fsImpl })
-  const reportHasLoadError = Boolean(report?.error)
+  const reportHasLoadError = Boolean(report && 'error' in report)
+  const validReport = report && !('error' in report) ? report : null
   const evidenceDirExists = fsImpl.existsSync(absoluteEvidenceDir)
 
   const errors = [
     ...(!evidenceDirExists ? [`evidence directory is missing: ${absoluteEvidenceDir}`] : []),
-    ...(reportHasLoadError ? [`report: ${report.error}`] : [])
+    ...(report && 'error' in report ? [`report: ${report.error}`] : [])
   ]
   const warnings = [
-    ...(requireSigned || report?.readinessValidation?.summary?.officialReady
+    ...(requireSigned || validReport?.readinessValidation.summary.officialReady
       ? []
       : ['Pending or unsigned evidence cannot prove signed official desktop picker readiness'])
   ]
@@ -188,7 +217,7 @@ const createDesktopPickerEvidenceSummary = ({
     generatedAt: now().toISOString(),
     requireSigned,
     ok: errors.length === 0 && !reportHasLoadError,
-    releaseReady: Boolean(report?.readinessValidation?.ok && errors.length === 0),
+    releaseReady: Boolean(validReport?.readinessValidation.ok && errors.length === 0),
     evidence: {
       evidenceDir: absoluteEvidenceDir,
       presentFiles,
@@ -200,8 +229,10 @@ const createDesktopPickerEvidenceSummary = ({
   }
 }
 
+/** @param {unknown} value @returns {string} */
 const boolText = (value) => (value ? 'yes' : 'no')
 
+/** @param {DesktopPickerEvidenceSummary} summary @returns {string} */
 const renderMarkdownSummary = (summary) => {
   const lines = [
     '# Desktop Picker Evidence Summary',
@@ -229,7 +260,7 @@ const renderMarkdownSummary = (summary) => {
 
   if (summary.report) {
     lines.push('', '## Paired Report', '')
-    if (summary.report.error) {
+    if ('error' in summary.report) {
       lines.push(`Report path: ${summary.report.reportPath}`, `Report error: ${summary.report.error}`)
     } else {
       lines.push(
@@ -287,6 +318,7 @@ const renderMarkdownSummary = (summary) => {
   return `${lines.join('\n')}\n`
 }
 
+/** @param {WriteSummaryOptions} options @returns {string} */
 const writeSummary = ({ summary, outputPath, json = false, fsImpl = fs }) => {
   const absoluteOutputPath = path.resolve(outputPath)
   fsImpl.mkdirSync(path.dirname(absoluteOutputPath), { recursive: true })
@@ -319,7 +351,7 @@ if (require.main === module) {
   try {
     main()
   } catch (err) {
-    console.error(err.message || err)
+    console.error(err instanceof Error ? err.message : err)
     process.exit(1)
   }
 }

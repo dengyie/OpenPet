@@ -24,7 +24,9 @@
     "src/**/*.jsx",
     "tests/**/*.ts",
     "tests/**/*.tsx",
-    "scripts/**/*.ts"
+    "scripts/**/*.ts",
+    "scripts/create-desktop-picker-evidence-summary.js",
+    "scripts/create-windows-smoke-evidence-summary.js"
   ],
   "exclude": [
     "node_modules",

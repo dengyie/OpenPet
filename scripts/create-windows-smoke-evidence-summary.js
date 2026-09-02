@@ -1,3 +1,5 @@
+// @ts-check
+
 const fs = require('fs')
 const path = require('path')
 
@@ -10,6 +12,18 @@ const {
 
 const STATUS_ORDER = ['pass', 'fail', 'pending', 'blocked']
 
+/** @typedef {import('../src/shared/openpet-contracts').WindowsSmokeEvidenceSummary} WindowsSmokeEvidenceSummary */
+/** @typedef {import('../src/shared/openpet-contracts').WindowsSmokeEvidenceReport} WindowsSmokeEvidenceReport */
+/** @typedef {import('../src/shared/openpet-contracts').WindowsSmokeCheck} WindowsSmokeCheck */
+/** @typedef {import('../src/shared/openpet-contracts').WindowsSmokeReport} WindowsSmokeReport */
+/** @typedef {import('../src/shared/openpet-contracts').WindowsSmokeValidationResult} WindowsSmokeValidationResult */
+/** @typedef {import('../src/shared/openpet-contracts').WindowsSmokeEvidenceFile} WindowsSmokeEvidenceFile */
+/** @typedef {{ evidenceDir: string, reportPath: string | null, requireSigned: boolean, outputPath: string | null, json: boolean, help: boolean }} CliOptions */
+/** @typedef {{ evidenceDir: string | null, reportPath: string | null, requireSigned: boolean, outputPath: string | null, json: boolean, help: boolean }} CliParseState */
+/** @typedef {{ evidenceDir?: string, reportPath?: string | null, requireSigned?: boolean, now?: () => Date }} SummaryOptions */
+/** @typedef {{ summary: WindowsSmokeEvidenceSummary, outputPath: string, json?: boolean, fsImpl?: typeof fs }} WriteSummaryOptions */
+/** @typedef {{ ok: boolean, errors: string[], warnings: string[], summary: { evidenceDir: string, files: WindowsSmokeEvidenceFile[], requiredFiles: number, signed?: boolean } }} EvidenceValidationResult */
+
 const usage = () => [
   'Usage: node scripts/create-windows-smoke-evidence-summary.js [evidence-dir] [--evidence-dir <dir>] [--report <report.json>] [--require-signed] [--output <summary.md>] [--json]',
   '',
@@ -19,7 +33,9 @@ const usage = () => [
   '--json writes the structured summary instead of Markdown.'
 ].join('\n')
 
+/** @param {string[]} argv @returns {CliOptions} */
 const parseArgs = (argv) => {
+  /** @type {CliParseState} */
   const options = {
     evidenceDir: null,
     reportPath: null,
@@ -29,12 +45,14 @@ const parseArgs = (argv) => {
     help: false
   }
 
+  /** @param {number} index @param {string} flag */
   const readValue = (index, flag) => {
     const value = argv[index + 1]
     if (!value || value.startsWith('--')) throw new Error(`${flag} requires a value`)
     return value
   }
 
+  /** @param {string} value */
   const setEvidenceDir = (value) => {
     if (options.evidenceDir) throw new Error('Evidence directory was provided more than once')
     options.evidenceDir = value
@@ -65,20 +83,24 @@ const parseArgs = (argv) => {
   }
 
   if (!options.evidenceDir) options.evidenceDir = DEFAULT_EVIDENCE_DIR
-  return options
+  return /** @type {CliOptions} */ (options)
 }
 
+/** @param {string} reportPath @returns {{ absoluteReportPath: string, report: WindowsSmokeReport }} */
 const loadReport = (reportPath) => {
   const absoluteReportPath = path.resolve(reportPath)
   return {
     absoluteReportPath,
-    report: JSON.parse(fs.readFileSync(absoluteReportPath, 'utf-8'))
+    report: /** @type {WindowsSmokeReport} */ (JSON.parse(fs.readFileSync(absoluteReportPath, 'utf-8')))
   }
 }
 
+/** @param {WindowsSmokeCheck[]} [checks] */
 const countChecksByStatus = (checks = []) => {
-  const counts = Object.fromEntries(STATUS_ORDER.map((status) => [status, 0]))
-  const byStatus = Object.fromEntries(STATUS_ORDER.map((status) => [status, []]))
+  /** @type {{ pass: number, fail: number, pending: number, blocked: number } & Record<string, number>} */
+  const counts = { pass: 0, fail: 0, pending: 0, blocked: 0 }
+  /** @type {{ pass: string[], fail: string[], pending: string[], blocked: string[] } & Record<string, string[]>} */
+  const byStatus = { pass: [], fail: [], pending: [], blocked: [] }
 
   for (const check of checks) {
     const status = STATUS_ORDER.includes(check?.status) ? check.status : 'unknown'
@@ -91,13 +113,14 @@ const countChecksByStatus = (checks = []) => {
   return { counts, byStatus }
 }
 
+/** @param {{ reportPath: string | null, requireSigned: boolean }} options @returns {WindowsSmokeEvidenceReport | null} */
 const summarizeReport = ({ reportPath, requireSigned }) => {
   if (!reportPath) return null
 
   try {
     const { absoluteReportPath, report } = loadReport(reportPath)
-    const structuralValidation = validateReport(report, { allowPending: true, requireSigned })
-    const readinessValidation = validateReport(report, { allowPending: false, requireSigned })
+    const structuralValidation = /** @type {WindowsSmokeValidationResult} */ (validateReport(report, { allowPending: true, requireSigned }))
+    const readinessValidation = /** @type {WindowsSmokeValidationResult} */ (validateReport(report, { allowPending: false, requireSigned }))
     const checks = Array.isArray(report.checks) ? report.checks : []
     const checkSummary = countChecksByStatus(checks)
 
@@ -136,26 +159,29 @@ const summarizeReport = ({ reportPath, requireSigned }) => {
   } catch (err) {
     return {
       reportPath: path.resolve(reportPath),
-      error: err.message || String(err)
+      error: err instanceof Error ? err.message : String(err)
     }
   }
 }
 
+/** @param {SummaryOptions} [options] @returns {WindowsSmokeEvidenceSummary} */
 const createWindowsSmokeEvidenceSummary = ({
   evidenceDir = DEFAULT_EVIDENCE_DIR,
   reportPath = null,
   requireSigned = false,
   now = () => new Date()
 } = {}) => {
-  const evidenceValidation = validateEvidenceBundle({ evidenceDir, reportPath, requireSigned })
+  const validateEvidence = /** @type {(options: { evidenceDir: string, reportPath: string | null, requireSigned: boolean }) => EvidenceValidationResult} */ (validateEvidenceBundle)
+  const evidenceValidation = validateEvidence({ evidenceDir, reportPath, requireSigned })
   const report = summarizeReport({ reportPath, requireSigned })
-  const reportHasLoadError = Boolean(report?.error)
+  const reportHasLoadError = Boolean(report && 'error' in report)
+  const validReport = report && !('error' in report) ? report : null
 
   return {
     generatedAt: now().toISOString(),
     requireSigned,
     ok: evidenceValidation.ok && !reportHasLoadError,
-    releaseReady: Boolean(report?.readinessValidation?.ok && evidenceValidation.ok),
+    releaseReady: Boolean(validReport?.readinessValidation.ok && evidenceValidation.ok),
     evidence: {
       evidenceDir: evidenceValidation.summary.evidenceDir,
       requiredFiles: REQUIRED_EVIDENCE_FILES,
@@ -167,14 +193,16 @@ const createWindowsSmokeEvidenceSummary = ({
     report,
     errors: [
       ...evidenceValidation.errors,
-      ...(reportHasLoadError ? [`report: ${report.error}`] : [])
+      ...(report && 'error' in report ? [`report: ${report.error}`] : [])
     ],
     warnings: evidenceValidation.warnings
   }
 }
 
+/** @param {unknown} value @returns {string} */
 const boolText = (value) => (value ? 'yes' : 'no')
 
+/** @param {WindowsSmokeEvidenceSummary} summary @returns {string} */
 const renderMarkdownSummary = (summary) => {
   const lines = [
     '# Windows Smoke Evidence Summary',
@@ -203,7 +231,7 @@ const renderMarkdownSummary = (summary) => {
 
   if (summary.report) {
     lines.push('', '## Paired Report', '')
-    if (summary.report.error) {
+    if ('error' in summary.report) {
       lines.push(`Report path: ${summary.report.reportPath}`, `Report error: ${summary.report.error}`)
     } else {
       lines.push(
@@ -259,6 +287,7 @@ const renderMarkdownSummary = (summary) => {
   return `${lines.join('\n')}\n`
 }
 
+/** @param {WriteSummaryOptions} options @returns {string} */
 const writeSummary = ({ summary, outputPath, json = false, fsImpl = fs }) => {
   const absoluteOutputPath = path.resolve(outputPath)
   fsImpl.mkdirSync(path.dirname(absoluteOutputPath), { recursive: true })
@@ -291,7 +320,7 @@ if (require.main === module) {
   try {
     main()
   } catch (err) {
-    console.error(err.message || err)
+    console.error(err instanceof Error ? err.message : err)
     process.exit(1)
   }
 }
