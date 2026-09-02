@@ -66,7 +66,8 @@ test('demo QQ credentials survive a module reload through session storage', asyn
     hasTelegramBotToken: false,
     hasQqOfficialAppId: true,
     hasQqOfficialClientSecret: true,
-    hasQqOfficialCredentials: true
+    hasQqOfficialCredentials: true,
+    hasWecomCredentials: false
   })
 })
 
