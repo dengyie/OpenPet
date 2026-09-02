@@ -197,6 +197,63 @@ test('WeCom encrypted GET echo returns plaintext and decrypt failures are non-su
   }
 })
 
+test('WeCom POST callback maps valid-signature decrypt failures to redacted 400 JSON responses', async () => {
+  const adapter = createWecomAdapter({ config: wecomConfig(), secrets: credentials })
+  const service = createImGatewayServer({ config: wecomConfig(), adapters: [adapter], bridgeClient: {} })
+  try {
+    await service.start(0)
+    const port = service.server.address().port
+    const timestamp = '1710000000'
+    const cases = [
+      ['invalid-encrypted-callback', encryptCallback('hello!', credentials.corpId, null, Buffer.from([...Buffer.alloc(30, 31), 30]))],
+      ['invalid-callback-receiver', encryptCallback('hello', 'wrong-corp-id')]
+    ]
+    for (const [errorCode, encrypted] of cases) {
+      const query = new URLSearchParams({ timestamp, nonce: `post-${errorCode}`, msg_signature: callbackSignature({ token: credentials.token, timestamp, nonce: `post-${errorCode}`, encrypt: encrypted }) })
+      const response = await fetch(`http://127.0.0.1:${port}/wecom/callback?${query}`, { method: 'POST', body: JSON.stringify({ Encrypt: encrypted }) })
+      assert.equal(response.status, 400)
+      assert.match(response.headers.get('content-type'), /^application\/json/)
+      const responseBody = await response.json()
+      assert.deepEqual(responseBody, { ok: false, error: errorCode })
+      assert.equal(JSON.stringify(responseBody).includes(credentials.corpSecret), false)
+      assert.equal(JSON.stringify(responseBody).includes(encrypted), false)
+    }
+  } finally {
+    await service.close()
+  }
+})
+
+test('WeCom POST callback keeps invalid signatures and handler failures at 403', async () => {
+  const adapter = createWecomAdapter({ config: wecomConfig({ allowAllPrivateChats: true }), secrets: credentials })
+  const service = createImGatewayServer({
+    config: wecomConfig({ allowAllPrivateChats: true }),
+    adapters: [adapter],
+    bridgeClient: { say: async () => { throw new Error('handler failure with secret') } }
+  })
+  try {
+    await service.start(0)
+    const port = service.server.address().port
+    const timestamp = '1710000000'
+    const invalid = await fetch(`http://127.0.0.1:${port}/wecom/callback?timestamp=${timestamp}&nonce=invalid&signature=bad`, {
+      method: 'POST',
+      body: JSON.stringify({ Content: '/openpet say hello' })
+    })
+    assert.equal(invalid.status, 403)
+    assert.deepEqual(await invalid.json(), { ok: false, error: 'invalid-signature' })
+
+    const nonce = 'handler-failure'
+    const body = JSON.stringify({ MsgId: 'handler-failure-1', FromUserName: 'user-1', Content: '/openpet say hello' })
+    const failed = await fetch(`http://127.0.0.1:${port}/wecom/callback?timestamp=${timestamp}&nonce=${nonce}&signature=${callbackSignature({ token: credentials.token, timestamp, nonce, encrypt: '' })}`, {
+      method: 'POST',
+      body
+    })
+    assert.equal(failed.status, 403)
+    assert.deepEqual(await failed.json(), { ok: false, error: 'handler-failed' })
+  } finally {
+    await service.close()
+  }
+})
+
 test('WeCom default server construction sends receipts and acknowledges plain POST callbacks', async () => {
   const previous = {
     corpId: process.env.OPENPET_IM_WECOM_CORP_ID,
@@ -289,6 +346,59 @@ test('WeCom request timeout aborts the injected HTTP client signal', async () =>
   await adapter.start()
   await assert.rejects(adapter.sendReceipt({ chatType: 'private', chatId: 'user-1' }, 'hello'), /request-timeout/)
   assert.equal(requestSignal?.aborted, true)
+  assert.equal(adapter.health().lastErrorCode, 'wecom-access-token-failed')
+})
+
+test('WeCom maps access-token transport failures to a bounded health code', async () => {
+  const transportError = Object.assign(new Error('connection reset with secret corp-secret'), { code: 'ECONNRESET' })
+  const events = []
+  const adapter = createWecomAdapter({
+    config: wecomConfig(),
+    secrets: credentials,
+    logEvent: (event) => events.push(event),
+    httpClient: { getAccessToken: async () => { throw transportError } }
+  })
+  await adapter.start()
+  await assert.rejects(adapter.sendReceipt({ chatType: 'private', chatId: 'user-1' }, 'hello'), (error) => error === transportError)
+  assert.equal(adapter.health().lastErrorCode, 'wecom-access-token-failed')
+  assert.equal(JSON.stringify(adapter.health()).includes('ECONNRESET'), false)
+  assert.equal(JSON.stringify(events).includes('ECONNRESET'), false)
+  assert.equal(JSON.stringify(events).includes('corp-secret'), false)
+})
+
+test('WeCom maps message transport failures to a bounded health code', async () => {
+  const transportError = Object.assign(new Error('network timeout with secret access-token'), { code: 'ETIMEDOUT' })
+  const events = []
+  const adapter = createWecomAdapter({
+    config: wecomConfig(),
+    secrets: credentials,
+    logEvent: (event) => events.push(event),
+    httpClient: {
+      getAccessToken: async () => ({ errcode: 0, access_token: 'access-token' }),
+      sendMessage: async () => { throw transportError }
+    }
+  })
+  await adapter.start()
+  await assert.rejects(adapter.sendReceipt({ chatType: 'private', chatId: 'user-1' }, 'hello'), (error) => error === transportError)
+  assert.equal(adapter.health().lastErrorCode, 'wecom-message-send-failed')
+  assert.equal(JSON.stringify(adapter.health()).includes('ETIMEDOUT'), false)
+  assert.equal(JSON.stringify(events).includes('ETIMEDOUT'), false)
+  assert.equal(JSON.stringify(events).includes('access-token'), false)
+})
+
+test('WeCom does not report aborted transport failures as health errors', async () => {
+  const abortError = Object.assign(new Error('stopped with secret corp-secret'), { name: 'AbortError', code: 'ABORT_ERR' })
+  const events = []
+  const adapter = createWecomAdapter({
+    config: wecomConfig(),
+    secrets: credentials,
+    logEvent: (event) => events.push(event),
+    httpClient: { getAccessToken: async () => { throw abortError } }
+  })
+  await adapter.start()
+  await assert.rejects(adapter.sendReceipt({ chatType: 'private', chatId: 'user-1' }, 'hello'), (error) => error === abortError)
+  assert.equal(adapter.health().lastErrorCode, '')
+  assert.deepEqual(events, [])
 })
 
 test('WeCom requires CorpID in configuration before reporting connected', async () => {

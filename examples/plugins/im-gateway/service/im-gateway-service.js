@@ -82,12 +82,22 @@ const createImGatewayServer = ({
         if (size > 1024 * 1024) { sendJson(response, 413, { ok: false, error: 'payload-too-large' }); return }
         chunks.push(chunk)
       }
-      const result = await wecom.handleUpdate?.({
-        body: Buffer.concat(chunks).toString('utf8'),
-        timestamp: url.searchParams.get('timestamp'),
-        nonce: url.searchParams.get('nonce'),
-        signature: url.searchParams.get('msg_signature') || url.searchParams.get('signature')
-      })
+      let result
+      try {
+        result = await wecom.handleUpdate?.({
+          body: Buffer.concat(chunks).toString('utf8'),
+          timestamp: url.searchParams.get('timestamp'),
+          nonce: url.searchParams.get('nonce'),
+          signature: url.searchParams.get('msg_signature') || url.searchParams.get('signature')
+        })
+      } catch (error) {
+        const errorCode = error?.code || error?.message
+        if (errorCode === 'invalid-encrypted-callback' || errorCode === 'invalid-callback-receiver') {
+          sendJson(response, 400, { ok: false, error: errorCode })
+          return
+        }
+        throw error
+      }
       const accepted = result?.ok === true
       if (accepted) {
         response.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' })

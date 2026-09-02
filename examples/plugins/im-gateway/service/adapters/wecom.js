@@ -143,6 +143,9 @@ const createWecomAdapter = ({
     lastErrorCode = code
     try { logEvent({ level, event: `wecom.${code}`, code }) } catch (_) {}
   }
+  const isAborted = (error, signal) => Boolean(
+    signal?.aborted || error?.name === 'AbortError' || error?.code === 'ABORT_ERR' || error?.code === 'ERR_ABORTED'
+  )
 
   const request = async (method, url, body, signal) => {
     if (!httpClient) throw new Error('missing-http-client')
@@ -198,25 +201,23 @@ const createWecomAdapter = ({
     const currentTime = Date.now()
     if (accessToken && accessTokenExpiresAt > currentTime + 30000) return accessToken
     const url = `https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid=${encodeURIComponent(corpId())}&corpsecret=${encodeURIComponent(corpSecret())}`
-    const response = typeof httpClient?.getAccessToken === 'function'
-      ? await withTimeout((requestSignal) => httpClient.getAccessToken({ corpId: corpId(), corpSecret: corpSecret(), signal: requestSignal }), timeout, signal)
-      : await request('GET', url, undefined, signal)
-    let data
     try {
-      data = await responseJson(response, 'access-token-failed')
+      const response = typeof httpClient?.getAccessToken === 'function'
+        ? await withTimeout((requestSignal) => httpClient.getAccessToken({ corpId: corpId(), corpSecret: corpSecret(), signal: requestSignal }), timeout, signal)
+        : await request('GET', url, undefined, signal)
+      const data = await responseJson(response, 'access-token-failed')
+      if (!data || Number(data.errcode || 0) !== 0 || !textValue(data.access_token)) {
+        const error = new Error('access-token-failed')
+        error.code = 'access-token-failed'
+        throw error
+      }
+      accessToken = textValue(data.access_token)
+      accessTokenExpiresAt = currentTime + Math.max(60000, Number(data.expires_in || 7200) * 1000)
+      return accessToken
     } catch (error) {
-      if (error?.code === 'access-token-failed') report('wecom-access-token-failed')
+      if (!isAborted(error, signal)) report('wecom-access-token-failed')
       throw error
     }
-    if (!data || Number(data.errcode || 0) !== 0 || !textValue(data.access_token)) {
-      report('wecom-access-token-failed')
-      const error = new Error('access-token-failed')
-      error.code = 'access-token-failed'
-      throw error
-    }
-    accessToken = textValue(data.access_token)
-    accessTokenExpiresAt = currentTime + Math.max(60000, Number(data.expires_in || 7200) * 1000)
-    return accessToken
   }
 
   const sendMessage = async (message, text, signal) => {
@@ -235,35 +236,26 @@ const createWecomAdapter = ({
       agentid: agentId(),
       text: { content }
     }
-    if (typeof httpClient?.sendMessage === 'function') {
-      const result = await withTimeout((requestSignal) => httpClient.sendMessage({ accessToken: access, payload, signal: requestSignal }), timeout, signal)
-      let data
-      try {
-        data = await responseJson(result, 'message-send-failed')
-      } catch (error) {
-        if (error?.code === 'message-send-failed') report('wecom-message-send-failed')
-        throw error
+    try {
+      if (typeof httpClient?.sendMessage === 'function') {
+        const result = await withTimeout((requestSignal) => httpClient.sendMessage({ accessToken: access, payload, signal: requestSignal }), timeout, signal)
+        const data = await responseJson(result, 'message-send-failed')
+        if (Number(data?.errcode || 0) !== 0) {
+          const error = new Error('message-send-failed')
+          error.code = 'message-send-failed'
+          throw error
+        }
+        return
       }
+      const response = await request('POST', `https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token=${encodeURIComponent(access)}`, payload, signal)
+      const data = await responseJson(response, 'message-send-failed')
       if (Number(data?.errcode || 0) !== 0) {
-        report('wecom-message-send-failed')
         const error = new Error('message-send-failed')
         error.code = 'message-send-failed'
         throw error
       }
-      return
-    }
-    const response = await request('POST', `https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token=${encodeURIComponent(access)}`, payload, signal)
-    let data
-    try {
-      data = await responseJson(response, 'message-send-failed')
     } catch (error) {
-      if (error?.code === 'message-send-failed') report('wecom-message-send-failed')
-      throw error
-    }
-    if (Number(data?.errcode || 0) !== 0) {
-      report('wecom-message-send-failed')
-      const error = new Error('message-send-failed')
-      error.code = 'message-send-failed'
+      if (!isAborted(error, signal)) report('wecom-message-send-failed')
       throw error
     }
   }
