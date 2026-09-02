@@ -59,6 +59,17 @@ test('demo pet chat state initializes shared streaming state to null', async () 
   assert.equal(state.streaming, null)
 })
 
+test('demo QQ credentials survive a module reload through session storage', async () => {
+  await demoControlCenterAPI.saveImGatewayQqOfficialCredentials({ appId: 'demo-app-id', clientSecret: 'demo-client-secret' })
+  const reloaded = await import(`../../src/control-center/src/api/demo-control-center-api.ts?qqReload=${Date.now()}`)
+  assert.deepEqual(await reloaded.demoControlCenterAPI.getImGatewaySecretState(), {
+    hasTelegramBotToken: false,
+    hasQqOfficialAppId: true,
+    hasQqOfficialClientSecret: true,
+    hasQqOfficialCredentials: true
+  })
+})
+
 const ensureDemoFixturePluginInstalled = async () => {
   const existing = (await demoControlCenterAPI.getPlugins()).find((plugin) => plugin.id === 'openpet.demo.manual-review')
   if (existing) return existing

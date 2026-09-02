@@ -10,7 +10,12 @@ const MAX_RECEIPT_LENGTH = 2000
 const REQUEST_TIMEOUT_MS = 10000
 const STOP_TIMEOUT_MS = 1000
 
-const toText = (value) => (Buffer.isBuffer(value) ? value.toString('utf8') : String(value || ''))
+const toText = (value) => {
+  if (Buffer.isBuffer(value)) return value.toString('utf8')
+  if (value instanceof ArrayBuffer) return Buffer.from(value).toString('utf8')
+  if (ArrayBuffer.isView(value)) return Buffer.from(value.buffer, value.byteOffset, value.byteLength).toString('utf8')
+  return String(value || '')
+}
 
 const boundedText = (value, maxLength = MAX_RECEIPT_LENGTH) => toText(value).trim().slice(0, maxLength)
 
@@ -113,7 +118,7 @@ const createQqOfficialAdapter = ({
   secrets = {},
   bridge: _bridge,
   httpClient = createFetchHttpClient(),
-  websocketFactory = (...args) => new WebSocket(...args),
+  websocketFactory = (url) => new WebSocket(url),
   clock = {},
   now = clock.now || (() => new Date().toISOString()),
   maxUpdateIds = MAX_UPDATE_IDS,
@@ -132,6 +137,7 @@ const createQqOfficialAdapter = ({
   let acceptingUpdates = false
   let duplicateUpdateCount = 0
   let droppedHandlerCount = 0
+  let sequence = null
   const updateIds = new Set()
   const boundedMaxUpdateIds = Math.min(4096, Math.max(32, Math.floor(Number(maxUpdateIds) || MAX_UPDATE_IDS)))
   const appId = getSecret(secrets, ['appId', 'app_id', 'qqAppId'])
@@ -162,7 +168,7 @@ const createQqOfficialAdapter = ({
     const set = clock.setTimeout || setTimeout
     const tick = () => {
       if (!socket || !acceptingUpdates) return
-      sendSocketJson(socket, { op: 1, d: null })
+      sendSocketJson(socket, { op: 1, d: sequence })
       heartbeatTimer = set(tick, Math.min(60000, Math.max(1000, numeric)))
       heartbeatTimer?.unref?.()
     }
@@ -210,16 +216,43 @@ const createQqOfficialAdapter = ({
   }
 
   const handleSocketMessage = (payload) => {
+    const data = payload && typeof payload === 'object' && Object.hasOwn(payload, 'data') ? payload.data : payload
     let update
-    try { update = typeof payload === 'string' || Buffer.isBuffer(payload) ? JSON.parse(toText(payload)) : payload } catch (_) {
+    try {
+      update = typeof data === 'string' || Buffer.isBuffer(data) || data instanceof ArrayBuffer || ArrayBuffer.isView(data)
+        ? JSON.parse(toText(data))
+        : data
+    } catch (_) {
       emitError('qq-payload-invalid', 'qq.update.invalid')
       return
     }
     if (!update || typeof update !== 'object') return
+    if (update.s !== undefined && update.s !== null) sequence = update.s
+    if (Number(update.op) === 7) {
+      acceptingUpdates = false
+      clearHeartbeat()
+      status = 'disconnected'
+      emitError('qq-reconnect-required', 'qq.gateway.reconnect')
+      try { socket?.close?.() } catch (_) { emitError('qq-websocket-close-failed') }
+      return
+    }
+    if (Number(update.op) === 9) {
+      acceptingUpdates = false
+      clearHeartbeat()
+      status = 'disconnected'
+      emitError('qq-invalid-session', 'qq.gateway.invalid-session')
+      try { socket?.close?.() } catch (_) { emitError('qq-websocket-close-failed') }
+      return
+    }
     if (Number(update.op) === 10) {
       sendSocketJson(socket, { op: 2, d: { token: `QQBot ${accessToken}`, intents, shard: [0, 0] } })
       sendHeartbeat(update.d?.heartbeat_interval)
       status = 'connected'
+      return
+    }
+    if (Number(update.op) === 11) return
+    if (Number(update.op) === 1) {
+      sendSocketJson(socket, { op: 11, d: null })
       return
     }
     if (Number(update.op) === 0) {

@@ -74,6 +74,63 @@ test('QQ official adapter authenticates through injected HTTP and identifies ove
   await adapter.stop()
 })
 
+test('QQ official adapter decodes WebSocket MessageEvent payloads and uses one gateway constructor argument', async () => {
+  const socket = new FakeSocket()
+  const httpClient = createHttp()
+  const constructorArgs = []
+  const adapter = createQqOfficialAdapter({
+    config: { qqEnabled: true },
+    secrets: { appId: 'app-id', clientSecret: 'client-secret' },
+    httpClient,
+    websocketFactory: (...args) => {
+      constructorArgs.push(args)
+      return socket
+    }
+  })
+  const messages = []
+  adapter.onMessage((message) => { messages.push(message) })
+  await adapter.start()
+  assert.deepEqual(constructorArgs, [['wss://api.sgroup.qq.com/websocket']])
+
+  const payload = JSON.stringify({ op: 0, t: 'C2C_MESSAGE_CREATE', d: {
+    id: 'message-event-1', author: { user_openid: 'user-1' }, content: 'from event'
+  } })
+  socket.emit('message', { data: payload })
+  socket.emit('message', { data: new TextEncoder().encode(payload.replace('message-event-1', 'message-event-2')) })
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.deepEqual(messages.map((message) => message.messageId), ['message-event-1', 'message-event-2'])
+  await adapter.stop()
+})
+
+test('QQ official adapter tracks sequence, acknowledges heartbeat, and reports reconnect or invalid-session opcodes', async () => {
+  let heartbeat
+  const { adapter, socket } = createAdapter({ clock: { setTimeout: (callback) => { heartbeat = callback; return 1 }, clearTimeout: () => {} } })
+  await adapter.start()
+  socket.emit('open')
+  socket.emit('message', { op: 10, d: { heartbeat_interval: 60000 } })
+  socket.emit('message', { op: 0, s: 42, t: 'C2C_MESSAGE_CREATE', d: { id: 'sequence-1', author: { user_openid: 'u' }, content: 'x' } })
+  heartbeat()
+  assert.deepEqual(socket.sent.at(-1), { op: 1, d: 42 })
+  socket.emit('message', { op: 1, d: 42 })
+  assert.equal(adapter.getStatus().status, 'connected')
+  assert.deepEqual(socket.sent.at(-1), { op: 11, d: null })
+
+  socket.emit('message', { op: 7, d: null })
+  assert.equal(adapter.getStatus().status, 'disconnected')
+  assert.equal(adapter.getStatus().lastErrorCode, 'qq-reconnect-required')
+  assert.equal(socket.closed, true)
+
+  const invalid = createAdapter()
+  await invalid.adapter.start()
+  invalid.socket.emit('message', { op: 10, d: { heartbeat_interval: 60000 } })
+  invalid.socket.emit('message', { op: 9, d: false })
+  assert.equal(invalid.adapter.getStatus().status, 'disconnected')
+  assert.equal(invalid.adapter.getStatus().lastErrorCode, 'qq-invalid-session')
+  await adapter.stop()
+  await invalid.adapter.stop()
+})
+
 test('QQ official adapter normalizes private and group dispatches and sends bounded receipts', async () => {
   const { adapter, socket, httpClient } = createAdapter()
   const messages = []

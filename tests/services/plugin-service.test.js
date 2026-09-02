@@ -4258,6 +4258,56 @@ test('plugin service saves QQ official credentials as separate host secrets with
   assert.equal(cleared.hasQqOfficialCredentials, false)
 })
 
+test('plugin service rolls QQ credential save back when the second secret write fails', () => {
+  const values = new Map([
+    ['im.qq.appId', 'old-app-id'],
+    ['im.qq.clientSecret', 'old-client-secret']
+  ])
+  let failClientSecretWrite = true
+  const secretService = {
+    getSecretValue: (id) => values.get(id) || '',
+    setSecret: ({ id, value }) => {
+      if (id === 'im.qq.clientSecret' && failClientSecretWrite) {
+        failClientSecretWrite = false
+        throw new Error('client secret write failed')
+      }
+      values.set(id, value)
+    },
+    deleteSecret: (id) => values.delete(id)
+  }
+  const service = createPluginService({ settingsService: createSettingsService(), petService: { say: async () => {} }, officialPlugins: [], pluginDirs: [path.resolve(__dirname, '../../examples/plugins')], secretService })
+
+  assert.throws(() => service.saveImGatewayQqOfficialCredentials({ appId: 'new-app-id', clientSecret: 'new-client-secret' }), /client secret write failed/)
+  assert.equal(values.get('im.qq.appId'), 'old-app-id')
+  assert.equal(values.get('im.qq.clientSecret'), 'old-client-secret')
+  assert.deepEqual(service.getImGatewaySecretState(), { hasTelegramBotToken: false, hasQqOfficialAppId: true, hasQqOfficialClientSecret: true, hasQqOfficialCredentials: true })
+})
+
+test('plugin service rolls QQ credential clear back when the second secret delete fails', () => {
+  const values = new Map([
+    ['im.qq.appId', 'old-app-id'],
+    ['im.qq.clientSecret', 'old-client-secret']
+  ])
+  let failClientSecretDelete = true
+  const secretService = {
+    getSecretValue: (id) => values.get(id) || '',
+    setSecret: ({ id, value }) => values.set(id, value),
+    deleteSecret: (id) => {
+      if (id === 'im.qq.clientSecret' && failClientSecretDelete) {
+        failClientSecretDelete = false
+        throw new Error('client secret delete failed')
+      }
+      values.delete(id)
+    }
+  }
+  const service = createPluginService({ settingsService: createSettingsService(), petService: { say: async () => {} }, officialPlugins: [], pluginDirs: [path.resolve(__dirname, '../../examples/plugins')], secretService })
+
+  assert.throws(() => service.clearImGatewayQqOfficialCredentials(), /client secret delete failed/)
+  assert.equal(values.get('im.qq.appId'), 'old-app-id')
+  assert.equal(values.get('im.qq.clientSecret'), 'old-client-secret')
+  assert.deepEqual(service.getImGatewaySecretState(), { hasTelegramBotToken: false, hasQqOfficialAppId: true, hasQqOfficialClientSecret: true, hasQqOfficialCredentials: true })
+})
+
 test('plugin service registers service bridge runtime before spawning child process', async () => {
   const child = createSlowStoppingServiceProcess()
   const originalMapSet = Map.prototype.set

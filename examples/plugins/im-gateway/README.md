@@ -19,6 +19,13 @@ policy and optional fake-transport URLs only; it never contains credentials.
 Automated tests use fake HTTP/WebSocket clients. Real QQ credentials and
 account smoke are not part of the development test gate.
 
+The current QQ lifecycle boundary is deliberately conservative: gateway
+reconnect (`op 7`) and invalid-session (`op 9`) updates stop the adapter and
+report stable `qq-reconnect-required` or `qq-invalid-session` failure codes;
+automatic re-identification is not included in this test-version boundary.
+Dispatch sequence values are carried in heartbeats and heartbeat requests are
+acknowledged.
+
 ## Telegram Setup
 
 1. Create a bot with BotFather and copy the bot token.

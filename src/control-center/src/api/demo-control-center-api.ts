@@ -1675,7 +1675,9 @@ const readDemoState = (): DemoState => {
         ? state.plugins.map((plugin: Partial<PluginViewState>) => normalizeDemoPluginViewState(plugin))
         : [],
       secrets: {
-        imGatewayTelegramBotToken: Boolean(state.secrets?.imGatewayTelegramBotToken)
+        imGatewayTelegramBotToken: Boolean(state.secrets?.imGatewayTelegramBotToken),
+        imGatewayQqOfficialAppId: Boolean(state.secrets?.imGatewayQqOfficialAppId),
+        imGatewayQqOfficialClientSecret: Boolean(state.secrets?.imGatewayQqOfficialClientSecret)
       },
       pluginLogs: Array.isArray(state.pluginLogs) ? state.pluginLogs : [],
       creatorReferencePickerPath: typeof state.creatorReferencePickerPath === 'string' && state.creatorReferencePickerPath.trim()
@@ -4072,13 +4074,13 @@ export const demoControlCenterAPI: ControlCenterApi = {
     demoState.secrets = { ...(demoState.secrets || {}), imGatewayQqOfficialAppId: true, imGatewayQqOfficialClientSecret: true }
     demoState.pluginLogs = [createDemoPluginLog('openpet.im-gateway', 'IM Gateway QQ official credentials saved'), ...demoState.pluginLogs]
     writeDemoState()
-    return { hasTelegramBotToken: Boolean(demoState.secrets?.imGatewayTelegramBotToken), hasQqOfficialAppId: true, hasQqOfficialClientSecret: true, hasQqOfficialCredentials: true }
+    return demoControlCenterAPI.getImGatewaySecretState()
   },
   clearImGatewayQqOfficialCredentials: async () => {
     demoState.secrets = { ...(demoState.secrets || {}), imGatewayQqOfficialAppId: false, imGatewayQqOfficialClientSecret: false }
     demoState.pluginLogs = [createDemoPluginLog('openpet.im-gateway', 'IM Gateway QQ official credentials cleared'), ...demoState.pluginLogs]
     writeDemoState()
-    return { hasTelegramBotToken: Boolean(demoState.secrets?.imGatewayTelegramBotToken), hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false }
+    return demoControlCenterAPI.getImGatewaySecretState()
   },
   getCreatorState: async () => createDemoCreatorState(),
   pickCreatorReferenceImage: async (): Promise<CreatorReferencePickerResult> => approveDemoCreatorReference(demoState.creatorReferencePickerPath || defaultDemoCreatorReferencePickerPath),

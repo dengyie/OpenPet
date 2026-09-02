@@ -1224,8 +1224,18 @@ const getImGatewaySecretState = () => ({
   const clearImGatewayQqOfficialCredentials = () => {
     assertImGatewaySecretService()
     assertImGatewayRuntimeMutationAllowed('Stop IM Gateway before changing QQ credentials')
-    secretService.deleteSecret?.(IM_GATEWAY_QQ_APP_ID_SECRET_ID)
-    secretService.deleteSecret?.(IM_GATEWAY_QQ_CLIENT_SECRET_SECRET_ID)
+    const previousAppId = secretService.getSecretValue?.(IM_GATEWAY_QQ_APP_ID_SECRET_ID) || ''
+    const previousClientSecret = secretService.getSecretValue?.(IM_GATEWAY_QQ_CLIENT_SECRET_SECRET_ID) || ''
+    try {
+      secretService.deleteSecret?.(IM_GATEWAY_QQ_APP_ID_SECRET_ID)
+      secretService.deleteSecret?.(IM_GATEWAY_QQ_CLIENT_SECRET_SECRET_ID)
+    } catch (error) {
+      try {
+        if (previousAppId) secretService.setSecret({ id: IM_GATEWAY_QQ_APP_ID_SECRET_ID, value: previousAppId, label: 'QQ Official App ID' })
+        if (previousClientSecret) secretService.setSecret({ id: IM_GATEWAY_QQ_CLIENT_SECRET_SECRET_ID, value: previousClientSecret, label: 'QQ Official Client Secret' })
+      } catch (_) {}
+      throw error
+    }
     appendLog({ pluginId: IM_GATEWAY_PLUGIN_ID, level: 'info', message: 'IM Gateway QQ official credentials cleared' })
     return getImGatewaySecretState()
   }

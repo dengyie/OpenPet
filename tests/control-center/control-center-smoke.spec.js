@@ -2496,6 +2496,71 @@ test.describe('Control Center smoke', () => {
     await expect(refreshedImCard.getByRole('button', { name: 'Clear Telegram Token' })).toBeDisabled()
   })
 
+  test('manages QQ official credentials, native approval, and disabled-by-default config in the demo Plugins pane', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
+        plugins: [
+          {
+            id: 'openpet.im-gateway', name: 'IM Gateway', version: '0.2.0-demo', source: 'bundled', enabled: true, runnable: true,
+            nativeExecutionApproved: false, permissions: ['pet:say'],
+            entries: { setup: [], commands: [], services: [{
+              id: 'im-gateway', title: 'IM Gateway Service',
+              health: { type: 'http', url: 'http://127.0.0.1:8796/health' },
+              runtime: { status: 'stopped', health: { status: 'unknown', url: 'http://127.0.0.1:8796/health' } }
+            }], dashboards: [] },
+            configSchema: { title: 'IM Gateway Settings', description: 'Public IM trigger policy.', properties: [{ key: 'qqEnabled', title: 'Enable QQ official robot', type: 'boolean' }] },
+            config: { qqEnabled: false }, storage: { keyCount: 0, byteSize: 0, valid: true },
+            signatureStatus: { status: 'bundled', label: 'Bundled plugin', verified: true, errors: [] }, blockStatus: { blocked: false, reasons: [] }
+          },
+          {
+            id: 'demo.other-plugin', name: 'Other Plugin', version: '1.0.0', source: 'bundled', enabled: true, runnable: false,
+            permissions: [], entries: { setup: [], commands: [], services: [], dashboards: [] }, configSchema: { properties: [] }, config: {},
+            storage: { keyCount: 0, byteSize: 0, valid: true }, signatureStatus: { status: 'bundled', label: 'Bundled plugin', verified: true, errors: [] }
+          }
+        ], secrets: { imGatewayTelegramBotToken: false }, pluginLogs: []
+      }))
+    })
+
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Plugins' }).click()
+    const pluginRow = page.locator('.plugin-row', { hasText: 'IM Gateway' })
+    await openPluginManagement(pluginRow)
+    const imCard = pluginRow.locator('[aria-label="IM Gateway 设置"]')
+    const appIdInput = imCard.getByLabel('QQ App ID')
+    const clientSecretInput = imCard.getByLabel('QQ Client Secret')
+    await expect(appIdInput).toHaveAttribute('type', 'password')
+    await expect(appIdInput).toHaveAttribute('autocomplete', 'off')
+    await expect(clientSecretInput).toHaveAttribute('type', 'password')
+    await expect(clientSecretInput).toHaveAttribute('autocomplete', 'off')
+    await expect(imCard).toContainText('QQ official credentials: not saved')
+    await expect(pluginRow.getByRole('switch', { name: 'Enable QQ official robot' })).toHaveAttribute('aria-checked', 'false')
+    await expect(pluginRow.getByRole('button', { name: 'Start IM Gateway Service' })).toBeDisabled()
+    await expect(page.locator('.plugin-row', { hasText: 'Other Plugin' })).not.toContainText('QQ official credentials')
+
+    await pluginRow.getByRole('switch', { name: 'Allow native process execution for IM Gateway' }).click()
+    await pluginRow.getByRole('button', { name: 'Start IM Gateway Service' }).click()
+    await expect(appIdInput).toBeDisabled()
+    await expect(clientSecretInput).toBeDisabled()
+    await expect(imCard.getByRole('button', { name: 'Save QQ Credentials' })).toBeDisabled()
+    await expect(imCard.getByRole('button', { name: 'Clear QQ Credentials' })).toBeDisabled()
+    await pluginRow.getByRole('button', { name: 'Stop IM Gateway Service' }).click()
+
+    await appIdInput.fill('demo-app-id-secret')
+    await clientSecretInput.fill('demo-client-secret-value')
+    await imCard.getByRole('button', { name: 'Save QQ Credentials' }).click()
+    await expect(page.locator('.status-line')).toContainText('QQ credentials saved')
+    await expect(appIdInput).toHaveValue('')
+    await expect(clientSecretInput).toHaveValue('')
+    await expect(imCard).toContainText('QQ official credentials: saved')
+    await expect(page.getByText('demo-app-id-secret')).toHaveCount(0)
+    await expect(page.getByText('demo-client-secret-value')).toHaveCount(0)
+
+    await imCard.getByRole('button', { name: 'Clear QQ Credentials' }).click()
+    await expect(page.locator('.status-line')).toContainText('QQ credentials cleared')
+    await expect(imCard).toContainText('QQ official credentials: not saved')
+    await expect(imCard.getByRole('button', { name: 'Clear QQ Credentials' })).toBeDisabled()
+  })
+
   test('shows IM Gateway onboarding guidance and redacted diagnostics in the Plugins pane', async ({ page }) => {
     await page.addInitScript(() => {
       window.sessionStorage.setItem('openpet.controlCenter.demoState', JSON.stringify({
