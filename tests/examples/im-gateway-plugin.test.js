@@ -255,6 +255,93 @@ test('im gateway routes allowed command and text triggers through the pet bridge
   assert.deepEqual(adapter.receipts.map((receipt) => receipt.text), ['Action requested.'])
 })
 
+test('im gateway keeps the fake QQ official protocol platform-neutral and redacted', async () => {
+  const calls = []
+  const aiCalls = []
+  const logEvents = []
+  const adapter = createFakeAdapter({ id: 'qq-official', platform: 'qq-official' })
+  const gateway = createImGateway({
+    adapters: [adapter],
+    bridgeClient: {
+      say: async (payload) => calls.push(['say', payload]),
+      action: async (payload) => calls.push(['action', payload]),
+      aiChat: async (payload) => {
+        aiCalls.push(payload)
+        if (aiCalls.length > 1) throw new Error('qq provider failed')
+        return { ok: true, result: { reply: 'QQ reply' } }
+      }
+    },
+    config: normalizeImGatewayConfig({
+      telegramEnabled: true,
+      allowedUsers: 'qq-user-1001',
+      privateTextMode: 'ai-chat',
+      receiptMode: 'commands-only'
+    }),
+    logEvent: (event) => logEvents.push(event)
+  })
+
+  await gateway.start()
+  await adapter.emitMessage({
+    chatType: 'private',
+    chatId: 'qq-chat-1001',
+    userId: 'qq-user-1001',
+    userName: 'qq-user',
+    messageId: 'qq-helper-whoami',
+    text: '/openpet whoami'
+  })
+  await adapter.emitMessage({
+    chatType: 'group',
+    chatId: 'qq-group-2001',
+    userId: 'qq-user-1001',
+    messageId: 'qq-helper-chatid',
+    text: '/openpet chatid'
+  })
+  await adapter.emitMessage({
+    chatType: 'private',
+    chatId: 'qq-chat-1001',
+    userId: 'qq-user-1001',
+    messageId: 'qq-command',
+    text: '/openpet say hello from qq'
+  })
+  await adapter.emitMessage({
+    chatType: 'private',
+    chatId: 'qq-chat-1001',
+    userId: 'qq-user-1001',
+    messageId: 'qq-action',
+    text: '/openpet action wave'
+  })
+  await adapter.emitMessage({
+    chatType: 'private',
+    chatId: 'qq-chat-1001',
+    userId: 'qq-user-1001',
+    messageId: 'qq-ai-success',
+    text: 'hello from QQ'
+  })
+  await adapter.emitMessage({
+    chatType: 'private',
+    chatId: 'qq-chat-1001',
+    userId: 'qq-user-1001',
+    messageId: 'qq-ai-failure',
+    text: 'try QQ again'
+  })
+
+  const health = gateway.getHealth()
+  const encoded = JSON.stringify(health)
+  assert.equal(adapter.receipts[0].text, 'QQ Official user id: qq-user-1001 | username: qq-user')
+  assert.equal(adapter.receipts[1].text, 'QQ Official chat type: group | chat id: qq-group-2001')
+  assert.deepEqual(calls, [
+    ['say', { text: 'hello from qq', ttlMs: 6000 }],
+    ['action', { actionId: 'wave' }]
+  ])
+  assert.match(aiCalls[0].conversationKey, /^qq-official:private:[a-f0-9]{12}$/)
+  assert.match(aiCalls[0].requestId, /^qq-official-request:[a-f0-9]{12}$/)
+  assert.equal(logEvents.some((event) => event.event === 'qq-official.ai.failed'), true)
+  assert.equal(logEvents.some((event) => event.event.startsWith('telegram.')), false)
+  assert.equal(encoded.includes('qq-chat-1001'), false)
+  assert.equal(encoded.includes('qq-user-1001'), false)
+  assert.equal(encoded.includes('qq-ai-failure'), false)
+})
+
 test('im gateway health redacts message content and peer identifiers', async () => {
   const adapter = createFakeAdapter({ id: 'fake', platform: 'telegram' })
   const gateway = createImGateway({

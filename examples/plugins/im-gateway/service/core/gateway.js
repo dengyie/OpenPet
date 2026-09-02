@@ -6,6 +6,7 @@ const { createSlidingWindowRateLimiter } = require('./rate-limiter')
 const { normalizeImGatewayConfig } = require('../config')
 const { createGatewayHealth } = require('../health')
 const { hashIdentifier, sanitizeReceiptText } = require('../log-safety')
+const { normalizePlatform, platformLabel, resolvePlatform } = require('./platform')
 
 const PRIVATE_BUSY_NOTICE = 'Still thinking about your last message. Please send one more message in a moment.'
 const PRIVATE_FAILURE_NOTICE = 'I could not reply just now. Please try again in a moment.'
@@ -95,7 +96,7 @@ const createImGateway = ({
     const nextCode = String(code || 'ai-reply-failed')
     if (state.lastAiErrorCode !== nextCode) {
       try {
-        logEvent({ level: 'error', event: 'telegram.ai.failed', code: nextCode })
+        logEvent({ level: 'error', event: `${resolvePlatform(message, adapter)}.ai.failed`, code: nextCode })
       } catch (_) {}
     }
     state.lastAiErrorCode = nextCode
@@ -121,13 +122,13 @@ const createImGateway = ({
   }
 
   const buildWhoamiReply = (message = {}) => {
-    const parts = [`Telegram user id: ${String(message.userId || '').trim() || 'unknown'}`]
+    const parts = [`${platformLabel(message.platform)} user id: ${String(message.userId || '').trim() || 'unknown'}`]
     if (String(message.userName || '').trim()) parts.push(`username: ${String(message.userName || '').trim()}`)
     return parts.join(' | ')
   }
 
   const buildChatIdReply = (message = {}) => ([
-    `chat type: ${String(message.chatType || '').trim() || 'unknown'}`,
+    `${normalizePlatform(message.platform) === 'telegram' ? '' : `${platformLabel(message.platform)} `}chat type: ${String(message.chatType || '').trim() || 'unknown'}`,
     `chat id: ${String(message.chatId || '').trim() || 'unknown'}`
   ]).join(' | ')
   const isHelperCommand = (command = {}) => command.matched === true && HELPER_COMMANDS.has(String(command.name || ''))
@@ -170,40 +171,42 @@ const createImGateway = ({
 
   const handleMessage = async (adapter, message, { signal = null } = {}) => {
     if (signal?.aborted) return
-    markMessage(adapter, message)
-    const command = parseOpenPetCommand(message.text, config, { botUsername: message.botUsername })
+    const platform = resolvePlatform(message, adapter)
+    const routedMessage = message.platform === platform ? message : { ...message, platform }
+    markMessage(adapter, routedMessage)
+    const command = parseOpenPetCommand(routedMessage.text, config, { botUsername: routedMessage.botUsername })
     if (command.reason === 'command-for-other-bot') return
     if (isHelperCommand(command)) {
-      await handleCommand(adapter, message, command, { signal })
+      await handleCommand(adapter, routedMessage, command, { signal })
       return
     }
 
-    const allowlist = isMessageAllowed(message, config)
+    const allowlist = isMessageAllowed(routedMessage, config)
     if (!allowlist.allowed) {
-      markDiagnostic(adapter, message, 'allowlist-miss', {
+      markDiagnostic(adapter, routedMessage, 'allowlist-miss', {
         lastAllowlistReason: allowlist.reason
       })
       return
     }
 
     if (command.matched) {
-      await handleCommand(adapter, message, command, { signal })
+      await handleCommand(adapter, routedMessage, command, { signal })
       return
     }
 
-    const route = resolveAiRoute(message, config)
+    const route = resolveAiRoute(routedMessage, config)
     if (route.mode === 'ignore') return
 
     if (route.mode === 'pet-say') {
       await bridgeClient.say?.({ text: route.messageText, ttlMs: config.petSayTtlMs }, { signal })
-      markTrigger(adapter, message)
+      markTrigger(adapter, routedMessage)
       return
     }
 
-    const chatKind = String(message.chatType || '').toLowerCase() === 'private' ? 'private' : 'group'
+    const chatKind = String(routedMessage.chatType || '').toLowerCase() === 'private' ? 'private' : 'group'
     const rateLimit = aiRateLimiter.consume(route.conversationKey, chatKind)
     if (!rateLimit.allowed) {
-      markAiRateLimited(adapter, message)
+      markAiRateLimited(adapter, routedMessage)
       if (chatKind === 'private') {
         try {
           await sendDirectReply(adapter, message, PRIVATE_RATE_LIMIT_NOTICE)
@@ -219,39 +222,39 @@ const createImGateway = ({
           const result = await bridgeClient.aiChat?.({
             message: route.messageText,
             conversationKey: route.conversationKey,
-            requestId: message.messageId
-              ? `telegram-request:${hashIdentifier(`${route.conversationKey}:${message.messageId}`)}`
+            requestId: routedMessage.messageId
+              ? `${platform}-request:${hashIdentifier(`${route.conversationKey}:${routedMessage.messageId}`)}`
               : ''
           }, { signal })
           if (signal?.aborted) return
-          const replyText = truncateAiReply(result?.result?.reply || result?.reply || '', message)
+          const replyText = truncateAiReply(result?.result?.reply || result?.reply || '', routedMessage)
           if (!replyText) throw new Error('empty-ai-reply')
           try {
-            await sendDirectReply(adapter, message, replyText)
+            await sendDirectReply(adapter, routedMessage, replyText)
           } catch (_) {
-            markAiError(adapter, message, 'reply-send-failed')
+            markAiError(adapter, routedMessage, 'reply-send-failed')
             return
           }
-          markAiReply(adapter, message)
-          markTrigger(adapter, message)
+          markAiReply(adapter, routedMessage)
+          markTrigger(adapter, routedMessage)
         } catch (_) {
           if (signal?.aborted) {
-            markAiError(adapter, message, 'ai-request-canceled')
+            markAiError(adapter, routedMessage, 'ai-request-canceled')
             return
           }
-          markAiError(adapter, message, 'ai-reply-failed')
-          if (String(message.chatType || '').toLowerCase() === 'private') {
+          markAiError(adapter, routedMessage, 'ai-reply-failed')
+          if (String(routedMessage.chatType || '').toLowerCase() === 'private') {
             try {
-              await sendDirectReply(adapter, message, PRIVATE_FAILURE_NOTICE)
+              await sendDirectReply(adapter, routedMessage, PRIVATE_FAILURE_NOTICE)
             } catch (_) {}
           }
         }
       },
       onDrop: async () => {
-        markAiError(adapter, message, 'ai-queue-busy')
-        if (String(message.chatType || '').toLowerCase() === 'private') {
+        markAiError(adapter, routedMessage, 'ai-queue-busy')
+        if (String(routedMessage.chatType || '').toLowerCase() === 'private') {
           try {
-            await sendDirectReply(adapter, message, PRIVATE_BUSY_NOTICE)
+            await sendDirectReply(adapter, routedMessage, PRIVATE_BUSY_NOTICE)
           } catch (_) {}
         }
       }

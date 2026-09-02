@@ -1,5 +1,6 @@
 const { isGroupChatType } = require('./allowlist')
 const { hashIdentifier } = require('../log-safety')
+const { normalizePlatform } = require('./platform')
 
 const PRIVATE_INBOUND_LIMIT = 2000
 const GROUP_INBOUND_LIMIT = 500
@@ -17,7 +18,7 @@ const stripDirectMention = (message = {}) => {
 }
 
 const buildConversationKey = (message = {}) => {
-  const platform = String(message.platform || 'telegram').trim() || 'telegram'
+  const platform = normalizePlatform(message.platform)
   const chatKind = isGroupChatType(message.chatType) ? 'group' : 'private'
   const peerScope = [platform, chatKind, message.chatId, message.userId].map((value) => String(value || '').trim()).join(':')
   return `${platform}:${chatKind}:${hashIdentifier(peerScope)}`
