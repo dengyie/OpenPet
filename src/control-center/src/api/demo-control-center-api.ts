@@ -121,6 +121,7 @@ interface DemoState {
     imGatewayTelegramBotToken: boolean
     imGatewayQqOfficialAppId?: boolean
     imGatewayQqOfficialClientSecret?: boolean
+    imGatewayWecomCredentials?: boolean
   }
   pluginLogs: Array<{
     id: string
@@ -1602,7 +1603,8 @@ const createDefaultDemoState = (): DemoState => {
     catalog: createDemoCatalog(),
     plugins: [],
     secrets: {
-      imGatewayTelegramBotToken: false
+      imGatewayTelegramBotToken: false,
+      imGatewayWecomCredentials: false
     },
     pluginLogs: [],
     creatorReferencePickerPath: defaultDemoCreatorReferencePickerPath
@@ -1677,7 +1679,8 @@ const readDemoState = (): DemoState => {
       secrets: {
         imGatewayTelegramBotToken: Boolean(state.secrets?.imGatewayTelegramBotToken),
         imGatewayQqOfficialAppId: Boolean(state.secrets?.imGatewayQqOfficialAppId),
-        imGatewayQqOfficialClientSecret: Boolean(state.secrets?.imGatewayQqOfficialClientSecret)
+        imGatewayQqOfficialClientSecret: Boolean(state.secrets?.imGatewayQqOfficialClientSecret),
+        imGatewayWecomCredentials: Boolean(state.secrets?.imGatewayWecomCredentials)
       },
       pluginLogs: Array.isArray(state.pluginLogs) ? state.pluginLogs : [],
       creatorReferencePickerPath: typeof state.creatorReferencePickerPath === 'string' && state.creatorReferencePickerPath.trim()
@@ -4041,7 +4044,8 @@ export const demoControlCenterAPI: ControlCenterApi = {
     hasTelegramBotToken: Boolean(demoState.secrets?.imGatewayTelegramBotToken),
     hasQqOfficialAppId: Boolean(demoState.secrets?.imGatewayQqOfficialAppId),
     hasQqOfficialClientSecret: Boolean(demoState.secrets?.imGatewayQqOfficialClientSecret),
-    hasQqOfficialCredentials: Boolean(demoState.secrets?.imGatewayQqOfficialAppId && demoState.secrets?.imGatewayQqOfficialClientSecret)
+    hasQqOfficialCredentials: Boolean(demoState.secrets?.imGatewayQqOfficialAppId && demoState.secrets?.imGatewayQqOfficialClientSecret),
+    hasWecomCredentials: Boolean(demoState.secrets?.imGatewayWecomCredentials)
   }),
   saveImGatewayTelegramBotToken: async (token) => {
     const normalized = String(token || '').trim()
@@ -4055,7 +4059,7 @@ export const demoControlCenterAPI: ControlCenterApi = {
       ...demoState.pluginLogs
     ]
     writeDemoState()
-    return { hasTelegramBotToken: true, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false }
+    return demoControlCenterAPI.getImGatewaySecretState()
   },
   clearImGatewayTelegramBotToken: async () => {
     demoState.secrets = {
@@ -4067,7 +4071,7 @@ export const demoControlCenterAPI: ControlCenterApi = {
       ...demoState.pluginLogs
     ]
     writeDemoState()
-    return { hasTelegramBotToken: false, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false }
+    return demoControlCenterAPI.getImGatewaySecretState()
   },
   saveImGatewayQqOfficialCredentials: async ({ appId, clientSecret }) => {
     if (!String(appId || '').trim() || !String(clientSecret || '').trim()) throw new Error('QQ appId and clientSecret are required')
@@ -4079,6 +4083,19 @@ export const demoControlCenterAPI: ControlCenterApi = {
   clearImGatewayQqOfficialCredentials: async () => {
     demoState.secrets = { ...(demoState.secrets || {}), imGatewayQqOfficialAppId: false, imGatewayQqOfficialClientSecret: false }
     demoState.pluginLogs = [createDemoPluginLog('openpet.im-gateway', 'IM Gateway QQ official credentials cleared'), ...demoState.pluginLogs]
+    writeDemoState()
+    return demoControlCenterAPI.getImGatewaySecretState()
+  },
+  saveImGatewayWecomCredentials: async (credentials) => {
+    if (!credentials?.corpSecret || !credentials?.token || !credentials?.encodingAesKey) throw new Error('WeCom credentials are required')
+    demoState.secrets = { ...(demoState.secrets || {}), imGatewayWecomCredentials: true }
+    demoState.pluginLogs = [createDemoPluginLog('openpet.im-gateway', 'IM Gateway WeCom credentials saved'), ...demoState.pluginLogs]
+    writeDemoState()
+    return demoControlCenterAPI.getImGatewaySecretState()
+  },
+  clearImGatewayWecomCredentials: async () => {
+    demoState.secrets = { ...(demoState.secrets || {}), imGatewayWecomCredentials: false }
+    demoState.pluginLogs = [createDemoPluginLog('openpet.im-gateway', 'IM Gateway WeCom credentials cleared'), ...demoState.pluginLogs]
     writeDemoState()
     return demoControlCenterAPI.getImGatewaySecretState()
   },

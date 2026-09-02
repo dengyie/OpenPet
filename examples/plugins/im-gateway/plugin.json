@@ -19,9 +19,11 @@
     "dashboards": []
   },
   "manifest": {
-    "adapters": ["telegram", "qq-official"],
+    "adapters": ["telegram", "qq-official", "wecom"],
     "capabilities": {
-      "qq-official": "Official QQ Robot WebSocket/event transport (development/test boundary; no OneBot fallback)"
+      "qq-official": "Official QQ Robot WebSocket/event transport (development/test boundary; no OneBot fallback)",
+      "wecom": "WeCom self-built application callbacks only; personal WeChat and Official Account are not supported.",
+      "nativeExecutionRequired": true
     },
     "privacy": {
       "captures": ["platform", "adapter status", "hashed peer identifiers", "trigger type", "command name", "success/failure", "short error code", "timestamp"],

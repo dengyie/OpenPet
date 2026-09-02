@@ -26,6 +26,12 @@ const createImGatewayServer = ({
       appId: process.env.OPENPET_IM_QQ_APP_ID || '',
       clientSecret: process.env.OPENPET_IM_QQ_CLIENT_SECRET || ''
     },
+    wecomSecrets: {
+      corpId: process.env.OPENPET_IM_WECOM_CORP_ID || config.wecomCorpId || '',
+      corpSecret: process.env.OPENPET_IM_WECOM_CORP_SECRET || '',
+      token: process.env.OPENPET_IM_WECOM_TOKEN || '',
+      encodingAesKey: process.env.OPENPET_IM_WECOM_ENCODING_AES_KEY || ''
+    },
     logEvent
   }),
   createServer = http.createServer
@@ -37,6 +43,35 @@ const createImGatewayServer = ({
     const url = new URL(request.url || '/', `http://${request.headers.host || '127.0.0.1'}`)
     if (request.method === 'GET' && url.pathname === '/health') {
       sendJson(response, 200, gateway.getHealth())
+      return
+    }
+    const wecom = adapters.find((adapter) => adapter.id === 'wecom')
+    const callbackPath = config.wecomCallbackPath || '/wecom/callback'
+    if (wecom && url.pathname === callbackPath && request.method === 'GET') {
+      const encrypted = String(url.searchParams.get('echostr') || '')
+      const valid = wecom.verifyCallback?.({ timestamp: url.searchParams.get('timestamp'), nonce: url.searchParams.get('nonce'), encrypt: encrypted, signature: url.searchParams.get('msg_signature') || url.searchParams.get('signature') })
+      let body = encrypted
+      try { if (valid && encrypted) body = wecom.decryptEcho?.(encrypted) || encrypted } catch (_) {}
+      response.writeHead(valid ? 200 : 403, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' })
+      response.end(body)
+      return
+    }
+    if (wecom && url.pathname === callbackPath && request.method === 'POST') {
+      const chunks = []
+      let size = 0
+      for await (const chunk of request) {
+        size += chunk.length
+        if (size > 1024 * 1024) { sendJson(response, 413, { ok: false, error: 'payload-too-large' }); return }
+        chunks.push(chunk)
+      }
+      const result = await wecom.handleUpdate?.({
+        body: Buffer.concat(chunks).toString('utf8'),
+        timestamp: url.searchParams.get('timestamp'),
+        nonce: url.searchParams.get('nonce'),
+        signature: url.searchParams.get('msg_signature') || url.searchParams.get('signature')
+      })
+      const accepted = result?.ok === true
+      sendJson(response, accepted ? 200 : 403, result || { ok: false, error: 'callback-failed' })
       return
     }
     sendJson(response, 404, { ok: false, error: 'Not found' })

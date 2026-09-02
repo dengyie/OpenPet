@@ -4,7 +4,7 @@ import { pluginHttpApi, shouldUsePluginDemoApi } from '../features/plugins/api'
 import type { ImGatewaySecretState, PaginatedLogsViewState, PluginLogEntry, PluginLogFilters, PluginViewState } from '../../../shared/openpet-contracts'
 
 export const LOG_PAGE_SIZE = 50
-export const EMPTY_SECRET: ImGatewaySecretState = { hasTelegramBotToken: false, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false }
+export const EMPTY_SECRET: ImGatewaySecretState = { hasTelegramBotToken: false, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false, hasWecomCredentials: false }
 
 export function usePluginsPaneData() {
   const [loading, setLoading] = useState(true)
@@ -21,7 +21,8 @@ export function usePluginsPaneData() {
   const [imGatewayTelegramTokenDraft, setImGatewayTelegramTokenDraft] = useState('')
   const [imGatewayQqAppIdDraft, setImGatewayQqAppIdDraft] = useState('')
   const [imGatewayQqClientSecretDraft, setImGatewayQqClientSecretDraft] = useState('')
-  const [busy, setBusy] = useState({ runningCommand: '', runningSetup: '', openingDashboard: '', changingService: '', checkingServiceHealth: '', savingServiceHealthPolicy: '', savingConfig: '', clearingStorage: '', inspectingPlugin: false, installingPlugin: false, uninstallingPlugin: '', inspectingGithubPlugin: false, runningCreatorStudioDefaultFlow: false, savingImGatewayTelegramToken: false, clearingImGatewayTelegramToken: false, savingImGatewayQqCredentials: false, clearingImGatewayQqCredentials: false })
+  const [imGatewayWecomCredentialsDraft, setImGatewayWecomCredentialsDraft] = useState({ corpSecret: '', token: '', encodingAesKey: '' })
+  const [busy, setBusy] = useState({ runningCommand: '', runningSetup: '', openingDashboard: '', changingService: '', checkingServiceHealth: '', savingServiceHealthPolicy: '', savingConfig: '', clearingStorage: '', inspectingPlugin: false, installingPlugin: false, uninstallingPlugin: '', inspectingGithubPlugin: false, runningCreatorStudioDefaultFlow: false, savingImGatewayTelegramToken: false, clearingImGatewayTelegramToken: false, savingImGatewayQqCredentials: false, clearingImGatewayQqCredentials: false, savingImGatewayWecomCredentials: false, clearingImGatewayWecomCredentials: false })
   const [pluginReview, setPluginReview] = useState<any>(null)
   const [githubRepositoryUrl, setGithubRepositoryUrl] = useState('')
 
@@ -41,5 +42,5 @@ export function usePluginsPaneData() {
 
   useEffect(() => { let active = true; Promise.all([getPlugins(), useDemoApi() ? api.getImGatewaySecretState() : pluginHttpApi.imSecret('state')]).then(([items, secret]) => { if (!active) return; setPlugins(items); setImGatewaySecretState(secret || EMPTY_SECRET); setLoading(false) }).catch((error) => { if (active) { setStatus(error?.message || '插件列表加载失败'); setLoading(false) } }); return () => { active = false } }, [])
   useEffect(() => { let active = true; loadLogsPage(filters, 1).then((result) => { if (active) { setLogsPage(result); setLogs(result.entries) } }).catch((error) => { if (active) setStatus(error?.message || '日志加载失败') }); return () => { active = false } }, [filters])
-  return { loading, plugins, setPlugins, logs, setLogs, logsPage, setLogsPage, filters, setFilters, status, setStatus, commandPayloadDrafts, setCommandPayloadDrafts, creatorStudioPromptDraft, setCreatorStudioPromptDraft, creatorStudioLastRunId, setCreatorStudioLastRunId, lastCommandResult, setLastCommandResult, imGatewaySecretState, setImGatewaySecretState, imGatewayTelegramTokenDraft, setImGatewayTelegramTokenDraft, imGatewayQqAppIdDraft, setImGatewayQqAppIdDraft, imGatewayQqClientSecretDraft, setImGatewayQqClientSecretDraft, busy, setBusy, pluginReview, setPluginReview, githubRepositoryUrl, setGithubRepositoryUrl, getPlugins, loadLogsPage, refreshPlugins, refreshLogs }
+  return { loading, plugins, setPlugins, logs, setLogs, logsPage, setLogsPage, filters, setFilters, status, setStatus, commandPayloadDrafts, setCommandPayloadDrafts, creatorStudioPromptDraft, setCreatorStudioPromptDraft, creatorStudioLastRunId, setCreatorStudioLastRunId, lastCommandResult, setLastCommandResult, imGatewaySecretState, setImGatewaySecretState, imGatewayTelegramTokenDraft, setImGatewayTelegramTokenDraft, imGatewayQqAppIdDraft, setImGatewayQqAppIdDraft, imGatewayQqClientSecretDraft, setImGatewayQqClientSecretDraft, imGatewayWecomCredentialsDraft, setImGatewayWecomCredentialsDraft, busy, setBusy, pluginReview, setPluginReview, githubRepositoryUrl, setGithubRepositoryUrl, getPlugins, loadLogsPage, refreshPlugins, refreshLogs }
 }

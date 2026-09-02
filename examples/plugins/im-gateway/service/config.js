@@ -2,6 +2,11 @@ const DEFAULT_CONFIG = {
   telegramEnabled: false,
   qqEnabled: false,
   qqIntents: 1107296256,
+  wecomEnabled: false,
+  wecomMode: 'callback',
+  wecomCorpId: '',
+  wecomAgentId: 0,
+  wecomCallbackPath: '/wecom/callback',
   telegramMode: 'polling',
   privateTextMode: 'command-only',
   groupChatPolicy: 'mention-or-command',
@@ -44,6 +49,11 @@ const normalizeImGatewayConfig = (input = {}) => ({
   telegramEnabled: normalizeBoolean(input.telegramEnabled),
   qqEnabled: normalizeBoolean(input.qqEnabled),
   qqIntents: Number.isInteger(Number(input.qqIntents)) ? Number(input.qqIntents) : DEFAULT_CONFIG.qqIntents,
+  wecomEnabled: normalizeBoolean(input.wecomEnabled),
+  wecomMode: normalizeEnum(input.wecomMode, ['callback'], DEFAULT_CONFIG.wecomMode),
+  wecomCorpId: String(input.wecomCorpId || '').trim().slice(0, 128),
+  wecomAgentId: boundedAgentId(input.wecomAgentId),
+  wecomCallbackPath: normalizeCallbackPath(input.wecomCallbackPath),
   telegramMode: normalizeEnum(input.telegramMode, ['polling'], DEFAULT_CONFIG.telegramMode),
   privateTextMode: normalizeEnum(input.privateTextMode, ['command-only', 'pet-say', 'ai-chat'], DEFAULT_CONFIG.privateTextMode),
   groupChatPolicy: normalizeEnum(input.groupChatPolicy, ['mention-or-command', 'command-only'], DEFAULT_CONFIG.groupChatPolicy),
@@ -56,6 +66,16 @@ const normalizeImGatewayConfig = (input = {}) => ({
   petSayTtlMs: normalizePetSayTtlMs(input.petSayTtlMs),
   receiptMode: normalizeEnum(input.receiptMode, ['commands-only', 'none'], DEFAULT_CONFIG.receiptMode)
 })
+
+const boundedAgentId = (value) => {
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? Math.min(2147483647, Math.max(0, Math.floor(numeric))) : 0
+}
+
+const normalizeCallbackPath = (value) => {
+  const path = String(value || DEFAULT_CONFIG.wecomCallbackPath).trim()
+  return /^\/[A-Za-z0-9/_-]{1,100}$/.test(path) ? path : DEFAULT_CONFIG.wecomCallbackPath
+}
 
 const readConfigFromEnv = (env = process.env) => {
   const raw = String(env.OPENPET_IM_GATEWAY_CONFIG_JSON || '').trim()

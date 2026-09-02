@@ -67,8 +67,12 @@ export function createPluginHttpApi(client: ApiClient = backendClient) {
     servicePolicy: (pluginId: string, serviceId: string, policy: JsonObject) => request('PUT', `/plugins/${encodeURIComponent(pluginId)}/config?operation=health-policy`, { serviceId, policy }),
     storage: (pluginId: string) => request('POST', `/plugins/${encodeURIComponent(pluginId)}/enable?operation=storage-clear`, {}),
     creatorFlow: (prompt: string) => request('POST', '/plugins/openpet.creator-studio/commands/default-flow?operation=creator-default-flow', { prompt }),
-    imSecret: (operation: 'state' | 'save' | 'clear', token?: string) => operation === 'state'
+    imSecret: (operation: 'state' | 'save' | 'clear' | 'save-wecom' | 'clear-wecom', token?: string, credentials?: { corpSecret: string; token: string; encodingAesKey: string }) => operation === 'state'
       ? request('GET', '/plugins/openpet.im-gateway/config?operation=secret-state')
+      : operation === 'save-wecom'
+        ? request('PUT', '/plugins/openpet.im-gateway/config?operation=secret-save-wecom', credentials || {})
+        : operation === 'clear-wecom'
+          ? request('PUT', '/plugins/openpet.im-gateway/config?operation=secret-clear-wecom', {})
       : request('PUT', `/plugins/openpet.im-gateway/config?operation=secret-${operation}`, token ? { token } : {}),
     imQqCredentials: (operation: 'state' | 'save' | 'clear', credentials?: { appId: string; clientSecret: string }) => operation === 'state'
       ? request('GET', '/plugins/openpet.im-gateway/config?operation=secret-state')
@@ -154,10 +158,12 @@ export const pluginHttpApi: PluginApi = {
   creatorFlow: (prompt) => usePluginDemoApi()
     ? controlCenterAPI.runCreatorStudioDefaultFlow(prompt)
     : pluginHttpApiTransport.creatorFlow(prompt),
-  imSecret: (operation, token) => {
+  imSecret: (operation, token, credentials) => {
     if (!usePluginDemoApi()) return pluginHttpApiTransport.imSecret(operation, token)
     if (operation === 'state') return controlCenterAPI.getImGatewaySecretState()
     if (operation === 'save') return controlCenterAPI.saveImGatewayTelegramBotToken(token || '')
+    if (operation === 'save-wecom') return controlCenterAPI.saveImGatewayWecomCredentials(credentials || { corpSecret: '', token: '', encodingAesKey: '' })
+    if (operation === 'clear-wecom') return controlCenterAPI.clearImGatewayWecomCredentials()
     return controlCenterAPI.clearImGatewayTelegramBotToken()
   },
   imQqCredentials: (operation, credentials) => {

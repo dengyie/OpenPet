@@ -81,13 +81,21 @@ const IM_GATEWAY_SERVICE_ID = 'im-gateway'
 const IM_GATEWAY_TELEGRAM_BOT_TOKEN_SECRET_ID = 'im.telegram.botToken'
 const IM_GATEWAY_QQ_APP_ID_SECRET_ID = 'im.qq.appId'
 const IM_GATEWAY_QQ_CLIENT_SECRET_SECRET_ID = 'im.qq.clientSecret'
+const IM_GATEWAY_WECOM_CORP_SECRET_ID = 'im.wecom.corpSecret'
+const IM_GATEWAY_WECOM_TOKEN_SECRET_ID = 'im.wecom.token'
+const IM_GATEWAY_WECOM_ENCODING_AES_KEY_SECRET_ID = 'im.wecom.encodingAesKey'
 const IM_GATEWAY_HEALTH_MESSAGES = new Map([
   ['missing-token', 'Telegram token missing'],
   ['telegram-polling-conflict', 'Telegram polling conflict'],
   ['telegram-polling-failed', 'Telegram polling failed'],
   ['telegram-handler-failed', 'Telegram message handler failed'],
   ['telegram-handler-overloaded', 'Telegram handler capacity exceeded'],
-  ['allowlist-miss', 'Recent Telegram message blocked by allowlist']
+  ['allowlist-miss', 'Recent Telegram message blocked by allowlist'],
+  ['wecom-access-token-failed', 'WeCom access token failed'],
+  ['wecom-invalid-signature', 'WeCom callback signature invalid'],
+  ['wecom-handler-failed', 'WeCom message handler failed'],
+  ['wecom-stop-timeout', 'WeCom adapter stop timed out'],
+  ['wecom-missing-credentials', 'WeCom credentials missing']
 ])
 const IM_GATEWAY_SAFE_HEALTH_LOG_MESSAGES = new Set([
   ...IM_GATEWAY_HEALTH_MESSAGES.values(),
@@ -262,8 +270,12 @@ const createAgentAwarenessHealthDetails = (body) => {
 
 const summarizeImGatewayHealthBody = (body) => {
   if (!isImGatewayHealthBody(body)) return null
-  const telegram = isRecord(body.adapters?.telegram) ? body.adapters.telegram : null
-  if (!telegram) return null
+  const adapter = ['telegram', 'qq-official', 'wecom']
+    .map((id) => ({ id, value: isRecord(body.adapters?.[id]) ? body.adapters[id] : null }))
+    .filter(({ value }) => value)
+    .sort((left, right) => Number(right.value.enabled === true) - Number(left.value.enabled === true) || Number(['running', 'connected', 'connecting'].includes(right.value.status)) - Number(['running', 'connected', 'connecting'].includes(left.value.status)))[0]
+  if (!adapter) return null
+  const { id, value: telegram } = adapter
 
   const enabled = telegram.enabled === true
   const status = String(telegram.status || '').trim()
@@ -271,7 +283,7 @@ const summarizeImGatewayHealthBody = (body) => {
   const diagnosticCode = String(telegram.lastDiagnosticCode || '').trim()
 
   if (!enabled || status === 'disabled') {
-    return { healthy: true, logLevel: 'info', message: 'Telegram disabled' }
+    return { healthy: true, logLevel: 'info', message: `${id === 'wecom' ? 'WeCom' : 'Telegram'} disabled` }
   }
   if (
     (errorCode === 'telegram-handler-failed' || errorCode === 'telegram-handler-overloaded') &&
@@ -287,7 +299,7 @@ const summarizeImGatewayHealthBody = (body) => {
     return {
       healthy: false,
       logLevel: 'error',
-      message: IM_GATEWAY_HEALTH_MESSAGES.get(errorCode) || 'Telegram unavailable'
+      message: IM_GATEWAY_HEALTH_MESSAGES.get(errorCode) || `${id === 'wecom' ? 'WeCom' : 'Telegram'} unavailable`
     }
   }
   if (diagnosticCode === 'allowlist-miss') {
@@ -298,9 +310,9 @@ const summarizeImGatewayHealthBody = (body) => {
     }
   }
   if (status === 'connected' || status === 'running') {
-    return { healthy: true, logLevel: 'info', message: 'Telegram connected' }
+    return { healthy: true, logLevel: 'info', message: `${id === 'wecom' ? 'WeCom' : 'Telegram'} connected` }
   }
-  return { healthy: false, logLevel: 'error', message: 'Telegram unavailable' }
+  return { healthy: false, logLevel: 'error', message: `${id === 'wecom' ? 'WeCom' : 'Telegram'} unavailable` }
 }
 
 const formatServiceHealthLogMessage = ({
@@ -1156,13 +1168,18 @@ const createPluginService = ({ settingsService, petService, actionService, actio
 
   const getPluginConfig = (pluginId, schema) => normalizePluginConfig(schema, getConfigMap()[pluginId] || {})
 
-const getImGatewaySecretState = () => ({
+  const getImGatewaySecretState = () => ({
     hasTelegramBotToken: Boolean(secretService?.getSecretValue?.(IM_GATEWAY_TELEGRAM_BOT_TOKEN_SECRET_ID)),
     hasQqOfficialAppId: Boolean(secretService?.getSecretValue?.(IM_GATEWAY_QQ_APP_ID_SECRET_ID)),
     hasQqOfficialClientSecret: Boolean(secretService?.getSecretValue?.(IM_GATEWAY_QQ_CLIENT_SECRET_SECRET_ID)),
     hasQqOfficialCredentials: Boolean(
       secretService?.getSecretValue?.(IM_GATEWAY_QQ_APP_ID_SECRET_ID) &&
       secretService?.getSecretValue?.(IM_GATEWAY_QQ_CLIENT_SECRET_SECRET_ID)
+    ),
+    hasWecomCredentials: Boolean(
+      secretService?.getSecretValue?.(IM_GATEWAY_WECOM_CORP_SECRET_ID) &&
+      secretService?.getSecretValue?.(IM_GATEWAY_WECOM_TOKEN_SECRET_ID) &&
+      secretService?.getSecretValue?.(IM_GATEWAY_WECOM_ENCODING_AES_KEY_SECRET_ID)
     )
   })
 
@@ -1240,6 +1257,30 @@ const getImGatewaySecretState = () => ({
     return getImGatewaySecretState()
   }
 
+  const saveImGatewayWecomCredentials = (credentials = {}) => {
+    assertImGatewaySecretService()
+    assertImGatewayRuntimeMutationAllowed('Stop IM Gateway before changing WeCom credentials')
+    const corpSecret = String(credentials.corpSecret || '').trim()
+    const token = String(credentials.token || '').trim()
+    const encodingAesKey = String(credentials.encodingAesKey || '').trim()
+    if (!corpSecret || !token || !encodingAesKey) throw new Error('WeCom credentials are required')
+    secretService.setSecret({ id: IM_GATEWAY_WECOM_CORP_SECRET_ID, value: corpSecret, label: 'WeCom Corp Secret' })
+    secretService.setSecret({ id: IM_GATEWAY_WECOM_TOKEN_SECRET_ID, value: token, label: 'WeCom Callback Token' })
+    secretService.setSecret({ id: IM_GATEWAY_WECOM_ENCODING_AES_KEY_SECRET_ID, value: encodingAesKey, label: 'WeCom Encoding AES Key' })
+    appendLog({ pluginId: IM_GATEWAY_PLUGIN_ID, level: 'info', message: 'IM Gateway WeCom credentials saved' })
+    return getImGatewaySecretState()
+  }
+
+  const clearImGatewayWecomCredentials = () => {
+    assertImGatewaySecretService()
+    assertImGatewayRuntimeMutationAllowed('Stop IM Gateway before changing WeCom credentials')
+    secretService.deleteSecret?.(IM_GATEWAY_WECOM_CORP_SECRET_ID)
+    secretService.deleteSecret?.(IM_GATEWAY_WECOM_TOKEN_SECRET_ID)
+    secretService.deleteSecret?.(IM_GATEWAY_WECOM_ENCODING_AES_KEY_SECRET_ID)
+    appendLog({ pluginId: IM_GATEWAY_PLUGIN_ID, level: 'info', message: 'IM Gateway WeCom credentials cleared' })
+    return getImGatewaySecretState()
+  }
+
   const createImGatewayServiceEnv = (plugin, serviceId) => {
     if (plugin.manifest.id !== IM_GATEWAY_PLUGIN_ID || serviceId !== IM_GATEWAY_SERVICE_ID) return {}
     const env = {
@@ -1251,6 +1292,14 @@ const getImGatewaySecretState = () => ({
     const qqClientSecret = secretService?.getSecretValue?.(IM_GATEWAY_QQ_CLIENT_SECRET_SECRET_ID)
     if (qqAppId) env.OPENPET_IM_QQ_APP_ID = qqAppId
     if (qqClientSecret) env.OPENPET_IM_QQ_CLIENT_SECRET = qqClientSecret
+    const corpSecret = secretService?.getSecretValue?.(IM_GATEWAY_WECOM_CORP_SECRET_ID)
+    const callbackToken = secretService?.getSecretValue?.(IM_GATEWAY_WECOM_TOKEN_SECRET_ID)
+    const encodingAesKey = secretService?.getSecretValue?.(IM_GATEWAY_WECOM_ENCODING_AES_KEY_SECRET_ID)
+    const pluginConfig = getPluginConfig(plugin.manifest.id, plugin.configSchema)
+    if (pluginConfig.wecomCorpId) env.OPENPET_IM_WECOM_CORP_ID = pluginConfig.wecomCorpId
+    if (corpSecret) env.OPENPET_IM_WECOM_CORP_SECRET = corpSecret
+    if (callbackToken) env.OPENPET_IM_WECOM_TOKEN = callbackToken
+    if (encodingAesKey) env.OPENPET_IM_WECOM_ENCODING_AES_KEY = encodingAesKey
     return env
   }
 
@@ -2516,7 +2565,9 @@ const getImGatewaySecretState = () => ({
     saveImGatewayTelegramBotToken,
     clearImGatewayTelegramBotToken,
     saveImGatewayQqOfficialCredentials,
-    clearImGatewayQqOfficialCredentials
+    clearImGatewayQqOfficialCredentials,
+    saveImGatewayWecomCredentials,
+    clearImGatewayWecomCredentials
   }
 }
 

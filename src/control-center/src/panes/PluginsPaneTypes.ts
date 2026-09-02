@@ -43,8 +43,11 @@ export interface PluginsPaneProps {
   savingImGatewayQqCredentials: boolean
   clearingImGatewayQqCredentials: boolean
   imGatewayTelegramTokenDraft: string
+  imGatewayWecomCredentialsDraft: { corpSecret: string; token: string; encodingAesKey: string }
   savingImGatewayTelegramToken: boolean
   clearingImGatewayTelegramToken: boolean
+  savingImGatewayWecomCredentials: boolean
+  clearingImGatewayWecomCredentials: boolean
   onToggle: (pluginId: string, enabled: boolean) => void | Promise<void>
   onSetNativeExecutionApproved: (pluginId: string, approved: boolean) => void | Promise<void>
   onInspectPluginPackage: () => void | Promise<void>
@@ -64,6 +67,9 @@ export interface PluginsPaneProps {
   onChangeImGatewayQqClientSecretDraft: (value: string) => void
   onSaveImGatewayQqCredentials: () => void | Promise<void>
   onClearImGatewayQqCredentials: () => void | Promise<void>
+  onChangeImGatewayWecomCredentialsDraft: (key: 'corpSecret' | 'token' | 'encodingAesKey', value: string) => void
+  onSaveImGatewayWecomCredentials: () => void | Promise<void>
+  onClearImGatewayWecomCredentials: () => void | Promise<void>
   onRun: (pluginId: string, commandId: string) => void | Promise<void>
   onRunCreatorStudioDefaultFlow: () => void | Promise<void>
   onRunSetup: (pluginId: string, setupId: string) => void | Promise<void>

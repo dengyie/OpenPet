@@ -25,6 +25,13 @@ report stable `qq-reconnect-required` or `qq-invalid-session` failure codes;
 automatic re-identification is not included in this test-version boundary.
 Dispatch sequence values are carried in heartbeats and heartbeat requests are
 acknowledged.
+The selected WeCom route is a self-built application callback. Personal WeChat,
+Official Account, iLink, and OneBot are outside the supported routes.
+
+WeCom is disabled by default and requires both plugin enablement and native
+execution approval. Store the three WeCom credentials through Control Center;
+the child service receives them only at launch. Configuration contains only
+tenant/application and callback policy fields.
 
 ## Telegram Setup
 

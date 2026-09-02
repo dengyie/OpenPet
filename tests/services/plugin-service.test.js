@@ -4093,11 +4093,11 @@ test('plugin service stores IM Gateway Telegram token without exposing its value
     }
   })
 
-  assert.deepEqual(service.getImGatewaySecretState(), { hasTelegramBotToken: false, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false })
+  assert.deepEqual(service.getImGatewaySecretState(), { hasTelegramBotToken: false, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false, hasWecomCredentials: false })
 
   const saved = service.saveImGatewayTelegramBotToken('telegram-token')
 
-  assert.deepEqual(saved, { hasTelegramBotToken: true, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false })
+  assert.deepEqual(saved, { hasTelegramBotToken: true, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false, hasWecomCredentials: false })
   assert.deepEqual(secretCalls[0], {
     id: 'im.telegram.botToken',
     value: 'telegram-token',
@@ -4107,8 +4107,34 @@ test('plugin service stores IM Gateway Telegram token without exposing its value
 
   const cleared = service.clearImGatewayTelegramBotToken()
 
-  assert.deepEqual(cleared, { hasTelegramBotToken: false, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false })
+  assert.deepEqual(cleared, { hasTelegramBotToken: false, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false, hasWecomCredentials: false })
   assert.deepEqual(secretCalls[1], { id: 'im.telegram.botToken', deleted: true })
+})
+
+test('plugin service stores WeCom credentials under exact host secret ids and returns state only', () => {
+  const values = new Map()
+  const calls = []
+  const service = createPluginService({
+    settingsService: createSettingsService(),
+    petService: { say: async () => {} },
+    officialPlugins: [],
+    pluginDirs: [],
+    secretService: {
+      getSecretValue: (id) => values.get(id) || '',
+      setSecret: ({ id, value }) => { values.set(id, value); calls.push(['set', id, value]) },
+      deleteSecret: (id) => { values.delete(id); calls.push(['delete', id]) }
+    }
+  })
+  assert.deepEqual(service.getImGatewaySecretState(), { hasTelegramBotToken: false, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false, hasWecomCredentials: false })
+  const saved = service.saveImGatewayWecomCredentials({ corpSecret: 'corp-secret', token: 'callback-token', encodingAesKey: 'aes-key' })
+  assert.deepEqual(saved, { hasTelegramBotToken: false, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false, hasWecomCredentials: true })
+  assert.deepEqual(calls, [
+    ['set', 'im.wecom.corpSecret', 'corp-secret'],
+    ['set', 'im.wecom.token', 'callback-token'],
+    ['set', 'im.wecom.encodingAesKey', 'aes-key']
+  ])
+  assert.equal(JSON.stringify(saved).includes('corp-secret'), false)
+  assert.deepEqual(service.clearImGatewayWecomCredentials(), { hasTelegramBotToken: false, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false, hasWecomCredentials: false })
 })
 
 test('plugin service rejects Telegram credential and config mutations while IM Gateway is active', async () => {
@@ -4177,7 +4203,10 @@ test('plugin service injects Telegram secret and config only for IM Gateway serv
     getSecretValue: (id) => ({
       'im.telegram.botToken': 'telegram-token',
       'im.qq.appId': 'qq-app-id-secret',
-      'im.qq.clientSecret': 'qq-client-secret-value'
+      'im.qq.clientSecret': 'qq-client-secret-value',
+      'im.wecom.corpSecret': 'wecom-corp-secret',
+      'im.wecom.token': 'wecom-callback-token',
+      'im.wecom.encodingAesKey': 'wecom-aes-key'
     }[id] || '')
   }
   const imGatewayService = createPluginService({
@@ -4208,6 +4237,9 @@ test('plugin service injects Telegram secret and config only for IM Gateway serv
   assert.equal(imGatewaySpawned[0].options.env.OPENPET_IM_TELEGRAM_BOT_TOKEN, 'telegram-token')
   assert.equal(imGatewaySpawned[0].options.env.OPENPET_IM_QQ_APP_ID, 'qq-app-id-secret')
   assert.equal(imGatewaySpawned[0].options.env.OPENPET_IM_QQ_CLIENT_SECRET, 'qq-client-secret-value')
+  assert.equal(imGatewaySpawned[0].options.env.OPENPET_IM_WECOM_CORP_SECRET, 'wecom-corp-secret')
+  assert.equal(imGatewaySpawned[0].options.env.OPENPET_IM_WECOM_TOKEN, 'wecom-callback-token')
+  assert.equal(imGatewaySpawned[0].options.env.OPENPET_IM_WECOM_ENCODING_AES_KEY, 'wecom-aes-key')
   assert.equal(JSON.stringify(imGatewaySpawned[0].options.env).includes('telegram-token'), true)
   const config = JSON.parse(imGatewaySpawned[0].options.env.OPENPET_IM_GATEWAY_CONFIG_JSON)
   assert.equal(config.telegramEnabled, true)
@@ -4233,6 +4265,7 @@ test('plugin service injects Telegram secret and config only for IM Gateway serv
 
   assert.equal(weatherSpawned[0].options.env.OPENPET_IM_TELEGRAM_BOT_TOKEN, undefined)
   assert.equal(weatherSpawned[0].options.env.OPENPET_IM_GATEWAY_CONFIG_JSON, undefined)
+  assert.equal(weatherSpawned[0].options.env.OPENPET_IM_WECOM_CORP_SECRET, undefined)
 })
 
 test('plugin service saves QQ official credentials as separate host secrets without exposing values', () => {

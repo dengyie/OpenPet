@@ -22,6 +22,37 @@
       "enum": ["polling"],
       "default": "polling"
     },
+    "wecomEnabled": {
+      "type": "boolean",
+      "title": "Enable WeCom",
+      "description": "Enable the WeCom self-built application callback adapter. Disabled by default.",
+      "default": false
+    },
+    "wecomMode": {
+      "type": "string",
+      "title": "WeCom mode",
+      "description": "WeCom uses a verified callback endpoint and HTTPS message delivery.",
+      "enum": ["callback"],
+      "default": "callback"
+    },
+    "wecomCorpId": {
+      "type": "string",
+      "title": "WeCom Corp ID",
+      "description": "Tenant identifier used to request a session token.",
+      "default": ""
+    },
+    "wecomAgentId": {
+      "type": "number",
+      "title": "WeCom Agent ID",
+      "description": "Self-built application agent id.",
+      "default": 0
+    },
+    "wecomCallbackPath": {
+      "type": "string",
+      "title": "WeCom callback path",
+      "description": "Loopback service callback path to expose through the configured reverse proxy.",
+      "default": "/wecom/callback"
+    },
     "privateTextMode": {
       "type": "string",
       "title": "Private text mode",

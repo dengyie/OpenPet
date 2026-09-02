@@ -1720,6 +1720,7 @@ export interface ImGatewaySecretState {
   hasQqOfficialAppId: boolean
   hasQqOfficialClientSecret: boolean
   hasQqOfficialCredentials: boolean
+  hasWecomCredentials: boolean
 }
 
 export interface PluginLogEntry {
@@ -3791,6 +3792,8 @@ export interface ControlCenterApi {
   clearImGatewayTelegramBotToken: () => Promise<ImGatewaySecretState>
   saveImGatewayQqOfficialCredentials: (credentials: { appId: string; clientSecret: string }) => Promise<ImGatewaySecretState>
   clearImGatewayQqOfficialCredentials: () => Promise<ImGatewaySecretState>
+  saveImGatewayWecomCredentials: (credentials: { corpSecret: string; token: string; encodingAesKey: string }) => Promise<ImGatewaySecretState>
+  clearImGatewayWecomCredentials: () => Promise<ImGatewaySecretState>
   savePluginServiceHealthPolicy: (pluginId: string, serviceId: string, policy: PluginServiceHealthPolicyViewState) => Promise<PluginViewState>
   getCreatorState: () => Promise<CreatorStateViewState>
   pickCreatorReferenceImage: () => Promise<CreatorReferencePickerResult>
