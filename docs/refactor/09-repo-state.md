@@ -288,7 +288,7 @@ countByStatus(status?)                     // → number | { [status]: number }
 
 | 编号 | 状态 | 现象 | 影响 / 去向 |
 | --- | --- | --- | --- |
-| 缺口 G1 | ⏳ | `@openpet/contracts` 的 `main` 指向未生成的 `dist/` | `build:contracts` 是孤儿脚本:`.github/workflows/ci.yml` 没有步骤调用它,`packages/contracts/` 下也没有 `dist/`。「能构建」不等于「被构建」;由 T34(卡面 [#41 §5](https://github.com/dengyie/OpenPet/issues/41),进度 [#41 §4](https://github.com/dengyie/OpenPet/issues/41)) 修复 |
+| 缺口 G1 | ✅ | `@openpet/contracts` 的 `main` 已指向构建产物 `dist/` | T34 已闭合: `build:contracts` 已进入 pack/dist/CI,`asarUnpack` 覆盖 `contracts/zod`(实现证据: `77e5d8435d0c88be3760d85f52df15580001720b`;合并证据: `929f6676e354f3aa1b298b4755fc069f96b9addc`) |
 | 缺口 G2 | ✅ | 后端与契约反向通道均为 9 项,含 `dialog.request` | T12 已补齐白名单、`shell-client` request 分支、60s 超时与桌面 message-handler;`tests/backend/bridge-dialog.test.js` 覆盖成功、超时、关联响应(证据: `8ab2662655af59a92e0c3912f5453503637f4b8b`) |
 | 缺口 G3 | ⏳ | 13 个通用码的状态映射在 `middleware.js` 和契约 `envelope.ts` **各有一份** | 需要 gate 检查这层重复;不要再复制第三处 |
 | 缺口 G4 | ✅ | R20:ESM 入口在 `app.asar` 内可能解析失败 | E6 命中 `spawn ENOTDIR`;已用 `asarUnpack` + unpacked resolver 缓解并收到打包 sidecar ready(证据: `6248d2366435ee765799bdf581c8b6ae22a526e4`) |
@@ -299,8 +299,8 @@ countByStatus(status?)                     // → number | { [status]: number }
 | 缺口 G9 | ✅ | 路由表与 IPC 通道盘点门禁已硬化 | `check:api-contract` 对账 `routes/registry.js`、实际 `router.routes()`、03 篇 §4 与 TS/JS IPC 清单;当前通过 68 条路由、158 条通道(实现证据: `4faa07df0244e9ce8bb53501589eaee4e50ac0b9`;CI 门禁: `11a9e54ba5ad152d8004feac03097b7f26940deb`) |
 | 缺口 G10 | ✅ | `tests/backend/state-machine.test.js` 有一处 `it()` 标题笔误 | E9 已改为「6 个状态,17 个 kind」(证据: `bbfdb096d8a224f513eea5160cf000281f487161`) |
 | 缺口 G11 | ✅ | E3 的 `:memory:` SQLite 探针不证明 WAL | T35 已由 file-backed `tests/backend/sqlite-driver.test.js` 复验 WAL、四项默认 pragma 与跨连接持久化(证据: `08c24e1c364e9ca6a59f57bc6544cb447aa0b565`) |
-| 缺口 G13 | ⏳ | `001_init.sql` 已建 9 张表,当前仅有 `jobs` 与 `plugin_logs` 仓储；`traces`、`http_access_logs`、`ai_memories` 尚无 repository 或 ownership card | M4 再补齐 conversations 仓储;这三张表的归属仍待明确,不要在 T37 提前造空壳 |
 | 缺口 G12 | ✅ | 03 篇 §3 盘点 7 个 `SERVICE_*` 写通道,§4.1 已有对应入口 | T16 已补齐并实现服务配置写入端点 `PUT /service/config`,同时同步契约表(实现证据: `4480c4b5749d2ed242716732e45573ffc1a3131a`;契约/注册表证据: `4faa07df0244e9ce8bb53501589eaee4e50ac0b9`) |
+| 缺口 G13 | ⏳ | `001_init.sql` 已建 9 张表,当前仅有 `jobs` 与 `plugin_logs` 仓储；`traces`、`http_access_logs`、`ai_memories` 尚无 repository 或 ownership card | M4 再补齐 conversations 仓储;这三张表的归属仍待明确,不要在 T37 提前造空壳 |
 
 ---
 
