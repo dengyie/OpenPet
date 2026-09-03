@@ -16,8 +16,8 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 | Current direct registrations | 150 |
 | Current event-only channels | 8 |
 | Current keep | 41 |
-| Current cutover | 58 |
-| Current blocked | 59 |
+| Current cutover | 53 |
+| Current blocked | 64 |
 | Current dead | 0 |
 | Historical retired | 0 |
 
@@ -61,12 +61,12 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 | `pet-bubble-chat:cancel-message` | `keep` | `IPC-only (native/window)` | `src/main/ipc.js` | Window/native IPC remains the intended boundary | — |
 | `pet-bubble-chat:state-changed` | `keep` | `IPC-only (native/window)` | `src/main/pet-bubble-chat-preload.js` | Window/native IPC remains the intended boundary | — |
 | `settings:open` | `keep` | `IPC-only (native/window)` | `src/main/ipc/register-system-ipc.js` | Window/native IPC remains the intended boundary | — |
-| `settings:get` | `cutover:settings` | `GET /settings` | `src/main/ipc/register-settings-ipc.js` | Existing backend route is the migration target | — |
-| `settings:save` | `cutover:settings` | `PATCH /settings` | `src/main/ipc/register-settings-ipc.js` | Existing backend route is the migration target | — |
-| `settings:import-cursor` | `cutover:settings` | `POST /settings/cursor/import` | `src/main/ipc/register-settings-ipc.js` | Existing backend route is the migration target | — |
-| `settings:preview-scale` | `cutover:settings` | `POST /settings/preview-scale` | `src/main/ipc/register-settings-ipc.js` | Existing backend route is the migration target | — |
+| `settings:get` | `blocked:T41` | `GET /settings` — semantic parity and single-writer pending | `src/main/ipc/register-settings-ipc.js` | Backend returns the `{ version, values }` envelope from its own store, while IPC returns the host pet-renderer ViewModel plus optional backend bootstrap state; T41 must converge the contract and truth source | — |
+| `settings:save` | `blocked:T41` | `PATCH /settings` — single-writer and host-effect bridge pending | `src/main/ipc/register-settings-ipc.js` | Backend PATCH only writes its envelope; IPC still updates host PetService, synchronizes the system cursor, applies movement/home effects, cleans cursor assets, and notifies the renderer | — |
+| `settings:import-cursor` | `blocked:T41` | `POST /settings/cursor/import` — unavailable fallback | `src/main/ipc/register-settings-ipc.js` | Route registration receives no handler from the backend composition root, so it returns `BACKEND_UNAVAILABLE`; T41 must bridge the host dialog and cursor importer | — |
+| `settings:preview-scale` | `blocked:T41` | `POST /settings/preview-scale` — unavailable fallback | `src/main/ipc/register-settings-ipc.js` | Route registration receives no handler from the backend composition root, so it returns `BACKEND_UNAVAILABLE`; T41 must bridge the host preview side effect | — |
 | `settings:close` | `keep` | `IPC-only (native/window)` | `src/main/ipc/register-settings-ipc.js` | Window/native IPC remains the intended boundary | — |
-| `settings:changed` | `cutover:settings` | `SSE settings.changed` | `control-center-preload.js` | Existing backend route is the migration target | — |
+| `settings:changed` | `blocked:T41` | `SSE settings.changed` — renderer/bootstrap parity pending | `control-center-preload.js` | SSE only publishes changed paths and version after backend PATCH; IPC still synchronizes pet-renderer settings and multiplexes backend bootstrap updates, which T41 must replace before retirement | — |
 | `actions:get` | `cutover:actions` | `GET /actions` | `src/main/ipc.js` | Existing backend route is the migration target | — |
 | `actions:inspect-frames` | `keep` | `IPC-only (native/window)` | `src/main/ipc.js` | Window/native IPC remains the intended boundary | — |
 | `actions:reinspect-frames` | `cutover:actions` | `POST /actions/frames/reinspect` | `src/main/ipc.js` | Existing backend route is the migration target | — |

@@ -9,6 +9,7 @@ const { spawnSync } = require('node:child_process')
 
 const repoRoot = path.resolve(__dirname, '../..')
 const scriptPath = path.join(repoRoot, 'scripts/check-channel-retirement.mjs')
+const ledgerPath = path.join(repoRoot, 'docs/refactor/15-channel-retirement.md')
 
 const createFixture = (t, { rows, channelCount = rows.length, registrationChannels = rows.map((row) => row.channel) }) => {
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-channel-retirement-'))
@@ -126,4 +127,21 @@ test('CLI rejects unknown production IPC references', (t) => {
   const result = run(fixtureRoot)
   assert.equal(result.status, 1)
   assert.match(result.stderr, /unknown.*channel/i)
+})
+
+test('real ledger keeps settings cutovers blocked until T41 parity lands', () => {
+  const ledger = fs.readFileSync(ledgerPath, 'utf8')
+  const channels = [
+    'settings:get',
+    'settings:save',
+    'settings:import-cursor',
+    'settings:preview-scale',
+    'settings:changed'
+  ]
+
+  for (const channel of channels) {
+    const line = ledger.split('\n').find((candidate) => candidate.startsWith(`| \`${channel}\` |`))
+    assert.ok(line, `missing ledger row for ${channel}`)
+    assert.match(line, /\| `blocked:T41` \|/, `${channel} must remain blocked on T41`)
+  }
 })
