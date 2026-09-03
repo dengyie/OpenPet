@@ -35,6 +35,18 @@ test("starts without reading or injecting secrets and exposes connection", async
 	assert.equal(harness.coordinator.getState().status, "ready")
 })
 
+test("runs the settings hydration callback after sidecar ready", async () => {
+	let hydrated = null
+	const harness = createHarness()
+	const coordinator = createSidecarRuntimeCoordinator({
+		spawnSidecar: async () => ({ child: harness.child, baseUrl: "http://127.0.0.1:3210/api/v1", sessionToken: "session-token" }),
+		createMessageHandler: () => ({ handle: async () => {} }),
+		onReady: async (backend) => { hydrated = backend },
+	})
+	await coordinator.start()
+	assert.deepEqual(hydrated, { baseUrl: "http://127.0.0.1:3210/api/v1", sessionToken: "session-token" })
+})
+
 test("uses caller-provided init body including explicitly selected secrets", async () => {
 	const harness = createHarness({ getInitBody: async () => ({ custom: true, secrets: { "ai.default": "selected-secret" } }) })
 	await harness.coordinator.start()

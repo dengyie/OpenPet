@@ -228,25 +228,6 @@ test('control center API entrypoint forwards to the injected bridge when present
   }
 })
 
-test('demo API saves and returns settings from session-backed state', async () => {
-  const previousSettings = await demoControlCenterAPI.getSettings()
-
-  const savedSettings = await demoControlCenterAPI.saveSettings({
-    ...previousSettings,
-    scale: 1.35,
-    grounded: false,
-    home: {
-      ...previousSettings.home,
-      enabled: true
-    }
-  })
-
-  assert.equal(savedSettings.scale, 1.35)
-  assert.equal(savedSettings.grounded, false)
-  assert.equal(savedSettings.home.enabled, false)
-  assert.deepEqual(await demoControlCenterAPI.getSettings(), savedSettings)
-})
-
 test('demo API provider saves follow the same owner-only payload rules as the main host', async () => {
   const previousAiConfig = await demoControlCenterAPI.getAiConfig()
   const previousImageConfig = await demoControlCenterAPI.getImageGenerationConfig()

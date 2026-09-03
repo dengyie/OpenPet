@@ -2753,14 +2753,7 @@ const installDemoCatalogPetPack = (selection: CatalogPetPackInstallSelection): P
 }
 
 export const demoControlCenterAPI: ControlCenterApi = {
-  getSettings: async () => normalizeDemoSettings(demoState.settings),
-  saveSettings: async (settings) => {
-    demoState.settings = normalizeDemoSettings(settings)
-    writeDemoState()
-    return normalizeDemoSettings(demoState.settings)
-  },
   previewScale: () => {},
-  onSettingsChanged: () => () => {},
   importCursor: async () => {
     const cursor: CustomCursorRecord = {
       id: 'demo-cursor',

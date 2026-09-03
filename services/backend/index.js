@@ -192,7 +192,10 @@ const runtimeSettingsStore = {
 registerSettingsRoutes({
 	router,
 	store: runtimeSettingsStore,
-	emit: (name, payload) => eventHub.publish(name, payload),
+	 emit: (name, payload) => {
+			eventHub.publish(name, payload)
+			if (name === "settings.changed") shell.send({ type: "settings.changed", paths: payload.paths, version: payload.version })
+		},
 })
 runtime.about = createAboutService({ pkg: packageJson, runtime })
 registerAboutRoutes(router, {

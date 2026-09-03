@@ -4,21 +4,18 @@ const assert = require('node:assert/strict')
 const { IPC } = require('../../src/shared/ipc-channels')
 const { registerSettingsIpc } = require('../../src/main/ipc/register-settings-ipc')
 
-test('settings IPC private backend bootstrap preserves the public settings shape', async () => {
+test('settings:get and settings:save are retired from the native settings IPC surface', () => {
   const handlers = new Map()
   const listeners = new Map()
   const ipcMainService = {
     handle: (channel, handler) => handlers.set(channel, handler),
     on: (channel, handler) => listeners.set(channel, handler)
   }
-  const settings = { scale: 1, customCursors: [], selectedCursorId: 'system' }
-  const backend = { baseUrl: 'http://127.0.0.1:4321', sessionToken: 'session' }
 
   registerSettingsIpc({
     ipcMainService,
-    petService: { getSettings: () => settings },
+    petService: { getSettings: () => ({}) },
     createPetRendererSettings: (value) => value,
-    sidecarRuntimeCoordinator: { getBackend: () => backend },
     systemCursorService: { getStatus: () => null },
     browserWindowService: {},
     sendToPetWindow: () => {},
@@ -27,9 +24,7 @@ test('settings IPC private backend bootstrap preserves the public settings shape
     petMovementPolicy: {}
   })
 
-  const getSettings = handlers.get(IPC.SETTINGS_GET)
-  assert.equal(typeof getSettings, 'function')
-  assert.deepEqual(await getSettings(), settings)
-  assert.deepEqual(await getSettings(null, { includeBackend: true }), { settings, backend })
+  assert.equal(handlers.has(IPC.SETTINGS_GET), false)
+  assert.equal(handlers.has(IPC.SETTINGS_SAVE), false)
   assert.equal(listeners.has(IPC.SETTINGS_CHANGED), false)
 })

@@ -129,7 +129,7 @@ test('CLI rejects unknown production IPC references', (t) => {
   assert.match(result.stderr, /unknown.*channel/i)
 })
 
-test('real ledger keeps settings cutovers blocked until T41 parity lands', () => {
+test('real ledger records the T41 settings retirement boundary', () => {
   const ledger = fs.readFileSync(ledgerPath, 'utf8')
   const channels = [
     'settings:get',
@@ -142,6 +142,9 @@ test('real ledger keeps settings cutovers blocked until T41 parity lands', () =>
   for (const channel of channels) {
     const line = ledger.split('\n').find((candidate) => candidate.startsWith(`| \`${channel}\` |`))
     assert.ok(line, `missing ledger row for ${channel}`)
-    assert.match(line, /\| `blocked:T41` \|/, `${channel} must remain blocked on T41`)
+    const expected = channel === 'settings:get' || channel === 'settings:save'
+      ? /\| `retired` \|/
+      : /\| `blocked:T41` \|/
+    assert.match(line, expected, `${channel} must reflect the T41 boundary`)
   }
 })

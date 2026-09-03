@@ -3,6 +3,8 @@ const assert = require('node:assert/strict')
 
 const { IPC } = require('../../src/shared/ipc-channels')
 const { registerIpcHandlers } = require('../../src/main/ipc')
+const { registerCursorRepair } = require('../../src/main/bootstrap/startup-side-effects')
+const { createSettingsHostEffect } = require('../../src/main/settings-host-effects')
 
 const createIpcMainStub = () => {
   const handlers = new Map()
@@ -149,10 +151,15 @@ const createCursorSettingsFixture = ({ scope = 'openpet' } = {}) => ({
   petBubbleChat: { enabled: true, autoPopup: true, autoHide: true, pinOnInteraction: true }
 })
 
-const createCursorPetService = (initialSettings, onSave = () => {}) => {
+const createCursorPetService = (initialSettings, onSave = () => {}, onApply = () => {}) => {
   let currentSettings = initialSettings
   const saveSettings = (settings) => {
     onSave(settings)
+    currentSettings = settings
+    return currentSettings
+  }
+  const applySettings = (settings) => {
+    onApply(settings)
     currentSettings = settings
     return currentSettings
   }
@@ -166,6 +173,7 @@ const createCursorPetService = (initialSettings, onSave = () => {}) => {
     previewSettings: () => {},
     getSettings: () => currentSettings,
     saveSettings,
+    applySettings,
     updateSettings: (updater) => saveSettings(updater(currentSettings)),
     say: (payload) => payload,
     playAction: (payload) => payload,
@@ -173,11 +181,15 @@ const createCursorPetService = (initialSettings, onSave = () => {}) => {
   }
 }
 
-test('settings:save activates whole-computer cursor before persisting system scope', async () => {
+test('settings host effect activates whole-computer cursor before applying system scope', async () => {
   const ipcMain = createIpcMainStub()
   const order = []
+  let saveCalls = 0
   const petService = createCursorPetService(createCursorSettingsFixture(), (settings) => {
+    saveCalls += 1
     order.push(`save:${settings.customCursorScope}`)
+  }, (settings) => {
+    order.push(`apply:${settings.customCursorScope}`)
   })
   let active = false
   const systemCursorService = {
@@ -195,11 +207,17 @@ test('settings:save activates whole-computer cursor before persisting system sco
     systemCursorService
   }))
 
-  const result = await ipcMain.handlers.get(IPC.SETTINGS_SAVE)(null, { customCursorScope: 'system' })
+  const previousSettings = petService.getSettings()
+  const result = await createSettingsHostEffect({ petService, systemCursorService })({
+    settings: { ...previousSettings, customCursorScope: 'system' },
+    previousSettings,
+    version: 0
+  })
 
-  assert.deepEqual(order, ['sync:system', 'save:system'])
+  assert.deepEqual(order, ['sync:system', 'apply:system'])
+  assert.equal(saveCalls, 0)
   assert.equal(result.customCursorScope, 'system')
-  assert.deepEqual(result.systemCursorStatus, {
+  assert.deepEqual(systemCursorService.getStatus(), {
     supported: true,
     platform: 'darwin',
     active: true,
@@ -207,7 +225,7 @@ test('settings:save activates whole-computer cursor before persisting system sco
   })
 })
 
-test('settings:save merges against the latest snapshot when saves overlap in flight', async () => {
+test('settings host effects preserve independent overlapping field updates', async () => {
   const ipcMain = createIpcMainStub()
   const petService = createCursorPetService(createCursorSettingsFixture())
   let releaseFirstSync
@@ -229,11 +247,11 @@ test('settings:save merges against the latest snapshot when saves overlap in fli
     systemCursorService
   }))
 
-  const handler = ipcMain.handlers.get(IPC.SETTINGS_SAVE)
-  const firstSave = handler(null, { scale: 1.5 })
-  await handler(null, { walkSpeed: 3 })
+  const apply = createSettingsHostEffect({ petService, systemCursorService })
+  const firstSave = apply({ settings: { ...petService.getSettings(), scale: 1.5 }, previousSettings: petService.getSettings(), version: 0 })
   releaseFirstSync()
   await firstSave
+  await apply({ settings: { ...petService.getSettings(), walkSpeed: 3 }, previousSettings: petService.getSettings(), version: 0 })
 
   // 旧实现基于 await 之前的快照整体覆盖，会把 walkSpeed 冲回 2。
   const finalSettings = petService.getSettings()
@@ -241,7 +259,7 @@ test('settings:save merges against the latest snapshot when saves overlap in fli
   assert.equal(finalSettings.walkSpeed, 3)
 })
 
-test('settings:save leaves persisted scope unchanged when system cursor activation fails', async () => {
+test('settings host effect leaves scope unchanged when system cursor activation fails', async () => {
   const ipcMain = createIpcMainStub()
   let saveCalls = 0
   const petService = createCursorPetService(createCursorSettingsFixture(), () => { saveCalls += 1 })
@@ -257,19 +275,19 @@ test('settings:save leaves persisted scope unchanged when system cursor activati
     systemCursorService
   }))
 
-  await assert.rejects(
-    ipcMain.handlers.get(IPC.SETTINGS_SAVE)(null, { customCursorScope: 'system' }),
-    /helper failed/
-  )
+  const previousSettings = petService.getSettings()
+  await assert.rejects(createSettingsHostEffect({ petService, systemCursorService })({
+    settings: { ...previousSettings, customCursorScope: 'system' }, previousSettings, version: 0
+  }), /helper failed/)
   assert.equal(saveCalls, 0)
   assert.equal(petService.getSettings().customCursorScope, 'openpet')
 })
 
-test('settings:save rolls the native cursor back when persistence fails after activation', async () => {
+test('settings host effect rolls the native cursor back when applying settings fails', async () => {
   const ipcMain = createIpcMainStub()
   const syncScopes = []
   const initialSettings = createCursorSettingsFixture()
-  const petService = createCursorPetService(initialSettings, () => { throw new Error('disk failed') })
+  const petService = createCursorPetService(initialSettings, () => {}, () => { throw new Error('disk failed') })
   const systemCursorService = {
     sync: async (settings) => { syncScopes.push(settings.customCursorScope) },
     getStatus: () => ({ supported: true, platform: 'darwin', active: false, helperPid: 0 })
@@ -282,14 +300,14 @@ test('settings:save rolls the native cursor back when persistence fails after ac
     systemCursorService
   }))
 
-  await assert.rejects(
-    ipcMain.handlers.get(IPC.SETTINGS_SAVE)(null, { customCursorScope: 'system' }),
-    /disk failed/
-  )
+  const previousSettings = petService.getSettings()
+  await assert.rejects(createSettingsHostEffect({ petService, systemCursorService })({
+    settings: { ...previousSettings, customCursorScope: 'system' }, previousSettings, version: 0
+  }), /disk failed/)
   assert.deepEqual(syncScopes, ['system', 'openpet'])
 })
 
-test('settings:save removes orphaned cursor assets after replacing a custom cursor', async () => {
+test('settings host effect removes orphaned cursor assets after replacing a custom cursor', async () => {
   const deletedPaths = []
   const ipcMain = createIpcMainStub()
   let currentSettings = {
@@ -361,8 +379,14 @@ test('settings:save removes orphaned cursor assets after replacing a custom curs
     }
   }))
 
-  const result = await ipcMain.handlers.get(IPC.SETTINGS_SAVE)(null, {
-    selectedCursorId: 'cursor-new',
+  const previousSettings = currentSettings
+  const result = await createSettingsHostEffect({
+    petService: {
+      getSettings: () => currentSettings,
+      applySettings: (settings) => { currentSettings = settings; return settings }
+    }, cursorAssetService: { deleteAssets: (paths) => deletedPaths.push(...paths) }
+  })({
+    settings: { ...currentSettings, selectedCursorId: 'cursor-new',
     customCursors: [{
       id: 'cursor-new',
       type: 'custom',
@@ -376,7 +400,7 @@ test('settings:save removes orphaned cursor assets after replacing a custom curs
       hotspotX: 0,
       hotspotY: 0,
       createdAt: '2026-06-19T00:01:00.000Z'
-    }]
+    }] }, previousSettings, version: 0
   })
 
   assert.equal(result.selectedCursorId, 'cursor-new')
@@ -433,9 +457,7 @@ test('settings:get repairs legacy custom cursor records so size controls can use
     }
   }
 
-  registerIpcHandlers(createRequiredServices({
-    ipcMainService: ipcMain,
-    petService: {
+  const petService = {
       onSay: () => {},
       onAction: () => {},
       onEvent: () => {},
@@ -444,20 +466,15 @@ test('settings:get repairs legacy custom cursor records so size controls can use
       reloadAnimations: () => ({ actions: [] }),
       previewSettings: () => {},
       getSettings: () => currentSettings,
-      saveSettings: (settings) => {
-        currentSettings = settings
-        savedSettings = settings
-        return currentSettings
-      },
-      updateSettings: (updater) => {
-        currentSettings = updater(currentSettings)
-        savedSettings = currentSettings
-        return currentSettings
-      },
+      saveSettings: (settings) => { currentSettings = settings; savedSettings = settings; return currentSettings },
+      updateSettings: (updater) => { currentSettings = updater(currentSettings); savedSettings = currentSettings; return currentSettings },
       say: (payload) => payload,
       playAction: (payload) => payload,
       setEvent: (payload) => payload
-    },
+    }
+  registerIpcHandlers(createRequiredServices({
+    ipcMainService: ipcMain,
+    petService,
     cursorAssetService: {
       repairCursor: async () => ({
         enabled: true,
@@ -472,7 +489,15 @@ test('settings:get repairs legacy custom cursor records so size controls can use
     }
   }))
 
-  const result = await ipcMain.handlers.get(IPC.SETTINGS_GET)()
+  const repairPromise = registerCursorRepair({ cursorAssetService: {
+    repairCursor: async () => ({
+      enabled: true,
+      assetPath: '/tmp/cursor-repaired.png', assetUrl: 'file:///tmp/cursor-repaired.png', fileName: 'cursor-repaired.png',
+      width: 64, height: 64, hotspotX: 16, hotspotY: 12
+    })
+  }, petService, appLogService: { record: () => {} } })
+  await repairPromise
+  const result = petService.getSettings()
 
   assert.ok(savedSettings)
   assert.equal(result.customCursors.length, 1)
@@ -530,7 +555,12 @@ test('settings:get cursor repair preserves edits made to the same cursor while r
     }
   }))
 
-  const pendingGet = ipcMain.handlers.get(IPC.SETTINGS_GET)()
+  const pendingGet = registerCursorRepair({ cursorAssetService: {
+    repairCursor: async () => {
+      markRepairStarted()
+      return await new Promise((resolve) => { releaseRepair = resolve })
+    }
+  }, petService, appLogService: { record: () => {} } })
   await repairStarted
   petService.updateSettings((latest) => ({
     ...latest,
@@ -549,8 +579,8 @@ test('settings:get cursor repair preserves edits made to the same cursor while r
     hotspotY: 12
   })
 
-  const result = await pendingGet
-  const repaired = result.customCursors.find((cursor) => cursor.id === 'custom-pending')
+  await pendingGet
+  const repaired = petService.getSettings().customCursors.find((cursor) => cursor.id === 'custom-pending')
   assert.equal(repaired.name, 'Edited while repairing')
   assert.equal(repaired.sizePercent, 200)
   assert.equal(repaired.baseWidth, 64)
@@ -602,7 +632,12 @@ test('settings:get cursor repair does not overwrite a replacement asset with sta
     }
   }))
 
-  const pendingGet = ipcMain.handlers.get(IPC.SETTINGS_GET)()
+  const pendingGet = registerCursorRepair({ cursorAssetService: {
+    repairCursor: async () => {
+      markRepairStarted()
+      return await new Promise((resolve) => { releaseRepair = resolve })
+    }
+  }, petService, appLogService: { record: () => {} } })
   await repairStarted
   petService.updateSettings((latest) => ({
     ...latest,
@@ -627,8 +662,8 @@ test('settings:get cursor repair does not overwrite a replacement asset with sta
     hotspotY: 12
   })
 
-  const result = await pendingGet
-  const replacement = result.customCursors.find((cursor) => cursor.id === 'custom-pending')
+  await pendingGet
+  const replacement = petService.getSettings().customCursors.find((cursor) => cursor.id === 'custom-pending')
   assert.equal(replacement.name, 'Replacement asset')
   assert.equal(replacement.assetPath, '/tmp/replacement.png')
   assert.equal(replacement.assetUrl, 'file:///tmp/replacement.png')
@@ -688,9 +723,7 @@ test('settings:get repairs malformed built-in cursor overrides from the built-in
     }
   }
 
-  registerIpcHandlers(createRequiredServices({
-    ipcMainService: ipcMain,
-    petService: {
+  const petService = {
       onSay: () => {},
       onAction: () => {},
       onEvent: () => {},
@@ -699,20 +732,15 @@ test('settings:get repairs malformed built-in cursor overrides from the built-in
       reloadAnimations: () => ({ actions: [] }),
       previewSettings: () => {},
       getSettings: () => currentSettings,
-      saveSettings: (settings) => {
-        currentSettings = settings
-        savedSettings = settings
-        return currentSettings
-      },
-      updateSettings: (updater) => {
-        currentSettings = updater(currentSettings)
-        savedSettings = currentSettings
-        return currentSettings
-      },
+      saveSettings: (settings) => { currentSettings = settings; savedSettings = settings; return currentSettings },
+      updateSettings: (updater) => { currentSettings = updater(currentSettings); savedSettings = currentSettings; return currentSettings },
       say: (payload) => payload,
       playAction: (payload) => payload,
       setEvent: (payload) => payload
-    },
+    }
+  registerIpcHandlers(createRequiredServices({
+    ipcMainService: ipcMain,
+    petService,
     cursorAssetService: {
       repairCursor: async () => {
         repairCursorCalls += 1
@@ -721,7 +749,13 @@ test('settings:get repairs malformed built-in cursor overrides from the built-in
     }
   }))
 
-  const result = await ipcMain.handlers.get(IPC.SETTINGS_GET)()
+  await registerCursorRepair({ cursorAssetService: {
+    repairCursor: async () => {
+      repairCursorCalls += 1
+      throw new Error('builtin override should repair from catalog')
+    }
+  }, petService, appLogService: { record: () => {} } })
+  const result = petService.getSettings()
 
   assert.ok(savedSettings)
   assert.equal(repairCursorCalls, 0)
@@ -867,7 +901,7 @@ test('settings:preview-scale lets the renderer drive viewport resizing', () => {
   assert.deepEqual(sentMessages, [{ channel: IPC.SETTINGS_CHANGED, payload: { scale: 1.25 } }])
 })
 
-test('settings:save lets the renderer apply saved scale through the active viewport', async () => {
+test('settings host effect applies saved scale without using retired native IPC', async () => {
   const ipcMain = createIpcMainStub()
   const scaleCalls = []
   const sentMessages = []
@@ -922,6 +956,10 @@ test('settings:save lets the renderer apply saved scale through the active viewp
         currentSettings = settings
         return currentSettings
       },
+      applySettings: (settings) => {
+        currentSettings = settings
+        return currentSettings
+      },
       updateSettings: (updater) => {
         currentSettings = updater(currentSettings)
         return currentSettings
@@ -933,10 +971,19 @@ test('settings:save lets the renderer apply saved scale through the active viewp
     cursorAssetService: {}
   }))
 
-  const result = await ipcMain.handlers.get(IPC.SETTINGS_SAVE)(null, { scale: 1.25 })
+  const previousSettings = structuredClone(currentSettings)
+  const result = await createSettingsHostEffect({
+    getPetWindow: () => petWindow,
+    petService: {
+      applySettings: (settings) => { currentSettings = settings; return settings }
+    },
+    systemCursorService: { sync: async () => {} },
+    applyWindowScale: (targetWindow, scale) => scaleCalls.push({ targetWindow, scale }),
+    sendToPetRenderer: (settings) => sentMessages.push({ channel: IPC.SETTINGS_CHANGED, payload: settings })
+  })({ settings: { ...previousSettings, scale: 1.25 }, previousSettings, version: 0 })
 
   assert.equal(result.scale, 1.25)
-  assert.deepEqual(scaleCalls, [])
+  assert.deepEqual(scaleCalls, [{ targetWindow: petWindow, scale: 1.25 }])
   assert.equal(sentMessages.at(-1).channel, IPC.SETTINGS_CHANGED)
   assert.equal(sentMessages.at(-1).payload.scale, 1.25)
 })

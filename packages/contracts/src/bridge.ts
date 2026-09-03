@@ -48,6 +48,7 @@ export const backendToShellSchema = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("degraded"), reason: z.string() }),
   z.object({ type: z.literal("dialog.request"), requestId: z.string(), mode: z.enum(["file", "directory"]) }),
+  z.object({ type: z.literal("settings.changed"), paths: z.array(z.string()), version: z.number().int().nonnegative() }),
 ])
 export type BackendToShell = z.infer<typeof backendToShellSchema>
 

@@ -23,9 +23,9 @@ function resultEnvelope(id, paths) {
 }
 
 describe("dialog.request bridge", () => {
-	it("backend whitelist contains exactly the 9 contract message types", () => {
-		assert.equal(bridge.BACKEND_TO_SHELL_TYPES.length, 9)
-		assert.equal(new Set(bridge.BACKEND_TO_SHELL_TYPES).size, 9)
+	it("backend whitelist contains exactly the 10 contract message types", () => {
+		assert.equal(bridge.BACKEND_TO_SHELL_TYPES.length, 10)
+		assert.equal(new Set(bridge.BACKEND_TO_SHELL_TYPES).size, 10)
 		assert.equal(bridge.BACKEND_TO_SHELL_TYPES.includes("dialog.request"), true)
 		assert.equal(bridge.SHELL_TO_BACKEND_TYPES.length, 6, "T12 must not change the reverse whitelist")
 	})

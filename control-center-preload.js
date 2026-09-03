@@ -7,8 +7,6 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 const IPC = {
-  SETTINGS_GET: 'settings:get',
-  SETTINGS_SAVE: 'settings:save',
   SETTINGS_CHANGED: 'settings:changed',
   SETTINGS_IMPORT_CURSOR: 'settings:import-cursor',
   SETTINGS_PREVIEW_SCALE: 'settings:preview-scale',
@@ -137,13 +135,6 @@ const IPC = {
 }
 
 contextBridge.exposeInMainWorld('controlCenterAPI', {
-  getSettings: () => ipcRenderer.invoke(IPC.SETTINGS_GET),
-  saveSettings: (settings) => ipcRenderer.invoke(IPC.SETTINGS_SAVE, settings),
-  onSettingsChanged: (listener) => {
-    if (typeof listener !== 'function') return () => {}
-    settingsListeners.add(listener)
-    return () => settingsListeners.delete(listener)
-  },
   importCursor: () => ipcRenderer.invoke(IPC.SETTINGS_IMPORT_CURSOR),
   previewScale: (scale) => ipcRenderer.send(IPC.SETTINGS_PREVIEW_SCALE, scale),
   getActions: () => ipcRenderer.invoke(IPC.ACTIONS_GET),
@@ -283,10 +274,6 @@ contextBridge.exposeInMainWorld('controlCenterAPI', {
 
 let currentBackend = null
 const backendListeners = new Set()
-const settingsListeners = new Set()
-const isBackendPayload = (payload) => Boolean(
-  payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, '__openpetBackend')
-)
 const notifyBackend = (backend) => {
   currentBackend = backend || null
   for (const listener of backendListeners) listener(currentBackend)
@@ -299,16 +286,9 @@ contextBridge.exposeInMainWorld('openpetBackend', {
     return () => backendListeners.delete(listener)
   }
 })
-const settingsChangedHandler = (_event, payload) => {
-  if (isBackendPayload(payload)) {
-    notifyBackend(payload.__openpetBackend)
-    return
-  }
-  for (const listener of settingsListeners) listener(payload)
-}
-ipcRenderer.on(IPC.SETTINGS_CHANGED, settingsChangedHandler)
-ipcRenderer.invoke(IPC.SETTINGS_GET, { includeBackend: true }).then((payload) => {
-  if (payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'backend')) {
-    notifyBackend(payload.backend)
-  }
-}).catch(() => {})
+const isBackendPayload = (payload) => Boolean(
+  payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, '__openpetBackend')
+)
+ipcRenderer.on(IPC.SETTINGS_CHANGED, (_event, payload) => {
+  if (isBackendPayload(payload)) notifyBackend(payload.__openpetBackend)
+})

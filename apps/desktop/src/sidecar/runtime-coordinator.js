@@ -120,10 +120,12 @@ function createSidecarRuntimeCoordinator(options = {}) {
 					onNotify: options.onNotify,
 					onBadge: options.onBadge,
 						onDashboard: options.onDashboard,
-						productionService: options.productionService,
+					productionService: options.productionService,
+					onSettingsChanged: options.onSettingsChanged,
 					})
 				const backend = { baseUrl: result.baseUrl, sessionToken: result.sessionToken }
 				publish({ status: "ready", backend, reason: null })
+				await options.onReady?.(backend)
 				return backend
 			} catch (error) {
 				safeLog(options.logger, "error", "sidecar startup failed", { error: String(error) })

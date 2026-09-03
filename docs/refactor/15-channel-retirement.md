@@ -2,9 +2,9 @@
 
 > v1.0 · 2026-09-04 · T40 · 以 `src/shared/ipc-channels.ts` 为当前清单
 
-本台账登记当前 158 个 IPC 常量的去向。`keep` 是 02 篇允许长期存在的窗口/原生边界；`cutover:<domain>` 表示 03 篇已有 HTTP/SSE 对等入口；`blocked:Txx` 表示等待指定任务卡完成后再切换；`dead` 仅用于确认没有生产调用方的遗留常量。
+本台账登记当前 156 个 IPC 常量的去向。`keep` 是 02 篇允许长期存在的窗口/原生边界；`cutover:<domain>` 表示 03 篇已有 HTTP/SSE 对等入口；`blocked:Txx` 表示等待指定任务卡完成后再切换；`retired` 表示已从当前清单删除并保留历史记录；`dead` 仅用于确认没有生产调用方的遗留常量。
 
-当前台账由 150 个 `ipcMainService.handle/on` 注册和 8 个事件-only 通道组成。Source 列是实际生产引用文件，不是推测路径；门禁会逐项检查 TS/JS 清单、注册/事件来源、重复项和未知 `IPC.*` 引用。
+当前台账由 148 个 `ipcMainService.handle/on` 注册和 8 个事件-only 通道组成。Source 列是实际生产引用文件，不是推测路径；门禁会逐项检查 TS/JS 清单、注册/事件来源、重复项和未知 `IPC.*` 引用。
 
 T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `keep ≤ 41`，因此新增的 QQ/WeCom 四个 host-secret 通道登记为 `blocked:T44`，而不是伪装成长期 keep。T41 及后续任务可把已删除常量保留为 `retired` 历史行，并在 Retired by 列记录提交 SHA；历史行不计入当前通道对账或 keep 上限。
 
@@ -12,14 +12,14 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 
 | Scope | Count |
 | --- | ---: |
-| Current IPC constants | 158 |
-| Current direct registrations | 150 |
+| Current IPC constants | 156 |
+| Current direct registrations | 148 |
 | Current event-only channels | 8 |
 | Current keep | 41 |
 | Current cutover | 53 |
-| Current blocked | 64 |
+| Current blocked | 62 |
 | Current dead | 0 |
-| Historical retired | 0 |
+| Historical retired | 2 |
 
 ## Ledger
 
@@ -61,8 +61,8 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 | `pet-bubble-chat:cancel-message` | `keep` | `IPC-only (native/window)` | `src/main/ipc.js` | Window/native IPC remains the intended boundary | — |
 | `pet-bubble-chat:state-changed` | `keep` | `IPC-only (native/window)` | `src/main/pet-bubble-chat-preload.js` | Window/native IPC remains the intended boundary | — |
 | `settings:open` | `keep` | `IPC-only (native/window)` | `src/main/ipc/register-system-ipc.js` | Window/native IPC remains the intended boundary | — |
-| `settings:get` | `blocked:T41` | `GET /settings` — semantic parity and single-writer pending | `src/main/ipc/register-settings-ipc.js` | Backend returns the `{ version, values }` envelope from its own store, while IPC returns the host pet-renderer ViewModel plus optional backend bootstrap state; T41 must converge the contract and truth source | — |
-| `settings:save` | `blocked:T41` | `PATCH /settings` — single-writer and host-effect bridge pending | `src/main/ipc/register-settings-ipc.js` | Backend PATCH only writes its envelope; IPC still updates host PetService, synchronizes the system cursor, applies movement/home effects, cleans cursor assets, and notifies the renderer | — |
+| `settings:get` | `retired` | `GET /settings` | `src/main/ipc/register-settings-ipc.js` | Control Center reads the versioned, redacted Backend envelope through HTTP | a5b247bfb5bb222692f11280683e7e7e719c3e45 |
+| `settings:save` | `retired` | `PATCH /settings` | `src/main/ipc/register-settings-ipc.js` | Control Center writes canonical point-path patches through Backend optimistic locking; trusted Shell effects are applied from Backend snapshots | a5b247bfb5bb222692f11280683e7e7e719c3e45 |
 | `settings:import-cursor` | `blocked:T41` | `POST /settings/cursor/import` — unavailable fallback | `src/main/ipc/register-settings-ipc.js` | Route registration receives no handler from the backend composition root, so it returns `BACKEND_UNAVAILABLE`; T41 must bridge the host dialog and cursor importer | — |
 | `settings:preview-scale` | `blocked:T41` | `POST /settings/preview-scale` — unavailable fallback | `src/main/ipc/register-settings-ipc.js` | Route registration receives no handler from the backend composition root, so it returns `BACKEND_UNAVAILABLE`; T41 must bridge the host preview side effect | — |
 | `settings:close` | `keep` | `IPC-only (native/window)` | `src/main/ipc/register-settings-ipc.js` | Window/native IPC remains the intended boundary | — |
@@ -187,7 +187,7 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 ## Operating rules
 
 - `npm run check:channel-retirement` 对当前 active 行与 TS 清单逐项对账；active 必须精确覆盖当前常量，历史 `retired` 行可以不再存在于当前源。
-- 当前通道上限为 158，后续提交只能减少 active 数量；新增 IPC 常量必须先更新本台账和 T40 依据。
+- 当前通道上限为 156，后续提交只能减少 active 数量；新增 IPC 常量必须先更新本台账和 T40 依据。
 - `retired` 行必须保留原 channel、真实历史 source、删除提交的完整或短 SHA（至少 7 位）；它不计入 current、keep、cutover、blocked、dead 计数。
 - `keep` 上限是 41。四个 QQ/WeCom host-secret 通道等待 T44 的 secrets 边界，不能借 `keep` 绕过上限。
 - `cutover` 行在同一切换提交中完成 HTTP/SSE 接入、旧 IPC 删除和台账状态更新；不得先并行双写再补删除。

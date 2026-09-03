@@ -5,6 +5,8 @@ const { registerDisplayLifecycle, registerPetWindowLifecycle, registerRuntimeApp
 const { registerCursorRepair, runPostPluginStartupSideEffects } = require('./startup-side-effects')
 const { IPC } = require('../../shared/ipc-channels')
 const { createDefaultSidecarPidLedger } = require('../../../apps/desktop/src/sidecar/orphan-cleanup')
+const { createSettingsSidecarBridge } = require('../settings-sidecar-bridge')
+const { createSettingsHostEffect } = require('../settings-host-effects')
 
 const createSidecarLogger = ({ appLogService, safeRecordAppLog }) => Object.fromEntries(
   ['info', 'warn', 'error'].map((level) => [level, (message, details) => {
@@ -86,12 +88,20 @@ const createOpenPetRuntime = ({
     setCatalogService
   } = core
   const sidecarLogger = createSidecarLogger({ appLogService, safeRecordAppLog })
+  let settingsSidecarBridge = null
   const sidecarRuntimeCoordinator = factories.createSidecarRuntimeCoordinator({
     app,
     dialog,
     petService,
     getSettings: () => settingsService.get(),
     logger: sidecarLogger,
+    onSettingsChanged: (message) => settingsSidecarBridge?.handle(message),
+    onReady: () => settingsSidecarBridge?.hydrate().catch((error) => {
+      safeRecordAppLog(appLogService, {
+        scope: 'settings', level: 'error', actor: 'system', event: 'settings.hydrate.failed',
+        message: error?.message || 'Backend settings hydration failed'
+      })
+    }),
     productionService: async (request) => {
       const pluginId = String(request?.pluginId || '').trim()
       const serviceId = String(request?.serviceId || '').trim()
@@ -117,7 +127,15 @@ const createOpenPetRuntime = ({
   })
 
   const createControlCenterWindow = () => {
-    return createSettingsWindow(getPetWindow())
+    const settingsWindow = createSettingsWindow(getPetWindow())
+    const backend = sidecarRuntimeCoordinator.getBackend()
+    if (backend && settingsWindow && !settingsWindow.isDestroyed?.()) {
+      const bootstrap = () => settingsWindow.webContents?.send?.(IPC.SETTINGS_CHANGED, { __openpetBackend: backend })
+      if (settingsWindow.webContents?.isLoading?.() === false) bootstrap()
+      else if (typeof settingsWindow.webContents?.once === 'function') settingsWindow.webContents.once('did-finish-load', bootstrap)
+      else bootstrap()
+    }
+    return settingsWindow
   }
 
   const broadcastCursorSettings = (settings) => {
@@ -133,9 +151,25 @@ const createOpenPetRuntime = ({
     return payload
   }
 
+  const applySettingsHostEffect = createSettingsHostEffect({
+    getPetWindow,
+    petService,
+    systemCursorService,
+    cursorAssetService,
+    petMovementPolicy,
+    applyWindowScale,
+    persistNormalization: (input) => settingsSidecarBridge?.persistNormalization?.(input)
+  })
+  settingsSidecarBridge = createSettingsSidecarBridge({
+    getBackend: () => sidecarRuntimeCoordinator.getBackend(),
+    petService,
+    applyHostSettings: applySettingsHostEffect,
+    sendToPetRenderer: (settings) => broadcastCursorSettings(settings),
+    logger: sidecarLogger
+  })
+
   sidecarRuntimeCoordinator.onChanged?.((backend) => {
-    const activePetWindow = getPetWindow()
-    const settingsWindow = activePetWindow?.settingsWindow
+    const settingsWindow = getPetWindow()?.settingsWindow
     if (settingsWindow && !settingsWindow.isDestroyed?.()) {
       settingsWindow.webContents?.send?.(IPC.SETTINGS_CHANGED, { __openpetBackend: backend })
     }

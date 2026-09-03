@@ -1,4 +1,4 @@
-import { EVENT_SETTINGS_CHANGED, settingsPatchRequestSchema } from "@openpet/contracts"
+import { EVENT_SETTINGS_CHANGED, SETTINGS_CANONICAL_PATHS, settingsPatchRequestSchema } from "@openpet/contracts"
 
 import { ApiError, sendSuccess } from "../http/middleware.js"
 
@@ -18,6 +18,16 @@ function unavailableHandler(routeLabel) {
 	return () => {
 		throw new ApiError("BACKEND_UNAVAILABLE", routeLabel + " 尚未接入对应业务域")
 	}
+}
+
+function sanitizeValues(value, key = "") {
+	if (Array.isArray(value)) return value.map((entry) => sanitizeValues(entry))
+	if (/api.?key|password|secret|token/i.test(key) && !/ref$/i.test(key)) return undefined
+	if (!value || typeof value !== "object") return value
+	return Object.fromEntries(Object.entries(value).flatMap(([entryKey, entryValue]) => {
+		const sanitized = sanitizeValues(entryValue, entryKey)
+		return sanitized === undefined ? [] : [[entryKey, sanitized]]
+	}))
 }
 
 function parsePatch(body) {
@@ -41,6 +51,9 @@ function parsePatch(body) {
 		) {
 			throw new ApiError("VALIDATION_FAILED", "设置路径无效", { details: { path } })
 		}
+		if (!SETTINGS_CANONICAL_PATHS.includes(path)) {
+			throw new ApiError("PERMISSION_DENIED", "设置路径不允许", { details: { path } })
+		}
 	}
 	return parsed.data
 }
@@ -53,7 +66,10 @@ export function registerSettingsRoutes({ router, store, emit, handlers = {} } = 
 	if (typeof emit !== "undefined" && typeof emit !== "function") throw new TypeError("emit 必须是函数")
 
 	const routeHandlers = {
-		[label("GET", "/settings")]: (ctx) => sendSuccess(ctx, store.read()),
+		[label("GET", "/settings")]: (ctx) => {
+			const snapshot = store.read()
+			sendSuccess(ctx, { version: snapshot.version, values: sanitizeValues(snapshot.values) })
+		},
 		[label("PATCH", "/settings")]: (ctx) => {
 			const result = store.patch(parsePatch(ctx.body))
 			if (result.changedPaths.length > 0) {

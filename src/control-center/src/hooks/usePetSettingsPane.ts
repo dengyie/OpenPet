@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { controlCenterAPI as api } from '../api/control-center-api'
+import { backendClient } from '../api/backend-client.ts'
+import { applyCanonicalSettingsPatch, createCanonicalSettingsPatch, createSettingsApi, saveSettingsWithRetry, settingsEnvelopeToViewModel, type SettingsSnapshot } from '../features/settings/api.ts'
 import { cloneSettings, defaultSettings } from '../lib/defaults'
 import { messageFromError } from '../lib/errors'
 import { shouldRestoreScalePreview } from '../lib/pet-scale-preview.mjs'
 import { mergeSavedFields, shouldApplySaveResponse } from '../lib/async-save-state.mjs'
 import { mergeExternalCursorSettings, resolvePersistedCursorMutation } from '../lib/pet-settings-cursor-state.mjs'
+import { useSse } from './useSse'
 import {
   CUSTOM_CURSOR_MAX_SIZE_PERCENT,
   CUSTOM_CURSOR_MIN_SIZE_PERCENT,
@@ -25,6 +28,19 @@ import type { PetPaneProps } from '../panes/PetPane'
 const normalizeCursorState = (settings: Partial<ControlCenterSettings>) => (
   normalizeCursorSettingsState(settings) as Pick<ControlCenterSettings, 'selectedCursorId' | 'customCursor' | 'customCursors' | 'hiddenCursorIds' | 'customCursorScope'>
 )
+
+const withDemoRuntimeFields = (settings: ControlCenterSettings) => {
+  if (!(import.meta.env?.DEV && !(globalThis as { openpetBackend?: unknown }).openpetBackend)) return settings
+  return {
+    ...settings,
+    systemCursorStatus: {
+      supported: true,
+      platform: 'darwin',
+      active: settings.customCursorScope === 'system' && settings.customCursor.enabled,
+      helperPid: settings.customCursorScope === 'system' && settings.customCursor.enabled ? 10001 : 0,
+    },
+  }
+}
 
 const normalizeCustomCursorRecords = (cursors: Partial<CustomCursorRecord>[] | null | undefined) => (
   normalizeCustomCursorCollection(cursors) as CustomCursorRecord[]
@@ -57,35 +73,41 @@ export function usePetSettingsPane() {
   const saveRevisionRef = useRef(0)
   const appliedSaveRevisionRef = useRef(0)
   const pendingSaveCountRef = useRef(0)
+  const snapshotRef = useRef<SettingsSnapshot | null>(null)
+  const settingsHttpApi = useMemo(() => createSettingsApi(backendClient), [])
+  const sse = useSse(['settings'])
+
+  const reloadSettings = async (mounted: () => boolean) => {
+    const snapshot = await settingsHttpApi.get()
+    if (!mounted()) return
+    snapshotRef.current = snapshot
+    // The browser-only demo has no Shell host-effects channel. Supply the
+    // deterministic capability status that the real host normally broadcasts.
+    const nextSettings = withDemoRuntimeFields(settingsEnvelopeToViewModel(snapshot))
+    originalRef.current = cloneSettings(nextSettings)
+    setSettings(cloneSettings(nextSettings))
+    setOriginalSettings(cloneSettings(nextSettings))
+    setLoading(false)
+  }
 
   useEffect(() => {
     let mounted = true
-    api.getSettings().then((loadedSettings) => {
-      if (!mounted) return
-      const nextSettings = cloneSettings(loadedSettings)
-      originalRef.current = nextSettings
-      setSettings(nextSettings)
-      setOriginalSettings(nextSettings)
-      setLoading(false)
-    }).catch((error) => {
+    reloadSettings(() => mounted).catch((error) => {
       if (!mounted) return
       setStatus(messageFromError(error, '宠物设置加载失败'))
       setLoading(false)
     })
     return () => { mounted = false }
-  }, [])
+  }, [settingsHttpApi])
 
-  useEffect(() => api.onSettingsChanged((nextSettings) => {
-    const normalized = cloneSettings(nextSettings)
-    const previousScope = originalRef.current.customCursorScope
-    const nextOriginal = cloneSettings(mergeExternalCursorSettings(originalRef.current, normalized))
-    originalRef.current = nextOriginal
-    setOriginalSettings(nextOriginal)
-    setSettings((current) => cloneSettings(mergeExternalCursorSettings(current, normalized)))
-    if (previousScope === 'system' && normalized.customCursorScope === 'openpet') {
-      setStatus('全电脑指针已停止，已恢复为仅 OpenPet')
-    }
-  }), [])
+  const lastEventIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!sse.lastEventId || sse.lastEventId === lastEventIdRef.current) return
+    lastEventIdRef.current = sse.lastEventId
+    let mounted = true
+    reloadSettings(() => mounted).catch(() => {})
+    return () => { mounted = false }
+  }, [sse.lastEventId, settingsHttpApi])
 
   useEffect(() => {
     const restorePreview = () => {
@@ -110,7 +132,17 @@ export function usePetSettingsPane() {
     pendingSaveCountRef.current += 1
     setSaving(true)
     try {
-      const savedSettings = cloneSettings(await api.saveSettings(submittedSettings))
+      const base = snapshotRef.current || await settingsHttpApi.get()
+      const saved = await saveSettingsWithRetry({
+        api: settingsHttpApi,
+        base,
+        previousView: originalRef.current,
+        nextView: submittedSettings,
+      })
+      const submittedPatch = createCanonicalSettingsPatch(originalRef.current, submittedSettings)
+      const savedSnapshot = { version: saved.version, values: applyCanonicalSettingsPatch(saved.snapshot?.values || base.values, submittedPatch) }
+      snapshotRef.current = savedSnapshot
+      const savedSettings = withDemoRuntimeFields(settingsEnvelopeToViewModel(savedSnapshot))
       if (!shouldApplySaveResponse(revision, appliedSaveRevisionRef.current)) return null
       appliedSaveRevisionRef.current = revision
       originalRef.current = savedSettings

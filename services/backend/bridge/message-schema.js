@@ -23,6 +23,7 @@ export const BACKEND_TO_SHELL_TYPES = Object.freeze([
 	"ready",
 	"degraded",
 	"dialog.request",
+	"settings.changed",
 ])
 
 /** Shell -> 后端。 */

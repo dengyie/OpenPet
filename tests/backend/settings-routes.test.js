@@ -17,7 +17,7 @@ before(async () => {
 })
 
 function createStore() {
-	let current = { version: 3, values: { "pet.scale": 1 } }
+	let current = { version: 3, values: { "pet.scale": 1, apiKey: "sk-plain", apiKeyRef: "ai.default", localHttp: { token: "secret-token" } } }
 	return {
 		read: () => structuredClone(current),
 		patch({ ifVersion, patch }) {
@@ -74,7 +74,7 @@ describe("T10 settings routes", () => {
 		await withServer(async ({ url, events }) => {
 			const read = await fetch(url + "/settings")
 			assert.equal(read.status, 200)
-			assert.deepEqual((await read.json()).data, { version: 3, values: { "pet.scale": 1 } })
+			assert.deepEqual((await read.json()).data, { version: 3, values: { "pet.scale": 1, apiKeyRef: "ai.default", localHttp: {} } })
 			const patch = await jsonRequest(url + "/settings", {
 				method: "PATCH",
 				body: JSON.stringify({ ifVersion: 3, patch: { "pet.scale": 1.25 } }),

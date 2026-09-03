@@ -38,6 +38,22 @@ async function openFile(userDataDir) {
 }
 
 describe("T14 JSON → SQLite", () => {
+	it("normalizes a legacy root plain-object settings file to backend envelope", async () => {
+		const userDataDir = fixture()
+		fs.writeFileSync(path.join(userDataDir, "settings.json"), JSON.stringify({ scale: 1.5, petBehavior: { grounded: true } }))
+		const db = await openFile(userDataDir)
+		try {
+			await migration.migrateFromJson({ db, userDataDir, now: () => "2026-08-21T00:00:00.000Z" })
+			assert.deepEqual(JSON.parse(fs.readFileSync(path.join(userDataDir, "backend", "settings.json"))), {
+				version: 0,
+				values: { scale: 1.5, petBehavior: { grounded: true } },
+			})
+		} finally {
+			db.close()
+			fs.rmSync(userDataDir, { recursive: true, force: true })
+		}
+	})
+
 	it("备份并精确导入对话、消息与设置,第二次幂等跳过", async () => {
 		const userDataDir = fixture()
 		const db = await openFile(userDataDir)

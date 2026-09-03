@@ -20,6 +20,7 @@ const EXPECTED_BACKEND_TO_SHELL_TYPES = [
 	"ready",
 	"degraded",
 	"dialog.request",
+	"settings.changed",
 ]
 
 function envelope(type, body = {}) {
@@ -41,13 +42,13 @@ function contractBackendToShellTypes() {
 }
 
 describe("T28 reverse-channel allowlist", () => {
-	it("keeps the Backend and Shell allowlists exactly aligned with the 9 contract types", async () => {
+	it("keeps the Backend and Shell allowlists exactly aligned with the 10 contract types", async () => {
 		const backendSchema = await import("../../services/backend/bridge/message-schema.js")
 
 		assert.deepEqual(contractBackendToShellTypes(), EXPECTED_BACKEND_TO_SHELL_TYPES)
 		assert.deepEqual(backendSchema.BACKEND_TO_SHELL_TYPES, EXPECTED_BACKEND_TO_SHELL_TYPES)
 		assert.deepEqual(SHELL_BACKEND_TO_SHELL_TYPES, EXPECTED_BACKEND_TO_SHELL_TYPES)
-		assert.equal(new Set(SHELL_BACKEND_TO_SHELL_TYPES).size, 9)
+		assert.equal(new Set(SHELL_BACKEND_TO_SHELL_TYPES).size, 10)
 	})
 
 	it("drops malformed and non-allowlisted envelopes and logs each rejection", async () => {
@@ -89,5 +90,12 @@ describe("T28 reverse-channel allowlist", () => {
 		})), true)
 
 		assert.deepEqual(dashboards, [{ pluginId: "focus-timer" }])
+	})
+
+	it("delivers settings.changed as paths and version only", async () => {
+		const notifications = []
+		const handler = createMessageHandler({ send() {}, onSettingsChanged: (payload) => notifications.push(payload) })
+		assert.equal(await handler.handle(envelope("settings.changed", { paths: ["scale"], version: 4, values: { apiKey: "secret" } })), true)
+		assert.deepEqual(notifications, [{ paths: ["scale"], version: 4 }])
 	})
 })

@@ -15,6 +15,7 @@ const BACKEND_TO_SHELL_TYPES = Object.freeze([
 	"ready",
 	"degraded",
 	"dialog.request",
+	"settings.changed",
 ])
 
 function log(logger, level, message, fields) {
@@ -70,6 +71,9 @@ function parseEnvelope(raw) {
 		case "degraded":
 			if (typeof body.reason !== "string") return fail("bad-body", "degraded.reason")
 			break
+		case "settings.changed":
+			if (!Array.isArray(body.paths) || body.paths.some((path) => typeof path !== "string") || !Number.isInteger(body.version) || body.version < 0) return fail("bad-body", "settings.changed")
+			break
 		case "dialog.request":
 			if (typeof body.requestId !== "string" || !["file", "directory"].includes(body.mode)) return fail("bad-body", "dialog.request")
 			break
@@ -78,7 +82,7 @@ function parseEnvelope(raw) {
 	return { ok: true, envelope: { v: raw.v, id: raw.id, at: raw.at, body } }
 }
 
-function createMessageHandler({ dialog, petService, logger, send, onNotify, onBadge, onDashboard, productionService } = {}) {
+function createMessageHandler({ dialog, petService, logger, send, onNotify, onBadge, onDashboard, onSettingsChanged, productionService } = {}) {
 	if (typeof send !== "function") throw new TypeError("createMessageHandler 需要 send")
 
 	async function handle(raw) {
@@ -119,6 +123,9 @@ function createMessageHandler({ dialog, petService, logger, send, onNotify, onBa
 					return true
 				case "ready":
 				case "degraded":
+					return true
+				case "settings.changed":
+					onSettingsChanged?.({ paths: [...body.paths], version: body.version })
 					return true
 				case "dialog.request": {
 					if (typeof dialog?.showOpenDialog !== "function") throw new Error("Shell dialog 不可用")

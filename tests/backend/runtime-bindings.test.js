@@ -39,7 +39,7 @@ test("sidecar routes use runtime dependencies initialized before ready", async (
 			headers,
 			body: JSON.stringify({
 				ifVersion: persistedBeforePatch.version,
-				patch: { "audit.flag": true },
+				patch: { scale: 1.1 },
 			}),
 		})
 		const patchBody = await patchResponse.json()
@@ -60,7 +60,7 @@ test("sidecar routes use runtime dependencies initialized before ready", async (
 		})
 
 		const persistedAfterPatch = JSON.parse(fs.readFileSync(settingsFile, "utf8"))
-		assert.equal(persistedAfterPatch.values.audit.flag, true)
+		assert.equal(persistedAfterPatch.values.scale, 1.1)
 		assert.equal(persistedAfterPatch.version, persistedBeforePatch.version + 1)
 	} finally {
 		if (backend?.child) await stopSidecar(backend.child, { graceMs: 5_000 })
