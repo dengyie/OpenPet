@@ -49,6 +49,8 @@ npm run check:api-contract
 
 **H10 不要动别人的热点文件。** 见 §6。
 
+**H11 IM Gateway 适配器冻结。** 在 T46 交付前,`examples/plugins/im-gateway/` 不新增适配器,仅接受缺陷修复。原因:新适配器会走即将删除的旧 IPC 链路,放大 M4/M5 切换面。
+
 ---
 
 ## 2. 编码约定
