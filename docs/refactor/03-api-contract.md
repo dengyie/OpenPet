@@ -114,6 +114,8 @@
 | `CATALOG_*` | 6 | 0 | 6 | 全迁 |
 | **合计** | **158** | **45** | **113** | |
 
+> **实现登记（T39，评审 v1.0）**：本表只统计 IPC 通道；后端支撑模块不会另增 IPC 通道。`services/backend/domains/local-http.js` 承接 `SERVICE_*` 的 7 个迁移通道，`services/backend/jobs/dispatcher.js` 只负责 §6 Job 入队/派发与 `job.created` 推送，二者均已包含在上面的既有行中。`check:api-contract` 以 `src/shared/ipc-channels.ts` 为清单逐项复算：**158 = 45 留 IPC + 113 迁 HTTP**。
+
 ## 4. 路由表
 
 ### 4.1 健康与服务
@@ -131,6 +133,8 @@
 | POST | `/service/diagnostics` | 新增 | 导出诊断包 |
 | GET | `/about` | `ABOUT_GET_INFO` | 版本信息 |
 | POST | `/about/check-updates` | `ABOUT_CHECK_UPDATES` | 返 Job(可能联网) |
+
+> 实现登记：服务路由由 `services/backend/routes/service.js` 注册，服务管理器为 `services/backend/domains/local-http.js`；本映射不新增 `SERVICE_*` 通道或另一份路由定义。
 
 ### 4.2 设置
 
@@ -271,6 +275,20 @@
 | POST | `/jobs/{id}/retry` | 重试(仅 failed/interrupted) |
 | GET | `/jobs/{id}/events` | 历史事件(补齐历史进度) |
 | DELETE | `/jobs/completed` | 清理已完成 |
+
+> 实现登记：Job 路由通过 `services/backend/routes/jobs.js` 接入，统一交给 `services/backend/jobs/dispatcher.js` 派发；Job kind/status 仍以 §6 与契约包为唯一来源。
+
+### 4.11 当前实现注册表（T39）
+
+`services/backend/routes/registry.js` 是当前已实现 REST 路由的可执行登记表；它与各 `register*Routes` 的运行时注册结果均为 **68 条**。`check:api-contract` 会展开 §4.1–§4.10 的紧凑方法/路径单元格，并按规范化参数路径逐条比较这 68 条，而不是只比较总数。§4 的其余目标路由仍保留在契约表中，待对应域实现后加入登记表。
+
+SSE 不属于上述 REST 登记子集，但仍是 API 路由的一部分：
+
+| 方法 | 路径 | 实现 | 说明 |
+| --- | --- | --- | --- |
+| GET | `/events` | `services/backend/routes/events.js` + `services/backend/events/hub.js` | SSE 订阅；事件名、topic 与 §5 目录逐项对账 |
+
+`GET /api/v1/events` 不计入 §4.1–§4.10 的 68 条 REST registry 对账，也不计入 §3 IPC 通道数。
 
 ## 5. SSE 事件规范
 
