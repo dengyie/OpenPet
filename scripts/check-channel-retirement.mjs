@@ -14,12 +14,62 @@ const IPC_MIRROR_RELATIVE_PATH = 'src/shared/ipc-channels.js'
 const REGISTRATION_RELATIVE_PATHS = ['src/main/ipc.js', 'src/main/ipc']
 const PRODUCTION_ROOT_FILES = ['main.js', 'preload.js', 'renderer.js', 'control-center-preload.js']
 const PRODUCTION_ROOT_DIRECTORIES = ['src/main']
+const BACKEND_ROUTE_DIRECTORY = 'services/backend/routes'
+const EVENT_CONTRACT_RELATIVE_PATH = 'packages/contracts/src/events.ts'
+const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
 
 const fail = (message) => {
   throw new Error(message)
 }
 
 const readFile = (filePath) => fs.readFileSync(filePath, 'utf8')
+
+const routeFiles = (root) => {
+  const directory = path.join(root, BACKEND_ROUTE_DIRECTORY)
+  if (!fs.existsSync(directory)) return null
+  return fs.readdirSync(directory)
+    // registry.js is a derived audit list, not a route implementation. Read
+    // the route modules themselves so a stale registry cannot satisfy this
+    // gate for a missing router registration.
+    .filter((name) => name.endsWith('.js') && name !== 'registry.js')
+    .map((name) => path.join(directory, name))
+    .sort()
+}
+
+const parseHttpRoutes = (root) => {
+  const files = routeFiles(root)
+  if (files === null) return null
+  const routes = new Set()
+  const add = (method, routePath) => {
+    if (HTTP_METHODS.includes(method) && typeof routePath === 'string' && routePath.startsWith('/')) {
+      routes.add(`${method} ${routePath}`)
+    }
+  }
+  for (const filePath of files) {
+    const source = readFile(filePath)
+    for (const match of source.matchAll(/router\.(get|post|put|patch|delete)\(\s*["']([^"']+)["']/gi)) {
+      add(match[1].toUpperCase(), match[2])
+    }
+    // Settings and health use router.register() with route tuples declared in
+    // the same route module. Restrict this to method/path tuple shapes so
+    // unrelated Object.freeze arrays cannot be mistaken for routes.
+    for (const match of source.matchAll(/\[\s*["'](GET|POST|PUT|PATCH|DELETE)["']\s*,\s*["']([^"']+)["']\s*\]/g)) {
+      add(match[1], match[2])
+    }
+  }
+  return routes
+}
+
+const parseEventNames = (root) => {
+  const filePath = path.join(root, EVENT_CONTRACT_RELATIVE_PATH)
+  if (!fs.existsSync(filePath)) return null
+  const source = readFile(filePath)
+  const match = source.match(/export const EVENT_NAMES\s*=\s*\[([\s\S]*?)\]\s*as const/)
+  if (!match) fail(`Event contract is missing EVENT_NAMES: ${EVENT_CONTRACT_RELATIVE_PATH}`)
+  return new Set([...match[1].matchAll(/["']([^"']+)["']/g)].map((item) => item[1]))
+}
+
+const declaredSources = (source) => source.split(',').map((value) => value.trim().replace(/^`|`$/g, '')).filter(Boolean)
 
 const parseIpcChannels = (source) => {
   const channels = []
@@ -141,7 +191,7 @@ const parseEventReferences = (root) => {
   return references
 }
 
-const validateChannelRetirement = ({ ledger, ipcChannels, registrations = [], eventReferences = [], productionReferences = [], mirrorChannels = null }) => {
+const validateChannelRetirement = ({ ledger, ipcChannels, registrations = [], eventReferences = [], productionReferences = [], mirrorChannels = null, httpRoutes = null, eventNames = null, sourceFiles = null }) => {
   if (ipcChannels.length > MAX_CHANNELS) fail(`IPC channel count ${ipcChannels.length} exceeds maximum ${MAX_CHANNELS}`)
   const sourceDuplicates = findDuplicateValues(ipcChannels.map(({ channel }) => channel))
   if (sourceDuplicates.length) fail(`IPC source contains duplicate channel values: ${sourceDuplicates.join(', ')}`)
@@ -198,6 +248,9 @@ const validateChannelRetirement = ({ ledger, ipcChannels, registrations = [], ev
   for (const row of ledger) {
     if (row.status === 'retired') {
       if (!/^[0-9a-f]{7,40}$/i.test(row.retiredBy.trim())) fail(`Retired ledger row must include a commit SHA: ${row.channel}`)
+      if (sourceFiles !== null && declaredSources(row.source).some((source) => !sourceFiles.has(source))) {
+        fail(`Retired ledger source is not a real file: ${row.channel}`)
+      }
     } else if (row.retiredBy.trim() !== '—') {
       fail(`Active ledger row must leave Retired by as —: ${row.channel}`)
     }
@@ -216,9 +269,31 @@ const validateChannelRetirement = ({ ledger, ipcChannels, registrations = [], ev
       ...registrations.filter((entry) => entry.key === key).map((entry) => entry.filePath),
       ...eventReferences.filter((entry) => entry.key === key).map((entry) => entry.filePath)
     ])
-    const declaredSources = row.source.split(',').map((value) => value.trim().replace(/^`|`$/g, '')).filter(Boolean)
-    if (!declaredSources.every((source) => validSources.has(source))) {
-      fail(`Ledger source is not a real IPC reference for ${row.channel}: ${declaredSources.join(', ') || 'none'}`)
+    const sources = declaredSources(row.source)
+    if (!sources.every((source) => validSources.has(source))) {
+      fail(`Ledger source is not a real IPC reference for ${row.channel}: ${sources.join(', ') || 'none'}`)
+    }
+  }
+
+  if (httpRoutes !== null || eventNames !== null) {
+    for (const row of activeLedger.filter(({ status }) => status.startsWith('cutover:'))) {
+      const target = row.routeOrBlocker.replaceAll('`', '').trim()
+      if (target.startsWith('SSE ')) {
+        const eventName = target.slice(4).trim()
+        if (eventNames !== null && !eventNames.has(eventName)) {
+          fail(`Ledger SSE target is not in the event contract: ${row.channel} -> ${eventName}`)
+        }
+        continue
+      }
+      const match = target.match(/^(GET|POST|PUT|PATCH|DELETE)\s+(\/\S+)/)
+      if (!match) {
+        fail(`Cutover row must declare an HTTP route or SSE event: ${row.channel}`)
+        continue
+      }
+      const route = `${match[1]} ${match[2].split('?')[0]}`
+      if (httpRoutes !== null && !httpRoutes.has(route)) {
+        fail(`Ledger HTTP target is not an implemented route: ${row.channel} -> ${route}`)
+      }
     }
   }
 
@@ -249,7 +324,8 @@ const run = ({ root }) => {
   const mirrorChannels = fs.existsSync(mirrorPath) ? parseIpcChannels(readFile(mirrorPath)) : null
   const registrations = parseRegistrations(root)
   const eventReferences = parseEventReferences(root)
-  const result = validateChannelRetirement({ ledger, ipcChannels, mirrorChannels, registrations, eventReferences, productionReferences: parseProductionReferences(root) })
+  const sourceFiles = new Set([...readProductionSources(root), ...readRegistrationSources(root)].map((filePath) => relativePath(root, filePath)))
+  const result = validateChannelRetirement({ ledger, ipcChannels, mirrorChannels, registrations, eventReferences, productionReferences: parseProductionReferences(root), httpRoutes: parseHttpRoutes(root), eventNames: parseEventNames(root), sourceFiles })
   console.log(`ok channel-retirement current=${result.activeCount} historical=${result.historicalCount} registrations=${result.registrationCount} event-only=${result.eventOnlyCount} keep=${result.keepCount} cutover=${result.cutoverCount} blocked=${result.blockedCount} dead=${result.deadCount}`)
   return result
 }
@@ -278,5 +354,7 @@ export {
   parseRegistrations,
   parseProductionReferences,
   parseEventReferences,
+  parseHttpRoutes,
+  parseEventNames,
   validateChannelRetirement
 }

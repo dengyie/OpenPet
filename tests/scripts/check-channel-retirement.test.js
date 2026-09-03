@@ -52,7 +52,16 @@ test('CLI accepts a complete unique ledger matching the IPC source', (t) => {
   const fixtureRoot = createFixture(t, { rows: [row(1, 'keep'), row(2)] })
   const result = run(fixtureRoot)
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`)
-  assert.match(result.stdout, /ok.*2/) 
+  assert.match(result.stdout, /ok.*2/)
+})
+
+test('CLI rejects a cutover target that is not an implemented HTTP route', (t) => {
+  const fixtureRoot = createFixture(t, { rows: [{ ...row(1), route: '`GET /missing`' }] })
+  fs.mkdirSync(path.join(fixtureRoot, 'services/backend/routes'), { recursive: true })
+  fs.writeFileSync(path.join(fixtureRoot, 'services/backend/routes/fixture.js'), 'router.get("/fixture", () => {})\n')
+  const result = run(fixtureRoot)
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /not an implemented route|HTTP target/i)
 })
 
 test('CLI rejects ledger count or channel mismatch', (t) => {

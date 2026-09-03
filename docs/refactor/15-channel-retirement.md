@@ -16,10 +16,10 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 | Current direct registrations | 150 |
 | Current event-only channels | 8 |
 | Current keep | 41 |
-| Current cutover | 63 |
-| Current blocked | 54 |
+| Current cutover | 58 |
+| Current blocked | 59 |
 | Current dead | 0 |
-| Historical retired | 1 |
+| Historical retired | 0 |
 
 ## Ledger
 
@@ -174,16 +174,15 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 | `service:export-logs` | `cutover:service` | `GET /service/logs?operation=export` | `src/main/ipc/register-service-ipc.js` | Existing backend route is the migration target | — |
 | `service:clear-logs` | `cutover:service` | `DELETE /service/logs` | `src/main/ipc/register-service-ipc.js` | Existing backend route is the migration target | — |
 | `service:rotate-token` | `cutover:service` | `POST /service/token/rotate` | `src/main/ipc/register-service-ipc.js` | Existing backend route is the migration target | — |
-| `service:revoke-mcp-sessions` | `cutover:service` | `POST /service/token/revoke-sessions (target)` | `src/main/ipc/register-service-ipc.js` | Existing backend route is the migration target | — |
+| `service:revoke-mcp-sessions` | `blocked:T42` | `Backend route not implemented: POST /service/token/revoke-sessions` | `src/main/ipc/register-service-ipc.js` | Current backend route registry has no MCP session revoke endpoint; report discrepancy before cutover | — |
 | `about:get-info` | `cutover:about` | `GET /about` | `src/main/ipc.js` | Existing backend route is the migration target | — |
 | `about:check-updates` | `cutover:about` | `POST /about/check-updates` | `src/main/ipc.js` | Existing backend route is the migration target | — |
 | `catalog:get` | `cutover:catalog` | `GET /catalog` | `src/main/ipc/register-catalog-ipc.js` | Existing backend route is the migration target | — |
-| `catalog:prepare-install` | `cutover:catalog` | `POST /catalog/prepare (target)` | `src/main/ipc/register-catalog-ipc.js` | Existing backend route is the migration target | — |
+| `catalog:prepare-install` | `blocked:T42` | `Backend route not implemented: POST /catalog/prepare` | `src/main/ipc/register-catalog-ipc.js` | Current backend route registry has no prepare endpoint; report discrepancy before cutover | — |
 | `catalog:install-selection` | `cutover:catalog` | `POST /catalog/install` | `src/main/ipc/register-catalog-ipc.js` | Existing backend route is the migration target | — |
-| `catalog:clear-selection` | `cutover:catalog` | `POST /catalog/clear-selection (target)` | `src/main/ipc/register-catalog-ipc.js` | Existing backend route is the migration target | — |
-| `catalog:add-blocklist` | `cutover:catalog` | `POST /catalog/blocklist (target)` | `src/main/ipc/register-catalog-ipc.js` | Existing backend route is the migration target | — |
-| `catalog:remove-blocklist` | `cutover:catalog` | `DELETE /catalog/blocklist/:id (target)` | `src/main/ipc/register-catalog-ipc.js` | Existing backend route is the migration target | — |
-| `legacy:t41-placeholder` | `retired` | Removed IPC placeholder reserved for T41 historical accounting | `src/main/ipc/register-pet-runtime-ipc.js` | Reserved historical row for the next retirement batch | 2b7c241b |
+| `catalog:clear-selection` | `blocked:T42` | `Backend route not implemented: POST /catalog/clear-selection` | `src/main/ipc/register-catalog-ipc.js` | Current backend route registry has no clear-selection endpoint; report discrepancy before cutover | — |
+| `catalog:add-blocklist` | `blocked:T42` | `Backend route not implemented: POST /catalog/blocklist` | `src/main/ipc/register-catalog-ipc.js` | Current backend route registry has no blocklist endpoint; report discrepancy before cutover | — |
+| `catalog:remove-blocklist` | `blocked:T42` | `Backend route not implemented: DELETE /catalog/blocklist/:id` | `src/main/ipc/register-catalog-ipc.js` | Current backend route registry has no blocklist endpoint; report discrepancy before cutover | — |
 
 ## Operating rules
 
