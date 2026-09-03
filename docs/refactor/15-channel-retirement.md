@@ -174,7 +174,7 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 | `service:export-logs` | `cutover:service` | `GET /service/logs?operation=export` | `src/main/ipc/register-service-ipc.js` | Existing backend route is the migration target | — |
 | `service:clear-logs` | `cutover:service` | `DELETE /service/logs` | `src/main/ipc/register-service-ipc.js` | Existing backend route is the migration target | — |
 | `service:rotate-token` | `cutover:service` | `POST /service/token/rotate` | `src/main/ipc/register-service-ipc.js` | Existing backend route is the migration target | — |
-| `service:revoke-mcp-sessions` | `blocked:T42` | `Backend route not implemented: POST /service/token/revoke-sessions` | `src/main/ipc/register-service-ipc.js` | Current backend route registry has no MCP session revoke endpoint; report discrepancy before cutover | — |
+| `service:revoke-mcp-sessions` | `blocked:T45` | `Backend route not implemented: POST /service/token/revoke-sessions` | `src/main/ipc/register-service-ipc.js` | Waiting for T45 MCP sidecar migration; current backend route registry has no MCP session revoke endpoint | — |
 | `about:get-info` | `cutover:about` | `GET /about` | `src/main/ipc.js` | Existing backend route is the migration target | — |
 | `about:check-updates` | `cutover:about` | `POST /about/check-updates` | `src/main/ipc.js` | Existing backend route is the migration target | — |
 | `catalog:get` | `cutover:catalog` | `GET /catalog` | `src/main/ipc/register-catalog-ipc.js` | Existing backend route is the migration target | — |
