@@ -53,4 +53,5 @@ Each action folder should contain an ordered image sequence with alpha channels,
 - Plugins must not have unrestricted Node/Electron access
 - API keys must never be exposed to the renderer or ordinary plugins
 - All new configuration must be operable through the Control Center UI
+- Before T46 is delivered, do not add adapters under `examples/plugins/im-gateway/`; only defect fixes are allowed. New adapters would use the legacy IPC path scheduled for removal, expanding the M4/M5 cutover surface
 - Do not revert uncommitted changes made by others
