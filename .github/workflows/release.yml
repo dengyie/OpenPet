@@ -40,7 +40,7 @@ jobs:
             pack_command: npm run pack
           - platform: windows
             runner: windows-latest
-            pack_command: npm run build:contracts && npm run build:control-center && npx electron-builder --win --x64 --dir --publish never
+            pack_command: npm run build:control-center && npx electron-builder --win --x64 --dir --publish never
     runs-on: ${{ matrix.runner }}
 
     steps:
@@ -55,6 +55,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Build contracts
+        run: npm run build:contracts
 
       - name: Install Playwright Chromium
         if: matrix.platform == 'macos'
