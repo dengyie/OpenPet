@@ -242,7 +242,7 @@ git commit -m "feat(im-gateway): add WeCom application adapter"
 
 | Boundary | QQ official robot | WeCom application | Development status |
 | --- | --- | --- | --- |
-| Private/group normalization and policy rejection | covered | covered | green |
+| Message normalization and shared policy boundary | QQ adapter normalization plus shared gateway policy covered | WeCom callback normalization covered; allowlist policy is covered through the shared gateway, not by a WeCom-specific adapter test | partial |
 | Command and bounded receipt delivery | covered | covered | green |
 | Duplicate update/callback suppression | covered | covered | green |
 | Timeout, transport error, and HTTP semantic failure | covered | covered | green |
@@ -253,14 +253,14 @@ git commit -m "feat(im-gateway): add WeCom application adapter"
 
 This matrix is fake-client coverage only. It does not represent live Telegram, QQ, or WeCom account evidence.
 
-- [x] **Step 1: Add protocol matrix cases before implementation changes.** The matrix covers allowed/rejected private and group messages, direct commands, receipts, duplicate callback/update handling, timeout/error paths, shutdown, redaction, and secret non-leakage for both adapters.
+- [x] **Step 1: Add protocol matrix cases before implementation changes.** The matrix covers shared-gateway allowed/rejected private and group policy, adapter-specific normalization, direct commands, receipts, duplicate callback/update handling, timeout/error paths, shutdown, redaction, and secret non-leakage. WeCom callback tests do not claim adapter-specific allowlist rejection.
 - [x] **Step 2: Run the matrix and record the expected failures.**
 
 Run: `node --test tests/examples/im-gateway-plugin.test.js tests/examples/im-gateway-qq-official.test.js tests/examples/im-gateway-wecom.test.js`
 
 Expected: only unsupported or not-yet-covered matrix cases fail; existing Telegram cases remain green.
 
-- [x] **Step 3: Complete the protocol matrix and integration gates.** Cover allowed/rejected private and group messages, direct commands, receipts, duplicate callback/update handling, timeout/error paths, shutdown, redaction, secret non-leakage, shared registration, host-owned secret isolation, disabled defaults, native approval, lifecycle start/stop, and Control Center contract behavior for both adapters using fake protocol clients only.
+- [x] **Step 3: Complete the protocol matrix and integration gates.** Cover shared-gateway allowed/rejected private and group policy, QQ and WeCom adapter normalization/transport behavior, direct commands, receipts, duplicate callback/update handling, timeout/error paths, shutdown, redaction, secret non-leakage, shared registration, host-owned secret isolation, disabled defaults, native approval, lifecycle start/stop, and Control Center contract behavior using fake protocol clients only. WeCom allowlist behavior remains a shared-gateway contract rather than an adapter-specific test claim.
 
 - [x] **Step 4: Run all simulated protocol and tooling gates.**
 

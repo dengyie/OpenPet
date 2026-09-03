@@ -3,12 +3,13 @@
 `openpet.im-gateway` is the bundled official runtime plugin that connects IM
 messages to OpenPet pet behavior.
 
-The current runtime supports Telegram through long polling and includes a
-development/test-boundary adapter for the official QQ Robot route. The QQ
-adapter uses an injected official-protocol transport seam (WebSocket events,
-token HTTP exchange, and HTTPS replies); it does not claim real-account
-support, and it never falls back to OneBot. WeCom and personal WeChat routes
-are out of scope here.
+The current runtime supports Telegram through long polling and includes
+development/test-boundary adapters for the official QQ Robot and WeCom
+self-built application routes. The QQ adapter uses an injected
+official-protocol transport seam (WebSocket events, token HTTP exchange, and
+HTTPS replies), while WeCom uses an injected callback/HTTPS transport seam.
+Neither adapter claims real-account support yet. QQ never falls back to
+OneBot; personal WeChat, Official Account, and iLink routes are outside scope.
 
 ## QQ Official Robot (development/test boundary)
 
@@ -25,6 +26,9 @@ report stable `qq-reconnect-required` or `qq-invalid-session` failure codes;
 automatic re-identification is not included in this test-version boundary.
 Dispatch sequence values are carried in heartbeats and heartbeat requests are
 acknowledged.
+
+## WeCom Self-Built Application (development/test boundary)
+
 The selected WeCom route is a self-built application callback. Personal WeChat,
 Official Account, iLink, and OneBot are outside the supported routes.
 
@@ -120,5 +124,8 @@ The automated suite covers simulated grammY polling, readiness, allowlists,
 commands, AI routing, bridge timeouts and disconnect cancellation, global
 handler overload, bounded shutdown, narrow AI bridge responses, rate limits,
 retention, duplicate updates, command targeting, bounded diagnostics, and
-redaction. A real Telegram Bot Token smoke session remains a manual follow-up
-and is not part of the repository test suite.
+redaction. It also covers fake-client QQ protocol transport and WeCom callback,
+receipt, error, duplicate, overload, shutdown, and redaction behavior. Shared
+gateway policy tests are distinct from adapter-specific callback/transport
+tests. Real Telegram, QQ, and WeCom account smoke sessions remain manual
+follow-ups and are not part of the repository test suite.
