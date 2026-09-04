@@ -2,9 +2,9 @@
 
 > v1.0 · 2026-09-04 · T40 · 以 `src/shared/ipc-channels.ts` 为当前清单
 
-本台账登记当前 156 个 IPC 常量的去向。`keep` 是 02 篇允许长期存在的窗口/原生边界；`cutover:<domain>` 表示 03 篇已有 HTTP/SSE 对等入口；`blocked:Txx` 表示等待指定任务卡完成后再切换；`retired` 表示已从当前清单删除并保留历史记录；`dead` 仅用于确认没有生产调用方的遗留常量。
+本台账登记当前 154 个 IPC 常量的去向。`keep` 是 02 篇允许长期存在的窗口/原生边界；`cutover:<domain>` 表示 03 篇已有 HTTP/SSE 对等入口；`blocked:Txx` 表示等待指定任务卡完成后再切换；`retired` 表示已从当前清单删除并保留历史记录；`dead` 仅用于确认没有生产调用方的遗留常量。
 
-当前台账由 148 个 `ipcMainService.handle/on` 注册和 8 个事件-only 通道组成。Source 列是实际生产引用文件，不是推测路径；门禁会逐项检查 TS/JS 清单、注册/事件来源、重复项和未知 `IPC.*` 引用。
+当前台账由 146 个 `ipcMainService.handle/on` 注册和 8 个事件-only 通道组成。Source 列是实际生产引用文件，不是推测路径；门禁会逐项检查 TS/JS 清单、注册/事件来源、重复项和未知 `IPC.*` 引用。
 
 T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `keep ≤ 41`，因此新增的 QQ/WeCom 四个 host-secret 通道登记为 `blocked:T44`，而不是伪装成长期 keep。T41 及后续任务可把已删除常量保留为 `retired` 历史行，并在 Retired by 列记录提交 SHA；历史行不计入当前通道对账或 keep 上限。
 
@@ -12,14 +12,14 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 
 | Scope | Count |
 | --- | ---: |
-| Current IPC constants | 156 |
-| Current direct registrations | 148 |
+| Current IPC constants | 154 |
+| Current direct registrations | 146 |
 | Current event-only channels | 8 |
 | Current keep | 41 |
-| Current cutover | 45 |
-| Current blocked | 70 |
+| Current cutover | 43 |
+| Current blocked | 72 |
 | Current dead | 0 |
-| Historical retired | 2 |
+| Historical retired | 4 |
 
 ## Ledger
 
@@ -175,8 +175,8 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 | `service:clear-logs` | `cutover:service` | `DELETE /service/logs` | `src/main/ipc/register-service-ipc.js` | Existing backend route is the migration target | — |
 | `service:rotate-token` | `cutover:service` | `POST /service/token/rotate` | `src/main/ipc/register-service-ipc.js` | Existing backend route is the migration target | — |
 | `service:revoke-mcp-sessions` | `blocked:T45` | `Backend route not implemented: POST /service/token/revoke-sessions` | `src/main/ipc/register-service-ipc.js` | Waiting for T45 MCP sidecar migration; current backend route registry has no MCP session revoke endpoint | — |
-| `about:get-info` | `cutover:about` | `GET /about` | `src/main/ipc.js` | Existing backend route is the migration target | — |
-| `about:check-updates` | `cutover:about` | `POST /about/check-updates` | `src/main/ipc.js` | Existing backend route is the migration target | — |
+| `about:get-info` | `retired` | `GET /about` | `src/main/ipc.js` | Control Center reads the host About view through Backend HTTP | 8a185b01cd0b9e702d45482f3b34c1eea47ac84f |
+| `about:check-updates` | `retired` | `POST /about/check-updates` | `src/main/ipc.js` | Control Center queues the existing update-check Job and follows its result through Backend Job/SSE APIs | 8a185b01cd0b9e702d45482f3b34c1eea47ac84f |
 | `catalog:get` | `cutover:catalog` | `GET /catalog` | `src/main/ipc/register-catalog-ipc.js` | Existing backend route is the migration target | — |
 | `catalog:prepare-install` | `blocked:T42` | `Backend route not implemented: POST /catalog/prepare` | `src/main/ipc/register-catalog-ipc.js` | Current backend route registry has no prepare endpoint; report discrepancy before cutover | — |
 | `catalog:install-selection` | `cutover:catalog` | `POST /catalog/install` | `src/main/ipc/register-catalog-ipc.js` | Existing backend route is the migration target | — |
