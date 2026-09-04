@@ -1,6 +1,6 @@
 # 03 · API 契约与通信协议
 
-> 🔌 本篇是前后端并行开发的唯一依据。契约未定稿前不得开始写业务代码。158 个 IPC 通道的去向已在本篇逐域定义。
+> 🔌 本篇是前后端并行开发的唯一依据。契约未定稿前不得开始写业务代码。154 个 IPC 通道的去向已在本篇逐域定义。
 
 ## 1. 协议基础
 
@@ -96,7 +96,7 @@
 
 **专用业务码**(搭配 400/409/423):`PLUGIN_MANIFEST_INVALID`、`PLUGIN_ALREADY_RUNNING`、`PLUGIN_NATIVE_NOT_APPROVED`、`PET_PACK_INCOMPATIBLE`、`ACTION_FRAMES_MISSING`、`AI_KEY_NOT_CONFIGURED`、`JOB_NOT_CANCELABLE`、`MIGRATION_REQUIRED`。
 
-## 3. 156 个通道的去向总表
+## 3. 154 个通道的去向总表
 
 | 域 | 通道数 | 留 IPC | 迁 HTTP | 备注 |
 | --- | --- | --- | --- | --- |
@@ -110,11 +110,11 @@
 | `PLUGINS_*` | 29 | 6 | 23 | `OPEN_DASHBOARD`、`INSPECT_PACKAGE`、QQ/WeCom 凭据保存/清除留 |
 | `CREATOR_*` | 13 | 0 | 13 | 多数转 Job |
 | `SERVICE_*` | 7 | 0 | 7 | 全迁 |
-| `ABOUT_*` | 2 | 0 | 2 | 全迁 |
+| `ABOUT_*` | 0 | 0 | 0 | `about:get-info` / `about:check-updates` 已在 T42 退休；能力改由 Backend HTTP/Job 提供 |
 | `CATALOG_*` | 6 | 0 | 6 | 全迁 |
-| **合计** | **156** | **45** | **111** | |
+| **合计** | **154** | **45** | **109** | |
 
-> **实现登记（T41，评审 v1.0）**：本表只统计当前 IPC 通道；后端支撑模块不会另增 IPC 通道。`services/backend/domains/local-http.js` 承接 `SERVICE_*` 的 7 个迁移通道，`services/backend/jobs/dispatcher.js` 只负责 §6 Job 入队/派发与 `job.created` 推送，二者均已包含在上面的既有行中。`settings:get` 与 `settings:save` 已退休，不再计入当前清单。`check:api-contract` 以 `src/shared/ipc-channels.ts` 为清单逐项复算：**156 = 45 留 IPC + 111 迁 HTTP**。
+> **实现登记（T42，评审 v1.0）**：本表只统计当前 IPC 通道；后端支撑模块不会另增 IPC 通道。`services/backend/domains/local-http.js` 承接 `SERVICE_*` 的 7 个迁移通道，`services/backend/jobs/dispatcher.js` 只负责 §6 Job 入队/派发与 `job.created` 推送，二者均已包含在上面的既有行中。`settings:get`、`settings:save`、`about:get-info` 与 `about:check-updates` 已退休，不再计入当前清单。`check:api-contract` 以 `src/shared/ipc-channels.ts` 为清单逐项复算：**154 = 45 留 IPC + 109 迁 HTTP**。
 
 ## 4. 路由表
 

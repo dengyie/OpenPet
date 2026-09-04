@@ -187,7 +187,7 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 ## Operating rules
 
 - `npm run check:channel-retirement` 对当前 active 行与 TS 清单逐项对账；active 必须精确覆盖当前常量，历史 `retired` 行可以不再存在于当前源。
-- 当前通道上限为 156，后续提交只能减少 active 数量；新增 IPC 常量必须先更新本台账和 T40 依据。
+- 当前通道上限为 154，后续提交只能减少 active 数量；新增 IPC 常量必须先更新本台账和 T40 依据。
 - `retired` 行必须保留原 channel、真实历史 source、删除提交的完整或短 SHA（至少 7 位）；它不计入 current、keep、cutover、blocked、dead 计数。
 - `keep` 上限是 41。四个 QQ/WeCom host-secret 通道等待 T44 的 secrets 边界，不能借 `keep` 绕过上限。
 - `cutover` 行在同一切换提交中完成 HTTP/SSE 接入、旧 IPC 删除和台账状态更新；不得先并行双写再补删除。
