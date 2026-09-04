@@ -5,6 +5,7 @@ const { before, describe, it } = require("node:test")
 
 let bridge
 let shellClient
+const shellMessageHandler = require("../../apps/desktop/src/sidecar/message-handler")
 
 before(async () => {
 	bridge = await import("../../services/backend/bridge/message-schema.js")
@@ -23,11 +24,11 @@ function resultEnvelope(id, paths) {
 }
 
 describe("dialog.request bridge", () => {
-	it("backend whitelist contains exactly the 10 contract message types", () => {
-		assert.equal(bridge.BACKEND_TO_SHELL_TYPES.length, 10)
-		assert.equal(new Set(bridge.BACKEND_TO_SHELL_TYPES).size, 10)
+	it("backend whitelist contains exactly the 12 contract message types", () => {
+		assert.equal(bridge.BACKEND_TO_SHELL_TYPES.length, 12)
+		assert.equal(new Set(bridge.BACKEND_TO_SHELL_TYPES).size, 12)
 		assert.equal(bridge.BACKEND_TO_SHELL_TYPES.includes("dialog.request"), true)
-		assert.equal(bridge.SHELL_TO_BACKEND_TYPES.length, 6, "T12 must not change the reverse whitelist")
+		assert.equal(bridge.SHELL_TO_BACKEND_TYPES.length, 8, "settings host results are part of the bridge contract")
 	})
 
 	it("request and dialog.result correlate with the same envelope id", async () => {
@@ -73,5 +74,29 @@ describe("dialog.request bridge", () => {
 		assert.equal(response.body.requestId, sent[0].id)
 		assert.equal(response.body.paths, null)
 		client.dispose()
+	})
+
+	it("requires envelope at to be a positive integer in backend and Shell parsers", () => {
+		for (const at of [0, -1, 1.5]) {
+			const raw = bridge.createEnvelope({ type: "ready", port: 3210, apiVersion: "v1", pid: 42 }, { at })
+			assert.equal(bridge.parseEnvelope(raw).ok, false, `backend accepted at=${at}`)
+			assert.equal(shellMessageHandler.parseEnvelope(raw).ok, false, `Shell accepted at=${at}`)
+		}
+	})
+
+	it("keeps Shell allowlist mechanically aligned with the contract", async () => {
+		const contracts = await import("@openpet/contracts")
+		assert.deepEqual(bridge.BACKEND_TO_SHELL_TYPES, contracts.backendToShellSchema.options.map((option) => option.shape.type.value))
+	})
+
+	it("rejects in-flight requests when the Shell client is disposed", async () => {
+		const client = shellClient.createShellClient({ send: () => {} })
+		const pending = client.request({ type: "dialog.request", mode: "file" })
+		client.dispose()
+		const settled = await Promise.race([
+			pending.then(() => false, () => true),
+			new Promise((resolve) => setTimeout(() => resolve(false), 25)),
+		])
+		assert.equal(settled, true)
 	})
 })

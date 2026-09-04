@@ -50,7 +50,8 @@ const createOpenPetRuntime = ({
   maybeRunPackagedCreatorStudioUiE2e,
   maybeRunPackagedCreateUiSmoke,
   factories,
-  setPetWindow
+  setPetWindow,
+  fetchImpl
 }) => {
   let handleSystemCursorUnexpectedExit = async () => {}
   const core = createCoreServices({
@@ -89,6 +90,52 @@ const createOpenPetRuntime = ({
   } = core
   const sidecarLogger = createSidecarLogger({ appLogService, safeRecordAppLog })
   let settingsSidecarBridge = null
+  // Startup repairs can finish before the sidecar has completed its handshake.
+  // Keep those authority writes in memory and replay them after hydration so a
+  // slow sidecar cannot cause the repaired/fallback value to be lost.
+  const deferredSettingsPersistence = []
+
+  const flushDeferredSettingsPersistence = async () => {
+    while (deferredSettingsPersistence.length > 0) {
+      const input = deferredSettingsPersistence.shift()
+      try {
+        const backend = sidecarRuntimeCoordinator.getBackend?.()
+        if (!backend || !settingsSidecarBridge) {
+          deferredSettingsPersistence.unshift(input)
+          return
+        }
+        const current = petService.getSettings?.() || {}
+        const settings = settingsSidecarBridge.mergeCanonicalSettings(current, input.settings, input.paths)
+        applyCanonicalSettings(settings)
+        const snapshot = await settingsSidecarBridge.fetchSnapshot(backend)
+        await settingsSidecarBridge.persistCanonicalSettings({ ...input, settings, ifVersion: snapshot.version })
+      } catch (error) {
+        deferredSettingsPersistence.unshift(input)
+        safeRecordAppLog(appLogService, {
+          scope: 'settings', level: 'error', actor: 'system', event: 'settings.deferred-persist.failed',
+          message: error?.message || 'Deferred settings persistence failed'
+        })
+        return
+      }
+    }
+  }
+
+  const persistSettingsWhenBackendReady = (input) => {
+    const backend = sidecarRuntimeCoordinator.getBackend?.()
+    if (!backend || !settingsSidecarBridge) {
+      deferredSettingsPersistence.push({ ...input, settings: structuredClone(input.settings), paths: [...(input.paths || [])] })
+      if (sidecarRuntimeCoordinator.getBackend?.()) void flushDeferredSettingsPersistence()
+      return null
+    }
+    return settingsSidecarBridge.fetchSnapshot(backend)
+      .then((snapshot) => settingsSidecarBridge.persistCanonicalSettings({ ...input, ifVersion: snapshot.version }))
+  }
+
+  const applyCanonicalSettings = (settings) => {
+    if (typeof petService.applySettings === 'function') return petService.applySettings(settings)
+    return petService.saveSettings?.(settings)
+  }
+
   const sidecarRuntimeCoordinator = factories.createSidecarRuntimeCoordinator({
     app,
     dialog,
@@ -96,12 +143,18 @@ const createOpenPetRuntime = ({
     getSettings: () => settingsService.get(),
     logger: sidecarLogger,
     onSettingsChanged: (message) => settingsSidecarBridge?.handle(message),
-    onReady: () => settingsSidecarBridge?.hydrate().catch((error) => {
-      safeRecordAppLog(appLogService, {
-        scope: 'settings', level: 'error', actor: 'system', event: 'settings.hydrate.failed',
-        message: error?.message || 'Backend settings hydration failed'
-      })
-    }),
+    onSettingsApplyRequest: (message) => settingsSidecarBridge?.handle(message),
+    onReady: async () => {
+      try {
+        await settingsSidecarBridge?.hydrate()
+      } catch (error) {
+        safeRecordAppLog(appLogService, {
+          scope: 'settings', level: 'error', actor: 'system', event: 'settings.hydrate.failed',
+          message: error?.message || 'Backend settings hydration failed'
+        })
+      }
+      await flushDeferredSettingsPersistence()
+    },
     productionService: async (request) => {
       const pluginId = String(request?.pluginId || '').trim()
       const serviceId = String(request?.serviceId || '').trim()
@@ -130,7 +183,10 @@ const createOpenPetRuntime = ({
     const settingsWindow = createSettingsWindow(getPetWindow())
     const backend = sidecarRuntimeCoordinator.getBackend()
     if (backend && settingsWindow && !settingsWindow.isDestroyed?.()) {
-      const bootstrap = () => settingsWindow.webContents?.send?.(IPC.SETTINGS_CHANGED, { __openpetBackend: backend })
+      const bootstrap = () => settingsWindow.webContents?.send?.(IPC.SETTINGS_CHANGED, {
+        __openpetBackend: backend,
+        __openpetRuntimeStatus: systemCursorService?.getStatus?.()
+      })
       if (settingsWindow.webContents?.isLoading?.() === false) bootstrap()
       else if (typeof settingsWindow.webContents?.once === 'function') settingsWindow.webContents.once('did-finish-load', bootstrap)
       else bootstrap()
@@ -162,6 +218,8 @@ const createOpenPetRuntime = ({
   })
   settingsSidecarBridge = createSettingsSidecarBridge({
     getBackend: () => sidecarRuntimeCoordinator.getBackend(),
+    requestBackend: (body) => sidecarRuntimeCoordinator.requestBackend?.(body),
+    fetchImpl,
     petService,
     applyHostSettings: applySettingsHostEffect,
     sendToPetRenderer: (settings) => broadcastCursorSettings(settings),
@@ -171,15 +229,19 @@ const createOpenPetRuntime = ({
   sidecarRuntimeCoordinator.onChanged?.((backend) => {
     const settingsWindow = getPetWindow()?.settingsWindow
     if (settingsWindow && !settingsWindow.isDestroyed?.()) {
-      settingsWindow.webContents?.send?.(IPC.SETTINGS_CHANGED, { __openpetBackend: backend })
+      settingsWindow.webContents?.send?.(IPC.SETTINGS_CHANGED, {
+        __openpetBackend: backend,
+        __openpetRuntimeStatus: systemCursorService?.getStatus?.()
+      })
     }
   })
 
   handleSystemCursorUnexpectedExit = async () => {
     const currentSettings = petService.getSettings()
     if (currentSettings.customCursorScope !== 'system') return currentSettings
-    const fallbackSettings = petService.saveSettings({ ...currentSettings, customCursorScope: 'openpet' })
+    const fallbackSettings = applyCanonicalSettings({ ...currentSettings, customCursorScope: 'openpet' })
     broadcastCursorSettings(fallbackSettings)
+    await persistSettingsWhenBackendReady({ settings: fallbackSettings, paths: ['customCursorScope'] })
     return fallbackSettings
   }
 
@@ -227,7 +289,14 @@ const createOpenPetRuntime = ({
       })
     })
 
-  const cursorRepairPromise = registerCursorRepair({ cursorAssetService, petService, appLogService })
+  const cursorRepairPromise = registerCursorRepair({
+    cursorAssetService,
+    petService,
+      appLogService,
+    persistCanonicalSettings: (input) => {
+      return persistSettingsWhenBackendReady(input)
+    }
+  })
 
   let ipcRuntimeHelpers = {
     broadcastActivePetPackChanged: () => {}
@@ -291,7 +360,19 @@ const createOpenPetRuntime = ({
     cursorRepairPromise,
     systemCursorService,
     appLogService,
-    onSystemCursorFallback: broadcastCursorSettings
+    onSystemCursorFallback: broadcastCursorSettings,
+    persistSystemCursorFallback: async (settings) => {
+      const backend = sidecarRuntimeCoordinator.getBackend?.()
+      if (!backend) {
+        applyCanonicalSettings(settings)
+        await persistSettingsWhenBackendReady({ settings, paths: ['customCursorScope'] })
+        return settings
+      }
+      const snapshot = await settingsSidecarBridge.fetchSnapshot(backend)
+      await settingsSidecarBridge.persistCanonicalSettings({ settings, paths: ['customCursorScope'], ifVersion: snapshot.version })
+      applyCanonicalSettings(settings)
+      return settings
+    }
   })
 
   ipcRuntimeHelpers = registerIpcHandlers({
@@ -338,7 +419,10 @@ const createOpenPetRuntime = ({
     petService,
     systemCursorService,
     petMovementPolicy,
-    createPetRendererSettings
+    createPetRendererSettings,
+    persistNormalization: async (input) => {
+      return persistSettingsWhenBackendReady(input)
+    }
   })
   registerPetWindowLifecycle({
     app,

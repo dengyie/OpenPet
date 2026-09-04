@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs"
 import { createRequire } from "node:module"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { EVENT_BACKEND_SHUTTING_DOWN } from "@openpet/contracts"
+import { EVENT_BACKEND_SHUTTING_DOWN, SETTINGS_CANONICAL_PATHS, SETTINGS_TRUSTED_PATHS } from "@openpet/contracts"
 
 import { createRouter } from "./http/router.js"
 import {
@@ -42,7 +42,7 @@ import { createRunner } from "./jobs/runner.js"
 import { createJobDispatcher } from "./jobs/dispatcher.js"
 import { registerEventRoutes } from "./routes/events.js"
 import { initializeBackendRuntime, registerHealthRoutes } from "./routes/health.js"
-import { registerSettingsRoutes } from "./routes/settings.js"
+import { createSettingsMutationAuthority, createSettingsMutationCoordinator, parsePatch, registerSettingsRoutes } from "./routes/settings.js"
 import { registerAboutRoutes } from "./routes/about.js"
 import { registerServiceRoutes } from "./routes/service.js"
 import { registerPetPackRoutes } from "./routes/pet-packs.js"
@@ -63,6 +63,35 @@ const packageJson = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.me
 
 const INIT_TIMEOUT_MS = 10_000
 const SHUTDOWN_GRACE_MS = 5_000
+
+function readSettingsPath(values, path) {
+	let current = values
+	for (const segment of path.split(".")) {
+		if (current === null || typeof current !== "object" || Array.isArray(current) || !Object.hasOwn(current, segment)) return undefined
+		current = current[segment]
+	}
+	return current
+}
+
+function writeSettingsPath(values, path, value) {
+	const segments = path.split(".")
+	let current = values
+	for (const segment of segments.slice(0, -1)) {
+		if (current[segment] === null || typeof current[segment] !== "object" || Array.isArray(current[segment])) current[segment] = {}
+		current = current[segment]
+	}
+	current[segments.at(-1)] = structuredClone(value)
+}
+
+function hostEffectValues(values, paths) {
+	const result = {}
+	for (const path of SETTINGS_CANONICAL_PATHS) {
+		if (!paths.includes(path)) continue
+		const value = readSettingsPath(values, path)
+		if (value !== undefined) writeSettingsPath(result, path, value)
+	}
+	return result
+}
 
 const EXIT_NO_IPC = 64
 const EXIT_INIT_TIMEOUT = 65
@@ -189,13 +218,28 @@ const runtimeSettingsStore = {
 	read: (...args) => runtime.settings.read(...args),
 	patch: (...args) => runtime.settings.patch(...args),
 }
+const settingsMutationCoordinator = createSettingsMutationCoordinator({
+	emit: (name, payload) => {
+		eventHub.publish(name, payload)
+		if (name === "settings.changed") shell.send({ type: "settings.changed", paths: payload.paths, version: payload.version })
+	},
+})
+const settingsMutationAuthority = createSettingsMutationAuthority({ store: runtimeSettingsStore, coordinator: settingsMutationCoordinator })
 registerSettingsRoutes({
 	router,
 	store: runtimeSettingsStore,
-	 emit: (name, payload) => {
-			eventHub.publish(name, payload)
-			if (name === "settings.changed") shell.send({ type: "settings.changed", paths: payload.paths, version: payload.version })
-		},
+	mutationCoordinator: settingsMutationCoordinator,
+	mutationAuthority: settingsMutationAuthority,
+	awaitHostApply: async ({ paths, version }) => {
+		const snapshot = runtime.settings.read()
+		const reply = await shell.request({ type: "settings.apply.request", paths, version, values: hostEffectValues(snapshot.values, paths) })
+		if (reply?.body?.ok !== true) throw new Error(reply?.body?.error || "Shell settings host effect failed")
+		return reply
+	},
+	emit: (name, payload) => {
+		eventHub.publish(name, payload)
+		if (name === "settings.changed") shell.send({ type: "settings.changed", paths: payload.paths, version: payload.version })
+	},
 })
 runtime.about = createAboutService({ pkg: packageJson, runtime })
 registerAboutRoutes(router, {
@@ -287,10 +331,10 @@ await initializeBackendRuntime({
 				submitTriggerProposal: (pluginId, payload) => runtime.actions.submitProposal({ ...payload, sourcePluginId: pluginId }),
 				handleCommandCapability: (pluginId, capability, payload, options) => runtimeBridgeServer.handleCapability(pluginId, capability, payload, options),
 			}
-			runtimeBridgeServer = createPluginRuntimeServer({
-				shell,
-				plugins: pluginFacade,
-				settings: runtime.settings,
+				runtimeBridgeServer = createPluginRuntimeServer({
+					shell,
+					plugins: pluginFacade,
+					settings: runtime.settings,
 				jobs: { insert: (input) => runtime.enqueueJob(input) },
 				logs: { appendPlugin: (entry) => runtime.plugins.appendLog(entry) },
 				network: {
@@ -318,6 +362,7 @@ await initializeBackendRuntime({
 				root: join(dirname(fileURLToPath(import.meta.url)), "../.."),
 				userDataDir: runtime.userDataDir,
 				settings: runtime.settings,
+				mutationAuthority: settingsMutationAuthority,
 				logger,
 				emit: (name, payload) => eventHub.publish(name, payload),
 				runtimeBridgeServer,
@@ -417,6 +462,36 @@ shell.on("power.suspend", () => {
 shell.on("power.resume", () => {
 	logger.info("收到 power.resume")
 	// M3:恢复队列并触发一次 system.jobs-recovered。
+})
+
+// Host-normalized settings are persisted only across the private process
+// boundary. Renderer-originated HTTP PATCH requests cannot impersonate this.
+shell.on("settings.persist.request", (envelope) => {
+	void settingsMutationCoordinator.runTrusted(async () => {
+		const body = envelope.body
+		let result
+		try {
+			const request = parsePatch({ ifVersion: body.ifVersion, patch: body.patch }, { trusted: true })
+			if (Object.keys(request.patch).some((path) => !SETTINGS_TRUSTED_PATHS.includes(path))) {
+				throw new Error("trusted settings persistence path is not allowed")
+			}
+			const mutation = settingsMutationAuthority.patch(request, { publish: false })
+			result = { version: mutation.version, ok: true, changedPaths: mutation.changedPaths }
+			if (mutation.changedPaths.length > 0) {
+				settingsMutationCoordinator.publish(EVENT_SETTINGS_CHANGED, { paths: mutation.changedPaths, version: mutation.version })
+			}
+		} catch (error) {
+			const snapshot = runtime.settings.read()
+			result = {
+				version: snapshot.version,
+				ok: false,
+				changedPaths: [],
+				error: error?.message || String(error),
+				errorCode: error?.code || "INTERNAL",
+			}
+		}
+		shell.reply(envelope.id, { type: "settings.persist.result", ...result })
+	})
 })
 
 let shuttingDown = false

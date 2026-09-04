@@ -51,8 +51,11 @@ function buildPluginPatch(currentPlugins, changes) {
 	return patch
 }
 
-export function createLegacyPluginSettingsAdapter(store) {
+export function createLegacyPluginSettingsAdapter(store, { mutationAuthority } = {}) {
 	if (!store?.read || !store?.patch) throw new TypeError("plugin settings store requires read/patch")
+	const patch = mutationAuthority?.patch
+		? mutationAuthority.patch.bind(mutationAuthority)
+		: (...args) => store.patch(...args)
 	let baseline = store.read()
 	return {
 		get() {
@@ -65,7 +68,7 @@ export function createLegacyPluginSettingsAdapter(store) {
 			for (let attempt = 0; attempt < 4; attempt += 1) {
 				const current = store.read()
 				try {
-					store.patch({
+					patch({
 						ifVersion: current.version,
 						patch: buildPluginPatch(current.values.plugins ?? {}, changes),
 					})
@@ -85,10 +88,13 @@ function normalizeConfig(schema, value = {}) {
 	return Object.fromEntries(schema.properties.map((field) => [field.key, coerceConfigValue(value[field.key], field)]))
 }
 
-export function createPluginRegistry({ userDataDir, settings, logger } = {}) {
+export function createPluginRegistry({ userDataDir, settings, logger, mutationAuthority } = {}) {
 	if (typeof userDataDir !== "string" || !path.isAbsolute(userDataDir)) throw new TypeError("plugin userDataDir must be absolute")
 	const pluginDir = path.join(userDataDir, "plugins")
-	const settingsService = createLegacyPluginSettingsAdapter(settings)
+	const patch = mutationAuthority?.patch
+		? mutationAuthority.patch.bind(mutationAuthority)
+		: (...args) => settings.patch(...args)
+	const settingsService = createLegacyPluginSettingsAdapter(settings, { mutationAuthority: { patch } })
 	fs.mkdirSync(pluginDir, { recursive: true })
 
 	const definitions = () => {
@@ -128,7 +134,7 @@ export function createPluginRegistry({ userDataDir, settings, logger } = {}) {
 			const previous = isRecord(current.values.plugins?.[section]) ? current.values.plugins[section] : {}
 			const next = mutate(structuredClone(previous))
 			try {
-				settings.patch({ ifVersion: current.version, patch: { [`plugins.${section}`]: next } })
+				patch({ ifVersion: current.version, patch: { [`plugins.${section}`]: next } })
 				return settings.read()
 			} catch (error) {
 				if (error?.code !== "CONFLICT" || attempt === 3) throw error

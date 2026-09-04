@@ -162,6 +162,20 @@ describe("T22 SSE hook seams", () => {
 		])
 	})
 
+	it("T41 preload forwards runtime cursor status over the existing settings lifecycle bridge", async () => {
+		const vm = require("node:vm")
+		const source = require("node:fs").readFileSync("control-center-preload.js", "utf8")
+		const exposed = {}
+		const handlers = {}
+		const ipcRenderer = { on: (channel, handler) => { handlers[channel] = handler }, removeListener: () => {}, invoke: async () => ({}), send: () => {} }
+		vm.runInNewContext(source, { require: (name) => name === "electron" ? { contextBridge: { exposeInMainWorld: (key, value) => { exposed[key] = value } }, ipcRenderer } : require(name), console, setTimeout })
+		const statuses = []
+		exposed.openpetBackend.onRuntimeStatusChanged((value) => statuses.push(value))
+		handlers["settings:changed"]({}, { systemCursorStatus: { supported: true, platform: "darwin", active: true, helperPid: 77 } })
+		assert.deepEqual(JSON.parse(JSON.stringify(exposed.openpetBackend.getRuntimeStatus())), { supported: true, platform: "darwin", active: true, helperPid: 77 })
+		assert.deepEqual(JSON.parse(JSON.stringify(statuses)), [{ supported: true, platform: "darwin", active: true, helperPid: 77 }])
+	})
+
 	it("T32 JobPanel refreshes when a late backend opens without a business event", async () => {
 		const { shouldRefreshOnSseState } = await import("../../src/control-center/src/features/jobs/policy.ts")
 		assert.equal(shouldRefreshOnSseState("unavailable", "open"), true)

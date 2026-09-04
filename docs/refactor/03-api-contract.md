@@ -140,8 +140,8 @@
 
 | 方法 | 路径 | 源 IPC | 说明 |
 | --- | --- | --- | --- |
-| GET | `/settings` | `SETTINGS_GET` | 全量读,已脱敏 |
-| PATCH | `/settings` | `SETTINGS_SAVE` | **改为部分更新**,带 `ifVersion` 乐观锁 |
+| GET | `/settings` | — | 全量读,已脱敏 |
+| PATCH | `/settings` | — | **改为部分更新**,带 `ifVersion` 乐观锁 |
 | POST | `/settings/cursor/import` | `SETTINGS_IMPORT_CURSOR` | 传路径(弹框在 Shell) |
 | POST | `/settings/preview-scale` | `SETTINGS_PREVIEW_SCALE` | 预览 |
 | GET | `/settings/schema` | 新增 | 前端动态渲染用 |
@@ -393,6 +393,9 @@ type BackendToShell =
   | { type: "tray.setBadge"; count: number }
   | { type: "ready"; port: number; apiVersion: "v1"; pid: number }
   | { type: "degraded"; reason: string }
+  | { type: "settings.changed"; paths: string[]; version: number }
+  | { type: "settings.apply.request"; paths: string[]; version: number; values?: Record<string, unknown> }
+  | { type: "settings.persist.result"; version: number; ok: boolean; changedPaths: string[]; error?: string; errorCode?: string }
 
 type ShellToBackend =
   | { type: "init"; userDataPath: string; sessionToken: string; logLevel: string }
@@ -400,7 +403,22 @@ type ShellToBackend =
   | { type: "pet.stateSnapshot"; state: PetState }
   | { type: "dialog.result"; requestId: string; paths: string[] | null }
   | { type: "power.suspend" | "power.resume" }
+  | { type: "settings.apply.result"; version: number; ok: boolean; error?: string }
+  | { type: "settings.persist.request"; ifVersion: number; patch: Record<string, unknown> }
 ```
+
+`settings.persist.request` 是仅供 Shell 使用的进程内持久化边界，当前只允许
+`petBehavior.home.anchor`。HTTP `PATCH /settings` 对该路径一律返回 `403`，不接受
+可由 renderer 伪造的 `x-client` 头；Backend 以同 envelope id 回复
+`settings.persist.result`，并在成功后发布 settled 的 `settings.changed`。
+
+设置 PATCH 先由 Backend 写入 canonical envelope，再通过 `settings.apply.request`
+等待 Shell 完成必要的 host effects；只有收到同一 envelope id 的成功
+`settings.apply.result` 后，HTTP 才返回成功并发布 `settings.changed`。失败时 Backend
+用版本锁补偿 canonical 写入并返回错误，避免 SSE 反映未 settled 的状态。普通
+`GET /settings` 在 mutation settled 前不会读取 transient snapshot；`settings.apply.request`
+只携带 host effect 所需的 canonical `values`，因此 Shell 不需要在 Backend 等待 host
+apply 时回读 GET，避免请求环死锁。
 
 **规则**:
 

@@ -47,7 +47,7 @@ const normalizeRepairCandidate = (cursor) => {
   })
 }
 
-const registerCursorRepair = ({ cursorAssetService, petService, appLogService }) => {
+const registerCursorRepair = ({ cursorAssetService, petService, appLogService, persistCanonicalSettings }) => {
   const initial = petService.getSettings()
   const initialCustomCursorValues = Array.isArray(initial.customCursors) ? initial.customCursors : []
   const initialCustomCursorHasUrls = initialCustomCursorValues.map((cursor) => Boolean(cursor?.assetUrl))
@@ -85,7 +85,7 @@ const registerCursorRepair = ({ cursorAssetService, petService, appLogService })
   return Promise.all([
     ...initialCustomCursors.map(repairOne),
     repairedActiveOutsideCollection
-  ]).then((results) => {
+  ]).then(async (results) => {
     const repaired = results.slice(0, initialCustomCursors.length)
     const activeRepair = activeIndex >= 0 ? repaired[activeIndex] : results.at(-1)
     const changed = repaired.some((cursor, index) => hasCursorRepairChanged(initialCustomCursors[index], cursor)) || (
@@ -93,10 +93,19 @@ const registerCursorRepair = ({ cursorAssetService, petService, appLogService })
     )
     if (!changed) return petService.getSettings()
     const byId = new Map(repaired.map((cursor, index) => [cursor.id, { before: initialCustomCursors[index], repaired: cursor }]))
-    const update = (updater) => petService.updateSettings
-      ? petService.updateSettings(updater)
-      : petService.saveSettings(updater(petService.getSettings()))
-    const saved = update((latest) => ({
+		const update = (updater) => {
+			const latest = structuredClone(petService.getSettings())
+			const next = updater(latest)
+			if (persistCanonicalSettings) {
+				if (typeof petService.applySettings === 'function') petService.applySettings(next)
+				else petService.saveSettings?.(next)
+				return next
+			}
+			return petService.updateSettings
+				? petService.updateSettings(updater)
+				: petService.saveSettings(updater(petService.getSettings()))
+		}
+    const nextSettings = update((latest) => ({
       ...latest,
       customCursor: activeRepair && hasIncompleteCustomCursorMetrics(latest.customCursor)
         ? mergeActiveCursorRepair(activeBefore, activeRepair, latest.customCursor)
@@ -109,6 +118,9 @@ const registerCursorRepair = ({ cursorAssetService, petService, appLogService })
           return repair ? mergeCursorRepair(repair.before, repair.repaired, cursor) : cursor
         })
     }))
+	const persistence = typeof persistCanonicalSettings === 'function'
+		? Promise.resolve(persistCanonicalSettings({ settings: nextSettings, paths: ['customCursor', 'customCursors'] }))
+      : null
     for (const { before, repaired: repair } of byId.values()) {
       if (!hasCursorRepairChanged(before, repair)) continue
       appLogService?.record?.({
@@ -120,7 +132,8 @@ const registerCursorRepair = ({ cursorAssetService, petService, appLogService })
         details: { fileName: repair.fileName, enabled: repair.enabled }
       })
     }
-    return saved
+    if (persistence) await persistence
+    return nextSettings
   })
 }
 const maybeStartLocalHttp = ({ petService, localHttpService, normalizeLocalHttpConfig }) => {
@@ -147,7 +160,8 @@ const runPostPluginStartupSideEffects = ({
   cursorRepairPromise = Promise.resolve(),
   systemCursorService,
   appLogService,
-  onSystemCursorFallback = () => {}
+  onSystemCursorFallback = () => {},
+  persistSystemCursorFallback
 }) => {
   maybeStartLocalHttp({ petService, localHttpService, normalizeLocalHttpConfig })
   syncLoginItemSettings(petService.getSettings().autoStart)
@@ -158,8 +172,13 @@ const runPostPluginStartupSideEffects = ({
     } catch (error) {
       const currentSettings = petService.getSettings()
       const fallbackSettings = currentSettings.customCursorScope === 'system'
-        ? petService.saveSettings({ ...currentSettings, customCursorScope: 'openpet' })
+        ? { ...currentSettings, customCursorScope: 'openpet' }
         : currentSettings
+      const persistedFallback = currentSettings.customCursorScope === 'system'
+        ? (typeof persistSystemCursorFallback === 'function'
+          ? await persistSystemCursorFallback(fallbackSettings)
+          : petService.saveSettings(fallbackSettings))
+        : fallbackSettings
       try {
         appLogService?.record?.({
           scope: 'system-cursor',
@@ -171,7 +190,7 @@ const runPostPluginStartupSideEffects = ({
       } catch (_) {
         // Startup fallback must not depend on logging availability.
       }
-      onSystemCursorFallback(fallbackSettings)
+      onSystemCursorFallback(persistedFallback || fallbackSettings)
     }
   })
 }

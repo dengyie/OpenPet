@@ -8,7 +8,7 @@ let settingsApi
 describe("T41 settings HTTP cutover", async () => {
 	settingsApi = await import("../../src/control-center/src/features/settings/api.ts")
 
-	it("maps a backend envelope to the existing view model without derived fields", () => {
+	it("maps backend settings while preserving the trusted runtime cursor capability", () => {
 		const view = settingsApi.settingsEnvelopeToViewModel({
 			version: 4,
 			values: {
@@ -19,10 +19,10 @@ describe("T41 settings HTTP cutover", async () => {
 				customCursor: { enabled: true, assetPath: "/private/cursor.png" },
 				systemCursorStatus: { supported: true, active: true },
 			},
-		})
+		}, { supported: true, platform: 'darwin', active: true, helperPid: 77 })
 		assert.equal(view.scale, 1.25)
 		assert.deepEqual(view.home, { enabled: true, radius: "large", hasAnchor: true })
-		assert.deepEqual(view.systemCursorStatus, { supported: false, platform: 'unknown', active: false, helperPid: 0 })
+		assert.deepEqual(view.systemCursorStatus, { supported: true, platform: 'darwin', active: true, helperPid: 77 })
 	})
 
 	it("creates a canonical point-path diff and excludes derived/runtime fields", () => {
@@ -60,5 +60,19 @@ describe("T41 settings HTTP cutover", async () => {
 			["PATCH", { ifVersion: 9, patch: { scale: 2 }}],
 		])
 		assert.equal(result.version, 10)
+	})
+
+	it("accepts only the newest settings reload response and never regresses version", async () => {
+		assert.equal(settingsApi.shouldAcceptSettingsSnapshot({ requestSequence: 2, latestRequestSequence: 2, snapshotVersion: 5, acceptedVersion: 0 }), true)
+		assert.equal(settingsApi.shouldAcceptSettingsSnapshot({ requestSequence: 1, latestRequestSequence: 2, snapshotVersion: 4, acceptedVersion: 5 }), false)
+		assert.equal(settingsApi.shouldAcceptSettingsSnapshot({ requestSequence: 2, latestRequestSequence: 2, snapshotVersion: 4, acceptedVersion: 5 }), false)
+		assert.equal(settingsApi.shouldAcceptSettingsSnapshot({ requestSequence: 1, latestRequestSequence: 2, snapshotVersion: 4, acceptedVersion: 10 }), false)
+	})
+
+	it("save reconciliation advances the reload barrier and preserves runtime cursor capability", () => {
+		const source = require("node:fs").readFileSync("src/control-center/src/hooks/usePetSettingsPane.ts", "utf8")
+		assert.match(source, /settingsReloadSequenceRef\.current \+= 1/)
+		assert.match(source, /settingsEnvelopeToViewModel\(savedSnapshot, runtimeStatus\)/)
+		assert.match(source, /acceptedSettingsVersionRef\.current = Math\.max\(acceptedSettingsVersionRef\.current, savedSnapshot\.version\)/)
 	})
 })

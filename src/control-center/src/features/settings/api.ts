@@ -12,6 +12,17 @@ import type { ControlCenterSettings } from '../../../../shared/openpet-contracts
 export type SettingsSnapshot = z.infer<typeof settingsEnvelopeSchema>
 export type SettingsPatch = z.infer<typeof settingsPatchRequestSchema>
 
+export function shouldAcceptSettingsSnapshot({ requestSequence, latestRequestSequence, snapshotVersion, acceptedVersion }: {
+  requestSequence: number
+  latestRequestSequence: number
+  snapshotVersion: number
+  acceptedVersion: number
+}) {
+  return requestSequence === latestRequestSequence
+    && Number.isInteger(snapshotVersion)
+    && snapshotVersion >= acceptedVersion
+}
+
 type SettingsApi = {
   get: () => Promise<SettingsSnapshot>
   patch: (body: SettingsPatch) => Promise<z.infer<typeof settingsPatchResponseSchema>>
@@ -23,7 +34,7 @@ const equal = (left: unknown, right: unknown) => {
 }
 
 /** Convert the backend's host-shaped values into the pre-existing pane model. */
-export function settingsEnvelopeToViewModel(envelope: SettingsSnapshot): ControlCenterSettings {
+export function settingsEnvelopeToViewModel(envelope: SettingsSnapshot, runtimeStatus?: Partial<ControlCenterSettings['systemCursorStatus']>): ControlCenterSettings {
   const values = envelope.values as Record<string, any>
   const behavior = values.petBehavior && typeof values.petBehavior === 'object' ? values.petBehavior : {}
   const home = behavior.home && typeof behavior.home === 'object' ? behavior.home : {}
@@ -38,7 +49,7 @@ export function settingsEnvelopeToViewModel(envelope: SettingsSnapshot): Control
       hasAnchor: Boolean(home.anchor),
     },
     petBubbleChat: { ...defaultSettings.petBubbleChat, ...(values.petBubbleChat || {}) },
-    systemCursorStatus: { ...defaultSettings.systemCursorStatus },
+    systemCursorStatus: { ...defaultSettings.systemCursorStatus, ...(runtimeStatus || {}) },
   })
   return next
 }

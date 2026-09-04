@@ -273,9 +273,22 @@ contextBridge.exposeInMainWorld('controlCenterAPI', {
 })
 
 let currentBackend = null
+let currentRuntimeStatus = { supported: false, platform: 'unknown', active: false, helperPid: 0 }
 const backendListeners = new Set()
-const notifyBackend = (backend) => {
+const runtimeListeners = new Set()
+const notifyRuntimeStatus = (status) => {
+  if (!status || typeof status !== 'object') return
+  currentRuntimeStatus = {
+    supported: Boolean(status.supported),
+    platform: typeof status.platform === 'string' ? status.platform : 'unknown',
+    active: Boolean(status.active),
+    helperPid: Number.isFinite(Number(status.helperPid)) ? Number(status.helperPid) : 0
+  }
+  for (const listener of runtimeListeners) listener(currentRuntimeStatus)
+}
+const notifyBackend = (backend, runtimeStatus) => {
   currentBackend = backend || null
+  notifyRuntimeStatus(runtimeStatus)
   for (const listener of backendListeners) listener(currentBackend)
 }
 contextBridge.exposeInMainWorld('openpetBackend', {
@@ -284,11 +297,18 @@ contextBridge.exposeInMainWorld('openpetBackend', {
     if (typeof listener !== 'function') return () => {}
     backendListeners.add(listener)
     return () => backendListeners.delete(listener)
+  },
+  getRuntimeStatus: () => currentRuntimeStatus,
+  onRuntimeStatusChanged: (listener) => {
+    if (typeof listener !== 'function') return () => {}
+    runtimeListeners.add(listener)
+    return () => runtimeListeners.delete(listener)
   }
 })
 const isBackendPayload = (payload) => Boolean(
   payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, '__openpetBackend')
 )
 ipcRenderer.on(IPC.SETTINGS_CHANGED, (_event, payload) => {
-  if (isBackendPayload(payload)) notifyBackend(payload.__openpetBackend)
+  if (isBackendPayload(payload)) notifyBackend(payload.__openpetBackend, payload.__openpetRuntimeStatus)
+  else if (payload?.systemCursorStatus) notifyRuntimeStatus(payload.systemCursorStatus)
 })

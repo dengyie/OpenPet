@@ -15,6 +15,27 @@ function failureReason(error) {
 	return error?.code || error?.message || "SIDECAR_UNAVAILABLE"
 }
 
+function validatePendingResponse(raw, responseType) {
+	if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return "response is not an object"
+	if (raw.v !== 1) return `unexpected response version: ${String(raw.v)}`
+	if (typeof raw.id !== "string" || raw.id.length === 0) return "response has an invalid id"
+	if (!Number.isInteger(raw.at) || raw.at <= 0) return "response has an invalid timestamp"
+	const body = raw.body
+	if (body === null || typeof body !== "object" || Array.isArray(body) || body.type !== responseType) {
+		return `unexpected sidecar response: ${body?.type || "unknown"}`
+	}
+	if (responseType === "settings.persist.result") {
+		if (!Number.isInteger(body.version) || body.version < 0) return "settings persistence response has an invalid version"
+		if (typeof body.ok !== "boolean") return "settings persistence response has an invalid ok field"
+		if (!Array.isArray(body.changedPaths) || body.changedPaths.some((path) => typeof path !== "string")) {
+			return "settings persistence response has invalid changedPaths"
+		}
+		if (body.error !== undefined && typeof body.error !== "string") return "settings persistence response has an invalid error"
+		if (body.errorCode !== undefined && typeof body.errorCode !== "string") return "settings persistence response has an invalid errorCode"
+	}
+	return null
+}
+
 async function createDefaultInitBody({ app, getSettings }) {
 	const settings = await getSettings?.()
 	return {
@@ -35,6 +56,15 @@ function createSidecarRuntimeCoordinator(options = {}) {
 	let startPromise = null
 	let stopPromise = null
 	let generation = 0
+	let requestSequence = 0
+	const backendPending = new Map()
+	const rejectBackendPending = (reason) => {
+		for (const pending of backendPending.values()) {
+			clearTimeout(pending.timer)
+			pending.reject(new Error(reason))
+		}
+		backendPending.clear()
+	}
 
 	function publish(nextState) {
 		state = nextState
@@ -76,17 +106,30 @@ function createSidecarRuntimeCoordinator(options = {}) {
 					initBody,
 					logger: options.logger,
 					onMessage(raw) {
+					const pending = backendPending.get(raw?.id)
+					if (pending) {
+						backendPending.delete(raw.id)
+						clearTimeout(pending.timer)
+						const validationError = validatePendingResponse(raw, pending.responseType)
+						if (validationError) {
+							pending.reject(new Error(validationError))
+						} else {
+							pending.resolve(raw)
+						}
+							return
+						}
 						Promise.resolve(messageHandler?.handle?.(raw)).then((handled) => {
 							if (handled && raw?.body?.type === "degraded") degrade(raw.body.reason, currentGeneration)
 						}).catch((error) => {
 							safeLog(options.logger, "error", "sidecar message handling failed", { error: String(error) })
 						})
 					},
-					onExit(code) {
+						onExit(code) {
 						exitedBeforeReady = true
 						earlyExitReason = code == null ? "SIDECAR_EXITED" : `SIDECAR_EXIT_${code}`
 						if (currentGeneration !== generation || state.status === "stopped") return
 						child = null
+						rejectBackendPending("sidecar exited")
 						degrade(earlyExitReason, currentGeneration)
 					},
 				})
@@ -122,6 +165,7 @@ function createSidecarRuntimeCoordinator(options = {}) {
 						onDashboard: options.onDashboard,
 					productionService: options.productionService,
 					onSettingsChanged: options.onSettingsChanged,
+					onSettingsApplyRequest: options.onSettingsApplyRequest,
 					})
 				const backend = { baseUrl: result.baseUrl, sessionToken: result.sessionToken }
 				publish({ status: "ready", backend, reason: null })
@@ -132,6 +176,7 @@ function createSidecarRuntimeCoordinator(options = {}) {
 				degrade(failureReason(error), currentGeneration)
 				return null
 			} finally {
+				rejectBackendPending("sidecar unavailable")
 				startPromise = null
 			}
 		})()
@@ -144,6 +189,7 @@ function createSidecarRuntimeCoordinator(options = {}) {
 		const currentChild = child
 		const currentPid = Number(currentChild?.pid) || 0
 		generation += 1
+		rejectBackendPending("sidecar stopped")
 		child = null
 		publish({ status: "stopped", backend: null, reason: null })
 		stopPromise = (async () => {
@@ -167,6 +213,40 @@ function createSidecarRuntimeCoordinator(options = {}) {
 		stop,
 		getBackend: () => state.status === "ready" ? { ...state.backend } : null,
 		getState: () => ({ ...state, backend: state.backend ? { ...state.backend } : null }),
+		requestBackend(body, requestOptions = {}) {
+			if (state.status !== "ready" || !child?.send) return Promise.reject(new Error("sidecar unavailable"))
+			if (
+				body?.type !== "settings.persist.request"
+				|| !Number.isInteger(body.ifVersion)
+				|| body.ifVersion < 0
+				|| !body.patch
+				|| typeof body.patch !== "object"
+				|| Array.isArray(body.patch)
+			) throw new Error("invalid backend settings persistence request")
+			const id = `shell-${process.pid}-${++requestSequence}`
+			const envelope = { v: 1, id, at: Date.now(), body: structuredClone(body) }
+			const timeoutMs = Number.isInteger(requestOptions.timeoutMs) ? requestOptions.timeoutMs : 60_000
+			return new Promise((resolve, reject) => {
+				const timer = setTimeout(() => {
+					backendPending.delete(id)
+					reject(new Error(`sidecar request timed out: ${body.type}`))
+				}, timeoutMs)
+				timer.unref?.()
+				backendPending.set(id, { resolve, reject, timer, responseType: "settings.persist.result" })
+				try {
+					child.send(envelope, (error) => {
+						if (!error) return
+						backendPending.delete(id)
+						clearTimeout(timer)
+						reject(error)
+					})
+				} catch (error) {
+					backendPending.delete(id)
+					clearTimeout(timer)
+					reject(error)
+				}
+			})
+		},
 		onChanged(listener) {
 			if (typeof listener !== "function") throw new TypeError("listener must be a function")
 			listeners.add(listener)

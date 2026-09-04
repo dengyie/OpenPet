@@ -259,6 +259,35 @@ test('settings host effects preserve independent overlapping field updates', asy
   assert.equal(finalSettings.walkSpeed, 3)
 })
 
+test('settings host effects serialize concurrent snapshots without losing the later field update', async () => {
+  let releaseFirstSync
+  let markFirstSync
+  const firstSyncStarted = new Promise((resolve) => { markFirstSync = resolve })
+  let currentSettings = createCursorSettingsFixture()
+  const petService = {
+    getSettings: () => currentSettings,
+    applySettings: (settings) => { currentSettings = settings; return settings }
+  }
+  let syncCalls = 0
+  const systemCursorService = {
+    sync: () => {
+      syncCalls += 1
+      if (syncCalls === 1) return new Promise((resolve) => { releaseFirstSync = resolve; markFirstSync() })
+      return Promise.resolve()
+    }
+  }
+  const apply = createSettingsHostEffect({ petService, systemCursorService })
+  const firstPrevious = petService.getSettings()
+  const first = apply({ settings: { ...firstPrevious, scale: 1.5 }, previousSettings: firstPrevious, version: 1 })
+  await firstSyncStarted
+  const secondPrevious = petService.getSettings()
+  const second = apply({ settings: { ...secondPrevious, walkSpeed: 3 }, previousSettings: secondPrevious, version: 2 })
+  releaseFirstSync()
+  await Promise.all([first, second])
+  assert.equal(currentSettings.scale, 1.5)
+  assert.equal(currentSettings.walkSpeed, 3)
+})
+
 test('settings host effect leaves scope unchanged when system cursor activation fails', async () => {
   const ipcMain = createIpcMainStub()
   let saveCalls = 0
@@ -670,6 +699,27 @@ test('settings:get cursor repair does not overwrite a replacement asset with sta
   assert.equal(replacement.fileName, 'replacement.png')
   assert.equal(replacement.width, 0)
   assert.equal(replacement.height, 0)
+})
+
+test('settings cursor repair persists repaired authority through the backend callback', async () => {
+  let settings = {
+    ...createCursorSettingsFixture(),
+    selectedCursorId: 'custom-pending',
+    customCursors: [{ id: 'custom-pending', source: 'uploaded', assetPath: '/tmp/pending.png', assetUrl: 'file:///tmp/pending.png', fileName: 'pending.png', width: 0, height: 0, baseWidth: 0, baseHeight: 0, hotspotX: 0, hotspotY: 0 }],
+    customCursor: { enabled: true, assetPath: '/tmp/pending.png', assetUrl: 'file:///tmp/pending.png', width: 0, height: 0 }
+  }
+  const persisted = []
+  const petService = {
+    getSettings: () => settings,
+    applySettings: (next) => { settings = next; return next }
+  }
+  await registerCursorRepair({
+    cursorAssetService: { repairCursor: async (cursor) => ({ ...cursor, width: 64, height: 64, hotspotX: 16, hotspotY: 16, baseWidth: 64, baseHeight: 64 }) },
+    petService,
+    persistCanonicalSettings: async (input) => persisted.push(input),
+    appLogService: { record: () => {} }
+  })
+  assert.deepEqual(persisted[0].paths, ['customCursor', 'customCursors'])
 })
 
 test('settings:get repairs malformed built-in cursor overrides from the built-in catalog without file repair', async () => {

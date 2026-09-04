@@ -71,7 +71,7 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 		}
 	}
 
-	function dispatch(body, correlateDialogRequest) {
+	function dispatch(body, correlateDialogRequest, options = {}) {
 		if (disposed) return null
 		if (body === null || typeof body !== "object" || typeof body.type !== "string") {
 			throw new Error("反向通道消息必须是带 type 的对象")
@@ -80,7 +80,7 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 			// R15:不在白名单里的类型直接报错,而不是默默发出去。
 			throw new Error("不在白名单里的反向通道消息类型: " + body.type)
 		}
-		const envelope = createEnvelope(body)
+		const envelope = createEnvelope(body, { id: options.id })
 		if (correlateDialogRequest && body.type === "dialog.request") {
 			envelope.body = { ...body, requestId: envelope.id }
 		}
@@ -88,8 +88,13 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 		return envelope
 	}
 
-	function sendBody(body) {
-		return dispatch(body, false)
+	function sendBody(body, options = {}) {
+		return dispatch(body, false, options)
+	}
+
+	function reply(id, body) {
+		if (typeof id !== "string" || id.length === 0) throw new Error("反向通道回复需要 envelope id")
+		return dispatch(body, false, { id })
 	}
 
 	function request(body, options = {}) {
@@ -137,7 +142,10 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 
 	function dispose() {
 		disposed = true
-		for (const awaiting of pending.values()) clearTimeout(awaiting.timer)
+		for (const awaiting of pending.values()) {
+			clearTimeout(awaiting.timer)
+			awaiting.reject(new Error("shellClient 已销毁"))
+		}
 		pending.clear()
 		for (const bucket of waiters.values()) {
 			for (const waiter of bucket) clearTimeout(waiter.timer)
@@ -147,5 +155,5 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 		handlers.clear()
 	}
 
-	return { receive, send: sendBody, request, waitFor, on, dispose }
+	return { receive, send: sendBody, reply, request, waitFor, on, dispose }
 }

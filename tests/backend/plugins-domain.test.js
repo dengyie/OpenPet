@@ -11,12 +11,15 @@ let createInitializedPluginService
 let createSettingsStore
 let ApiError
 let initializeBackendRuntime
+let createSettingsMutationCoordinator
+let createSettingsMutationAuthority
 
 test.before(async () => {
 	;({ createPluginService, createInitializedPluginService } = await import("../../services/backend/domains/plugins/index.js"))
 	;({ createSettingsStore } = await import("../../services/backend/domains/settings.js"))
 	;({ ApiError } = await import("../../services/backend/http/middleware.js"))
 	;({ initializeBackendRuntime } = await import("../../services/backend/routes/health.js"))
+	;({ createSettingsMutationCoordinator, createSettingsMutationAuthority } = await import("../../services/backend/routes/settings.js"))
 })
 
 function fixture(root, manifest) {
@@ -27,7 +30,7 @@ function fixture(root, manifest) {
 	return pluginDir
 }
 
-function createHarness(manifest) {
+function createHarness(manifest, { mutationAuthority } = {}) {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-backend-plugin-"))
 	const userDataDir = path.join(root, "user-data")
 	fs.mkdirSync(userDataDir, { recursive: true })
@@ -47,6 +50,7 @@ function createHarness(manifest) {
 		root: path.resolve(__dirname, "../.."),
 		userDataDir,
 		settings,
+		mutationAuthority,
 		logs: { appendPlugin: () => assert.fail("T24 must not write plugin runtime logs") },
 		logger: {
 			info: (message, details) => logs.push({ level: "info", message, details }),
@@ -57,6 +61,44 @@ function createHarness(manifest) {
 	})
 	return { root, userDataDir, source, settings, service, events, logs, lifecycle, bridge }
 }
+
+test("plugin settings mutation uses the shared authority during a pending HTTP host apply", async () => {
+	const harness = createHarness({
+		id: "authority-demo", name: "Authority Demo", version: "1.0.0",
+		configSchema: "config.json", main: "index.js",
+	}, {})
+	fs.writeFileSync(path.join(harness.source, "config.json"), JSON.stringify({ type: "object", properties: { greeting: { type: "string", default: "hi" } } }))
+	const coordinator = createSettingsMutationCoordinator({ emit: (name, payload) => harness.events.push({ name, payload }) })
+	const authority = createSettingsMutationAuthority({ store: harness.settings, coordinator })
+	const service = createPluginService({
+		root: path.resolve(__dirname, "../.."), userDataDir: harness.userDataDir,
+		settings: harness.settings, mutationAuthority: authority,
+		logs: { appendPlugin: () => {} }, logger: {}, bridge: harness.bridge,
+		emit: (name, payload) => harness.events.push({ name, payload }),
+	})
+	await service.install(harness.source)
+	harness.events.length = 0
+	const initialVersion = harness.settings.read().version
+	let releaseHost
+	const hostPending = new Promise((resolve) => { releaseHost = resolve })
+	const httpApply = coordinator.runHttp(async () => {
+		const current = harness.settings.read()
+		const httpMutation = authority.patch({ ifVersion: current.version, patch: { scale: 1.5 } }, { publish: false })
+		await hostPending
+		const deferred = coordinator.consumeDeferredEvents()
+		return { httpMutation, deferred }
+	})
+	await new Promise((resolve) => setImmediate(resolve))
+	assert.deepEqual(service.setConfig("authority-demo", { greeting: "hello" }), { greeting: "hello" })
+	releaseHost()
+	const settled = await httpApply
+	const finalVersion = harness.settings.read().version
+	assert.equal(finalVersion, initialVersion + 2)
+	assert.deepEqual(settled.deferred, [["settings.changed", { paths: ["plugins.config"], version: finalVersion }]])
+	assert.equal(settled.httpMutation.version, initialVersion + 1)
+	harness.events.push(["settings.changed", { paths: ["scale", "plugins.config"], version: finalVersion }])
+	assert.equal(harness.events.at(-1)[1].version, finalVersion)
+})
 
 test("plugin domain rejects invalid manifests with the dedicated 400 error", () => {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-plugin-invalid-"))
@@ -135,10 +177,18 @@ test("plugin PID cleanup runs before opening the backend store", async () => {
 
 test("initialized plugin service synchronizes bundled plugins before returning", () => {
 	const harness = createHarness({ id: "temporary", name: "Temporary", version: "1.0.0", main: "index.js" })
+	const authorityCalls = []
+	const mutationAuthority = {
+		patch(request) {
+			authorityCalls.push(request)
+			return harness.settings.patch(request)
+		},
+	}
 	const initialized = createInitializedPluginService({
 		root: path.resolve(__dirname, "../.."),
 		userDataDir: harness.userDataDir,
 		settings: harness.settings,
+		mutationAuthority,
 		bridge: harness.bridge,
 	})
 	assert.deepEqual(initialized.list().map((plugin) => plugin.id).sort(), [
@@ -146,6 +196,8 @@ test("initialized plugin service synchronizes bundled plugins before returning",
 		"openpet.creator-studio",
 		"openpet.im-gateway",
 	])
+	assert.ok(authorityCalls.length > 0)
+	assert.ok(authorityCalls.every((request) => Object.keys(request.patch).every((path) => path.startsWith("plugins."))))
 })
 
 test("plugin domain installs, configures, starts, rejects duplicate start, and stops", async () => {

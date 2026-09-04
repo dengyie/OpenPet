@@ -52,7 +52,9 @@ function sourcePaths(userDataDir) {
 	const rootSettings = join(userDataDir, "settings.json")
 	const backendSettings = join(userDataDir, "backend", "settings.json")
 	return {
-		settings: existsSync(rootSettings) ? rootSettings : backendSettings,
+		// backend/settings.json is the active authority after T41. A leftover
+		// legacy root file must never shadow a newer backend envelope.
+		settings: existsSync(backendSettings) ? backendSettings : rootSettings,
 		settingsTarget: backendSettings,
 		conversationStore: join(userDataDir, "ai-talk-store.json"),
 	}
@@ -189,7 +191,7 @@ export async function migrateFromJson({ db, userDataDir, now = () => Date.now(),
 		})
 		// T10 still reads backend/settings.json. Copy a legacy root settings file
 		// into that canonical location only after the SQLite transaction commits.
-		if (settings) writeJson(paths.settingsTarget, settings)
+		if (settings && paths.settings !== paths.settingsTarget) writeJson(paths.settingsTarget, settings)
 		logger?.info?.("JSON 数据迁移完成", { backupDir, imported })
 		return { imported, backupDir, skipped: false }
 	} catch (error) {

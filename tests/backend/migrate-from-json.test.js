@@ -40,6 +40,7 @@ async function openFile(userDataDir) {
 describe("T14 JSON → SQLite", () => {
 	it("normalizes a legacy root plain-object settings file to backend envelope", async () => {
 		const userDataDir = fixture()
+		fs.unlinkSync(path.join(userDataDir, "backend", "settings.json"))
 		fs.writeFileSync(path.join(userDataDir, "settings.json"), JSON.stringify({ scale: 1.5, petBehavior: { grounded: true } }))
 		const db = await openFile(userDataDir)
 		try {
@@ -48,6 +49,20 @@ describe("T14 JSON → SQLite", () => {
 				version: 0,
 				values: { scale: 1.5, petBehavior: { grounded: true } },
 			})
+		} finally {
+			db.close()
+			fs.rmSync(userDataDir, { recursive: true, force: true })
+		}
+	})
+
+	it("keeps the newer backend envelope authoritative when a stale root file remains", async () => {
+		const userDataDir = fixture()
+		fs.writeFileSync(path.join(userDataDir, "settings.json"), JSON.stringify({ scale: 0.25 }))
+		const db = await openFile(userDataDir)
+		try {
+			await migration.migrateFromJson({ db, userDataDir, now: () => "2026-08-21T00:00:00.000Z" })
+			assert.deepEqual(JSON.parse(fs.readFileSync(path.join(userDataDir, "backend", "settings.json"))), { version: 7, values: { ai: { tone: "warm" } } })
+			assert.equal(db.prepare("SELECT version FROM settings WHERE id = 1").get().version, 7)
 		} finally {
 			db.close()
 			fs.rmSync(userDataDir, { recursive: true, force: true })

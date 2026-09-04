@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { controlCenterAPI as api } from '../api/control-center-api'
 import { backendClient } from '../api/backend-client.ts'
-import { applyCanonicalSettingsPatch, createCanonicalSettingsPatch, createSettingsApi, saveSettingsWithRetry, settingsEnvelopeToViewModel, type SettingsSnapshot } from '../features/settings/api.ts'
+import { applyCanonicalSettingsPatch, createCanonicalSettingsPatch, createSettingsApi, saveSettingsWithRetry, settingsEnvelopeToViewModel, shouldAcceptSettingsSnapshot, type SettingsSnapshot } from '../features/settings/api.ts'
 import { cloneSettings, defaultSettings } from '../lib/defaults'
 import { messageFromError } from '../lib/errors'
 import { shouldRestoreScalePreview } from '../lib/pet-scale-preview.mjs'
@@ -42,6 +42,8 @@ const withDemoRuntimeFields = (settings: ControlCenterSettings) => {
   }
 }
 
+const runtimeCursorStatus = () => window.openpetBackend?.getRuntimeStatus?.()
+
 const normalizeCustomCursorRecords = (cursors: Partial<CustomCursorRecord>[] | null | undefined) => (
   normalizeCustomCursorCollection(cursors) as CustomCursorRecord[]
 )
@@ -69,21 +71,31 @@ export function usePetSettingsPane() {
   const [settings, setSettings] = useState<ControlCenterSettings>(defaultSettings)
   const [originalSettings, setOriginalSettings] = useState<ControlCenterSettings>(defaultSettings)
   const [status, setStatus] = useState('')
+  const [runtimeStatus, setRuntimeStatus] = useState<Partial<ControlCenterSettings['systemCursorStatus']>>(() => runtimeCursorStatus() || {})
   const originalRef = useRef<ControlCenterSettings>(defaultSettings)
   const saveRevisionRef = useRef(0)
   const appliedSaveRevisionRef = useRef(0)
   const pendingSaveCountRef = useRef(0)
   const snapshotRef = useRef<SettingsSnapshot | null>(null)
+  const settingsReloadSequenceRef = useRef(0)
+  const acceptedSettingsVersionRef = useRef(-1)
   const settingsHttpApi = useMemo(() => createSettingsApi(backendClient), [])
   const sse = useSse(['settings'])
 
   const reloadSettings = async (mounted: () => boolean) => {
+    const requestSequence = ++settingsReloadSequenceRef.current
     const snapshot = await settingsHttpApi.get()
-    if (!mounted()) return
+    if (!mounted() || !shouldAcceptSettingsSnapshot({
+      requestSequence,
+      latestRequestSequence: settingsReloadSequenceRef.current,
+      snapshotVersion: snapshot.version,
+      acceptedVersion: acceptedSettingsVersionRef.current,
+    })) return
+    acceptedSettingsVersionRef.current = snapshot.version
     snapshotRef.current = snapshot
     // The browser-only demo has no Shell host-effects channel. Supply the
     // deterministic capability status that the real host normally broadcasts.
-    const nextSettings = withDemoRuntimeFields(settingsEnvelopeToViewModel(snapshot))
+    const nextSettings = withDemoRuntimeFields(settingsEnvelopeToViewModel(snapshot, runtimeStatus))
     originalRef.current = cloneSettings(nextSettings)
     setSettings(cloneSettings(nextSettings))
     setOriginalSettings(cloneSettings(nextSettings))
@@ -99,6 +111,13 @@ export function usePetSettingsPane() {
     })
     return () => { mounted = false }
   }, [settingsHttpApi])
+
+  useEffect(() => window.openpetBackend?.onRuntimeStatusChanged?.((next) => {
+    setRuntimeStatus(next)
+    setSettings((current) => cloneSettings({ ...current, systemCursorStatus: { ...current.systemCursorStatus, ...next } }))
+    setOriginalSettings((current) => cloneSettings({ ...current, systemCursorStatus: { ...current.systemCursorStatus, ...next } }))
+    originalRef.current = cloneSettings({ ...originalRef.current, systemCursorStatus: { ...originalRef.current.systemCursorStatus, ...next } })
+  }), [])
 
   const lastEventIdRef = useRef<string | null>(null)
   useEffect(() => {
@@ -129,6 +148,9 @@ export function usePetSettingsPane() {
   const persistSettings = async (nextSettings: ControlCenterSettings, successMessage: string, errorFallback: string) => {
     const submittedSettings = cloneSettings(nextSettings)
     const revision = ++saveRevisionRef.current
+    // Invalidate GETs already in flight; a response started before this write
+    // must not overwrite the optimistic mutation after it settles.
+    settingsReloadSequenceRef.current += 1
     pendingSaveCountRef.current += 1
     setSaving(true)
     try {
@@ -142,7 +164,8 @@ export function usePetSettingsPane() {
       const submittedPatch = createCanonicalSettingsPatch(originalRef.current, submittedSettings)
       const savedSnapshot = { version: saved.version, values: applyCanonicalSettingsPatch(saved.snapshot?.values || base.values, submittedPatch) }
       snapshotRef.current = savedSnapshot
-      const savedSettings = withDemoRuntimeFields(settingsEnvelopeToViewModel(savedSnapshot))
+      acceptedSettingsVersionRef.current = Math.max(acceptedSettingsVersionRef.current, savedSnapshot.version)
+      const savedSettings = withDemoRuntimeFields(settingsEnvelopeToViewModel(savedSnapshot, runtimeStatus))
       if (!shouldApplySaveResponse(revision, appliedSaveRevisionRef.current)) return null
       appliedSaveRevisionRef.current = revision
       originalRef.current = savedSettings

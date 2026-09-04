@@ -1,12 +1,12 @@
 "use strict"
 
 const CANONICAL_PATHS = Object.freeze([
-	"scale", "walkSpeed", "walkDuration", "bubbleDuration", "menuPosition", "autoStart",
+	"pet.scale", "scale", "walkSpeed", "walkDuration", "bubbleDuration", "menuPosition", "autoStart",
 	"selectedCursorId", "customCursor", "customCursors", "hiddenCursorIds", "customCursorScope",
-	"petBehavior.grounded", "petBehavior.home.enabled", "petBehavior.home.radius",
+	"petBehavior.grounded", "petBehavior.home.enabled", "petBehavior.home.radius", "petBehavior.home.anchor",
 	"petBubbleChat.enabled", "petBubbleChat.autoPopup", "petBubbleChat.autoHide", "petBubbleChat.pinOnInteraction",
 ])
-const NORMALIZATION_PATHS = Object.freeze(["petBehavior.home.anchor"])
+const PERSISTABLE_PATHS = CANONICAL_PATHS
 
 const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value)
 
@@ -67,19 +67,35 @@ function canonicalHostValues(settings, paths) {
 	return result
 }
 
-async function persistNormalization({ getBackend, fetchImpl, settings, paths, ifVersion }) {
+async function persistSettingsPaths({ getBackend, fetchImpl, requestBackend, settings, paths, ifVersion }) {
 	const backend = getBackend()
 	if (!backend) return null
-	const patch = Object.fromEntries(NORMALIZATION_PATHS
+	const patch = Object.fromEntries(PERSISTABLE_PATHS
 		.filter((path) => paths.includes(path) && getPath(settings, path) !== undefined)
 		.map((path) => [path, getPath(settings, path)]))
 	if (Object.keys(patch).length === 0) return null
+	let version = Number.isInteger(ifVersion) ? ifVersion : (await fetchSnapshot(backend, fetchImpl)).version
+	let trustedChangedPaths = []
+	if (Object.hasOwn(patch, "petBehavior.home.anchor")) {
+		if (typeof requestBackend !== "function") throw new Error("trusted settings persistence bridge unavailable")
+		const trustedPatch = { "petBehavior.home.anchor": patch["petBehavior.home.anchor"] }
+		let reply = await requestBackend({ type: "settings.persist.request", ifVersion: version, patch: trustedPatch })
+		if (reply?.body?.ok !== true && reply?.body?.errorCode === "CONFLICT") {
+			version = (await fetchSnapshot(backend, fetchImpl)).version
+			reply = await requestBackend({ type: "settings.persist.request", ifVersion: version, patch: trustedPatch })
+		}
+		if (reply?.body?.ok !== true) throw new Error(`Backend trusted settings persistence failed: ${reply?.body?.error || "unknown error"}`)
+		version = reply.body.version
+		trustedChangedPaths = Array.isArray(reply.body.changedPaths) ? reply.body.changedPaths : []
+		delete patch["petBehavior.home.anchor"]
+	}
+	if (Object.keys(patch).length === 0) return { version, changedPaths: trustedChangedPaths }
 	const send = (version) => fetchImpl(`${backend.baseUrl.replace(/\/+$/, "")}/settings`, {
 		method: "PATCH",
 		headers: { authorization: `Bearer ${backend.sessionToken}`, "content-type": "application/json" },
 		body: JSON.stringify({ ifVersion: version, patch }),
 	})
-	let response = await send(ifVersion)
+	let response = await send(version)
 	if (response.status === 409) {
 		const latest = await fetchSnapshot(backend, fetchImpl)
 		response = await send(latest.version)
@@ -99,12 +115,12 @@ async function fetchSnapshot(backend, fetchImpl) {
 	return snapshot
 }
 
-function createSettingsSidecarBridge({ getBackend, fetchImpl = globalThis.fetch, petService, applyHostSettings, sendToPetRenderer, logger } = {}) {
+function createSettingsSidecarBridge({ getBackend, fetchImpl = globalThis.fetch, requestBackend, petService, applyHostSettings, sendToPetRenderer, logger } = {}) {
 	if (typeof getBackend !== "function") throw new TypeError("createSettingsSidecarBridge 需要 getBackend")
 	if (typeof fetchImpl !== "function") throw new TypeError("createSettingsSidecarBridge 需要 fetchImpl")
 	let operation = Promise.resolve()
 
-	const apply = async (snapshot, paths) => {
+	const apply = async (snapshot, paths, { skipBackendRollback = false } = {}) => {
 		const current = petService?.getSettings?.() || {}
 		let merged = mergeCanonicalSettings(current, snapshot.values, paths)
 		try {
@@ -113,7 +129,9 @@ function createSettingsSidecarBridge({ getBackend, fetchImpl = globalThis.fetch,
 				: await petService?.applySettings?.(merged)
 			if (applied && isObject(applied)) merged = applied
 		} catch (error) {
-			await rollbackBackend(snapshot, current, paths).catch((rollbackError) => logger?.error?.("回滚 backend settings 失败", { error: String(rollbackError) }))
+			if (!skipBackendRollback) {
+				await rollbackBackend(snapshot, current, paths).catch((rollbackError) => logger?.error?.("回滚 backend settings 失败", { error: String(rollbackError) }))
+			}
 			throw error
 		}
 		sendToPetRenderer?.(merged)
@@ -141,18 +159,22 @@ function createSettingsSidecarBridge({ getBackend, fetchImpl = globalThis.fetch,
 	}
 
 	const applyNotification = async (message) => {
-		const notification = message?.body?.type === "settings.changed" ? message.body : message
-		if (notification?.type && notification.type !== "settings.changed") return null
+		const notification = message?.body?.type === "settings.changed" || message?.body?.type === "settings.apply.request"
+			? message.body
+			: message
+		if (notification?.type && !["settings.changed", "settings.apply.request"].includes(notification.type)) return null
 		const backend = getBackend()
 		if (!backend) return null
 		try {
-			const snapshot = await fetchSnapshot(backend, fetchImpl)
+			const snapshot = notification?.type === "settings.apply.request" && isObject(notification.values)
+				? { version: notification.version, values: notification.values }
+				: await fetchSnapshot(backend, fetchImpl)
 			const latestBackend = getBackend()
 			if (!latestBackend || latestBackend.sessionToken !== backend.sessionToken) return null
-			return await apply(snapshot, notification?.paths)
+			return await apply(snapshot, notification?.paths, { skipBackendRollback: notification?.type === "settings.apply.request" })
 		} catch (error) {
 			logger?.warn?.("应用 sidecar settings snapshot 失败", { error: String(error) })
-			return null
+			throw error
 		}
 	}
 	const handle = (message) => {
@@ -175,8 +197,9 @@ function createSettingsSidecarBridge({ getBackend, fetchImpl = globalThis.fetch,
 		handle,
 		hydrate,
 		mergeCanonicalSettings,
-		fetchSnapshot,
-		persistNormalization: (input) => persistNormalization({ getBackend, fetchImpl, ...input }),
+		fetchSnapshot: (backend) => fetchSnapshot(backend, fetchImpl),
+		persistNormalization: (input) => persistSettingsPaths({ getBackend, fetchImpl, requestBackend, ...input }),
+		persistCanonicalSettings: (input) => persistSettingsPaths({ getBackend, fetchImpl, requestBackend, ...input }),
 	}
 }
 
