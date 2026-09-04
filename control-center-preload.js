@@ -157,8 +157,7 @@ contextBridge.exposeInMainWorld('controlCenterAPI', {
   importPetPack: (selectionId) => ipcRenderer.invoke(IPC.PET_PACKS_IMPORT, { selectionId }),
   exportPetPack: (packId) => ipcRenderer.invoke(IPC.PET_PACKS_EXPORT, { packId }),
   setActivePetPack: (packId) => ipcRenderer.invoke(IPC.PET_PACKS_SET_ACTIVE, { packId }),
-  // 主进程有两条活动宠物包变更通道（定向回执 PET_PACKS_ACTIVE_CHANGED 与
-  // 广播 CONTROL_CENTER_ACTIVE_PET_PACK_CHANGED），统一在此订阅，避免重复键覆盖。
+  // Subscribe to both active pet-pack channels.
   onActivePetPackChanged: (listener) => {
     if (typeof listener !== 'function') return () => {}
     const handler = (_event, payload) => listener(payload)
@@ -274,8 +273,7 @@ contextBridge.exposeInMainWorld('controlCenterAPI', {
 
 let currentBackend = null
 let currentRuntimeStatus = { supported: false, platform: 'unknown', active: false, helperPid: 0 }
-const backendListeners = new Set()
-const runtimeListeners = new Set()
+const backendListeners = new Set(), runtimeListeners = new Set()
 const notifyRuntimeStatus = (status) => {
   if (!status || typeof status !== 'object') return
   currentRuntimeStatus = {
@@ -284,29 +282,26 @@ const notifyRuntimeStatus = (status) => {
     active: Boolean(status.active),
     helperPid: Number.isFinite(Number(status.helperPid)) ? Number(status.helperPid) : 0
   }
-  for (const listener of runtimeListeners) listener(currentRuntimeStatus)
+  runtimeListeners.forEach((listener) => listener(currentRuntimeStatus))
 }
 const notifyBackend = (backend, runtimeStatus) => {
   currentBackend = backend || null
   notifyRuntimeStatus(runtimeStatus)
-  for (const listener of backendListeners) listener(currentBackend)
+  backendListeners.forEach((listener) => listener(currentBackend))
+}
+const addListener = (listeners, listener) => {
+  if (typeof listener !== 'function') return () => {}
+  listeners.add(listener)
+  return () => listeners.delete(listener)
 }
 contextBridge.exposeInMainWorld('openpetBackend', {
   getBackend: () => currentBackend,
-  onChanged: (listener) => {
-    if (typeof listener !== 'function') return () => {}
-    backendListeners.add(listener)
-    return () => backendListeners.delete(listener)
-  },
+  onChanged: (listener) => addListener(backendListeners, listener),
   getRuntimeStatus: () => currentRuntimeStatus,
-  onRuntimeStatusChanged: (listener) => {
-    if (typeof listener !== 'function') return () => {}
-    runtimeListeners.add(listener)
-    return () => runtimeListeners.delete(listener)
-  }
+  onRuntimeStatusChanged: (listener) => addListener(runtimeListeners, listener)
 })
 const isBackendPayload = (payload) => Boolean(
-  payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, '__openpetBackend')
+  payload && typeof payload === 'object' && Object.hasOwn(payload, '__openpetBackend')
 )
 ipcRenderer.on(IPC.SETTINGS_CHANGED, (_event, payload) => {
   if (isBackendPayload(payload)) notifyBackend(payload.__openpetBackend, payload.__openpetRuntimeStatus)
