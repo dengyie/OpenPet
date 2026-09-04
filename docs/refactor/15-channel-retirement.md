@@ -1,6 +1,6 @@
 # 15 · IPC 通道退役台账
 
-> v1.0 · 2026-09-04 · T40 · 以 `src/shared/ipc-channels.ts` 为当前清单
+> v1.1 · 2026-09-05 · T42 · 以 `src/shared/ipc-channels.ts` 为当前清单
 
 本台账登记当前 156 个 IPC 常量的去向。`keep` 是 02 篇允许长期存在的窗口/原生边界；`cutover:<domain>` 表示 03 篇已有 HTTP/SSE 对等入口；`blocked:Txx` 表示等待指定任务卡完成后再切换；`retired` 表示已从当前清单删除并保留历史记录；`dead` 仅用于确认没有生产调用方的遗留常量。
 
@@ -16,8 +16,8 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 | Current direct registrations | 148 |
 | Current event-only channels | 8 |
 | Current keep | 41 |
-| Current cutover | 53 |
-| Current blocked | 62 |
+| Current cutover | 51 |
+| Current blocked | 64 |
 | Current dead | 0 |
 | Historical retired | 2 |
 
@@ -177,9 +177,9 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 | `service:revoke-mcp-sessions` | `blocked:T45` | `Backend route not implemented: POST /service/token/revoke-sessions` | `src/main/ipc/register-service-ipc.js` | Waiting for T45 MCP sidecar migration; current backend route registry has no MCP session revoke endpoint | — |
 | `about:get-info` | `cutover:about` | `GET /about` | `src/main/ipc.js` | Existing backend route is the migration target | — |
 | `about:check-updates` | `cutover:about` | `POST /about/check-updates` | `src/main/ipc.js` | Existing backend route is the migration target | — |
-| `catalog:get` | `cutover:catalog` | `GET /catalog` | `src/main/ipc/register-catalog-ipc.js` | Existing backend route is the migration target | — |
+| `catalog:get` | `blocked:T42` | `GET /catalog` — incomplete `CatalogState` | `src/main/ipc/register-catalog-ipc.js` | Backend cannot reproduce the Shell-owned local blocklist through existing contracts: retained blocklist IPC writes root settings while `runtime.settings` owns a separate backend envelope; the route also lacks the Shell catalog normalization and installed-item annotations required by the Control Center | — |
 | `catalog:prepare-install` | `blocked:T42` | `Backend route not implemented: POST /catalog/prepare` | `src/main/ipc/register-catalog-ipc.js` | Current backend route registry has no prepare endpoint; report discrepancy before cutover | — |
-| `catalog:install-selection` | `cutover:catalog` | `POST /catalog/install` | `src/main/ipc/register-catalog-ipc.js` | Existing backend route is the migration target | — |
+| `catalog:install-selection` | `blocked:T42` | `POST /catalog/install` — non-equivalent Job | `src/main/ipc/register-catalog-ipc.js` | The route accepts an item id and queues `catalog.install`, whose handler currently ends in `BACKEND_UNAVAILABLE`; the IPC commits a reviewed `selectionId` after download, hash, manifest, and blocklist checks | — |
 | `catalog:clear-selection` | `blocked:T42` | `Backend route not implemented: POST /catalog/clear-selection` | `src/main/ipc/register-catalog-ipc.js` | Current backend route registry has no clear-selection endpoint; report discrepancy before cutover | — |
 | `catalog:add-blocklist` | `blocked:T42` | `Backend route not implemented: POST /catalog/blocklist` | `src/main/ipc/register-catalog-ipc.js` | Current backend route registry has no blocklist endpoint; report discrepancy before cutover | — |
 | `catalog:remove-blocklist` | `blocked:T42` | `Backend route not implemented: DELETE /catalog/blocklist/:id` | `src/main/ipc/register-catalog-ipc.js` | Current backend route registry has no blocklist endpoint; report discrepancy before cutover | — |
