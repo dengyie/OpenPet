@@ -16,8 +16,8 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 | Current direct registrations | 148 |
 | Current event-only channels | 8 |
 | Current keep | 41 |
-| Current cutover | 53 |
-| Current blocked | 62 |
+| Current cutover | 45 |
+| Current blocked | 70 |
 | Current dead | 0 |
 | Historical retired | 2 |
 
@@ -80,15 +80,15 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 | `actions:update-trigger-rule` | `cutover:actions` | `PATCH /actions/triggers/rules/:id` | `src/main/ipc.js` | Existing backend route is the migration target | — |
 | `actions:delete-trigger-rule` | `cutover:actions` | `DELETE /actions/triggers/rules/:id` | `src/main/ipc.js` | Existing backend route is the migration target | — |
 | `actions:delete` | `cutover:actions` | `DELETE /actions/:id` | `src/main/ipc.js` | Existing backend route is the migration target | — |
-| `pet-packs:list` | `cutover:pet-packs` | `GET /pet-packs` | `src/main/ipc.js` | Existing backend route is the migration target | — |
+| `pet-packs:list` | `blocked:T42` | `GET /pet-packs` — sidecar-only snapshot | `src/main/ipc.js` | Backend owns a process-local `activePackId` and omits the Shell `PetPackService` root path, provenance, package, action, validity, and block metadata; no existing Shell snapshot bridge provides parity | — |
 | `pet-packs:inspect-directory` | `keep` | `IPC-only (native/window)` | `src/main/ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet-packs:clear-selection` | `cutover:pet-packs` | `POST /pet-packs/validate (selection)` | `src/main/ipc.js` | Existing backend route is the migration target | — |
-| `pet-packs:import` | `cutover:pet-packs` | `POST /pet-packs/import` | `src/main/ipc.js` | Existing backend route is the migration target | — |
-| `pet-packs:export` | `cutover:pet-packs` | `POST /pet-packs/:id/export` | `src/main/ipc.js` | Existing backend route is the migration target | — |
-| `pet-packs:set-active` | `cutover:pet-packs` | `POST /pet-packs/:id/activate` | `src/main/ipc.js` | Existing backend route is the migration target | — |
-| `pet-packs:active-changed` | `cutover:pet-packs` | `SSE pet.pack-activated` | `control-center-preload.js` | Existing backend route is the migration target | — |
-| `pet-packs:remove` | `cutover:pet-packs` | `DELETE /pet-packs/:id` | `src/main/ipc.js` | Existing backend route is the migration target | — |
-| `control-center:active-pet-pack-changed` | `cutover:pet-packs` | `SSE pet.pack-activated` | `control-center-preload.js` | Existing backend route is the migration target | — |
+| `pet-packs:clear-selection` | `blocked:T42` | `POST /pet-packs/validate` — no selection-clear peer | `src/main/ipc.js` | Validation accepts a filesystem path but cannot clear the Shell `PetPackService` pending selection handle | — |
+| `pet-packs:import` | `blocked:T42` | `POST /pet-packs/import` — asynchronous ZIP-only sidecar job | `src/main/ipc.js` | Shell IPC consumes a pending directory or ZIP selection synchronously and can activate the pack, reload animations, and refresh chat; Backend accepts a ZIP path and returns a Job submission | — |
+| `pet-packs:export` | `blocked:T42` | `POST /pet-packs/:id/export` — asynchronous sidecar job | `src/main/ipc.js` | Shell IPC owns the native output picker and returns completed archive metadata; Backend returns a Job submission against separate sidecar state | — |
+| `pet-packs:set-active` | `blocked:T42` | `POST /pet-packs/:id/activate` — sidecar-only activation | `src/main/ipc.js` | Backend mutates only its process-local active id and does not update Shell settings, `PetPackService`, animations, trigger rules, or AI/chat context | — |
+| `pet-packs:active-changed` | `blocked:T42` | `SSE pet.pack-activated` — not emitted by Shell activation | `control-center-preload.js` | The SSE event covers only Backend-side activation and lacks the Shell mutation payload and runtime refresh effects | — |
+| `pet-packs:remove` | `blocked:T42` | `DELETE /pet-packs/:id` — sidecar-only mutation | `src/main/ipc.js` | Backend removes from separate sidecar state without reconciling Shell settings, active-pack safeguards, animations, or chat context | — |
+| `control-center:active-pet-pack-changed` | `blocked:T42` | `SSE pet.pack-activated` — no Shell event parity | `control-center-preload.js` | The retained Shell event carries refreshed Pet Pack and chat state; Backend SSE is not emitted for the Shell path and does not carry that payload | — |
 | `ai:get-config` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
 | `ai:save-config` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
 | `ai:save-api-key` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
