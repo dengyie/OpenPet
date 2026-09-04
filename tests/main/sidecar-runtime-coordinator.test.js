@@ -35,6 +35,66 @@ test("starts without reading or injecting secrets and exposes connection", async
 	assert.equal(harness.coordinator.getState().status, "ready")
 })
 
+test("runs the settings hydration callback after sidecar ready", async () => {
+	let hydrated = null
+	const harness = createHarness()
+	const coordinator = createSidecarRuntimeCoordinator({
+		spawnSidecar: async () => ({ child: harness.child, baseUrl: "http://127.0.0.1:3210/api/v1", sessionToken: "session-token" }),
+		createMessageHandler: () => ({ handle: async () => {} }),
+		onReady: async (backend) => { hydrated = backend },
+	})
+	await coordinator.start()
+	assert.deepEqual(hydrated, { baseUrl: "http://127.0.0.1:3210/api/v1", sessionToken: "session-token" })
+})
+
+test("sends trusted settings persistence over the child-process bridge and correlates the result", async () => {
+	const sent = []
+	const harness = createHarness()
+	harness.child.send = (envelope) => sent.push(envelope)
+	await harness.coordinator.start()
+	const pending = harness.coordinator.requestBackend({
+		type: "settings.persist.request",
+		ifVersion: 3,
+		patch: { "petBehavior.home.anchor": { displayId: "display", x: 1, y: 2 } },
+	})
+	assert.equal(sent.length, 1)
+	assert.equal(sent[0].body.type, "settings.persist.request")
+	harness.getSpawnOptions().onMessage({
+		v: 1,
+		id: sent[0].id,
+		at: Date.now(),
+		body: { type: "settings.persist.result", version: 4, ok: true, changedPaths: ["petBehavior.home.anchor"] },
+	})
+	const result = await pending
+	assert.equal(result.id, sent[0].id)
+	assert.equal(result.body.version, 4)
+})
+
+test("rejects a correlated settings persistence response that violates the envelope or body contract", async () => {
+	for (const body of [
+		{ type: "settings.persist.result", version: 4, ok: true },
+		{ type: "settings.persist.result", version: 4, ok: true, changedPaths: ["scale"], extra: true },
+	]) {
+		const sent = []
+		const harness = createHarness()
+		harness.child.send = (envelope) => sent.push(envelope)
+		await harness.coordinator.start()
+		const pending = harness.coordinator.requestBackend({
+			type: "settings.persist.request",
+			ifVersion: 3,
+			patch: { "petBehavior.home.anchor": { displayId: "display", x: 1, y: 2 } },
+		})
+		harness.getSpawnOptions().onMessage({
+			v: body.extra ? 2 : 1,
+			id: sent[0].id,
+			at: Date.now(),
+			body,
+		})
+		await assert.rejects(pending, /invalid|version|changedPaths/)
+		await harness.coordinator.stop()
+	}
+})
+
 test("uses caller-provided init body including explicitly selected secrets", async () => {
 	const harness = createHarness({ getInitBody: async () => ({ custom: true, secrets: { "ai.default": "selected-secret" } }) })
 	await harness.coordinator.start()

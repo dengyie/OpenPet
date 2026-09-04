@@ -7,33 +7,18 @@
 // 本文件**不**直接调 process.exit —— 只返回 version-mismatch,由调用方决定。
 // 这样校验逻辑能被单测直接调用。
 
+import { backendToShellSchema, shellToBackendSchema } from "@openpet/contracts"
+
 export const BRIDGE_PROTOCOL_VERSION = 1
 export const EXIT_CODE_VERSION_MISMATCH = 78
 export const MAX_VERSION_MISMATCH_RELAUNCHES = 2
 export const DIALOG_RESULT_TIMEOUT_MS = 60_000
 
 /** 后端 -> Shell。白名制:不在表里的类型发不出去(R15 反向通道提权)。 */
-export const BACKEND_TO_SHELL_TYPES = Object.freeze([
-	"pet.say",
-	"pet.playAction",
-	"pet.event",
-	"window.openPluginDashboard",
-	"notify",
-	"tray.setBadge",
-	"ready",
-	"degraded",
-	"dialog.request",
-])
+export const BACKEND_TO_SHELL_TYPES = Object.freeze(backendToShellSchema.options.map((option) => option.shape.type.value))
 
 /** Shell -> 后端。 */
-export const SHELL_TO_BACKEND_TYPES = Object.freeze([
-	"init",
-	"shutdown",
-	"pet.stateSnapshot",
-	"dialog.result",
-	"power.suspend",
-	"power.resume",
-])
+export const SHELL_TO_BACKEND_TYPES = Object.freeze(shellToBackendSchema.options.map((option) => option.shape.type.value))
 
 let sequence = 0
 
@@ -71,7 +56,7 @@ export function parseEnvelope(raw, options = {}) {
 		return fail("version-mismatch", "期望 v=" + BRIDGE_PROTOCOL_VERSION + ",收到 v=" + String(raw.v))
 	}
 	if (typeof raw.id !== "string" || raw.id.length === 0) return fail("bad-id", String(raw.id))
-	if (typeof raw.at !== "number" || !Number.isFinite(raw.at)) return fail("bad-at", String(raw.at))
+	if (!Number.isInteger(raw.at) || raw.at <= 0) return fail("bad-at", String(raw.at))
 
 	const body = raw.body
 	if (body === null || typeof body !== "object" || Array.isArray(body) || typeof body.type !== "string") {

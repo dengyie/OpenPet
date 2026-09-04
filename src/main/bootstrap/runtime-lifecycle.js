@@ -163,12 +163,13 @@ const registerRuntimeAppLifecycle = ({
   })
 }
 
-const normalizePetWindowForDisplayChange = ({
+const normalizePetWindowForDisplayChange = async ({
   getPetWindow,
   petService,
   systemCursorService,
   petMovementPolicy,
-  createPetRendererSettings
+  createPetRendererSettings,
+  persistNormalization
 }) => {
   const activePetWindow = getPetWindow()
   if (!activePetWindow || activePetWindow.isDestroyed()) return
@@ -193,7 +194,7 @@ const normalizePetWindowForDisplayChange = ({
     || anchor.x !== behavior.home.anchor.x
     || anchor.y !== behavior.home.anchor.y
   ) {
-    petService.saveSettings({
+    const nextSettings = {
       ...currentSettings,
       petBehavior: {
         ...behavior,
@@ -202,7 +203,13 @@ const normalizePetWindowForDisplayChange = ({
           anchor
         }
       }
-    })
+    }
+    if (typeof persistNormalization === 'function') {
+      petService.applySettings?.(nextSettings)
+      await persistNormalization({ settings: nextSettings, paths: ['petBehavior.home.anchor'] })
+    } else {
+      petService.saveSettings(nextSettings)
+    }
     activePetWindow.webContents.send(IPC.SETTINGS_CHANGED, createPetRendererSettings(
       petService.getSettings(),
       systemCursorService?.getStatus?.()
@@ -216,14 +223,16 @@ const registerDisplayLifecycle = ({
   petService,
   systemCursorService,
   petMovementPolicy,
-  createPetRendererSettings
+  createPetRendererSettings,
+  persistNormalization
 }) => {
   const normalizeForDisplayChange = () => normalizePetWindowForDisplayChange({
     getPetWindow,
     petService,
     systemCursorService,
     petMovementPolicy,
-    createPetRendererSettings
+    createPetRendererSettings,
+    persistNormalization
   })
 
   screen?.on?.('display-metrics-changed', normalizeForDisplayChange)

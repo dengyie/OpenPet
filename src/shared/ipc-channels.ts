@@ -35,8 +35,6 @@ export const IPC = Object.freeze({
   PET_BUBBLE_CHAT_CANCEL_MESSAGE: 'pet-bubble-chat:cancel-message',
   PET_BUBBLE_CHAT_STATE_CHANGED: 'pet-bubble-chat:state-changed',
   SETTINGS_OPEN: 'settings:open',
-  SETTINGS_GET: 'settings:get',
-  SETTINGS_SAVE: 'settings:save',
   SETTINGS_IMPORT_CURSOR: 'settings:import-cursor',
   SETTINGS_PREVIEW_SCALE: 'settings:preview-scale',
   SETTINGS_CLOSE: 'settings:close',

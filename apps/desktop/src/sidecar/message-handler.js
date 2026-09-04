@@ -3,7 +3,7 @@
 const BRIDGE_PROTOCOL_VERSION = 1
 
 // Keep this list frozen in the Shell as well as in the backend bridge client.
-// A backend message is untrusted input at this boundary: only these nine
+// A backend message is untrusted input at this boundary: only these twelve
 // capabilities may reach Electron/PetService.
 const BACKEND_TO_SHELL_TYPES = Object.freeze([
 	"pet.say",
@@ -15,6 +15,9 @@ const BACKEND_TO_SHELL_TYPES = Object.freeze([
 	"ready",
 	"degraded",
 	"dialog.request",
+	"settings.changed",
+	"settings.apply.request",
+	"settings.persist.result",
 ])
 
 function log(logger, level, message, fields) {
@@ -37,7 +40,7 @@ function parseEnvelope(raw) {
 	if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return fail("not-object")
 	if (raw.v !== BRIDGE_PROTOCOL_VERSION) return fail("version-mismatch", raw.v)
 	if (typeof raw.id !== "string" || raw.id.length === 0) return fail("bad-id", raw.id)
-	if (typeof raw.at !== "number" || !Number.isFinite(raw.at)) return fail("bad-at", raw.at)
+	if (!Number.isInteger(raw.at) || raw.at <= 0) return fail("bad-at", raw.at)
 	const body = raw.body
 	if (body === null || typeof body !== "object" || Array.isArray(body) || typeof body.type !== "string") {
 		return fail("bad-body")
@@ -70,6 +73,12 @@ function parseEnvelope(raw) {
 		case "degraded":
 			if (typeof body.reason !== "string") return fail("bad-body", "degraded.reason")
 			break
+		case "settings.changed":
+			if (!Array.isArray(body.paths) || body.paths.some((path) => typeof path !== "string") || !Number.isInteger(body.version) || body.version < 0) return fail("bad-body", "settings.changed")
+			break
+		case "settings.apply.request":
+			if (!Array.isArray(body.paths) || body.paths.some((path) => typeof path !== "string") || !Number.isInteger(body.version) || body.version < 0 || (body.values !== undefined && (body.values === null || typeof body.values !== "object" || Array.isArray(body.values)))) return fail("bad-body", "settings.apply.request")
+			break
 		case "dialog.request":
 			if (typeof body.requestId !== "string" || !["file", "directory"].includes(body.mode)) return fail("bad-body", "dialog.request")
 			break
@@ -78,7 +87,7 @@ function parseEnvelope(raw) {
 	return { ok: true, envelope: { v: raw.v, id: raw.id, at: raw.at, body } }
 }
 
-function createMessageHandler({ dialog, petService, logger, send, onNotify, onBadge, onDashboard, productionService } = {}) {
+function createMessageHandler({ dialog, petService, logger, send, onNotify, onBadge, onDashboard, onSettingsChanged, onSettingsApplyRequest, productionService } = {}) {
 	if (typeof send !== "function") throw new TypeError("createMessageHandler 需要 send")
 
 	async function handle(raw) {
@@ -120,6 +129,31 @@ function createMessageHandler({ dialog, petService, logger, send, onNotify, onBa
 				case "ready":
 				case "degraded":
 					return true
+				case "settings.changed":
+					onSettingsChanged?.({ paths: [...body.paths], version: body.version })
+					return true
+				case "settings.apply.request": {
+					let result
+					try {
+						if (typeof onSettingsApplyRequest !== "function") throw new Error("Shell settings host effect unavailable")
+						await onSettingsApplyRequest({
+							v: parsed.envelope.v,
+							id: parsed.envelope.id,
+							at: parsed.envelope.at,
+							body: {
+								type: body.type,
+								paths: [...body.paths],
+								version: body.version,
+								...(body.values === undefined ? {} : { values: structuredClone(body.values) }),
+							},
+						})
+						result = { ok: true }
+					} catch (error) {
+						result = { ok: false, error: error?.message || String(error) }
+					}
+					send({ v: BRIDGE_PROTOCOL_VERSION, id: raw.id, at: Date.now(), body: { type: "settings.apply.result", version: body.version, ...result } })
+					return true
+				}
 				case "dialog.request": {
 					if (typeof dialog?.showOpenDialog !== "function") throw new Error("Shell dialog 不可用")
 					const result = await dialog.showOpenDialog({ properties: dialogProperties(body.mode) })

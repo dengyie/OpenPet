@@ -43,5 +43,19 @@ export const secretStatusSchema = z.object({
 })
 export type SecretStatus = z.infer<typeof secretStatusSchema>
 
+/** Renderer-writable settings paths. Host-normalized paths are included for contract reconciliation but rejected by HTTP. */
+export const SETTINGS_CANONICAL_PATHS = [
+  // Legacy backend stores may still contain flattened pet paths during migration.
+  "pet.scale",
+  "scale", "walkSpeed", "walkDuration", "bubbleDuration", "menuPosition", "autoStart",
+  "selectedCursorId", "customCursor", "customCursors", "hiddenCursorIds", "customCursorScope",
+  "petBehavior.grounded", "petBehavior.home.enabled", "petBehavior.home.radius",
+  "petBehavior.home.anchor", "petBubbleChat.enabled", "petBubbleChat.autoPopup",
+  "petBubbleChat.autoHide", "petBubbleChat.pinOnInteraction",
+] as const
+
+/** Settings paths that may only be persisted across the private Shell↔Backend process bridge. */
+export const SETTINGS_TRUSTED_PATHS = ["petBehavior.home.anchor"] as const
+
 /** 进程内缓存 GET /settings 的时长 —— 03 §10 的超标处理手段 */
 export const SETTINGS_CACHE_TTL_MS = 5_000

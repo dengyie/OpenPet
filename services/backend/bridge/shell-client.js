@@ -23,6 +23,20 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 	const pending = new Map()
 	let disposed = false
 
+	function validateExpectedResponse(envelope, expectedType) {
+		if (!expectedType) return null
+		if (envelope.body.type !== expectedType) {
+			return `unexpected Shell response type: expected ${expectedType}, got ${envelope.body.type}`
+		}
+		if (expectedType === "settings.apply.result") {
+			const body = envelope.body
+			if (!Number.isInteger(body.version) || body.version < 0) return "settings.apply.result has an invalid version"
+			if (typeof body.ok !== "boolean") return "settings.apply.result has an invalid ok field"
+			if (body.error !== undefined && typeof body.error !== "string") return "settings.apply.result has an invalid error"
+		}
+		return null
+	}
+
 	function receive(raw) {
 		if (disposed) return
 
@@ -47,7 +61,9 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 		if (awaiting !== undefined) {
 			pending.delete(envelope.id)
 			clearTimeout(awaiting.timer)
-			awaiting.resolve(envelope)
+			const validationError = validateExpectedResponse(envelope, awaiting.expectedType)
+			if (validationError) awaiting.reject(new Error(validationError))
+			else awaiting.resolve(envelope)
 			return
 		}
 
@@ -71,7 +87,7 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 		}
 	}
 
-	function dispatch(body, correlateDialogRequest) {
+	function dispatch(body, correlateDialogRequest, options = {}) {
 		if (disposed) return null
 		if (body === null || typeof body !== "object" || typeof body.type !== "string") {
 			throw new Error("反向通道消息必须是带 type 的对象")
@@ -80,7 +96,7 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 			// R15:不在白名单里的类型直接报错,而不是默默发出去。
 			throw new Error("不在白名单里的反向通道消息类型: " + body.type)
 		}
-		const envelope = createEnvelope(body)
+		const envelope = createEnvelope(body, { id: options.id })
 		if (correlateDialogRequest && body.type === "dialog.request") {
 			envelope.body = { ...body, requestId: envelope.id }
 		}
@@ -88,12 +104,21 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 		return envelope
 	}
 
-	function sendBody(body) {
-		return dispatch(body, false)
+	function sendBody(body, options = {}) {
+		return dispatch(body, false, options)
+	}
+
+	function reply(id, body) {
+		if (typeof id !== "string" || id.length === 0) throw new Error("反向通道回复需要 envelope id")
+		return dispatch(body, false, { id })
 	}
 
 	function request(body, options = {}) {
 		const timeoutMs = options.timeoutMs ?? DIALOG_RESULT_TIMEOUT_MS
+		// Keep legacy request callers permissive, but bind settings host-effect
+		// requests to their one legal response shape. Otherwise any allowlisted
+		// Shell envelope reusing the request id could settle the wrong operation.
+		const expectedType = options.expectedType ?? (body?.type === "settings.apply.request" ? "settings.apply.result" : null)
 		const envelope = dispatch(body, true)
 		if (envelope === null) return Promise.reject(new Error("shellClient 已销毁"))
 
@@ -110,7 +135,7 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 				)
 			}, timeoutMs)
 			timer.unref?.()
-			pending.set(envelope.id, { resolve, reject, timer })
+			pending.set(envelope.id, { resolve, reject, timer, expectedType })
 		})
 	}
 
@@ -137,7 +162,10 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 
 	function dispose() {
 		disposed = true
-		for (const awaiting of pending.values()) clearTimeout(awaiting.timer)
+		for (const awaiting of pending.values()) {
+			clearTimeout(awaiting.timer)
+			awaiting.reject(new Error("shellClient 已销毁"))
+		}
 		pending.clear()
 		for (const bucket of waiters.values()) {
 			for (const waiter of bucket) clearTimeout(waiter.timer)
@@ -147,5 +175,5 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 		handlers.clear()
 	}
 
-	return { receive, send: sendBody, request, waitFor, on, dispose }
+	return { receive, send: sendBody, reply, request, waitFor, on, dispose }
 }

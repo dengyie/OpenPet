@@ -7,8 +7,6 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 const IPC = {
-  SETTINGS_GET: 'settings:get',
-  SETTINGS_SAVE: 'settings:save',
   SETTINGS_CHANGED: 'settings:changed',
   SETTINGS_IMPORT_CURSOR: 'settings:import-cursor',
   SETTINGS_PREVIEW_SCALE: 'settings:preview-scale',
@@ -137,13 +135,6 @@ const IPC = {
 }
 
 contextBridge.exposeInMainWorld('controlCenterAPI', {
-  getSettings: () => ipcRenderer.invoke(IPC.SETTINGS_GET),
-  saveSettings: (settings) => ipcRenderer.invoke(IPC.SETTINGS_SAVE, settings),
-  onSettingsChanged: (listener) => {
-    if (typeof listener !== 'function') return () => {}
-    settingsListeners.add(listener)
-    return () => settingsListeners.delete(listener)
-  },
   importCursor: () => ipcRenderer.invoke(IPC.SETTINGS_IMPORT_CURSOR),
   previewScale: (scale) => ipcRenderer.send(IPC.SETTINGS_PREVIEW_SCALE, scale),
   getActions: () => ipcRenderer.invoke(IPC.ACTIONS_GET),
@@ -166,8 +157,7 @@ contextBridge.exposeInMainWorld('controlCenterAPI', {
   importPetPack: (selectionId) => ipcRenderer.invoke(IPC.PET_PACKS_IMPORT, { selectionId }),
   exportPetPack: (packId) => ipcRenderer.invoke(IPC.PET_PACKS_EXPORT, { packId }),
   setActivePetPack: (packId) => ipcRenderer.invoke(IPC.PET_PACKS_SET_ACTIVE, { packId }),
-  // 主进程有两条活动宠物包变更通道（定向回执 PET_PACKS_ACTIVE_CHANGED 与
-  // 广播 CONTROL_CENTER_ACTIVE_PET_PACK_CHANGED），统一在此订阅，避免重复键覆盖。
+  // Subscribe to both active pet-pack channels.
   onActivePetPackChanged: (listener) => {
     if (typeof listener !== 'function') return () => {}
     const handler = (_event, payload) => listener(payload)
@@ -282,33 +272,38 @@ contextBridge.exposeInMainWorld('controlCenterAPI', {
 })
 
 let currentBackend = null
-const backendListeners = new Set()
-const settingsListeners = new Set()
-const isBackendPayload = (payload) => Boolean(
-  payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, '__openpetBackend')
-)
-const notifyBackend = (backend) => {
+let currentRuntimeStatus = { supported: false, platform: 'unknown', active: false, helperPid: 0 }
+const backendListeners = new Set(), runtimeListeners = new Set()
+const notifyRuntimeStatus = (status) => {
+  if (!status || typeof status !== 'object') return
+  currentRuntimeStatus = {
+    supported: Boolean(status.supported),
+    platform: typeof status.platform === 'string' ? status.platform : 'unknown',
+    active: Boolean(status.active),
+    helperPid: Number.isFinite(Number(status.helperPid)) ? Number(status.helperPid) : 0
+  }
+  runtimeListeners.forEach((listener) => listener(currentRuntimeStatus))
+}
+const notifyBackend = (backend, runtimeStatus) => {
   currentBackend = backend || null
-  for (const listener of backendListeners) listener(currentBackend)
+  notifyRuntimeStatus(runtimeStatus)
+  backendListeners.forEach((listener) => listener(currentBackend))
+}
+const addListener = (listeners, listener) => {
+  if (typeof listener !== 'function') return () => {}
+  listeners.add(listener)
+  return () => listeners.delete(listener)
 }
 contextBridge.exposeInMainWorld('openpetBackend', {
   getBackend: () => currentBackend,
-  onChanged: (listener) => {
-    if (typeof listener !== 'function') return () => {}
-    backendListeners.add(listener)
-    return () => backendListeners.delete(listener)
-  }
+  onChanged: (listener) => addListener(backendListeners, listener),
+  getRuntimeStatus: () => currentRuntimeStatus,
+  onRuntimeStatusChanged: (listener) => addListener(runtimeListeners, listener)
 })
-const settingsChangedHandler = (_event, payload) => {
-  if (isBackendPayload(payload)) {
-    notifyBackend(payload.__openpetBackend)
-    return
-  }
-  for (const listener of settingsListeners) listener(payload)
-}
-ipcRenderer.on(IPC.SETTINGS_CHANGED, settingsChangedHandler)
-ipcRenderer.invoke(IPC.SETTINGS_GET, { includeBackend: true }).then((payload) => {
-  if (payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, 'backend')) {
-    notifyBackend(payload.backend)
-  }
-}).catch(() => {})
+const isBackendPayload = (payload) => Boolean(
+  payload && typeof payload === 'object' && Object.hasOwn(payload, '__openpetBackend')
+)
+ipcRenderer.on(IPC.SETTINGS_CHANGED, (_event, payload) => {
+  if (isBackendPayload(payload)) notifyBackend(payload.__openpetBackend, payload.__openpetRuntimeStatus)
+  else if (payload?.systemCursorStatus) notifyRuntimeStatus(payload.systemCursorStatus)
+})

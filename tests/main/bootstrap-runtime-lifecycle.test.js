@@ -294,6 +294,35 @@ test('display lifecycle normalizes pet window and persists adjusted home anchor'
   ])
 })
 
+test('display lifecycle persists normalized home anchor through canonical backend authority', async () => {
+  const screenHandlers = new Map()
+  const saveSettingsCalls = []
+  const persistCalls = []
+  const settings = { petBehavior: { home: { enabled: true, anchor: { displayId: 'old', x: 1, y: 2 } } } }
+  const petWindow = {
+    isDestroyed: () => false,
+    getBounds: () => ({ x: 0, y: 0, width: 80, height: 90 }),
+    setPosition: () => {},
+    webContents: { send: () => {} }
+  }
+  registerDisplayLifecycle({
+    screen: { on: (name, handler) => screenHandlers.set(name, handler) },
+    getPetWindow: () => petWindow,
+    petService: { getSettings: () => settings, saveSettings: (next) => saveSettingsCalls.push(next) },
+    petMovementPolicy: {
+      normalizeWindowForDisplay: () => ({ x: 0, y: 0 }),
+      normalizePetBehaviorSettings: (value) => value,
+      resolveDisplayForWindow: () => ({ id: 'new' }),
+      normalizeAnchorForDisplay: () => ({ displayId: 'new', x: 4, y: 5 })
+    },
+    createPetRendererSettings: (value) => value,
+    persistNormalization: async (input) => { persistCalls.push(input) }
+  })
+  await screenHandlers.get('display-added')()
+  assert.equal(saveSettingsCalls.length, 0)
+  assert.deepEqual(persistCalls[0].settings.petBehavior.home.anchor, { displayId: 'new', x: 4, y: 5 })
+})
+
 test('pet window lifecycle runs packaged smoke hooks after did-finish-load', () => {
   const webContentsHandlers = new Map()
   const sendCalls = []

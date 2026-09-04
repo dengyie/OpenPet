@@ -38,11 +38,23 @@ function readJson(file, fallback) {
 	return value && typeof value === "object" ? value : fallback
 }
 
+// Legacy root settings.json was a plain host settings object. The backend
+// store is now the active authority and always persists its versioned shape.
+export function normalizeLegacySettings(raw) {
+	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
+	if (Number.isInteger(raw.version) && raw.version >= 0 && raw.values && typeof raw.values === "object" && !Array.isArray(raw.values)) {
+		return { version: raw.version, values: raw.values }
+	}
+	return { version: 0, values: raw }
+}
+
 function sourcePaths(userDataDir) {
 	const rootSettings = join(userDataDir, "settings.json")
 	const backendSettings = join(userDataDir, "backend", "settings.json")
 	return {
-		settings: existsSync(rootSettings) ? rootSettings : backendSettings,
+		// backend/settings.json is the active authority after T41. A leftover
+		// legacy root file must never shadow a newer backend envelope.
+		settings: existsSync(backendSettings) ? backendSettings : rootSettings,
 		settingsTarget: backendSettings,
 		conversationStore: join(userDataDir, "ai-talk-store.json"),
 	}
@@ -162,7 +174,7 @@ export async function migrateFromJson({ db, userDataDir, now = () => Date.now(),
 	const backupDir = backupLegacyFiles({ paths, userDataDir, now })
 	try {
 		const store = readJson(paths.conversationStore, {})
-		const settings = readJson(paths.settings, null)
+		const settings = normalizeLegacySettings(readJson(paths.settings, null))
 		migrate({ db, logger })
 		const imported = db.transaction(() => {
 			const counts = importRows({ db, settings, store, now, onProgress })

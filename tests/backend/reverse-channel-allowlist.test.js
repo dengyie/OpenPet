@@ -20,6 +20,9 @@ const EXPECTED_BACKEND_TO_SHELL_TYPES = [
 	"ready",
 	"degraded",
 	"dialog.request",
+	"settings.changed",
+	"settings.apply.request",
+	"settings.persist.result",
 ]
 
 function envelope(type, body = {}) {
@@ -40,14 +43,14 @@ function contractBackendToShellTypes() {
 	return [...source.slice(start, end).matchAll(/type: z\.literal\("([^"]+)"\)/g)].map((match) => match[1])
 }
 
-describe("T28 reverse-channel allowlist", () => {
-	it("keeps the Backend and Shell allowlists exactly aligned with the 9 contract types", async () => {
+	describe("T28 reverse-channel allowlist", () => {
+	it("keeps the Backend and Shell allowlists exactly aligned with the 12 contract types", async () => {
 		const backendSchema = await import("../../services/backend/bridge/message-schema.js")
 
 		assert.deepEqual(contractBackendToShellTypes(), EXPECTED_BACKEND_TO_SHELL_TYPES)
 		assert.deepEqual(backendSchema.BACKEND_TO_SHELL_TYPES, EXPECTED_BACKEND_TO_SHELL_TYPES)
 		assert.deepEqual(SHELL_BACKEND_TO_SHELL_TYPES, EXPECTED_BACKEND_TO_SHELL_TYPES)
-		assert.equal(new Set(SHELL_BACKEND_TO_SHELL_TYPES).size, 9)
+		assert.equal(new Set(SHELL_BACKEND_TO_SHELL_TYPES).size, 12)
 	})
 
 	it("drops malformed and non-allowlisted envelopes and logs each rejection", async () => {
@@ -89,5 +92,34 @@ describe("T28 reverse-channel allowlist", () => {
 		})), true)
 
 		assert.deepEqual(dashboards, [{ pluginId: "focus-timer" }])
+	})
+
+	it("delivers settings.changed as paths and version only", async () => {
+		const notifications = []
+		const handler = createMessageHandler({ send() {}, onSettingsChanged: (payload) => notifications.push(payload) })
+		assert.equal(await handler.handle(envelope("settings.changed", { paths: ["scale"], version: 4, values: { apiKey: "secret" } })), true)
+		assert.deepEqual(notifications, [{ paths: ["scale"], version: 4 }])
+	})
+
+	it("answers settings.apply.request with the same envelope id after Shell effects settle", async () => {
+		const replies = []
+		const applied = []
+		const handler = createMessageHandler({
+			send: (reply) => replies.push(reply),
+			onSettingsApplyRequest: async (payload) => { applied.push(payload) }
+		})
+		assert.equal(await handler.handle(envelope("settings.apply.request", { paths: ["scale"], version: 4, values: { scale: 1.2 } })), true)
+		assert.equal(applied.length, 1)
+		assert.deepEqual(applied[0].body, { type: "settings.apply.request", paths: ["scale"], version: 4, values: { scale: 1.2 } })
+		assert.equal(applied[0].id, "test-settings.apply.request")
+		assert.deepEqual(replies, [{ v: 1, id: "test-settings.apply.request", body: { type: "settings.apply.result", version: 4, ok: true } }].map((reply) => ({ ...reply, at: replies[0]?.at })))
+	})
+
+	it("fails closed when no settings host-effect handler is wired", async () => {
+		const replies = []
+		const handler = createMessageHandler({ send: (reply) => replies.push(reply) })
+		assert.equal(await handler.handle(envelope("settings.apply.request", { paths: ["scale"], version: 4 })), true)
+		assert.equal(replies[0].body.ok, false)
+		assert.match(replies[0].body.error, /host effect unavailable/)
 	})
 })

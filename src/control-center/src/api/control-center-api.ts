@@ -1,4 +1,4 @@
-import type { ControlCenterApi, ControlCenterSettings } from '../../../shared/openpet-contracts.ts'
+import type { ControlCenterApi } from '../../../shared/openpet-contracts.ts'
 
 declare global {
   interface Window {
@@ -72,23 +72,6 @@ const createLazyControlCenterApi = (): ControlCenterApi => new Proxy({}, {
         }
         window.addEventListener(demoActivePetPackChangedEvent, handleActivePetPackChanged)
         return () => window.removeEventListener(demoActivePetPackChangedEvent, handleActivePetPackChanged)
-      }
-    }
-
-    if (property === 'onSettingsChanged') {
-      return (listener: (settings: ControlCenterSettings) => void) => {
-        let active = true
-        let unsubscribe = () => {}
-        // Subscribing has no caller to reject to, so a gated fallback simply
-        // never delivers events rather than throwing into an unhandled rejection.
-        void getDemoApi().then((api) => {
-          if (!active) return
-          unsubscribe = api.onSettingsChanged(listener)
-        }).catch(() => {})
-        return () => {
-          active = false
-          unsubscribe()
-        }
       }
     }
 

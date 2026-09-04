@@ -127,7 +127,18 @@ const createCursorAssetService = ({ cursorDir }) => {
     }
   }
 
-  return { importCursor, repairCursor }
+  const deleteAssets = async (assetPaths = []) => {
+    for (const assetPath of Array.isArray(assetPaths) ? assetPaths : []) {
+      if (!isManagedAssetPath(assetPath)) continue
+      try {
+        await fs.promises.unlink(assetPath)
+      } catch (error) {
+        if (error?.code !== 'ENOENT') throw error
+      }
+    }
+  }
+
+  return { importCursor, repairCursor, deleteAssets }
 }
 
 module.exports = {

@@ -239,3 +239,15 @@ test('cursor asset service repairs legacy zero hotspots to the visual center', a
   assert.equal(repaired.hotspotX, 32)
   assert.equal(repaired.hotspotY, 32)
 })
+
+test('cursor asset service exposes managed deletion for orphaned production assets', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-cursor-delete-'))
+  const cursorDir = path.join(root, 'cursors')
+  fs.mkdirSync(cursorDir, { recursive: true })
+  const assetPath = path.join(cursorDir, 'orphan.png')
+  fs.writeFileSync(assetPath, 'orphan')
+  const service = createCursorAssetService({ cursorDir })
+  assert.equal(typeof service.deleteAssets, 'function')
+  await service.deleteAssets([assetPath, path.join(root, 'outside.png')])
+  assert.equal(fs.existsSync(assetPath), false)
+})

@@ -74,3 +74,15 @@ test('post-plugin startup falls back to openpet when restoring system cursor fai
   assert.deepEqual(fallbacks, [savedSettings[0]])
   assert.equal(logs.some((entry) => entry.event === 'system-cursor.startup.failed'), true)
 })
+
+test('post-plugin startup persists system cursor fallback through canonical authority', async () => {
+  const persisted = []
+  const currentSettings = { autoStart: false, localHttp: { enabled: false }, customCursorScope: 'system', customCursor: { enabled: true } }
+  await runPostPluginStartupSideEffects(createBaseDependencies({
+    petService: { getSettings: () => currentSettings, saveSettings: () => { throw new Error('legacy writer must not be used') } },
+    systemCursorService: { sync: async () => { throw new Error('native helper unavailable') } },
+    persistSystemCursorFallback: async (settings) => persisted.push(settings),
+    onSystemCursorFallback: () => {}
+  }))
+  assert.equal(persisted[0].customCursorScope, 'openpet')
+})

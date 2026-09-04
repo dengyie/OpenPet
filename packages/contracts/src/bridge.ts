@@ -48,6 +48,9 @@ export const backendToShellSchema = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("degraded"), reason: z.string() }),
   z.object({ type: z.literal("dialog.request"), requestId: z.string(), mode: z.enum(["file", "directory"]) }),
+  z.object({ type: z.literal("settings.changed"), paths: z.array(z.string()), version: z.number().int().nonnegative() }),
+  z.object({ type: z.literal("settings.apply.request"), paths: z.array(z.string()), version: z.number().int().nonnegative(), values: z.record(z.string(), z.unknown()).optional() }),
+  z.object({ type: z.literal("settings.persist.result"), version: z.number().int().nonnegative(), ok: z.boolean(), changedPaths: z.array(z.string()), error: z.string().optional(), errorCode: z.string().optional() }),
 ])
 export type BackendToShell = z.infer<typeof backendToShellSchema>
 
@@ -68,6 +71,8 @@ export const shellToBackendSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("dialog.result"), requestId: z.string(), paths: z.array(z.string()).nullable() }),
   z.object({ type: z.literal("power.suspend") }),
   z.object({ type: z.literal("power.resume") }),
+  z.object({ type: z.literal("settings.apply.result"), version: z.number().int().nonnegative(), ok: z.boolean(), error: z.string().optional() }),
+  z.object({ type: z.literal("settings.persist.request"), ifVersion: z.number().int().nonnegative(), patch: z.record(z.string(), z.unknown()) }),
 ])
 export type ShellToBackend = z.infer<typeof shellToBackendSchema>
 

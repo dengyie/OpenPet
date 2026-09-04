@@ -130,7 +130,7 @@ describe("T22 SSE hook seams", () => {
 		assert.doesNotMatch(runtime, /IPC\.BACKEND_GET|IPC\.BACKEND_CHANGED/)
 	})
 
-	it("T32 settings IPC multiplex keeps backend payloads out of settings listeners", async () => {
+	it("T41 settings IPC exposes backend bootstrap only through the lifecycle bridge", async () => {
 		const vm = require("node:vm")
 		const source = require("node:fs").readFileSync("control-center-preload.js", "utf8")
 		const exposed = {}
@@ -150,19 +150,30 @@ describe("T22 SSE hook seams", () => {
 			console,
 			setTimeout
 		})
-		const settings = []
 		const backend = []
-		exposed.controlCenterAPI.onSettingsChanged((value) => settings.push(value))
 		exposed.openpetBackend.onChanged((value) => backend.push(value))
 		await new Promise((resolve) => setImmediate(resolve))
 		handlers["settings:changed"]({}, { __openpetBackend: { baseUrl: "http://127.0.0.1:4321", sessionToken: "next" } })
 		handlers["settings:changed"]({}, { scale: 0.8 })
 		await new Promise((resolve) => setImmediate(resolve))
-		assert.deepEqual(settings, [{ scale: 0.8 }])
+		assert.equal(typeof exposed.controlCenterAPI.onSettingsChanged, 'undefined')
 		assert.deepEqual(backend, [
-			{ baseUrl: "http://127.0.0.1:4321", sessionToken: "ready" },
 			{ baseUrl: "http://127.0.0.1:4321", sessionToken: "next" }
 		])
+	})
+
+	it("T41 preload forwards runtime cursor status over the existing settings lifecycle bridge", async () => {
+		const vm = require("node:vm")
+		const source = require("node:fs").readFileSync("control-center-preload.js", "utf8")
+		const exposed = {}
+		const handlers = {}
+		const ipcRenderer = { on: (channel, handler) => { handlers[channel] = handler }, removeListener: () => {}, invoke: async () => ({}), send: () => {} }
+		vm.runInNewContext(source, { require: (name) => name === "electron" ? { contextBridge: { exposeInMainWorld: (key, value) => { exposed[key] = value } }, ipcRenderer } : require(name), console, setTimeout })
+		const statuses = []
+		exposed.openpetBackend.onRuntimeStatusChanged((value) => statuses.push(value))
+		handlers["settings:changed"]({}, { systemCursorStatus: { supported: true, platform: "darwin", active: true, helperPid: 77 } })
+		assert.deepEqual(JSON.parse(JSON.stringify(exposed.openpetBackend.getRuntimeStatus())), { supported: true, platform: "darwin", active: true, helperPid: 77 })
+		assert.deepEqual(JSON.parse(JSON.stringify(statuses)), [{ supported: true, platform: "darwin", active: true, helperPid: 77 }])
 	})
 
 	it("T32 JobPanel refreshes when a late backend opens without a business event", async () => {

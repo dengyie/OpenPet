@@ -36,10 +36,10 @@ function installError(error) {
 	return new ApiError("INTERNAL", "Plugin installation failed", { cause: error })
 }
 
-export function createPluginService({ db, jobs, logs, bridge, commandServer, dialog, root, userDataDir, settings, logger, now = Date.now, emit, processLedger: injectedProcessLedger, processRuntime: injectedProcessRuntime, runtimeBridgeServer, logWriter: injectedLogWriter } = {}) {
+export function createPluginService({ db, jobs, logs, bridge, commandServer, dialog, root, userDataDir, settings, mutationAuthority, logger, now = Date.now, emit, processLedger: injectedProcessLedger, processRuntime: injectedProcessRuntime, runtimeBridgeServer, logWriter: injectedLogWriter } = {}) {
 	if (typeof root !== "string" || !path.isAbsolute(root)) throw new TypeError("plugin root must be absolute")
 	const settingsStore = settings ?? createSettingsStore({ file: path.join(userDataDir, "backend", "settings.json"), logger })
-	const registry = createPluginRegistry({ userDataDir, settings: settingsStore, logger })
+	const registry = createPluginRegistry({ userDataDir, settings: settingsStore, mutationAuthority, logger })
 	const processLedger = injectedProcessLedger ?? createProcessLedger({ userDataDir, logger, now })
 	const processRuntime = injectedProcessRuntime ?? createPluginProcessRuntime({ logger, now, bridgeServer: runtimeBridgeServer })
 	const logWriter = injectedLogWriter ?? createPluginLogWriter({ append: (entry) => logs.appendPlugin(entry), logger })

@@ -96,14 +96,14 @@
 
 **专用业务码**(搭配 400/409/423):`PLUGIN_MANIFEST_INVALID`、`PLUGIN_ALREADY_RUNNING`、`PLUGIN_NATIVE_NOT_APPROVED`、`PET_PACK_INCOMPATIBLE`、`ACTION_FRAMES_MISSING`、`AI_KEY_NOT_CONFIGURED`、`JOB_NOT_CANCELABLE`、`MIGRATION_REQUIRED`。
 
-## 3. 158 个通道的去向总表
+## 3. 156 个通道的去向总表
 
 | 域 | 通道数 | 留 IPC | 迁 HTTP | 备注 |
 | --- | --- | --- | --- | --- |
 | `PET_*` 运行时 | 16 | 16 | 0 | 全部窗口/几何能力 |
 | `PET_CHAT_*` | 8 | 8 | 0 | 窗口控制,内部转发后端 |
 | `PET_BUBBLE_CHAT_*` | 11 | 11 | 0 | 窗口控制 |
-| `SETTINGS_*` | 7 | 2 | 5 | `OPEN`/`CLOSE` 留(开窗) |
+| `SETTINGS_*` | 5 | 2 | 3 | `OPEN`/`CLOSE` 留(开窗); `GET`/`SAVE` 已在 T41 退役 |
 | `ACTIONS_*` | 13 | 1 | 12 | `INSPECT_FRAMES` 弹框部分留 IPC,路径校验走 HTTP(两段式) |
 | `PET_PACKS_*` | 9 | 1 | 8 | 导入需弹框 |
 | AI 总域 | 37 | 0 | 37 | 全迁 |
@@ -112,9 +112,9 @@
 | `SERVICE_*` | 7 | 0 | 7 | 全迁 |
 | `ABOUT_*` | 2 | 0 | 2 | 全迁 |
 | `CATALOG_*` | 6 | 0 | 6 | 全迁 |
-| **合计** | **158** | **45** | **113** | |
+| **合计** | **156** | **45** | **111** | |
 
-> **实现登记（T39，评审 v1.0）**：本表只统计 IPC 通道；后端支撑模块不会另增 IPC 通道。`services/backend/domains/local-http.js` 承接 `SERVICE_*` 的 7 个迁移通道，`services/backend/jobs/dispatcher.js` 只负责 §6 Job 入队/派发与 `job.created` 推送，二者均已包含在上面的既有行中。`check:api-contract` 以 `src/shared/ipc-channels.ts` 为清单逐项复算：**158 = 45 留 IPC + 113 迁 HTTP**。
+> **实现登记（T41，评审 v1.0）**：本表只统计当前 IPC 通道；后端支撑模块不会另增 IPC 通道。`services/backend/domains/local-http.js` 承接 `SERVICE_*` 的 7 个迁移通道，`services/backend/jobs/dispatcher.js` 只负责 §6 Job 入队/派发与 `job.created` 推送，二者均已包含在上面的既有行中。`settings:get` 与 `settings:save` 已退休，不再计入当前清单。`check:api-contract` 以 `src/shared/ipc-channels.ts` 为清单逐项复算：**156 = 45 留 IPC + 111 迁 HTTP**。
 
 ## 4. 路由表
 
@@ -140,8 +140,8 @@
 
 | 方法 | 路径 | 源 IPC | 说明 |
 | --- | --- | --- | --- |
-| GET | `/settings` | `SETTINGS_GET` | 全量读,已脱敏 |
-| PATCH | `/settings` | `SETTINGS_SAVE` | **改为部分更新**,带 `ifVersion` 乐观锁 |
+| GET | `/settings` | — | 全量读,已脱敏 |
+| PATCH | `/settings` | — | **改为部分更新**,带 `ifVersion` 乐观锁 |
 | POST | `/settings/cursor/import` | `SETTINGS_IMPORT_CURSOR` | 传路径(弹框在 Shell) |
 | POST | `/settings/preview-scale` | `SETTINGS_PREVIEW_SCALE` | 预览 |
 | GET | `/settings/schema` | 新增 | 前端动态渲染用 |
@@ -393,6 +393,9 @@ type BackendToShell =
   | { type: "tray.setBadge"; count: number }
   | { type: "ready"; port: number; apiVersion: "v1"; pid: number }
   | { type: "degraded"; reason: string }
+  | { type: "settings.changed"; paths: string[]; version: number }
+  | { type: "settings.apply.request"; paths: string[]; version: number; values?: Record<string, unknown> }
+  | { type: "settings.persist.result"; version: number; ok: boolean; changedPaths: string[]; error?: string; errorCode?: string }
 
 type ShellToBackend =
   | { type: "init"; userDataPath: string; sessionToken: string; logLevel: string }
@@ -400,7 +403,22 @@ type ShellToBackend =
   | { type: "pet.stateSnapshot"; state: PetState }
   | { type: "dialog.result"; requestId: string; paths: string[] | null }
   | { type: "power.suspend" | "power.resume" }
+  | { type: "settings.apply.result"; version: number; ok: boolean; error?: string }
+  | { type: "settings.persist.request"; ifVersion: number; patch: Record<string, unknown> }
 ```
+
+`settings.persist.request` 是仅供 Shell 使用的进程内持久化边界，当前只允许
+`petBehavior.home.anchor`。HTTP `PATCH /settings` 对该路径一律返回 `403`，不接受
+可由 renderer 伪造的 `x-client` 头；Backend 以同 envelope id 回复
+`settings.persist.result`，并在成功后发布 settled 的 `settings.changed`。
+
+设置 PATCH 先由 Backend 写入 canonical envelope，再通过 `settings.apply.request`
+等待 Shell 完成必要的 host effects；只有收到同一 envelope id 的成功
+`settings.apply.result` 后，HTTP 才返回成功并发布 `settings.changed`。失败时 Backend
+用版本锁补偿 canonical 写入并返回错误，避免 SSE 反映未 settled 的状态。普通
+`GET /settings` 在 mutation settled 前不会读取 transient snapshot；`settings.apply.request`
+只携带 host effect 所需的 canonical `values`，因此 Shell 不需要在 Backend 等待 host
+apply 时回读 GET，避免请求环死锁。
 
 **规则**:
 

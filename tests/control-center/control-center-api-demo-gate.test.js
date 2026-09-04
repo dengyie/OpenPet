@@ -35,16 +35,3 @@ test('demo control center backend stays gated behind an inlined import.meta.env.
     'the DEV guard must run before the demo module is imported'
   )
 })
-
-// 订阅类方法没有可以 reject 的调用方，门禁生效时必须静默失败而不是抛进
-// unhandled rejection —— 后者会在控制中心加载失败时再叠一层噪音错误。
-test('gated subscription fallback cannot raise an unhandled rejection', () => {
-  const source = readApiSource()
-  const subscribeBlock = source.slice(source.indexOf("if (property === 'onSettingsChanged')"))
-
-  assert.match(
-    subscribeBlock.slice(0, subscribeBlock.indexOf('return () => {')),
-    /\.catch\(\(\) => \{\}\)/,
-    'the onSettingsChanged demo fallback must swallow the gated rejection'
-  )
-})

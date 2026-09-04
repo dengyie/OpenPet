@@ -3715,9 +3715,6 @@ export interface SignedReleaseClaimSummary {
 }
 
 export interface ControlCenterApi {
-  getSettings: () => Promise<ControlCenterSettings>
-  saveSettings: (settings: Partial<ControlCenterSettings>) => Promise<ControlCenterSettings>
-  onSettingsChanged: (listener: (settings: ControlCenterSettings) => void) => () => void
   previewScale: (scale: number) => void
   importCursor: () => Promise<CursorImportResult>
   getActions: () => Promise<ActionsConfigViewState>

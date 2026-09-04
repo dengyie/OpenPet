@@ -16,12 +16,27 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
   const screenHandlers = new Map()
   const registeredIpcDependencies = []
   const safeLogs = []
+  const saveSettingsCalls = []
+  const persistenceRequests = []
+  const fetchCalls = []
+  const fetchImpl = async (url, init = {}) => {
+    fetchCalls.push({ url: String(url), method: init.method || 'GET', body: init.body ? JSON.parse(init.body) : null })
+    return new Response(JSON.stringify({ ok: true, data: {
+      version: 1,
+      values: { ...settings, customCursorScope: 'system', petBehavior: { home: { enabled: true, anchor: { displayId: 'old-display', x: 1, y: 2 } } } }
+    } }), { status: 200, headers: { 'content-type': 'application/json' } })
+  }
+  let unexpectedCursorExit
+  let coordinatorOnReady
+  let backend = null
   let sidecarStartCalls = 0
   const settings = {
     scale: 1,
     autoStart: false,
     localHttp: {},
-    petBehavior: { home: { enabled: false, anchor: null } },
+    petBehavior: { home: { enabled: true, anchor: { displayId: 'old-display', x: 1, y: 2 } } },
+    customCursorScope: 'system',
+    customCursor: { enabled: true, assetPath: '/tmp/cursor.png', assetUrl: 'file:///tmp/cursor.png' },
     plugins: { enabled: {}, config: {}, storage: {}, logs: [] },
     ai: { behavior: {} },
     petPacks: { activePackId: 'starter', installed: {} },
@@ -59,6 +74,7 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
     },
     getPetWindow: () => petWindow,
     setPetWindow: (nextPetWindow) => { petWindow = nextPetWindow },
+    fetchImpl,
     createSettingsWindow: () => {},
     createWindow: (options = {}) => {
       createWindowCalls.push(options)
@@ -100,6 +116,10 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
         getPetPackBlockStatus: () => ({ blocked: false, reasons: [] })
       }),
       createCursorAssetService: () => ({ repairCursor: async () => ({}) }),
+      createSystemCursorService: ({ onUnexpectedExit }) => {
+        unexpectedCursorExit = onUnexpectedExit
+        return { getStatus: () => ({ supported: true, platform: 'darwin', active: true, helperPid: 77 }), sync: async () => {}, dispose: async () => {} }
+      },
       createCreatorStudioDefaultFlowService: () => ({
         id: 'creator-studio-default-flow',
         start: () => {},
@@ -135,12 +155,13 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
         normalizeWindowForDisplay: () => ({ x: 0, y: 0 }),
         normalizePetBehaviorSettings: (behavior) => behavior || { home: { enabled: false, anchor: null } },
         resolveDisplayForWindow: () => ({ id: 'display-1' }),
-        normalizeAnchorForDisplay: ({ anchor }) => anchor
+        normalizeAnchorForDisplay: ({ anchor }) => ({ ...anchor, displayId: 'new-display', x: 30, y: 40 })
       }),
       createPetPackService: () => ({ id: 'pet-pack-service' }),
       createPetService: () => ({
         getSettings: () => settings,
-        saveSettings: () => {},
+        saveSettings: (next) => { saveSettingsCalls.push(next); Object.assign(settings, structuredClone(next)); return settings },
+        applySettings: (next) => { Object.assign(settings, structuredClone(next)); return settings },
         reloadAnimations: () => ({ actions: [] })
       }),
       createPetUtteranceLogService: () => ({ id: 'utterance-log' }),
@@ -162,6 +183,7 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
       createSecretService: () => ({ id: 'secret' }),
       createSettingsService: ({ loadSettings }) => ({ get: loadSettings, save: () => {}, preview: () => ({}) }),
       createSidecarRuntimeCoordinator: (dependencies) => {
+        coordinatorOnReady = dependencies.onReady
         assert.equal(Object.hasOwn(dependencies, 'secretService'), false)
         assert.equal(dependencies.getSettings().localHttp, settings.localHttp)
         assert.equal(typeof dependencies.pidLedger.sweep, 'function')
@@ -173,7 +195,12 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
             return Promise.reject(new Error('unexpected coordinator rejection'))
           },
           stop: async () => {},
-          getBackend: () => null,
+          getBackend: () => backend,
+          requestBackend: async (body) => {
+            persistenceRequests.push(body)
+            return { body: { ok: true, version: persistenceRequests.length + 1, changedPaths: Object.keys(body.patch) } }
+          },
+          onChanged: () => () => {},
           getState: () => ({ status: 'degraded', backend: null, reason: 'SIDECAR_UNAVAILABLE' })
         }
       },
@@ -191,6 +218,19 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
   assert.equal(sidecarStartCalls, 1)
   assert.equal(runtime.sidecarRuntimeCoordinator.getState().status, 'degraded')
   assert.equal(safeLogs.some((entry) => entry.event === 'sidecar.startup.failed' && entry.message === 'unexpected coordinator rejection'), true)
+
+  await unexpectedCursorExit()
+  assert.equal(saveSettingsCalls.length, 0, 'cursor fallback must not write the legacy root while sidecar is unavailable')
+  await screenHandlers.get('display-added')()
+  assert.deepEqual(settings.petBehavior.home.anchor, { displayId: 'new-display', x: 30, y: 40 })
+
+  backend = { baseUrl: 'http://127.0.0.1:3210/api/v1', sessionToken: 'session-token' }
+  await coordinatorOnReady(backend)
+  assert.deepEqual(fetchCalls.filter((call) => call.method === 'PATCH').map((call) => call.body.patch), [{ customCursorScope: 'openpet' }])
+  assert.deepEqual(persistenceRequests.map((request) => request.patch), [
+    { 'petBehavior.home.anchor': { displayId: 'new-display', x: 30, y: 40 } }
+  ])
+  assert.equal(fetchCalls.some((call) => call.method === 'GET'), true)
 
   const ipcDependencies = registeredIpcDependencies[0]
   assert.ok(ipcDependencies.sidecarRuntimeCoordinator)
