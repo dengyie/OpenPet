@@ -175,8 +175,8 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 | `service:clear-logs` | `cutover:service` | `DELETE /service/logs` | `src/main/ipc/register-service-ipc.js` | Existing backend route is the migration target | — |
 | `service:rotate-token` | `cutover:service` | `POST /service/token/rotate` | `src/main/ipc/register-service-ipc.js` | Existing backend route is the migration target | — |
 | `service:revoke-mcp-sessions` | `blocked:T45` | `Backend route not implemented: POST /service/token/revoke-sessions` | `src/main/ipc/register-service-ipc.js` | Waiting for T45 MCP sidecar migration; current backend route registry has no MCP session revoke endpoint | — |
-| `about:get-info` | `retired` | `GET /about` | `src/main/ipc.js` | Control Center reads the host About view through Backend HTTP | 8a185b01cd0b9e702d45482f3b34c1eea47ac84f |
-| `about:check-updates` | `retired` | `POST /about/check-updates` | `src/main/ipc.js` | Control Center queues the existing update-check Job and follows its result through Backend Job/SSE APIs | 8a185b01cd0b9e702d45482f3b34c1eea47ac84f |
+| `about:get-info` | `retired` | `GET /about` | `src/main/ipc.js` | Control Center reads the host About view through Backend HTTP | 413c5825 |
+| `about:check-updates` | `retired` | `POST /about/check-updates` | `src/main/ipc.js` | Control Center queues the existing update-check Job and follows its result through Backend Job/SSE APIs | 413c5825 |
 | `catalog:get` | `cutover:catalog` | `GET /catalog` | `src/main/ipc/register-catalog-ipc.js` | Existing backend route is the migration target | — |
 | `catalog:prepare-install` | `blocked:T42` | `Backend route not implemented: POST /catalog/prepare` | `src/main/ipc/register-catalog-ipc.js` | Current backend route registry has no prepare endpoint; report discrepancy before cutover | — |
 | `catalog:install-selection` | `cutover:catalog` | `POST /catalog/install` | `src/main/ipc/register-catalog-ipc.js` | Existing backend route is the migration target | — |
