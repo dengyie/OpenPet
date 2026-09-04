@@ -104,7 +104,7 @@
 | `PET_CHAT_*` | 8 | 8 | 0 | 窗口控制,内部转发后端 |
 | `PET_BUBBLE_CHAT_*` | 11 | 11 | 0 | 窗口控制 |
 | `SETTINGS_*` | 5 | 2 | 3 | `OPEN`/`CLOSE` 留(开窗); `GET`/`SAVE` 已在 T41 退役 |
-| `ACTIONS_*` | 13 | 1 | 12 | `INSPECT_FRAMES` 弹框部分留 IPC,路径校验走 HTTP(两段式) |
+| `ACTIONS_*` | 13 | 1 | 12 | `INSPECT_FRAMES` 弹框部分留 IPC,路径校验走 HTTP(两段式);其余 12 条当前登记 `blocked:T42`,待完整 view/副作用契约对等后切换 |
 | `PET_PACKS_*` | 9 | 1 | 8 | 导入需弹框 |
 | AI 总域 | 37 | 0 | 37 | 全迁 |
 | `PLUGINS_*` | 29 | 6 | 23 | `OPEN_DASHBOARD`、`INSPECT_PACKAGE`、QQ/WeCom 凭据保存/清除留 |
@@ -158,6 +158,8 @@
 | POST | `/pet/event` | 同上,供插件与 MCP 使用 |
 
 ### 4.4 动作
+
+> **当前实现差异（T42 实测）**：下表是目标 HTTP 映射，不等于已具备语义对等。`GET /actions` 仍返回简化 `ActionEntry[]`，而 Control Center 需要完整 `ActionsConfigViewState`；提案/规则接口、帧选择与导入也尚未复现 Shell 的选择句柄、持久化和 PetService/动画/聊天副作用。因此除原生 `ACTIONS_INSPECT_FRAMES` 外的 12 条通道在 15 篇台账中保持 `blocked:T42`，不得先删 IPC/preload。
 
 | 方法 | 路径 | 源 IPC |
 | --- | --- | --- |

@@ -136,7 +136,7 @@ const db = await openDatabase({ file, pragmas, logger })
 
 退出码:`64` 无 IPC 通道、`65` init 超时、`66` HTTP 启动失败、`70` 未捕获异常、`78`(在 bridge 里)版本不兼容。超时常量 `INIT_TIMEOUT_MS = 10_000`、`SHUTDOWN_GRACE_MS = 5_000`。
 
-`runtime` 对象:`{ sessionToken, startedAt, secrets, userDataDir, legacyToken, petState, degraded, db }` —— 新模块需要运行期状态就挂在这里,不要另造全局。
+`runtime` 对象包含 `{ sessionToken, startedAt, secrets, userDataDir, legacyToken, petState, degraded, db }` 以及已装配的 `settings`、`jobs`、`logs`、`service`、`catalog`、`petPacks`、`actions`、`plugins`、`about`、`queue`、`runner` 等运行时句柄 —— 新模块需要运行期状态就挂在这里,不要另造全局。
 
 中间件顺序(**不要改**):`requestId → errorBoundary → accessLog → loopbackOnly → bearerAuth → jsonBody`。
 
@@ -289,7 +289,7 @@ countByStatus(status?)                     // → number | { [status]: number }
 | 编号 | 状态 | 现象 | 影响 / 去向 |
 | --- | --- | --- | --- |
 | 缺口 G1 | ✅ | `@openpet/contracts` 的 `main` 已指向构建产物 `dist/` | T34 已闭合: `build:contracts` 已进入 pack/dist/CI,`asarUnpack` 覆盖 `contracts/zod`(实现证据: `77e5d8435d0c88be3760d85f52df15580001720b`;合并证据: `929f6676e354f3aa1b298b4755fc069f96b9addc`) |
-| 缺口 G2 | ✅ | 后端与契约反向通道均为 9 项,含 `dialog.request` | T12 已补齐白名单、`shell-client` request 分支、60s 超时与桌面 message-handler;`tests/backend/bridge-dialog.test.js` 覆盖成功、超时、关联响应(证据: `8ab2662655af59a92e0c3912f5453503637f4b8b`) |
+| 缺口 G2 | ✅ | 后端与契约反向通道均为 12 项,含 `dialog.request` 与 settings apply/persist | T12 已补齐 dialog 白名单，T41 增加 settings host-effect/persist 消息；`tests/backend/bridge-dialog.test.js` 与 `tests/backend/reverse-channel-allowlist.test.js` 覆盖成功、超时、关联响应和类型校验 |
 | 缺口 G3 | ⏳ | 13 个通用码的状态映射在 `middleware.js` 和契约 `envelope.ts` **各有一份** | 需要 gate 检查这层重复;不要再复制第三处 |
 | 缺口 G4 | ✅ | R20:ESM 入口在 `app.asar` 内可能解析失败 | E6 命中 `spawn ENOTDIR`;已用 `asarUnpack` + unpacked resolver 缓解并收到打包 sidecar ready(证据: `6248d2366435ee765799bdf581c8b6ae22a526e4`) |
 | 缺口 G5 | ✅ | `package-lock.json` 未与 workspaces 同步 | E1 `npm install` 已确认 workspaces 和 lockfile 解析正常;本次 lockfile 无额外变化(证据: `304a5a346083bb7888407a2ed2dcaa3517e4d981`) |

@@ -189,7 +189,7 @@ assert.throws(() => fn(), (error) => {
 2. **`package-lock.json` 和 workspaces 还没同步。** 首次 `npm install` 会大面积改动 lockfile,这是正常的,不要 revert。
 3. **ESM 入口在 `app.asar` 里可能解析不了(风险 R20)。** E6 已命中并采用 `asarUnpack` + unpacked resolver:`services/backend/**` 位于 `app.asar.unpacked`;后端 JS 可读,不受 asar 完整性保护。不要把 CJS 降级当作默认方案,除非该正式方案回归失败。
 4. **`/health` 需要鉴权,返 401。** 早期草稿写过「免鉴权返 204」,以 03 篇为准。
-5. **`dialog.request` 两边不一致。** 契约 `backendToShellSchema` 有 9 类消息,后端 `bridge/message-schema.js` 的 `BACKEND_TO_SHELL_TYPES` 只有 8 类,少 `dialog.request`(`SHELL_TO_BACKEND_TYPES` 与契约的 6 类一致)。这是已知缺口 G2,由对应任务卡修,别顺手改。
+5. **反向通道契约必须逐项对账。** 契约 `backendToShellSchema` 与后端 `BACKEND_TO_SHELL_TYPES` 当前均为 12 类消息，包含 `dialog.request` 与 settings apply/persist 类型；`SHELL_TO_BACKEND_TYPES` 当前为 8 类。新增类型必须先更新 `packages/contracts`，再同步后端与桌面校验，不要只改其中一份。
 6. **`ready` 里的 `apiVersion` 是字符串 `"v1"`。** spike 的 `sidecar-http.js` 写的是数字 `1`,那只是探针,契约以 `"v1"` 为准。
 7. **`date +%s%3N` 在 macOS(BSD date)不可用。** 要毫秒时间戳用 `Date.now()`。
 8. **仓库文档混用全半角标点。** 正文括号大多是全角「()」,而逗号冒号是半角。逐字重发文档时照抄,不要规范化 —— 门禁按字符串匹配。

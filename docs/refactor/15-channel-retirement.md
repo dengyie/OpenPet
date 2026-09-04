@@ -16,8 +16,8 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 | Current direct registrations | 146 |
 | Current event-only channels | 8 |
 | Current keep | 41 |
-| Current cutover | 43 |
-| Current blocked | 72 |
+| Current cutover | 29 |
+| Current blocked | 84 |
 | Current dead | 0 |
 | Historical retired | 4 |
 
@@ -67,19 +67,19 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 | `settings:preview-scale` | `blocked:T41` | `POST /settings/preview-scale` — unavailable fallback | `src/main/ipc/register-settings-ipc.js` | Route registration receives no handler from the backend composition root, so it returns `BACKEND_UNAVAILABLE`; T41 must bridge the host preview side effect | — |
 | `settings:close` | `keep` | `IPC-only (native/window)` | `src/main/ipc/register-settings-ipc.js` | Window/native IPC remains the intended boundary | — |
 | `settings:changed` | `blocked:T41` | `SSE settings.changed` — renderer/bootstrap parity pending | `control-center-preload.js` | SSE only publishes changed paths and version after backend PATCH; IPC still synchronizes pet-renderer settings and multiplexes backend bootstrap updates, which T41 must replace before retirement | — |
-| `actions:get` | `cutover:actions` | `GET /actions` | `src/main/ipc.js` | Existing backend route is the migration target | — |
+| `actions:get` | `blocked:T42` | `GET /actions` — incompatible view state | `src/main/ipc.js` | Backend returns `ActionEntry[]`, while Shell/Control Center require `ActionsConfigViewState` with defaults, proposals, rules, and trigger diagnostics; no response contract exists | — |
 | `actions:inspect-frames` | `keep` | `IPC-only (native/window)` | `src/main/ipc.js` | Window/native IPC remains the intended boundary | — |
-| `actions:reinspect-frames` | `cutover:actions` | `POST /actions/frames/reinspect` | `src/main/ipc.js` | Existing backend route is the migration target | — |
-| `actions:clear-frame-selection` | `cutover:actions` | `DELETE /actions/frames/selection` | `src/main/ipc.js` | Existing backend route is the migration target | — |
-| `actions:import-frames` | `cutover:actions` | `POST /actions/frames/import` | `src/main/ipc.js` | Existing backend route is the migration target | — |
-| `actions:save-config` | `cutover:actions` | `PUT /actions/config` | `src/main/ipc.js` | Existing backend route is the migration target | — |
-| `actions:preview-trigger-proposal` | `cutover:actions` | `POST /actions/triggers/preview` | `src/main/ipc.js` | Existing backend route is the migration target | — |
-| `actions:submit-trigger-proposal` | `cutover:actions` | `POST /actions/triggers/proposals` | `src/main/ipc.js` | Existing backend route is the migration target | — |
-| `actions:accept-trigger-proposal` | `cutover:actions` | `POST /actions/triggers/proposals/:id/accept` | `src/main/ipc.js` | Existing backend route is the migration target | — |
-| `actions:reject-trigger-proposal` | `cutover:actions` | `POST /actions/triggers/proposals/:id/reject` | `src/main/ipc.js` | Existing backend route is the migration target | — |
-| `actions:update-trigger-rule` | `cutover:actions` | `PATCH /actions/triggers/rules/:id` | `src/main/ipc.js` | Existing backend route is the migration target | — |
-| `actions:delete-trigger-rule` | `cutover:actions` | `DELETE /actions/triggers/rules/:id` | `src/main/ipc.js` | Existing backend route is the migration target | — |
-| `actions:delete` | `cutover:actions` | `DELETE /actions/:id` | `src/main/ipc.js` | Existing backend route is the migration target | — |
+| `actions:reinspect-frames` | `blocked:T42` | `POST /actions/frames/reinspect` — incompatible selection state | `src/main/ipc.js` | Backend path/selection state is not the Shell opaque `selectionId` and lacks active-pack collision semantics | — |
+| `actions:clear-frame-selection` | `blocked:T42` | `DELETE /actions/frames/selection` — incompatible selection state | `src/main/ipc.js` | Backend and Shell clear different in-process selections; no shared selection contract exists | — |
+| `actions:import-frames` | `blocked:T42` | `POST /actions/frames/import` — non-equivalent Job | `src/main/ipc.js` | Backend imports a legacy repository path but does not preserve label/active-pack ownership or Shell animation, trigger-runtime, and chat side effects | — |
+| `actions:save-config` | `blocked:T42` | `PUT /actions/config` — non-equivalent write | `src/main/ipc.js` | Backend writes legacy JSON directly; Shell persists through ActionService/PetService and applies runtime effects | — |
+| `actions:preview-trigger-proposal` | `blocked:T42` | `POST /actions/triggers/preview` — placeholder | `src/main/ipc.js` | Backend returns a synthetic preview object rather than the Shell preview result | — |
+| `actions:submit-trigger-proposal` | `blocked:T42` | `POST /actions/triggers/proposals` — separate store | `src/main/ipc.js` | Backend proposal storage is process-local and differs from the host inbox semantics | — |
+| `actions:accept-trigger-proposal` | `blocked:T42` | `POST /actions/triggers/proposals/:id/accept` — placeholder | `src/main/ipc.js` | Backend does not apply the host action/rule effects when accepting a proposal | — |
+| `actions:reject-trigger-proposal` | `blocked:T42` | `POST /actions/triggers/proposals/:id/reject` — placeholder | `src/main/ipc.js` | Backend does not persist the host inbox result or rejection reason | — |
+| `actions:update-trigger-rule` | `blocked:T42` | `PATCH /actions/triggers/rules/:id` — placeholder | `src/main/ipc.js` | Backend does not persist or refresh the Shell trigger runtime | — |
+| `actions:delete-trigger-rule` | `blocked:T42` | `DELETE /actions/triggers/rules/:id` — placeholder | `src/main/ipc.js` | Backend does not persist or refresh the Shell trigger runtime | — |
+| `actions:delete` | `blocked:T42` | `DELETE /actions/:id` — non-equivalent write | `src/main/ipc.js` | Backend edits only legacy JSON; Shell also owns active-pack persistence, frame/sprite cleanup, animation reload, and trigger refresh | — |
 | `pet-packs:list` | `blocked:T42` | `GET /pet-packs` — sidecar-only snapshot | `src/main/ipc.js` | Backend owns a process-local `activePackId` and omits the Shell `PetPackService` root path, provenance, package, action, validity, and block metadata; no existing Shell snapshot bridge provides parity | — |
 | `pet-packs:inspect-directory` | `keep` | `IPC-only (native/window)` | `src/main/ipc.js` | Window/native IPC remains the intended boundary | — |
 | `pet-packs:clear-selection` | `blocked:T42` | `POST /pet-packs/validate` — no selection-clear peer | `src/main/ipc.js` | Validation accepts a filesystem path but cannot clear the Shell `PetPackService` pending selection handle | — |

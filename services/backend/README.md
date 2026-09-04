@@ -67,4 +67,4 @@ ADR-004 让 sidecar 作为同 asar 内的 Node 脚本运行,而本包是 ESM(`"t
 
 ## 还没有的东西
 
-`routes/`、`domains/`、`jobs/`、`secrets/`、`mcp/` 以及 `store/migrations/` 都还是空的。按 06 篇的门禁,**六条 spike 全绿之前不开 M0 剩余任务**。当前只注册了 `GET /health` 一条路由。
+`routes/`、`domains/`、`jobs/` 与 `store/migrations/` 已承载当前 sidecar 实现；当前由 11 组 route 模块注册 68 条实际 method/path，并完成 SQLite 迁移、Job 恢复/调度与 settings/About 等已交付域。`secrets/` 与 `mcp/` 仍按 T44/T45 依赖推进，不要根据本 README 发明空壳实现。完整接口与缺口以 `docs/refactor/09-repo-state.md` 和 Issue #41 为准。
