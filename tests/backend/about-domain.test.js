@@ -172,6 +172,24 @@ describe("Backend About domain", () => {
 		assert.equal(timeout.message, "Update check timed out.")
 	})
 
+	it("applies the update-check deadline to the GitHub response body", async () => {
+		const { createAboutService } = await import("../../services/backend/domains/about.js")
+		const result = await createAboutService({
+			pkg: packageWithGithubRelease,
+			runtime: { version: "1.0.0" },
+			fetchImpl: async () => ({
+				ok: true,
+				json: async () => new Promise((resolve) => {
+					setTimeout(() => resolve({ tag_name: "v1.1.0", assets: [] }), 25)
+				}),
+			}),
+			timeoutMs: 5,
+		}).checkUpdates()
+
+		assert.equal(result.status, "timeout")
+		assert.equal(result.message, "Update check timed out.")
+	})
+
 	it("declares appInfo on the existing init bridge contract", async () => {
 		const { shellToBackendSchema } = await import("@openpet/contracts")
 		const parsed = shellToBackendSchema.parse({

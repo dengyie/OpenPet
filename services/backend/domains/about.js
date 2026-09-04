@@ -158,14 +158,20 @@ export function createAboutService({
 		const controller = createAbortController()
 		const url = `https://api.github.com/repos/${encodeURIComponent(publish.owner)}/${encodeURIComponent(publish.repo)}/releases/latest`
 		try {
-			const response = await withTimeout(fetchImpl(url, {
-				method: "GET",
-				headers: {
-					Accept: "application/vnd.github+json",
-					"User-Agent": `${pkg.name || "openpet"}-update-check`,
-				},
-				signal: controller?.signal,
-			}), controller, timeoutMs)
+			const { response, release } = await withTimeout((async () => {
+				const response = await fetchImpl(url, {
+					method: "GET",
+					headers: {
+						Accept: "application/vnd.github+json",
+						"User-Agent": `${pkg.name || "openpet"}-update-check`,
+					},
+					signal: controller?.signal,
+				})
+				return {
+					response,
+					release: response?.ok ? await response.json() : null,
+				}
+			})(), controller, timeoutMs)
 			if (!response?.ok) {
 				return updateResult({
 					status: "error",
@@ -176,7 +182,6 @@ export function createAboutService({
 				})
 			}
 
-			const release = await response.json()
 			const latestVersion = String(release?.tag_name || release?.name || "").replace(/^v/i, "")
 			const updateAvailable = latestVersion ? compareVersions(latestVersion, about.version) > 0 : false
 			return updateResult({
