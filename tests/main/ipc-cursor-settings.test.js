@@ -84,10 +84,6 @@ const createRequiredServices = ({
     stop: async () => ({ enabled: false, host: '127.0.0.1', port: 0, mcp: { activeSessions: 0, sessionTtlMs: 0 } }),
     revokeMcpSessions: () => ({ activeSessions: 0, sessionTtlMs: 0 })
   },
-  aboutService: {
-    getInfo: () => ({}),
-    checkForUpdates: () => ({ ok: true })
-  },
   actionImportService: {
     inspectActionFrames: () => ({ inspection: { valid: true } }),
     importActionFrames: () => ({ ok: true }),

@@ -5,7 +5,6 @@ const { safeStorage } = require('electron')
 const createCoreServices = ({
   app,
   projectRoot,
-  packageJson,
   settingsRuntime,
   factories,
   screen,
@@ -31,7 +30,6 @@ const createCoreServices = ({
     createCursorAssetService,
     createSystemCursorService,
     createAppLogService,
-    createAboutService,
     createPetMovementPolicy
   } = factories
 
@@ -76,7 +74,6 @@ const createCoreServices = ({
   })
   const behaviorOrchestratorService = createBehaviorOrchestratorService({ settingsService })
   const localHttpService = createLocalHttpService({ petService, settingsService })
-  const aboutService = createAboutService({ app, packageJson })
   const petMovementPolicy = createPetMovementPolicy({ screen })
   const createLegacyActionImportService = () => createActionImportService({
     framesRoot: path.join(projectRoot, 'cat_anime', 'flames'),
@@ -129,7 +126,6 @@ const createCoreServices = ({
     },
     syncLoginItemSettings,
     services: {
-      aboutService,
       actionImportService,
       actionService,
       aiService,

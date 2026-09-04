@@ -60,6 +60,13 @@ export const shellToBackendSchema = z.discriminatedUnion("type", [
     userDataPath: z.string(),
     sessionToken: z.string().min(32),
     logLevel: z.enum(["error", "warn", "info", "debug"]),
+    appInfo: z.object({
+      name: z.string().min(1),
+      version: z.string().min(1),
+      packaged: z.boolean(),
+      platform: z.string().min(1),
+      arch: z.string().min(1),
+    }).strict().optional(),
     /**
      * ADR-010:唯一允许在此通道传输的敏感数据。
      * Shell 侧 safeStorage.decrypt() 后一次性注入,后端只留在内存,不落盘。

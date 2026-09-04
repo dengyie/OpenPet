@@ -133,10 +133,6 @@ const createRequiredServices = ({ pluginInstallService, pluginService, dialogSer
     stop: async () => ({ enabled: false, host: '127.0.0.1', port: 0, mcp: { activeSessions: 0, sessionTtlMs: 0 } }),
     revokeMcpSessions: () => ({ activeSessions: 0, sessionTtlMs: 0 })
   },
-  aboutService: {
-    getInfo: () => ({}),
-    checkForUpdates: () => ({ ok: true })
-  },
   actionService: {
     applyCreatorActionMutation: (payload) => ({ defaultAction: payload.defaultAction || '', clickAction: payload.clickAction || '', actions: [] }),
     acceptTriggerProposal: (proposal) => ({
@@ -802,7 +798,7 @@ test('service:get-status returns Control Center service status shape', async () 
   })
 })
 
-test('about handlers return stable info and update check view shapes', async () => {
+test('retired About handlers are not registered', async () => {
   const ipcMain = createIpcMainStub()
 
   registerIpcHandlers({
@@ -819,54 +815,11 @@ test('about handlers return stable info and update check view shapes', async () 
         showOpenDialog: async () => ({ canceled: true, filePaths: [] })
       }
     }),
-    aboutService: {
-      getInfo: () => ({
-        name: 'openpet',
-        version: '1.0.1',
-        packaged: true,
-        platform: 'darwin',
-        arch: 'arm64',
-        update: { configured: false }
-      }),
-      checkForUpdates: async () => ({
-        status: 'not-configured',
-        currentVersion: '1.0.1',
-        checkedAt: '2026-06-17T00:00:00.000Z',
-        message: 'Update feed is not configured.'
-      })
-    },
     ipcMainService: ipcMain
   })
 
-  const info = await ipcMain.handlers.get(IPC.ABOUT_GET_INFO)()
-  const updateCheck = await ipcMain.handlers.get(IPC.ABOUT_CHECK_UPDATES)()
-
-  assert.deepEqual(info, {
-    name: 'openpet',
-    productName: 'OpenPet',
-    version: '1.0.1',
-    packaged: true,
-    platform: 'darwin',
-    arch: 'arm64',
-    update: {
-      configured: false,
-      provider: '',
-      channel: '',
-      url: ''
-    }
-  })
-  assert.deepEqual(updateCheck, {
-    status: 'not-configured',
-    configured: false,
-    currentVersion: '1.0.1',
-    latestVersion: '',
-    updateAvailable: false,
-    prerelease: false,
-    releaseUrl: '',
-    assets: [],
-    checkedAt: '2026-06-17T00:00:00.000Z',
-    message: 'Update feed is not configured.'
-  })
+  assert.equal(ipcMain.handlers.has('about:get-info'), false)
+  assert.equal(ipcMain.handlers.has('about:check-updates'), false)
 })
 
 test('image generation handlers delegate to the model service', async () => {

@@ -147,8 +147,6 @@ export const IPC = Object.freeze({
   SERVICE_CLEAR_LOGS: 'service:clear-logs',
   SERVICE_ROTATE_TOKEN: 'service:rotate-token',
   SERVICE_REVOKE_MCP_SESSIONS: 'service:revoke-mcp-sessions',
-  ABOUT_GET_INFO: 'about:get-info',
-  ABOUT_CHECK_UPDATES: 'about:check-updates',
   CATALOG_GET: 'catalog:get',
   CATALOG_PREPARE_INSTALL: 'catalog:prepare-install',
   CATALOG_INSTALL_SELECTION: 'catalog:install-selection',

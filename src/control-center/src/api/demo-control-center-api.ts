@@ -1,4 +1,4 @@
-import { cloneActionsConfig, cloneAiConfig, cloneAiMemoryProfile, cloneAiPersonaProfile, cloneAiTalkTraceSummary, cloneCatalog, cloneChatMessages, cloneCreatorLastRun, cloneCreatorReference, cloneCreatorState, cloneImageGenerationConfig, clonePetChatState, clonePetPacks, cloneServiceStatus, cloneSettings, defaultAboutInfo, defaultActionsConfig, defaultAiConfig, defaultAiMemoryProfile, defaultAiPersonaProfile, defaultAiTalkTraceSummary, defaultCreatorState, defaultImageGenerationConfig, defaultPetChatState, defaultPetPacks, defaultServiceStatus, defaultSettings, defaultUpdateCheck } from '../lib/defaults.ts'
+import { cloneActionsConfig, cloneAiConfig, cloneAiMemoryProfile, cloneAiPersonaProfile, cloneAiTalkTraceSummary, cloneCatalog, cloneChatMessages, cloneCreatorLastRun, cloneCreatorReference, cloneCreatorState, cloneImageGenerationConfig, clonePetChatState, clonePetPacks, cloneServiceStatus, cloneSettings, defaultActionsConfig, defaultAiConfig, defaultAiMemoryProfile, defaultAiPersonaProfile, defaultAiTalkTraceSummary, defaultCreatorState, defaultImageGenerationConfig, defaultPetChatState, defaultPetPacks, defaultServiceStatus, defaultSettings } from '../lib/defaults.ts'
 import { buildImageGenerationConfigSavePayload, buildProviderConfigSavePayload } from '../lib/ai-provider-config.ts'
 import { stripFileExtension } from '../../../shared/cursor-library.ts'
 import type {
@@ -4786,12 +4786,6 @@ export const demoControlCenterAPI: ControlCenterApi = {
     writeDemoState()
     return cloneServiceStatus(demoState.serviceStatus)
   },
-  getAboutInfo: async () => defaultAboutInfo,
-  checkForUpdates: async () => ({
-    ...defaultUpdateCheck,
-    status: 'not-configured',
-    message: 'Update feed is not configured.'
-  }),
   getCatalog: async () => cloneCatalog(demoState.catalog),
   prepareCatalogInstall: async ({ kind, itemId }) => {
     const item = findDemoCatalogItem(kind, itemId)

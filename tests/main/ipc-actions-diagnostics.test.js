@@ -136,10 +136,6 @@ const createRequiredServices = (overrides = {}) => ({
     stop: async () => ({}),
     revokeMcpSessions: () => ({ activeSessions: 0, sessionTtlMs: 0 })
   },
-  aboutService: {
-    getInfo: () => ({}),
-    checkForUpdates: () => ({ ok: true })
-  },
   actionImportService: {
     inspectActionFrames: () => ({ inspection: { valid: true } }),
     importActionFrames: () => ({ ok: true }),

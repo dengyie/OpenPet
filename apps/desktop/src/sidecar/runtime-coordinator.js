@@ -42,6 +42,13 @@ async function createDefaultInitBody({ app, getSettings }) {
 		userDataDir: app?.getPath?.("userData"),
 		secrets: {},
 		legacyToken: settings?.localHttp?.token || null,
+		appInfo: {
+			name: app?.getName?.() || "OpenPet",
+			version: app?.getVersion?.() || "0.0.0",
+			packaged: Boolean(app?.isPackaged),
+			platform: process.platform,
+			arch: process.arch,
+		},
 	}
 }
 

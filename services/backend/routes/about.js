@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto"
+
 import { ApiError, sendSuccess } from "../http/middleware.js"
 
 export function registerAboutRoutes(router, { about, jobs } = {}) {
@@ -5,7 +7,7 @@ export function registerAboutRoutes(router, { about, jobs } = {}) {
 	router.get("/about", (ctx) => sendSuccess(ctx, about.info()))
 	router.post("/about/check-updates", (ctx) => {
 		if (!jobs?.insert) throw new ApiError("BACKEND_UNAVAILABLE", "Job service unavailable")
-		const id = `about-check:${Date.now()}`
+		const id = `about-check:${randomUUID()}`
 		const job = jobs.insert({ id, kind: "about.check-updates", input: {} })
 		return sendSuccess(ctx, { jobId: job.id }, 202)
 	})

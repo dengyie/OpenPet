@@ -44,7 +44,6 @@ const {
   createActionFrameImportResult,
   createActionTriggerProposalPreviewResult,
   createActionsMutationResult,
-  createAboutInfoView,
   createCatalogBlocklistResult,
   createCatalogView,
   createImageGenerationApiKeyResult,
@@ -58,8 +57,7 @@ const {
   createPluginServiceHealthCheckResult,
   createPluginSetupRunResult,
   createPluginViewState,
-  createServiceStatusView,
-  createUpdateCheckView
+  createServiceStatusView
 } = require('./control-center-adapters')
 const { findSemanticAction } = require('./services/ai-action-orchestrator')
 
@@ -145,7 +143,7 @@ const resolvePetSaySourceSurface = ({ source = '', requestSource = '' } = {}) =>
 /**
  * 注册所有 IPC 处理器。接收依赖注入对象，各 handler 只通过注入的函数访问外部能力。
  */
-const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, aiTalkService = null, hatchPetAgentService, petUtteranceLogService = null, petBubbleChatWindowService = null, imageGenerationModelService, behaviorOrchestratorService, triggerRuleRuntimeService = null, creatorStudioDefaultFlowService = null, creatorWorkflowService = null, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, aboutService, actionService, actionImportService, cursorAssetService, systemCursorService, appLogService, applyWindowScale, applyPetViewport = () => {},
+const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, aiTalkService = null, hatchPetAgentService, petUtteranceLogService = null, petBubbleChatWindowService = null, imageGenerationModelService, behaviorOrchestratorService, triggerRuleRuntimeService = null, creatorStudioDefaultFlowService = null, creatorWorkflowService = null, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, actionService, actionImportService, cursorAssetService, systemCursorService, appLogService, applyWindowScale, applyPetViewport = () => {},
   clampToWorkArea, getMovementState, createSettingsWindow, petMovementPolicy, petChatWindowService = null, sidecarRuntimeCoordinator = null, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain, screenService = screen, appService = app, showContextMenuWindow = showPetContextMenuWindow }) => {
   let pendingActionFrameSelection = null
 
@@ -998,10 +996,6 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     }
     return mutationResult
   })
-  ipcMainService.handle(IPC.ABOUT_GET_INFO, () => createAboutInfoView(aboutService.getInfo()))
-
-  ipcMainService.handle(IPC.ABOUT_CHECK_UPDATES, async () => createUpdateCheckView(await aboutService.checkForUpdates()))
-
   registerAiIpc({
     ipcMainService,
     aiService,
