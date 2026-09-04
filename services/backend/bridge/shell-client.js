@@ -23,6 +23,20 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 	const pending = new Map()
 	let disposed = false
 
+	function validateExpectedResponse(envelope, expectedType) {
+		if (!expectedType) return null
+		if (envelope.body.type !== expectedType) {
+			return `unexpected Shell response type: expected ${expectedType}, got ${envelope.body.type}`
+		}
+		if (expectedType === "settings.apply.result") {
+			const body = envelope.body
+			if (!Number.isInteger(body.version) || body.version < 0) return "settings.apply.result has an invalid version"
+			if (typeof body.ok !== "boolean") return "settings.apply.result has an invalid ok field"
+			if (body.error !== undefined && typeof body.error !== "string") return "settings.apply.result has an invalid error"
+		}
+		return null
+	}
+
 	function receive(raw) {
 		if (disposed) return
 
@@ -47,7 +61,9 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 		if (awaiting !== undefined) {
 			pending.delete(envelope.id)
 			clearTimeout(awaiting.timer)
-			awaiting.resolve(envelope)
+			const validationError = validateExpectedResponse(envelope, awaiting.expectedType)
+			if (validationError) awaiting.reject(new Error(validationError))
+			else awaiting.resolve(envelope)
 			return
 		}
 
@@ -99,6 +115,10 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 
 	function request(body, options = {}) {
 		const timeoutMs = options.timeoutMs ?? DIALOG_RESULT_TIMEOUT_MS
+		// Keep legacy request callers permissive, but bind settings host-effect
+		// requests to their one legal response shape. Otherwise any allowlisted
+		// Shell envelope reusing the request id could settle the wrong operation.
+		const expectedType = options.expectedType ?? (body?.type === "settings.apply.request" ? "settings.apply.result" : null)
 		const envelope = dispatch(body, true)
 		if (envelope === null) return Promise.reject(new Error("shellClient 已销毁"))
 
@@ -115,7 +135,7 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 				)
 			}, timeoutMs)
 			timer.unref?.()
-			pending.set(envelope.id, { resolve, reject, timer })
+			pending.set(envelope.id, { resolve, reject, timer, expectedType })
 		})
 	}
 

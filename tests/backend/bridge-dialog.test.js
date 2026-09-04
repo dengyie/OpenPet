@@ -76,6 +76,28 @@ describe("dialog.request bridge", () => {
 		client.dispose()
 	})
 
+	it("rejects a same-id response with the wrong type for settings host effects", async () => {
+		const sent = []
+		const client = shellClient.createShellClient({ send: (envelope) => sent.push(envelope) })
+		const responsePromise = client.request({ type: "settings.apply.request", paths: ["scale"], version: 4, values: { scale: 1.2 } })
+
+		client.receive(resultEnvelope(sent[0].id, null))
+		await assert.rejects(responsePromise, /unexpected Shell response type: expected settings\.apply\.result, got dialog\.result/)
+		client.dispose()
+	})
+
+	it("accepts a valid settings host-effect response with the correlated id", async () => {
+		const sent = []
+		const client = shellClient.createShellClient({ send: (envelope) => sent.push(envelope) })
+		const responsePromise = client.request({ type: "settings.apply.request", paths: ["scale"], version: 4, values: { scale: 1.2 } })
+
+		client.receive(bridge.createEnvelope({ type: "settings.apply.result", version: 4, ok: true }, { id: sent[0].id }))
+		const response = await responsePromise
+		assert.equal(response.id, sent[0].id)
+		assert.deepEqual(response.body, { type: "settings.apply.result", version: 4, ok: true })
+		client.dispose()
+	})
+
 	it("requires envelope at to be a positive integer in backend and Shell parsers", () => {
 		for (const at of [0, -1, 1.5]) {
 			const raw = bridge.createEnvelope({ type: "ready", port: 3210, apiVersion: "v1", pid: 42 }, { at })
