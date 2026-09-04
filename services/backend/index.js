@@ -155,6 +155,7 @@ const runtime = {
 	userDataDir: null,
 	// ADR-009:/api/pet/* 与 /mcp 沿用旧 token,由 init 带入;没带就等于关掉这两个入口。
 	legacyToken: null,
+	appInfo: null,
 	petState: null,
 	degraded: false,
 	degradedReason: null,
@@ -183,6 +184,7 @@ const initEnvelope = await initPromise.catch((error) => {
 runtime.secrets = initEnvelope.body.secrets ?? {}
 runtime.userDataDir = initEnvelope.body.userDataDir ?? null
 runtime.legacyToken = initEnvelope.body.legacyToken ?? null
+runtime.appInfo = initEnvelope.body.appInfo ?? {}
 
 const accessLogs = createAccessLogBuffer({ max: 200 })
 const router = createRouter({ basePath: "/api/v1" })
@@ -241,7 +243,7 @@ registerSettingsRoutes({
 		if (name === "settings.changed") shell.send({ type: "settings.changed", paths: payload.paths, version: payload.version })
 	},
 })
-runtime.about = createAboutService({ pkg: packageJson, runtime })
+runtime.about = createAboutService({ pkg: packageJson, runtime: runtime.appInfo })
 registerAboutRoutes(router, {
 	about: runtime.about,
 	jobs: { insert: (input) => {

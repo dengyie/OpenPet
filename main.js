@@ -44,7 +44,6 @@ const { createActionImportService } = require('./src/main/services/action-import
 const { createCursorAssetService } = require('./src/main/services/cursor-asset-service')
 const { createSystemCursorService } = require('./src/main/services/system-cursor-service')
 const { createAppLogService } = require('./src/main/services/app-log-service')
-const { createAboutService } = require('./src/main/services/about-service')
 const { createCatalogService } = require('./src/main/services/catalog-service')
 const { registerAppLifecycleLogs, safeRecordAppLog } = require('./src/main/app-lifecycle-logger')
 const { createPetMovementPolicy } = require('./src/main/pet-movement-policy')
@@ -57,8 +56,6 @@ const { maybeRunPackagedCreateUiSmoke } = require('./src/main/packaged-create-ui
 const { createBasicBehaviorPlugin } = require('./src/main/plugins/official/basic-behavior')
 const { createSidecarRuntimeCoordinator } = require('./apps/desktop/src/sidecar/runtime-coordinator')
 const { createDefaultSidecarPidLedger } = require('./apps/desktop/src/sidecar/orphan-cleanup')
-const packageJson = require('./package.json')
-
 let petWindow = null
 const getPetWindow = () => petWindow
 
@@ -80,7 +77,6 @@ const bootstrapOpenPet = () => {
     shell,
     screen,
     projectRoot: __dirname,
-    packageJson,
     settingsRuntime: {
       loadSettings,
       saveSettings,
@@ -133,7 +129,6 @@ const bootstrapOpenPet = () => {
       createCursorAssetService,
       createSystemCursorService,
       createAppLogService,
-      createAboutService,
       createCatalogService,
       createPetMovementPolicy,
       createBasicBehaviorPlugin,

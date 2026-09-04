@@ -3830,8 +3830,6 @@ export interface ControlCenterApi {
   clearServiceLogs: () => Promise<ServiceLogEntry[]>
   rotateServiceToken: () => Promise<ServiceStatusViewState>
   revokeMcpSessions: () => Promise<ServiceStatusViewState>
-  getAboutInfo: () => Promise<AboutInfoViewState>
-  checkForUpdates: () => Promise<UpdateCheckViewState>
   getCatalog: () => Promise<CatalogState>
   prepareCatalogInstall: (payload: CatalogInstallRequest) => Promise<CatalogInstallSelection>
   installCatalogSelection: (selectionId: string) => Promise<CatalogInstallResult>

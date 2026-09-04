@@ -26,7 +26,12 @@ test("sidecar routes use runtime dependencies initialized before ready", async (
 	try {
 		backend = await spawnSidecar({
 			entry: path.join(repoRoot, "services/backend/index.js"),
-			initBody: { userDataDir, secrets: {}, legacyToken: null },
+			initBody: {
+				userDataDir,
+				secrets: {},
+				legacyToken: null,
+				appInfo: { name: "OpenPet Host", version: "9.8.7", packaged: true, platform: "test-platform", arch: "test-arch" },
+			},
 			logger: { info() {}, warn() {}, error() {} },
 		})
 		// The integration harness is the Shell for this isolated sidecar. Keep the
@@ -62,6 +67,8 @@ test("sidecar routes use runtime dependencies initialized before ready", async (
 		const persistedBeforePatch = JSON.parse(fs.readFileSync(settingsFile, "utf8"))
 		const settingsResponse = await fetch(`${backend.baseUrl}/settings`, { headers })
 		const settingsBody = await settingsResponse.json()
+		const aboutResponse = await fetch(`${backend.baseUrl}/about`, { headers })
+		const aboutBody = await aboutResponse.json()
 		const patchResponse = await fetch(`${backend.baseUrl}/settings`, {
 			method: "PATCH",
 			headers,
@@ -79,10 +86,30 @@ test("sidecar routes use runtime dependencies initialized before ready", async (
 
 		assert.deepEqual({
 			get: { status: settingsResponse.status, data: settingsBody.data },
+			about: { status: aboutResponse.status, data: aboutBody.data },
 			patch: { status: patchResponse.status, ok: patchBody.ok },
 			domainStatuses,
 		}, {
 			get: { status: 200, data: persistedBeforePatch },
+			about: {
+				status: 200,
+				data: {
+					name: "openpet",
+					productName: "OpenPet",
+					version: "9.8.7",
+					packaged: true,
+					platform: "test-platform",
+					arch: "test-arch",
+					update: {
+						configured: true,
+						provider: "github",
+						owner: "dengyie",
+						repo: "OpenPet",
+						channel: "latest",
+						url: "https://github.com/dengyie/OpenPet/releases",
+					},
+				},
+			},
 			patch: { status: 200, ok: true },
 			domainStatuses: { "/catalog": 200, "/pet-packs": 200, "/actions": 200 },
 		})

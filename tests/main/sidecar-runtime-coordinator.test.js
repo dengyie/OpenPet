@@ -8,7 +8,12 @@ function createHarness({ spawnError, getInitBody } = {}) {
 	const calls = { initBodies: [], handled: [], stopped: [] }
 	let spawnOptions
 	const coordinator = createSidecarRuntimeCoordinator({
-		app: { getPath: () => "/tmp/openpet-user-data" },
+		app: {
+			getPath: () => "/tmp/openpet-user-data",
+			getName: () => "OpenPet Host",
+			getVersion: () => "1.2.3",
+			isPackaged: true,
+		},
 		secretService: {
 			listSecretRefs: () => [{ id: "ai.default", hasValue: true }, { id: "empty", hasValue: false }],
 			getSecretValue: (id) => id === "ai.default" ? "existing-secret" : "",
@@ -30,7 +35,18 @@ function createHarness({ spawnError, getInitBody } = {}) {
 test("starts without reading or injecting secrets and exposes connection", async () => {
 	const harness = createHarness()
 	const backend = await harness.coordinator.start()
-	assert.deepEqual(harness.calls.initBodies, [{ userDataDir: "/tmp/openpet-user-data", secrets: {}, legacyToken: "legacy-token" }])
+	assert.deepEqual(harness.calls.initBodies, [{
+		userDataDir: "/tmp/openpet-user-data",
+		secrets: {},
+		legacyToken: "legacy-token",
+		appInfo: {
+			name: "OpenPet Host",
+			version: "1.2.3",
+			packaged: true,
+			platform: process.platform,
+			arch: process.arch,
+		},
+	}])
 	assert.deepEqual(backend, { baseUrl: "http://127.0.0.1:3210/api/v1", sessionToken: "session-token" })
 	assert.equal(harness.coordinator.getState().status, "ready")
 })

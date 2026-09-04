@@ -28,7 +28,6 @@ const createOpenPetRuntime = ({
   shell,
   screen,
   projectRoot,
-  packageJson,
   settingsRuntime,
   getPetWindow,
   createSettingsWindow,
@@ -57,7 +56,6 @@ const createOpenPetRuntime = ({
   const core = createCoreServices({
     app,
     projectRoot,
-    packageJson,
     settingsRuntime,
     factories,
     screen,
@@ -65,7 +63,6 @@ const createOpenPetRuntime = ({
   })
   const {
     services: {
-      aboutService,
       actionImportService,
       actionService,
       aiService,
@@ -394,7 +391,6 @@ const createOpenPetRuntime = ({
     pluginGithubImportService: pluginServices.pluginGithubImportService,
     catalogService: pluginServices.catalogService,
     localHttpService,
-    aboutService,
     actionService,
     actionImportService,
     cursorAssetService,
