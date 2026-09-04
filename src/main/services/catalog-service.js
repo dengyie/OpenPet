@@ -2,7 +2,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const crypto = require('crypto')
-const { compareVersions } = require('./about-service')
+const { compareVersions } = require('../version-utils')
 const { getBlockStatus, mergeBlocklists, normalizeBlocklist } = require('./ecosystem-policy')
 const { cancelResponseBodyQuietly, readBoundedResponseBuffer } = require('./bounded-response-body')
 

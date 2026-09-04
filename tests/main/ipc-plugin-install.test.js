@@ -133,10 +133,6 @@ const createRequiredServices = ({ pluginInstallService, pluginService, dialogSer
     stop: async () => ({ enabled: false, host: '127.0.0.1', port: 0, mcp: { activeSessions: 0, sessionTtlMs: 0 } }),
     revokeMcpSessions: () => ({ activeSessions: 0, sessionTtlMs: 0 })
   },
-  aboutService: {
-    getInfo: () => ({}),
-    checkForUpdates: () => ({ ok: true })
-  },
   actionService: {
     applyCreatorActionMutation: (payload) => ({ defaultAction: payload.defaultAction || '', clickAction: payload.clickAction || '', actions: [] }),
     acceptTriggerProposal: (proposal) => ({

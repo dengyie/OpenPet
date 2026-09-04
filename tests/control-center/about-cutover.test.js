@@ -134,6 +134,7 @@ describe("T42 About HTTP/Job cutover", () => {
 		assert.doesNotMatch(fs.readFileSync("src/main/bootstrap/create-openpet-runtime.js", "utf8"), /aboutService/)
 		assert.doesNotMatch(fs.readFileSync("src/main/bootstrap/create-core-services.js", "utf8"), /createAboutService|aboutService/)
 		assert.doesNotMatch(fs.readFileSync("main.js", "utf8"), /createAboutService|services\/about-service/)
+		assert.equal(fs.existsSync("src/main/services/about-service.js"), false)
 		assert.doesNotMatch(fs.readFileSync("src/shared/openpet-contracts.ts", "utf8"), /getAboutInfo|checkForUpdates/)
 		assert.doesNotMatch(fs.readFileSync("src/control-center/src/api/demo-control-center-api.ts", "utf8"), /getAboutInfo|checkForUpdates/)
 		assert.doesNotMatch(fs.readFileSync("src/control-center/src/hooks/useAboutPane.ts", "utf8"), /controlCenterAPI|getAboutInfo|checkForUpdates/)

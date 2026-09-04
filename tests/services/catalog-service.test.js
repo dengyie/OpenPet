@@ -122,6 +122,13 @@ const createRealServices = ({ settingsService = createSettingsService(), catalog
   return { catalogService, settingsService, pluginService, petPackService }
 }
 
+test('catalog service does not depend on the retired About service', () => {
+  const source = fs.readFileSync(require.resolve('../../src/main/services/catalog-service'), 'utf8')
+
+  assert.doesNotMatch(source, /require\(['"]\.\/about-service['"]\)/)
+  assert.equal(fs.existsSync(path.resolve(__dirname, '../../src/main/services/about-service.js')), false)
+})
+
 test('catalog service annotates installed entries and update availability', () => {
   const catalogPath = writeCatalog({
     plugins: [{ id: 'focus-timer', name: 'Focus Timer', version: '1.1.0' }],
