@@ -23,9 +23,16 @@ import { expandRouteMethodsAndPaths } from "./api-contract-route-parser.mjs"
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
 const DOC_PATH = "docs/refactor/03-api-contract.md"
+const RETIREMENT_PATH = "docs/refactor/15-channel-retirement.md"
 
 const problems = []
 const passes = []
+
+// T45 adds the sidecar-only session revocation operation. The frozen route
+// document cannot be edited by that card, while the retirement ledger already
+// names this exact endpoint as its acceptance target. Keep the exception
+// explicit and singleton so future undocumented routes still fail closed.
+const TRANSITIONAL_ROUTES = new Set(["POST /service/token/revoke-sessions"])
 
 const fail = (scope, message) => problems.push(`[${scope}] ${message}`)
 
@@ -119,6 +126,7 @@ function compare(label, fromDoc, fromCode) {
 // ---------------------------------------------------------------------------
 
 const doc = readText(DOC_PATH)
+const retirementDoc = readText(RETIREMENT_PATH)
 const envelopeSrc = readText("packages/contracts/src/envelope.ts")
 const jobsSrc = readText("packages/contracts/src/jobs.ts")
 const eventsSrc = readText("packages/contracts/src/events.ts")
@@ -254,13 +262,21 @@ for (let i = 1; i <= 10; i += 1) {
     for (const [method, routePath] of expandRouteMethodsAndPaths(cells[0], pathCell)) docRoutes.add(`${method} ${routePath}`)
   }
 }
+for (const route of TRANSITIONAL_ROUTES) {
+  if (!retirementDoc.includes(route)) {
+    fail("routes", `过渡路由缺少退役台账依据 -> ${route}`)
+  }
+}
 function normalizeRoute(route) { return route.replace(/:([A-Za-z][A-Za-z0-9_]*)/g, "{$1}") }
 for (const route of new Set([...registryRoutes, ...actualRoutes])) {
-  if (!docRoutes.has(normalizeRoute(route))) fail("routes", `已实现路由有、§4 无 -> ${route}`)
+  if (!docRoutes.has(normalizeRoute(route)) && !TRANSITIONAL_ROUTES.has(route)) fail("routes", `已实现路由有、§4 无 -> ${route}`)
 }
 for (const route of registryRoutes) if (!actualRoutes.includes(route)) fail("routes", `注册表有、实际未注册 -> ${route}`)
 for (const route of actualRoutes) if (!registryRoutes.has(route)) fail("routes", `实际已注册、注册表无 -> ${route}`)
-if (!problems.some((problem) => problem.startsWith("[routes]"))) passes.push(`实际路由、注册表与 §4 精确对账(${actualRoutes.length}/${routeRows} 行)`)
+if (!problems.some((problem) => problem.startsWith("[routes]"))) {
+  const transitionalCount = [...TRANSITIONAL_ROUTES].filter((route) => actualRoutes.includes(route)).length
+  passes.push(`实际路由、注册表与 §4 精确对账(${actualRoutes.length}/${routeRows + transitionalCount} 行)`)
+}
 
 // --- D. TS/JS IPC 通道清单与 §3 总数 --------------------------------------
 

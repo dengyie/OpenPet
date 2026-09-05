@@ -36,6 +36,7 @@ function normalizeCatalogRequest(value) {
 // A backend message is untrusted input at this boundary: only these explicitly
 // capabilities may reach Electron/PetService.
 const BACKEND_TO_SHELL_TYPES = Object.freeze([
+	"pet.command.request",
 	"pet.say",
 	"pet.playAction",
 	"pet.event",
@@ -104,6 +105,9 @@ function parseEnvelope(raw) {
 	if (!BACKEND_TO_SHELL_TYPES.includes(body.type)) return fail("unknown-type", body.type)
 
 	switch (body.type) {
+		case "pet.command.request":
+			if (!["say", "playAction", "setEvent"].includes(body.operation) || body.payload === null || typeof body.payload !== "object" || Array.isArray(body.payload)) return fail("bad-body", "pet.command.request")
+			break
 		case "pet.say":
 			if (typeof body.text !== "string") return fail("bad-body", "pet.say.text")
 			if (body.durationMs !== undefined && (!Number.isInteger(body.durationMs) || body.durationMs <= 0)) return fail("bad-body", "pet.say.durationMs")
@@ -169,7 +173,7 @@ function createMessageHandler({ dialog, petService, secretService, logger, send,
 		const { body } = parsed.envelope
 
 		try {
-				switch (body.type) {
+			switch (body.type) {
 				case "pet-packs.request": {
 					let responseBody
 					try {
@@ -193,6 +197,32 @@ function createMessageHandler({ dialog, petService, secretService, logger, send,
 						}
 					}
 					send({ v: BRIDGE_PROTOCOL_VERSION, id: raw.id, at: Date.now(), body: responseBody })
+					return true
+				}
+				case "pet.command.request": {
+					let result
+					try {
+						if (body.operation === "say") result = await petService?.say?.({
+							text: body.payload.text,
+							ttlMs: body.payload.ttlMs,
+							source: body.payload.source,
+							sourceSurface: body.payload.sourceSurface,
+							requestId: body.payload.requestId,
+						})
+						else if (body.operation === "playAction") result = await petService?.playAction?.({
+							actionId: body.payload.actionId,
+							source: body.payload.source,
+						})
+						else result = await petService?.setEvent?.({
+							type: body.payload.type,
+							message: body.payload.message,
+							ttlMs: body.payload.ttlMs,
+							source: body.payload.source,
+						})
+						send({ v: BRIDGE_PROTOCOL_VERSION, id: raw.id, at: Date.now(), body: { type: "pet.command.result", ok: true, result } })
+					} catch (error) {
+						send({ v: BRIDGE_PROTOCOL_VERSION, id: raw.id, at: Date.now(), body: { type: "pet.command.result", ok: false, error: sanitizeLogText(error?.message || String(error)) } })
+					}
 					return true
 				}
 				case "plugin.production.request": {

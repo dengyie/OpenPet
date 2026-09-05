@@ -136,25 +136,8 @@ const registerCursorRepair = ({ cursorAssetService, petService, appLogService, p
     return nextSettings
   })
 }
-const maybeStartLocalHttp = ({ petService, localHttpService, normalizeLocalHttpConfig }) => {
-  let localHttpConfig = petService.getSettings().localHttp
-  if (!localHttpConfig?.enabled) return
-
-  const normalizedConfig = normalizeLocalHttpConfig(localHttpConfig, localHttpConfig)
-  if (normalizedConfig.token !== localHttpConfig.token) {
-    const currentSettings = petService.getSettings()
-    petService.saveSettings({ ...currentSettings, localHttp: normalizedConfig })
-    localHttpConfig = normalizedConfig
-  }
-  localHttpService.start(localHttpConfig).catch((error) => {
-    console.error('Failed to start local HTTP service:', error.message)
-  })
-}
-
 const runPostPluginStartupSideEffects = ({
   petService,
-  localHttpService,
-  normalizeLocalHttpConfig,
   syncLoginItemSettings,
   triggerRuleRuntimeService,
   cursorRepairPromise = Promise.resolve(),
@@ -163,7 +146,6 @@ const runPostPluginStartupSideEffects = ({
   onSystemCursorFallback = () => {},
   persistSystemCursorFallback
 }) => {
-  maybeStartLocalHttp({ petService, localHttpService, normalizeLocalHttpConfig })
   syncLoginItemSettings(petService.getSettings().autoStart)
   triggerRuleRuntimeService.start()
   return Promise.resolve(cursorRepairPromise).then(async () => {
@@ -266,7 +248,6 @@ const mergeActiveCursorRepair = (before, repaired, latest) => {
 module.exports = {
   applyCursorRepairToCollection,
   hasCursorRepairChanged,
-  maybeStartLocalHttp,
   registerCursorRepair,
   runPostPluginStartupSideEffects
 }

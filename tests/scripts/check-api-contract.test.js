@@ -10,6 +10,7 @@ const { spawnSync } = require('node:child_process')
 const repoRoot = path.resolve(__dirname, '../..')
 const fixtureFiles = [
 	'docs/refactor/03-api-contract.md',
+	'docs/refactor/15-channel-retirement.md',
 	'packages/contracts/src/envelope.ts',
 	'packages/contracts/src/events.ts',
 	'packages/contracts/src/jobs.ts',
@@ -95,6 +96,23 @@ test('CLI rejects route registration and registry omissions', (t) => {
 		assert.equal(result.status, 1, target)
 		assert.match(result.stderr, /注册表|实际已注册/)
 	}
+})
+
+test('CLI permits only the explicitly registered T45 transitional revoke route', (t) => {
+	const fixtureRoot = createFixture(t)
+	const docPath = path.join(fixtureRoot, 'docs/refactor/03-api-contract.md')
+	const doc = fs.readFileSync(docPath, 'utf8')
+	assert.doesNotMatch(doc, /token\/revoke-sessions/)
+	const result = spawnSync(process.execPath, [path.join(fixtureRoot, 'scripts/check-api-contract.mjs')], { cwd: fixtureRoot, encoding: 'utf8' })
+	assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`)
+	assert.match(result.stdout, /实际路由、注册表与 §4 精确对账\(75\/103 行\)/)
+
+	const registryPath = path.join(fixtureRoot, 'services/backend/routes/registry.js')
+	const registry = fs.readFileSync(registryPath, 'utf8')
+	fs.writeFileSync(registryPath, registry.replace('\t"POST /service/token/revoke-sessions",\n', ''))
+	const missing = spawnSync(process.execPath, [path.join(fixtureRoot, 'scripts/check-api-contract.mjs')], { cwd: fixtureRoot, encoding: 'utf8' })
+	assert.equal(missing.status, 1)
+	assert.match(missing.stderr, /注册表|实际已注册/)
 })
 
 test('route parser expands compact method/path cells without cross-pairing paths', async () => {

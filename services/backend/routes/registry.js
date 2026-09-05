@@ -3,6 +3,7 @@ export const IMPLEMENTED_API_ROUTES = Object.freeze([
 	"GET /service/status",
 	"POST /service/enable",
 	"POST /service/token/rotate",
+	"POST /service/token/revoke-sessions",
 	"GET /service/logs",
 	"DELETE /service/logs",
 	"GET /service/config",

@@ -19,7 +19,7 @@ function createHarness({ spawnError, getInitBody } = {}) {
 			getSecretValue: (id) => id === "ai.default" ? "existing-secret" : "",
 			listProviderKeys: () => ({ "ai.default": "existing-secret" }),
 		},
-		getSettings: () => ({ localHttp: { token: "legacy-token" } }),
+		getSettings: () => ({ localHttp: { enabled: true, host: "localhost", port: 8317, token: "legacy-token" } }),
 		getInitBody,
 		spawnSidecar: async (options) => {
 			spawnOptions = options
@@ -40,6 +40,7 @@ test("injects only providerKeys during init and exposes the backend connection",
 		userDataDir: "/tmp/openpet-user-data",
 		providerKeys: { "ai.default": "existing-secret" },
 		legacyToken: "legacy-token",
+		localHttpConfig: { enabled: true, host: "localhost", port: 8317 },
 		appInfo: {
 			name: "OpenPet Host",
 			version: "1.2.3",

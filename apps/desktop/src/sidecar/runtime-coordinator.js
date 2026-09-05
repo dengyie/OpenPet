@@ -42,6 +42,11 @@ async function createDefaultInitBody({ app, getSettings, secretService }) {
 		userDataDir: app?.getPath?.("userData"),
 		providerKeys: secretService?.listProviderKeys?.() || {},
 		legacyToken: settings?.localHttp?.token || null,
+		localHttpConfig: {
+			enabled: Boolean(settings?.localHttp?.enabled),
+			host: settings?.localHttp?.host || "127.0.0.1",
+			port: Number(settings?.localHttp?.port) || 0,
+		},
 		appInfo: {
 			name: app?.getName?.() || "OpenPet",
 			version: app?.getVersion?.() || "0.0.0",

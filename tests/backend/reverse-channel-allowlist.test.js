@@ -11,6 +11,7 @@ const {
 } = require("../../apps/desktop/src/sidecar/message-handler.js")
 
 const EXPECTED_BACKEND_TO_SHELL_TYPES = [
+	"pet.command.request",
 	"pet.say",
 	"pet.playAction",
 	"pet.event",
@@ -47,13 +48,13 @@ function contractBackendToShellTypes() {
 }
 
 	describe("T28 reverse-channel allowlist", () => {
-	it("keeps the Backend and Shell allowlists exactly aligned with the 15 contract types", async () => {
+	it("keeps the Backend and Shell allowlists exactly aligned with the 16 contract types", async () => {
 		const backendSchema = await import("../../services/backend/bridge/message-schema.js")
 
 		assert.deepEqual(contractBackendToShellTypes(), EXPECTED_BACKEND_TO_SHELL_TYPES)
 		assert.deepEqual(backendSchema.BACKEND_TO_SHELL_TYPES, EXPECTED_BACKEND_TO_SHELL_TYPES)
 		assert.deepEqual(SHELL_BACKEND_TO_SHELL_TYPES, EXPECTED_BACKEND_TO_SHELL_TYPES)
-		assert.equal(new Set(SHELL_BACKEND_TO_SHELL_TYPES).size, 15)
+		assert.equal(new Set(SHELL_BACKEND_TO_SHELL_TYPES).size, 16)
 	})
 
 	it("drops malformed and non-allowlisted envelopes and logs each rejection", async () => {
@@ -77,6 +78,29 @@ function contractBackendToShellTypes() {
 			"bad-id",
 			"bad-at",
 		])
+	})
+
+	it("executes only the three allowlisted pet commands and returns their exact result", async () => {
+		const replies = []
+		const calls = []
+		const handler = createMessageHandler({
+			send: (reply) => replies.push(reply),
+			petService: {
+				say: (payload) => { calls.push(["say", payload]); return payload },
+				playAction: (payload) => { calls.push(["playAction", payload]); return payload },
+				setEvent: (payload) => { calls.push(["setEvent", payload]); return payload },
+			},
+		})
+		assert.equal(await handler.handle(envelope("pet.command.request", {
+			operation: "setEvent",
+			payload: { type: "status", message: "working", ttlMs: 900, source: "http" },
+		})), true)
+		assert.deepEqual(calls, [["setEvent", { type: "status", message: "working", ttlMs: 900, source: "http" }]])
+		assert.deepEqual(replies[0].body, {
+			type: "pet.command.result",
+			ok: true,
+			result: { type: "status", message: "working", ttlMs: 900, source: "http" },
+		})
 	})
 
 	it("passes only pluginId to the dashboard opener and ignores all backend window parameters", async () => {

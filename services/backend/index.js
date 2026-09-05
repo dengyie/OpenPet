@@ -218,6 +218,7 @@ delete initEnvelope.body.secrets
 runtime.userDataDir = initEnvelope.body.userDataDir ?? null
 runtime.legacyToken = initEnvelope.body.legacyToken ?? null
 runtime.appInfo = initEnvelope.body.appInfo ?? {}
+const legacyLocalHttpConfig = initEnvelope.body.localHttpConfig ?? { enabled: false, host: "127.0.0.1", port: 0 }
 
 const accessLogs = createAccessLogBuffer({ max: 200 })
 const router = createRouter({ basePath: "/api/v1" })
@@ -236,8 +237,6 @@ router.use(cors())
 router.use(
 	bearerAuth({
 		getSessionToken: () => runtime.sessionToken,
-		legacyPathPrefixes: ["/api/pet", "/mcp"],
-		getLegacyToken: () => runtime.legacyToken,
 	}),
 )
 router.use(jsonBody())
@@ -294,6 +293,13 @@ runtime.service = createLocalHttpManager({
 	petState: () => runtime.petState,
 	logger,
 })
+if (legacyLocalHttpConfig.enabled) {
+	try {
+		await runtime.service.start(legacyLocalHttpConfig)
+	} catch (error) {
+		logger.error("MCP HTTP server startup failed", { error: String(error) })
+	}
+}
 registerServiceRoutes(router, { manager: runtime.service })
 registerAiSecretRoutes(router, { secrets: runtime.secrets })
 runtime.catalog = createCatalogService({
@@ -555,6 +561,11 @@ async function shutdown(reason, code) {
 	}
 	await runtime.plugins?.runtimeBridgeServer?.close?.()
 	await runtime.commandServer?.close?.()
+	try {
+		await runtime.service?.stop?.()
+	} catch (error) {
+		logger.error("MCP HTTP server shutdown failed", { error: String(error) })
+	}
 	await runtime.runner?.shutdown?.()
 	runtime.queue?.stop?.()
 	await new Promise((resolve) => server.close(resolve))

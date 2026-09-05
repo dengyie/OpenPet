@@ -514,6 +514,121 @@ test('registerServiceIpc wires service status, token rotation, and config persis
   assert.ok(ipcMain.handlers.has(IPC.SERVICE_REVOKE_MCP_SESSIONS))
 })
 
+test('registerServiceIpc controls only the sidecar-owned MCP server', async () => {
+  const ipcMain = createIpcMainStub()
+  const savedSettings = []
+  const requests = []
+  let settings = { localHttp: { enabled: true, host: '127.0.0.1', port: 8317, token: 'old-token', logs: [] } }
+  const localHttpService = new Proxy({}, {
+    get: (_target, property) => () => {
+      throw new Error(`main-process local HTTP service must not handle ${String(property)}`)
+    }
+  })
+
+  registerServiceIpc({
+    ipcMainService: ipcMain,
+    petService: {
+      getSettings: () => settings,
+      saveSettings: (next) => {
+        settings = next
+        savedSettings.push(next)
+        return next
+      }
+    },
+    localHttpService,
+    sidecarRuntimeCoordinator: {
+      getBackend: () => ({ baseUrl: 'http://127.0.0.1:3210/api/v1', sessionToken: 'session-token' })
+    },
+    fetchImpl: async (url, options) => {
+      requests.push({ url, options })
+      const parsed = new URL(url)
+      let data = { enabled: settings.localHttp.enabled, host: '127.0.0.1', port: settings.localHttp.port, mcp: { activeSessions: 0, sessionTtlMs: 1000 } }
+      if (parsed.pathname.endsWith('/logs') && parsed.searchParams.get('operation') === 'export') data = '[]\n'
+      else if (parsed.pathname.endsWith('/logs') && options.method === 'GET') data = { entries: [], page: 1, pageSize: 50, total: 0, totalPages: 1 }
+      else if (parsed.pathname.endsWith('/logs') && options.method === 'DELETE') data = []
+      else if (parsed.pathname.endsWith('/token/rotate')) data = { token: 'rotated-token', rotated: true, tokenConfigured: true }
+      else if (parsed.pathname.endsWith('/token/revoke-sessions')) data = { activeSessions: 0, sessionTtlMs: 1000 }
+      else if (parsed.pathname.endsWith('/config')) data = { enabled: JSON.parse(options.body).enabled, host: '127.0.0.1', port: JSON.parse(options.body).port, tokenConfigured: true, mcpProtocolVersion: '2025-03-26' }
+      return { ok: true, status: 200, text: async () => JSON.stringify({ ok: true, data }) }
+    },
+    normalizeLocalHttpConfig: (_current, next) => ({ host: '127.0.0.1', ...next }),
+    createLocalHttpToken: () => 'rotated-token',
+    createServiceStatusView: (config, runtime) => ({ config, runtime })
+  })
+
+  await ipcMain.handlers.get(IPC.SERVICE_GET_STATUS)()
+  await ipcMain.handlers.get(IPC.SERVICE_GET_LOGS)(null, { page: 1 })
+  await ipcMain.handlers.get(IPC.SERVICE_EXPORT_LOGS)(null, { format: 'json' })
+  await ipcMain.handlers.get(IPC.SERVICE_CLEAR_LOGS)()
+  await ipcMain.handlers.get(IPC.SERVICE_REVOKE_MCP_SESSIONS)()
+  await ipcMain.handlers.get(IPC.SERVICE_ROTATE_TOKEN)()
+  const saved = await ipcMain.handlers.get(IPC.SERVICE_SAVE_CONFIG)(null, { ...settings.localHttp, port: 8456 })
+
+  assert.deepEqual(requests.map((request) => new URL(request.url).pathname + (new URL(request.url).search ? new URL(request.url).search : '')), [
+    '/api/v1/service/status',
+    '/api/v1/service/logs?page=1',
+    '/api/v1/service/logs?operation=export&format=json',
+    '/api/v1/service/logs',
+    '/api/v1/service/token/revoke-sessions',
+    '/api/v1/service/status',
+    '/api/v1/service/token/rotate',
+    '/api/v1/service/status',
+    '/api/v1/service/config',
+    '/api/v1/service/status'
+  ])
+  assert.equal(JSON.parse(requests[8].options.body).enabled, true)
+  assert.equal(JSON.parse(requests[8].options.body).port, 8456)
+  assert.deepEqual(saved.runtime.mcp, { activeSessions: 0, sessionTtlMs: 1000 })
+  assert.equal(savedSettings.length, 2)
+})
+
+test('registerServiceIpc fails closed when the configured sidecar is unavailable', async () => {
+  const ipcMain = createIpcMainStub()
+  const localCalls = []
+  const savedSettings = []
+
+  registerServiceIpc({
+    ipcMainService: ipcMain,
+    petService: {
+      getSettings: () => ({ localHttp: { enabled: false, host: '127.0.0.1', port: 0, token: 'old-token' } }),
+      saveSettings: (settings) => {
+        savedSettings.push(settings)
+        return settings
+      }
+    },
+    localHttpService: {
+      start: async (config) => {
+        localCalls.push(['start', config])
+        return { enabled: true, host: config.host, port: config.port }
+      },
+      stop: async () => {
+        localCalls.push(['stop'])
+        return { enabled: false, host: '127.0.0.1', port: 0 }
+      },
+      getStatus: () => {
+        localCalls.push(['getStatus'])
+        return { enabled: false, host: '127.0.0.1', port: 0 }
+      }
+    },
+    sidecarRuntimeCoordinator: { getBackend: () => null },
+    normalizeLocalHttpConfig: (_current, next) => ({ host: '127.0.0.1', ...next }),
+    createLocalHttpToken: () => 'unused-token',
+    createServiceStatusView: (config, runtime) => ({ config, runtime })
+  })
+
+  await assert.rejects(
+    () => ipcMain.handlers.get(IPC.SERVICE_SAVE_CONFIG)(null, {
+      enabled: true,
+      port: 8456,
+      token: 'custom-token'
+    }),
+    /sidecar unavailable/
+  )
+
+  assert.deepEqual(localCalls, [])
+  assert.deepEqual(savedSettings, [])
+})
+
 test('registerServiceIpc does not persist localHttp config when start fails', async () => {
   const ipcMain = createIpcMainStub()
   const savedSettings = []

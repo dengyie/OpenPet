@@ -57,6 +57,11 @@ export const PET_PACK_BRIDGE_OPERATIONS = [
 export type PetPackBridgeOperation = (typeof PET_PACK_BRIDGE_OPERATIONS)[number]
 
 export const backendToShellSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("pet.command.request"),
+    operation: z.enum(["say", "playAction", "setEvent"]),
+    payload: z.record(z.string(), z.unknown()),
+  }).strict(),
   z.object({ type: z.literal("pet.say"), text: z.string(), durationMs: z.number().int().positive().optional() }),
   z.object({ type: z.literal("pet.playAction"), actionId: z.string(), loop: z.boolean().optional() }),
   z.object({ type: z.literal("pet.event"), name: z.string(), payload: z.unknown().optional() }),
@@ -104,6 +109,11 @@ export const shellToBackendSchema = z.discriminatedUnion("type", [
      * 运行期写入仅允许反向走 secrets.persist.request 交还 Shell 加密落盘。
      */
     providerKeys: z.record(z.string(), z.string()).optional(),
+    localHttpConfig: z.object({
+      enabled: z.boolean(),
+      host: z.string(),
+      port: z.number().int().nonnegative().max(65535),
+    }).strict().optional(),
   }),
   z.object({ type: z.literal("shutdown"), graceMs: z.number().int().nonnegative() }),
   z.object({ type: z.literal("pet.stateSnapshot"), state: z.record(z.string(), z.unknown()) }),
@@ -128,6 +138,7 @@ export const shellToBackendSchema = z.discriminatedUnion("type", [
     type: z.literal("pet.pack-activated"),
     payload: z.record(z.string(), z.unknown()),
   }).strict(),
+  z.object({ type: z.literal("pet.command.result"), ok: z.boolean(), result: z.unknown().optional(), error: z.string().optional() }).strict(),
 ])
 export type ShellToBackend = z.infer<typeof shellToBackendSchema>
 

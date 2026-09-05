@@ -2,7 +2,7 @@ import { createRequire } from "node:module"
 import { ApiError } from "../http/middleware.js"
 
 const require = createRequire(import.meta.url)
-const { createLocalHttpService, createLocalHttpToken, MCP_PROTOCOL_VERSION } = require("../../../src/main/services/local-http-service.js")
+const { createLocalHttpService, createLocalHttpToken, MCP_PROTOCOL_VERSION } = require("../mcp/local-http-service.cjs")
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1"])
 
@@ -20,9 +20,21 @@ export function createLocalHttpManager({ settings, logger, now = () => new Date(
 	let config = { enabled: false, host: "127.0.0.1", port: 0, token: secrets?.localHttpToken ?? createLocalHttpToken() }
 	const petService = {
 		getSnapshot: () => petState?.() ?? {},
-		say: (payload) => { shell?.send?.({ type: "pet.say", text: payload.text, durationMs: payload.ttlMs }); return { accepted: true } },
-		playAction: (payload) => { shell?.send?.({ type: "pet.playAction", actionId: payload.actionId }); return { accepted: true } },
-		setEvent: (payload) => { shell?.send?.({ type: "pet.event", name: payload.name, payload: payload.payload }); return { accepted: true } },
+		say: async (payload) => {
+			const reply = await shell?.request?.({ type: "pet.command.request", operation: "say", payload }, { expectedType: "pet.command.result" })
+			if (reply?.body?.ok !== true) throw new Error(reply?.body?.error || "Shell pet command failed")
+			return reply.body.result
+		},
+		playAction: async (payload) => {
+			const reply = await shell?.request?.({ type: "pet.command.request", operation: "playAction", payload }, { expectedType: "pet.command.result" })
+			if (reply?.body?.ok !== true) throw new Error(reply?.body?.error || "Shell pet command failed")
+			return reply.body.result
+		},
+		setEvent: async (payload) => {
+			const reply = await shell?.request?.({ type: "pet.command.request", operation: "setEvent", payload }, { expectedType: "pet.command.result" })
+			if (reply?.body?.ok !== true) throw new Error(reply?.body?.error || "Shell pet command failed")
+			return reply.body.result
+		},
 	}
 	const service = createLocalHttpService({ petService, now, logger })
 
@@ -41,14 +53,18 @@ export function createLocalHttpManager({ settings, logger, now = () => new Date(
 			if (typeof patch.enabled !== "boolean") throw new ApiError("VALIDATION_FAILED", "enabled 必须是布尔值")
 			next.enabled = patch.enabled
 		}
+		if (patch.token !== undefined) {
+			if (typeof patch.token !== "string" || patch.token.length === 0) throw new ApiError("VALIDATION_FAILED", "服务令牌无效")
+			next.token = patch.token
+		}
 		return next
 	}
 
 	const status = () => service.getStatus()
 	const start = async (patch = {}) => {
-		config = validate({ ...patch, enabled: true })
-		const result = await service.start({ host: config.host, port: config.port, token: config.token })
-		config = { ...config, ...result, enabled: true }
+		const next = validate({ ...patch, enabled: true })
+		const result = await service.start({ host: next.host, port: next.port, token: next.token })
+		config = { ...next, enabled: true }
 		return safeConfig(config, result)
 	}
 	const stop = async () => {
@@ -56,9 +72,10 @@ export function createLocalHttpManager({ settings, logger, now = () => new Date(
 		config.enabled = false
 		return safeConfig(config, result)
 	}
-	const rotateToken = async () => {
-		config.token = createLocalHttpToken()
-		if (config.enabled) await service.start({ host: config.host, port: config.port, token: config.token })
+	const rotateToken = async (token) => {
+		const nextToken = token === undefined ? createLocalHttpToken() : validate({ token }).token
+		if (config.enabled) await service.start({ host: config.host, port: config.port, token: nextToken })
+		config.token = nextToken
 		return { tokenConfigured: true, rotated: true }
 	}
 	const getConfig = () => safeConfig(config, status())
@@ -74,5 +91,17 @@ export function createLocalHttpManager({ settings, logger, now = () => new Date(
 		secrets: { token: "redacted" },
 	})
 
-	return { status, start, stop, rotateToken, config: getConfig, setConfig, diagnostics, getLogs: (filters) => service.getLogPage(filters), clearLogs: () => service.clearLogs() }
+	return {
+		status,
+		start,
+		stop,
+		rotateToken,
+		revokeMcpSessions: () => service.revokeMcpSessions(),
+		config: getConfig,
+		setConfig,
+		diagnostics,
+		getLogs: (filters) => service.getLogPage(filters),
+		exportLogs: (filters) => service.exportLogs(filters),
+		clearLogs: () => service.clearLogs(),
+	}
 }

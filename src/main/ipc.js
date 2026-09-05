@@ -1076,7 +1076,8 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     localHttpService,
     normalizeLocalHttpConfig,
     createLocalHttpToken,
-    createServiceStatusView
+    createServiceStatusView,
+    sidecarRuntimeCoordinator
   })
 
   return {

@@ -81,3 +81,20 @@ test('mcp transport tools call uses pet service and rejects invalid args', () =>
   assert.equal(bad.body.error.code, -32602)
   assert.equal(legacy.body.result.structuredContent.text, 'legacy')
 })
+
+test('mcp transport preserves JSON-RPC errors for asynchronous Shell failures', async () => {
+  const service = createMcpTransportService({
+    petService: {
+      getSnapshot: () => ({}),
+      say: async () => { throw new Error('Shell pet command failed') }
+    }
+  })
+  const initialized = service.handleJsonRpc(createRequest(), { jsonrpc: '2.0', id: 1, method: 'initialize' })
+  const result = await service.handleJsonRpc(createRequest(initialized.headers['Mcp-Session-Id']), {
+    jsonrpc: '2.0',
+    id: 2,
+    method: 'tools/call',
+    params: { name: 'openpet.say', arguments: { text: 'hello' } }
+  })
+  assert.deepEqual(result.body, { jsonrpc: '2.0', id: 2, error: { code: -32602, message: 'Shell pet command failed' } })
+})

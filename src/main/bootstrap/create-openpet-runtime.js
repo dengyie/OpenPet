@@ -147,7 +147,13 @@ const createOpenPetRuntime = ({
     dialog,
     petService,
     secretService,
-    getSettings: () => settingsService.get(),
+    getSettings: () => {
+      const settings = settingsService.get()
+      const localHttp = settings?.localHttp
+      if (!localHttp?.enabled || localHttp.token) return settings
+      const normalized = normalizeLocalHttpConfig(localHttp, localHttp)
+      return settingsService.save({ ...settings, localHttp: normalized })
+    },
     logger: sidecarLogger,
     onSettingsChanged: (message) => settingsSidecarBridge?.handle(message),
     onSettingsApplyRequest: (message) => settingsSidecarBridge?.handle(message),

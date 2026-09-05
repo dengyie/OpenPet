@@ -66,6 +66,12 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 				}
 			}
 		}
+		if (expectedType === "pet.command.result") {
+			const body = envelope.body
+			if (typeof body.ok !== "boolean") return "pet.command.result has an invalid ok field"
+			if (body.ok && !Object.hasOwn(body, "result")) return "pet.command.result has no result"
+			if (!body.ok && typeof body.error !== "string") return "pet.command.result has no error"
+		}
 		return null
 	}
 
@@ -157,7 +163,9 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 					? "secrets.persist.result"
 					: body?.type === "catalog.request"
 						? "catalog.result"
-						: body?.type === "pet-packs.request" ? "pet-packs.result" : null
+						: body?.type === "pet-packs.request"
+							? "pet-packs.result"
+							: body?.type === "pet.command.request" ? "pet.command.result" : null
 		)
 		const expectedOperation = options.expectedOperation ?? (body?.type === "pet-packs.request" ? body.operation : null)
 		const envelope = dispatch(body, true)
