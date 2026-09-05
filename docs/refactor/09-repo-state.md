@@ -1,6 +1,6 @@
 # 09 · 仓库现状快照
 
-> v1.6 · 2026-09-05 · 基线分支 `main` · T42 Catalog 合入、T41 Settings live bridge 修复与 Actions/Pet Packs 语义复核
+> v1.7 · 2026-09-05 · 基线分支 `main` · T42 Catalog/Pet Packs 合入与 Actions 语义复核
 
 **读者**:领到任务卡准备写代码的 agent。前置阅读 [08 篇 执行手册](./08-agent-guide.md)。
 
@@ -271,7 +271,7 @@ countByStatus(status?)                     // → number | { [status]: number }
 | --- | --- |
 | 迁移与仓储 | ~~`store/migrate.js`、`store/repositories/*.js`、`store/migrate-from-json.js`~~ ✅ T01/T02/T14 已落地；AI 会话等未归属仓储见缺口 G13 |
 | Job 引擎 | ~~`jobs/queue.js`、`jobs/runner.js`、`jobs/progress.js`、`jobs/recovery.js`、`jobs/handlers/*.js`~~ ✅ T05–T08/T31 已落地 |
-| HTTP | ~~`routes/*.js`、`domains/*.js`、SSE 推送~~ ✅ T09–T33 已落地；当前注册表实际 68 条路由 |
+| HTTP | ~~`routes/*.js`、`domains/*.js`、SSE 推送~~ ✅ T09–T33 已落地；当前注册表实际 74 条路由 |
 | 密钥 | `secrets/*.js` |
 | 反向通道 | ~~`dialog.request` 补齐、`apps/desktop/src/sidecar/message-handler.js`、`orphan-cleanup.js`、`domains/plugins/process-ledger.js`(T29)~~ ✅ T12/T13/T29 已落地 |
 | 兼容层 | `mcp/*.js`、`/api/pet/*` 与 `/mcp` 的保留实现(ADR-009) |
