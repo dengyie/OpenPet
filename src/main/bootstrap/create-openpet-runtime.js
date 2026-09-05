@@ -227,7 +227,8 @@ const createOpenPetRuntime = ({
     cursorAssetService,
     petMovementPolicy,
     applyWindowScale,
-    persistNormalization: (input) => settingsSidecarBridge?.persistNormalization?.(input)
+    persistNormalization: (input) => settingsSidecarBridge?.persistNormalization?.(input),
+    onNormalizationError: (error) => sidecarLogger.error('异步设置归一化持久化失败', { error: String(error) })
   })
   settingsSidecarBridge = createSettingsSidecarBridge({
     getBackend: () => sidecarRuntimeCoordinator.getBackend(),

@@ -1,6 +1,6 @@
 const { collectCustomCursorAssetPaths } = require('./ipc/pet-settings-adapter')
 
-function createSettingsHostEffect({ getPetWindow, petService, systemCursorService, cursorAssetService, petMovementPolicy, persistNormalization, applyWindowScale, sendToPetRenderer }) {
+function createSettingsHostEffect({ getPetWindow, petService, systemCursorService, cursorAssetService, petMovementPolicy, persistNormalization, onNormalizationError, applyWindowScale, sendToPetRenderer }) {
   let busy = false
   const pending = []
   const sameValue = (left, right) => {
@@ -23,7 +23,7 @@ function createSettingsHostEffect({ getPetWindow, petService, systemCursorServic
     }
     return merged
   }
-  const applyInternal = async ({ settings, previousSettings, version }) => {
+  const applyInternal = async ({ settings, previousSettings, version, awaitNormalization = true }) => {
     const currentSettings = petService.getSettings?.() || previousSettings || {}
     const effectivePrevious = previousSettings || currentSettings
     const effectiveSettings = mergeChanged(currentSettings, effectivePrevious, settings)
@@ -49,7 +49,15 @@ function createSettingsHostEffect({ getPetWindow, petService, systemCursorServic
       applied = true
       if (nextSettings.scale !== previousSettings?.scale) applyWindowScale?.(petWindow, nextSettings.scale)
       if (currentHome.enabled && currentHome.anchor == null && nextSettings.petBehavior.home.anchor) {
-        await persistNormalization?.({ settings: nextSettings, paths: ['petBehavior.home.anchor'], ifVersion: version })
+        const normalization = persistNormalization?.({ settings: nextSettings, paths: ['petBehavior.home.anchor'], ifVersion: version })
+        if (awaitNormalization) await normalization
+        else void Promise.resolve(normalization).catch((error) => {
+          try {
+            onNormalizationError?.(error)
+          } catch {
+            // Observability must not turn the already-applied host effect into an unhandled rejection.
+          }
+        })
       }
       const previousAssetPaths = new Set(collectCustomCursorAssetPaths(previousSettings?.customCursors))
       const nextAssetPaths = new Set(collectCustomCursorAssetPaths(nextSettings.customCursors))

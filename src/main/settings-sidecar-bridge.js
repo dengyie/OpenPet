@@ -125,7 +125,7 @@ function createSettingsSidecarBridge({ getBackend, fetchImpl = globalThis.fetch,
 		let merged = mergeCanonicalSettings(current, snapshot.values, paths)
 		try {
 			const applied = typeof applyHostSettings === "function"
-				? await applyHostSettings({ settings: merged, previousSettings: current, paths, version: snapshot.version })
+				? await applyHostSettings({ settings: merged, previousSettings: current, paths, version: snapshot.version, awaitNormalization: !skipBackendRollback })
 				: await petService?.applySettings?.(merged)
 			if (applied && isObject(applied)) merged = applied
 		} catch (error) {

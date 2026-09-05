@@ -9,6 +9,7 @@ const test = require("node:test")
 const { spawnSidecar, stopSidecar } = require("../../apps/desktop/src/sidecar/spawn.js")
 const { createMessageHandler } = require("../../apps/desktop/src/sidecar/message-handler.js")
 const { createSettingsSidecarBridge } = require("../../src/main/settings-sidecar-bridge.js")
+const { createSettingsHostEffect } = require("../../src/main/settings-host-effects.js")
 
 const repoRoot = path.resolve(__dirname, "../..")
 
@@ -233,4 +234,106 @@ test("catalog install becomes non-cancelable before the Shell-owned side effect"
 		if (backend?.child) await stopSidecar(backend.child, { graceMs: 5_000 })
 		fs.rmSync(userDataDir, { recursive: true, force: true })
 	}
+})
+
+test("backend-originated home enable settles after Shell persists its normalized anchor", async () => {
+	const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-settings-anchor-"))
+	let backend = null
+	try {
+		backend = await spawnSidecar({
+			entry: path.join(repoRoot, "services/backend/index.js"),
+			initBody: { userDataDir, providerKeys: {}, legacyToken: null },
+			logger: { info() {}, warn() {}, error() {} },
+		})
+
+		let currentSettings = { petBehavior: { home: { enabled: false, radius: 120, anchor: null } } }
+		const petService = {
+			getSettings: () => structuredClone(currentSettings),
+			applySettings: (settings) => {
+				currentSettings = structuredClone(settings)
+				return structuredClone(currentSettings)
+			},
+		}
+		let bridge
+		let requestSequence = 0
+		const pendingRequests = new Map()
+		const persistedRequests = []
+		const requestBackend = (body) => new Promise((resolve, reject) => {
+			const id = `shell-test-${++requestSequence}`
+			persistedRequests.push(body)
+			pendingRequests.set(id, { resolve, reject })
+			backend.child.send({ v: 1, id, at: Date.now(), body })
+		})
+		const applyHostSettings = createSettingsHostEffect({
+			getPetWindow: () => ({ isDestroyed: () => false, getBounds: () => ({ x: 10, y: 20, width: 80, height: 90 }) }),
+			petService,
+			petMovementPolicy: { createHomeAnchorFromWindow: () => ({ displayId: "display-1", x: 50, y: 65 }) },
+			persistNormalization: (input) => bridge.persistNormalization(input),
+		})
+		bridge = createSettingsSidecarBridge({
+			getBackend: () => backend,
+			requestBackend,
+			petService,
+			applyHostSettings,
+		})
+		const shellHandler = createMessageHandler({
+			send: (envelope) => backend.child.send(envelope),
+			onSettingsApplyRequest: (envelope) => bridge.handle(envelope),
+		})
+		backend.child.on("message", (envelope) => {
+			if (pendingRequests.has(envelope?.id)) {
+				pendingRequests.get(envelope.id).resolve(envelope)
+				pendingRequests.delete(envelope.id)
+				return
+			}
+			if (["settings.apply.request", "settings.persist.result"].includes(envelope?.body?.type)) {
+				void shellHandler.handle(envelope)
+			}
+		})
+
+		const before = await (await fetch(`${backend.baseUrl}/settings`, { headers: { authorization: `Bearer ${backend.sessionToken}` } })).json()
+		const patchPromise = fetch(`${backend.baseUrl}/settings`, {
+			method: "PATCH",
+			headers: { authorization: `Bearer ${backend.sessionToken}`, "content-type": "application/json" },
+			body: JSON.stringify({ ifVersion: before.data.version, patch: { "petBehavior.home.enabled": true } }),
+		})
+		const response = await Promise.race([
+			patchPromise,
+			new Promise((_, reject) => setTimeout(() => reject(new Error("settings PATCH deadlocked during anchor normalization")), 500)),
+		])
+		assert.equal(response.status, 200)
+		assert.deepEqual(persistedRequests, [{ "type": "settings.persist.request", ifVersion: before.data.version + 1, patch: { "petBehavior.home.anchor": { displayId: "display-1", x: 50, y: 65 } } }])
+	} finally {
+		if (backend?.child) await stopSidecar(backend.child, { graceMs: 5_000 })
+		fs.rmSync(userDataDir, { recursive: true, force: true })
+	}
+})
+
+test("async home anchor normalization failures are observable after host apply settles", async () => {
+	let currentSettings = { petBehavior: { home: { enabled: false, radius: 120, anchor: null } } }
+	let normalizationError = null
+	const applyHostSettings = createSettingsHostEffect({
+		getPetWindow: () => ({ isDestroyed: () => false, getBounds: () => ({ x: 10, y: 20, width: 80, height: 90 }) }),
+		petService: {
+			getSettings: () => structuredClone(currentSettings),
+			applySettings: (settings) => {
+				currentSettings = structuredClone(settings)
+				return structuredClone(currentSettings)
+			},
+		},
+		petMovementPolicy: { createHomeAnchorFromWindow: () => ({ displayId: "display-1", x: 50, y: 65 }) },
+		persistNormalization: async () => { throw new Error("backend unavailable") },
+		onNormalizationError: (error) => { normalizationError = error },
+	})
+
+	const previousSettings = structuredClone(currentSettings)
+	const result = await applyHostSettings({
+		settings: { petBehavior: { home: { enabled: true, radius: 120, anchor: null } } },
+		previousSettings,
+		version: 1,
+		awaitNormalization: false,
+	})
+	await new Promise((resolve) => setImmediate(resolve))
+	assert.deepEqual(result.petBehavior.home.anchor, { displayId: "display-1", x: 50, y: 65 })
+	assert.equal(normalizationError?.message, "backend unavailable")
 })
