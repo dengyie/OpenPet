@@ -137,6 +137,7 @@ const createOpenPetRuntime = ({
     app,
     dialog,
     petService,
+    secretService,
     getSettings: () => settingsService.get(),
     logger: sidecarLogger,
     onSettingsChanged: (message) => settingsSidecarBridge?.handle(message),
@@ -179,10 +180,11 @@ const createOpenPetRuntime = ({
   const createControlCenterWindow = () => {
     const settingsWindow = createSettingsWindow(getPetWindow())
     const backend = sidecarRuntimeCoordinator.getBackend()
-    if (backend && settingsWindow && !settingsWindow.isDestroyed?.()) {
+    if (settingsWindow && !settingsWindow.isDestroyed?.()) {
       const bootstrap = () => settingsWindow.webContents?.send?.(IPC.SETTINGS_CHANGED, {
         __openpetBackend: backend,
-        __openpetRuntimeStatus: systemCursorService?.getStatus?.()
+        __openpetRuntimeStatus: systemCursorService?.getStatus?.(),
+        __openpetSecretStorageSecurity: secretService?.getSecurityState?.() ?? null
       })
       if (settingsWindow.webContents?.isLoading?.() === false) bootstrap()
       else if (typeof settingsWindow.webContents?.once === 'function') settingsWindow.webContents.once('did-finish-load', bootstrap)
@@ -228,7 +230,8 @@ const createOpenPetRuntime = ({
     if (settingsWindow && !settingsWindow.isDestroyed?.()) {
       settingsWindow.webContents?.send?.(IPC.SETTINGS_CHANGED, {
         __openpetBackend: backend,
-        __openpetRuntimeStatus: systemCursorService?.getStatus?.()
+        __openpetRuntimeStatus: systemCursorService?.getStatus?.(),
+        __openpetSecretStorageSecurity: secretService?.getSecurityState?.() ?? null
       })
     }
   })

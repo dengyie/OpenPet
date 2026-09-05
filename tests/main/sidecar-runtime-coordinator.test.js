@@ -17,6 +17,7 @@ function createHarness({ spawnError, getInitBody } = {}) {
 		secretService: {
 			listSecretRefs: () => [{ id: "ai.default", hasValue: true }, { id: "empty", hasValue: false }],
 			getSecretValue: (id) => id === "ai.default" ? "existing-secret" : "",
+			listProviderKeys: () => ({ "ai.default": "existing-secret" }),
 		},
 		getSettings: () => ({ localHttp: { token: "legacy-token" } }),
 		getInitBody,
@@ -32,12 +33,12 @@ function createHarness({ spawnError, getInitBody } = {}) {
 	return { coordinator, child, calls, getSpawnOptions: () => spawnOptions }
 }
 
-test("starts without reading or injecting secrets and exposes connection", async () => {
+test("injects only providerKeys during init and exposes the backend connection", async () => {
 	const harness = createHarness()
 	const backend = await harness.coordinator.start()
 	assert.deepEqual(harness.calls.initBodies, [{
 		userDataDir: "/tmp/openpet-user-data",
-		secrets: {},
+		providerKeys: { "ai.default": "existing-secret" },
 		legacyToken: "legacy-token",
 		appInfo: {
 			name: "OpenPet Host",
@@ -111,10 +112,10 @@ test("rejects a correlated settings persistence response that violates the envel
 	}
 })
 
-test("uses caller-provided init body including explicitly selected secrets", async () => {
-	const harness = createHarness({ getInitBody: async () => ({ custom: true, secrets: { "ai.default": "selected-secret" } }) })
+test("uses caller-provided init body including explicitly selected providerKeys", async () => {
+	const harness = createHarness({ getInitBody: async () => ({ custom: true, providerKeys: { "ai.default": "selected-secret" } }) })
 	await harness.coordinator.start()
-	assert.deepEqual(harness.calls.initBodies, [{ custom: true, secrets: { "ai.default": "selected-secret" } }])
+	assert.deepEqual(harness.calls.initBodies, [{ custom: true, providerKeys: { "ai.default": "selected-secret" } }])
 })
 
 test("startup failure becomes degraded without rejecting", async () => {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { tabs } from './constants'
 import { useAboutPane } from './hooks/useAboutPane'
 import { useActionsPane } from './hooks/useActionsPane'
@@ -20,6 +20,12 @@ import { JobPanel } from './features/jobs/JobPanel'
 
 export function App() {
   const [activeTab, setActiveTab] = useState('pet')
+  const [secretStorageSecurity, setSecretStorageSecurity] = useState(
+    () => globalThis.window?.openpetBackend?.getSecretStorageSecurity?.() ?? null
+  )
+  useEffect(() => {
+    return globalThis.window?.openpetBackend?.onSecretStorageSecurityChanged?.(setSecretStorageSecurity)
+  }, [])
   const creator = useCreatorPane(activeTab === 'create')
   const pet = usePetSettingsPane()
   const actions = useActionsPane()
@@ -60,6 +66,11 @@ export function App() {
         </nav>
       </aside>
       <div className="content">
+        {secretStorageSecurity?.encryptionAvailable === false && secretStorageSecurity.warning ? (
+          <div className="secret-storage-warning" role="alert" data-testid="secret-storage-warning">
+            {secretStorageSecurity.warning}
+          </div>
+        ) : null}
         {loading ? <div className="loading">加载中</div> : page}
         <JobPanel />
       </div>

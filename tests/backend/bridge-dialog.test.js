@@ -24,11 +24,11 @@ function resultEnvelope(id, paths) {
 }
 
 describe("dialog.request bridge", () => {
-	it("backend whitelist contains exactly the 12 contract message types", () => {
-		assert.equal(bridge.BACKEND_TO_SHELL_TYPES.length, 12)
-		assert.equal(new Set(bridge.BACKEND_TO_SHELL_TYPES).size, 12)
+	it("backend whitelist contains exactly the 13 contract message types", () => {
+		assert.equal(bridge.BACKEND_TO_SHELL_TYPES.length, 13)
+		assert.equal(new Set(bridge.BACKEND_TO_SHELL_TYPES).size, 13)
 		assert.equal(bridge.BACKEND_TO_SHELL_TYPES.includes("dialog.request"), true)
-		assert.equal(bridge.SHELL_TO_BACKEND_TYPES.length, 8, "settings host results are part of the bridge contract")
+		assert.equal(bridge.SHELL_TO_BACKEND_TYPES.length, 9, "settings and secrets host results are part of the bridge contract")
 	})
 
 	it("request and dialog.result correlate with the same envelope id", async () => {
@@ -95,6 +95,22 @@ describe("dialog.request bridge", () => {
 		const response = await responsePromise
 		assert.equal(response.id, sent[0].id)
 		assert.deepEqual(response.body, { type: "settings.apply.result", version: 4, ok: true })
+		client.dispose()
+	})
+
+	it("binds secret persistence to a strict response that cannot echo plaintext", async () => {
+		const sent = []
+		const client = shellClient.createShellClient({ send: (envelope) => sent.push(envelope) })
+		const responsePromise = client.request({ type: "secrets.persist.request", providerId: "openai", value: "provider-secret" })
+
+		client.receive(bridge.createEnvelope({
+			type: "secrets.persist.result",
+			providerId: "openai",
+			ok: true,
+			value: "provider-secret",
+		}, { id: sent[0].id }))
+
+		await assert.rejects(responsePromise, /unexpected fields/)
 		client.dispose()
 	})
 

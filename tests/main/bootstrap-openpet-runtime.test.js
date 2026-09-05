@@ -16,6 +16,7 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
   const screenHandlers = new Map()
   const registeredIpcDependencies = []
   const safeLogs = []
+  const settingsWindowPayloads = []
   const saveSettingsCalls = []
   const persistenceRequests = []
   const fetchCalls = []
@@ -75,7 +76,13 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
     getPetWindow: () => petWindow,
     setPetWindow: (nextPetWindow) => { petWindow = nextPetWindow },
     fetchImpl,
-    createSettingsWindow: () => {},
+    createSettingsWindow: () => ({
+      isDestroyed: () => false,
+      webContents: {
+        isLoading: () => false,
+        send: (_channel, payload) => settingsWindowPayloads.push(payload)
+      }
+    }),
     createWindow: (options = {}) => {
       createWindowCalls.push(options)
       return petWindow
@@ -180,11 +187,11 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
         pickFrames: selectCreatorAssetFrameFolder,
         stopAllServices: () => {}
       }),
-      createSecretService: () => ({ id: 'secret' }),
+      createSecretService: () => undefined,
       createSettingsService: ({ loadSettings }) => ({ get: loadSettings, save: () => {}, preview: () => ({}) }),
       createSidecarRuntimeCoordinator: (dependencies) => {
         coordinatorOnReady = dependencies.onReady
-        assert.equal(Object.hasOwn(dependencies, 'secretService'), false)
+        assert.equal(dependencies.secretService, undefined)
         assert.equal(dependencies.getSettings().localHttp, settings.localHttp)
         assert.equal(typeof dependencies.pidLedger.sweep, 'function')
         assert.equal(typeof dependencies.pidLedger.register, 'function')
@@ -234,6 +241,8 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
 
   const ipcDependencies = registeredIpcDependencies[0]
   assert.ok(ipcDependencies.sidecarRuntimeCoordinator)
+  assert.ok(ipcDependencies.createSettingsWindow())
+  assert.equal(settingsWindowPayloads.at(-1).__openpetSecretStorageSecurity, null)
   assert.equal(typeof ipcDependencies.sidecarRuntimeCoordinator.getBackend, 'function')
   assert.equal(ipcDependencies.hatchPetAgentService.id, 'hatch-pet-agent')
   assert.equal(ipcDependencies.creatorWorkflowService.id, 'creator-workflow')

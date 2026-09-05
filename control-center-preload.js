@@ -269,7 +269,8 @@ contextBridge.exposeInMainWorld('controlCenterAPI', {
 
 let currentBackend = null
 let currentRuntimeStatus = { supported: false, platform: 'unknown', active: false, helperPid: 0 }
-const backendListeners = new Set(), runtimeListeners = new Set()
+let currentSecretStorageSecurity = null
+const backendListeners = new Set(), runtimeListeners = new Set(), secretStorageSecurityListeners = new Set()
 const notifyRuntimeStatus = (status) => {
   if (!status || typeof status !== 'object') return
   currentRuntimeStatus = {
@@ -285,6 +286,18 @@ const notifyBackend = (backend, runtimeStatus) => {
   notifyRuntimeStatus(runtimeStatus)
   backendListeners.forEach((listener) => listener(currentBackend))
 }
+const notifySecretStorageSecurity = (state) => {
+  if (!state || typeof state !== 'object') {
+    currentSecretStorageSecurity = null
+  } else {
+    currentSecretStorageSecurity = {
+      encryptionAvailable: Boolean(state.encryptionAvailable),
+      storage: typeof state.storage === 'string' ? state.storage : '',
+      warning: typeof state.warning === 'string' ? state.warning : ''
+    }
+  }
+  secretStorageSecurityListeners.forEach((listener) => listener(currentSecretStorageSecurity))
+}
 const addListener = (listeners, listener) => {
   if (typeof listener !== 'function') return () => {}
   listeners.add(listener)
@@ -294,7 +307,9 @@ contextBridge.exposeInMainWorld('openpetBackend', {
   getBackend: () => currentBackend,
   onChanged: (listener) => addListener(backendListeners, listener),
   getRuntimeStatus: () => currentRuntimeStatus,
-  onRuntimeStatusChanged: (listener) => addListener(runtimeListeners, listener)
+  onRuntimeStatusChanged: (listener) => addListener(runtimeListeners, listener),
+  getSecretStorageSecurity: () => currentSecretStorageSecurity,
+  onSecretStorageSecurityChanged: (listener) => addListener(secretStorageSecurityListeners, listener)
 })
 const isBackendPayload = (payload) => Boolean(
   payload && typeof payload === 'object' && Object.hasOwn(payload, '__openpetBackend')
@@ -302,4 +317,7 @@ const isBackendPayload = (payload) => Boolean(
 ipcRenderer.on(IPC.SETTINGS_CHANGED, (_event, payload) => {
   if (isBackendPayload(payload)) notifyBackend(payload.__openpetBackend, payload.__openpetRuntimeStatus)
   else if (payload?.systemCursorStatus) notifyRuntimeStatus(payload.systemCursorStatus)
+  if (payload && typeof payload === 'object' && Object.hasOwn(payload, '__openpetSecretStorageSecurity')) {
+    notifySecretStorageSecurity(payload.__openpetSecretStorageSecurity)
+  }
 })

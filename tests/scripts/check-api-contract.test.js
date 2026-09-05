@@ -16,6 +16,7 @@ const fixtureFiles = [
 	'services/backend/routes/registry.js',
 	'services/backend/routes/health.js',
 	'services/backend/routes/service.js',
+	'services/backend/routes/ai.js',
 	'services/backend/routes/about.js',
 	'services/backend/routes/settings.js',
 	'services/backend/routes/actions.js',

@@ -1,9 +1,21 @@
 const fs = require('fs')
 const path = require('path')
+const { CAPABILITY_SECRET_REFS } = require('./provider-owner-policy')
+const { DEFAULT_HATCH_PET_AGENT_CONFIG } = require('./hatch-pet-agent-contracts')
 
-const getDefaultStorePath = () => {
+const PLAINTEXT_STORAGE_WARNING = 'safeStorage 不可用，Provider 密钥正以 0600 权限的明文文件保存。'
+const PROVIDER_SECRET_REFS = new Set([
+  ...Object.values(CAPABILITY_SECRET_REFS),
+  DEFAULT_HATCH_PET_AGENT_CONFIG.apiKeyRef
+])
+
+const getDefaultStorePaths = () => {
   const { app } = require('electron')
-  return path.join(app.getPath('userData'), 'secrets.json')
+  const userDataPath = app.getPath('userData')
+  return {
+    storePath: path.join(userDataPath, 'backend', 'secrets', 'providers.enc'),
+    legacyStorePath: path.join(userDataPath, 'secrets.json')
+  }
 }
 
 // Lazily resolve Electron safeStorage. Production passes it via the factory
@@ -23,6 +35,11 @@ const resolveSafeStorage = (safeStorage) => {
 }
 
 const isSafeStorageAvailable = (safeStorage) => Boolean(safeStorage?.isEncryptionAvailable?.())
+
+const ensurePrivateFileMode = (filePath) => {
+  if (process.platform === 'win32' || !filePath || !fs.existsSync(filePath)) return
+  fs.chmodSync(filePath, 0o600)
+}
 
 const encryptValue = (safeStorage, value) => {
   const plaintext = String(value || '')
@@ -46,6 +63,7 @@ const decryptEntry = (safeStorage, entry) => {
 
 const readStore = (storePath, safeStorage) => {
   if (!fs.existsSync(storePath)) return { secrets: {} }
+  ensurePrivateFileMode(storePath)
   const parsed = JSON.parse(fs.readFileSync(storePath, 'utf-8'))
   const rawSecrets = parsed.secrets || {}
   const secrets = {}
@@ -53,7 +71,8 @@ const readStore = (storePath, safeStorage) => {
     secrets[id] = {
       label: entry?.label || id,
       value: decryptEntry(safeStorage, entry),
-      updatedAt: entry?.updatedAt || ''
+      updatedAt: entry?.updatedAt || '',
+      ...(entry?.kind === 'provider' ? { kind: 'provider' } : {})
     }
   }
   return { secrets }
@@ -67,7 +86,8 @@ const createDiskStore = (store, safeStorage) => {
       label: secret.label || id,
       encrypted: persistedValue.encrypted,
       value: persistedValue.value,
-      updatedAt: secret.updatedAt || ''
+      updatedAt: secret.updatedAt || '',
+      ...(secret.kind === 'provider' ? { kind: 'provider' } : {})
     }
   }
   return { secrets }
@@ -84,6 +104,7 @@ const writeStore = (storePath, store, safeStorage) => {
     })
     if (process.platform !== 'win32') fs.chmodSync(temporaryPath, 0o600)
     fs.renameSync(temporaryPath, storePath)
+    ensurePrivateFileMode(storePath)
   } catch (error) {
     try {
       fs.rmSync(temporaryPath, { force: true })
@@ -92,21 +113,41 @@ const writeStore = (storePath, store, safeStorage) => {
   }
 }
 
-const createSecretService = ({ storePath = getDefaultStorePath(), safeStorage } = {}) => {
+const resolveStorePaths = ({ storePath, legacyStorePath } = {}) => {
+  if (storePath) return { storePath, legacyStorePath }
+  const defaults = getDefaultStorePaths()
+  return {
+    storePath: defaults.storePath,
+    legacyStorePath: legacyStorePath ?? defaults.legacyStorePath
+  }
+}
+
+const createSecretService = (options = {}) => {
+  const { storePath, legacyStorePath } = resolveStorePaths(options)
+  const { safeStorage } = options
   const resolvedSafeStorage = resolveSafeStorage(safeStorage)
-  let store = readStore(storePath, resolvedSafeStorage)
+  const migrationSource = !fs.existsSync(storePath) && legacyStorePath && fs.existsSync(legacyStorePath)
+    ? legacyStorePath
+    : storePath
+  let store = readStore(migrationSource, resolvedSafeStorage)
+
+  // Keep the legacy file as a rollback/migration source, but make the
+  // architecture-owned path authoritative from this startup onward.
+  if (migrationSource !== storePath) writeStore(storePath, store, resolvedSafeStorage)
 
   const persist = (nextStore) => writeStore(storePath, nextStore, resolvedSafeStorage)
 
-  const setSecret = ({ id, value, label = id }) => {
+  const setSecret = ({ id, value, label = id, kind }) => {
     if (!id) throw new Error('Secret id is required')
+    const providerSecret = kind === 'provider' || store.secrets[id]?.kind === 'provider' || PROVIDER_SECRET_REFS.has(id)
     const nextStore = {
       secrets: {
         ...store.secrets,
         [id]: {
           label,
           value: String(value || ''),
-          updatedAt: new Date().toISOString()
+          updatedAt: new Date().toISOString(),
+          ...(providerSecret ? { kind: 'provider' } : {})
         }
       }
     }
@@ -132,7 +173,17 @@ const createSecretService = ({ storePath = getDefaultStorePath(), safeStorage } 
       hasValue: Boolean(secret.value)
     }))
 
-  return { setSecret, getSecretValue, deleteSecret, listSecretRefs }
+  const listProviderKeys = () => Object.fromEntries(
+    Object.entries(store.secrets)
+      .filter(([id, secret]) => Boolean(secret.value) && (secret.kind === 'provider' || PROVIDER_SECRET_REFS.has(id)))
+      .map(([id, secret]) => [id, secret.value])
+  )
+
+  const getSecurityState = () => isSafeStorageAvailable(resolvedSafeStorage)
+    ? { encryptionAvailable: true, storage: 'safeStorage', warning: '' }
+    : { encryptionAvailable: false, storage: 'plaintext-0600', warning: PLAINTEXT_STORAGE_WARNING }
+
+  return { setSecret, getSecretValue, deleteSecret, listSecretRefs, listProviderKeys, getSecurityState }
 }
 
 module.exports = { createSecretService }

@@ -23,12 +23,13 @@ test("sidecar routes use runtime dependencies initialized before ready", async (
 
 	let backend = null
 	let applyValues = null
+	const persistedSecrets = []
 	try {
 		backend = await spawnSidecar({
 			entry: path.join(repoRoot, "services/backend/index.js"),
 			initBody: {
 				userDataDir,
-				secrets: {},
+				providerKeys: { openai: "initial-provider-key-1234" },
 				legacyToken: null,
 				appInfo: { name: "OpenPet Host", version: "9.8.7", packaged: true, platform: "test-platform", arch: "test-arch" },
 			},
@@ -53,11 +54,16 @@ test("sidecar routes use runtime dependencies initialized before ready", async (
 		const shellHandler = createMessageHandler({
 			send: (envelope) => backend.child.send(envelope),
 			onSettingsApplyRequest: (envelope) => hostBridge.handle(envelope),
+			secretService: {
+				setSecret: (entry) => persistedSecrets.push(entry),
+				deleteSecret: (id) => persistedSecrets.push({ deleted: id }),
+			},
 		})
 		backend.child.on("message", (envelope) => {
-			if (envelope?.body?.type !== "settings.apply.request") return
-			applyValues = envelope.body.values
-			void shellHandler.handle(envelope)
+			if (envelope?.body?.type === "settings.apply.request") applyValues = envelope.body.values
+			if (["settings.apply.request", "secrets.persist.request"].includes(envelope?.body?.type)) {
+				void shellHandler.handle(envelope)
+			}
 		})
 
 		const headers = {
@@ -83,12 +89,27 @@ test("sidecar routes use runtime dependencies initialized before ready", async (
 			const response = await fetch(backend.baseUrl + route, { headers })
 			domainStatuses[route] = response.status
 		}
+		const plaintext = "runtime-provider-secret-9876543210"
+		const providerWriteResponse = await fetch(`${backend.baseUrl}/ai/providers/openai/key`, {
+			method: "PUT",
+			headers,
+			body: JSON.stringify({ apiKey: plaintext }),
+		})
+		const providerWriteBody = await providerWriteResponse.json()
+		const providerReadResponse = await fetch(`${backend.baseUrl}/ai/providers/openai/key`, { headers })
+		const providerDeleteResponse = await fetch(`${backend.baseUrl}/ai/providers/openai/key`, { method: "DELETE", headers })
+		const providerDeleteBody = await providerDeleteResponse.json()
 
 		assert.deepEqual({
 			get: { status: settingsResponse.status, data: settingsBody.data },
 			about: { status: aboutResponse.status, data: aboutBody.data },
 			patch: { status: patchResponse.status, ok: patchBody.ok },
 			domainStatuses,
+			provider: {
+				write: { status: providerWriteResponse.status, data: providerWriteBody.data },
+				readStatus: providerReadResponse.status,
+				remove: { status: providerDeleteResponse.status, data: providerDeleteBody.data },
+			},
 		}, {
 			get: { status: 200, data: persistedBeforePatch },
 			about: {
@@ -112,7 +133,17 @@ test("sidecar routes use runtime dependencies initialized before ready", async (
 			},
 			patch: { status: 200, ok: true },
 			domainStatuses: { "/catalog": 200, "/pet-packs": 200, "/actions": 200 },
+			provider: {
+				write: { status: 200, data: { configured: true, maskedTail: "…3210" } },
+				readStatus: 404,
+				remove: { status: 200, data: { configured: false, maskedTail: "" } },
+			},
 		})
+		assert.doesNotMatch(JSON.stringify(providerWriteBody), /runtime-provider-secret|987654/)
+		assert.deepEqual(persistedSecrets, [
+			{ id: "openai", value: plaintext, label: "openai", kind: "provider" },
+			{ deleted: "openai" },
+		])
 
 		const persistedAfterPatch = JSON.parse(fs.readFileSync(settingsFile, "utf8"))
 		assert.equal(persistedAfterPatch.values.scale, 1.1)

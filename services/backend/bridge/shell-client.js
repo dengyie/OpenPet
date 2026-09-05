@@ -34,6 +34,14 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 			if (typeof body.ok !== "boolean") return "settings.apply.result has an invalid ok field"
 			if (body.error !== undefined && typeof body.error !== "string") return "settings.apply.result has an invalid error"
 		}
+		if (expectedType === "secrets.persist.result") {
+			const body = envelope.body
+			if (typeof body.providerId !== "string" || body.providerId.length === 0) return "secrets.persist.result has an invalid providerId"
+			if (typeof body.ok !== "boolean") return "secrets.persist.result has an invalid ok field"
+			if (body.error !== undefined && typeof body.error !== "string") return "secrets.persist.result has an invalid error"
+			const allowed = new Set(["type", "providerId", "ok", "error"])
+			if (Object.keys(body).some((key) => !allowed.has(key))) return "secrets.persist.result has unexpected fields"
+		}
 		return null
 	}
 
@@ -116,9 +124,13 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 	function request(body, options = {}) {
 		const timeoutMs = options.timeoutMs ?? DIALOG_RESULT_TIMEOUT_MS
 		// Keep legacy request callers permissive, but bind settings host-effect
-		// requests to their one legal response shape. Otherwise any allowlisted
+		// and provider-secret requests to their one legal response shape. Otherwise any allowlisted
 		// Shell envelope reusing the request id could settle the wrong operation.
-		const expectedType = options.expectedType ?? (body?.type === "settings.apply.request" ? "settings.apply.result" : null)
+		const expectedType = options.expectedType ?? (
+			body?.type === "settings.apply.request"
+				? "settings.apply.result"
+				: body?.type === "secrets.persist.request" ? "secrets.persist.result" : null
+		)
 		const envelope = dispatch(body, true)
 		if (envelope === null) return Promise.reject(new Error("shellClient 已销毁"))
 

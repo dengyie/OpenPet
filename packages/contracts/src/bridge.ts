@@ -51,6 +51,7 @@ export const backendToShellSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("settings.changed"), paths: z.array(z.string()), version: z.number().int().nonnegative() }),
   z.object({ type: z.literal("settings.apply.request"), paths: z.array(z.string()), version: z.number().int().nonnegative(), values: z.record(z.string(), z.unknown()).optional() }),
   z.object({ type: z.literal("settings.persist.result"), version: z.number().int().nonnegative(), ok: z.boolean(), changedPaths: z.array(z.string()), error: z.string().optional(), errorCode: z.string().optional() }),
+  z.object({ type: z.literal("secrets.persist.request"), providerId: z.string().min(1), value: z.string().min(1).nullable() }).strict(),
 ])
 export type BackendToShell = z.infer<typeof backendToShellSchema>
 
@@ -68,8 +69,9 @@ export const shellToBackendSchema = z.discriminatedUnion("type", [
       arch: z.string().min(1),
     }).strict().optional(),
     /**
-     * ADR-010:唯一允许在此通道传输的敏感数据。
+     * ADR-010:启动时唯一的密钥注入入口。
      * Shell 侧 safeStorage.decrypt() 后一次性注入,后端只留在内存,不落盘。
+     * 运行期写入仅允许反向走 secrets.persist.request 交还 Shell 加密落盘。
      */
     providerKeys: z.record(z.string(), z.string()).optional(),
   }),
@@ -80,6 +82,7 @@ export const shellToBackendSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("power.resume") }),
   z.object({ type: z.literal("settings.apply.result"), version: z.number().int().nonnegative(), ok: z.boolean(), error: z.string().optional() }),
   z.object({ type: z.literal("settings.persist.request"), ifVersion: z.number().int().nonnegative(), patch: z.record(z.string(), z.unknown()) }),
+  z.object({ type: z.literal("secrets.persist.result"), providerId: z.string().min(1), ok: z.boolean(), error: z.string().optional() }).strict(),
 ])
 export type ShellToBackend = z.infer<typeof shellToBackendSchema>
 

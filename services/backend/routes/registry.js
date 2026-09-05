@@ -8,6 +8,8 @@ export const IMPLEMENTED_API_ROUTES = Object.freeze([
 	"GET /service/config",
 	"PUT /service/config",
 	"POST /service/diagnostics",
+	"PUT /ai/providers/:id/key",
+	"DELETE /ai/providers/:id/key",
 	"GET /about",
 	"POST /about/check-updates",
 	"GET /settings",
@@ -80,6 +82,7 @@ export function registeredImplementedRoutes() {
 	const router = createRouter({ basePath: "/api/v1" })
 	registerHealthRoutes({ router, runtime: { degraded: false, startedAt: 0, db: null, secrets: null }, includeBusinessRoutes: false })
 	registerServiceRoutes(router, { manager: service })
+	registerAiSecretRoutes(router, { secrets: service })
 	registerAboutRoutes(router, { about: { info: noop }, jobs: { insert: noop } })
 	registerSettingsRoutes({ router, store: { read: noop, patch: () => ({ version: 0, changedPaths: [] }) } })
 	registerActionRoutes(router, { actions })
@@ -99,3 +102,4 @@ import { registerPetPackRoutes } from "./pet-packs.js"
 import { registerServiceRoutes } from "./service.js"
 import { registerSettingsRoutes } from "./settings.js"
 import { registerPluginRoutes } from "./plugins.js"
+import { registerAiSecretRoutes } from "./ai.js"

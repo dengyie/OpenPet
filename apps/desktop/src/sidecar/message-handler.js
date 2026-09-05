@@ -1,9 +1,11 @@
 "use strict"
 
+const { sanitizeLogText } = require("../../../../src/main/services/log-safety")
+
 const BRIDGE_PROTOCOL_VERSION = 1
 
 // Keep this list frozen in the Shell as well as in the backend bridge client.
-// A backend message is untrusted input at this boundary: only these twelve
+// A backend message is untrusted input at this boundary: only these thirteen
 // capabilities may reach Electron/PetService.
 const BACKEND_TO_SHELL_TYPES = Object.freeze([
 	"pet.say",
@@ -18,6 +20,7 @@ const BACKEND_TO_SHELL_TYPES = Object.freeze([
 	"settings.changed",
 	"settings.apply.request",
 	"settings.persist.result",
+	"secrets.persist.request",
 ])
 
 function log(logger, level, message, fields) {
@@ -82,12 +85,17 @@ function parseEnvelope(raw) {
 		case "dialog.request":
 			if (typeof body.requestId !== "string" || !["file", "directory"].includes(body.mode)) return fail("bad-body", "dialog.request")
 			break
+		case "secrets.persist.request":
+			if (typeof body.providerId !== "string" || body.providerId.trim().length === 0) return fail("bad-body", "secrets.persist.request.providerId")
+			if (body.value !== null && (typeof body.value !== "string" || body.value.trim().length === 0)) return fail("bad-body", "secrets.persist.request.value")
+			if (Object.keys(body).some((key) => !["type", "providerId", "value"].includes(key))) return fail("bad-body", "secrets.persist.request.fields")
+			break
 	}
 
 	return { ok: true, envelope: { v: raw.v, id: raw.id, at: raw.at, body } }
 }
 
-function createMessageHandler({ dialog, petService, logger, send, onNotify, onBadge, onDashboard, onSettingsChanged, onSettingsApplyRequest, productionService } = {}) {
+function createMessageHandler({ dialog, petService, secretService, logger, send, onNotify, onBadge, onDashboard, onSettingsChanged, onSettingsApplyRequest, productionService } = {}) {
 	if (typeof send !== "function") throw new TypeError("createMessageHandler 需要 send")
 
 	async function handle(raw) {
@@ -152,6 +160,34 @@ function createMessageHandler({ dialog, petService, logger, send, onNotify, onBa
 						result = { ok: false, error: error?.message || String(error) }
 					}
 					send({ v: BRIDGE_PROTOCOL_VERSION, id: raw.id, at: Date.now(), body: { type: "settings.apply.result", version: body.version, ...result } })
+					return true
+				}
+				case "secrets.persist.request": {
+					const providerId = body.providerId.trim()
+					let result
+					try {
+						if (!secretService) throw new Error("Shell secret service unavailable")
+						if (body.value === null) {
+							if (typeof secretService.deleteSecret !== "function") throw new Error("Shell secret deletion unavailable")
+							await secretService.deleteSecret(providerId)
+						} else {
+							if (typeof secretService.setSecret !== "function") throw new Error("Shell secret persistence unavailable")
+							await secretService.setSecret({ id: providerId, value: body.value, label: providerId, kind: "provider" })
+						}
+						result = { ok: true }
+					} catch (error) {
+						log(logger, "error", "Provider key persistence failed", {
+							providerId,
+							error: sanitizeLogText(error?.message || String(error), { secretValues: [body.value] }),
+						})
+						result = { ok: false, error: "Provider key persistence failed" }
+					}
+					send({
+						v: BRIDGE_PROTOCOL_VERSION,
+						id: raw.id,
+						at: Date.now(),
+						body: { type: "secrets.persist.result", providerId, ...result },
+					})
 					return true
 				}
 				case "dialog.request": {

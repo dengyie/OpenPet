@@ -36,11 +36,11 @@ function validatePendingResponse(raw, responseType) {
 	return null
 }
 
-async function createDefaultInitBody({ app, getSettings }) {
+async function createDefaultInitBody({ app, getSettings, secretService }) {
 	const settings = await getSettings?.()
 	return {
 		userDataDir: app?.getPath?.("userData"),
-		secrets: {},
+		providerKeys: secretService?.listProviderKeys?.() || {},
 		legacyToken: settings?.localHttp?.token || null,
 		appInfo: {
 			name: app?.getName?.() || "OpenPet",
@@ -165,6 +165,7 @@ function createSidecarRuntimeCoordinator(options = {}) {
 				messageHandler = createMessageHandler({
 					dialog: options.dialog,
 					petService: options.petService,
+					secretService: options.secretService,
 					logger: options.logger,
 					send: (message) => child?.send?.(message),
 					onNotify: options.onNotify,

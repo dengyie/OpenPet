@@ -23,6 +23,7 @@ const EXPECTED_BACKEND_TO_SHELL_TYPES = [
 	"settings.changed",
 	"settings.apply.request",
 	"settings.persist.result",
+	"secrets.persist.request",
 ]
 
 function envelope(type, body = {}) {
@@ -44,13 +45,13 @@ function contractBackendToShellTypes() {
 }
 
 	describe("T28 reverse-channel allowlist", () => {
-	it("keeps the Backend and Shell allowlists exactly aligned with the 12 contract types", async () => {
+	it("keeps the Backend and Shell allowlists exactly aligned with the 13 contract types", async () => {
 		const backendSchema = await import("../../services/backend/bridge/message-schema.js")
 
 		assert.deepEqual(contractBackendToShellTypes(), EXPECTED_BACKEND_TO_SHELL_TYPES)
 		assert.deepEqual(backendSchema.BACKEND_TO_SHELL_TYPES, EXPECTED_BACKEND_TO_SHELL_TYPES)
 		assert.deepEqual(SHELL_BACKEND_TO_SHELL_TYPES, EXPECTED_BACKEND_TO_SHELL_TYPES)
-		assert.equal(new Set(SHELL_BACKEND_TO_SHELL_TYPES).size, 12)
+		assert.equal(new Set(SHELL_BACKEND_TO_SHELL_TYPES).size, 13)
 	})
 
 	it("drops malformed and non-allowlisted envelopes and logs each rejection", async () => {
@@ -121,5 +122,41 @@ function contractBackendToShellTypes() {
 		assert.equal(await handler.handle(envelope("settings.apply.request", { paths: ["scale"], version: 4 })), true)
 		assert.equal(replies[0].body.ok, false)
 		assert.match(replies[0].body.error, /host effect unavailable/)
+	})
+
+	it("persists provider-key writes in the Shell and replies without echoing plaintext", async () => {
+		const replies = []
+		const writes = []
+		const secretService = {
+			setSecret: (entry) => writes.push(entry),
+			deleteSecret: (id) => writes.push({ deleted: id }),
+		}
+		const handler = createMessageHandler({ send: (reply) => replies.push(reply), secretService })
+		const plaintext = "bridge-provider-secret-123456"
+
+		assert.equal(await handler.handle(envelope("secrets.persist.request", { providerId: "openai", value: plaintext })), true)
+		assert.deepEqual(writes, [{ id: "openai", value: plaintext, label: "openai", kind: "provider" }])
+		assert.deepEqual(replies[0].body, { type: "secrets.persist.result", providerId: "openai", ok: true })
+		assert.doesNotMatch(JSON.stringify(replies), /bridge-provider-secret/)
+
+		assert.equal(await handler.handle(envelope("secrets.persist.request", { providerId: "openai", value: null })), true)
+		assert.deepEqual(writes.at(-1), { deleted: "openai" })
+		assert.deepEqual(replies.at(-1).body, { type: "secrets.persist.result", providerId: "openai", ok: true })
+	})
+
+	it("redacts a provider key when Shell persistence fails and rejects extra request fields", async () => {
+		const replies = []
+		const errors = []
+		const plaintext = "opaque-shell-provider-secret"
+		const handler = createMessageHandler({
+			send: (reply) => replies.push(reply),
+			secretService: { setSecret: () => { throw new Error(`disk failed for ${plaintext}`) } },
+			logger: { error: (message, fields) => errors.push({ message, fields }) },
+		})
+
+		assert.equal(await handler.handle(envelope("secrets.persist.request", { providerId: "custom", value: plaintext })), true)
+		assert.equal(replies[0].body.ok, false)
+		assert.doesNotMatch(JSON.stringify({ replies, errors }), /opaque-shell-provider-secret/)
+		assert.equal(await handler.handle(envelope("secrets.persist.request", { providerId: "custom", value: plaintext, readBack: true })), false)
 	})
 })

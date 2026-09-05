@@ -142,3 +142,74 @@ test('secret service migrates legacy plaintext entries on read', () => {
   assert.equal(onDisk.secrets.legacy.encrypted, true)
   assert.notEqual(onDisk.secrets.legacy.value, 'plaintext-key')
 })
+
+test('secret service reports an explicit 0600 plaintext fallback when safeStorage is unavailable', () => {
+  const storePath = createTempStore()
+  const safeStorage = {
+    isEncryptionAvailable: () => false,
+    encryptString: () => { throw new Error('must not encrypt') },
+    decryptString: () => { throw new Error('must not decrypt') }
+  }
+  const service = createSecretService({ storePath, safeStorage })
+
+  service.setSecret({ id: 'custom-provider', value: 'fallback-provider-key', label: 'Custom', kind: 'provider' })
+
+  assert.deepEqual(service.listProviderKeys(), { 'custom-provider': 'fallback-provider-key' })
+  assert.deepEqual(service.getSecurityState(), {
+    encryptionAvailable: false,
+    storage: 'plaintext-0600',
+    warning: 'safeStorage 不可用，Provider 密钥正以 0600 权限的明文文件保存。'
+  })
+  const onDisk = JSON.parse(fs.readFileSync(storePath, 'utf-8'))
+  assert.equal(onDisk.secrets['custom-provider'].encrypted, false)
+  assert.equal(onDisk.secrets['custom-provider'].value, 'fallback-provider-key')
+  if (process.platform !== 'win32') assert.equal(fs.statSync(storePath).mode & 0o777, 0o600)
+})
+
+test('secret service injects only provider keys and preserves provider metadata', () => {
+  const storePath = createTempStore()
+  const service = createSecretService({ storePath })
+
+  service.setSecret({ id: 'ai.default', value: 'legacy-chat-provider-key', label: 'Chat' })
+  service.setSecret({ id: 'custom-provider', value: 'custom-provider-key', label: 'Custom', kind: 'provider' })
+  service.setSecret({ id: 'plugin.private-token', value: 'plugin-only-secret', label: 'Plugin' })
+
+  assert.deepEqual(service.listProviderKeys(), {
+    'ai.default': 'legacy-chat-provider-key',
+    'custom-provider': 'custom-provider-key'
+  })
+
+  const reloaded = createSecretService({ storePath })
+  assert.deepEqual(reloaded.listProviderKeys(), {
+    'ai.default': 'legacy-chat-provider-key',
+    'custom-provider': 'custom-provider-key'
+  })
+})
+
+test('secret service migrates the legacy store without deleting it', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-secrets-migration-'))
+  const legacyStorePath = path.join(root, 'secrets.json')
+  const storePath = path.join(root, 'backend', 'secrets', 'providers.enc')
+  fs.writeFileSync(legacyStorePath, JSON.stringify({
+    secrets: {
+      'ai.default': { label: 'Chat', value: 'legacy-provider-key', updatedAt: '2026-01-01T00:00:00.000Z' }
+    }
+  }))
+
+  const service = createSecretService({ storePath, legacyStorePath, safeStorage: createFakeSafeStorage() })
+
+  assert.equal(service.getSecretValue('ai.default'), 'legacy-provider-key')
+  assert.equal(fs.existsSync(legacyStorePath), true)
+  assert.equal(fs.existsSync(storePath), true)
+  assert.notEqual(JSON.parse(fs.readFileSync(storePath, 'utf8')).secrets['ai.default'].value, 'legacy-provider-key')
+})
+
+test('secret service repairs existing store permissions on startup', { skip: process.platform === 'win32' }, () => {
+  const storePath = createTempStore()
+  createSecretService({ storePath }).setSecret({ id: 'ai.default', value: 'provider-key' })
+  fs.chmodSync(storePath, 0o644)
+
+  createSecretService({ storePath })
+
+  assert.equal(fs.statSync(storePath).mode & 0o777, 0o600)
+})

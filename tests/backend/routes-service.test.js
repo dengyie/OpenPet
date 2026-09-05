@@ -25,6 +25,30 @@ describe("T16 service routes", () => {
 		assert.equal(manager.config().tokenConfigured, true)
 	})
 
+	it("keeps the injected legacy token authoritative for local /api/pet mutations", async () => {
+		const { createLocalHttpManager } = await import("../../services/backend/domains/local-http.js")
+		const sent = []
+		const manager = createLocalHttpManager({
+			secrets: { localHttpToken: "legacy-local-http-token" },
+			shell: { send: (message) => sent.push(message) },
+		})
+		const started = await manager.start({ host: "127.0.0.1", port: 0 })
+		const url = `http://${started.host}:${started.port}/api/pet/say`
+		const request = (token) => fetch(url, {
+			method: "POST",
+			headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+			body: JSON.stringify({ text: "hello" }),
+		})
+
+		try {
+			assert.equal((await request("wrong-token")).status, 401)
+			assert.equal((await request("legacy-local-http-token")).status, 200)
+			assert.deepEqual(sent, [{ type: "pet.say", text: "hello", durationMs: undefined }])
+		} finally {
+			await manager.stop()
+		}
+	})
+
 	it("health registration can leave business paths to their domain modules", async () => {
 		const [{ createRouter }, health] = await Promise.all([
 			import("../../services/backend/http/router.js"),

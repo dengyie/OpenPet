@@ -27,6 +27,7 @@ import {
 import { createShellClient } from "./bridge/shell-client.js"
 import { createPluginRuntimeServer } from "./bridge/plugin-runtime-server.js"
 import { createPluginCommandServer } from "./bridge/plugin-command-server.js"
+import { createProviderKeyStore } from "./secrets/provider-keys.js"
 import { createSettingsStore } from "./domains/settings.js"
 import { createAboutService } from "./domains/about.js"
 import { createLocalHttpManager } from "./domains/local-http.js"
@@ -50,6 +51,7 @@ import { registerActionRoutes } from "./routes/actions.js"
 import { registerCatalogRoutes } from "./routes/catalog.js"
 import { registerJobRoutes } from "./routes/jobs.js"
 import { registerPluginRoutes } from "./routes/plugins.js"
+import { registerAiSecretRoutes } from "./routes/ai.js"
 import { openDatabase } from "./store/db.js"
 import { migrate } from "./store/migrate.js"
 import { migrateFromJson, needsJsonImport } from "./store/migrate-from-json.js"
@@ -112,14 +114,29 @@ const logger = createLogger()
 function createLogger() {
 	// 结构化日志走 stderr,stdout 留给将来可能的二进制/流式输出。
 	// Shell 侧把两个流都转发进 app-log-service。
+	let sanitize = (value) => value
+	const safe = (value) => {
+		try {
+			return sanitize(value)
+		} catch {
+			return "[log-sanitization-failed]"
+		}
+	}
 	const write = (level, message, fields) => {
-		const line = { at: new Date().toISOString(), level, message, ...(fields ?? {}) }
+		const sanitizedFields = safe(fields ?? {})
+		const line = {
+			at: new Date().toISOString(),
+			level,
+			message: safe(message),
+			...(sanitizedFields && typeof sanitizedFields === "object" && !Array.isArray(sanitizedFields) ? sanitizedFields : {}),
+		}
 		process.stderr.write(JSON.stringify(line) + "\n")
 	}
 	return {
 		info: (message, fields) => write("info", message, fields),
 		warn: (message, fields) => write("warn", message, fields),
 		error: (message, fields) => write("error", message, fields),
+		setSanitizer: (next) => { sanitize = typeof next === "function" ? next : (value) => value },
 	}
 }
 
@@ -181,7 +198,23 @@ const initEnvelope = await initPromise.catch((error) => {
 	return null
 })
 
-runtime.secrets = initEnvelope.body.secrets ?? {}
+runtime.secrets = createProviderKeyStore({
+	providerKeys: initEnvelope.body.providerKeys ?? {},
+	persist: async ({ providerId, value }) => {
+		const reply = await shell.request(
+			{ type: "secrets.persist.request", providerId, value },
+			{ expectedType: "secrets.persist.result" },
+		)
+		if (reply.body.providerId !== providerId) throw new Error("Shell secret persistence response provider mismatch")
+		if (reply.body.ok !== true) throw new Error(reply.body.error || "Shell secret persistence failed")
+	},
+	logger,
+})
+logger.setSanitizer(runtime.secrets.sanitizeLogValue)
+// The store cloned providerKeys into closure memory. Drop the init envelope's
+// plaintext reference so ordinary diagnostics cannot retain a second copy.
+delete initEnvelope.body.providerKeys
+delete initEnvelope.body.secrets
 runtime.userDataDir = initEnvelope.body.userDataDir ?? null
 runtime.legacyToken = initEnvelope.body.legacyToken ?? null
 runtime.appInfo = initEnvelope.body.appInfo ?? {}
@@ -253,12 +286,13 @@ registerAboutRoutes(router, {
 })
 runtime.service = createLocalHttpManager({
 	settings: runtime.settings,
-	secrets: runtime.secrets,
+	secrets: { localHttpToken: runtime.legacyToken },
 	shell,
 	petState: () => runtime.petState,
 	logger,
 })
 registerServiceRoutes(router, { manager: runtime.service })
+registerAiSecretRoutes(router, { secrets: runtime.secrets })
 runtime.catalog = createCatalogService({
 	root: join(dirname(fileURLToPath(import.meta.url)), "../.."),
 	db: runtime.db,

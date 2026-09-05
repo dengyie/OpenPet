@@ -15,6 +15,19 @@
 @import './styles/layout.css';
 @import './styles/components.css';
 
+.secret-storage-warning {
+  width: 100%;
+  max-width: 1180px;
+  margin-bottom: var(--op-space-7);
+  padding: var(--op-space-5) var(--op-space-7);
+  border: 1px solid var(--op-color-warning-border);
+  border-radius: var(--op-radius-lg);
+  background: var(--op-color-warning-soft);
+  color: var(--op-color-warning);
+  font-size: var(--op-font-size-lg);
+  line-height: var(--op-line-height-normal);
+}
+
 .job-panel {
   width: 100%;
   max-width: 860px;

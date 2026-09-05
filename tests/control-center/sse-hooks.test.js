@@ -176,6 +176,39 @@ describe("T22 SSE hook seams", () => {
 		assert.deepEqual(JSON.parse(JSON.stringify(statuses)), [{ supported: true, platform: "darwin", active: true, helperPid: 77 }])
 	})
 
+	it("T44 preload and App keep an unencrypted secret-storage warning visible", () => {
+		const fs = require("node:fs")
+		const vm = require("node:vm")
+		const source = fs.readFileSync("control-center-preload.js", "utf8")
+		const exposed = {}
+		const handlers = {}
+		const ipcRenderer = { on: (channel, handler) => { handlers[channel] = handler }, removeListener: () => {}, invoke: async () => ({}), send: () => {} }
+		vm.runInNewContext(source, { require: (name) => name === "electron" ? { contextBridge: { exposeInMainWorld: (key, value) => { exposed[key] = value } }, ipcRenderer } : require(name), console, setTimeout })
+		const security = []
+		exposed.openpetBackend.onSecretStorageSecurityChanged((value) => security.push(value))
+		handlers["settings:changed"]({}, {
+			__openpetBackend: null,
+			__openpetSecretStorageSecurity: {
+				encryptionAvailable: false,
+				storage: "plaintext-0600",
+				warning: "safeStorage 不可用，Provider 密钥正以 0600 权限的明文文件保存。",
+			},
+		})
+		assert.deepEqual(JSON.parse(JSON.stringify(exposed.openpetBackend.getSecretStorageSecurity())), {
+			encryptionAvailable: false,
+			storage: "plaintext-0600",
+			warning: "safeStorage 不可用，Provider 密钥正以 0600 权限的明文文件保存。",
+		})
+		handlers["settings:changed"]({}, { systemCursorStatus: { supported: true, platform: "darwin", active: false, helperPid: 0 } })
+		assert.equal(exposed.openpetBackend.getSecretStorageSecurity().storage, "plaintext-0600")
+		assert.equal(security.length, 1)
+
+		const app = fs.readFileSync("src/control-center/src/App.jsx", "utf8")
+		assert.match(app, /data-testid="secret-storage-warning"/)
+		assert.match(app, /role="alert"/)
+		assert.match(app, /onSecretStorageSecurityChanged/)
+	})
+
 	it("T32 JobPanel refreshes when a late backend opens without a business event", async () => {
 		const { shouldRefreshOnSseState } = await import("../../src/control-center/src/features/jobs/policy.ts")
 		assert.equal(shouldRefreshOnSseState("unavailable", "open"), true)
