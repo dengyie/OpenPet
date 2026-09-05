@@ -2,6 +2,7 @@ import * as pluginInstall from "./plugin-install.js"
 import * as pluginInstallGithub from "./plugin-install-github.js"
 import * as pluginCommand from "./plugin-command.js"
 import * as pluginSyncBundled from "./plugin-sync-bundled.js"
+import * as imageGenerate from "./image-generate.js"
 
 export const PLUGIN_JOB_HANDLERS = Object.freeze([
 	pluginInstall,
@@ -24,4 +25,14 @@ export function createPluginJobHandlers({ db, plugins, logger } = {}) {
 			finalize: runnerContext.finalize,
 		})
 	}]))
+}
+
+export function createImageJobHandlers({ ai } = {}) {
+	return { "image.generate": (runnerContext) => imageGenerate.run(runnerContext.job.input ?? {}, {
+		ai,
+		signal: runnerContext.signal,
+		progress: runnerContext.report,
+		tmpDir: runnerContext.tmpDir,
+		finalize: runnerContext.finalize,
+	}) }
 }

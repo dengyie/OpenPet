@@ -1805,7 +1805,8 @@ const createImageGenerationModelService = ({
       constraints,
       timeoutMs,
       traceContext,
-      referenceImages = []
+      referenceImages = [],
+      referenceDataDir
     } = request
     const normalizedTraceContext = normalizeImageTraceContext(traceContext)
     const recordRequestLog = (entry) => recordLog({
@@ -1824,7 +1825,7 @@ const createImageGenerationModelService = ({
     }
     assertExactlyOneReferenceImage(referenceImages)
     const normalizedReferenceImages = normalizeReferenceImages(referenceImages, {
-      dataDir: output?.dataDir
+      dataDir: referenceDataDir || output?.dataDir
     })
     assertExactlyOneReferenceImage(normalizedReferenceImages)
     const variants = normalizeProviderPromptVariants({

@@ -52,12 +52,14 @@ import { registerCatalogRoutes } from "./routes/catalog.js"
 import { registerJobRoutes } from "./routes/jobs.js"
 import { registerPluginRoutes } from "./routes/plugins.js"
 import { registerAiSecretRoutes } from "./routes/ai.js"
+import { registerAiRoutes } from "./routes/ai.js"
+import { createAiService } from "./domains/ai/image-generation.js"
 import { openDatabase } from "./store/db.js"
 import { migrate } from "./store/migrate.js"
 import { migrateFromJson, needsJsonImport } from "./store/migrate-from-json.js"
 import { createJobsRepository } from "./store/repositories/jobs.js"
 import { createLogsRepository } from "./store/repositories/logs.js"
-import { createPluginJobHandlers } from "./jobs/handlers/index.js"
+import { createPluginJobHandlers, createImageJobHandlers } from "./jobs/handlers/index.js"
 const require = createRequire(import.meta.url)
 const { normalizeNetworkRequest, requestPluginNetwork } = require("../../src/main/services/plugin-network-client.js")
 
@@ -190,6 +192,7 @@ const runtime = {
 	queue: null,
 	runner: null,
 	enqueueJob: null,
+	ai: null,
 }
 
 const initEnvelope = await initPromise.catch((error) => {
@@ -302,6 +305,10 @@ if (legacyLocalHttpConfig.enabled) {
 }
 registerServiceRoutes(router, { manager: runtime.service })
 registerAiSecretRoutes(router, { secrets: runtime.secrets })
+registerAiRoutes(router, { jobs: { insert: (input) => {
+		if (!runtime.enqueueJob) throw new Error("Job service unavailable")
+		return runtime.enqueueJob(input)
+	} } })
 runtime.catalog = createCatalogService({
 	root: join(dirname(fileURLToPath(import.meta.url)), "../.."),
 	db: runtime.db,
@@ -416,6 +423,7 @@ await initializeBackendRuntime({
 })
 
 if (!runtime.degraded && runtime.jobs) {
+	runtime.ai = createAiService({ settings: runtime.settings, secrets: runtime.secrets, fetchImpl: globalThis.fetch, logger, userDataDir: runtime.userDataDir })
 	runtime.queue = createQueue({ repo: runtime.jobs, logger })
 	runtime.runner = createRunner({
 		repo: runtime.jobs,
@@ -438,6 +446,7 @@ if (!runtime.degraded && runtime.jobs) {
 				plugins: runtime.plugins,
 				logger,
 			}),
+			...createImageJobHandlers({ ai: runtime.ai }),
 		},
 	})
 	runtime.enqueueJob = createJobDispatcher({
