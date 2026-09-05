@@ -1,5 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { controlCenterAPI as api } from '../api/control-center-api'
+import { nextPetPackActivationEventId, petPackApi, resolvePetPackJob, type PetPackJobKind } from '../features/pet-packs/api.ts'
+import { useJob } from './useJob.ts'
+import { useSse } from './useSse.ts'
 import { cloneActionsConfig, clonePetPacks, defaultActionsConfig, defaultPetPacks } from '../lib/defaults'
 import { messageFromError } from '../lib/errors'
 import type {
@@ -10,7 +13,9 @@ import type {
   ActionTriggerProposalType,
   ActionsConfigViewState,
   CompletedActionFrameInspectionResult,
+  PetPackExportResult,
   PetPackInspectionResult,
+  PetPackMutationResult,
   PetPacksViewState
 } from '../../../shared/openpet-contracts'
 import type { ActionImportDraft, ActionsPaneProps } from '../panes/ActionsPane'
@@ -29,12 +34,16 @@ export function useActionsPane() {
   const [lastTriggerProposalResult, setLastTriggerProposalResult] = useState<ActionTriggerProposalAcceptanceResult | null>(null)
   const [status, setStatus] = useState('')
   const [working, setWorking] = useState(false)
+  const [petPackJobRequest, setPetPackJobRequest] = useState<{ jobId: string; kind: PetPackJobKind; packId?: string } | null>(null)
+  const { job: petPackJob } = useJob(petPackJobRequest?.jobId || null)
+  const petPackEvents = useSse(['pet'])
+  const lastHandledPetPackEventIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     let mounted = true
     Promise.all([
       api.getActions(),
-      api.listPetPacks()
+      petPackApi.list()
     ]).then(([loadedActions, loadedPetPacks]) => {
       if (!mounted) return
       setActionsConfig(cloneActionsConfig(loadedActions))
@@ -47,6 +56,41 @@ export function useActionsPane() {
     })
     return () => { mounted = false }
   }, [])
+
+  useEffect(() => {
+    const eventId = nextPetPackActivationEventId(petPackEvents, lastHandledPetPackEventIdRef.current)
+    if (!eventId) return
+    lastHandledPetPackEventIdRef.current = eventId
+    let mounted = true
+    Promise.all([api.getActions(), petPackApi.list()]).then(([loadedActions, loadedPetPacks]) => {
+      if (!mounted) return
+      setActionsConfig(cloneActionsConfig(loadedActions))
+      setPetPacks(clonePetPacks(loadedPetPacks))
+    }).catch((error) => {
+      if (mounted) setStatus(messageFromError(error, 'Pet pack 事件刷新失败'))
+    })
+    return () => { mounted = false }
+  }, [petPackEvents.lastEventId, petPackEvents.lastEventName])
+
+  useEffect(() => {
+    if (!petPackJobRequest || !petPackJob || petPackJob.jobId !== petPackJobRequest.jobId) return
+    const resolved = resolvePetPackJob(petPackJob, petPackJobRequest.kind)
+    if (resolved.kind === 'pending') return
+    if (resolved.kind === 'failed') {
+      setStatus(resolved.message)
+    } else if (petPackJobRequest.kind === 'import') {
+      const result = resolved.result as PetPackMutationResult
+      setPetPacks(clonePetPacks(result.petPacks))
+      if (result.animations) setActionsConfig(cloneActionsConfig(result.animations))
+      setPetPackInspection(null)
+      setStatus(`已导入 ${result.pack?.displayName || result.pack?.id || 'Pet pack'}`)
+    } else {
+      const result = resolved.result as PetPackExportResult
+      setStatus(result.canceled ? '已取消导出' : `已导出 ${result.fileName || petPackJobRequest.packId || 'Pet pack'}`)
+    }
+    setPetPackJobRequest(null)
+    setWorking(false)
+  }, [petPackJob, petPackJobRequest])
 
   useEffect(() => {
     if (actionsConfig.actions.some((action) => action.id === selectedActionId)) return
@@ -332,7 +376,7 @@ export function useActionsPane() {
     setWorking(true)
     setStatus('')
     try {
-      const response = await api.inspectPetPackDirectory()
+      const response = await petPackApi.inspect()
       if (response.canceled) {
         setStatus('已取消选择')
       } else {
@@ -353,7 +397,7 @@ export function useActionsPane() {
     setStatus('已清除 Pet pack 选择')
     if (!selectionId) return
     try {
-      await api.clearPetPackSelection(selectionId)
+      await petPackApi.clearSelection(selectionId)
     } catch (_) {}
   }
 
@@ -361,40 +405,51 @@ export function useActionsPane() {
     if (!petPackInspection?.selectionId) return
     setWorking(true)
     setStatus('')
+    setPetPackJobRequest(null)
     try {
-      const response = await api.importPetPack(petPackInspection.selectionId)
-      setPetPacks(clonePetPacks(response.petPacks))
+      const started = await petPackApi.import(petPackInspection.selectionId)
+      if ('jobId' in started) {
+        setPetPackJobRequest({ jobId: started.jobId, kind: 'import' })
+        return
+      }
+      setPetPacks(clonePetPacks(started.result.petPacks))
+      if (started.result.animations) setActionsConfig(cloneActionsConfig(started.result.animations))
       setPetPackInspection(null)
-      setStatus(`已导入 ${response.pack?.displayName || response.pack?.id || 'Pet pack'}`)
+      setStatus(`已导入 ${started.result.pack?.displayName || started.result.pack?.id || 'Pet pack'}`)
     } catch (error) {
       setStatus(messageFromError(error, 'Pet pack 导入失败'))
-    } finally {
       setWorking(false)
     }
+    setWorking(false)
   }
 
   const onExportPetPack = async (packId: string) => {
     setWorking(true)
     setStatus('')
+    setPetPackJobRequest(null)
     try {
-      const response = await api.exportPetPack(packId)
-      if (response.canceled) {
+      const started = await petPackApi.export(packId)
+      if ('jobId' in started) {
+        setPetPackJobRequest({ jobId: started.jobId, kind: 'export', packId })
+        return
+      }
+      if (started.result.canceled) {
         setStatus('已取消导出')
       } else {
-        setStatus(`已导出 ${response.fileName || packId}`)
+        setStatus(`已导出 ${started.result.fileName || packId}`)
       }
     } catch (error) {
       setStatus(messageFromError(error, 'Pet pack 导出失败'))
-    } finally {
       setWorking(false)
     }
+    setWorking(false)
   }
 
   const onSetActivePetPack = async (packId: string) => {
     setWorking(true)
     setStatus('')
     try {
-      const response = await api.setActivePetPack(packId)
+      const response = await petPackApi.activate(packId)
       setPetPacks(clonePetPacks(response.petPacks))
       setActionsConfig(cloneActionsConfig(response.animations))
       setStatus(`已启用 ${response.pack?.displayName || packId}`)
@@ -410,7 +465,7 @@ export function useActionsPane() {
     setWorking(true)
     setStatus('')
     try {
-      const response = await api.removePetPack(packId)
+      const response = await petPackApi.remove(packId)
       setPetPacks(clonePetPacks(response.petPacks))
       setStatus(`已删除 ${packId}`)
     } catch (error) {

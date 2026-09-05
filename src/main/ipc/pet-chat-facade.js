@@ -1,4 +1,3 @@
-const { IPC } = require('../../shared/ipc-channels')
 const { createPetBubbleChatCoordinator } = require('./pet-bubble-chat-coordinator')
 const { createPetUtteranceRecorder } = require('./pet-utterance-recorder')
 const {
@@ -20,7 +19,7 @@ const createPetChatFacade = ({
   petChatWindowService = null,
   petBubbleChatWindowService = null,
   recordAppLog,
-  sendToControlCenterWindow
+  onActivePetPackChanged
 }) => {
   let lastPetBubble = createEmptyPetBubble()
 
@@ -61,33 +60,10 @@ const createPetChatFacade = ({
     petChatWindowService?.sendStateChanged?.(state)
   }
 
-  const notifyControlCenterActivePetPackChanged = (activePackId) => {
-    const normalizedActivePackId = normalizeMessageText(activePackId)
-    if (!normalizedActivePackId) return
-    const settingsWindow = browserWindowService?.getAllWindows?.().find?.((candidate) => {
-      try {
-        return !candidate.isDestroyed?.() && candidate.webContents?.getURL?.().includes?.('control-center')
-      } catch (_) {
-        return false
-      }
-    })
-    settingsWindow?.webContents?.send?.(IPC.PET_PACKS_ACTIVE_CHANGED, { activePackId: normalizedActivePackId })
-  }
-
   const refreshPetPackScopedChatState = ({ reason = 'pet-pack-changed' } = {}) => {
     refreshBubbleChatItems({ reason })
     const state = getState()
     notifyStateChanged(state)
-    return state
-  }
-
-  const notifyActivePetPackChanged = (event, payload = {}) => {
-    const state = getState()
-    event?.sender?.send?.(IPC.PET_PACKS_ACTIVE_CHANGED, {
-      activePackId: payload.activePackId || state.petPack.id || '',
-      pack: payload.pack || null,
-      petChatState: state
-    })
     return state
   }
 
@@ -99,10 +75,10 @@ const createPetChatFacade = ({
       activePackId: payload?.activePackId || nextPetPacks?.activePackId || '',
       petPacks: nextPetPacks
     }
-    notifyControlCenterActivePetPackChanged(activePackPayload.activePackId)
-    sendToControlCenterWindow?.(getPetWindow, IPC.CONTROL_CENTER_ACTIVE_PET_PACK_CHANGED, activePackPayload)
-    refreshPetPackScopedChatState({ reason: `active-pet-pack-changed:${source}` })
-    return activePackPayload
+    const petChatState = refreshPetPackScopedChatState({ reason: `active-pet-pack-changed:${source}` })
+    const eventPayload = { ...activePackPayload, petChatState }
+    onActivePetPackChanged?.(eventPayload)
+    return eventPayload
   }
 
   const captureBubble = (payload = {}, { notify = true } = {}) => {
@@ -171,7 +147,6 @@ const createPetChatFacade = ({
     handlePetEvent,
     handlePetSay,
     hideBubbleChat: bubbleChatCoordinator.hideBubbleChat,
-    notifyActivePetPackChanged,
     notifyStateChanged,
     openBubbleChat: bubbleChatCoordinator.openBubbleChat,
     dragBubbleChatWindowTo: bubbleChatCoordinator.dragBubbleChatWindowTo,

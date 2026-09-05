@@ -1,5 +1,7 @@
 import { z } from "zod"
 
+import { ERROR_CODES } from "./envelope.js"
+
 /**
  * 反向通道契约(Backend <-> Shell)—— 见 docs/refactor/03-api-contract.md §7 与 ADR-011。
  *
@@ -42,6 +44,18 @@ export const catalogRequestSchema = z.discriminatedUnion("operation", [
 ])
 export type CatalogBridgeRequest = z.infer<typeof catalogRequestSchema>
 
+export const PET_PACK_BRIDGE_OPERATIONS = [
+  "list",
+  "manifest",
+  "validate",
+  "clear-selection",
+  "import",
+  "export",
+  "activate",
+  "remove",
+] as const
+export type PetPackBridgeOperation = (typeof PET_PACK_BRIDGE_OPERATIONS)[number]
+
 export const backendToShellSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("pet.say"), text: z.string(), durationMs: z.number().int().positive().optional() }),
   z.object({ type: z.literal("pet.playAction"), actionId: z.string(), loop: z.boolean().optional() }),
@@ -63,6 +77,11 @@ export const backendToShellSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("settings.persist.result"), version: z.number().int().nonnegative(), ok: z.boolean(), changedPaths: z.array(z.string()), error: z.string().optional(), errorCode: z.string().optional() }),
   z.object({ type: z.literal("secrets.persist.request"), providerId: z.string().min(1), value: z.string().min(1).nullable() }).strict(),
   z.object({ type: z.literal("catalog.request"), request: catalogRequestSchema }).strict(),
+  z.object({
+    type: z.literal("pet-packs.request"),
+    operation: z.enum(PET_PACK_BRIDGE_OPERATIONS),
+    payload: z.record(z.string(), z.unknown()),
+  }).strict(),
 ])
 export type BackendToShell = z.infer<typeof backendToShellSchema>
 
@@ -95,6 +114,20 @@ export const shellToBackendSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("settings.persist.request"), ifVersion: z.number().int().nonnegative(), patch: z.record(z.string(), z.unknown()) }),
   z.object({ type: z.literal("secrets.persist.result"), providerId: z.string().min(1), ok: z.boolean(), error: z.string().optional() }).strict(),
   z.object({ type: z.literal("catalog.result"), ok: z.boolean(), result: z.unknown().optional(), error: z.string().optional() }).strict(),
+  z.object({
+    type: z.literal("pet-packs.result"),
+    operation: z.enum(PET_PACK_BRIDGE_OPERATIONS),
+    ok: z.boolean(),
+    result: z.unknown().optional(),
+    error: z.object({
+      code: z.enum(ERROR_CODES),
+      message: z.string().min(1),
+    }).strict().optional(),
+  }).strict(),
+  z.object({
+    type: z.literal("pet.pack-activated"),
+    payload: z.record(z.string(), z.unknown()),
+  }).strict(),
 ])
 export type ShellToBackend = z.infer<typeof shellToBackendSchema>
 

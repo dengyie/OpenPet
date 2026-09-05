@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs"
 import { createRequire } from "node:module"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { EVENT_BACKEND_SHUTTING_DOWN, SETTINGS_CANONICAL_PATHS, SETTINGS_TRUSTED_PATHS } from "@openpet/contracts"
+import { EVENT_BACKEND_SHUTTING_DOWN, EVENT_PET_PACK_ACTIVATED, SETTINGS_CANONICAL_PATHS, SETTINGS_TRUSTED_PATHS } from "@openpet/contracts"
 
 import { createRouter } from "./http/router.js"
 import {
@@ -224,6 +224,9 @@ const router = createRouter({ basePath: "/api/v1" })
 // ADR-015:事件总线是唯一的失效通知来源。SSE 订阅、设置变更、Job/恢复钩子都走它。
 const eventHub = createEventHub({ logger })
 runtime.events = eventHub
+shell.on(EVENT_PET_PACK_ACTIVATED, (envelope) => {
+	eventHub.publish(EVENT_PET_PACK_ACTIVATED, envelope.body.payload)
+})
 
 router.use(requestId())
 router.use(errorBoundary({ logger }))
@@ -305,13 +308,8 @@ registerCatalogRoutes(router, {
 	jobs: { insert: (input) => runtime.enqueueJob?.(input) },
 })
 runtime.petPacks = createPetPackService({
-	root: join(dirname(fileURLToPath(import.meta.url)), "../.."),
-	userDataDir: runtime.userDataDir,
-	db: runtime.db,
+	shell,
 	jobs: { insert: (input) => runtime.enqueueJob?.(input) },
-	dialog: shell,
-	logger,
-	emit: (name, payload) => eventHub.publish(name, payload),
 })
 registerPetPackRoutes(router, { packs: runtime.petPacks })
 runtime.actions = createActionService({
@@ -426,8 +424,8 @@ if (!runtime.degraded && runtime.jobs) {
 				if (signal.aborted) throw signal.reason ?? new Error("Job canceled")
 				return finalize(() => runtime.catalog.installSelection(job.input?.selectionId))
 			},
-			"pet-pack.import": async ({ job, report, signal }) => runtime.petPacks.runImport({ ...job.input, signal, report }),
-			"pet-pack.export": async ({ job, report, signal }) => runtime.petPacks.runExport({ ...job.input, signal, report }),
+			"pet-pack.import": async ({ job, report, signal, finalize }) => runtime.petPacks.runImport({ ...job.input, signal, report, finalize }),
+			"pet-pack.export": async ({ job, report, signal, finalize }) => runtime.petPacks.runExport({ ...job.input, signal, report, finalize }),
 			"actions.import-frames": async ({ job, report, signal }) => runtime.actions.runImportFrames({ ...job.input, signal, report }),
 			...createPluginJobHandlers({
 				db: runtime.db,

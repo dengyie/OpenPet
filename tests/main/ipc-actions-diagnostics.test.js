@@ -289,8 +289,9 @@ test('actions:save-config returns animations with trigger runtime diagnostics af
   })
 })
 
-test('pet-packs:set-active returns animations with trigger runtime diagnostics for the next active pack', async () => {
+test('Shell Pet Pack activate bridge returns runtime diagnostics and emits one successful activation event', async () => {
   const ipcMain = createIpcMainStub()
+  const notifications = []
   const { registerIpcHandlers } = loadIpcWithElectron({
     ipcMain,
     BrowserWindow: { fromWebContents: () => null },
@@ -301,7 +302,7 @@ test('pet-packs:set-active returns animations with trigger runtime diagnostics f
     }
   })
 
-  registerIpcHandlers({
+  const runtime = registerIpcHandlers({
     ...createRequiredServices({
       petPackService: {
         listPacks: () => ({
@@ -318,13 +319,17 @@ test('pet-packs:set-active returns animations with trigger runtime diagnostics f
             clickAction: 'wave'
           }]
         }),
-        setActivePack: () => ({
-          ok: true,
-          pack: {
-            id: 'citrus-cat',
-            displayName: 'Citrus Cat'
+        setActivePack: (packId) => {
+          if (packId === 'missing-cat') throw new Error('Pet pack is not installed: missing-cat')
+          if (packId === 'blocked-cat') throw new Error('Pet pack is blocked: package hash denied')
+          return {
+            ok: true,
+            pack: {
+              id: 'citrus-cat',
+              displayName: 'Citrus Cat'
+            }
           }
-        }),
+        },
         inspectPackSource: () => ({}),
         clearPendingSelection: () => ({ ok: true }),
         importPack: () => ({ ok: true }),
@@ -332,7 +337,17 @@ test('pet-packs:set-active returns animations with trigger runtime diagnostics f
         removePack: () => ({ ok: true })
       }
     }),
+    aiTalkService: {
+      getPersonaProfile: () => ({ petPackId: 'citrus-cat', petPackDisplayName: 'Citrus Cat' }),
+      getConversation: () => []
+    },
     ipcMainService: ipcMain,
+    sidecarRuntimeCoordinator: {
+      notifyBackend: (body) => {
+        notifications.push(body)
+        return true
+      }
+    },
     triggerRuleRuntimeService: {
       refresh: () => ({
         currentState: { actionId: 'idle' },
@@ -355,7 +370,15 @@ test('pet-packs:set-active returns animations with trigger runtime diagnostics f
     }
   })
 
-  const result = await ipcMain.handlers.get(IPC.PET_PACKS_SET_ACTIVE)(null, { packId: 'citrus-cat' })
+  const result = await runtime.handlePetPackRequest({ operation: 'activate', payload: { packId: 'citrus-cat' } })
+  await assert.rejects(
+    runtime.handlePetPackRequest({ operation: 'activate', payload: { packId: 'missing-cat' } }),
+    (error) => error?.code === 'NOT_FOUND'
+  )
+  await assert.rejects(
+    runtime.handlePetPackRequest({ operation: 'activate', payload: { packId: 'blocked-cat' } }),
+    (error) => error?.code === 'PET_PACK_INCOMPATIBLE'
+  )
 
   assert.deepEqual(result.animations.triggerRuntimeDiagnostics, {
     currentState: { actionId: 'idle' },
@@ -371,4 +394,8 @@ test('pet-packs:set-active returns animations with trigger runtime diagnostics f
       }
     ]
   })
+  assert.equal(notifications.length, 1)
+  assert.equal(notifications[0].type, 'pet.pack-activated')
+  assert.equal(notifications[0].payload.activePackId, 'citrus-cat')
+  assert.equal(notifications[0].payload.petChatState.petPack.id, 'citrus-cat')
 })

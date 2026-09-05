@@ -61,6 +61,10 @@ test("sidecar routes use runtime dependencies initialized before ready", async (
 		const shellHandler = createMessageHandler({
 			send: (envelope) => backend.child.send(envelope),
 			onSettingsApplyRequest: (envelope) => hostBridge.handle(envelope),
+			onPetPackRequest: ({ operation }) => {
+				assert.equal(operation, "list")
+				return { activePackId: "legacy-cat", packs: [] }
+			},
 			secretService: {
 				setSecret: (entry) => persistedSecrets.push(entry),
 				deleteSecret: (id) => persistedSecrets.push({ deleted: id }),
@@ -69,7 +73,7 @@ test("sidecar routes use runtime dependencies initialized before ready", async (
 		})
 		backend.child.on("message", (envelope) => {
 			if (envelope?.body?.type === "settings.apply.request") applyValues = envelope.body.values
-			if (["settings.apply.request", "secrets.persist.request", "catalog.request"].includes(envelope?.body?.type)) {
+			if (["settings.apply.request", "secrets.persist.request", "catalog.request", "pet-packs.request"].includes(envelope?.body?.type)) {
 				void shellHandler.handle(envelope)
 			}
 		})

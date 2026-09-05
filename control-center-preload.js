@@ -24,15 +24,7 @@ const IPC = {
   ACTIONS_UPDATE_TRIGGER_RULE: 'actions:update-trigger-rule',
   ACTIONS_DELETE_TRIGGER_RULE: 'actions:delete-trigger-rule',
   ACTIONS_DELETE: 'actions:delete',
-  PET_PACKS_LIST: 'pet-packs:list',
   PET_PACKS_INSPECT_DIRECTORY: 'pet-packs:inspect-directory',
-  PET_PACKS_CLEAR_SELECTION: 'pet-packs:clear-selection',
-  PET_PACKS_IMPORT: 'pet-packs:import',
-  PET_PACKS_EXPORT: 'pet-packs:export',
-  PET_PACKS_SET_ACTIVE: 'pet-packs:set-active',
-  PET_PACKS_ACTIVE_CHANGED: 'pet-packs:active-changed',
-  PET_PACKS_REMOVE: 'pet-packs:remove',
-  CONTROL_CENTER_ACTIVE_PET_PACK_CHANGED: 'control-center:active-pet-pack-changed',
   AI_GET_CONFIG: 'ai:get-config',
   AI_SAVE_CONFIG: 'ai:save-config',
   AI_SAVE_API_KEY: 'ai:save-api-key',
@@ -143,24 +135,7 @@ contextBridge.exposeInMainWorld('controlCenterAPI', {
   updateActionTriggerRule: (payload) => ipcRenderer.invoke(IPC.ACTIONS_UPDATE_TRIGGER_RULE, payload),
   deleteActionTriggerRule: (ruleId) => ipcRenderer.invoke(IPC.ACTIONS_DELETE_TRIGGER_RULE, { ruleId }),
   deleteAction: (actionId) => ipcRenderer.invoke(IPC.ACTIONS_DELETE, { actionId }),
-  listPetPacks: () => ipcRenderer.invoke(IPC.PET_PACKS_LIST),
   inspectPetPackDirectory: () => ipcRenderer.invoke(IPC.PET_PACKS_INSPECT_DIRECTORY),
-  clearPetPackSelection: (selectionId) => ipcRenderer.invoke(IPC.PET_PACKS_CLEAR_SELECTION, { selectionId }),
-  importPetPack: (selectionId) => ipcRenderer.invoke(IPC.PET_PACKS_IMPORT, { selectionId }),
-  exportPetPack: (packId) => ipcRenderer.invoke(IPC.PET_PACKS_EXPORT, { packId }),
-  setActivePetPack: (packId) => ipcRenderer.invoke(IPC.PET_PACKS_SET_ACTIVE, { packId }),
-  // Subscribe to both active pet-pack channels.
-  onActivePetPackChanged: (listener) => {
-    if (typeof listener !== 'function') return () => {}
-    const handler = (_event, payload) => listener(payload)
-    ipcRenderer.on(IPC.PET_PACKS_ACTIVE_CHANGED, handler)
-    ipcRenderer.on(IPC.CONTROL_CENTER_ACTIVE_PET_PACK_CHANGED, handler)
-    return () => {
-      ipcRenderer.removeListener(IPC.PET_PACKS_ACTIVE_CHANGED, handler)
-      ipcRenderer.removeListener(IPC.CONTROL_CENTER_ACTIVE_PET_PACK_CHANGED, handler)
-    }
-  },
-  removePetPack: (packId) => ipcRenderer.invoke(IPC.PET_PACKS_REMOVE, { packId }),
   getAiConfig: () => ipcRenderer.invoke(IPC.AI_GET_CONFIG),
   saveAiConfig: (config) => ipcRenderer.invoke(IPC.AI_SAVE_CONFIG, config),
   saveAiApiKey: (apiKey) => ipcRenderer.invoke(IPC.AI_SAVE_API_KEY, apiKey),

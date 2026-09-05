@@ -9,34 +9,65 @@ const { describe, it } = require("node:test")
 const read = (file) => fs.readFileSync(file, "utf8")
 
 describe("T42 Pet Packs cutover boundary", () => {
-	it("proves the Backend list is not a Shell-equivalent Pet Pack snapshot", async () => {
-		const root = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-t42-pet-packs-"))
-		try {
-			const packRoot = path.join(root, "assets", "pet-packs", "doro")
-			fs.mkdirSync(packRoot, { recursive: true })
-			fs.writeFileSync(path.join(packRoot, "pet.json"), JSON.stringify({
-				id: "doro",
-				displayName: "Doro",
-				version: "2.0.0",
-			}))
+	it("uses Shell for Pet Pack Jobs without creating a sidecar pack directory", async () => {
+		const requests = []
+		let finalizing = false
+		let finalizingCalls = 0
+		const { createPetPackService } = await import("../../services/backend/domains/pet-packs.js")
+		const packs = createPetPackService({
+			shell: { request: async (body) => {
+				assert.equal(finalizing, true, `${body.operation} crossed the Shell write boundary before finalizing`)
+				requests.push(body)
+				return { body: { type: "pet-packs.result", operation: body.operation, ok: true, result: { operation: body.operation } } }
+			} },
+		})
+		const finalize = async (operation) => {
+			finalizingCalls += 1
+			finalizing = true
+			try { return await operation() } finally { finalizing = false }
+		}
 
+		assert.deepEqual(await packs.runImport({ selectionId: "selection-1", finalize }), { operation: "import" })
+		assert.deepEqual(await packs.runExport({ packId: "doro", finalize }), { operation: "export" })
+		assert.equal(finalizingCalls, 2)
+		assert.deepEqual(requests.map(({ operation, payload }) => ({ operation, payload })), [
+			{ operation: "import", payload: { selectionId: "selection-1" } },
+			{ operation: "export", payload: { packId: "doro" } },
+		])
+	})
+
+	it("re-reads the Shell snapshot after Backend service recreation without local Pet Pack state", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-t42-pet-packs-restart-"))
+		try {
 			const { createPetPackService } = await import("../../services/backend/domains/pet-packs.js")
-			const backendPacks = createPetPackService({
+			let activePackId = "doro"
+			const requests = []
+			const shell = { request: async (body) => {
+				requests.push(body)
+				return { body: {
+					type: "pet-packs.result",
+					operation: body.operation,
+					ok: true,
+					result: { activePackId, packs: [{ id: activePackId, active: true }] },
+				} }
+			} }
+
+			const beforeRestart = createPetPackService({
 				root,
 				userDataDir: path.join(root, "user-data"),
-			}).list()
+				shell,
+			})
+			assert.equal((await beforeRestart.list()).activePackId, "doro")
 
-			assert.equal(backendPacks.activePackId, "legacy-cat")
-			assert.deepEqual(backendPacks.packs, [{
-				id: "doro",
-				displayName: "Doro",
-				version: "2.0.0",
-				source: "bundled",
-				active: false,
-			}])
-			for (const field of ["rootPath", "provenance", "packageHash", "actionCount"]) {
-				assert.equal(Object.hasOwn(backendPacks.packs[0], field), false, field)
-			}
+			activePackId = "mochi-cat"
+			const afterRestart = createPetPackService({
+				root,
+				userDataDir: path.join(root, "user-data"),
+				shell,
+			})
+			assert.equal((await afterRestart.list()).activePackId, "mochi-cat")
+			assert.deepEqual(requests.map(({ operation }) => operation), ["list", "list"])
+			assert.equal(fs.existsSync(path.join(root, "user-data", "pet-packs")), false)
 		} finally {
 			fs.rmSync(root, { recursive: true, force: true })
 		}
@@ -44,30 +75,27 @@ describe("T42 Pet Packs cutover boundary", () => {
 
 	it("keeps the Control Center on the Shell PetPackService snapshot", () => {
 		const hook = read("src/control-center/src/hooks/useActionsPane.ts")
-		assert.match(hook, /api\.listPetPacks\(\)/)
-		assert.doesNotMatch(hook, /petPackHttpApi|useSse\(/)
+		assert.match(hook, /petPackApi\.list\(\)/)
+		assert.match(hook, /resolvePetPackJob/)
+		assert.match(hook, /useSse\(\['pet'\]\)/)
+		assert.match(hook, /nextPetPackActivationEventId/)
 
 		for (const call of [
-			"inspectPetPackDirectory",
-			"clearPetPackSelection",
-			"importPetPack",
-			"exportPetPack",
-			"setActivePetPack",
-			"removePetPack",
-		]) assert.match(hook, new RegExp(`api\\.${call}\\(`), call)
+			"inspect",
+			"clearSelection",
+			"import",
+			"export",
+			"activate",
+			"remove",
+		]) assert.match(hook, new RegExp(`petPackApi\\.${call}\\(`), call)
+		for (const actionsCall of ["getActions", "saveActionsConfig", "previewActionTriggerProposal", "clearActionFrameSelection"]) {
+			assert.match(hook, new RegExp(`api\\.${actionsCall}\\(`), actionsCall)
+		}
 	})
 
-	it("retains every Pet Packs IPC and preload bridge until parity exists", () => {
+	it("retires Pet Packs business IPC while retaining only the native directory picker", () => {
 		const channels = [
-			"PET_PACKS_LIST",
 			"PET_PACKS_INSPECT_DIRECTORY",
-			"PET_PACKS_CLEAR_SELECTION",
-			"PET_PACKS_IMPORT",
-			"PET_PACKS_EXPORT",
-			"PET_PACKS_SET_ACTIVE",
-			"PET_PACKS_ACTIVE_CHANGED",
-			"PET_PACKS_REMOVE",
-			"CONTROL_CENTER_ACTIVE_PET_PACK_CHANGED",
 		]
 		const preload = read("control-center-preload.js")
 		const shared = read("src/shared/ipc-channels.js") + read("src/shared/ipc-channels.ts")
@@ -75,46 +103,41 @@ describe("T42 Pet Packs cutover boundary", () => {
 			assert.match(preload, new RegExp(`\\b${channel}\\b`), channel)
 			assert.match(shared, new RegExp(`\\b${channel}\\b`), channel)
 		}
+		for (const retired of [
+			"PET_PACKS_LIST", "PET_PACKS_CLEAR_SELECTION", "PET_PACKS_IMPORT", "PET_PACKS_EXPORT",
+			"PET_PACKS_SET_ACTIVE", "PET_PACKS_ACTIVE_CHANGED", "PET_PACKS_REMOVE", "CONTROL_CENTER_ACTIVE_PET_PACK_CHANGED"
+		]) {
+			assert.doesNotMatch(preload, new RegExp(`\\b${retired}\\b`), retired)
+			assert.doesNotMatch(shared, new RegExp(`\\b${retired}\\b`), retired)
+		}
 
-		for (const method of [
-			"listPetPacks",
-			"inspectPetPackDirectory",
-			"clearPetPackSelection",
-			"importPetPack",
-			"exportPetPack",
-			"setActivePetPack",
-			"onActivePetPackChanged",
-			"removePetPack",
-		]) assert.match(preload, new RegExp(`${method}:`), method)
+		assert.match(preload, /inspectPetPackDirectory:/)
+		for (const method of ["listPetPacks", "clearPetPackSelection", "importPetPack", "exportPetPack", "setActivePetPack", "onActivePetPackChanged", "removePetPack"]) {
+			assert.doesNotMatch(preload, new RegExp(`${method}:`), method)
+		}
 
 		const mainIpc = read("src/main/ipc.js")
-		for (const channel of [
-			"PET_PACKS_LIST",
-			"PET_PACKS_INSPECT_DIRECTORY",
-			"PET_PACKS_CLEAR_SELECTION",
-			"PET_PACKS_IMPORT",
-			"PET_PACKS_EXPORT",
-			"PET_PACKS_SET_ACTIVE",
-			"PET_PACKS_REMOVE",
-		]) assert.match(mainIpc, new RegExp(`handle\\(IPC\\.${channel}`), channel)
+		assert.match(mainIpc, /handle\(IPC\.PET_PACKS_INSPECT_DIRECTORY/)
+		for (const retired of ["PET_PACKS_LIST", "PET_PACKS_CLEAR_SELECTION", "PET_PACKS_IMPORT", "PET_PACKS_EXPORT", "PET_PACKS_SET_ACTIVE", "PET_PACKS_REMOVE"]) {
+			assert.doesNotMatch(mainIpc, new RegExp(`handle\\(IPC\\.${retired}`), retired)
+		}
 	})
 
-	it("records every non-equivalent business and event path as blocked", () => {
-		const ledger = read("docs/refactor/15-channel-retirement.md")
-		for (const channel of [
-			"pet-packs:list",
-			"pet-packs:clear-selection",
-			"pet-packs:import",
-			"pet-packs:export",
-			"pet-packs:set-active",
-			"pet-packs:active-changed",
-			"pet-packs:remove",
-			"control-center:active-pet-pack-changed",
-		]) {
-			const row = ledger.split(/\r?\n/).find((line) => line.startsWith(`| \`${channel}\` |`))
-			assert.ok(row, channel)
-			assert.equal(row.split("|")[2].trim(), "`blocked:T42`", channel)
+	it("filters Pet Pack refreshes to activation events and suppresses duplicate event ids", async () => {
+		const sse = read("src/control-center/src/hooks/useSse.ts")
+		const actions = read("src/control-center/src/hooks/useActionsPane.ts")
+		const ai = read("src/control-center/src/hooks/useAiPane.ts")
+		const { nextPetPackActivationEventId } = await import("../../src/control-center/src/features/pet-packs/api.ts")
+		assert.match(sse, /lastEventName: string \| null/)
+		assert.match(sse, /event\.id === current\.lastEventId && event\.event === current\.lastEventName/)
+		for (const hook of [actions, ai]) {
+			assert.match(hook, /nextPetPackActivationEventId/)
+			assert.match(hook, /lastEventId, petPackEvents\.lastEventName/)
 		}
-		assert.match(ledger, /\| `pet-packs:inspect-directory` \| `keep` \|/)
+		assert.equal(nextPetPackActivationEventId({ lastEventId: "1", lastEventName: "pet.actions-changed" }, null), null)
+		assert.equal(nextPetPackActivationEventId({ lastEventId: "2", lastEventName: "pet.pack-activated" }, null), "2")
+		assert.equal(nextPetPackActivationEventId({ lastEventId: "2", lastEventName: "pet.pack-activated" }, "2"), null)
+		assert.match(ai, /'petChatState' in eventPayload/)
 	})
+
 })

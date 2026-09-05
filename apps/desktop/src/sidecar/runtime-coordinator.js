@@ -175,6 +175,7 @@ function createSidecarRuntimeCoordinator(options = {}) {
 					onSettingsChanged: options.onSettingsChanged,
 					onSettingsApplyRequest: options.onSettingsApplyRequest,
 					onCatalogRequest: options.onCatalogRequest,
+					onPetPackRequest: options.onPetPackRequest,
 					})
 				const backend = { baseUrl: result.baseUrl, sessionToken: result.sessionToken }
 				publish({ status: "ready", backend, reason: null })
@@ -255,6 +256,27 @@ function createSidecarRuntimeCoordinator(options = {}) {
 					reject(error)
 				}
 			})
+		},
+		notifyBackend(body) {
+			if (body?.type !== "pet.pack-activated" || body.payload === null || typeof body.payload !== "object" || Array.isArray(body.payload)) {
+				throw new Error("invalid backend Pet Pack notification")
+			}
+			if (state.status !== "ready" || !child?.send) return false
+			const envelope = {
+				v: 1,
+				id: `shell-${process.pid}-${++requestSequence}`,
+				at: Date.now(),
+				body: structuredClone(body),
+			}
+			try {
+				child.send(envelope, (error) => {
+					if (error) safeLog(options.logger, "warn", "sidecar notification failed", { type: body.type, error: String(error) })
+				})
+				return true
+			} catch (error) {
+				safeLog(options.logger, "warn", "sidecar notification failed", { type: body.type, error: String(error) })
+				return false
+			}
 		},
 		onChanged(listener) {
 			if (typeof listener !== "function") throw new TypeError("listener must be a function")

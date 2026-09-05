@@ -4,9 +4,19 @@ const assert = require('node:assert/strict')
 const { IPC } = require('../../src/shared/ipc-channels')
 
 test('shared IPC contract exports stable frozen channel names', () => {
-  assert.equal(IPC.PET_PACKS_SET_ACTIVE, 'pet-packs:set-active')
-  assert.equal(IPC.PET_PACKS_ACTIVE_CHANGED, 'pet-packs:active-changed')
-  assert.equal(IPC.CONTROL_CENTER_ACTIVE_PET_PACK_CHANGED, 'control-center:active-pet-pack-changed')
+  for (const retiredChannel of [
+    'PET_PACKS_LIST',
+    'PET_PACKS_CLEAR_SELECTION',
+    'PET_PACKS_IMPORT',
+    'PET_PACKS_EXPORT',
+    'PET_PACKS_SET_ACTIVE',
+    'PET_PACKS_ACTIVE_CHANGED',
+    'PET_PACKS_REMOVE',
+    'CONTROL_CENTER_ACTIVE_PET_PACK_CHANGED'
+  ]) {
+    assert.equal(IPC[retiredChannel], undefined, `${retiredChannel} must stay retired after the Pet Packs cutover`)
+  }
+  assert.equal(IPC.PET_PACKS_INSPECT_DIRECTORY, 'pet-packs:inspect-directory')
   assert.equal(IPC.PET_SHOW_CONTEXT_MENU, 'pet:show-context-menu')
   assert.equal(IPC.PET_MENU_COMMAND, 'pet:menu-command')
   assert.equal(IPC.PET_REQUEST_FOCUS_FOR_CURSOR, 'pet:request-focus-for-cursor')

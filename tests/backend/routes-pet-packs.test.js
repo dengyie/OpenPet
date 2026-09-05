@@ -1,49 +1,95 @@
 "use strict"
 
 const assert = require("node:assert/strict")
-const fs = require("node:fs")
-const os = require("node:os")
-const path = require("node:path")
 const { describe, it } = require("node:test")
 
-const temp = () => fs.mkdtempSync(path.join(os.tmpdir(), "openpet-t18-"))
-
 describe("T18 pet packs", () => {
-	it("registers seven routes and emits activation from contracts", async () => {
-		const [{ createRouter }, routes, { createPetPackService }, contracts] = await Promise.all([
+	it("uses the Shell PetPackService snapshot as the HTTP source of truth", async () => {
+		const { createPetPackService } = await import("../../services/backend/domains/pet-packs.js")
+		const expected = {
+			activePackId: "shell-cat",
+			packs: [{
+				id: "shell-cat",
+				displayName: "Shell Cat",
+				version: "2.0.0",
+				source: "user-installed",
+				rootPath: "/shell-owned/pet-packs/shell-cat",
+				active: true,
+				actionCount: 3,
+				valid: true,
+				blockStatus: { blocked: false, reasons: [] },
+			}],
+		}
+		const requests = []
+		const shell = {
+			request: async (body) => {
+				requests.push(body)
+				return { body: { type: "pet-packs.result", operation: body.operation, ok: true, result: expected } }
+			},
+		}
+		const packs = createPetPackService({ shell })
+
+		assert.deepEqual(await packs.list(), expected)
+		assert.deepEqual(requests, [{ type: "pet-packs.request", operation: "list", payload: {} }])
+	})
+
+	it("registers seven routes and forwards activation to the Shell authority", async () => {
+		const [{ createRouter }, routes, { createPetPackService }] = await Promise.all([
 			import("../../services/backend/http/router.js"),
 			import("../../services/backend/routes/pet-packs.js"),
 			import("../../services/backend/domains/pet-packs.js"),
-			import("@openpet/contracts"),
 		])
-		const root = temp()
-		fs.mkdirSync(path.join(root, "assets", "pet-packs", "demo"), { recursive: true })
-		fs.writeFileSync(path.join(root, "assets", "pet-packs", "demo", "pet.json"), JSON.stringify({ id: "demo", displayName: "Demo" }))
-		const events = []
-		const packs = createPetPackService({ root, emit: (name) => events.push(name) })
+		const requests = []
+		const shell = { request: async (body) => {
+			requests.push(body)
+			return { body: {
+				type: "pet-packs.result", operation: body.operation, ok: true,
+				result: { activePackId: "demo", petPacks: { activePackId: "demo", packs: [{ id: "demo", displayName: "Demo", active: true }] } },
+			} }
+		} }
+		const packs = createPetPackService({ shell })
 		const router = createRouter({ basePath: "/api/v1" })
 		routes.registerPetPackRoutes(router, { packs })
 		assert.deepEqual(router.routes(), routes.PET_PACK_ROUTES.map((entry) => {
 			const [method, route] = entry.split(" ")
 			return `${method} /api/v1${route}`
 		}))
-		packs.activate("demo")
-		assert.deepEqual(events, [contracts.EVENT_PET_PACK_ACTIVATED])
+		await packs.activate("demo")
+		assert.deepEqual(requests, [{ type: "pet-packs.request", operation: "activate", payload: { packId: "demo" } }])
 	})
 
-	it("rejects relative, symlink, protected, non-zip, bad magic and oversized sources", async () => {
+	it("forwards validation to Shell and maps structured authority failures", async () => {
 		const { createPetPackService } = await import("../../services/backend/domains/pet-packs.js")
-		const root = temp()
-		const outside = temp()
-		const file = path.join(outside, "pack.zip")
-		fs.writeFileSync(file, Buffer.from("PK\x03\x04payload"))
-		const packs = createPetPackService({ root, userDataDir: path.join(root, "userdata") })
-		await assert.rejects(() => packs.inspect("relative.zip"), (error) => error.code === "VALIDATION_FAILED")
-		await assert.rejects(() => packs.inspect(path.join(outside, "pack.txt")), (error) => error.code === "VALIDATION_FAILED")
-		fs.writeFileSync(path.join(outside, "pack.txt"), "x")
-		await assert.rejects(() => packs.inspect(path.join(outside, "pack.txt")), (error) => error.code === "VALIDATION_FAILED")
-		await assert.rejects(() => packs.inspect(path.join(root, "protected.zip")), (error) => error.code === "VALIDATION_FAILED")
-		fs.symlinkSync(file, path.join(outside, "link.zip"))
-		await assert.rejects(() => packs.inspect(path.join(outside, "link.zip")), (error) => error.code === "VALIDATION_FAILED")
+		const requests = []
+		const packs = createPetPackService({ shell: { request: async (body) => {
+			requests.push(body)
+			return { body: { type: "pet-packs.result", operation: body.operation, ok: false, error: { code: "PET_PACK_INCOMPATIBLE", message: "blocked by Shell policy" } } }
+		} } })
+		await assert.rejects(() => packs.inspect("/tmp/pack.zip"), (error) => {
+			assert.equal(error.code, "PET_PACK_INCOMPATIBLE")
+			assert.equal(error.status, 400)
+			return true
+		})
+		assert.deepEqual(requests, [{ type: "pet-packs.request", operation: "validate", payload: { sourcePath: "/tmp/pack.zip" } }])
+	})
+
+	it("preserves the reverse-channel timeout code and HTTP status", async () => {
+		const [{ createPetPackService }, { ApiError }] = await Promise.all([
+			import("../../services/backend/domains/pet-packs.js"),
+			import("../../services/backend/http/middleware.js"),
+		])
+		const packs = createPetPackService({
+			shell: {
+				request: async () => {
+					throw new ApiError("PROVIDER_TIMEOUT", "Shell did not answer Pet Pack request")
+				},
+			},
+		})
+
+		await assert.rejects(() => packs.list(), (error) => {
+			assert.equal(error.code, "PROVIDER_TIMEOUT")
+			assert.equal(error.status, 504)
+			return true
+		})
 	})
 })

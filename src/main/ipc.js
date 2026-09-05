@@ -176,7 +176,10 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     petChatWindowService,
     petBubbleChatWindowService,
     recordAppLog,
-    sendToControlCenterWindow
+    onActivePetPackChanged: (payload) => sidecarRuntimeCoordinator?.notifyBackend?.({
+      type: 'pet.pack-activated',
+      payload
+    })
   })
 
   const assertPetChatReady = () => {
@@ -916,8 +919,6 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     return createActionsMutationResult(createActionsViewState(petService, triggerRuleRuntimeService))
   })
 
-  ipcMainService.handle(IPC.PET_PACKS_LIST, () => petPackService.listPacks())
-
   ipcMainService.handle(IPC.PET_PACKS_INSPECT_DIRECTORY, async (event) => {
     const selected = await showOpenDialogForEvent(event, {
       title: '选择 Pet Pack 文件夹或 Codex Pet 包',
@@ -928,71 +929,105 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     return { canceled: false, ...(await petPackService.inspectPackSource(selected.filePaths[0])) }
   })
 
-  ipcMainService.handle(IPC.PET_PACKS_CLEAR_SELECTION, (_event, payload) => {
-    return petPackService.clearPendingSelection(payload?.selectionId)
-  })
+  const classifyPetPackError = (error, operation) => {
+    if (typeof error?.code === 'string') return error
+    const message = String(error?.message || error || 'Pet Pack operation failed')
+    const normalized = message.toLowerCase()
+    let code = 'INTERNAL'
+    if (normalized.includes('cannot remove the active')) code = 'CONFLICT'
+    else if (normalized.includes('pet pack is blocked') || normalized.includes('pet pack blocked')) code = 'PET_PACK_INCOMPATIBLE'
+    else if (normalized.includes('not installed') || normalized.includes('not found') || normalized.includes('no longer available') || normalized.includes('expired')) code = 'NOT_FOUND'
+    else if (
+      normalized.includes('invalid') ||
+      normalized.includes('required') ||
+      normalized.includes('must ') ||
+      normalized.includes('cannot ') ||
+      normalized.includes('blocked') ||
+      normalized.includes('does not exist') ||
+      normalized.includes('inspection failed')
+    ) code = 'VALIDATION_FAILED'
+    else if (operation === 'list') code = 'INTERNAL'
+    return Object.assign(error instanceof Error ? error : new Error(message), { code })
+  }
 
-  ipcMainService.handle(IPC.PET_PACKS_IMPORT, (_event, payload) => {
-    const previousActivePackId = petPackService?.listPacks?.()?.activePackId || ''
-    const result = petPackService.importPack(payload.selectionId)
-    const petPacks = petPackService.listPacks()
-    if (result?.pack?.id && petPacks?.activePackId === result.pack.id) {
-      const animations = reloadAndSendAnimations(getPetWindow, petService)
-      refreshTriggerRuleRuntime()
-      if (previousActivePackId !== petPacks.activePackId) {
-        petChatFacade.broadcastActivePetPackChanged({
-          source: IPC.PET_PACKS_IMPORT,
-          payload: createPetPackMutationResult(
+  const handlePetPackRequest = async ({ operation, payload = {} } = {}) => {
+    try {
+      switch (operation) {
+        case 'list':
+          return petPackService.listPacks()
+        case 'manifest':
+          return petPackService.getPackManifest(payload.packId)
+        case 'validate':
+          return petPackService.inspectPackSource(payload.sourcePath)
+        case 'clear-selection':
+          return petPackService.clearPendingSelection(payload.selectionId)
+        case 'import': {
+          let selectionId = payload.selectionId
+          if (!selectionId && payload.sourcePath) {
+            const inspection = await petPackService.inspectPackSource(payload.sourcePath)
+            if (!inspection?.valid || !inspection.selectionId) {
+              throw new Error(inspection?.errors?.[0] || 'Pet pack inspection failed')
+            }
+            selectionId = inspection.selectionId
+          }
+          const previousActivePackId = petPackService.listPacks()?.activePackId || ''
+          const result = petPackService.importPack(selectionId)
+          const petPacks = petPackService.listPacks()
+          if (result?.pack?.id && petPacks?.activePackId === result.pack.id) {
+            const animations = reloadAndSendAnimations(getPetWindow, petService)
+            refreshTriggerRuleRuntime()
+            const mutationResult = createPetPackMutationResult(
+              result,
+              petPacks,
+              createActionsViewState(petService, triggerRuleRuntimeService, animations)
+            )
+            if (previousActivePackId !== petPacks.activePackId) {
+              petChatFacade.broadcastActivePetPackChanged({ source: 'pet-pack.import', payload: mutationResult })
+            }
+            return mutationResult
+          }
+          return createPetPackMutationResult(result, petPacks)
+        }
+        case 'export': {
+          let outputDir = payload.target
+          if (!outputDir) {
+            const selected = await showOpenDialogForEvent(null, {
+              title: '选择 Pet Pack 导出目录',
+              properties: ['openDirectory', 'createDirectory']
+            })
+            if (selected.canceled || !selected.filePaths[0]) return { canceled: true }
+            outputDir = selected.filePaths[0]
+          }
+          return { canceled: false, ...await petPackService.exportPack(payload.packId, outputDir) }
+        }
+        case 'activate': {
+          const result = petPackService.setActivePack(payload.packId)
+          const animations = reloadAndSendAnimations(getPetWindow, petService)
+          refreshTriggerRuleRuntime()
+          const mutationResult = createPetPackMutationResult(
             result,
-            petPacks,
+            petPackService.listPacks(),
             createActionsViewState(petService, triggerRuleRuntimeService, animations)
           )
-        })
+          petChatFacade.broadcastActivePetPackChanged({ source: 'pet-pack.activate', payload: mutationResult })
+          return mutationResult
+        }
+        case 'remove': {
+          const previousActivePackId = petPackService.listPacks()?.activePackId || ''
+          const result = petPackService.removePack(payload.packId)
+          const mutationResult = createPetPackMutationResult(result, petPackService.listPacks())
+          if (previousActivePackId !== mutationResult.petPacks?.activePackId) {
+            petChatFacade.broadcastActivePetPackChanged({ source: 'pet-pack.remove', payload: mutationResult })
+          }
+          return mutationResult
+        }
+        default:
+          throw Object.assign(new Error('Unsupported Pet Pack operation'), { code: 'VALIDATION_FAILED' })
       }
-      return createPetPackMutationResult(
-        result,
-        petPacks,
-        createActionsViewState(petService, triggerRuleRuntimeService, animations)
-      )
+    } catch (error) {
+      throw classifyPetPackError(error, operation)
     }
-    return createPetPackMutationResult(result, petPacks)
-  })
-
-  ipcMainService.handle(IPC.PET_PACKS_EXPORT, async (event, payload) => {
-    const selected = await showOpenDialogForEvent(event, {
-      title: '选择 Pet Pack 导出目录',
-      properties: ['openDirectory', 'createDirectory']
-    })
-    if (selected.canceled || !selected.filePaths[0]) return { canceled: true }
-    return { canceled: false, ...await petPackService.exportPack(payload.packId, selected.filePaths[0]) }
-  })
-
-  ipcMainService.handle(IPC.PET_PACKS_SET_ACTIVE, (event, payload) => {
-    const previousActivePackId = petPackService?.listPacks?.()?.activePackId || ''
-    const result = petPackService.setActivePack(payload.packId)
-    reloadAndSendAnimations(getPetWindow, petService)
-    refreshTriggerRuleRuntime()
-    const animations = createActionsViewState(petService, triggerRuleRuntimeService)
-    const petPacks = petPackService.listPacks()
-    const mutationResult = createPetPackMutationResult(result, petPacks, animations)
-    petChatFacade.notifyActivePetPackChanged(event, mutationResult)
-    if (previousActivePackId !== petPacks?.activePackId) {
-      petChatFacade.broadcastActivePetPackChanged({ source: IPC.PET_PACKS_SET_ACTIVE, payload: mutationResult })
-    } else {
-      petChatFacade.refreshPetPackScopedChatState({ reason: 'pet-pack-set-active' })
-    }
-    return mutationResult
-  })
-
-  ipcMainService.handle(IPC.PET_PACKS_REMOVE, (_event, payload) => {
-    const previousActivePackId = petPackService?.listPacks?.()?.activePackId || ''
-    const result = petPackService.removePack(payload.packId)
-    const mutationResult = createPetPackMutationResult(result, petPackService.listPacks())
-    if (previousActivePackId !== mutationResult.petPacks?.activePackId) {
-      petChatFacade.broadcastActivePetPackChanged({ source: IPC.PET_PACKS_REMOVE, payload: mutationResult })
-    }
-    return mutationResult
-  })
+  }
   registerAiIpc({
     ipcMainService,
     aiService,
@@ -1045,7 +1080,8 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   })
 
   return {
-    broadcastActivePetPackChanged: petChatFacade.broadcastActivePetPackChanged
+    broadcastActivePetPackChanged: petChatFacade.broadcastActivePetPackChanged,
+    handlePetPackRequest
   }
 }
 

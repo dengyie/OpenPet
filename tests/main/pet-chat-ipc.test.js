@@ -90,7 +90,7 @@ const registerPetChatHandlers = (services) => {
     }
   })
 
-  registerIpcHandlers({
+  ipcMain.runtime = registerIpcHandlers({
     ...createRequiredServices(services),
     ipcMainService: ipcMain
   })
@@ -1028,7 +1028,7 @@ test('pet chat send stops before provider call when chat provider is not ready',
 })
 
 test('pet pack activation notifies control center and desktop chat with refreshed AI talk state', async () => {
-  const rendererEvents = []
+  const backendNotifications = []
   const desktopStates = []
   const ipcMain = registerPetChatHandlers({
     petPackService: {
@@ -1054,22 +1054,27 @@ test('pet pack activation notifies control center and desktop chat with refreshe
     petChatWindowService: {
       getState: () => ({ alwaysOnTop: true, visible: true, hasWindow: true }),
       sendStateChanged: (state) => desktopStates.push(state)
+    },
+    sidecarRuntimeCoordinator: {
+      notifyBackend: (body) => {
+        backendNotifications.push(body)
+        return true
+      }
     }
   })
-  const event = {
-    sender: {
-      send: (channel, payload) => rendererEvents.push({ channel, payload })
-    }
-  }
 
-  const result = await ipcMain.handlers.get(IPC.PET_PACKS_SET_ACTIVE)(event, { packId: 'mochi-cat' })
+  const result = await ipcMain.runtime.handlePetPackRequest({
+    operation: 'activate',
+    payload: { packId: 'mochi-cat' }
+  })
 
   assert.equal(result.activePackId, 'mochi-cat')
   assert.equal(desktopStates.length, 1)
   assert.equal(desktopStates[0].petPack.id, 'mochi-cat')
-  assert.deepEqual(rendererEvents.map((entry) => entry.channel), [IPC.PET_PACKS_ACTIVE_CHANGED])
-  assert.equal(rendererEvents[0].payload.activePackId, 'mochi-cat')
-  assert.equal(rendererEvents[0].payload.petChatState.petPack.displayName, 'Mochi Cat')
+  assert.equal(backendNotifications.length, 1)
+  assert.equal(backendNotifications[0].type, 'pet.pack-activated')
+  assert.equal(backendNotifications[0].payload.activePackId, 'mochi-cat')
+  assert.equal(backendNotifications[0].payload.petChatState.petPack.displayName, 'Mochi Cat')
 })
 
 test('ai talk trace export IPC includes behavior decisions through ai talk service', async () => {

@@ -1,7 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { IPC } = require('../../src/shared/ipc-channels')
 const { createPetChatFacade } = require('../../src/main/ipc/pet-chat-facade')
 
 test('pet chat facade builds current chat state from AI, full chat, bubble chat, and active pet pack profile', () => {
@@ -62,28 +61,10 @@ test('pet chat facade builds current chat state from AI, full chat, bubble chat,
 })
 
 test('pet chat facade broadcasts active pet pack changes and refreshes pet-pack scoped chat state', () => {
-  const controlCenterWindowMessages = []
-  const settingsWindowMessages = []
+  const activePetPackNotifications = []
   const desktopStates = []
   const bubbleRefreshes = []
   const facade = createPetChatFacade({
-    getPetWindow: () => ({
-      settingsWindow: {
-        isDestroyed: () => false,
-        webContents: {
-          send: (...args) => settingsWindowMessages.push(args)
-        }
-      }
-    }),
-    browserWindowService: {
-      getAllWindows: () => [{
-        isDestroyed: () => false,
-        webContents: {
-          getURL: () => 'app://-/control-center/index.html',
-          send: (...args) => controlCenterWindowMessages.push(args)
-        }
-      }]
-    },
     petPackService: {
       listPacks: () => ({
         activePackId: 'doro',
@@ -108,21 +89,15 @@ test('pet chat facade broadcasts active pet pack changes and refreshes pet-pack 
         return { visible: false, hasWindow: true }
       }
     },
-    sendToControlCenterWindow: (getPetWindow, channel, payload) => {
-      const petWindow = getPetWindow()
-      petWindow.settingsWindow.webContents.send(channel, payload)
-    }
+    onActivePetPackChanged: (payload) => activePetPackNotifications.push(payload)
   })
 
   const payload = facade.broadcastActivePetPackChanged({ source: 'pet-packs:set-active' })
 
   assert.equal(payload.activePackId, 'doro')
-  assert.deepEqual(controlCenterWindowMessages, [
-    [IPC.PET_PACKS_ACTIVE_CHANGED, { activePackId: 'doro' }]
-  ])
-  assert.deepEqual(settingsWindowMessages.map(([channel, message]) => [channel, message.activePackId]), [
-    [IPC.CONTROL_CENTER_ACTIVE_PET_PACK_CHANGED, 'doro']
-  ])
+  assert.equal(activePetPackNotifications.length, 1)
+  assert.equal(activePetPackNotifications[0].activePackId, 'doro')
+  assert.equal(activePetPackNotifications[0].petChatState.petPack.id, 'doro')
   assert.equal(desktopStates.length, 1)
   assert.deepEqual(desktopStates[0].petPack, { id: 'doro', displayName: 'Doro' })
   assert.deepEqual(bubbleRefreshes, [{

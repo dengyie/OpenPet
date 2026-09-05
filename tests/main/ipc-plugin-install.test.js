@@ -2548,7 +2548,7 @@ test('pet-packs:inspect-directory opens native folder or zip picker and delegate
   assert.deepEqual(dialogCalls[0].filters[0], { name: 'Pet Pack Package', extensions: ['zip'] })
 })
 
-test('pet pack mutation handlers broadcast active pack refresh to control center and chat surfaces', async () => {
+test('Shell Pet Pack mutation bridge broadcasts active pack refresh to backend SSE and chat surfaces', async () => {
   const ipcMain = createIpcMainStub()
   const legacyPack = {
     id: 'legacy-cat',
@@ -2630,10 +2630,9 @@ test('pet pack mutation handlers broadcast active pack refresh to control center
   }
   const calls = []
   const petWindowMessages = []
-  const controlCenterMessages = []
   const petChatStateChanges = []
   const bubbleRefreshCalls = []
-  const rendererEvents = []
+  const backendNotifications = []
   let currentPetPacks = { activePackId: 'legacy-cat', packs: [legacyPack] }
   const services = createRequiredServices({
     pluginInstallService: {
@@ -2649,7 +2648,7 @@ test('pet pack mutation handlers broadcast active pack refresh to control center
     }
   })
 
-  registerIpcHandlers({
+  const runtime = registerIpcHandlers({
     ...services,
     petService: {
       ...services.petService,
@@ -2665,7 +2664,7 @@ test('pet pack mutation handlers broadcast active pack refresh to control center
       settingsWindow: {
         isDestroyed: () => false,
         webContents: {
-          send: (...args) => controlCenterMessages.push(args)
+          send: () => {}
         }
       }
     }),
@@ -2675,7 +2674,7 @@ test('pet pack mutation handlers broadcast active pack refresh to control center
         isDestroyed: () => false,
         webContents: {
           getURL: () => 'app://-/control-center/index.html',
-          send: (...args) => controlCenterMessages.push(args)
+          send: () => {}
         }
       }]
     },
@@ -2722,16 +2721,18 @@ test('pet pack mutation handlers broadcast active pack refresh to control center
         return { visible: false, hasWindow: true }
       }
     },
+    sidecarRuntimeCoordinator: {
+      notifyBackend: (body) => {
+        backendNotifications.push(body)
+        return true
+      }
+    },
     ipcMainService: ipcMain
   })
 
-  const importResult = await ipcMain.handlers.get(IPC.PET_PACKS_IMPORT)(null, { selectionId: 'selection-doro' })
-  const activeResult = await ipcMain.handlers.get(IPC.PET_PACKS_SET_ACTIVE)({
-    sender: {
-      send: (...args) => rendererEvents.push(args)
-    }
-  }, { packId: 'doro' })
-  const removeResult = await ipcMain.handlers.get(IPC.PET_PACKS_REMOVE)(null, { packId: 'doro' })
+  const importResult = await runtime.handlePetPackRequest({ operation: 'import', payload: { selectionId: 'selection-doro' } })
+  const activeResult = await runtime.handlePetPackRequest({ operation: 'activate', payload: { packId: 'doro' } })
+  const removeResult = await runtime.handlePetPackRequest({ operation: 'remove', payload: { packId: 'doro' } })
 
   assert.deepEqual(importResult, {
     pack: normalizedPack,
@@ -2750,18 +2751,13 @@ test('pet pack mutation handlers broadcast active pack refresh to control center
     ['set-active', 'doro'],
     ['remove', 'doro']
   ])
-  assert.deepEqual(rendererEvents.map(([channel, payload]) => [channel, payload.activePackId]), [
-    [IPC.PET_PACKS_ACTIVE_CHANGED, 'doro']
-  ])
-  assert.deepEqual(rendererEvents[0][1].petChatState.petPack, { id: 'doro', displayName: 'Doro' })
   assert.equal(petWindowMessages.length, 2)
   assert.equal(petWindowMessages[0][0], IPC.PET_ANIMATIONS_CHANGED)
   assert.equal(petWindowMessages[1][0], IPC.PET_ANIMATIONS_CHANGED)
-  assert.deepEqual(controlCenterMessages.map(([channel, payload]) => [channel, payload.activePackId || payload.petChatState?.petPack?.id]), [
-    [IPC.PET_PACKS_ACTIVE_CHANGED, 'doro'],
-    [IPC.CONTROL_CENTER_ACTIVE_PET_PACK_CHANGED, 'doro'],
-    [IPC.PET_PACKS_ACTIVE_CHANGED, 'legacy-cat'],
-    [IPC.CONTROL_CENTER_ACTIVE_PET_PACK_CHANGED, 'legacy-cat']
+  assert.deepEqual(backendNotifications.map(({ type, payload }) => [type, payload.activePackId, payload.petChatState.petPack.id]), [
+    ['pet.pack-activated', 'doro', 'doro'],
+    ['pet.pack-activated', 'doro', 'doro'],
+    ['pet.pack-activated', 'legacy-cat', 'legacy-cat']
   ])
   assert.deepEqual(petChatStateChanges.map((state) => state.petPack.id), ['doro', 'doro', 'legacy-cat'])
   assert.deepEqual(bubbleRefreshCalls.map((call) => ({
@@ -2769,19 +2765,19 @@ test('pet pack mutation handlers broadcast active pack refresh to control center
     noticeItems: call.noticeItems,
     firstMessage: call.conversationMessages[0]?.content
   })), [
-    { reason: 'active-pet-pack-changed:pet-packs:import', noticeItems: [], firstMessage: 'hello from doro' },
-    { reason: 'pet-pack-set-active', noticeItems: [], firstMessage: 'hello from doro' },
-    { reason: 'active-pet-pack-changed:pet-packs:remove', noticeItems: [], firstMessage: 'hello from legacy-cat' }
+    { reason: 'active-pet-pack-changed:pet-pack.import', noticeItems: [], firstMessage: 'hello from doro' },
+    { reason: 'active-pet-pack-changed:pet-pack.activate', noticeItems: [], firstMessage: 'hello from doro' },
+    { reason: 'active-pet-pack-changed:pet-pack.remove', noticeItems: [], firstMessage: 'hello from legacy-cat' }
   ])
 })
 
-test('pet-packs:export opens native output folder picker and delegates selected pack id', async () => {
+test('Shell Pet Pack export bridge opens native output folder picker and delegates selected pack id', async () => {
   const ipcMain = createIpcMainStub()
   const dialogCalls = []
   const exportCalls = []
   const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-ipc-pet-pack-export-'))
 
-  registerIpcHandlers({
+  const runtime = registerIpcHandlers({
     ...createRequiredServices({
       pluginInstallService: {
         inspectPluginPackage: () => ({}),
@@ -2820,7 +2816,7 @@ test('pet-packs:export opens native output folder picker and delegates selected 
     ipcMainService: ipcMain
   })
 
-  const result = await ipcMain.handlers.get(IPC.PET_PACKS_EXPORT)(null, { packId: 'exportable-cat' })
+  const result = await runtime.handlePetPackRequest({ operation: 'export', payload: { packId: 'exportable-cat' } })
 
   assert.equal(result.canceled, false)
   assert.equal(result.packId, 'exportable-cat')
@@ -2831,10 +2827,10 @@ test('pet-packs:export opens native output folder picker and delegates selected 
   assert.deepEqual(dialogCalls[0].properties, ['openDirectory', 'createDirectory'])
 })
 
-test('pet-packs:export returns canceled without exporting when output picker is canceled', async () => {
+test('Shell Pet Pack export bridge returns canceled without exporting when output picker is canceled', async () => {
   const ipcMain = createIpcMainStub()
 
-  registerIpcHandlers({
+  const runtime = registerIpcHandlers({
     ...createRequiredServices({
       pluginInstallService: {
         inspectPluginPackage: () => ({}),
@@ -2863,7 +2859,7 @@ test('pet-packs:export returns canceled without exporting when output picker is 
     ipcMainService: ipcMain
   })
 
-  const result = await ipcMain.handlers.get(IPC.PET_PACKS_EXPORT)(null, { packId: 'exportable-cat' })
+  const result = await runtime.handlePetPackRequest({ operation: 'export', payload: { packId: 'exportable-cat' } })
 
   assert.deepEqual(result, { canceled: true })
 })

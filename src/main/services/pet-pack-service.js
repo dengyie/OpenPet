@@ -771,6 +771,19 @@ const createPetPackService = ({
     return cloneCreatorPackManifestView(loadInstalledPack(activePackId))
   }
 
+  const getPackManifest = (packId) => {
+    if (!isSafePackId(packId)) throw new Error('Pet pack id is invalid')
+    if (packId === BUILT_IN_PACK_ID) return structuredClone(getBuiltInPack().manifest)
+    const bundledPack = getBundledPack(packId)
+    if (bundledPack) {
+      assertPackAllowed({ id: packId, packageHash: getDirectoryPackageHash(bundledPack.rootPath) })
+      return structuredClone(bundledPack.manifest)
+    }
+    const metadata = getSettings().installed[packId]
+    assertPackAllowed({ id: packId, packageHash: metadata?.packageHash || '', sourceSha256: metadata?.sourcePackageHash || '' })
+    return structuredClone(loadInstalledPack(packId).manifest)
+  }
+
   const setActivePack = (packId) => {
     if (!isSafePackId(packId)) throw new Error('Pet pack id is invalid')
     const metadata = getSettings().installed[packId]
@@ -797,6 +810,7 @@ const createPetPackService = ({
 
   return {
     getActivePetPack,
+    getPackManifest,
     listPacks,
     inspectPackDirectory,
     inspectPackSource,

@@ -224,4 +224,26 @@ describe("T22 SSE hook seams", () => {
 		assert.equal(canRetryJob({ status: "failed", attempt: 2, maxAttempts: 2 }), false)
 		assert.equal(canRetryJob({ status: "running", attempt: 1, maxAttempts: 2 }), false)
 	})
+
+	it("T42 reconnects when a new topic is subscribed after the SSE connection is open", async () => {
+		const { SseManager } = await import("../../src/control-center/src/hooks/useSse.ts")
+		const manager = new SseManager()
+		let resolveRead
+		const reads = []
+		const calls = []
+		manager.configure({
+			getBackend: () => ({ baseUrl: "http://127.0.0.1:4321", sessionToken: "test-token" }),
+			fetchImpl: async (url, init) => {
+				calls.push({ url: String(url), signal: init.signal })
+				const body = new ReadableStream({ start(controller) { resolveRead = () => controller.close() } })
+				return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } })
+			}
+		})
+		const stopSettings = manager.subscribe(["settings"], () => {}, () => {})
+		await new Promise((resolve) => setImmediate(resolve))
+		assert.equal(calls.length, 1)
+		const stopPet = manager.subscribe(["pet"], () => {}, () => {})
+		assert.equal(calls[0].signal.aborted, true)
+		stopPet(); stopSettings(); resolveRead?.()
+	})
 })

@@ -5,6 +5,7 @@
 // shell.js 的行为一致(它用 id:"1" 回了 init),因此不新增 replyTo 字段 ——
 // 信封形状是冻结的契约面,能不动就不动。
 
+import { ERROR_CODES } from "@openpet/contracts"
 import { ApiError } from "../http/middleware.js"
 import {
 	BACKEND_TO_SHELL_TYPES,
@@ -23,7 +24,7 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 	const pending = new Map()
 	let disposed = false
 
-	function validateExpectedResponse(envelope, expectedType) {
+	function validateExpectedResponse(envelope, expectedType, expectedOperation) {
 		if (!expectedType) return null
 		if (envelope.body.type !== expectedType) {
 			return `unexpected Shell response type: expected ${expectedType}, got ${envelope.body.type}`
@@ -47,6 +48,23 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 			if (typeof body.ok !== "boolean") return "catalog.result has an invalid ok field"
 			if (body.ok && !Object.hasOwn(body, "result")) return "catalog.result has no result"
 			if (!body.ok && typeof body.error !== "string") return "catalog.result has no error"
+		}
+		if (expectedType === "pet-packs.result") {
+			const body = envelope.body
+			if (body.operation !== expectedOperation) {
+				return `unexpected Pet Pack operation: expected ${expectedOperation}, got ${String(body.operation)}`
+			}
+			if (typeof body.ok !== "boolean") return "pet-packs.result has an invalid ok field"
+			if (body.ok && body.error !== undefined) return "successful pet-packs.result must not include an error"
+			if (!body.ok) {
+				if (body.error === null || typeof body.error !== "object" || Array.isArray(body.error)) {
+					return "failed pet-packs.result has no structured error"
+				}
+				if (!ERROR_CODES.includes(body.error.code)) return "pet-packs.result has an invalid error code"
+				if (typeof body.error.message !== "string" || body.error.message.length === 0) {
+					return "pet-packs.result has an invalid error message"
+				}
+			}
 		}
 		return null
 	}
@@ -75,7 +93,7 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 		if (awaiting !== undefined) {
 			pending.delete(envelope.id)
 			clearTimeout(awaiting.timer)
-			const validationError = validateExpectedResponse(envelope, awaiting.expectedType)
+			const validationError = validateExpectedResponse(envelope, awaiting.expectedType, awaiting.expectedOperation)
 			if (validationError) awaiting.reject(new Error(validationError))
 			else awaiting.resolve(envelope)
 			return
@@ -137,8 +155,11 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 				? "settings.apply.result"
 				: body?.type === "secrets.persist.request"
 					? "secrets.persist.result"
-					: body?.type === "catalog.request" ? "catalog.result" : null
+					: body?.type === "catalog.request"
+						? "catalog.result"
+						: body?.type === "pet-packs.request" ? "pet-packs.result" : null
 		)
+		const expectedOperation = options.expectedOperation ?? (body?.type === "pet-packs.request" ? body.operation : null)
 		const envelope = dispatch(body, true)
 		if (envelope === null) return Promise.reject(new Error("shellClient 已销毁"))
 
@@ -155,7 +176,7 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 				)
 			}, timeoutMs)
 			timer.unref?.()
-			pending.set(envelope.id, { resolve, reject, timer, expectedType })
+			pending.set(envelope.id, { resolve, reject, timer, expectedType, expectedOperation })
 		})
 	}
 

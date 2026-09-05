@@ -74,6 +74,7 @@ class SseManager {
   private running = false
   private controller: AbortController | null = null
   private retryIndex = 0
+  private topicsKey = 'system'
 
   constructor() {
     backendBridge()?.onChanged?.(() => {
@@ -88,6 +89,9 @@ class SseManager {
   subscribe(topics: string[], onEvent: (event: SseEvent) => void, onState: (state: SseState) => void) {
     const id = this.nextListener++
     this.listeners.set(id, { topics: uniqueTopics(topics), onEvent, onState })
+    const nextTopicsKey = this.requestedTopics().join(',')
+    if (this.running && nextTopicsKey !== this.topicsKey) this.controller?.abort()
+    this.topicsKey = nextTopicsKey
     onState(this.state)
     if (!this.running) void this.run()
     return () => {
@@ -125,6 +129,7 @@ class SseManager {
         this.controller = new AbortController()
         const fetcher = this.runtime.fetchImpl ?? globalThis.fetch
         const topics = this.requestedTopics().join(',')
+        this.topicsKey = topics
         const url = `${backend.baseUrl.replace(/\/$/, '')}/events?topics=${encodeURIComponent(topics)}`
         const headers = new Headers({ authorization: `Bearer ${backend.sessionToken}`, accept: 'text/event-stream' })
         if (this.lastEventId) headers.set('last-event-id', this.lastEventId)
@@ -204,12 +209,35 @@ class SseManager {
   stop() { this.controller?.abort(); this.running = false; this.notifyState('idle') }
 }
 
+export { SseManager }
 export const sseManager = new SseManager()
 export const configureSse = (runtime: Partial<SseRuntime>) => sseManager.configure(runtime)
 export const requestBackend = (path: string, init?: RequestInit) => sseManager.request(path, init)
 
-export function useSse(topics: string[]): { state: SseState; lastEventId: string | null } {
-  const [snapshot, setSnapshot] = useState(sseManager.snapshot())
-  useEffect(() => sseManager.subscribe(topics, (event) => setSnapshot((current) => ({ ...current, lastEventId: event.id ?? current.lastEventId })), (state) => setSnapshot((current) => ({ ...current, state }))), [topics.join(',')])
+export type SseSnapshot = {
+  state: SseState
+  lastEventId: string | null
+  lastEventName: string | null
+  lastEventTopic: SseTopic | null
+  lastEventData: unknown
+}
+
+export function useSse(topics: string[]): SseSnapshot {
+  const [snapshot, setSnapshot] = useState<SseSnapshot>({
+    ...sseManager.snapshot(),
+    lastEventName: null,
+    lastEventTopic: null,
+    lastEventData: null,
+  })
+  useEffect(() => sseManager.subscribe(topics, (event) => setSnapshot((current) => {
+    if (event.id && event.id === current.lastEventId && event.event === current.lastEventName) return current
+    return {
+      ...current,
+      lastEventId: event.id ?? current.lastEventId,
+      lastEventName: event.event,
+      lastEventTopic: event.topic,
+      lastEventData: event.data,
+    }
+  }), (state) => setSnapshot((current) => ({ ...current, state }))), [topics.join(',')])
   return snapshot
 }

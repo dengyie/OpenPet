@@ -33,7 +33,7 @@ function normalizeCatalogRequest(value) {
 }
 
 // Keep this list frozen in the Shell as well as in the backend bridge client.
-// A backend message is untrusted input at this boundary: only these fourteen
+// A backend message is untrusted input at this boundary: only these explicitly
 // capabilities may reach Electron/PetService.
 const BACKEND_TO_SHELL_TYPES = Object.freeze([
 	"pet.say",
@@ -50,7 +50,30 @@ const BACKEND_TO_SHELL_TYPES = Object.freeze([
 	"settings.persist.result",
 	"secrets.persist.request",
 	"catalog.request",
+	"pet-packs.request",
 ])
+
+const PET_PACK_OPERATIONS = Object.freeze([
+	"list",
+	"manifest",
+	"validate",
+	"clear-selection",
+	"import",
+	"export",
+	"activate",
+	"remove",
+])
+let contractErrorCodesPromise = null
+
+async function normalizePetPackErrorCode(value) {
+	if (typeof value !== "string") return "INTERNAL"
+	contractErrorCodesPromise ??= import("@openpet/contracts").then(({ ERROR_CODES }) => new Set(ERROR_CODES))
+	try {
+		return (await contractErrorCodesPromise).has(value) ? value : "INTERNAL"
+	} catch {
+		return "INTERNAL"
+	}
+}
 
 function log(logger, level, message, fields) {
 	try {
@@ -112,6 +135,9 @@ function parseEnvelope(raw) {
 		case "settings.apply.request":
 			if (!Array.isArray(body.paths) || body.paths.some((path) => typeof path !== "string") || !Number.isInteger(body.version) || body.version < 0 || (body.values !== undefined && (body.values === null || typeof body.values !== "object" || Array.isArray(body.values)))) return fail("bad-body", "settings.apply.request")
 			break
+		case "pet-packs.request":
+			if (!PET_PACK_OPERATIONS.includes(body.operation) || body.payload === null || typeof body.payload !== "object" || Array.isArray(body.payload)) return fail("bad-body", "pet-packs.request")
+			break
 		case "dialog.request":
 			if (typeof body.requestId !== "string" || !["file", "directory"].includes(body.mode)) return fail("bad-body", "dialog.request")
 			break
@@ -131,7 +157,7 @@ function parseEnvelope(raw) {
 	return { ok: true, envelope: { v: raw.v, id: raw.id, at: raw.at, body: normalizedBody } }
 }
 
-function createMessageHandler({ dialog, petService, secretService, logger, send, onNotify, onBadge, onDashboard, onSettingsChanged, onSettingsApplyRequest, onCatalogRequest, productionService } = {}) {
+function createMessageHandler({ dialog, petService, secretService, logger, send, onNotify, onBadge, onDashboard, onSettingsChanged, onSettingsApplyRequest, onCatalogRequest, onPetPackRequest, productionService } = {}) {
 	if (typeof send !== "function") throw new TypeError("createMessageHandler 需要 send")
 
 	async function handle(raw) {
@@ -144,6 +170,31 @@ function createMessageHandler({ dialog, petService, secretService, logger, send,
 
 		try {
 				switch (body.type) {
+				case "pet-packs.request": {
+					let responseBody
+					try {
+						if (typeof onPetPackRequest !== "function") {
+							throw Object.assign(new Error("Shell Pet Pack authority unavailable"), { code: "BACKEND_UNAVAILABLE" })
+						}
+						const result = await onPetPackRequest({
+							operation: body.operation,
+							payload: structuredClone(body.payload),
+						})
+						responseBody = { type: "pet-packs.result", operation: body.operation, ok: true, result }
+					} catch (error) {
+						responseBody = {
+							type: "pet-packs.result",
+							operation: body.operation,
+							ok: false,
+							error: {
+								code: await normalizePetPackErrorCode(error?.code),
+								message: error?.message || String(error),
+							},
+						}
+					}
+					send({ v: BRIDGE_PROTOCOL_VERSION, id: raw.id, at: Date.now(), body: responseBody })
+					return true
+				}
 				case "plugin.production.request": {
 					if (typeof productionService !== "function") throw new Error("Plugin production service unavailable")
 					const result = await productionService(body)

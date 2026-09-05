@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { controlCenterAPI as api } from '../api/control-center-api'
+import { nextPetPackActivationEventId } from '../features/pet-packs/api.ts'
+import { useSse } from './useSse.ts'
 import {
   cloneAiBehavior,
   cloneAiConfig,
@@ -307,6 +309,8 @@ const buildHatchPetAgentConfigSaveRequest = (config: HatchPetAgentConfigView): H
 })
 
 export function useAiPane(activeTab = 'ai') {
+  const petPackEvents = useSse(['pet'])
+  const lastHandledPetPackEventIdRef = useRef<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSavingState] = useState(false)
   const savingOperationCountRef = useRef(0)
@@ -529,16 +533,19 @@ export function useAiPane(activeTab = 'ai') {
   }, [activeTab])
 
   useEffect(() => {
-    const unsubscribe = api.onActivePetPackChanged?.(({ activePackId }) => {
-      if (!activePackId) return
-      setGeneratedPersonaDraft(null)
-      setPersonaGenerationInstruction('')
-      void refreshActivePetPackAiContext('active-pet-pack-changed').catch(() => {})
-    })
-    return () => {
-      unsubscribe?.()
+    const eventId = nextPetPackActivationEventId(petPackEvents, lastHandledPetPackEventIdRef.current)
+    if (!eventId) return
+    lastHandledPetPackEventIdRef.current = eventId
+    const eventPayload = petPackEvents.lastEventData
+    if (eventPayload && typeof eventPayload === 'object' && 'petChatState' in eventPayload) {
+      applyPetChatState((eventPayload as { petChatState: PetChatStateViewState }).petChatState)
     }
-  }, [])
+    setGeneratedPersonaDraft(null)
+    setPersonaGenerationInstruction('')
+    void refreshActivePetPackAiContext('active-pet-pack-changed').catch((error) => {
+      setStatus(messageFromError(error, '刷新当前宠物 AI 上下文失败'))
+    })
+  }, [petPackEvents.lastEventId, petPackEvents.lastEventName])
 
   useEffect(() => {
     if (activeTab !== 'ai' || typeof window === 'undefined' || typeof document === 'undefined') return
@@ -555,16 +562,6 @@ export function useAiPane(activeTab = 'ai') {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
   }, [activeTab])
-
-  useEffect(() => {
-    if (typeof api.onActivePetPackChanged !== 'function') return undefined
-    return api.onActivePetPackChanged((event) => {
-      if (event?.petChatState) applyPetChatState(event.petChatState)
-      void refreshActivePetPackAiContext('active-pet-pack-changed').catch((error) => {
-        setStatus(messageFromError(error, '刷新当前宠物 AI 上下文失败'))
-      })
-    })
-  }, [])
 
   const saveProviderConfigDraft = async () => {
     const submittedConfig = cloneAiConfig(config)

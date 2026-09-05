@@ -135,6 +135,13 @@ const createOpenPetRuntime = ({
     return petService.saveSettings?.(settings)
   }
 
+  let ipcRuntimeHelpers = {
+    broadcastActivePetPackChanged: () => {},
+    handlePetPackRequest: async () => {
+      throw Object.assign(new Error('Shell Pet Pack authority is not ready'), { code: 'BACKEND_UNAVAILABLE' })
+    }
+  }
+
   const sidecarRuntimeCoordinator = factories.createSidecarRuntimeCoordinator({
     app,
     dialog,
@@ -148,6 +155,7 @@ const createOpenPetRuntime = ({
       if (!catalogSidecarBridge) throw new Error('Shell Catalog service unavailable')
       return catalogSidecarBridge.handle(request)
     },
+    onPetPackRequest: (request) => ipcRuntimeHelpers.handlePetPackRequest(request),
     onReady: async () => {
       try {
         await settingsSidecarBridge?.hydrate()
@@ -304,9 +312,6 @@ const createOpenPetRuntime = ({
     }
   })
 
-  let ipcRuntimeHelpers = {
-    broadcastActivePetPackChanged: () => {}
-  }
   const pluginServices = createPluginServices({
     app,
     projectRoot,
