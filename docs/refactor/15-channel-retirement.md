@@ -1,10 +1,10 @@
 # 15 · IPC 通道退役台账
 
-> v1.1 · 2026-09-05 · T42 · 以 `src/shared/ipc-channels.ts` 为当前清单
+> v1.2 · 2026-09-05 · T42 · 以 `src/shared/ipc-channels.ts` 为当前清单
 
-本台账登记当前 154 个 IPC 常量的去向。`keep` 是 02 篇允许长期存在的窗口/原生边界；`cutover:<domain>` 表示 03 篇已有 HTTP/SSE 对等入口；`blocked:Txx` 表示等待指定任务卡完成后再切换；`retired` 表示已从当前清单删除并保留历史记录；`dead` 仅用于确认没有生产调用方的遗留常量。
+本台账登记当前 148 个 IPC 常量的去向。`keep` 是 02 篇允许长期存在的窗口/原生边界；`cutover:<domain>` 表示 03 篇已有 HTTP/SSE 对等入口；`blocked:Txx` 表示等待指定任务卡完成后再切换；`retired` 表示已从当前清单删除并保留历史记录；`dead` 仅用于确认没有生产调用方的遗留常量。
 
-当前台账由 146 个 `ipcMainService.handle/on` 注册和 8 个事件-only 通道组成。Source 列是实际生产引用文件，不是推测路径；门禁会逐项检查 TS/JS 清单、注册/事件来源、重复项和未知 `IPC.*` 引用。
+当前台账由 140 个 `ipcMainService.handle/on` 注册和 8 个事件-only 通道组成。Source 列是实际生产引用文件，不是推测路径；门禁会逐项检查 TS/JS 清单、注册/事件来源、重复项和未知 `IPC.*` 引用。
 
 T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `keep ≤ 41`，因此新增的 QQ/WeCom 四个 host-secret 通道登记为 `blocked:T44`，而不是伪装成长期 keep。T41 及后续任务可把已删除常量保留为 `retired` 历史行，并在 Retired by 列记录提交 SHA；历史行不计入当前通道对账或 keep 上限。
 
@@ -12,14 +12,14 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 
 | Scope | Count |
 | --- | ---: |
-| Current IPC constants | 154 |
-| Current direct registrations | 146 |
+| Current IPC constants | 148 |
+| Current direct registrations | 140 |
 | Current event-only channels | 8 |
 | Current keep | 41 |
 | Current cutover | 29 |
-| Current blocked | 84 |
+| Current blocked | 78 |
 | Current dead | 0 |
-| Historical retired | 4 |
+| Historical retired | 10 |
 
 ## Ledger
 
@@ -177,12 +177,12 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 | `service:revoke-mcp-sessions` | `blocked:T45` | `Backend route not implemented: POST /service/token/revoke-sessions` | `src/main/ipc/register-service-ipc.js` | Waiting for T45 MCP sidecar migration; current backend route registry has no MCP session revoke endpoint | — |
 | `about:get-info` | `retired` | `GET /about` | `src/main/ipc.js` | Control Center reads the host About view through Backend HTTP | 413c5825 |
 | `about:check-updates` | `retired` | `POST /about/check-updates` | `src/main/ipc.js` | Control Center queues the existing update-check Job and follows its result through Backend Job/SSE APIs | 413c5825 |
-| `catalog:get` | `blocked:T42` | `GET /catalog` — incomplete `CatalogState` | `src/main/ipc/register-catalog-ipc.js` | Backend cannot reproduce the Shell-owned local blocklist through existing contracts: retained blocklist IPC writes root settings while `runtime.settings` owns a separate backend envelope; the route also lacks the Shell catalog normalization and installed-item annotations required by the Control Center | — |
-| `catalog:prepare-install` | `blocked:T42` | `Backend route not implemented: POST /catalog/prepare` | `src/main/ipc/register-catalog-ipc.js` | Current backend route registry has no prepare endpoint; report discrepancy before cutover | — |
-| `catalog:install-selection` | `blocked:T42` | `POST /catalog/install` — non-equivalent Job | `src/main/ipc/register-catalog-ipc.js` | The route accepts an item id and queues `catalog.install`, whose handler currently ends in `BACKEND_UNAVAILABLE`; the IPC commits a reviewed `selectionId` after download, hash, manifest, and blocklist checks | — |
-| `catalog:clear-selection` | `blocked:T42` | `Backend route not implemented: POST /catalog/clear-selection` | `src/main/ipc/register-catalog-ipc.js` | Current backend route registry has no clear-selection endpoint; report discrepancy before cutover | — |
-| `catalog:add-blocklist` | `blocked:T42` | `Backend route not implemented: POST /catalog/blocklist` | `src/main/ipc/register-catalog-ipc.js` | Current backend route registry has no blocklist endpoint; report discrepancy before cutover | — |
-| `catalog:remove-blocklist` | `blocked:T42` | `Backend route not implemented: DELETE /catalog/blocklist/:id` | `src/main/ipc/register-catalog-ipc.js` | Current backend route registry has no blocklist endpoint; report discrepancy before cutover | — |
+| `catalog:get` | `retired` | `GET /catalog` | `src/main/ipc.js` | Catalog state now comes from the Shell-owned Catalog bridge and Backend HTTP route | ac59d75f |
+| `catalog:prepare-install` | `retired` | `POST /catalog/prepare` | `src/main/ipc.js` | Reviewed install preparation is handled by the Backend Catalog domain | ac59d75f |
+| `catalog:install-selection` | `retired` | `POST /catalog/install` → Job | `src/main/ipc.js` | Install consumes the reviewed selection through the Backend Job boundary | ac59d75f |
+| `catalog:clear-selection` | `retired` | `POST /catalog/clear-selection` | `src/main/ipc.js` | Pending selection lifecycle is owned by the Backend Catalog bridge | ac59d75f |
+| `catalog:add-blocklist` | `retired` | `POST /catalog/blocklist` | `src/main/ipc.js` | Catalog blocklist mutation is handled by the Backend Catalog domain | ac59d75f |
+| `catalog:remove-blocklist` | `retired` | `DELETE /catalog/blocklist/:id` | `src/main/ipc.js` | Catalog blocklist removal is handled by the Backend Catalog domain | ac59d75f |
 
 ## Operating rules
 

@@ -185,7 +185,7 @@
 1. **任务卡认领、交付数与验收结论看 [#41 §4](https://github.com/dengyie/OpenPet/issues/41)**,本文件不另维护任务卡看板。
 2. **实现依据与架构现状看 [09 篇 §1](./09-repo-state.md)**;目标定义仍以本篇 §三为准。
 
-> **维护边界:**本节只保留架构目标的状态快照;任务卡进度、依赖和卡面证据不在这里复制,统一回到 #41 §4。当前 main 已合入 T41 与 T42 About；T42 Catalog、Pet Packs、Actions 因语义对等缺口保留旧 IPC/preload，具体证据见 [09 篇 §1/§4](./09-repo-state.md) 与 [15 篇台账](./15-channel-retirement.md)。
+> **维护边界:**本节只保留架构目标的状态快照;任务卡进度、依赖和卡面证据不在这里复制,统一回到 #41 §4。当前 main 已合入 T41、T42 About 与 T42 Catalog；Catalog 6 条旧 IPC 已退休，Pet Packs、Actions 因语义对等缺口仍保留旧 IPC/preload，具体证据见 [09 篇 §1/§4](./09-repo-state.md) 与 [15 篇台账](./15-channel-retirement.md)。
 
 ## 十、变更记录
 
@@ -200,3 +200,4 @@
 | v1.6 | 2026-08-16 | 基线切到 `main`;M0 E1–E10 完成,E7 3/4 为预期红;采用 `asarUnpack`;缺口 G1/G11 统一指向 #41 §5 卡面与 #41 §4 进度;新增 #41 领卡与验收入口 | mango |
 | v1.7 | 2026-09-04 | §九改为以 #41 §4 为唯一任务卡进度来源;区分任务卡交付数与架构目标 G1–G8 达成度,并按评审 v1.0 / 09 篇 §1 更新现状 | mango |
 | v1.8 | 2026-09-05 | 同步 T41/T42 当前 main：154 条 IPC、About 两条业务通道已退休；Catalog、Pet Packs、Actions 的不等价后端语义登记为 blocked，回链 09 篇与 15 篇台账 | mango |
+| v1.9 | 2026-09-05 | 同步 Catalog T42 合入：当前 148 条 IPC、74 条 REST 路由；Catalog 6 条 IPC 已退休，Pet Packs/Actions 仍按语义差异登记 blocked | mango |

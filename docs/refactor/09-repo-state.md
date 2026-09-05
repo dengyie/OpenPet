@@ -1,6 +1,6 @@
 # 09 · 仓库现状快照
 
-> v1.5 · 2026-09-05 · 基线分支 `main` · T42 About 合入与 Actions/Catalog/Pet Packs 语义复核
+> v1.6 · 2026-09-05 · 基线分支 `main` · T42 Catalog 合入、T41 Settings live bridge 修复与 Actions/Pet Packs 语义复核
 
 **读者**:领到任务卡准备写代码的 agent。前置阅读 [08 篇 执行手册](./08-agent-guide.md)。
 
@@ -40,7 +40,7 @@ scripts/check-api-contract.mjs          ✅ M0 门禁
 tests/backend/state-machine.test.js     ✅ 测试样板
 ```
 
-根 `package.json` 已开启 workspaces(`apps/*`、`services/*`、`packages/*`),`check:node` 已覆盖 `apps` 与 `services`。backend 当前由 11 组 routes 文件装配 68 条实际 method/path；`routes/registry.js` 是硬对账注册表，不是第二套业务实现。
+根 `package.json` 已开启 workspaces(`apps/*`、`services/*`、`packages/*`),`check:node` 已覆盖 `apps` 与 `services`。backend 当前由 11 组 routes 文件装配 74 条实际 method/path；`routes/registry.js` 是硬对账注册表，不是第二套业务实现。
 
 **当前 backend 已完成启动、迁移、Job 恢复/调度和 HTTP 业务路由注册。** 尚未归属仓储的三张表见缺口 G13。
 
@@ -296,7 +296,7 @@ countByStatus(status?)                     // → number | { [status]: number }
 | 缺口 G6 | ✅ | M0 六条 spike 结果未回填 | E3–E8 已全部实测并回填;唯一权威结果见 [07 篇](./07-spike.md) §7(证据: `bbfdb096d8a224f513eea5160cf000281f487161`) |
 | 缺口 G7 | ✅ | 04 篇 §2.6 的 ⚠️ 待补登记 注记已过期 | 已关闭:注记改为「已补登(v1.3)」,并说明 `system` topic 现列四个事件、已纳入 `check:api-contract` 的 `EVENT_NAMES` 对账范围(证据: `e38940dbd8466712f6c499631e9e5ee9f4250959`) |
 | 缺口 G8 | ✅ | 06 篇 §9 风险表缺 R20 | 已关闭:R20 已补入风险登记册,并同步收紧 §2 spike 第 5 条的判定标准(证据: `6248d2366435ee765799bdf581c8b6ae22a526e4`) |
-| 缺口 G9 | ✅ | 路由表与 IPC 通道盘点门禁已硬化 | `check:api-contract` 对账 `routes/registry.js`、实际 `router.routes()`、03 篇 §4 与 TS/JS IPC 清单;当前通过 68 条路由、154 条通道(实现证据: `4faa07df0244e9ce8bb53501589eaee4e50ac0b9`;T41/T42 合入后复核见当前 main) |
+| 缺口 G9 | ✅ | 路由表与 IPC 通道盘点门禁已硬化 | `check:api-contract` 对账 `routes/registry.js`、实际 `router.routes()`、03 篇 §4 与 TS/JS IPC 清单;当前为 74 条路由、148 条通道（T42 Catalog 退休 6 条 IPC，证据：`ac59d75f`） |
 | 缺口 G10 | ✅ | `tests/backend/state-machine.test.js` 有一处 `it()` 标题笔误 | E9 已改为「6 个状态,17 个 kind」(证据: `bbfdb096d8a224f513eea5160cf000281f487161`) |
 | 缺口 G11 | ✅ | E3 的 `:memory:` SQLite 探针不证明 WAL | T35 已由 file-backed `tests/backend/sqlite-driver.test.js` 复验 WAL、四项默认 pragma 与跨连接持久化(证据: `08c24e1c364e9ca6a59f57bc6544cb447aa0b565`) |
 | 缺口 G12 | ✅ | 03 篇 §3 盘点 7 个 `SERVICE_*` 写通道,§4.1 已有对应入口 | T16 已补齐并实现服务配置写入端点 `PUT /service/config`,同时同步契约表(实现证据: `4480c4b5749d2ed242716732e45573ffc1a3131a`;契约/注册表证据: `4faa07df0244e9ce8bb53501589eaee4e50ac0b9`) |
@@ -337,3 +337,4 @@ countByStatus(status?)                     // → number | { [status]: number }
 | v1.3 | 2026-08-16 | 以 `main` 为基线回填 E1–E10;缺口 G1/G11 改由 T34/T35 对接 #41 §5 卡面与 #41 §4 进度;完成结果替代待执行表,并区分目标 G1–G8 与缺口 G1–G11 |
 | v1.4 | 2026-09-04 | T37 复核当前仓库:补齐 sidecar/backend、迁移、Job、路由与仓储现状;关闭 G2/G9/G11/G12,登记 G13 未归属仓储;同步 68 条实际路由与 158 条 IPC 门禁证据 |
 | v1.5 | 2026-09-05 | T41/T42 复核:当前 154 条 IPC;About 两条业务通道已退休;Catalog、Pet Packs、Actions 因后端语义不等价保留 IPC/preload 并登记 blocked:T42;反向通道补记 settings apply/persist 类型 |
+| v1.6 | 2026-09-05 | T42 Catalog 6 条 IPC 已在 `ac59d75f` 同提交退休；当前 148 条 IPC、74 条 REST 路由；T41 live bridge 修复提交 `bac49b80` 待总控 rebase 验收 |
