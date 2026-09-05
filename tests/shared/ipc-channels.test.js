@@ -44,7 +44,6 @@ test('shared IPC contract exports stable frozen channel names', () => {
   assert.equal(IPC.CREATOR_GENERATE_NEW_CHARACTER, 'creator:generate-new-character')
   assert.equal(IPC.CREATOR_GENERATE_EXISTING_ACTION, 'creator:generate-existing-action')
   assert.equal(IPC.CREATOR_GET_LAST_RUN, 'creator:get-last-run')
-  assert.equal(IPC.CATALOG_INSTALL_SELECTION, 'catalog:install-selection')
   assert.equal(IPC.SETTINGS_OPEN, 'settings:open')
   assert.equal(Object.isFrozen(IPC), true)
 })

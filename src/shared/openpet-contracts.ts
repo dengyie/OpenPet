@@ -2953,6 +2953,16 @@ export interface CatalogBlocklistResult {
   blocklist: BlocklistState
 }
 
+/** Browser-only development surface; packaged builds use the Backend HTTP API. */
+export interface CatalogDemoApi {
+  getCatalog: () => Promise<CatalogState>
+  prepareCatalogInstall: (payload: CatalogInstallRequest) => Promise<CatalogInstallSelection>
+  installCatalogSelection: (selectionId: string) => Promise<CatalogInstallResult>
+  clearCatalogSelection: (selectionId: string) => Promise<OkResponse>
+  addCatalogBlocklistEntry: (payload: CatalogBlocklistEntry) => Promise<CatalogBlocklistResult>
+  removeCatalogBlocklistEntry: (payload: CatalogBlocklistEntry) => Promise<CatalogBlocklistResult>
+}
+
 export interface AboutUpdateInfo {
   configured: boolean
   provider: string
@@ -3830,11 +3840,5 @@ export interface ControlCenterApi {
   clearServiceLogs: () => Promise<ServiceLogEntry[]>
   rotateServiceToken: () => Promise<ServiceStatusViewState>
   revokeMcpSessions: () => Promise<ServiceStatusViewState>
-  getCatalog: () => Promise<CatalogState>
-  prepareCatalogInstall: (payload: CatalogInstallRequest) => Promise<CatalogInstallSelection>
-  installCatalogSelection: (selectionId: string) => Promise<CatalogInstallResult>
-  clearCatalogSelection: (selectionId: string) => Promise<OkResponse>
-  addCatalogBlocklistEntry: (payload: CatalogBlocklistEntry) => Promise<CatalogBlocklistResult>
-  removeCatalogBlocklistEntry: (payload: CatalogBlocklistEntry) => Promise<CatalogBlocklistResult>
   close: () => void
 }

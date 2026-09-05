@@ -24,6 +24,13 @@ test("sidecar routes use runtime dependencies initialized before ready", async (
 	let backend = null
 	let applyValues = null
 	const persistedSecrets = []
+	const catalogRequests = []
+	const catalogState = {
+		schemaVersion: 1, updatedAt: "2026-09-05T00:00:00.000Z", feedbackUrl: "",
+		localBlocklist: { pluginIds: [], packIds: [], sha256: [] },
+		catalogBlocklist: { pluginIds: [], packIds: [], sha256: [] },
+		blocklist: { pluginIds: [], packIds: [], sha256: [] }, plugins: [], petPacks: [],
+	}
 	try {
 		backend = await spawnSidecar({
 			entry: path.join(repoRoot, "services/backend/index.js"),
@@ -58,10 +65,11 @@ test("sidecar routes use runtime dependencies initialized before ready", async (
 				setSecret: (entry) => persistedSecrets.push(entry),
 				deleteSecret: (id) => persistedSecrets.push({ deleted: id }),
 			},
+			onCatalogRequest: async (request) => { catalogRequests.push(request); return catalogState },
 		})
 		backend.child.on("message", (envelope) => {
 			if (envelope?.body?.type === "settings.apply.request") applyValues = envelope.body.values
-			if (["settings.apply.request", "secrets.persist.request"].includes(envelope?.body?.type)) {
+			if (["settings.apply.request", "secrets.persist.request", "catalog.request"].includes(envelope?.body?.type)) {
 				void shellHandler.handle(envelope)
 			}
 		})
@@ -150,6 +158,7 @@ test("sidecar routes use runtime dependencies initialized before ready", async (
 		assert.equal(persistedAfterPatch.version, persistedBeforePatch.version + 1)
 		assert.deepEqual(applyValues, { scale: 1.1 })
 		assert.equal(hostAppliedSettings.scale, 1.1)
+		assert.deepEqual(catalogRequests, [{ operation: "listCatalog" }])
 
 		rejectHostApply = true
 		const rejectedPatch = await fetch(`${backend.baseUrl}/settings`, {
@@ -160,6 +169,63 @@ test("sidecar routes use runtime dependencies initialized before ready", async (
 		assert.equal(rejectedPatch.status, 503)
 		assert.equal(JSON.parse(fs.readFileSync(settingsFile, "utf8")).values.scale, 1.1)
 	} finally {
+		if (backend?.child) await stopSidecar(backend.child, { graceMs: 5_000 })
+		fs.rmSync(userDataDir, { recursive: true, force: true })
+	}
+})
+
+test("catalog install becomes non-cancelable before the Shell-owned side effect", { timeout: 10_000 }, async () => {
+	const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-catalog-finalizing-"))
+	let backend = null
+	let releaseInstall = () => {}
+	let markInstallStarted = () => {}
+	const installReleased = new Promise((resolve) => { releaseInstall = resolve })
+	const installStarted = new Promise((resolve) => { markInstallStarted = resolve })
+	const catalog = {
+		schemaVersion: 1, updatedAt: "2026-09-05T00:00:00.000Z", feedbackUrl: "",
+		localBlocklist: { pluginIds: [], packIds: [], sha256: [] },
+		catalogBlocklist: { pluginIds: [], packIds: [], sha256: [] },
+		blocklist: { pluginIds: [], packIds: [], sha256: [] }, plugins: [], petPacks: [],
+	}
+	try {
+		backend = await spawnSidecar({
+			entry: path.join(repoRoot, "services/backend/index.js"),
+			initBody: { userDataDir, providerKeys: {}, legacyToken: null, appInfo: { name: "OpenPet Host", version: "9.8.7", packaged: true, platform: "test-platform", arch: "test-arch" } },
+			logger: { info() {}, warn() {}, error() {} },
+		})
+		const shellHandler = createMessageHandler({
+			send: (envelope) => backend.child.send(envelope),
+			onCatalogRequest: async (request) => {
+				assert.deepEqual(request, { operation: "installSelection", selectionId: "selection-1" })
+				markInstallStarted(); await installReleased
+				return { ok: true, kind: "plugin", itemId: "focus-timer", catalog }
+			},
+		})
+		backend.child.on("message", (envelope) => {
+			if (envelope?.body?.type === "catalog.request") void shellHandler.handle(envelope)
+		})
+		const headers = { authorization: `Bearer ${backend.sessionToken}`, "content-type": "application/json" }
+		const queuedResponse = await fetch(`${backend.baseUrl}/catalog/install`, { method: "POST", headers, body: JSON.stringify({ selectionId: "selection-1" }) })
+		assert.equal(queuedResponse.status, 202)
+		const { jobId } = (await queuedResponse.json()).data
+		await installStarted
+		const runningJob = (await (await fetch(`${backend.baseUrl}/jobs/${encodeURIComponent(jobId)}`, { headers })).json()).data
+		assert.equal(runningJob.progress.phase, "finalizing")
+		assert.equal(runningJob.cancelable, false)
+		const cancelResponse = await fetch(`${backend.baseUrl}/jobs/${encodeURIComponent(jobId)}/cancel`, { method: "POST", headers, body: "{}" })
+		assert.equal(cancelResponse.status, 423)
+		assert.equal((await cancelResponse.json()).error.code, "JOB_NOT_CANCELABLE")
+		releaseInstall()
+		let completed = null
+		for (let attempt = 0; attempt < 100; attempt += 1) {
+			completed = (await (await fetch(`${backend.baseUrl}/jobs/${encodeURIComponent(jobId)}`, { headers })).json()).data
+			if (completed.status === "succeeded") break
+			await new Promise((resolve) => setTimeout(resolve, 10))
+		}
+		assert.equal(completed.status, "succeeded")
+		assert.equal(completed.result.itemId, "focus-timer")
+	} finally {
+		releaseInstall()
 		if (backend?.child) await stopSidecar(backend.child, { graceMs: 5_000 })
 		fs.rmSync(userDataDir, { recursive: true, force: true })
 	}

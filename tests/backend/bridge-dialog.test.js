@@ -24,11 +24,12 @@ function resultEnvelope(id, paths) {
 }
 
 describe("dialog.request bridge", () => {
-	it("backend whitelist contains exactly the 13 contract message types", () => {
-		assert.equal(bridge.BACKEND_TO_SHELL_TYPES.length, 13)
-		assert.equal(new Set(bridge.BACKEND_TO_SHELL_TYPES).size, 13)
+	it("backend whitelist contains exactly the 14 contract message types", () => {
+		assert.equal(bridge.BACKEND_TO_SHELL_TYPES.length, 14)
+		assert.equal(new Set(bridge.BACKEND_TO_SHELL_TYPES).size, 14)
 		assert.equal(bridge.BACKEND_TO_SHELL_TYPES.includes("dialog.request"), true)
-		assert.equal(bridge.SHELL_TO_BACKEND_TYPES.length, 9, "settings and secrets host results are part of the bridge contract")
+		assert.equal(bridge.BACKEND_TO_SHELL_TYPES.includes("catalog.request"), true)
+		assert.equal(bridge.SHELL_TO_BACKEND_TYPES.length, 10, "settings, secrets, and catalog host results are part of the bridge contract")
 	})
 
 	it("request and dialog.result correlate with the same envelope id", async () => {
@@ -111,6 +112,16 @@ describe("dialog.request bridge", () => {
 		}, { id: sent[0].id }))
 
 		await assert.rejects(responsePromise, /unexpected fields/)
+		client.dispose()
+	})
+
+	it("binds catalog requests to catalog.result and rejects an invalid success body", async () => {
+		const sent = []
+		const client = shellClient.createShellClient({ send: (envelope) => sent.push(envelope) })
+		const responsePromise = client.request({ type: "catalog.request", request: { operation: "listCatalog" } })
+
+		client.receive(bridge.createEnvelope({ type: "catalog.result", ok: true }, { id: sent[0].id }))
+		await assert.rejects(responsePromise, /catalog\.result has no result/)
 		client.dispose()
 	})
 

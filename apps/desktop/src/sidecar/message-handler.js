@@ -3,9 +3,37 @@
 const { sanitizeLogText } = require("../../../../src/main/services/log-safety")
 
 const BRIDGE_PROTOCOL_VERSION = 1
+const CATALOG_BLOCKLIST_TYPES = new Set(["pluginId", "packId", "sha256"])
+
+function exactKeys(value, keys) {
+	const actual = Object.keys(value).sort()
+	const expected = [...keys].sort()
+	return actual.length === expected.length && actual.every((key, index) => key === expected[index])
+}
+
+function nonEmptyString(value) { return typeof value === "string" && value.trim().length > 0 }
+
+function normalizeCatalogRequest(value) {
+	if (value === null || typeof value !== "object" || Array.isArray(value) || typeof value.operation !== "string") return null
+	switch (value.operation) {
+		case "listCatalog": return exactKeys(value, ["operation"]) ? { operation: value.operation } : null
+		case "prepareInstall":
+			return exactKeys(value, ["operation", "kind", "itemId"]) && ["plugin", "pet-pack"].includes(value.kind) && nonEmptyString(value.itemId)
+				? { operation: value.operation, kind: value.kind, itemId: value.itemId } : null
+		case "installSelection":
+		case "clearSelection":
+			return exactKeys(value, ["operation", "selectionId"]) && nonEmptyString(value.selectionId)
+				? { operation: value.operation, selectionId: value.selectionId } : null
+		case "addBlocklistEntry":
+		case "removeBlocklistEntry":
+			return exactKeys(value, ["operation", "type", "value"]) && CATALOG_BLOCKLIST_TYPES.has(value.type) && nonEmptyString(value.value)
+				? { operation: value.operation, type: value.type, value: value.value } : null
+		default: return null
+	}
+}
 
 // Keep this list frozen in the Shell as well as in the backend bridge client.
-// A backend message is untrusted input at this boundary: only these thirteen
+// A backend message is untrusted input at this boundary: only these fourteen
 // capabilities may reach Electron/PetService.
 const BACKEND_TO_SHELL_TYPES = Object.freeze([
 	"pet.say",
@@ -21,6 +49,7 @@ const BACKEND_TO_SHELL_TYPES = Object.freeze([
 	"settings.apply.request",
 	"settings.persist.result",
 	"secrets.persist.request",
+	"catalog.request",
 ])
 
 function log(logger, level, message, fields) {
@@ -45,6 +74,7 @@ function parseEnvelope(raw) {
 	if (typeof raw.id !== "string" || raw.id.length === 0) return fail("bad-id", raw.id)
 	if (!Number.isInteger(raw.at) || raw.at <= 0) return fail("bad-at", raw.at)
 	const body = raw.body
+	let normalizedBody = body
 	if (body === null || typeof body !== "object" || Array.isArray(body) || typeof body.type !== "string") {
 		return fail("bad-body")
 	}
@@ -90,12 +120,18 @@ function parseEnvelope(raw) {
 			if (body.value !== null && (typeof body.value !== "string" || body.value.trim().length === 0)) return fail("bad-body", "secrets.persist.request.value")
 			if (Object.keys(body).some((key) => !["type", "providerId", "value"].includes(key))) return fail("bad-body", "secrets.persist.request.fields")
 			break
+		case "catalog.request": {
+			const request = normalizeCatalogRequest(body.request)
+			if (!exactKeys(body, ["type", "request"]) || !request) return fail("bad-body", "catalog.request")
+			normalizedBody = { type: body.type, request }
+			break
+		}
 	}
 
-	return { ok: true, envelope: { v: raw.v, id: raw.id, at: raw.at, body } }
+	return { ok: true, envelope: { v: raw.v, id: raw.id, at: raw.at, body: normalizedBody } }
 }
 
-function createMessageHandler({ dialog, petService, secretService, logger, send, onNotify, onBadge, onDashboard, onSettingsChanged, onSettingsApplyRequest, productionService } = {}) {
+function createMessageHandler({ dialog, petService, secretService, logger, send, onNotify, onBadge, onDashboard, onSettingsChanged, onSettingsApplyRequest, onCatalogRequest, productionService } = {}) {
 	if (typeof send !== "function") throw new TypeError("createMessageHandler 需要 send")
 
 	async function handle(raw) {
@@ -188,6 +224,15 @@ function createMessageHandler({ dialog, petService, secretService, logger, send,
 						at: Date.now(),
 						body: { type: "secrets.persist.result", providerId, ...result },
 					})
+					return true
+				}
+				case "catalog.request": {
+					let response
+					try {
+						if (typeof onCatalogRequest !== "function") throw new Error("Shell Catalog service unavailable")
+						response = { ok: true, result: await onCatalogRequest(body.request) }
+					} catch (error) { response = { ok: false, error: error?.message || String(error) } }
+					send({ v: BRIDGE_PROTOCOL_VERSION, id: raw.id, at: Date.now(), body: { type: "catalog.result", ...response } })
 					return true
 				}
 				case "dialog.request": {

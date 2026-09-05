@@ -147,12 +147,6 @@ export const IPC = Object.freeze({
   SERVICE_CLEAR_LOGS: 'service:clear-logs',
   SERVICE_ROTATE_TOKEN: 'service:rotate-token',
   SERVICE_REVOKE_MCP_SESSIONS: 'service:revoke-mcp-sessions',
-  CATALOG_GET: 'catalog:get',
-  CATALOG_PREPARE_INSTALL: 'catalog:prepare-install',
-  CATALOG_INSTALL_SELECTION: 'catalog:install-selection',
-  CATALOG_CLEAR_SELECTION: 'catalog:clear-selection',
-  CATALOG_ADD_BLOCKLIST: 'catalog:add-blocklist',
-  CATALOG_REMOVE_BLOCKLIST: 'catalog:remove-blocklist'
 } as const)
 
 export type IpcChannelName = typeof IPC[keyof typeof IPC]

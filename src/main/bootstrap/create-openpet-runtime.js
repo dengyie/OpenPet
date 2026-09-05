@@ -7,6 +7,7 @@ const { IPC } = require('../../shared/ipc-channels')
 const { createDefaultSidecarPidLedger } = require('../../../apps/desktop/src/sidecar/orphan-cleanup')
 const { createSettingsSidecarBridge } = require('../settings-sidecar-bridge')
 const { createSettingsHostEffect } = require('../settings-host-effects')
+const { createCatalogSidecarBridge } = require('../catalog-sidecar-bridge')
 
 const createSidecarLogger = ({ appLogService, safeRecordAppLog }) => Object.fromEntries(
   ['info', 'warn', 'error'].map((level) => [level, (message, details) => {
@@ -87,6 +88,7 @@ const createOpenPetRuntime = ({
   } = core
   const sidecarLogger = createSidecarLogger({ appLogService, safeRecordAppLog })
   let settingsSidecarBridge = null
+  let catalogSidecarBridge = null
   // Startup repairs can finish before the sidecar has completed its handshake.
   // Keep those authority writes in memory and replay them after hydration so a
   // slow sidecar cannot cause the repaired/fallback value to be lost.
@@ -142,6 +144,10 @@ const createOpenPetRuntime = ({
     logger: sidecarLogger,
     onSettingsChanged: (message) => settingsSidecarBridge?.handle(message),
     onSettingsApplyRequest: (message) => settingsSidecarBridge?.handle(message),
+    onCatalogRequest: (request) => {
+      if (!catalogSidecarBridge) throw new Error('Shell Catalog service unavailable')
+      return catalogSidecarBridge.handle(request)
+    },
     onReady: async () => {
       try {
         await settingsSidecarBridge?.hydrate()
@@ -329,6 +335,20 @@ const createOpenPetRuntime = ({
   })
   pluginService = pluginServices.pluginService
   setCatalogService(pluginServices.catalogService)
+  catalogSidecarBridge = createCatalogSidecarBridge({
+    catalogService: pluginServices.catalogService,
+    getPetWindow,
+    petService,
+    reloadAndSendAnimations,
+    refreshTriggerRuleRuntime: () => triggerRuleRuntimeService?.refresh?.(),
+    getActionsViewState: () => ({
+      ...petService.getPreviewAnimations(),
+      triggerRuntimeDiagnostics: triggerRuleRuntimeService?.getDiagnostics?.() || {
+        currentState: { actionId: '' },
+        decisions: []
+      }
+    })
+  })
   const hatchPetAgentService = factories.createHatchPetAgentService({
     aiService,
     settingsService,
@@ -392,7 +412,6 @@ const createOpenPetRuntime = ({
     pluginService,
     pluginInstallService: pluginServices.pluginInstallService,
     pluginGithubImportService: pluginServices.pluginGithubImportService,
-    catalogService: pluginServices.catalogService,
     localHttpService,
     actionService,
     actionImportService,

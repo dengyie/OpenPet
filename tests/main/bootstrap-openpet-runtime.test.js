@@ -29,6 +29,7 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
   }
   let unexpectedCursorExit
   let coordinatorOnReady
+  let coordinatorDependencies
   let backend = null
   let sidecarStartCalls = 0
   const settings = {
@@ -120,7 +121,8 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
       createBehaviorOrchestratorService: () => ({ id: 'behavior' }),
       createCatalogService: () => ({
         getPluginBlockStatus: (candidate) => ({ blocked: candidate === 'blocked-plugin', reasons: candidate === 'blocked-plugin' ? ['policy'] : [] }),
-        getPetPackBlockStatus: () => ({ blocked: false, reasons: [] })
+        getPetPackBlockStatus: () => ({ blocked: false, reasons: [] }),
+        listCatalog: () => ({ schemaVersion: 1, plugins: [], petPacks: [] })
       }),
       createCursorAssetService: () => ({ repairCursor: async () => ({}) }),
       createSystemCursorService: ({ onUnexpectedExit }) => {
@@ -190,6 +192,7 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
       createSecretService: () => undefined,
       createSettingsService: ({ loadSettings }) => ({ get: loadSettings, save: () => {}, preview: () => ({}) }),
       createSidecarRuntimeCoordinator: (dependencies) => {
+        coordinatorDependencies = dependencies
         coordinatorOnReady = dependencies.onReady
         assert.equal(dependencies.secretService, undefined)
         assert.equal(dependencies.getSettings().localHttp, settings.localHttp)
@@ -221,6 +224,17 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
   assert.equal(registeredIpcDependencies.length, 1)
   assert.equal(screenHandlers.has('display-added'), true)
   assert.equal(typeof appHandlers.get('activate'), 'function')
+  assert.equal(typeof coordinatorDependencies.onCatalogRequest, 'function')
+  assert.deepEqual(await coordinatorDependencies.onCatalogRequest({ operation: 'listCatalog' }), {
+    schemaVersion: 1,
+    updatedAt: '',
+    feedbackUrl: '',
+    localBlocklist: { pluginIds: [], packIds: [], sha256: [] },
+    catalogBlocklist: { pluginIds: [], packIds: [], sha256: [] },
+    blocklist: { pluginIds: [], packIds: [], sha256: [] },
+    plugins: [],
+    petPacks: []
+  })
   await setImmediatePromise()
   assert.equal(sidecarStartCalls, 1)
   assert.equal(runtime.sidecarRuntimeCoordinator.getState().status, 'degraded')

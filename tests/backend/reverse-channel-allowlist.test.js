@@ -24,6 +24,7 @@ const EXPECTED_BACKEND_TO_SHELL_TYPES = [
 	"settings.apply.request",
 	"settings.persist.result",
 	"secrets.persist.request",
+	"catalog.request",
 ]
 
 function envelope(type, body = {}) {
@@ -45,13 +46,13 @@ function contractBackendToShellTypes() {
 }
 
 	describe("T28 reverse-channel allowlist", () => {
-	it("keeps the Backend and Shell allowlists exactly aligned with the 13 contract types", async () => {
+	it("keeps the Backend and Shell allowlists exactly aligned with the 14 contract types", async () => {
 		const backendSchema = await import("../../services/backend/bridge/message-schema.js")
 
 		assert.deepEqual(contractBackendToShellTypes(), EXPECTED_BACKEND_TO_SHELL_TYPES)
 		assert.deepEqual(backendSchema.BACKEND_TO_SHELL_TYPES, EXPECTED_BACKEND_TO_SHELL_TYPES)
 		assert.deepEqual(SHELL_BACKEND_TO_SHELL_TYPES, EXPECTED_BACKEND_TO_SHELL_TYPES)
-		assert.equal(new Set(SHELL_BACKEND_TO_SHELL_TYPES).size, 13)
+		assert.equal(new Set(SHELL_BACKEND_TO_SHELL_TYPES).size, 14)
 	})
 
 	it("drops malformed and non-allowlisted envelopes and logs each rejection", async () => {
@@ -158,5 +159,36 @@ function contractBackendToShellTypes() {
 		assert.equal(replies[0].body.ok, false)
 		assert.doesNotMatch(JSON.stringify({ replies, errors }), /opaque-shell-provider-secret/)
 		assert.equal(await handler.handle(envelope("secrets.persist.request", { providerId: "custom", value: plaintext, readBack: true })), false)
+	})
+
+	it("answers a validated catalog.request with the correlated catalog.result", async () => {
+		const replies = []
+		const requests = []
+		const handler = createMessageHandler({
+			send: (reply) => replies.push(reply),
+			onCatalogRequest: async (request) => { requests.push(request); return { selectionId: "selection-1" } },
+		})
+		assert.equal(await handler.handle(envelope("catalog.request", {
+			request: { operation: "prepareInstall", kind: "plugin", itemId: "focus-timer" },
+		})), true)
+		assert.deepEqual(requests, [{ operation: "prepareInstall", kind: "plugin", itemId: "focus-timer" }])
+		assert.equal(replies[0].id, "test-catalog.request")
+		assert.deepEqual(replies[0].body, { type: "catalog.result", ok: true, result: { selectionId: "selection-1" } })
+	})
+
+	it("rejects catalog bridge operations and fields outside the frozen allowlist", async () => {
+		const calls = []
+		const warnings = []
+		const handler = createMessageHandler({
+			send() {},
+			onCatalogRequest: (request) => calls.push(request),
+			logger: { warn: (_message, fields) => warnings.push(fields) },
+		})
+		assert.equal(await handler.handle(envelope("catalog.request", { request: { operation: "executePath", path: "/tmp/owned" } })), false)
+		assert.equal(await handler.handle(envelope("catalog.request", {
+			request: { operation: "installSelection", selectionId: "selection-1", path: "/tmp/owned" },
+		})), false)
+		assert.deepEqual(calls, [])
+		assert.deepEqual(warnings.map(({ reason }) => reason), ["bad-body", "bad-body"])
 	})
 })

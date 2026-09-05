@@ -9,7 +9,6 @@ const { registerPluginIpc } = require('../../src/main/ipc/register-plugin-ipc')
 const { registerServiceIpc } = require('../../src/main/ipc/register-service-ipc')
 const { registerSettingsIpc } = require('../../src/main/ipc/register-settings-ipc')
 const { registerSystemIpc } = require('../../src/main/ipc/register-system-ipc')
-const { registerCatalogIpc } = require('../../src/main/ipc/register-catalog-ipc')
 
 const createIpcMainStub = () => {
   const handlers = new Map()
@@ -597,49 +596,4 @@ test('registerServiceIpc does not persist rotated token when start fails', async
   assert.equal(startedConfigs.length, 1)
   assert.equal(startedConfigs[0].token, 'rotated-token')
   assert.deepEqual(savedSettings, [], 'failed rotation must not persist the new token')
-})
-
-test('registerCatalogIpc wires catalog install and blocklist handlers', async () => {
-  const ipcMain = createIpcMainStub()
-  const reloadCalls = []
-
-  registerCatalogIpc({
-    ipcMainService: ipcMain,
-    catalogService: {
-      listCatalog: () => ({ items: ['starter-pack'] }),
-      prepareInstall: (payload) => ({ selectionId: payload.selectionId }),
-      installSelection: () => ({ kind: 'pet-pack', itemId: 'starter-pack', petPacks: { activePackId: 'starter-pack' } }),
-      clearSelection: (selectionId) => ({ selectionId, ok: true }),
-      addBlocklistEntry: (payload) => [{ ...payload, added: true }],
-      removeBlocklistEntry: (payload) => [{ ...payload, removed: true }]
-    },
-    getPetWindow: () => null,
-    petService: {
-      getPreviewAnimations: () => ({ actions: ['wave'] })
-    },
-    reloadAndSendAnimations: (...args) => {
-      reloadCalls.push(args)
-      return { actions: ['wave'] }
-    },
-    createCatalogView: (catalog) => ({ kind: 'catalog-view', catalog }),
-    createCatalogBlocklistResult: (catalog, blocklist) => ({ kind: 'catalog-blocklist', catalog, blocklist })
-  })
-
-  const installed = await ipcMain.handlers.get(IPC.CATALOG_INSTALL_SELECTION)(null, { selectionId: 'sel-1' })
-  const blocked = await ipcMain.handlers.get(IPC.CATALOG_ADD_BLOCKLIST)(null, { sourceUrl: 'https://example.com' })
-
-  assert.equal(reloadCalls.length, 1)
-  assert.deepEqual(installed, {
-    kind: 'pet-pack',
-    itemId: 'starter-pack',
-    petPacks: { activePackId: 'starter-pack' },
-    animations: { actions: ['wave'] },
-    catalog: { kind: 'catalog-view', catalog: { items: ['starter-pack'] } }
-  })
-  assert.deepEqual(blocked, {
-    kind: 'catalog-blocklist',
-    catalog: { items: ['starter-pack'] },
-    blocklist: [{ sourceUrl: 'https://example.com', added: true }]
-  })
-  assert.ok(ipcMain.handlers.has(IPC.CATALOG_CLEAR_SELECTION))
 })

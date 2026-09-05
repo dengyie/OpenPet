@@ -158,11 +158,13 @@ function CatalogItem({
   item,
   kind,
   preparing,
+  installing,
   onPrepareInstall
 }: {
   item: CatalogPluginEntry | CatalogPetPackEntry
   kind: CatalogItemKind
   preparing: string
+  installing: boolean
   onPrepareInstall: (kind: CatalogItemKind, itemId: string) => void | Promise<void>
 }) {
   const key = `${kind}:${item.id}`
@@ -190,7 +192,7 @@ function CatalogItem({
       <button
         type="button"
         className="primary"
-        disabled={!item.downloadable || item.blockStatus?.blocked || preparing === key}
+        disabled={installing || Boolean(preparing) || !item.downloadable || item.blockStatus?.blocked || preparing === key}
         onClick={() => onPrepareInstall(kind, item.id)}
       >
         {preparing === key ? '下载中' : item.updateAvailable ? 'Update' : 'Install'}
@@ -203,18 +205,20 @@ function BlocklistList({
   title,
   type,
   values,
+  disabled,
   onRemoveBlocklistEntry
 }: {
   title: string
   type: CatalogBlocklistEntry['type']
   values: string[]
+  disabled: boolean
   onRemoveBlocklistEntry: (type: CatalogBlocklistEntry['type'], value: string) => void | Promise<void>
 }) {
   return (
     <div className="blocklist-column">
       <strong>{title}</strong>
       {values.length === 0 ? <span>暂无</span> : values.map((value) => (
-        <button type="button" className="ghost blocklist-token" key={value} onClick={() => onRemoveBlocklistEntry(type, value)}>
+        <button type="button" className="ghost blocklist-token" disabled={disabled} key={value} onClick={() => onRemoveBlocklistEntry(type, value)}>
           {value}
         </button>
       ))}
@@ -227,7 +231,7 @@ export function CatalogPane({ catalog, status, preparing, installing, selection,
     <PaneScaffold
       title="Catalog"
       description="插件与 Pet Pack 目录"
-      actions={<Button variant="ghost" onClick={onRefreshCatalog}>刷新</Button>}
+      actions={<Button variant="ghost" disabled={installing || Boolean(preparing)} onClick={onRefreshCatalog}>刷新</Button>}
     >
       <CatalogPluginReview
         selection={selection?.kind === 'plugin' ? selection : null}
@@ -251,7 +255,7 @@ export function CatalogPane({ catalog, status, preparing, installing, selection,
         </div>
         <div className="catalog-list">
           {catalog.plugins.length === 0 ? <EmptyState>暂无插件目录项</EmptyState> : catalog.plugins.map((item) => (
-            <CatalogItem item={item} kind="plugin" preparing={preparing} onPrepareInstall={onPrepareInstall} key={item.id} />
+            <CatalogItem item={item} kind="plugin" preparing={preparing} installing={installing} onPrepareInstall={onPrepareInstall} key={item.id} />
           ))}
         </div>
       </div>
@@ -265,7 +269,7 @@ export function CatalogPane({ catalog, status, preparing, installing, selection,
         </div>
         <div className="catalog-list">
           {catalog.petPacks.length === 0 ? <EmptyState>暂无 Pet Pack 目录项</EmptyState> : catalog.petPacks.map((item) => (
-            <CatalogItem item={item} kind="pet-pack" preparing={preparing} onPrepareInstall={onPrepareInstall} key={item.id} />
+            <CatalogItem item={item} kind="pet-pack" preparing={preparing} installing={installing} onPrepareInstall={onPrepareInstall} key={item.id} />
           ))}
         </div>
       </div>
@@ -284,12 +288,12 @@ export function CatalogPane({ catalog, status, preparing, installing, selection,
             <option value="sha256">SHA256</option>
           </select>
           <input className="text-input" value={blocklistDraft.value} onChange={(event) => onChangeBlocklistDraft({ ...blocklistDraft, value: event.target.value })} />
-          <button type="button" className="primary" disabled={!blocklistDraft.value.trim()} onClick={onAddBlocklistEntry}>添加</button>
+          <button type="button" className="primary" disabled={installing || Boolean(preparing) || !blocklistDraft.value.trim()} onClick={onAddBlocklistEntry}>添加</button>
         </div>
         <div className="blocklist-grid">
-          <BlocklistList title="Plugin IDs" type="pluginId" values={catalog.localBlocklist.pluginIds} onRemoveBlocklistEntry={onRemoveBlocklistEntry} />
-          <BlocklistList title="Pack IDs" type="packId" values={catalog.localBlocklist.packIds} onRemoveBlocklistEntry={onRemoveBlocklistEntry} />
-          <BlocklistList title="SHA256" type="sha256" values={catalog.localBlocklist.sha256} onRemoveBlocklistEntry={onRemoveBlocklistEntry} />
+          <BlocklistList title="Plugin IDs" type="pluginId" values={catalog.localBlocklist.pluginIds} disabled={installing || Boolean(preparing)} onRemoveBlocklistEntry={onRemoveBlocklistEntry} />
+          <BlocklistList title="Pack IDs" type="packId" values={catalog.localBlocklist.packIds} disabled={installing || Boolean(preparing)} onRemoveBlocklistEntry={onRemoveBlocklistEntry} />
+          <BlocklistList title="SHA256" type="sha256" values={catalog.localBlocklist.sha256} disabled={installing || Boolean(preparing)} onRemoveBlocklistEntry={onRemoveBlocklistEntry} />
         </div>
       </div>
 

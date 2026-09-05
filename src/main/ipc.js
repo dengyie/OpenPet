@@ -19,7 +19,6 @@ const { showPetContextMenuWindow } = require('./pet-context-menu-window')
 const { createBubbleRequestId } = require('./pet-bubble-chat-window')
 const { createLocalHttpToken } = require('./services/local-http-service')
 const { registerAiIpc } = require('./ipc/register-ai-ipc')
-const { registerCatalogIpc } = require('./ipc/register-catalog-ipc')
 const { registerCreatorIpc } = require('./ipc/register-creator-ipc')
 const { registerPetRuntimeIpc } = require('./ipc/register-pet-runtime-ipc')
 const { registerPluginIpc } = require('./ipc/register-plugin-ipc')
@@ -44,8 +43,6 @@ const {
   createActionFrameImportResult,
   createActionTriggerProposalPreviewResult,
   createActionsMutationResult,
-  createCatalogBlocklistResult,
-  createCatalogView,
   createImageGenerationApiKeyResult,
   createImageGenerationConfigView,
   createImageGenerationHealthCheckResult,
@@ -143,7 +140,7 @@ const resolvePetSaySourceSurface = ({ source = '', requestSource = '' } = {}) =>
 /**
  * 注册所有 IPC 处理器。接收依赖注入对象，各 handler 只通过注入的函数访问外部能力。
  */
-const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, aiTalkService = null, hatchPetAgentService, petUtteranceLogService = null, petBubbleChatWindowService = null, imageGenerationModelService, behaviorOrchestratorService, triggerRuleRuntimeService = null, creatorStudioDefaultFlowService = null, creatorWorkflowService = null, pluginService, pluginInstallService, pluginGithubImportService, catalogService, localHttpService, actionService, actionImportService, cursorAssetService, systemCursorService, appLogService, applyWindowScale, applyPetViewport = () => {},
+const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, aiTalkService = null, hatchPetAgentService, petUtteranceLogService = null, petBubbleChatWindowService = null, imageGenerationModelService, behaviorOrchestratorService, triggerRuleRuntimeService = null, creatorStudioDefaultFlowService = null, creatorWorkflowService = null, pluginService, pluginInstallService, pluginGithubImportService, localHttpService, actionService, actionImportService, cursorAssetService, systemCursorService, appLogService, applyWindowScale, applyPetViewport = () => {},
   clampToWorkArea, getMovementState, createSettingsWindow, petMovementPolicy, petChatWindowService = null, sidecarRuntimeCoordinator = null, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain, screenService = screen, appService = app, showContextMenuWindow = showPetContextMenuWindow }) => {
   let pendingActionFrameSelection = null
 
@@ -1045,18 +1042,6 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     normalizeLocalHttpConfig,
     createLocalHttpToken,
     createServiceStatusView
-  })
-
-  registerCatalogIpc({
-    ipcMainService,
-    catalogService,
-    getPetWindow,
-    petService,
-    reloadAndSendAnimations,
-    refreshTriggerRuleRuntime,
-    getActionsViewState: () => createActionsViewState(petService, triggerRuleRuntimeService),
-    createCatalogView,
-    createCatalogBlocklistResult
   })
 
   return {

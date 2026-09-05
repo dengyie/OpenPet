@@ -42,6 +42,12 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 			const allowed = new Set(["type", "providerId", "ok", "error"])
 			if (Object.keys(body).some((key) => !allowed.has(key))) return "secrets.persist.result has unexpected fields"
 		}
+		if (expectedType === "catalog.result") {
+			const body = envelope.body
+			if (typeof body.ok !== "boolean") return "catalog.result has an invalid ok field"
+			if (body.ok && !Object.hasOwn(body, "result")) return "catalog.result has no result"
+			if (!body.ok && typeof body.error !== "string") return "catalog.result has no error"
+		}
 		return null
 	}
 
@@ -124,12 +130,14 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 	function request(body, options = {}) {
 		const timeoutMs = options.timeoutMs ?? DIALOG_RESULT_TIMEOUT_MS
 		// Keep legacy request callers permissive, but bind settings host-effect
-		// and provider-secret requests to their one legal response shape. Otherwise any allowlisted
+		// and provider-secret/Catalog requests to their one legal response shape. Otherwise any allowlisted
 		// Shell envelope reusing the request id could settle the wrong operation.
 		const expectedType = options.expectedType ?? (
 			body?.type === "settings.apply.request"
 				? "settings.apply.result"
-				: body?.type === "secrets.persist.request" ? "secrets.persist.result" : null
+				: body?.type === "secrets.persist.request"
+					? "secrets.persist.result"
+					: body?.type === "catalog.request" ? "catalog.result" : null
 		)
 		const envelope = dispatch(body, true)
 		if (envelope === null) return Promise.reject(new Error("shellClient 已销毁"))

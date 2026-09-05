@@ -64,6 +64,23 @@ test("runs the settings hydration callback after sidecar ready", async () => {
 	assert.deepEqual(hydrated, { baseUrl: "http://127.0.0.1:3210/api/v1", sessionToken: "session-token" })
 })
 
+test("forwards the Catalog owner handler to the sidecar message boundary", async () => {
+	const child = { send() {} }
+	const onCatalogRequest = async () => ({ plugins: [], petPacks: [] })
+	let handlerOptions
+	const coordinator = createSidecarRuntimeCoordinator({
+		spawnSidecar: async () => ({ child, baseUrl: "http://127.0.0.1:3210/api/v1", sessionToken: "session-token" }),
+		createMessageHandler: (options) => {
+			handlerOptions = options
+			return { handle: async () => {} }
+		},
+		onCatalogRequest,
+	})
+
+	await coordinator.start()
+	assert.equal(handlerOptions.onCatalogRequest, onCatalogRequest)
+})
+
 test("sends trusted settings persistence over the child-process bridge and correlates the result", async () => {
 	const sent = []
 	const harness = createHarness()

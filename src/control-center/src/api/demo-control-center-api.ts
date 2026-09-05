@@ -27,6 +27,7 @@ import type {
   AiPersonaProfileViewState,
   AiTalkTraceSummaryViewState,
   CatalogBlocklistEntry,
+  CatalogDemoApi,
   CatalogInstallRequest,
   CatalogPetPackInstallSelection,
   CatalogInstallSelection,
@@ -134,7 +135,9 @@ interface DemoState {
   creatorReferencePickerPath: string
 }
 
-let demoApi: ControlCenterApi
+type DemoControlCenterApi = ControlCenterApi & CatalogDemoApi
+
+let demoApi: DemoControlCenterApi
 
 const normalizeDemoProviderBaseUrl = (value: string) => {
   const raw = String(value || '').trim()
@@ -2752,7 +2755,7 @@ const installDemoCatalogPetPack = (selection: CatalogPetPackInstallSelection): P
   return clonePetPacks(demoState.petPacks)
 }
 
-export const demoControlCenterAPI: ControlCenterApi = {
+export const demoControlCenterAPI: DemoControlCenterApi = {
   previewScale: () => {},
   importCursor: async () => {
     const cursor: CustomCursorRecord = {

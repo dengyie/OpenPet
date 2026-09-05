@@ -297,6 +297,7 @@ runtime.catalog = createCatalogService({
 	root: join(dirname(fileURLToPath(import.meta.url)), "../.."),
 	db: runtime.db,
 	logger,
+	shell,
 	emit: (name, payload) => eventHub.publish(name, payload),
 })
 registerCatalogRoutes(router, {
@@ -420,7 +421,11 @@ if (!runtime.degraded && runtime.jobs) {
 		tmpRoot: runtime.tmpDir ?? join(runtime.userDataDir, "backend", "tmp"),
 		handlers: {
 			"about.check-updates": async ({ report }) => { report({ phase: "checking", percent: 25 }); return runtime.about.checkUpdates() },
-			"catalog.install": async ({ job, report, signal }) => { report({ phase: "installing", percent: 25 }); if (signal.aborted) throw signal.reason ?? new Error("Job canceled"); return runtime.catalog.install(job.input?.id) },
+			"catalog.install": async ({ job, report, signal, finalize }) => {
+				report({ phase: "installing", percent: 25 })
+				if (signal.aborted) throw signal.reason ?? new Error("Job canceled")
+				return finalize(() => runtime.catalog.installSelection(job.input?.selectionId))
+			},
 			"pet-pack.import": async ({ job, report, signal }) => runtime.petPacks.runImport({ ...job.input, signal, report }),
 			"pet-pack.export": async ({ job, report, signal }) => runtime.petPacks.runExport({ ...job.input, signal, report }),
 			"actions.import-frames": async ({ job, report, signal }) => runtime.actions.runImportFrames({ ...job.input, signal, report }),

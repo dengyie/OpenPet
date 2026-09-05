@@ -32,6 +32,16 @@ export const envelopeSchema = <T extends z.ZodTypeAny>(body: T) =>
 
 export type Envelope<T> = { v: 1; id: string; at: number; body: T }
 
+export const catalogRequestSchema = z.discriminatedUnion("operation", [
+  z.object({ operation: z.literal("listCatalog") }).strict(),
+  z.object({ operation: z.literal("prepareInstall"), kind: z.enum(["plugin", "pet-pack"]), itemId: z.string().min(1) }).strict(),
+  z.object({ operation: z.literal("installSelection"), selectionId: z.string().min(1) }).strict(),
+  z.object({ operation: z.literal("clearSelection"), selectionId: z.string().min(1) }).strict(),
+  z.object({ operation: z.literal("addBlocklistEntry"), type: z.enum(["pluginId", "packId", "sha256"]), value: z.string().min(1) }).strict(),
+  z.object({ operation: z.literal("removeBlocklistEntry"), type: z.enum(["pluginId", "packId", "sha256"]), value: z.string().min(1) }).strict(),
+])
+export type CatalogBridgeRequest = z.infer<typeof catalogRequestSchema>
+
 export const backendToShellSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("pet.say"), text: z.string(), durationMs: z.number().int().positive().optional() }),
   z.object({ type: z.literal("pet.playAction"), actionId: z.string(), loop: z.boolean().optional() }),
@@ -52,6 +62,7 @@ export const backendToShellSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("settings.apply.request"), paths: z.array(z.string()), version: z.number().int().nonnegative(), values: z.record(z.string(), z.unknown()).optional() }),
   z.object({ type: z.literal("settings.persist.result"), version: z.number().int().nonnegative(), ok: z.boolean(), changedPaths: z.array(z.string()), error: z.string().optional(), errorCode: z.string().optional() }),
   z.object({ type: z.literal("secrets.persist.request"), providerId: z.string().min(1), value: z.string().min(1).nullable() }).strict(),
+  z.object({ type: z.literal("catalog.request"), request: catalogRequestSchema }).strict(),
 ])
 export type BackendToShell = z.infer<typeof backendToShellSchema>
 
@@ -83,6 +94,7 @@ export const shellToBackendSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("settings.apply.result"), version: z.number().int().nonnegative(), ok: z.boolean(), error: z.string().optional() }),
   z.object({ type: z.literal("settings.persist.request"), ifVersion: z.number().int().nonnegative(), patch: z.record(z.string(), z.unknown()) }),
   z.object({ type: z.literal("secrets.persist.result"), providerId: z.string().min(1), ok: z.boolean(), error: z.string().optional() }).strict(),
+  z.object({ type: z.literal("catalog.result"), ok: z.boolean(), result: z.unknown().optional(), error: z.string().optional() }).strict(),
 ])
 export type ShellToBackend = z.infer<typeof shellToBackendSchema>
 

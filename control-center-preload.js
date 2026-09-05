@@ -124,12 +124,6 @@ const IPC = {
   SERVICE_CLEAR_LOGS: 'service:clear-logs',
   SERVICE_ROTATE_TOKEN: 'service:rotate-token',
   SERVICE_REVOKE_MCP_SESSIONS: 'service:revoke-mcp-sessions',
-  CATALOG_GET: 'catalog:get',
-  CATALOG_PREPARE_INSTALL: 'catalog:prepare-install',
-  CATALOG_INSTALL_SELECTION: 'catalog:install-selection',
-  CATALOG_CLEAR_SELECTION: 'catalog:clear-selection',
-  CATALOG_ADD_BLOCKLIST: 'catalog:add-blocklist',
-  CATALOG_REMOVE_BLOCKLIST: 'catalog:remove-blocklist'
 }
 
 contextBridge.exposeInMainWorld('controlCenterAPI', {
@@ -258,12 +252,6 @@ contextBridge.exposeInMainWorld('controlCenterAPI', {
   clearServiceLogs: () => ipcRenderer.invoke(IPC.SERVICE_CLEAR_LOGS),
   rotateServiceToken: () => ipcRenderer.invoke(IPC.SERVICE_ROTATE_TOKEN),
   revokeMcpSessions: () => ipcRenderer.invoke(IPC.SERVICE_REVOKE_MCP_SESSIONS),
-  getCatalog: () => ipcRenderer.invoke(IPC.CATALOG_GET),
-  prepareCatalogInstall: (payload) => ipcRenderer.invoke(IPC.CATALOG_PREPARE_INSTALL, payload),
-  installCatalogSelection: (selectionId) => ipcRenderer.invoke(IPC.CATALOG_INSTALL_SELECTION, { selectionId }),
-  clearCatalogSelection: (selectionId) => ipcRenderer.invoke(IPC.CATALOG_CLEAR_SELECTION, { selectionId }),
-  addCatalogBlocklistEntry: (payload) => ipcRenderer.invoke(IPC.CATALOG_ADD_BLOCKLIST, payload),
-  removeCatalogBlocklistEntry: (payload) => ipcRenderer.invoke(IPC.CATALOG_REMOVE_BLOCKLIST, payload),
   close: () => ipcRenderer.send(IPC.SETTINGS_CLOSE)
 })
 
