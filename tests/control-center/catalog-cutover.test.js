@@ -195,7 +195,7 @@ describe("T42 Catalog cutover boundary", () => {
 		assert.match(pane, /disabled=\{installing \|\| Boolean\(preparing\) \|\| !blocklistDraft\.value\.trim\(\)\}/)
 	})
 
-	it("records all six Catalog paths as blocked until ledger synchronization", () => {
+	it("records all six Catalog paths as retired after the T42 cutover", () => {
 		const ledger = read("docs/refactor/15-channel-retirement.md")
 		for (const channel of [
 			"catalog:get",
@@ -204,6 +204,6 @@ describe("T42 Catalog cutover boundary", () => {
 			"catalog:clear-selection",
 			"catalog:add-blocklist",
 			"catalog:remove-blocklist",
-		]) assert.match(ledger, new RegExp("\\| `" + channel + "` \\| `blocked:T42` \\|"), channel)
+		]) assert.match(ledger, new RegExp("\\| `" + channel + "` \\| `retired` \\|"), channel)
 	})
 })

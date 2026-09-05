@@ -1,10 +1,10 @@
 # 15 · IPC 通道退役台账
 
-> v1.2 · 2026-09-05 · T42 · 以 `src/shared/ipc-channels.ts` 为当前清单
+> v1.3 · 2026-09-05 · T42 · 以 `src/shared/ipc-channels.ts` 为当前清单
 
-本台账登记当前 148 个 IPC 常量的去向。`keep` 是 02 篇允许长期存在的窗口/原生边界；`cutover:<domain>` 表示 03 篇已有 HTTP/SSE 对等入口；`blocked:Txx` 表示等待指定任务卡完成后再切换；`retired` 表示已从当前清单删除并保留历史记录；`dead` 仅用于确认没有生产调用方的遗留常量。
+本台账登记当前 140 个 IPC 常量的去向。`keep` 是 02 篇允许长期存在的窗口/原生边界；`cutover:<domain>` 表示 03 篇已有 HTTP/SSE 对等入口；`blocked:Txx` 表示等待指定任务卡完成后再切换；`retired` 表示已从当前清单删除并保留历史记录；`dead` 仅用于确认没有生产调用方的遗留常量。
 
-当前台账由 140 个 `ipcMainService.handle/on` 注册和 8 个事件-only 通道组成。Source 列是实际生产引用文件，不是推测路径；门禁会逐项检查 TS/JS 清单、注册/事件来源、重复项和未知 `IPC.*` 引用。
+当前台账由 134 个 `ipcMainService.handle/on` 注册和 6 个事件-only 通道组成。Source 列是实际生产引用文件，不是推测路径；门禁会逐项检查 TS/JS 清单、注册/事件来源、重复项和未知 `IPC.*` 引用。
 
 T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `keep ≤ 41`，因此新增的 QQ/WeCom 四个 host-secret 通道登记为 `blocked:T44`，而不是伪装成长期 keep。T41 及后续任务可把已删除常量保留为 `retired` 历史行，并在 Retired by 列记录提交 SHA；历史行不计入当前通道对账或 keep 上限。
 
@@ -12,14 +12,14 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 
 | Scope | Count |
 | --- | ---: |
-| Current IPC constants | 148 |
-| Current direct registrations | 140 |
-| Current event-only channels | 8 |
+| Current IPC constants | 140 |
+| Current direct registrations | 134 |
+| Current event-only channels | 6 |
 | Current keep | 41 |
 | Current cutover | 29 |
-| Current blocked | 78 |
+| Current blocked | 70 |
 | Current dead | 0 |
-| Historical retired | 10 |
+| Historical retired | 18 |
 
 ## Ledger
 
@@ -80,15 +80,15 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 | `actions:update-trigger-rule` | `blocked:T42` | `PATCH /actions/triggers/rules/:id` — placeholder | `src/main/ipc.js` | Backend does not persist or refresh the Shell trigger runtime | — |
 | `actions:delete-trigger-rule` | `blocked:T42` | `DELETE /actions/triggers/rules/:id` — placeholder | `src/main/ipc.js` | Backend does not persist or refresh the Shell trigger runtime | — |
 | `actions:delete` | `blocked:T42` | `DELETE /actions/:id` — non-equivalent write | `src/main/ipc.js` | Backend edits only legacy JSON; Shell also owns active-pack persistence, frame/sprite cleanup, animation reload, and trigger refresh | — |
-| `pet-packs:list` | `blocked:T42` | `GET /pet-packs` — sidecar-only snapshot | `src/main/ipc.js` | Backend owns a process-local `activePackId` and omits the Shell `PetPackService` root path, provenance, package, action, validity, and block metadata; no existing Shell snapshot bridge provides parity | — |
+| `pet-packs:list` | `retired` | `GET /pet-packs` | `src/main/ipc.js` | Pet Pack state is served through the Shell-owned reverse bridge and Backend HTTP | 490357f7 |
 | `pet-packs:inspect-directory` | `keep` | `IPC-only (native/window)` | `src/main/ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet-packs:clear-selection` | `blocked:T42` | `POST /pet-packs/validate` — no selection-clear peer | `src/main/ipc.js` | Validation accepts a filesystem path but cannot clear the Shell `PetPackService` pending selection handle | — |
-| `pet-packs:import` | `blocked:T42` | `POST /pet-packs/import` — asynchronous ZIP-only sidecar job | `src/main/ipc.js` | Shell IPC consumes a pending directory or ZIP selection synchronously and can activate the pack, reload animations, and refresh chat; Backend accepts a ZIP path and returns a Job submission | — |
-| `pet-packs:export` | `blocked:T42` | `POST /pet-packs/:id/export` — asynchronous sidecar job | `src/main/ipc.js` | Shell IPC owns the native output picker and returns completed archive metadata; Backend returns a Job submission against separate sidecar state | — |
-| `pet-packs:set-active` | `blocked:T42` | `POST /pet-packs/:id/activate` — sidecar-only activation | `src/main/ipc.js` | Backend mutates only its process-local active id and does not update Shell settings, `PetPackService`, animations, trigger rules, or AI/chat context | — |
-| `pet-packs:active-changed` | `blocked:T42` | `SSE pet.pack-activated` — not emitted by Shell activation | `control-center-preload.js` | The SSE event covers only Backend-side activation and lacks the Shell mutation payload and runtime refresh effects | — |
-| `pet-packs:remove` | `blocked:T42` | `DELETE /pet-packs/:id` — sidecar-only mutation | `src/main/ipc.js` | Backend removes from separate sidecar state without reconciling Shell settings, active-pack safeguards, animations, or chat context | — |
-| `control-center:active-pet-pack-changed` | `blocked:T42` | `SSE pet.pack-activated` — no Shell event parity | `control-center-preload.js` | The retained Shell event carries refreshed Pet Pack and chat state; Backend SSE is not emitted for the Shell path and does not carry that payload | — |
+| `pet-packs:clear-selection` | `retired` | `POST /pet-packs/validate` | `src/main/ipc.js` | Selection lifecycle is handled through the Shell Pet Pack reverse bridge | 490357f7 |
+| `pet-packs:import` | `retired` | `POST /pet-packs/import` → Job | `src/main/ipc.js` | Import job delegates to the Shell-owned Pet Pack service | 490357f7 |
+| `pet-packs:export` | `retired` | `POST /pet-packs/:id/export` → Job | `src/main/ipc.js` | Export job delegates to the Shell-owned Pet Pack service | 490357f7 |
+| `pet-packs:set-active` | `retired` | `POST /pet-packs/:id/activate` | `src/main/ipc.js` | Activation and runtime refresh are owned by the Shell bridge | 490357f7 |
+| `pet-packs:active-changed` | `retired` | `SSE pet.pack-activated` | `control-center-preload.js` | Active-pack updates are delivered through SSE after Shell activation | 490357f7 |
+| `pet-packs:remove` | `retired` | `DELETE /pet-packs/:id` | `src/main/ipc.js` | Removal delegates to the Shell-owned Pet Pack service | 490357f7 |
+| `control-center:active-pet-pack-changed` | `retired` | `SSE pet.pack-activated` | `control-center-preload.js` | Control Center now invalidates Pet Pack state from SSE | 490357f7 |
 | `ai:get-config` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
 | `ai:save-config` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
 | `ai:save-api-key` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
@@ -187,7 +187,7 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 ## Operating rules
 
 - `npm run check:channel-retirement` 对当前 active 行与 TS 清单逐项对账；active 必须精确覆盖当前常量，历史 `retired` 行可以不再存在于当前源。
-- 当前通道上限为 154，后续提交只能减少 active 数量；新增 IPC 常量必须先更新本台账和 T40 依据。
+- 当前通道上限为 158，后续提交只能减少 active 数量；新增 IPC 常量必须先更新本台账和 T40 依据。
 - `retired` 行必须保留原 channel、真实历史 source、删除提交的完整或短 SHA（至少 7 位）；它不计入 current、keep、cutover、blocked、dead 计数。
 - `keep` 上限是 41。四个 QQ/WeCom host-secret 通道等待 T44 的 secrets 边界，不能借 `keep` 绕过上限。
 - `cutover` 行在同一切换提交中完成 HTTP/SSE 接入、旧 IPC 删除和台账状态更新；不得先并行双写再补删除。

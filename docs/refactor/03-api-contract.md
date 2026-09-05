@@ -1,6 +1,6 @@
 # 03 · API 契约与通信协议
 
-> 🔌 本篇是前后端并行开发的唯一依据。契约未定稿前不得开始写业务代码。当前 148 个 IPC 通道的去向已在本篇逐域定义。
+> 🔌 本篇是前后端并行开发的唯一依据。契约未定稿前不得开始写业务代码。当前 140 个 IPC 通道的去向已在本篇逐域定义。
 
 ## 1. 协议基础
 
@@ -96,7 +96,7 @@
 
 **专用业务码**(搭配 400/409/423):`PLUGIN_MANIFEST_INVALID`、`PLUGIN_ALREADY_RUNNING`、`PLUGIN_NATIVE_NOT_APPROVED`、`PET_PACK_INCOMPATIBLE`、`ACTION_FRAMES_MISSING`、`AI_KEY_NOT_CONFIGURED`、`JOB_NOT_CANCELABLE`、`MIGRATION_REQUIRED`。
 
-## 3. 148 个通道的去向总表
+## 3. 140 个通道的去向总表
 
 | 域 | 通道数 | 留 IPC | 迁 HTTP | 备注 |
 | --- | --- | --- | --- | --- |
@@ -105,16 +105,16 @@
 | `PET_BUBBLE_CHAT_*` | 11 | 11 | 0 | 窗口控制 |
 | `SETTINGS_*` | 5 | 2 | 3 | `OPEN`/`CLOSE` 留(开窗); `GET`/`SAVE` 已在 T41 退役 |
 | `ACTIONS_*` | 13 | 1 | 12 | `INSPECT_FRAMES` 弹框部分留 IPC,路径校验走 HTTP(两段式);其余 12 条当前登记 `blocked:T42`,待完整 view/副作用契约对等后切换 |
-| `PET_PACKS_*` | 9 | 1 | 8 | 导入需弹框 |
+| `PET_PACKS_*` | 1 | 1 | 0 | 仅 `INSPECT_DIRECTORY` 保留原生弹框；其余 8 个通道已在 T42 同一提交退休 |
 | AI 总域 | 37 | 0 | 37 | 全迁 |
 | `PLUGINS_*` | 29 | 6 | 23 | `OPEN_DASHBOARD`、`INSPECT_PACKAGE`、QQ/WeCom 凭据保存/清除留 |
 | `CREATOR_*` | 13 | 0 | 13 | 多数转 Job |
 | `SERVICE_*` | 7 | 0 | 7 | 全迁 |
 | `ABOUT_*` | 0 | 0 | 0 | `about:get-info` / `about:check-updates` 已在 T42 退休；能力改由 Backend HTTP/Job 提供 |
 | `CATALOG_*` | 0 | 0 | 0 | 6 个 Catalog 通道已在 T42 同一提交中退休；HTTP 路由仍由 Backend 提供 |
-| **合计** | **148** | **45** | **103** | |
+| **合计** | **140** | **45** | **95** | |
 
-> **实现登记（T42，评审 v1.0）**：本表只统计当前 IPC 通道；后端支撑模块不会另增 IPC 通道。`services/backend/domains/local-http.js` 承接 `SERVICE_*` 的 7 个迁移通道，`services/backend/jobs/dispatcher.js` 只负责 §6 Job 入队/派发与 `job.created` 推送，二者均已包含在上面的既有行中。`settings:get`、`settings:save`、`about:get-info`、`about:check-updates` 与 6 个 Catalog 通道已退休，不再计入当前清单。`check:api-contract` 以 `src/shared/ipc-channels.ts` 为清单逐项复算：**148 = 45 留 IPC + 103 迁 HTTP**。
+> **实现登记（T42，评审 v1.0）**：本表只统计当前 IPC 通道；后端支撑模块不会另增 IPC 通道。`services/backend/domains/local-http.js` 承接 `SERVICE_*` 的 7 个迁移通道，`services/backend/jobs/dispatcher.js` 只负责 §6 Job 入队/派发与 `job.created` 推送，二者均已包含在上面的既有行中。`settings:get`、`settings:save`、`about:get-info`、`about:check-updates`、6 个 Catalog 通道与 8 个 Pet Pack 通道已退休，不再计入当前清单。`check:api-contract` 以 `src/shared/ipc-channels.ts` 为清单逐项复算：**140 = 45 留 IPC + 95 迁 HTTP**。
 
 ## 4. 路由表
 
@@ -183,15 +183,15 @@
 
 | 方法 | 路径 | 源 IPC |
 | --- | --- | --- |
-| GET | `/pet-packs` | `PET_PACKS_GET` |
-| POST | `/pet-packs/import` | `PET_PACKS_IMPORT`(传路径)→ **Job** |
-| POST | `/pet-packs/{id}/activate` | `PET_PACKS_SET_ACTIVE` |
-| DELETE | `/pet-packs/{id}` | `PET_PACKS_DELETE` |
-| POST | `/pet-packs/{id}/export` | `PET_PACKS_EXPORT` → **Job** |
-| GET | `/pet-packs/{id}/manifest` | `PET_PACKS_GET_MANIFEST` |
-| POST | `/pet-packs/validate` | `PET_PACKS_VALIDATE` |
+| GET | `/pet-packs` | `pet-packs:list`（T42 退休） |
+| POST | `/pet-packs/import` | `pet-packs:import`（T42 退休）→ **Job** |
+| POST | `/pet-packs/{id}/activate` | `pet-packs:set-active`（T42 退休） |
+| DELETE | `/pet-packs/{id}` | `pet-packs:remove`（T42 退休） |
+| POST | `/pet-packs/{id}/export` | `pet-packs:export`（T42 退休） → **Job** |
+| GET | `/pet-packs/{id}/manifest` | `pet-packs:list`（T42 退休） |
+| POST | `/pet-packs/validate` | `pet-packs:clear-selection`（T42 退休） |
 
-本表 7 条路由,而 §3 记 `PET_PACKS_*` 9 个通道中有 8 个迁 HTTP。差的那 1 个是 `CONTROL_CENTER_ACTIVE_PET_PACK_CHANGED` —— 它是**事件而非请求**,迁移后变成 SSE 的 `pet.pack-activated`(见 §5),不占路由。另 1 个留 IPC 的是导入时的原生弹框。
+本表 7 条路由；Pet Pack 的 9 个历史通道中仅 `pet-packs:inspect-directory` 留在 IPC，其余 8 个已在 T42 同一提交退休。`pet-packs:active-changed` 与 `control-center:active-pet-pack-changed` 是事件通道，迁移后由 SSE `pet.pack-activated` 承担。
 
 ### 4.6 AI(37 个通道全迁)
 
