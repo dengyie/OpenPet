@@ -147,7 +147,7 @@ export function createRunner({
 			record.phase = frame.phase ?? null
 			repo.setProgress(record.jobId, frame)
 			repo.appendEvent?.(record.jobId, frame)
-			emit?.("job.progress", { jobId: record.jobId, ...frame })
+			emit?.("job.progress", { jobId: record.jobId, kind: record.kind, ...frame })
 		}
 		if (typeof progress === "function") return progress({ onEmit: persist, jobId: record.jobId })
 		if (typeof progress?.create === "function") return progress.create({ onEmit: persist, jobId: record.jobId })
@@ -167,6 +167,7 @@ export function createRunner({
 		if (tmpDir !== null) fs.mkdirSync(tmpDir, { recursive: true })
 		const record = {
 			jobId: job.id,
+			kind: job.kind,
 			controller: new AbortController(),
 			processHandle: null,
 			phase: job.progress?.phase ?? null,

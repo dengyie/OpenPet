@@ -1,7 +1,16 @@
 "use strict"
 
 const assert = require("node:assert/strict")
+const fs = require("node:fs")
+const os = require("node:os")
+const path = require("node:path")
 const { test } = require("node:test")
+
+const { createAiService } = require("../../services/backend/domains/ai/image-generation.js")
+
+function tempDir(prefix) {
+	return fs.mkdtempSync(path.join(os.tmpdir(), prefix))
+}
 
 test("T46 image route enqueues without awaiting generation", async () => {
 	const { registerAiRoutes } = await import("../../services/backend/routes/ai.js")
@@ -31,4 +40,76 @@ test("T46 image handler makes finalization the cancellation boundary", async () 
 	assert.deepEqual(result, { ok: true })
 	assert.equal(finalized, true)
 	assert.equal(committed, true)
+})
+
+test("T46 runner publishes image progress as SSE-compatible job events", async () => {
+	const [{ createJobsRepository }, { createQueue }, { createRunner }, { migrate }, { openDatabase }] = await Promise.all([
+		import("../../services/backend/store/repositories/jobs.js"),
+		import("../../services/backend/jobs/queue.js"),
+		import("../../services/backend/jobs/runner.js"),
+		import("../../services/backend/store/migrate.js"),
+		import("../../services/backend/store/db.js"),
+	])
+	const db = await openDatabase({ file: ":memory:" })
+	try {
+		migrate({ db })
+		const repo = createJobsRepository({ db })
+		const queue = createQueue({ repo, tickMs: 60_000 })
+		const frames = []
+		const runner = createRunner({
+			repo,
+			queue,
+			progress: ({ onEmit }) => ({ report: onEmit, flush: () => {}, reset: () => {} }),
+			emit: (name, payload) => { if (name === "job.progress") frames.push({ name, payload }) },
+			handlers: { "image.generate": async ({ report, finalize }) => { report({ phase: "generating", percent: 20 }); return finalize(() => ({ ok: true })) } },
+		})
+		queue.enqueue({ id: "sse-image", kind: "image.generate", input: {} })
+		await runner.run(queue.next())
+		assert.deepEqual(frames.map(({ name }) => name), ["job.progress", "job.progress"])
+		assert.deepEqual(frames.map(({ payload }) => payload.phase), ["generating", "finalizing"])
+		assert.ok(frames.every(({ payload }) => payload.jobId === "sse-image" && payload.kind === "image.generate"))
+		queue.stop()
+	} finally {
+		db.close()
+	}
+})
+
+test("T46 image commit rejects symlink escapes and rolls back partial multi-file staging", async () => {
+	const root = tempDir("openpet-t46-data-")
+	const tmp = tempDir("openpet-t46-tmp-")
+	const outside = tempDir("openpet-t46-outside-")
+	const ai = createAiService({
+		settings: { read: () => ({ version: 1, values: { models: { imageGeneration: {} } } }), patch: () => ({}) },
+		secrets: { get: () => "" },
+		userDataDir: root,
+	})
+	try {
+		fs.mkdirSync(path.join(tmp, "outputs"), { recursive: true })
+		fs.writeFileSync(path.join(tmp, "outputs", "one.png"), "one")
+		await assert.rejects(
+			ai.commitGeneratedImage({ tmpDir: tmp, destination: { dataDir: root, dataRelativeDir: "images" }, result: { outputs: [{ dataRelativePath: "outputs/one.png" }, { dataRelativePath: "outputs/missing.png" }] } }),
+		)
+		assert.equal(fs.existsSync(path.join(root, "images")), false)
+
+		fs.symlinkSync(outside, path.join(root, "escaped"), "dir")
+		await assert.rejects(
+			ai.commitGeneratedImage({ tmpDir: tmp, destination: { dataDir: root, dataRelativeDir: "escaped" }, result: { outputs: [{ dataRelativePath: "outputs/one.png" }] } }),
+		)
+		assert.equal(fs.readdirSync(outside).length, 0)
+	} finally {
+		fs.rmSync(root, { recursive: true, force: true })
+		fs.rmSync(tmp, { recursive: true, force: true })
+		fs.rmSync(outside, { recursive: true, force: true })
+	}
+})
+
+test("T46 maps the canonical image secret ref to its provider key without fallback leakage", () => {
+	const calls = []
+	const ai = createAiService({
+		settings: { read: () => ({ version: 1, values: { models: { imageGeneration: { apiKeyRef: "secret:model.image.openai.apiKey" } } } }), patch: () => ({}) },
+		secrets: { get: (id) => { calls.push(id); return id === "openai" ? "image-secret" : "wrong-secret" } },
+	})
+	assert.equal(ai.getConfig().hasApiKey, true)
+	assert.ok(calls.length >= 1)
+	assert.ok(calls.every((id) => id === "openai"))
 })

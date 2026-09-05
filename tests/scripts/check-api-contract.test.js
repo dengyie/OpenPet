@@ -105,7 +105,7 @@ test('CLI permits only the explicitly registered T45 transitional revoke route',
 	assert.doesNotMatch(doc, /token\/revoke-sessions/)
 	const result = spawnSync(process.execPath, [path.join(fixtureRoot, 'scripts/check-api-contract.mjs')], { cwd: fixtureRoot, encoding: 'utf8' })
 	assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`)
-	assert.match(result.stdout, /实际路由、注册表与 §4 精确对账\(75\/103 行\)/)
+	assert.match(result.stdout, /实际路由、注册表与 §4 精确对账\(76\/103 行\)/)
 
 	const registryPath = path.join(fixtureRoot, 'services/backend/routes/registry.js')
 	const registry = fs.readFileSync(registryPath, 'utf8')

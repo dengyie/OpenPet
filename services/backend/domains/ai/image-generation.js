@@ -1,5 +1,6 @@
-import { copyFileSync, mkdirSync, statSync } from "node:fs"
-import { join, relative, resolve } from "node:path"
+import fs from "node:fs"
+import { randomUUID } from "node:crypto"
+import { join, relative, resolve, dirname, sep } from "node:path"
 import { createRequire } from "node:module"
 
 const require = createRequire(import.meta.url)
@@ -16,11 +17,45 @@ function settingsAdapter(settings) {
 }
 
 function secretAdapter(secrets) {
-	return {
-		getSecretValue: (ref) => secrets.get(ref) || secrets.get(String(ref).replace(/^secret:/, "")) || secrets.get("openai"),
-		setSecret: ({ id, value }) => secrets.set(id || "openai", value),
-		deleteSecret: (ref) => secrets.clear(ref || "openai"),
+	const secretId = (ref) => {
+		const value = String(ref || "").trim()
+		const imageRef = value.match(/^secret:model\.image\.([^\.]+)\.apiKey$/)
+		return imageRef ? imageRef[1] : value.replace(/^secret:/, "")
 	}
+	return {
+		getSecretValue: (ref) => secrets.get(secretId(ref)),
+		setSecret: ({ id, value }) => secrets.set(secretId(id || "openai"), value),
+		deleteSecret: (ref) => secrets.clear(secretId(ref || "openai")),
+	}
+}
+
+function assertContained(root, candidate, message) {
+	const rootPath = resolve(root)
+	const candidatePath = resolve(candidate)
+	const within = candidatePath === rootPath || relative(rootPath, candidatePath).split(sep)[0] !== ".."
+	if (!within || candidatePath.startsWith(`${rootPath}${sep}`) === false && candidatePath !== rootPath) throw new Error(message)
+}
+
+function realPathIfPresent(candidate) {
+	try { return fs.realpathSync.native(candidate) } catch (error) {
+		if (error?.code !== "ENOENT") throw error
+		return null
+	}
+}
+
+function assertRealContained(root, candidate, message) {
+	assertContained(root, candidate, message)
+	const realRoot = fs.realpathSync.native(root)
+	let current = resolve(candidate)
+	while (!fs.existsSync(current)) {
+		const parent = dirname(current)
+		if (parent === current) break
+		current = parent
+	}
+	const realExisting = realPathIfPresent(current)
+	if (!realExisting) throw new Error(message)
+	if (relative(realRoot, realExisting).split(sep)[0] === ".." || realExisting !== realRoot && !realExisting.startsWith(`${realRoot}${sep}`)) throw new Error(message)
+	return realExisting
 }
 
 export function createAiService({ settings, secrets, fetchImpl, logger, userDataDir } = {}) {
@@ -56,14 +91,33 @@ export function createAiService({ settings, secrets, fetchImpl, logger, userData
 		const sourceDir = resolve(sourceRoot, "outputs")
 		const targetDir = resolve(targetRoot, relativeDir)
 		const allowedRoot = userDataDir ? resolve(userDataDir) : targetRoot
-		if (relative(allowedRoot, targetRoot).startsWith("..") || relative(sourceRoot, sourceDir).startsWith("..") || relative(targetRoot, targetDir).startsWith("..")) throw new Error("Image generation output path is invalid")
-		mkdirSync(targetDir, { recursive: true })
+		if (!fs.existsSync(allowedRoot)) fs.mkdirSync(allowedRoot, { recursive: true })
+		assertRealContained(allowedRoot, targetRoot, "Image generation output path is invalid")
+		assertRealContained(targetRoot, targetDir, "Image generation output path is invalid")
+		assertRealContained(sourceRoot, sourceDir, "Prepared image artifact is invalid")
 		const outputs = prepared.result.outputs ?? []
-		for (const output of outputs) {
-			const name = String(output.dataRelativePath || "").split("/").at(-1)
-			const source = resolve(sourceDir, name)
-			if (!name || relative(sourceDir, source).startsWith("..") || !statSync(source).isFile()) throw new Error("Prepared image artifact is invalid")
-			copyFileSync(source, join(targetDir, name))
+		const stageDir = `${targetDir}.openpet-staging-${randomUUID()}`
+		try {
+			fs.mkdirSync(stageDir, { recursive: false })
+			assertRealContained(targetRoot, stageDir, "Image generation output path is invalid")
+			for (const output of outputs) {
+				const relativeOutput = String(output.dataRelativePath || "").replaceAll("\\", "/")
+				const name = relativeOutput.startsWith("outputs/") ? relativeOutput.slice("outputs/".length) : relativeOutput
+				const source = resolve(sourceDir, name)
+				const staged = resolve(stageDir, name)
+				if (!name || !fs.existsSync(source) || !fs.statSync(source).isFile()) throw new Error("Prepared image artifact is invalid")
+				assertContained(sourceDir, source, "Prepared image artifact is invalid")
+				assertContained(stageDir, staged, "Image generation output path is invalid")
+				const realSource = fs.realpathSync.native(source)
+				assertRealContained(sourceDir, realSource, "Prepared image artifact is invalid")
+				fs.mkdirSync(dirname(staged), { recursive: true })
+				fs.copyFileSync(realSource, staged)
+			}
+			if (fs.existsSync(targetDir)) throw new Error("Image generation output directory already exists")
+			fs.renameSync(stageDir, targetDir)
+		} catch (error) {
+			try { fs.rmSync(stageDir, { recursive: true, force: true }) } catch {}
+			throw error
 		}
 		return prepared.result
 	}
