@@ -5,12 +5,12 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 
-const ipcPath = require.resolve('../../src/main/ipc')
-const { IPC } = require('../../src/shared/ipc-channels')
-const { createEventBus } = require('../../src/main/services/event-bus')
-const { createPetService } = require('../../src/main/services/pet-service')
-const { createAiTalkStore } = require('../../src/main/services/ai-talk-store')
-const { createAiTalkService } = require('../../src/main/services/ai-talk-service')
+const ipcPath = require.resolve('../../apps/desktop/src/ipc')
+const { IPC } = require('../../apps/desktop/src/shared/ipc-channels')
+const { createEventBus } = require('../../apps/desktop/src/services/event-bus')
+const { createPetService } = require('../../apps/desktop/src/services/pet-service')
+const { createAiTalkStore } = require('../../apps/desktop/src/services/ai-talk-store')
+const { createAiTalkService } = require('../../apps/desktop/src/services/ai-talk-service')
 
 const loadIpcWithElectron = (electronStub) => {
   delete require.cache[ipcPath]

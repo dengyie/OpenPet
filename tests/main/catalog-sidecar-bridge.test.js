@@ -3,7 +3,7 @@
 const assert = require("node:assert/strict")
 const { describe, it } = require("node:test")
 
-const { createCatalogSidecarBridge } = require("../../src/main/catalog-sidecar-bridge.js")
+const { createCatalogSidecarBridge } = require("../../apps/desktop/src/services/catalog-sidecar-bridge.js")
 
 function createHarness() {
 	const calls = []

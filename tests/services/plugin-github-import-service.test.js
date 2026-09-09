@@ -4,7 +4,7 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 
-const { createPluginGithubImportService } = require('../../src/main/services/plugin-github-import-service')
+const { createPluginGithubImportService } = require('../../apps/desktop/src/services/plugin-github-import-service')
 
 const createResponse = (body, { ok = true, status = 200, headers = {} } = {}) => ({
   ok,

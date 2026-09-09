@@ -6,10 +6,10 @@ const path = require('node:path')
 const crypto = require('node:crypto')
 const { execFileSync } = require('node:child_process')
 
-const { createCatalogService } = require('../../src/main/services/catalog-service')
-const { createPluginInstallService } = require('../../src/main/services/plugin-install-service')
-const { createPluginService } = require('../../src/main/services/plugin-service')
-const { createPetPackService, BUILT_IN_PACK_ID } = require('../../src/main/services/pet-pack-service')
+const { createCatalogService } = require('../../apps/desktop/src/services/catalog-service')
+const { createPluginInstallService } = require('../../apps/desktop/src/services/plugin-install-service')
+const { createPluginService } = require('../../apps/desktop/src/services/plugin-service')
+const { createPetPackService, BUILT_IN_PACK_ID } = require('../../apps/desktop/src/services/pet-pack-service')
 
 const sha256Buffer = (buffer) => crypto.createHash('sha256').update(buffer).digest('hex')
 
@@ -123,10 +123,10 @@ const createRealServices = ({ settingsService = createSettingsService(), catalog
 }
 
 test('catalog service does not depend on the retired About service', () => {
-  const source = fs.readFileSync(require.resolve('../../src/main/services/catalog-service'), 'utf8')
+  const source = fs.readFileSync(require.resolve('../../apps/desktop/src/services/catalog-service'), 'utf8')
 
   assert.doesNotMatch(source, /require\(['"]\.\/about-service['"]\)/)
-  assert.equal(fs.existsSync(path.resolve(__dirname, '../../src/main/services/about-service.js')), false)
+  assert.equal(fs.existsSync(path.resolve(__dirname, '../../apps/desktop/src/services/about-service.js')), false)
 })
 
 test('catalog service annotates installed entries and update availability', () => {

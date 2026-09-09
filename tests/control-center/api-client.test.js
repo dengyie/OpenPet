@@ -13,11 +13,11 @@ let transportModule
 
 before(async () => {
 	;[clientModule, contracts, queryClientModule, settingsApiModule, transportModule] = await Promise.all([
-		import("../../src/control-center/src/api/client.ts"),
-		import("../../src/shared/browser-contracts.ts"),
-		import("../../src/control-center/src/app/queryClient.ts"),
-		import("../../src/control-center/src/features/settings/api.ts"),
-		import("../../src/control-center/src/api/transport.ts"),
+		import("../../apps/control-center/src/api/client.ts"),
+		import("../../apps/desktop/src/shared/browser-contracts.ts"),
+		import("../../apps/control-center/src/app/queryClient.ts"),
+		import("../../apps/control-center/src/features/settings/api.ts"),
+		import("../../apps/control-center/src/api/transport.ts"),
 	])
 })
 
@@ -143,7 +143,7 @@ describe("T21 API client contract boundary", () => {
 
 describe("ADR-015 useQuery boundary", () => {
 	it("allows useQuery only in pane-level feature hooks", () => {
-		const sourceRoot = path.join(__dirname, "../../src/control-center/src")
+		const sourceRoot = path.join(__dirname, "../../apps/control-center/src")
 		const violations = []
 		const queryClientConstructors = []
 		const pollingViolations = []

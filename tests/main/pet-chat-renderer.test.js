@@ -4,7 +4,7 @@ const fs = require('fs')
 const path = require('path')
 const vm = require('vm')
 
-const rendererSource = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'main', 'pet-chat', 'renderer.js'), 'utf-8')
+const rendererSource = fs.readFileSync(path.join(__dirname, '..', '..', 'apps', 'desktop', 'src', 'windows', 'pet-chat', 'renderer.js'), 'utf-8')
 
 const createClassList = () => ({
   values: new Set(),

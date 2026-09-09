@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { createEventBus } = require('../../src/main/services/event-bus')
+const { createEventBus } = require('../../apps/desktop/src/services/event-bus')
 
 test('event bus publishes payloads to subscribers and supports unsubscribe', () => {
   const bus = createEventBus()

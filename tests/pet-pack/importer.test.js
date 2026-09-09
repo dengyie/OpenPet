@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { createPetPackManifestFromActions } = require('../../src/main/pet-pack/importer')
+const { createPetPackManifestFromActions } = require('../../apps/desktop/src/pet/pet-pack/importer')
 
 test('creates a normalized pet pack manifest from generated action metadata', () => {
   const manifest = createPetPackManifestFromActions({

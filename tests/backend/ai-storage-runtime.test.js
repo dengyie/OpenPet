@@ -1,8 +1,8 @@
 "use strict"
 const assert = require("node:assert/strict")
 const { test } = require("node:test")
-const { createAiTalkStore, createEmptyState } = require("../../src/main/services/ai-talk-store.js")
-const { createAiService } = require("../../src/main/services/ai-service.js")
+const { createAiTalkStore, createEmptyState } = require("../../apps/desktop/src/services/ai-talk-store.js")
+const { createAiService } = require("../../apps/desktop/src/services/ai-service.js")
 
 test("T47 talk store commits through its repository without a JSON path", () => {
 	let saved = createEmptyState()

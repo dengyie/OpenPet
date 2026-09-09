@@ -4,7 +4,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 
-const { createHatchPetAgentStore, __testInternals } = require('../../src/main/services/hatch-pet-agent-store')
+const { createHatchPetAgentStore, __testInternals } = require('../../apps/desktop/src/services/hatch-pet-agent-store')
 
 test('hatch-pet store confines artifacts and rejects unsafe run and prompt ids', () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-hatch-store-'))

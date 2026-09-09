@@ -287,10 +287,10 @@ function ipcValues(file) {
   const source = readText(file)
   return [...source.matchAll(/:\s*["']([^"']+)["']/g)].map((match) => match[1])
 }
-const tsChannels = ipcValues("src/shared/ipc-channels.ts")
-const jsChannels = ipcValues("src/shared/ipc-channels.js")
+const tsChannels = ipcValues("apps/desktop/src/shared/ipc-channels.ts")
+const jsChannels = ipcValues("apps/desktop/src/shared/ipc-channels.js")
 compare("TS/JS IPC 通道", tsChannels, jsChannels)
-if (new Set(tsChannels).size !== tsChannels.length) fail("ipc", "src/shared/ipc-channels.ts 存在重复通道值")
+if (new Set(tsChannels).size !== tsChannels.length) fail("ipc", "apps/desktop/src/shared/ipc-channels.ts 存在重复通道值")
 if (tsChannels.length !== sumTotal) fail("ipc", `IPC 通道数 ${tsChannels.length} != §3 盘点 ${sumTotal}`)
 else passes.push(`IPC 通道盘点一致(${tsChannels.length} 项)`)
 

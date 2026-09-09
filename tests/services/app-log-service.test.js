@@ -4,7 +4,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 
-const { createAppLogService } = require('../../src/main/services/app-log-service')
+const { createAppLogService } = require('../../apps/desktop/src/services/app-log-service')
 
 test('app log service records local jsonl events without leaking absolute file selections', () => {
   const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-app-logs-'))

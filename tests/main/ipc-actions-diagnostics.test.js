@@ -2,8 +2,8 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const Module = require('module')
 
-const ipcPath = require.resolve('../../src/main/ipc')
-const { IPC } = require('../../src/shared/ipc-channels')
+const ipcPath = require.resolve('../../apps/desktop/src/ipc')
+const { IPC } = require('../../apps/desktop/src/shared/ipc-channels')
 
 const loadIpcWithElectron = (electronStub) => {
   delete require.cache[ipcPath]

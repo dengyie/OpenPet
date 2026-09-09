@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { createActionService } = require('../../src/main/services/action-service')
+const { createActionService } = require('../../apps/desktop/src/services/action-service')
 
 test('action service returns legacy animation config as runtime actions', () => {
   const service = createActionService({

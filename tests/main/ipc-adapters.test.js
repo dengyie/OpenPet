@@ -6,7 +6,7 @@ const {
   createPetRendererSettings,
   mergePetSettingsViewIntoHostSettings,
   normalizeLocalHttpConfig
-} = require('../../src/main/ipc/pet-settings-adapter')
+} = require('../../apps/desktop/src/ipc/pet-settings-adapter')
 
 test('pet settings adapter builds renderer settings from host settings', () => {
   const result = createPetRendererSettings({

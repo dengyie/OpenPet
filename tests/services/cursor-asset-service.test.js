@@ -5,7 +5,7 @@ const os = require('os')
 const path = require('path')
 const sharp = require('sharp')
 
-const { createCursorAssetService } = require('../../src/main/services/cursor-asset-service')
+const { createCursorAssetService } = require('../../apps/desktop/src/native/cursor-asset-service')
 
 test('cursor asset service resizes oversized bitmap cursors to browser-safe dimensions', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-cursor-assets-'))

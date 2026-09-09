@@ -6,7 +6,7 @@ const path = require('node:path')
 const read = (relativePath) => fs.readFileSync(path.resolve(__dirname, '../../', relativePath), 'utf8')
 
 test('creator pane renders the mandatory canonical identity review contract', () => {
-  const source = read('src/control-center/src/panes/CreatorPane.tsx')
+  const source = read('apps/control-center/src/panes/CreatorPane.tsx')
   assert.match(source, /awaiting_identity_review/)
   assert.match(source, /canonical-candidates/)
   assert.match(source, /creator-identity-review/)
@@ -17,7 +17,7 @@ test('creator pane renders the mandatory canonical identity review contract', ()
 })
 
 test('creator pane renders recommended, warned, selected, and technically unusable paid identity assets with retry guidance', () => {
-  const source = read('src/control-center/src/panes/CreatorPane.tsx')
+  const source = read('apps/control-center/src/panes/CreatorPane.tsx')
   assert.match(source, /identity-generation-failed/)
   assert.match(source, /身份候选生成失败/)
   assert.match(source, /identityGenerationFailed\s*\?\s*\(progress\.failureReason/)
@@ -34,8 +34,8 @@ test('creator pane renders recommended, warned, selected, and technically unusab
 })
 
 test('creator pane treats quality as advice while reserving hard disablement for technical failures', () => {
-  const source = read('src/control-center/src/panes/CreatorPane.tsx')
-  const hook = read('src/control-center/src/hooks/useCreatorPane.ts')
+  const source = read('apps/control-center/src/panes/CreatorPane.tsx')
+  const hook = read('apps/control-center/src/hooks/useCreatorPane.ts')
   assert.match(source, /未达推荐标准，但可以选择/)
   assert.match(source, /推荐使用/)
   assert.match(source, /已由你选择/)
@@ -49,9 +49,9 @@ test('creator pane treats quality as advice while reserving hard disablement for
 })
 
 test('creator pane lets owners compare and select retained action candidates without retry generation', () => {
-  const source = read('src/control-center/src/panes/CreatorPane.tsx')
-  const hook = read('src/control-center/src/hooks/useCreatorPane.ts')
-  const contracts = read('src/shared/openpet-contracts.ts')
+  const source = read('apps/control-center/src/panes/CreatorPane.tsx')
+  const hook = read('apps/control-center/src/hooks/useCreatorPane.ts')
+  const contracts = read('apps/desktop/src/shared/openpet-contracts.ts')
   assert.match(source, /creator-action-candidate-review/)
   assert.match(source, /复用已有资产/)
   assert.match(source, /重新生成会产生新的图片请求/)
@@ -63,8 +63,8 @@ test('creator pane lets owners compare and select retained action candidates wit
 })
 
 test('creator pane surfaces final package quality warnings after a human override', () => {
-  const source = read('src/control-center/src/panes/CreatorPane.tsx')
-  const contracts = read('src/shared/openpet-contracts.ts')
+  const source = read('apps/control-center/src/panes/CreatorPane.tsx')
+  const contracts = read('apps/desktop/src/shared/openpet-contracts.ts')
   assert.match(source, /最终包未达推荐标准，但已保留给你复查/)
   assert.match(source, /packageReview/)
   assert.match(contracts, /packageReview/)
@@ -72,7 +72,7 @@ test('creator pane surfaces final package quality warnings after a human overrid
 })
 
 test('creator pane exposes recovery bundle guidance for idle failure', () => {
-  const source = read('src/control-center/src/panes/CreatorPane.tsx')
+  const source = read('apps/control-center/src/panes/CreatorPane.tsx')
   assert.match(source, /recovery-required/)
   assert.match(source, /creator-export-recovery/)
   assert.match(source, /资产恢复包|恢复包/)
@@ -80,7 +80,7 @@ test('creator pane exposes recovery bundle guidance for idle failure', () => {
 })
 
 test('creator pane gives archived paid retry assets their own review surface', () => {
-  const source = read('src/control-center/src/panes/CreatorPane.tsx')
+  const source = read('apps/control-center/src/panes/CreatorPane.tsx')
   assert.match(source, /repair-archive/)
   assert.match(source, /creator-repair-assets/)
   assert.match(source, /历史重试资产|历史付费产物/)
@@ -91,12 +91,12 @@ test('creator pane gives archived paid retry assets their own review surface', (
 })
 
 test('identity acceptance is hash-bound through shared API and IPC', () => {
-  const contracts = read('src/shared/openpet-contracts.ts')
-  const channels = read('src/shared/ipc-channels.js')
-  const channelsTs = read('src/shared/ipc-channels.ts')
-  const preload = read('control-center-preload.js')
-  const ipc = read('src/main/ipc/register-creator-ipc.js')
-  const hook = read('src/control-center/src/hooks/useCreatorPane.ts')
+  const contracts = read('apps/desktop/src/shared/openpet-contracts.ts')
+  const channels = read('apps/desktop/src/shared/ipc-channels.js')
+  const channelsTs = read('apps/desktop/src/shared/ipc-channels.ts')
+  const preload = read('apps/desktop/control-center-preload.js')
+  const ipc = read('apps/desktop/src/ipc/register-creator-ipc.js')
+  const hook = read('apps/control-center/src/hooks/useCreatorPane.ts')
   for (const source of [contracts, channels, channelsTs, preload, ipc, hook]) {
     assert.match(source, /accept.*identity|ACCEPT_IDENTITY|acceptCreatorIdentity/i)
   }
@@ -107,7 +107,7 @@ test('identity acceptance is hash-bound through shared API and IPC', () => {
 })
 
 test('public quality-first diagnostics expose candidates and next action without absolute paths', () => {
-  const service = read('src/main/services/creator-workflow-service.js')
+  const service = read('apps/desktop/src/services/creator-workflow-service.js')
   assert.match(service, /canonicalCandidates/)
   assert.match(service, /nextAction/)
   assert.match(service, /candidateRecordRelativePath|relativePath/)

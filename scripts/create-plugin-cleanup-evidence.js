@@ -2,7 +2,7 @@ const fs = require('fs')
 const path = require('path')
 const { spawn } = require('child_process')
 
-const { createServiceProcessTree } = require('../src/main/services/service-process-tree')
+const { createServiceProcessTree } = require('../apps/desktop/src/services/service-process-tree')
 
 const DEFAULT_OUTPUT_ROOT = path.join('docs', 'release-evidence', 'plugin-cleanup-evidence')
 const DEFAULT_JSON_NAME = 'plugin-cleanup-evidence.json'

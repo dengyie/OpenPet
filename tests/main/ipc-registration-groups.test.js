@@ -1,14 +1,14 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { IPC } = require('../../src/shared/ipc-channels')
-const { registerAiIpc } = require('../../src/main/ipc/register-ai-ipc')
-const { registerCreatorIpc } = require('../../src/main/ipc/register-creator-ipc')
-const { registerPetRuntimeIpc } = require('../../src/main/ipc/register-pet-runtime-ipc')
-const { registerPluginIpc } = require('../../src/main/ipc/register-plugin-ipc')
-const { registerServiceIpc } = require('../../src/main/ipc/register-service-ipc')
-const { registerSettingsIpc } = require('../../src/main/ipc/register-settings-ipc')
-const { registerSystemIpc } = require('../../src/main/ipc/register-system-ipc')
+const { IPC } = require('../../apps/desktop/src/shared/ipc-channels')
+const { registerAiIpc } = require('../../apps/desktop/src/ipc/register-ai-ipc')
+const { registerCreatorIpc } = require('../../apps/desktop/src/ipc/register-creator-ipc')
+const { registerPetRuntimeIpc } = require('../../apps/desktop/src/ipc/register-pet-runtime-ipc')
+const { registerPluginIpc } = require('../../apps/desktop/src/ipc/register-plugin-ipc')
+const { registerServiceIpc } = require('../../apps/desktop/src/ipc/register-service-ipc')
+const { registerSettingsIpc } = require('../../apps/desktop/src/ipc/register-settings-ipc')
+const { registerSystemIpc } = require('../../apps/desktop/src/ipc/register-system-ipc')
 
 const createIpcMainStub = () => {
   const handlers = new Map()

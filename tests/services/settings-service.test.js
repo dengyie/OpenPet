@@ -1,8 +1,8 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { createEventBus } = require('../../src/main/services/event-bus')
-const { createSettingsService } = require('../../src/main/services/settings-service')
+const { createEventBus } = require('../../apps/desktop/src/services/event-bus')
+const { createSettingsService } = require('../../apps/desktop/src/services/settings-service')
 
 test('settings service saves settings and emits the persisted value', () => {
   const bus = createEventBus()

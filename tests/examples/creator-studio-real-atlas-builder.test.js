@@ -6,8 +6,8 @@ const path = require('node:path')
 const crypto = require('node:crypto')
 const sharp = require('sharp')
 
-const { CODEX_ATLAS, CODEX_ROWS } = require('../../src/main/pet-pack/codex-pet')
-const { loadPetPackFromDirectory } = require('../../src/main/pet-pack/loader')
+const { CODEX_ATLAS, CODEX_ROWS } = require('../../apps/desktop/src/pet/pet-pack/codex-pet')
+const { loadPetPackFromDirectory } = require('../../apps/desktop/src/pet/pet-pack/loader')
 const { createMinimalWebp } = require('../../examples/plugins/creator-studio/lib/fake-hatch-pet')
 const {
   FULL_PET_ROW_QUALITY,

@@ -5,7 +5,7 @@ const {
   buildProviderCacheKey,
   getScopedProviderModelCatalog,
   uniqueModelIds
-} = require('../../src/main/services/provider-model-catalog')
+} = require('../../apps/desktop/src/services/provider-model-catalog')
 
 const MAX_MODEL_CATALOG_MODELS = 200
 const MAX_PROVIDER_MODEL_ID_CHARS = 256

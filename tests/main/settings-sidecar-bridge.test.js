@@ -2,11 +2,11 @@
 
 const { it } = require("node:test")
 
-const { createSettingsSidecarBridge } = require("../../src/main/settings-sidecar-bridge")
+const { createSettingsSidecarBridge } = require("../../apps/desktop/src/services/settings-sidecar-bridge")
 
 it("keeps the Shell canonical path set in lockstep with the contract", async () => {
 	const contracts = await import("@openpet/contracts")
-	const { CANONICAL_PATHS } = require("../../src/main/settings-sidecar-bridge")
+	const { CANONICAL_PATHS } = require("../../apps/desktop/src/services/settings-sidecar-bridge")
 	assert.deepEqual(CANONICAL_PATHS, contracts.SETTINGS_CANONICAL_PATHS)
 })
 const assert = require("node:assert/strict")

@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { createServiceProcessTree } = require('../../src/main/services/service-process-tree')
+const { createServiceProcessTree } = require('../../apps/desktop/src/services/service-process-tree')
 
 test('service process tree lists posix descendants recursively', () => {
   const calls = []

@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { createMcpTransportService, validateInputSchema } = require('../../src/main/services/mcp-transport-service')
+const { createMcpTransportService, validateInputSchema } = require('../../apps/desktop/src/services/mcp-transport-service')
 
 const createRequest = (sessionId = '') => ({ headers: sessionId ? { 'mcp-session-id': sessionId } : {} })
 

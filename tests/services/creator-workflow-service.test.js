@@ -12,7 +12,7 @@ const {
   EDITABLE_TARGET_ID,
   EDITABLE_TARGET_TYPE,
   createCreatorWorkflowService
-} = require('../../src/main/services/creator-workflow-service')
+} = require('../../apps/desktop/src/services/creator-workflow-service')
 const { readRun } = require('../../examples/plugins/creator-studio/lib/run-store')
 const { getQualityFirstQualityProfile } = require('../../examples/plugins/creator-studio/lib/pet-generation-quality-profile')
 

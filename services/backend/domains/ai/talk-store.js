@@ -3,7 +3,7 @@ const require = createRequire(import.meta.url)
 
 const fs = require('fs')
 const crypto = require('crypto')
-const { writeJsonAtomic } = require('../../../../src/main/json-file-utils.js')
+const { writeJsonAtomic } = require('../../../../apps/desktop/src/services/json-file-utils.js')
 
 const SCHEMA_VERSION = 1
 const DEFAULT_CONTEXT_POLICY = Object.freeze({

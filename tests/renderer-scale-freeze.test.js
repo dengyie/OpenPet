@@ -4,7 +4,7 @@ const fs = require('fs')
 const path = require('path')
 const vm = require('vm')
 
-const rendererSource = fs.readFileSync(path.join(__dirname, '..', 'renderer.js'), 'utf-8')
+const rendererSource = fs.readFileSync(path.join(__dirname, '..', 'apps', 'desktop', 'renderer.js'), 'utf-8')
 
 const createStyle = () => ({
   values: {},

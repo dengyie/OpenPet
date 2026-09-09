@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { createPetMovementPolicy } = require('../../src/main/pet-movement-policy')
+const { createPetMovementPolicy } = require('../../apps/desktop/src/pet/pet-movement-policy')
 
 const createFakeScreen = ({ workArea = { x: 0, y: 0, width: 1440, height: 900, id: 1 } } = {}) => {
   const normalizedDisplay = {

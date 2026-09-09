@@ -9,11 +9,16 @@ const MAX_CHANNELS = 158
 // as long-lived IPC keep rows.
 const MAX_KEEP = 41
 const LEDGER_RELATIVE_PATH = 'docs/refactor/15-channel-retirement.md'
-const IPC_RELATIVE_PATH = 'src/shared/ipc-channels.ts'
-const IPC_MIRROR_RELATIVE_PATH = 'src/shared/ipc-channels.js'
-const REGISTRATION_RELATIVE_PATHS = ['src/main/ipc.js', 'src/main/ipc']
-const PRODUCTION_ROOT_FILES = ['main.js', 'preload.js', 'renderer.js', 'control-center-preload.js']
-const PRODUCTION_ROOT_DIRECTORIES = ['src/main']
+const IPC_RELATIVE_PATH = 'apps/desktop/src/shared/ipc-channels.ts'
+const IPC_MIRROR_RELATIVE_PATH = 'apps/desktop/src/shared/ipc-channels.js'
+const REGISTRATION_RELATIVE_PATHS = ['apps/desktop/src/ipc']
+const PRODUCTION_ROOT_FILES = [
+  'apps/desktop/main.js',
+  'apps/desktop/preload.js',
+  'apps/desktop/renderer.js',
+  'apps/desktop/control-center-preload.js'
+]
+const PRODUCTION_ROOT_DIRECTORIES = ['apps/desktop/src']
 const BACKEND_ROUTE_DIRECTORY = 'services/backend/routes'
 const EVENT_CONTRACT_RELATIVE_PATH = 'packages/contracts/src/events.ts'
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']

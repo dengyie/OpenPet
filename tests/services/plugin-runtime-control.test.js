@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { createPluginRuntimeControl } = require('../../src/main/services/plugin-runtime-control')
+const { createPluginRuntimeControl } = require('../../apps/desktop/src/services/plugin-runtime-control')
 
 const createTimerHarness = () => {
   const scheduled = []

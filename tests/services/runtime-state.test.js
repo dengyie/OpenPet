@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { createRuntimeState } = require('../../src/main/runtime/runtime-state')
+const { createRuntimeState } = require('../../apps/desktop/src/services/runtime/runtime-state')
 
 test('runtime state patches snapshots without mutating previous values', () => {
   const state = createRuntimeState({ settings: { scale: 1 }, status: 'idle' })

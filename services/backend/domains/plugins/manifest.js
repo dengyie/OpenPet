@@ -5,8 +5,8 @@ import { createRequire } from "node:module"
 import { ApiError } from "../../http/middleware.js"
 
 const require = createRequire(import.meta.url)
-const { normalizePluginManifest } = require("../../../../src/main/plugins/manifest.js")
-const { normalizeConfigSchema } = require("../../../../src/main/plugins/config-schema.js")
+const { normalizePluginManifest } = require("../../../../apps/desktop/src/services/plugins/manifest.js")
+const { normalizeConfigSchema } = require("../../../../apps/desktop/src/services/plugins/config-schema.js")
 
 function invalid(message, cause, details = null) {
 	return new ApiError("PLUGIN_MANIFEST_INVALID", message, { status: 400, details, cause })

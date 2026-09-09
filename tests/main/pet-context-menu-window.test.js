@@ -5,7 +5,7 @@ const { EventEmitter } = require('node:events')
 const {
   createMenuHtml,
   showPetContextMenuWindow
-} = require('../../src/main/pet-context-menu-window')
+} = require('../../apps/desktop/src/windows/pet-context-menu-window')
 
 class FakeMenuWindow extends EventEmitter {
   constructor(options) {

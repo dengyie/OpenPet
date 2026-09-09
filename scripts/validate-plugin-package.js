@@ -2,7 +2,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 
-const { createPluginInstallService } = require('../src/main/services/plugin-install-service')
+const { createPluginInstallService } = require('../apps/desktop/src/services/plugin-install-service')
 
 const usage = () => [
   'Usage: node scripts/validate-plugin-package.js <plugin-dir-or-zip> [options]',

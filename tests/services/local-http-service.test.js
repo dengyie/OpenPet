@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const http = require('http')
 const net = require('net')
 
-const { createLocalHttpService } = require('../../src/main/services/local-http-service')
+const { createLocalHttpService } = require('../../apps/desktop/src/services/local-http-service')
 
 const TEST_TOKEN = 'test-token'
 

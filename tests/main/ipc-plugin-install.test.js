@@ -6,9 +6,9 @@ const path = require('path')
 const crypto = require('crypto')
 const { execFileSync } = require('child_process')
 
-const { IPC } = require('../../src/shared/ipc-channels')
-const { createPluginInstallService } = require('../../src/main/services/plugin-install-service')
-const { registerIpcHandlers } = require('../../src/main/ipc')
+const { IPC } = require('../../apps/desktop/src/shared/ipc-channels')
+const { createPluginInstallService } = require('../../apps/desktop/src/services/plugin-install-service')
+const { registerIpcHandlers } = require('../../apps/desktop/src/ipc')
 const { createAiHttpHarness } = require('../helpers/ai-http-harness')
 
 const createSettingsService = () => {

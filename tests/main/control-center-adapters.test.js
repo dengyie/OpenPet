@@ -28,7 +28,7 @@ const {
   createPluginViewState,
   createServiceStatusView,
   createUpdateCheckView
-} = require('../../src/main/control-center-adapters')
+} = require('../../apps/desktop/src/services/control-center-adapters')
 
 test('createAiConfigView normalizes AI config payloads for Control Center', () => {
   assert.deepEqual(createAiConfigView({

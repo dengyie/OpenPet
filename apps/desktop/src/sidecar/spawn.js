@@ -3,7 +3,7 @@
 // Shell 侧的 sidecar 启动器。
 //
 // 故意写成 CommonJS:仓库根目前没有 "type": "module",主进程(main.js、
-// src/main/**)仍然是 CJS,这个文件要能被它们直接 require。子进程那边是 ESM 不
+// apps/desktop/src/services/**)仍然是 CJS,这个文件要能被它们直接 require。子进程那边是 ESM 不
 // 矛盾 —— fork 后子进程按自己最近的 package.json 解析模块类型,
 // 而 services/backend/package.json 声明了 "type": "module"。
 //

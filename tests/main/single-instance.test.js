@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { configureSingleInstanceLock } = require('../../src/main/single-instance')
+const { configureSingleInstanceLock } = require('../../apps/desktop/src/services/single-instance')
 
 const createFakeApp = ({ lockGranted, lockResults }) => {
   const handlers = new Map()

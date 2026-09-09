@@ -3,13 +3,13 @@
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
-const { createAppLogService } = require('../src/main/services/app-log-service')
-const { createSecretService } = require('../src/main/services/secret-service')
-const { createImageGenerationModelService } = require('../src/main/services/image-generation-model-service')
+const { createAppLogService } = require('../apps/desktop/src/services/app-log-service')
+const { createSecretService } = require('../apps/desktop/src/services/secret-service')
+const { createImageGenerationModelService } = require('../apps/desktop/src/services/image-generation-model-service')
 const { normalizeGenerationTask } = require('../examples/plugins/creator-studio/lib/generation-task')
 const { buildOpenPetImagePrompt, sanitizeCreativeBrief } = require('../examples/plugins/creator-studio/lib/openpet-prompt-builder')
 const { buildActionFramesFromGeneratedImage } = require('../examples/plugins/creator-studio/lib/action-frame-builder')
-const { LEGACY_USER_DATA_DIR_NAME } = require('../src/main/user-data-path')
+const { LEGACY_USER_DATA_DIR_NAME } = require('../apps/desktop/src/services/user-data-path')
 
 const DEFAULT_OUTPUT_DIR = path.join(__dirname, '..', 'release', 'creator-studio-provider-smoke')
 const DEFAULT_LOG_LIMIT = 20

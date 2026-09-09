@@ -16,7 +16,7 @@ const {
   removeStoredCursorRecord,
   resizeCustomCursorRecord,
   resolveSelectedCursor
-} = require('../../src/shared/cursor-library')
+} = require('../../apps/desktop/src/shared/cursor-library')
 
 test('cursor library exposes the built-in picker catalog', () => {
   assert.equal(CUSTOM_CURSOR_MAX_BYTES, 500 * 1024)

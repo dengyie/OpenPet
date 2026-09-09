@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const Module = require('module')
 const path = require('path')
 
-const mainPath = require.resolve('../../main')
+const mainPath = require.resolve('../../apps/desktop/main.js')
 const flushAsync = async (times = 6) => {
   for (let index = 0; index < times; index += 1) await Promise.resolve()
 }
@@ -56,7 +56,7 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
       }
     }
 
-    if (request === './src/main/window') {
+    if (request === './src/windows/window') {
       return {
         applyWindowScale: (targetWindow, scale) => scaleCalls.push({ targetWindow, scale }),
         createSettingsWindow: () => {},
@@ -65,7 +65,7 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
       }
     }
 
-    if (request === './src/main/ipc') {
+    if (request === './src/ipc') {
       return {
         createPetRendererSettings: (settings) => settings,
         normalizeLocalHttpConfig: (_currentConfig, nextConfig) => nextConfig,
@@ -82,7 +82,7 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
       }
     }
 
-    if (request === './src/main/settings') {
+    if (request === './src/services/settings') {
       return {
         loadSettings: () => ({
           scale: 1,
@@ -98,18 +98,18 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
       }
     }
 
-    if (request === './src/main/screen') {
+    if (request === './src/windows/screen') {
       return {
         clampToWorkArea: (_win, x, y) => ({ x, y }),
         getMovementState: () => null
       }
     }
 
-    if (request === './src/main/services/event-bus') {
+    if (request === './src/services/event-bus') {
       return { createEventBus: () => ({ on: () => {}, emit: () => {} }) }
     }
 
-    if (request === './src/main/services/settings-service') {
+    if (request === './src/services/settings-service') {
       return {
         createSettingsService: ({ loadSettings }) => {
           let settings = loadSettings()
@@ -122,7 +122,7 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
       }
     }
 
-    if (request === './src/main/services/action-service') {
+    if (request === './src/services/action-service') {
       return {
         createActionService: () => ({
           getConfig: () => ({ actions: [] }),
@@ -132,7 +132,7 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
       }
     }
 
-    if (request === './src/main/services/pet-service') {
+    if (request === './src/services/pet-service') {
       return {
         createPetService: ({ settingsService }) => ({
           getSettings: () => settingsService.get(),
@@ -152,23 +152,23 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
     }
 
     const serviceFactories = {
-      './src/main/services/pet-pack-service': { createPetPackService: () => ({ listPacks: () => [], getActivePetPack: () => ({ manifest: { id: 'legacy-cat', persona: null, actions: [] } }) }) },
-      './src/main/services/secret-service': { createSecretService: () => ({ id: 'secret-service' }) },
-      './src/main/services/ai-service': { createAiService: () => ({ id: 'ai-service' }) },
-      './src/main/services/hatch-pet-agent-service': { createHatchPetAgentService: () => ({ id: 'hatch-pet-agent-service' }) },
-      './src/main/services/ai-talk-store': {
+      './src/services/pet-pack-service': { createPetPackService: () => ({ listPacks: () => [], getActivePetPack: () => ({ manifest: { id: 'legacy-cat', persona: null, actions: [] } }) }) },
+      './src/services/secret-service': { createSecretService: () => ({ id: 'secret-service' }) },
+      './src/services/ai-service': { createAiService: () => ({ id: 'ai-service' }) },
+      './src/services/hatch-pet-agent-service': { createHatchPetAgentService: () => ({ id: 'hatch-pet-agent-service' }) },
+      './src/services/ai-talk-store': {
         createAiTalkStore: ({ storePath }) => {
           createdAiTalkStorePath = storePath
           return { id: 'ai-talk-store' }
         }
       },
-      './src/main/services/ai-talk-service': {
+      './src/services/ai-talk-service': {
         createAiTalkService: (dependencies) => {
           createdAiTalkDependencies = dependencies
           return { id: 'ai-talk-service' }
         }
       },
-      './src/main/services/trigger-rule-runtime-service': {
+      './src/services/trigger-rule-runtime-service': {
         createTriggerRuleRuntimeService: (dependencies) => {
           createdTriggerRuleRuntimeDependencies = dependencies
           return {
@@ -179,24 +179,24 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
           }
         }
       },
-      './src/main/services/behavior-orchestrator-service': { createBehaviorOrchestratorService: () => ({ getConfig: () => ({ enabled: false }) }) },
-      './src/main/services/creator-reference-service': {
+      './src/services/behavior-orchestrator-service': { createBehaviorOrchestratorService: () => ({ getConfig: () => ({ enabled: false }) }) },
+      './src/services/creator-reference-service': {
         createCreatorReferenceService: () => ({
           getReference: () => null,
           bindReference: async () => ({ replaced: false, reference: null }),
           copyReferenceIntoRun: () => ({})
         })
       },
-      './src/main/services/creator-studio-default-flow-service': {
+      './src/services/creator-studio-default-flow-service': {
         createCreatorStudioDefaultFlowService: (dependencies) => {
           createdCreatorStudioDefaultFlowDependencies = dependencies
           return { id: 'creator-studio-default-flow-service' }
         }
       },
-      './src/main/services/creator-workflow-service': {
+      './src/services/creator-workflow-service': {
         createCreatorWorkflowService: () => ({ id: 'creator-workflow-service' })
       },
-      './src/main/services/plugin-service': {
+      './src/services/plugin-service': {
         createPluginService: (dependencies) => {
           registeredPluginDependencies = dependencies
           return {
@@ -207,27 +207,27 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
           }
         }
       },
-      './src/main/services/plugin-install-service': { createPluginInstallService: () => ({}) },
-      './src/main/services/bundled-plugin-sync-service': {
+      './src/services/plugin-install-service': { createPluginInstallService: () => ({}) },
+      './src/services/bundled-plugin-sync-service': {
         syncBundledPlugins: (dependencies) => {
           bundledPluginSyncDependencies = dependencies
           return { synced: [{ pluginId: 'openpet.creator-studio', removed: ['stale-copy'] }] }
         }
       },
-      './src/main/services/plugin-github-import-service': { createPluginGithubImportService: () => ({}) },
-      './src/main/services/local-http-service': { createLocalHttpService: () => ({ start: async () => ({}) }) },
-      './src/main/services/action-import-service': { createActionImportService: () => ({}) },
-      './src/main/services/cursor-asset-service': { createCursorAssetService: () => ({ repairCursor: async (cursor) => cursor || {} }) },
-      './src/main/services/app-log-service': { createAppLogService: () => ({ record: (entry) => appLogs.push(entry), logPath: '/tmp/openpet-app.jsonl' }) },
-      './src/main/services/catalog-service': { createCatalogService: () => ({ getPetPackBlockStatus: () => ({ blocked: false, reasons: [] }), getPluginBlockStatus: () => ({ blocked: false, reasons: [] }) }) },
-      './src/main/plugins/official/basic-behavior': { createBasicBehaviorPlugin: () => ({}) },
-      './apps/desktop/src/sidecar/runtime-coordinator': { createSidecarRuntimeCoordinator: () => ({ start: async () => null, stop: async () => {} }) },
-      './src/main/packaged-runtime-smoke-runner': { maybeRunPackagedRuntimeSmoke: () => {} },
-      './src/main/packaged-plugin-cleanup-evidence-runner': { maybeRunPackagedPluginCleanupEvidence: () => {} },
-      './src/main/packaged-creator-studio-evidence-runner': { maybeRunPackagedCreatorStudioEvidence: () => {} },
-      './src/main/packaged-creator-studio-ui-e2e-runner': { maybeRunPackagedCreatorStudioUiE2e: () => {} },
-      './src/main/packaged-create-ui-smoke-runner': { maybeRunPackagedCreateUiSmoke: () => {} },
-      './src/main/user-data-path': { configureUserDataPath: () => {} }
+      './src/services/plugin-github-import-service': { createPluginGithubImportService: () => ({}) },
+      './src/services/local-http-service': { createLocalHttpService: () => ({ start: async () => ({}) }) },
+      './src/services/action-import-service': { createActionImportService: () => ({}) },
+      './src/native/cursor-asset-service': { createCursorAssetService: () => ({ repairCursor: async (cursor) => cursor || {} }) },
+      './src/services/app-log-service': { createAppLogService: () => ({ record: (entry) => appLogs.push(entry), logPath: '/tmp/openpet-app.jsonl' }) },
+      './src/services/catalog-service': { createCatalogService: () => ({ getPetPackBlockStatus: () => ({ blocked: false, reasons: [] }), getPluginBlockStatus: () => ({ blocked: false, reasons: [] }) }) },
+      './src/services/plugins/official/basic-behavior': { createBasicBehaviorPlugin: () => ({}) },
+      './src/sidecar/runtime-coordinator': { createSidecarRuntimeCoordinator: () => ({ start: async () => null, stop: async () => {} }) },
+      './src/services/packaged-runtime-smoke-runner': { maybeRunPackagedRuntimeSmoke: () => {} },
+      './src/services/packaged-plugin-cleanup-evidence-runner': { maybeRunPackagedPluginCleanupEvidence: () => {} },
+      './src/services/packaged-creator-studio-evidence-runner': { maybeRunPackagedCreatorStudioEvidence: () => {} },
+      './src/services/packaged-creator-studio-ui-e2e-runner': { maybeRunPackagedCreatorStudioUiE2e: () => {} },
+      './src/services/packaged-create-ui-smoke-runner': { maybeRunPackagedCreateUiSmoke: () => {} },
+      './src/services/user-data-path': { configureUserDataPath: () => {} }
     }
     if (serviceFactories[request]) return serviceFactories[request]
 
@@ -326,7 +326,7 @@ test('main still stops plugin services when lifecycle logging fails during quit'
       }
     }
 
-    if (request === './src/main/window') {
+    if (request === './src/windows/window') {
       return {
         applyWindowScale: () => {},
         createSettingsWindow: () => {},
@@ -335,7 +335,7 @@ test('main still stops plugin services when lifecycle logging fails during quit'
       }
     }
 
-    if (request === './src/main/ipc') {
+    if (request === './src/ipc') {
       return {
         createPetRendererSettings: (settings) => settings,
         normalizeLocalHttpConfig: (_currentConfig, nextConfig) => nextConfig,
@@ -344,7 +344,7 @@ test('main still stops plugin services when lifecycle logging fails during quit'
       }
     }
 
-    if (request === './src/main/settings') {
+    if (request === './src/services/settings') {
       return {
         loadSettings: () => ({
           scale: 1,
@@ -360,18 +360,18 @@ test('main still stops plugin services when lifecycle logging fails during quit'
       }
     }
 
-    if (request === './src/main/screen') {
+    if (request === './src/windows/screen') {
       return {
         clampToWorkArea: (_win, x, y) => ({ x, y }),
         getMovementState: () => null
       }
     }
 
-    if (request === './src/main/services/event-bus') {
+    if (request === './src/services/event-bus') {
       return { createEventBus: () => ({ on: () => {}, emit: () => {} }) }
     }
 
-    if (request === './src/main/services/settings-service') {
+    if (request === './src/services/settings-service') {
       return {
         createSettingsService: ({ loadSettings }) => {
           let settings = loadSettings()
@@ -384,7 +384,7 @@ test('main still stops plugin services when lifecycle logging fails during quit'
       }
     }
 
-    if (request === './src/main/services/action-service') {
+    if (request === './src/services/action-service') {
       return {
         createActionService: () => ({
           getConfig: () => ({ actions: [] }),
@@ -394,7 +394,7 @@ test('main still stops plugin services when lifecycle logging fails during quit'
       }
     }
 
-    if (request === './src/main/services/pet-service') {
+    if (request === './src/services/pet-service') {
       return {
         createPetService: ({ settingsService }) => ({
           getSettings: () => settingsService.get(),
@@ -414,23 +414,23 @@ test('main still stops plugin services when lifecycle logging fails during quit'
     }
 
     const serviceFactories = {
-      './src/main/services/pet-pack-service': { createPetPackService: () => ({ listPacks: () => [], getActivePetPack: () => ({ manifest: { id: 'legacy-cat', persona: null, actions: [] } }) }) },
-      './src/main/services/secret-service': { createSecretService: () => ({}) },
-      './src/main/services/ai-service': { createAiService: () => ({}) },
-      './src/main/services/hatch-pet-agent-service': { createHatchPetAgentService: () => ({}) },
-      './src/main/services/ai-talk-store': { createAiTalkStore: () => ({}) },
-      './src/main/services/ai-talk-service': { createAiTalkService: () => ({}) },
-      './src/main/services/behavior-orchestrator-service': { createBehaviorOrchestratorService: () => ({ getConfig: () => ({ enabled: false }) }) },
-      './src/main/services/creator-reference-service': {
+      './src/services/pet-pack-service': { createPetPackService: () => ({ listPacks: () => [], getActivePetPack: () => ({ manifest: { id: 'legacy-cat', persona: null, actions: [] } }) }) },
+      './src/services/secret-service': { createSecretService: () => ({}) },
+      './src/services/ai-service': { createAiService: () => ({}) },
+      './src/services/hatch-pet-agent-service': { createHatchPetAgentService: () => ({}) },
+      './src/services/ai-talk-store': { createAiTalkStore: () => ({}) },
+      './src/services/ai-talk-service': { createAiTalkService: () => ({}) },
+      './src/services/behavior-orchestrator-service': { createBehaviorOrchestratorService: () => ({ getConfig: () => ({ enabled: false }) }) },
+      './src/services/creator-reference-service': {
         createCreatorReferenceService: () => ({
           getReference: () => null,
           bindReference: async () => ({ replaced: false, reference: null }),
           copyReferenceIntoRun: () => ({})
         })
       },
-      './src/main/services/creator-studio-default-flow-service': { createCreatorStudioDefaultFlowService: () => ({}) },
-      './src/main/services/creator-workflow-service': { createCreatorWorkflowService: () => ({}) },
-      './src/main/services/plugin-service': {
+      './src/services/creator-studio-default-flow-service': { createCreatorStudioDefaultFlowService: () => ({}) },
+      './src/services/creator-workflow-service': { createCreatorWorkflowService: () => ({}) },
+      './src/services/plugin-service': {
         createPluginService: () => ({
           stopAllServices: () => {
             stopAllServicesCalls += 1
@@ -438,24 +438,24 @@ test('main still stops plugin services when lifecycle logging fails during quit'
           }
         })
       },
-      './src/main/services/plugin-install-service': { createPluginInstallService: () => ({}) },
-      './src/main/services/bundled-plugin-sync-service': {
+      './src/services/plugin-install-service': { createPluginInstallService: () => ({}) },
+      './src/services/bundled-plugin-sync-service': {
         syncBundledPlugins: () => ({ synced: [{ pluginId: 'openpet.creator-studio', removed: [] }] })
       },
-      './src/main/services/plugin-github-import-service': { createPluginGithubImportService: () => ({}) },
-      './src/main/services/local-http-service': { createLocalHttpService: () => ({ start: async () => ({}) }) },
-      './src/main/services/action-import-service': { createActionImportService: () => ({}) },
-      './src/main/services/cursor-asset-service': { createCursorAssetService: () => ({ repairCursor: async (cursor) => cursor || {} }) },
-      './src/main/services/app-log-service': { createAppLogService: () => ({ record: () => { throw new Error('disk full') }, logPath: '/tmp/openpet-app.jsonl' }) },
-      './src/main/services/catalog-service': { createCatalogService: () => ({ getPetPackBlockStatus: () => ({ blocked: false, reasons: [] }), getPluginBlockStatus: () => ({ blocked: false, reasons: [] }) }) },
-      './src/main/plugins/official/basic-behavior': { createBasicBehaviorPlugin: () => ({}) },
-      './apps/desktop/src/sidecar/runtime-coordinator': { createSidecarRuntimeCoordinator: () => ({ start: async () => null, stop: async () => {} }) },
-      './src/main/packaged-runtime-smoke-runner': { maybeRunPackagedRuntimeSmoke: () => {} },
-      './src/main/packaged-plugin-cleanup-evidence-runner': { maybeRunPackagedPluginCleanupEvidence: () => {} },
-      './src/main/packaged-creator-studio-evidence-runner': { maybeRunPackagedCreatorStudioEvidence: () => {} },
-      './src/main/packaged-creator-studio-ui-e2e-runner': { maybeRunPackagedCreatorStudioUiE2e: () => {} },
-      './src/main/packaged-create-ui-smoke-runner': { maybeRunPackagedCreateUiSmoke: () => {} },
-      './src/main/user-data-path': { configureUserDataPath: () => {} }
+      './src/services/plugin-github-import-service': { createPluginGithubImportService: () => ({}) },
+      './src/services/local-http-service': { createLocalHttpService: () => ({ start: async () => ({}) }) },
+      './src/services/action-import-service': { createActionImportService: () => ({}) },
+      './src/native/cursor-asset-service': { createCursorAssetService: () => ({ repairCursor: async (cursor) => cursor || {} }) },
+      './src/services/app-log-service': { createAppLogService: () => ({ record: () => { throw new Error('disk full') }, logPath: '/tmp/openpet-app.jsonl' }) },
+      './src/services/catalog-service': { createCatalogService: () => ({ getPetPackBlockStatus: () => ({ blocked: false, reasons: [] }), getPluginBlockStatus: () => ({ blocked: false, reasons: [] }) }) },
+      './src/services/plugins/official/basic-behavior': { createBasicBehaviorPlugin: () => ({}) },
+      './src/sidecar/runtime-coordinator': { createSidecarRuntimeCoordinator: () => ({ start: async () => null, stop: async () => {} }) },
+      './src/services/packaged-runtime-smoke-runner': { maybeRunPackagedRuntimeSmoke: () => {} },
+      './src/services/packaged-plugin-cleanup-evidence-runner': { maybeRunPackagedPluginCleanupEvidence: () => {} },
+      './src/services/packaged-creator-studio-evidence-runner': { maybeRunPackagedCreatorStudioEvidence: () => {} },
+      './src/services/packaged-creator-studio-ui-e2e-runner': { maybeRunPackagedCreatorStudioUiE2e: () => {} },
+      './src/services/packaged-create-ui-smoke-runner': { maybeRunPackagedCreateUiSmoke: () => {} },
+      './src/services/user-data-path': { configureUserDataPath: () => {} }
     }
     if (serviceFactories[request]) return serviceFactories[request]
 
@@ -526,7 +526,7 @@ test('main persists repaired cursor metadata and collection entry when repair re
       }
     }
 
-    if (request === './src/main/window') {
+    if (request === './src/windows/window') {
       return {
         applyWindowScale: () => {},
         createSettingsWindow: () => {},
@@ -535,7 +535,7 @@ test('main persists repaired cursor metadata and collection entry when repair re
       }
     }
 
-    if (request === './src/main/ipc') {
+    if (request === './src/ipc') {
       return {
         createPetRendererSettings: (settings) => settings,
         normalizeLocalHttpConfig: (_currentConfig, nextConfig) => nextConfig,
@@ -544,7 +544,7 @@ test('main persists repaired cursor metadata and collection entry when repair re
       }
     }
 
-    if (request === './src/main/settings') {
+    if (request === './src/services/settings') {
       return {
         loadSettings: () => ({
           scale: 1,
@@ -589,7 +589,7 @@ test('main persists repaired cursor metadata and collection entry when repair re
       }
     }
 
-    if (request === './src/main/services/settings-service') {
+    if (request === './src/services/settings-service') {
       return {
         createSettingsService: ({ loadSettings, saveSettings }) => {
           let settings = loadSettings()
@@ -606,7 +606,7 @@ test('main persists repaired cursor metadata and collection entry when repair re
       }
     }
 
-    if (request === './src/main/services/cursor-asset-service') {
+    if (request === './src/native/cursor-asset-service') {
       return {
         createCursorAssetService: () => ({
           repairCursor: async () => ({
@@ -623,40 +623,40 @@ test('main persists repaired cursor metadata and collection entry when repair re
     }
 
     const serviceFactories = {
-      './src/main/screen': { clampToWorkArea: (_win, x, y) => ({ x, y }), getMovementState: () => null },
-      './src/main/services/event-bus': { createEventBus: () => ({ on: () => {}, emit: () => {} }) },
-      './src/main/services/action-service': { createActionService: () => ({ getConfig: () => ({ actions: [] }), getPreviewConfig: () => ({ actions: [] }), reloadConfig: () => ({ actions: [] }) }) },
-      './src/main/services/pet-service': { createPetService: ({ settingsService }) => ({ getSettings: () => settingsService.get(), saveSettings: (settings) => settingsService.save(settings), previewSettings: (partial) => settingsService.preview(partial), getAnimations: () => ({ actions: [] }), getPreviewAnimations: () => ({ actions: [] }), reloadAnimations: () => ({ actions: [] }), onSay: () => {}, onAction: () => {}, onEvent: () => {}, say: (payload) => payload, playAction: (payload) => payload, setEvent: (payload) => payload }) },
-      './src/main/services/pet-pack-service': { createPetPackService: () => ({ listPacks: () => [] }) },
-      './src/main/services/secret-service': { createSecretService: () => ({}) },
-      './src/main/services/ai-service': { createAiService: () => ({}) },
-      './src/main/services/hatch-pet-agent-service': { createHatchPetAgentService: () => ({}) },
-      './src/main/services/image-generation-model-service': { createImageGenerationModelService: () => ({}) },
-      './src/main/services/behavior-orchestrator-service': { createBehaviorOrchestratorService: () => ({ getConfig: () => ({ enabled: false }) }) },
-      './src/main/services/creator-reference-service': {
+      './src/windows/screen': { clampToWorkArea: (_win, x, y) => ({ x, y }), getMovementState: () => null },
+      './src/services/event-bus': { createEventBus: () => ({ on: () => {}, emit: () => {} }) },
+      './src/services/action-service': { createActionService: () => ({ getConfig: () => ({ actions: [] }), getPreviewConfig: () => ({ actions: [] }), reloadConfig: () => ({ actions: [] }) }) },
+      './src/services/pet-service': { createPetService: ({ settingsService }) => ({ getSettings: () => settingsService.get(), saveSettings: (settings) => settingsService.save(settings), previewSettings: (partial) => settingsService.preview(partial), getAnimations: () => ({ actions: [] }), getPreviewAnimations: () => ({ actions: [] }), reloadAnimations: () => ({ actions: [] }), onSay: () => {}, onAction: () => {}, onEvent: () => {}, say: (payload) => payload, playAction: (payload) => payload, setEvent: (payload) => payload }) },
+      './src/services/pet-pack-service': { createPetPackService: () => ({ listPacks: () => [] }) },
+      './src/services/secret-service': { createSecretService: () => ({}) },
+      './src/services/ai-service': { createAiService: () => ({}) },
+      './src/services/hatch-pet-agent-service': { createHatchPetAgentService: () => ({}) },
+      './src/services/image-generation-model-service': { createImageGenerationModelService: () => ({}) },
+      './src/services/behavior-orchestrator-service': { createBehaviorOrchestratorService: () => ({ getConfig: () => ({ enabled: false }) }) },
+      './src/services/creator-reference-service': {
         createCreatorReferenceService: () => ({
           getReference: () => null,
           bindReference: async () => ({ replaced: false, reference: null }),
           copyReferenceIntoRun: () => ({})
         })
       },
-      './src/main/services/creator-studio-default-flow-service': { createCreatorStudioDefaultFlowService: () => ({}) },
-      './src/main/services/creator-workflow-service': { createCreatorWorkflowService: () => ({}) },
-      './src/main/services/plugin-service': { createPluginService: () => ({ stopAllServices: () => {} }) },
-      './src/main/services/plugin-install-service': { createPluginInstallService: () => ({}) },
-      './src/main/services/plugin-github-import-service': { createPluginGithubImportService: () => ({}) },
-      './src/main/services/local-http-service': { createLocalHttpService: () => ({ start: async () => ({}) }) },
-      './src/main/services/action-import-service': { createActionImportService: () => ({}) },
-      './src/main/services/app-log-service': { createAppLogService: () => ({ record: (entry) => appLogs.push(entry), logPath: '/tmp/openpet-app.jsonl' }) },
-      './src/main/services/catalog-service': { createCatalogService: () => ({ getPetPackBlockStatus: () => ({ blocked: false, reasons: [] }), getPluginBlockStatus: () => ({ blocked: false, reasons: [] }) }) },
-      './src/main/plugins/official/basic-behavior': { createBasicBehaviorPlugin: () => ({}) },
-      './apps/desktop/src/sidecar/runtime-coordinator': { createSidecarRuntimeCoordinator: () => ({ start: async () => null, stop: async () => {} }) },
-      './src/main/packaged-runtime-smoke-runner': { maybeRunPackagedRuntimeSmoke: () => {} },
-      './src/main/packaged-plugin-cleanup-evidence-runner': { maybeRunPackagedPluginCleanupEvidence: () => {} },
-      './src/main/packaged-creator-studio-evidence-runner': { maybeRunPackagedCreatorStudioEvidence: () => {} },
-      './src/main/packaged-creator-studio-ui-e2e-runner': { maybeRunPackagedCreatorStudioUiE2e: () => {} },
-      './src/main/packaged-create-ui-smoke-runner': { maybeRunPackagedCreateUiSmoke: () => {} },
-      './src/main/user-data-path': { configureUserDataPath: () => {} }
+      './src/services/creator-studio-default-flow-service': { createCreatorStudioDefaultFlowService: () => ({}) },
+      './src/services/creator-workflow-service': { createCreatorWorkflowService: () => ({}) },
+      './src/services/plugin-service': { createPluginService: () => ({ stopAllServices: () => {} }) },
+      './src/services/plugin-install-service': { createPluginInstallService: () => ({}) },
+      './src/services/plugin-github-import-service': { createPluginGithubImportService: () => ({}) },
+      './src/services/local-http-service': { createLocalHttpService: () => ({ start: async () => ({}) }) },
+      './src/services/action-import-service': { createActionImportService: () => ({}) },
+      './src/services/app-log-service': { createAppLogService: () => ({ record: (entry) => appLogs.push(entry), logPath: '/tmp/openpet-app.jsonl' }) },
+      './src/services/catalog-service': { createCatalogService: () => ({ getPetPackBlockStatus: () => ({ blocked: false, reasons: [] }), getPluginBlockStatus: () => ({ blocked: false, reasons: [] }) }) },
+      './src/services/plugins/official/basic-behavior': { createBasicBehaviorPlugin: () => ({}) },
+      './src/sidecar/runtime-coordinator': { createSidecarRuntimeCoordinator: () => ({ start: async () => null, stop: async () => {} }) },
+      './src/services/packaged-runtime-smoke-runner': { maybeRunPackagedRuntimeSmoke: () => {} },
+      './src/services/packaged-plugin-cleanup-evidence-runner': { maybeRunPackagedPluginCleanupEvidence: () => {} },
+      './src/services/packaged-creator-studio-evidence-runner': { maybeRunPackagedCreatorStudioEvidence: () => {} },
+      './src/services/packaged-creator-studio-ui-e2e-runner': { maybeRunPackagedCreatorStudioUiE2e: () => {} },
+      './src/services/packaged-create-ui-smoke-runner': { maybeRunPackagedCreateUiSmoke: () => {} },
+      './src/services/user-data-path': { configureUserDataPath: () => {} }
     }
     if (serviceFactories[request]) return serviceFactories[request]
 

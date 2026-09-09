@@ -11,7 +11,7 @@ const path = require('path')
 const {
   createSystemCursorService,
   materializeSystemCursorAsset
-} = require('../../src/main/services/system-cursor-service')
+} = require('../../apps/desktop/src/native/system-cursor-service')
 
 const cursor = {
   enabled: true,
@@ -592,10 +592,10 @@ test('materializeSystemCursorAsset converts a data URL into a managed PNG', asyn
 test('system cursor service module loads in a packaged layout without the development build script', (t) => {
   const fixture = createFixture()
   t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }))
-  const packagedServiceDir = path.join(fixture.root, 'app.asar.unpacked', 'src', 'main', 'services')
+  const packagedServiceDir = path.join(fixture.root, 'app.asar.unpacked', 'apps', 'desktop', 'src', 'native')
   fs.mkdirSync(packagedServiceDir, { recursive: true })
   const packagedServicePath = path.join(packagedServiceDir, 'system-cursor-service.js')
-  fs.copyFileSync(path.resolve(__dirname, '..', '..', 'src', 'main', 'services', 'system-cursor-service.js'), packagedServicePath)
+  fs.copyFileSync(path.resolve(__dirname, '..', '..', 'apps', 'desktop', 'src', 'native', 'system-cursor-service.js'), packagedServicePath)
 
   const result = spawnSync(process.execPath, ['-e', 'require(process.argv[1])', packagedServicePath], {
     encoding: 'utf-8',

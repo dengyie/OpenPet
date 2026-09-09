@@ -12,11 +12,11 @@ const {
 	createPluginEntryCwdResolver,
 	createPluginProcessEnv,
 	resolvePluginProcessLaunch,
-} = require("../../../src/main/services/plugin-process-support.js")
+} = require("../../../apps/desktop/src/services/plugin-process-support.js")
 const {
 	sanitizePluginCommandResultValue,
 	sanitizePluginCommandText,
-} = require("../../../src/main/services/plugin-runtime-safety.js")
+} = require("../../../apps/desktop/src/services/plugin-runtime-safety.js")
 
 const HOST = "127.0.0.1"
 const MAX_BODY_BYTES = 1024 * 1024

@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const { createServer } = require('node:http')
 const { setTimeout: delay } = require('node:timers/promises')
 const { createParser } = require('eventsource-parser')
-const { createAiSidecarProxy } = require('../../src/main/ai-sidecar-proxy')
+const { createAiSidecarProxy } = require('../../apps/desktop/src/services/ai-sidecar-proxy')
 
 async function setup(t, { fetchImpl, present } = {}) {
   const { createAiDomain } = await import('../../services/backend/domains/ai/core.js')

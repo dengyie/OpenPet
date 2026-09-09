@@ -2,14 +2,14 @@ import { createRequire } from "node:module"
 const require = createRequire(import.meta.url)
 
 const crypto = require('crypto')
-const { sanitizeLogText } = require('../../../../src/main/services/log-safety.js')
-const { readBoundedResponseBuffer } = require('../../../../src/main/services/bounded-response-body.js')
-const { normalizeProviderResponseLimits } = require('../../../../src/main/services/provider-response-limits.js')
+const { sanitizeLogText } = require('../../../../apps/desktop/src/services/log-safety.js')
+const { readBoundedResponseBuffer } = require('../../../../apps/desktop/src/services/bounded-response-body.js')
+const { normalizeProviderResponseLimits } = require('../../../../apps/desktop/src/services/provider-response-limits.js')
 const {
   createSavedProviderModelCatalog,
   getScopedProviderModelCatalog,
   uniqueModelIds
-} = require('../../../../src/main/services/provider-model-catalog.js')
+} = require('../../../../apps/desktop/src/services/provider-model-catalog.js')
 const {
   assertProviderConfigPayload,
   createProviderOperationDetails,
@@ -17,12 +17,12 @@ const {
   getCapabilitySecretRef,
   sanitizeProviderBaseUrlForDisplay: sanitizeBaseUrlForDisplay,
   validateProviderConfigInput
-} = require('../../../../src/main/services/provider-owner-policy.js')
+} = require('../../../../apps/desktop/src/services/provider-owner-policy.js')
 const {
   DEFAULT_HATCH_PET_AGENT_CONFIG,
   createHatchPetAgentPublicConfig,
   normalizeHatchPetAgentConfig
-} = require('../../../../src/main/services/hatch-pet-agent-contracts.js')
+} = require('../../../../apps/desktop/src/services/hatch-pet-agent-contracts.js')
 
 const DEFAULT_AI_CONFIG = {
   enabled: false,

@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { setImmediate: setImmediatePromise } = require('node:timers/promises')
 
-const { createOpenPetRuntime } = require('../../src/main/bootstrap/create-openpet-runtime')
+const { createOpenPetRuntime } = require('../../apps/desktop/src/services/bootstrap/create-openpet-runtime')
 
 test('bootstrap runtime wires plugin install and service block-status lookups through the created catalog service', async () => {
   const dialogCalls = []

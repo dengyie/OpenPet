@@ -10,7 +10,7 @@ test('Browser dependency gate rejects zod even when a module would be tree-shake
 
 test('Generated browser validators agree with canonical contracts on valid and invalid payloads', async () => {
   const contracts = await import('@openpet/contracts')
-  const browser = await import('../../src/shared/browser-contracts.ts')
+  const browser = await import('../../apps/desktop/src/shared/browser-contracts.ts')
   const v = await import('valibot')
   const fixtures = {
     settingsPatchRequestSchema: [{ ifVersion: 0, patch: {} }, { ifVersion: -1, patch: {} }, { ifVersion: 0.1, patch: {} }, { ifVersion: '0', patch: {} }, { ifVersion: 1, patch: [] }],

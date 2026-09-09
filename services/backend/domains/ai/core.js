@@ -6,9 +6,9 @@ import { createAiTalkStore } from "./talk-store.js"
 import { ApiError } from "../../http/middleware.js"
 
 const require = createRequire(import.meta.url)
-const { createPetUtteranceLogService } = require("../../../../src/main/services/pet-utterance-log-service.js")
-const { createBehaviorOrchestratorService } = require("../../../../src/main/services/behavior-orchestrator-service.js")
-const { resolveHatchPetCompletionConfig, createHatchPetAgentPublicConfig } = require("../../../../src/main/services/hatch-pet-agent-contracts.js")
+const { createPetUtteranceLogService } = require("../../../../apps/desktop/src/services/pet-utterance-log-service.js")
+const { createBehaviorOrchestratorService } = require("../../../../apps/desktop/src/services/behavior-orchestrator-service.js")
+const { resolveHatchPetCompletionConfig, createHatchPetAgentPublicConfig } = require("../../../../apps/desktop/src/services/hatch-pet-agent-contracts.js")
 
 export function createAiSettingsAdapter({ settings, mutationAuthority }) {
   const update = (updater) => {

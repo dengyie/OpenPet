@@ -115,7 +115,7 @@ describe("T42 Catalog cutover boundary", () => {
 	})
 
 	it("uses Backend HTTP for every Catalog operation and waits for the install Job result", async () => {
-		const { createCatalogHttpApi, resolveCatalogInstallJob } = await import("../../src/control-center/src/features/catalog/api.ts")
+		const { createCatalogHttpApi, resolveCatalogInstallJob } = await import("../../apps/control-center/src/features/catalog/api.ts")
 		const calls = []
 		const client = {
 			request: async (input) => {
@@ -160,11 +160,11 @@ describe("T42 Catalog cutover boundary", () => {
 	})
 
 	it("retires every Catalog hook call, IPC registration, and preload bridge after parity exists", () => {
-		const hook = read("src/control-center/src/hooks/useCatalogPane.ts")
-		const mainIpc = read("src/main/ipc.js")
-		const preload = read("control-center-preload.js")
-		const sharedJs = read("src/shared/ipc-channels.js")
-		const sharedTs = read("src/shared/ipc-channels.ts")
+		const hook = read("apps/control-center/src/hooks/useCatalogPane.ts")
+		const mainIpc = read("apps/desktop/src/ipc/index.js")
+		const preload = read("apps/desktop/control-center-preload.js")
+		const sharedJs = read("apps/desktop/src/shared/ipc-channels.js")
+		const sharedTs = read("apps/desktop/src/shared/ipc-channels.ts")
 		const mappings = [
 			["CATALOG_GET", "getCatalog"],
 			["CATALOG_PREPARE_INSTALL", "prepareCatalogInstall"],
@@ -186,8 +186,8 @@ describe("T42 Catalog cutover boundary", () => {
 	})
 
 	it("locks selection-changing Catalog controls while an install Job is active", () => {
-		const hook = read("src/control-center/src/hooks/useCatalogPane.ts")
-		const pane = read("src/control-center/src/panes/CatalogPane.tsx")
+		const hook = read("apps/control-center/src/hooks/useCatalogPane.ts")
+		const pane = read("apps/control-center/src/panes/CatalogPane.tsx")
 
 		assert.match(hook, /if \(installing \|\| preparing\) return/)
 		assert.match(hook, /const onClearSelection = async \(\) => \{\n\s*if \(installing\) return/)

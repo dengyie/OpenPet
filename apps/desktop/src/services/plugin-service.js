@@ -1,0 +1,2608 @@
+const fs = require('fs')
+const os = require('os')
+const path = require('path')
+const { spawn } = require('child_process')
+const { createServiceProcessTree } = require('./service-process-tree')
+const { normalizePluginManifest } = require('./plugins/manifest')
+const { coerceConfigValue, normalizeConfigSchema } = require('./plugins/config-schema')
+const { hasOwn, cloneJsonValue, getJsonByteSize } = require('./plugin-json-utils')
+const { MAX_PLUGIN_LOG_ENTRIES, normalizePluginLog, filterLogs, exportLogs } = require('./plugin-log-store')
+const { normalizeNetworkRequest, readLimitedResponseText, requestPluginNetwork, connectPinnedHttps } = require('./plugin-network-client')
+const { LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, runLocalPluginCommand } = require('./local-plugin-runner-client')
+const { readLocalPluginManifests } = require('./plugin-discovery')
+const {
+  createPluginBridgeKey,
+  createPluginBridgeRunId,
+  createPluginBridgeToken,
+  createPluginCommandBridgeServer
+} = require('./plugin-command-bridge-server')
+const { createPluginRuntimeBridgeServer, PLUGIN_BRIDGE_HOST } = require('./plugin-runtime-bridge-server')
+const { runPluginCommandEntryProcess } = require('./plugin-command-runner')
+const {
+  createPluginEntryCwdResolver,
+  createPluginProcessEnv,
+  resolvePluginProcessLaunch
+} = require('./plugin-process-support')
+const {
+  sanitizePluginCommandResultValue,
+  sanitizePluginCommandText
+} = require('./plugin-runtime-safety')
+const { createPluginRuntimeControl } = require('./plugin-runtime-control')
+const { createPluginRuntimeRegistry } = require('./plugin-runtime-registry')
+const { ACTIVE_PLUGIN_RUNTIME_STATUSES } = require('./plugin-runtime-status')
+const { createPluginRuntimeStopSupport } = require('./plugin-runtime-stop-support')
+const {
+  getPluginSignatureStatus: derivePluginSignatureStatus,
+  normalizeServiceHealthPolicy: normalizePluginServiceHealthPolicy,
+  normalizePluginConfig: normalizePluginServiceConfig,
+  getPluginStorageStats: computePluginStorageStats,
+  createRuntimeView: buildPluginRuntimeView,
+  createSetupRuntimeView: buildPluginSetupRuntimeView,
+  decorateEntriesWithRuntime: decoratePluginEntriesWithRuntime,
+  listPlugins: listPluginState
+} = require('./plugin-service-state')
+
+const SDK_REGISTERED_COMMANDS = Symbol('openpet.registeredCommands')
+const STORAGE_KEY_PATTERN = /^[a-zA-Z0-9_.:-]{1,128}$/
+const MAX_PLUGIN_STORAGE_BYTES = 64 * 1024
+const MAX_PLUGIN_STORAGE_VALUE_BYTES = 16 * 1024
+const MAX_PLUGIN_ASSET_IMPORT_FRAMES = 240
+const MAX_PLUGIN_ASSET_IMPORT_FRAME_PIXELS = 1024 * 1024
+const MAX_PLUGIN_ASSET_IMPORT_TOTAL_PIXELS = 48 * 1000 * 1000
+const MAX_PLUGIN_ASSET_IMPORT_BYTES = 50 * 1024 * 1024
+const PLUGIN_SERVICE_HEALTH_TIMEOUT_MS = 3000
+const PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS = 1500
+// 需要覆盖单个运行时的 stop 宽限期（1500ms SIGTERM→SIGKILL）加上落盘余量。
+const PLUGIN_STOP_ALL_TIMEOUT_MS = 5000
+const MIN_PLUGIN_SERVICE_HEALTH_INTERVAL_MS = 15000
+const DEFAULT_PLUGIN_SERVICE_HEALTH_INTERVAL_MS = 30000
+const MAX_PLUGIN_SERVICE_HEALTH_INTERVAL_MS = 300000
+const CREATOR_STUDIO_PLUGIN_ID = 'openpet.creator-studio'
+const TRIGGER_PROPOSAL_TYPES = new Set(['manual', 'click', 'random', 'state', 'event', 'unbound'])
+const createPluginServiceKey = (pluginId, serviceId) => `${pluginId}:${serviceId}`
+const parsePluginServiceKey = (key) => {
+  const [pluginId = '', runtimeId = ''] = String(key || '').split(':')
+  return { pluginId, runtimeId }
+}
+
+const ACTIVE_SERVICE_STATUSES = ACTIVE_PLUGIN_RUNTIME_STATUSES
+const ACTIVE_SETUP_STATUSES = ACTIVE_PLUGIN_RUNTIME_STATUSES
+const ACTIVE_COMMAND_STATUSES = ACTIVE_PLUGIN_RUNTIME_STATUSES
+const AGENT_AWARENESS_PLUGIN_ID = 'openpet.agent-awareness'
+const AGENT_AWARENESS_SERVICE_ID = 'agent-awareness'
+const sanitizePluginHealthDetailLabel = (value = '') => sanitizePluginCommandText(value, {
+  maxLength: 80,
+  redactStandaloneTokenWords: false
+})
+
+const sanitizePluginHealthDetailValue = (value = '') => sanitizePluginCommandText(value, { maxLength: 120 })
+const IM_GATEWAY_PLUGIN_ID = 'openpet.im-gateway'
+const IM_GATEWAY_SERVICE_ID = 'im-gateway'
+const IM_GATEWAY_TELEGRAM_BOT_TOKEN_SECRET_ID = 'im.telegram.botToken'
+const IM_GATEWAY_QQ_APP_ID_SECRET_ID = 'im.qq.appId'
+const IM_GATEWAY_QQ_CLIENT_SECRET_SECRET_ID = 'im.qq.clientSecret'
+const IM_GATEWAY_WECOM_CORP_SECRET_ID = 'im.wecom.corpSecret'
+const IM_GATEWAY_WECOM_TOKEN_SECRET_ID = 'im.wecom.token'
+const IM_GATEWAY_WECOM_ENCODING_AES_KEY_SECRET_ID = 'im.wecom.encodingAesKey'
+const IM_GATEWAY_HEALTH_MESSAGES = new Map([
+  ['missing-token', 'Telegram token missing'],
+  ['telegram-polling-conflict', 'Telegram polling conflict'],
+  ['telegram-polling-failed', 'Telegram polling failed'],
+  ['telegram-handler-failed', 'Telegram message handler failed'],
+  ['telegram-handler-overloaded', 'Telegram handler capacity exceeded'],
+  ['allowlist-miss', 'Recent Telegram message blocked by allowlist'],
+  ['wecom-access-token-failed', 'WeCom access token failed'],
+  ['wecom-invalid-signature', 'WeCom callback signature invalid'],
+  ['wecom-handler-failed', 'WeCom message handler failed'],
+  ['wecom-stop-timeout', 'WeCom adapter stop timed out'],
+  ['wecom-missing-credentials', 'WeCom credentials missing'],
+  ['invalid-agent-id', 'WeCom Agent ID must be a positive integer'],
+  ['handler-overloaded', 'WeCom handler capacity exceeded']
+])
+const IM_GATEWAY_SAFE_HEALTH_LOG_MESSAGES = new Set([
+  ...IM_GATEWAY_HEALTH_MESSAGES.values(),
+  'OK',
+  'Health check timed out'
+])
+const DEFAULT_AGENT_AWARENESS_AUTOSTART_INTERVAL_MS = 5000
+const DEFAULT_AGENT_AWARENESS_SIGNAL_WINDOW_MS = 15 * 60 * 1000
+const DEFAULT_AGENT_AWARENESS_SIGNAL_MAX_FILES = 24
+const DEFAULT_AGENT_AWARENESS_SIGNAL_MAX_DEPTH = 5
+
+const LOOPBACK_HEALTH_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
+const defaultServiceProcessTree = createServiceProcessTree()
+const SERVICE_BRIDGE_ROUTE_PATTERN = /^\/plugins\/bridge\/([^/]+)\/([^/]+)\/([^/]+)(\/context|\/pet\/say|\/pet\/action|\/pet\/event|\/ai\/chat)$/
+const SERVICE_BRIDGE_READ_ONLY_ROUTES = new Map([
+  ['/context', 'context']
+])
+const SERVICE_BRIDGE_JSON_ROUTES = new Map([
+  ['/pet/say', 'petSay'],
+  ['/pet/action', 'petAction'],
+  ['/pet/event', 'petEvent'],
+  ['/ai/chat', 'aiChat']
+])
+
+const getDirectoryByteSize = (folderPath) => {
+  let totalBytes = 0
+  for (const entry of fs.readdirSync(folderPath, { withFileTypes: true })) {
+    const entryPath = path.join(folderPath, entry.name)
+    const stat = fs.lstatSync(entryPath)
+    if (stat.isDirectory() && !stat.isSymbolicLink()) {
+      totalBytes += getDirectoryByteSize(entryPath)
+    } else {
+      totalBytes += stat.size
+    }
+  }
+  return totalBytes
+}
+
+const assertDirectoryHasNoSymlinks = (folderPath) => {
+  for (const entry of fs.readdirSync(folderPath, { withFileTypes: true })) {
+    const entryPath = path.join(folderPath, entry.name)
+    const stat = fs.lstatSync(entryPath)
+    if (stat.isSymbolicLink()) {
+      throw new Error('Plugin asset folder must not contain symlinks')
+    }
+    if (stat.isDirectory()) assertDirectoryHasNoSymlinks(entryPath)
+  }
+}
+
+const assertCreatorAssetImportWithinLimits = (inspection = {}, sourceDir = '') => {
+  if (!inspection.valid) throw new Error((inspection.errors || []).join('; ') || 'Frame folder is invalid')
+  const frameCount = Number(inspection.frameCount) || 0
+  const maxWidth = Number(inspection.maxWidth) || 0
+  const maxHeight = Number(inspection.maxHeight) || 0
+  const framePixels = maxWidth * maxHeight
+  const totalPixels = framePixels * frameCount
+  const totalBytes = sourceDir ? getDirectoryByteSize(sourceDir) : 0
+
+  if (frameCount > MAX_PLUGIN_ASSET_IMPORT_FRAMES) {
+    throw new Error(`Frame folder has too many frames: ${frameCount}/${MAX_PLUGIN_ASSET_IMPORT_FRAMES}`)
+  }
+  if (framePixels > MAX_PLUGIN_ASSET_IMPORT_FRAME_PIXELS) {
+    throw new Error(`Frame dimensions are too large: ${maxWidth}x${maxHeight}`)
+  }
+  if (totalPixels > MAX_PLUGIN_ASSET_IMPORT_TOTAL_PIXELS) {
+    throw new Error(`Frame folder is too large to import: ${totalPixels} pixels`)
+  }
+  if (totalBytes > MAX_PLUGIN_ASSET_IMPORT_BYTES) {
+    throw new Error(`Frame folder is too large to import: ${totalBytes} bytes`)
+  }
+}
+
+const createServiceHealthView = (health = {}, serviceEntry = {}) => {
+  const hasConfiguredHealth = Boolean(serviceEntry.health?.url)
+  const statusCode = health.statusCode == null || health.statusCode === ''
+    ? null
+    : Number(health.statusCode)
+  const details = Array.isArray(health.details)
+    ? health.details
+      .filter((detail) => isRecord(detail))
+      .filter((detail) => typeof detail.label === 'string' && typeof detail.value === 'string')
+      .map((detail) => ({
+        label: sanitizePluginHealthDetailLabel(detail.label),
+        value: sanitizePluginHealthDetailValue(detail.value)
+      }))
+      .filter((detail) => detail.label && detail.value)
+      .slice(0, 8)
+    : []
+  const view = {
+    status: health.status || (hasConfiguredHealth ? 'unknown' : 'not-configured'),
+    checkedAt: health.checkedAt || '',
+    url: health.url || serviceEntry.health?.url || '',
+    statusCode: Number.isFinite(statusCode) ? statusCode : null,
+    message: health.message || ''
+  }
+  if (details.length) view.details = details
+  return view
+}
+
+const formatCompactInteger = (value) => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return '0'
+  return new Intl.NumberFormat('en-US').format(numeric)
+}
+
+const isAgentAwarenessHealthTarget = ({ pluginId = '', serviceId = '' } = {}) => (
+  pluginId === AGENT_AWARENESS_PLUGIN_ID &&
+  serviceId === AGENT_AWARENESS_SERVICE_ID
+)
+
+const isImGatewayHealthTarget = ({ pluginId = '', serviceId = '' } = {}) => (
+  pluginId === IM_GATEWAY_PLUGIN_ID &&
+  serviceId === IM_GATEWAY_SERVICE_ID
+)
+
+const isAgentAwarenessHealthBody = (body) => (
+  isRecord(body) &&
+  body.service === 'agent-awareness' &&
+  body.ok === true &&
+  isRecord(body.diagnostics)
+)
+
+const isImGatewayHealthBody = (body) => (
+  isRecord(body) &&
+  body.service === IM_GATEWAY_PLUGIN_ID &&
+  isRecord(body.adapters)
+)
+
+const summarizeAgentAwarenessHealthBody = (body) => {
+  if (!isAgentAwarenessHealthBody(body)) return ''
+  const diagnostics = body.diagnostics
+  const activeSessionCount = formatCompactInteger(diagnostics.activeSessionCount)
+  const sessionCount = formatCompactInteger(diagnostics.sessionCount)
+  const totalEvents = formatCompactInteger(diagnostics.totalEvents)
+  return `${activeSessionCount} active · ${sessionCount} sessions · ${totalEvents} events`
+}
+
+const formatHealthCost = ({ amount, currency = 'USD' } = {}) => {
+  if (amount == null || amount === '') return ''
+  const numeric = Number(amount)
+  if (!Number.isFinite(numeric)) return ''
+  return `$${numeric.toFixed(6)} ${sanitizePluginCommandText(currency || 'USD', { maxLength: 8 })}`
+}
+
+const formatHealthPercent = (value) => {
+  if (value == null || value === '') return ''
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? `${Math.round(numeric * 100) / 100}%` : ''
+}
+
+const createAgentAwarenessHealthDetails = (body) => {
+  if (!isAgentAwarenessHealthBody(body)) return []
+  const diagnostics = body.diagnostics
+  const details = [
+    { label: 'Active Sessions', value: formatCompactInteger(diagnostics.activeSessionCount) },
+    { label: 'Tracked Sessions', value: formatCompactInteger(diagnostics.sessionCount) },
+    { label: 'Observed Events', value: formatCompactInteger(diagnostics.totalEvents) }
+  ]
+  const usageTokens = Number(diagnostics.usageTotalTokens)
+  if (Number.isFinite(usageTokens) && usageTokens > 0) {
+    details.push({ label: 'Usage Tokens', value: formatCompactInteger(usageTokens) })
+  }
+  const estimatedCost = formatHealthCost({
+    amount: diagnostics.usageEstimatedCostUsd,
+    currency: diagnostics.usageCurrency
+  })
+  if (estimatedCost) details.push({ label: 'Estimated Cost', value: estimatedCost })
+  const peakContext = formatHealthPercent(diagnostics.usagePeakContextUsedPercent)
+  if (peakContext) details.push({ label: 'Peak Context', value: peakContext })
+  return details
+}
+
+const summarizeImGatewayHealthBody = (body) => {
+  if (!isImGatewayHealthBody(body)) return null
+  const adapter = ['telegram', 'qq-official', 'wecom']
+    .map((id) => ({ id, value: isRecord(body.adapters?.[id]) ? body.adapters[id] : null }))
+    .filter(({ value }) => value)
+    .sort((left, right) => Number(right.value.enabled === true) - Number(left.value.enabled === true) || Number(['running', 'connected', 'connecting'].includes(right.value.status)) - Number(['running', 'connected', 'connecting'].includes(left.value.status)))[0]
+  if (!adapter) return null
+  const { id, value: telegram } = adapter
+
+  const enabled = telegram.enabled === true
+  const status = String(telegram.status || '').trim()
+  const errorCode = String(telegram.lastErrorCode || '').trim()
+  const diagnosticCode = String(telegram.lastDiagnosticCode || '').trim()
+
+  if (!enabled || status === 'disabled') {
+    return { healthy: true, logLevel: 'info', message: `${id === 'wecom' ? 'WeCom' : 'Telegram'} disabled` }
+  }
+  if (
+    (errorCode === 'telegram-handler-failed' || errorCode === 'telegram-handler-overloaded') &&
+    (status === 'connected' || status === 'running')
+  ) {
+    return {
+      healthy: true,
+      logLevel: 'warn',
+      message: IM_GATEWAY_HEALTH_MESSAGES.get(errorCode)
+    }
+  }
+  if (id === 'wecom' && errorCode === 'handler-overloaded' && status === 'connected') {
+    return {
+      healthy: true,
+      logLevel: 'warn',
+      message: IM_GATEWAY_HEALTH_MESSAGES.get(errorCode)
+    }
+  }
+  if (errorCode || ['missing-token', 'failed', 'stopped'].includes(status)) {
+    return {
+      healthy: false,
+      logLevel: 'error',
+      message: IM_GATEWAY_HEALTH_MESSAGES.get(errorCode) || `${id === 'wecom' ? 'WeCom' : 'Telegram'} unavailable`
+    }
+  }
+  if (diagnosticCode === 'allowlist-miss') {
+    return {
+      healthy: true,
+      logLevel: 'warn',
+      message: IM_GATEWAY_HEALTH_MESSAGES.get(diagnosticCode)
+    }
+  }
+  if (status === 'connected' || status === 'running') {
+    return { healthy: true, logLevel: 'info', message: `${id === 'wecom' ? 'WeCom' : 'Telegram'} connected` }
+  }
+  return { healthy: false, logLevel: 'error', message: `${id === 'wecom' ? 'WeCom' : 'Telegram'} unavailable` }
+}
+
+const formatServiceHealthLogMessage = ({
+  pluginId = '',
+  serviceId = '',
+  status = '',
+  message = ''
+} = {}) => {
+  const baseMessage = status === 'healthy' ? 'Service health healthy' : 'Service health unhealthy'
+  if (!isImGatewayHealthTarget({ pluginId, serviceId })) return baseMessage
+  let detail = String(message || '').trim()
+  if (!detail) return baseMessage
+  if (!IM_GATEWAY_SAFE_HEALTH_LOG_MESSAGES.has(detail) && !/^HTTP \d+$/.test(detail)) {
+    detail = sanitizePluginCommandText(detail).trim()
+  }
+  return detail && detail !== 'OK' ? `${baseMessage}: ${detail}` : baseMessage
+}
+
+const resolveCodexSignalHome = ({
+  codexHome = process.env.OPENPET_CODEX_HOME || process.env.CODEX_HOME || path.join(os.homedir(), '.codex')
+} = {}) => codexHome
+
+const createAgentAwarenessServiceEnv = ({
+  pluginId,
+  serviceId,
+  codexHome = resolveCodexSignalHome()
+} = {}) => {
+  if (pluginId !== AGENT_AWARENESS_PLUGIN_ID || serviceId !== AGENT_AWARENESS_SERVICE_ID) return {}
+  return {
+    OPENPET_CODEX_HOME: codexHome,
+    CODEX_HOME: codexHome
+  }
+}
+
+const listLatestCodexSignalFiles = ({
+  codexHome = resolveCodexSignalHome(),
+  maxFiles = DEFAULT_AGENT_AWARENESS_SIGNAL_MAX_FILES,
+  maxDepth = DEFAULT_AGENT_AWARENESS_SIGNAL_MAX_DEPTH
+} = {}) => {
+  const roots = [
+    path.join(codexHome, 'sessions'),
+    path.join(codexHome, 'archived_sessions')
+  ]
+  const files = []
+  const walk = (dirPath, depth) => {
+    let entries = []
+    try {
+      entries = fs.readdirSync(dirPath, { withFileTypes: true })
+    } catch (_) {
+      return
+    }
+    for (const entry of entries) {
+      const target = path.join(dirPath, entry.name)
+      if (entry.isDirectory()) {
+        if (depth < maxDepth) walk(target, depth + 1)
+        continue
+      }
+      if (!entry.isFile() || !entry.name.endsWith('.jsonl')) continue
+      try {
+        const stat = fs.statSync(target)
+        files.push({ filePath: target, mtimeMs: stat.mtimeMs })
+      } catch (_) {}
+    }
+  }
+  for (const root of roots) walk(root, 0)
+  return files.sort((left, right) => right.mtimeMs - left.mtimeMs).slice(0, maxFiles)
+}
+
+const defaultProbeAgentAwarenessActivity = ({
+  codexHome = resolveCodexSignalHome(),
+  nowMs = () => Date.now(),
+  recentWindowMs = DEFAULT_AGENT_AWARENESS_SIGNAL_WINDOW_MS
+} = {}) => {
+  const [latestFile] = listLatestCodexSignalFiles({ codexHome })
+  if (!latestFile || !Number.isFinite(latestFile.mtimeMs)) {
+    return { active: false, signalSource: 'codex-rollout', observedAt: '' }
+  }
+  const ageMs = Math.max(0, Number(nowMs()) - latestFile.mtimeMs)
+  return {
+    active: ageMs <= recentWindowMs,
+    signalSource: 'codex-rollout',
+    observedAt: new Date(latestFile.mtimeMs).toISOString()
+  }
+}
+
+const readServiceHealthResponse = async (response, { pluginId = '', serviceId = '' } = {}) => {
+  const fallbackMessage = response?.ok ? 'OK' : `HTTP ${Number.isFinite(Number(response?.status)) ? Number(response.status) : 'error'}`
+  const invalidImGatewayResponse = isImGatewayHealthTarget({ pluginId, serviceId })
+    ? { healthy: false, logLevel: 'error', message: 'Telegram health response invalid' }
+    : null
+  const contentType = String(response?.headers?.get?.('content-type') || '').toLowerCase()
+  if (!contentType.includes('application/json')) return invalidImGatewayResponse || { message: fallbackMessage }
+  try {
+    const text = await readLimitedResponseText(response)
+    const body = JSON.parse(text)
+    if (isAgentAwarenessHealthTarget({ pluginId, serviceId })) {
+      return {
+        details: createAgentAwarenessHealthDetails(body),
+        message: summarizeAgentAwarenessHealthBody(body) || fallbackMessage
+      }
+    }
+    if (isImGatewayHealthTarget({ pluginId, serviceId })) {
+      return summarizeImGatewayHealthBody(body) || invalidImGatewayResponse
+    }
+    return { message: fallbackMessage }
+  } catch (_) {
+    return invalidImGatewayResponse || { message: fallbackMessage }
+  }
+}
+
+const isRecord = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+
+const normalizePageNumber = (value) => {
+  const numeric = Number(value)
+  return Number.isInteger(numeric) && numeric > 0 ? numeric : 1
+}
+
+const normalizePageSize = (value, fallback = 50) => {
+  const numeric = Number(value)
+  return Number.isInteger(numeric) && numeric > 0 ? Math.min(numeric, 200) : fallback
+}
+
+const paginateLogs = (entries, request = {}) => {
+  const pageSize = normalizePageSize(request.pageSize)
+  const page = normalizePageNumber(request.page)
+  const total = entries.length
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+  const safePage = Math.min(page, totalPages)
+  const start = (safePage - 1) * pageSize
+  return {
+    entries: entries.slice(start, start + pageSize),
+    page: safePage,
+    pageSize,
+    total,
+    totalPages
+  }
+}
+
+const toSafeProposalSegment = (value, fallback = 'unknown') => {
+  const normalized = String(value || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 32)
+  return normalized || fallback
+}
+
+const normalizeCreatorImageTraceContext = ({ runId, traceContext = {} } = {}) => {
+  const normalizedRunId = String(runId || '').trim()
+  const safeTraceId = (value) => {
+    const normalized = String(value || '').trim()
+    return /^[A-Za-z0-9][A-Za-z0-9:_-]{0,127}$/.test(normalized) ? normalized : ''
+  }
+  return Object.fromEntries([
+    ['runId', safeTraceId(normalizedRunId)],
+    ['actionId', safeTraceId(traceContext?.actionId)],
+    ['stage', safeTraceId(traceContext?.stage)],
+    ['candidateId', safeTraceId(traceContext?.candidateId)]
+  ].filter(([, value]) => value))
+}
+
+const assertStorageValueSize = (value) => {
+  const byteSize = getJsonByteSize(value)
+  if (byteSize > MAX_PLUGIN_STORAGE_VALUE_BYTES) {
+    throw new Error(`Plugin storage value exceeds ${MAX_PLUGIN_STORAGE_VALUE_BYTES} bytes`)
+  }
+}
+
+const assertStorageSize = (storage) => {
+  const byteSize = getJsonByteSize(storage)
+  if (byteSize > MAX_PLUGIN_STORAGE_BYTES) {
+    throw new Error(`Plugin storage exceeds ${MAX_PLUGIN_STORAGE_BYTES} bytes`)
+  }
+}
+
+const assertStorageKey = (key) => {
+  if (typeof key !== 'string' || !STORAGE_KEY_PATTERN.test(key)) {
+    throw new Error('Plugin storage key must be 1-128 characters using letters, numbers, _, ., :, or -')
+  }
+}
+
+const createPluginService = ({ settingsService, petService, actionService, actionImportService, petPackService, aiService, aiTalkService, imageGenerationModelService, secretService = null, hatchPetAgentService = null, fetchImpl = globalThis.fetch, resolveAddress, pluginNetworkConnect = connectPinnedHttps, pluginNetworkTimeoutMs = 10000, serviceHealthTimeoutMs, healthCheckTimeoutMs = serviceHealthTimeoutMs ?? PLUGIN_SERVICE_HEALTH_TIMEOUT_MS, serviceStopGracePeriodMs = PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS, commandProcessTimeoutMs = LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, openExternal = async () => { throw new Error('Dashboard opener is not available') }, selectCreatorAssetFrameFolder = async () => { throw new Error('Creator asset folder picker is not available') }, onPetPackActivated = () => {}, spawnServiceProcess = spawn, spawnSetupProcess = spawnServiceProcess, spawnCommandProcess = spawnServiceProcess, killServiceProcess = process.kill, signalServiceProcessTree = defaultServiceProcessTree.signalServiceProcessTree, setServiceHealthTimer = setTimeout, clearServiceHealthTimer = clearTimeout, probeAgentAwarenessActivity = defaultProbeAgentAwarenessActivity, setAgentAwarenessAutostartTimer = setInterval, clearAgentAwarenessAutostartTimer = clearInterval, agentAwarenessAutostartIntervalMs = DEFAULT_AGENT_AWARENESS_AUTOSTART_INTERVAL_MS, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
+  let effectiveHatchPetAgentService = hatchPetAgentService
+  if (!settingsService) throw new Error('settingsService is required')
+  if (!petService) throw new Error('petService is required')
+  const commandBridgeRuntimes = new Map()
+  const serviceBridgeRuntimes = new Map()
+  const pendingServiceStarts = new Set()
+  let agentAwarenessAutostartTimer = null
+  let lastAgentAwarenessSignalKey = ''
+  const runtimeStopSupport = createPluginRuntimeStopSupport({
+    killProcess: killServiceProcess,
+    signalProcessTree: signalServiceProcessTree
+  })
+
+  const getLogStore = () => {
+    const logs = settingsService.get().plugins?.logs
+    return Array.isArray(logs) ? logs.map(normalizePluginLog) : []
+  }
+
+  const saveLogStore = (logs) => {
+    const settings = settingsService.get()
+    settingsService.save({
+      ...settings,
+      plugins: {
+        ...(settings.plugins || {}),
+        logs: logs.slice(0, MAX_PLUGIN_LOG_ENTRIES).map((entry, index) => normalizePluginLog(entry, index))
+      }
+    })
+  }
+
+  const appendLog = ({ level = 'info', pluginId = '', commandId = '', message = '' } = {}) => {
+    const logs = getLogStore()
+    const maxLogId = logs.reduce((maxId, entry) => Math.max(maxId, entry.id), 0)
+    const entry = {
+      id: maxLogId + 1,
+      timestamp: new Date().toISOString(),
+      level: ['error', 'warn'].includes(level) ? level : 'info',
+      pluginId,
+      commandId,
+      message: String(message || '')
+    }
+    logs.unshift(entry)
+    saveLogStore(logs)
+    return entry
+  }
+
+  const ensurePluginCreatorDirs = (manifest) => {
+    const baseDir = path.join(path.dirname(manifest.basePath || process.cwd()), '.openpet', manifest.id)
+    const dataDir = path.join(baseDir, 'data')
+    const cacheDir = path.join(baseDir, 'cache')
+    const logDir = path.join(baseDir, 'logs')
+    fs.mkdirSync(dataDir, { recursive: true })
+    fs.mkdirSync(cacheDir, { recursive: true })
+    fs.mkdirSync(logDir, { recursive: true })
+    return { dataDir, cacheDir, logDir }
+  }
+
+  const resolvePluginAssetPath = (manifest, relativePath) => {
+    if (!manifest.basePath) throw new Error('Plugin assets require a local plugin directory')
+    if (typeof relativePath !== 'string' || !relativePath.trim()) {
+      throw new Error('Plugin asset relativePath is required')
+    }
+    const normalized = relativePath.replace(/\\/g, '/')
+    if (
+      normalized.startsWith('/') ||
+      /^[a-zA-Z]:\//.test(normalized) ||
+      normalized.includes('\0') ||
+      normalized.split('/').includes('..')
+    ) {
+      throw new Error('Plugin asset path must be a safe relative path')
+    }
+    const basePath = path.resolve(manifest.basePath)
+    const targetPath = path.resolve(basePath, normalized)
+    if (targetPath !== basePath && !targetPath.startsWith(`${basePath}${path.sep}`)) {
+      throw new Error('Plugin asset path must stay inside the plugin directory')
+    }
+    if (!fs.existsSync(targetPath)) throw new Error('Plugin asset path does not exist')
+    const realTargetPath = fs.realpathSync(targetPath)
+    const realBasePath = fs.realpathSync(basePath)
+    if (realTargetPath !== realBasePath && !realTargetPath.startsWith(`${realBasePath}${path.sep}`)) {
+      throw new Error('Plugin asset path must stay inside the plugin directory')
+    }
+    if (!fs.statSync(realTargetPath).isDirectory()) throw new Error('Plugin asset path must be a folder')
+    assertDirectoryHasNoSymlinks(realTargetPath)
+    return realTargetPath
+  }
+
+  const resolvePluginDataPath = (manifest, relativePath) => {
+    if (typeof relativePath !== 'string' || !relativePath.trim()) {
+      throw new Error('Plugin data relative path is required')
+    }
+    const normalized = relativePath.replace(/\\/g, '/')
+    if (
+      normalized.startsWith('/') ||
+      /^[a-zA-Z]:\//.test(normalized) ||
+      normalized.includes('\0') ||
+      normalized.split('/').includes('..')
+    ) {
+      throw new Error('Plugin data path must be a safe relative path')
+    }
+    const { dataDir } = ensurePluginCreatorDirs(manifest)
+    const basePath = path.resolve(dataDir)
+    const targetPath = path.resolve(basePath, normalized)
+    if (targetPath !== basePath && !targetPath.startsWith(`${basePath}${path.sep}`)) {
+      throw new Error('Plugin data path must stay inside plugin data directory')
+    }
+    if (!fs.existsSync(targetPath)) throw new Error('Plugin data path does not exist')
+    const realTargetPath = fs.realpathSync(targetPath)
+    const realBasePath = fs.realpathSync(basePath)
+    if (realTargetPath !== realBasePath && !realTargetPath.startsWith(`${realBasePath}${path.sep}`)) {
+      throw new Error('Plugin data path must stay inside plugin data directory')
+    }
+    if (fs.statSync(realTargetPath).isDirectory()) assertDirectoryHasNoSymlinks(realTargetPath)
+    return realTargetPath
+  }
+
+  const resolvePickedAssetPath = (sourceDir) => {
+    if (typeof sourceDir !== 'string' || !sourceDir.trim()) {
+      throw new Error('Selected frame folder is required')
+    }
+    const targetPath = path.resolve(sourceDir)
+    if (!fs.existsSync(targetPath)) throw new Error('Selected frame folder does not exist')
+    if (fs.lstatSync(targetPath).isSymbolicLink()) throw new Error('Selected frame folder must not be a symlink')
+    const realTargetPath = fs.realpathSync(targetPath)
+    if (!fs.statSync(realTargetPath).isDirectory()) throw new Error('Selected frame folder must be a folder')
+    assertDirectoryHasNoSymlinks(realTargetPath)
+    return realTargetPath
+  }
+
+  const createCreatorReferenceContractError = (code, message) => {
+    const error = new Error(message)
+    error.code = code
+    return error
+  }
+
+  const assertExactlyOneCreatorModelReferenceImage = (referenceImages) => {
+    if (!Array.isArray(referenceImages) || referenceImages.length === 0) {
+      throw createCreatorReferenceContractError(
+        'reference_image_required',
+        'Image generation requires exactly one reference image'
+      )
+    }
+    if (referenceImages.length !== 1) {
+      throw createCreatorReferenceContractError(
+        'reference_image_count_invalid',
+        'Image generation requires exactly one reference image; compose multiple sources into one local reference image'
+      )
+    }
+  }
+
+  const sanitizeCreatorModelReferenceImages = (manifest, referenceImages = []) => {
+    assertExactlyOneCreatorModelReferenceImage(referenceImages)
+    return referenceImages.map((referenceImage) => {
+      if (!referenceImage || typeof referenceImage !== 'object') {
+        throw createCreatorReferenceContractError(
+          'reference_image_invalid',
+          'Creator model reference image must be an object'
+        )
+      }
+      const relativePath = String(referenceImage.relativePath || '').trim()
+      if (!relativePath) {
+        throw createCreatorReferenceContractError(
+          'reference_image_invalid',
+          'Creator model reference image relativePath is required'
+        )
+      }
+      const resolvedPath = resolvePluginDataPath(manifest, relativePath)
+      const sanitized = {
+        path: resolvedPath,
+        relativePath: relativePath.replace(/\\/g, '/')
+      }
+      const metadataRelativePath = typeof referenceImage.metadataRelativePath === 'string'
+        ? referenceImage.metadataRelativePath.trim()
+        : ''
+      if (metadataRelativePath) {
+        resolvePluginDataPath(manifest, metadataRelativePath)
+        sanitized.metadataRelativePath = metadataRelativePath.replace(/\\/g, '/')
+      }
+      if (typeof referenceImage.fileName === 'string' && referenceImage.fileName.trim()) {
+        sanitized.fileName = referenceImage.fileName.trim()
+      }
+      if (typeof referenceImage.sha256 === 'string' && referenceImage.sha256.trim()) {
+        sanitized.sha256 = referenceImage.sha256.trim()
+      }
+      if (typeof referenceImage.role === 'string' && referenceImage.role.trim()) {
+        sanitized.role = referenceImage.role.trim()
+      }
+      return sanitized
+    })
+  }
+
+  const selectCreatorAssetSourceDir = async () => {
+    const selected = await selectCreatorAssetFrameFolder()
+    if (selected?.canceled || !selected?.sourceDir) return { canceled: true }
+    return { canceled: false, sourceDir: resolvePickedAssetPath(selected.sourceDir) }
+  }
+
+  const createPluginBridgeContext = () => {
+    const snapshot = petService.getSnapshot?.() || {}
+    const settings = snapshot.settings || {}
+    const actions = snapshot.actions || {}
+    return {
+      petName: String(settings.name || 'OpenPet'),
+      selectedPetId: String(settings.petPacks?.activePackId || 'legacy-cat'),
+      currentActionId: String(actions.defaultAction || ''),
+      personality: {
+        tone: 'friendly',
+        tags: ['companion', 'playful']
+      }
+    }
+  }
+
+  const createPluginPetBridgeHandlers = (plugin, commandId) => ({
+    context: async () => {
+      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge context requested' })
+      return { ok: true, context: createPluginBridgeContext() }
+    },
+    petSay: async (payload = {}) => {
+      assertPermission(plugin.manifest, 'pet:say')
+      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge pet.say invoked' })
+      return {
+        ok: true,
+        result: petService.say({
+          text: payload.text,
+          ttlMs: payload.ttlMs,
+          source: `plugin:${plugin.manifest.id}:bridge`,
+          sourceSurface: 'plugin-bridge'
+        })
+      }
+    },
+    petAction: async (payload = {}) => {
+      assertPermission(plugin.manifest, 'pet:action')
+      const actionId = String(payload.actionId || '')
+      appendLog({
+        pluginId: plugin.manifest.id,
+        commandId,
+        level: 'info',
+        message: `Bridge pet.action invoked: ${actionId}`.slice(0, 240)
+      })
+      return {
+        ok: true,
+        result: petService.playAction({
+          actionId,
+          source: `plugin:${plugin.manifest.id}:bridge`
+        })
+      }
+    },
+    petEvent: async (payload = {}) => {
+      assertPermission(plugin.manifest, 'pet:event')
+      const eventType = String(payload.type || '')
+      appendLog({
+        pluginId: plugin.manifest.id,
+        commandId,
+        level: 'info',
+        message: `Bridge pet.event invoked: ${eventType}`.slice(0, 240)
+      })
+      return {
+        ok: true,
+        result: petService.setEvent({
+          type: payload.type,
+          message: payload.message,
+          ttlMs: payload.ttlMs,
+          source: `plugin:${plugin.manifest.id}:bridge`
+        })
+      }
+    }
+  })
+
+  const createPluginBridgeHandlers = (plugin, commandId, bridgeRunId = '', bridgeState = { importedActionIds: new Set() }) => ({
+    ...createPluginPetBridgeHandlers(plugin, commandId),
+    creatorActionsRead: async () => {
+      assertPermission(plugin.manifest, 'actions:read')
+      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.actions read invoked' })
+      if (!actionService?.getPreviewConfig && !actionService?.getConfig) {
+        throw new Error('Creator action read is not available')
+      }
+      const actions = actionService?.getPreviewConfig?.()
+        || actionService?.getConfig?.()
+        || { defaultAction: '', clickAction: '', actions: [] }
+      return { ok: true, actions }
+    },
+    creatorActionsValidate: async (payload = {}) => {
+      assertPermission(plugin.manifest, 'actions:write')
+      if (!actionService?.validateCreatorActionMutation) throw new Error('Creator action validation is not available')
+      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.actions validate invoked' })
+      return { ok: true, validation: actionService.validateCreatorActionMutation(payload) }
+    },
+    creatorActionsApply: async (payload = {}) => {
+      assertPermission(plugin.manifest, 'actions:write')
+      if (!actionService?.applyCreatorActionMutation) throw new Error('Creator action apply is not available')
+      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.actions apply invoked' })
+      const actions = actionService.applyCreatorActionMutation(payload)
+      return { ok: true, actions }
+    },
+    creatorTriggerProposalSubmit: async (payload = {}) => {
+      assertPermission(plugin.manifest, 'trigger-proposals:write')
+      if (!actionService?.submitTriggerProposal) throw new Error('Creator trigger proposal inbox is not available')
+      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.trigger-proposals submit invoked' })
+      const result = actionService.submitTriggerProposal({
+        ...payload,
+        sourcePluginId: plugin.manifest.id,
+        sourceCommandId: commandId,
+        sourceRunId: payload.sourceRunId || bridgeRunId
+      })
+      return { ok: true, proposal: result.proposal, actions: result.animations }
+    },
+    creatorPackManifestRead: async () => {
+      assertPermission(plugin.manifest, 'pack-manifest:read')
+      if (!petPackService?.getActiveCreatorPackManifest) throw new Error('Creator pack manifest read is not available')
+      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.pack-manifest read invoked' })
+      return { ok: true, manifest: petPackService.getActiveCreatorPackManifest() }
+    },
+    creatorPackManifestValidate: async (payload = {}) => {
+      assertPermission(plugin.manifest, 'pack-manifest:write')
+      if (!petPackService?.validateActiveCreatorPackManifestMutation) throw new Error('Creator pack manifest validation is not available')
+      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.pack-manifest validate invoked' })
+      return { ok: true, validation: petPackService.validateActiveCreatorPackManifestMutation(payload) }
+    },
+    creatorPackManifestApply: async (payload = {}) => {
+      assertPermission(plugin.manifest, 'pack-manifest:write')
+      if (!petPackService?.applyActiveCreatorPackManifestMutation) throw new Error('Creator pack manifest apply is not available')
+      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.pack-manifest apply invoked' })
+      return { ok: true, manifest: petPackService.applyActiveCreatorPackManifestMutation(payload) }
+    },
+    creatorAssetsInspectFrames: async (payload = {}) => {
+      assertPermission(plugin.manifest, 'assets:inspect')
+      if (!actionImportService?.inspectActionFrames) throw new Error('Creator asset inspection is not available')
+      const sourceDir = payload.dataRelativePath
+        ? resolvePluginDataPath(plugin.manifest, payload.dataRelativePath)
+        : resolvePluginAssetPath(plugin.manifest, payload.relativePath)
+      assertDirectoryHasNoSymlinks(sourceDir)
+      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.assets inspect-frames invoked' })
+      const result = await actionImportService.inspectActionFrames({
+        sourceDir,
+        actionId: payload.actionId
+      })
+      return { ok: true, result }
+    },
+    creatorAssetsImportFrames: async (payload = {}) => {
+      assertPermission(plugin.manifest, 'assets:generate')
+      if (!actionImportService?.inspectActionFrames || !actionImportService?.importActionFrames) {
+        throw new Error('Creator asset import is not available')
+      }
+      const sourceDir = payload.dataRelativePath
+        ? resolvePluginDataPath(plugin.manifest, payload.dataRelativePath)
+        : resolvePluginAssetPath(plugin.manifest, payload.relativePath)
+      assertDirectoryHasNoSymlinks(sourceDir)
+      const actionId = String(payload.actionId || '')
+      const label = payload.label == null || payload.label === '' ? undefined : String(payload.label)
+      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.assets import-frames invoked' })
+      const preflight = await actionImportService.inspectActionFrames({ sourceDir, actionId })
+      assertCreatorAssetImportWithinLimits(preflight.inspection, sourceDir)
+      const result = await actionImportService.importActionFrames({ sourceDir, actionId, label })
+      actionService?.reload?.()
+      const { importedAction, ...actions } = result
+      if (importedAction?.id) bridgeState.importedActionIds.add(String(importedAction.id))
+      return { ok: true, actions, importedAction }
+    },
+    creatorAssetsPickFramesInspect: async (payload = {}) => {
+      assertPermission(plugin.manifest, 'assets:inspect')
+      if (!actionImportService?.inspectActionFrames) throw new Error('Creator asset inspection is not available')
+      const selected = await selectCreatorAssetSourceDir()
+      if (selected.canceled) return { ok: true, canceled: true }
+      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.assets pick-frames inspect invoked' })
+      const result = await actionImportService.inspectActionFrames({
+        sourceDir: selected.sourceDir,
+        actionId: payload.actionId
+      })
+      return { ok: true, canceled: false, result }
+    },
+    creatorAssetsPickFramesImport: async (payload = {}) => {
+      assertPermission(plugin.manifest, 'assets:generate')
+      if (!actionImportService?.inspectActionFrames || !actionImportService?.importActionFrames) {
+        throw new Error('Creator asset import is not available')
+      }
+      const selected = await selectCreatorAssetSourceDir()
+      if (selected.canceled) return { ok: true, canceled: true }
+      const actionId = String(payload.actionId || '')
+      const label = payload.label == null || payload.label === '' ? undefined : String(payload.label)
+      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.assets pick-frames import invoked' })
+      const preflight = await actionImportService.inspectActionFrames({ sourceDir: selected.sourceDir, actionId })
+      assertCreatorAssetImportWithinLimits(preflight.inspection, selected.sourceDir)
+      const result = await actionImportService.importActionFrames({ sourceDir: selected.sourceDir, actionId, label })
+      const { importedAction, ...actions } = result
+      if (importedAction?.id) bridgeState.importedActionIds.add(String(importedAction.id))
+      return { ok: true, canceled: false, actions, importedAction }
+    },
+    creatorPetPackInspectOutput: async (payload = {}) => {
+      assertPermission(plugin.manifest, 'pet-pack:import')
+      if (!petPackService?.inspectPackSource) throw new Error('Creator pet pack inspection is not available')
+      const sourcePath = payload.dataRelativePath
+        ? resolvePluginDataPath(plugin.manifest, payload.dataRelativePath)
+        : resolvePluginAssetPath(plugin.manifest, payload.relativePath)
+      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.pet-pack inspect-output invoked' })
+      return { ok: true, inspection: await petPackService.inspectPackSource(sourcePath) }
+    },
+    creatorPetPackImportOutput: async (payload = {}) => {
+      assertPermission(plugin.manifest, 'pet-pack:import')
+      if (!petPackService?.importPack) throw new Error('Creator pet pack import is not available')
+      const selectionId = String(payload.selectionId || '')
+      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.pet-pack import-output invoked' })
+      const imported = petPackService.importPack(selectionId)
+      const activated = payload.activate && imported?.pack?.id && petPackService?.setActivePack
+        ? petPackService.setActivePack(imported.pack.id)
+        : null
+      if (activated) {
+        onPetPackActivated({
+          pluginId: plugin.manifest.id,
+          commandId,
+          packId: imported.pack.id,
+          imported,
+          activated
+        })
+      }
+      return { ok: true, imported, activated }
+    },
+    creatorModelSettingsRead: async () => {
+      assertPermission(plugin.manifest, 'model:image-generate')
+      if (!imageGenerationModelService?.getConfig) throw new Error('Creator model settings are not available')
+      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.model-settings read invoked' })
+      const config = imageGenerationModelService.getConfig()
+      return {
+        ok: true,
+        config: {
+          provider: config.provider,
+          baseUrl: config.baseUrl,
+          model: config.model,
+          organization: config.organization,
+          project: config.project,
+          timeoutMs: config.timeoutMs,
+          maxConcurrentJobs: config.maxConcurrentJobs,
+          hasApiKey: config.hasApiKey,
+          modelCatalog: config.modelCatalog,
+          creatorWorkflowModelPolicy: config.creatorWorkflowModelPolicy
+        }
+      }
+    },
+    creatorModelHealthCheck: async () => {
+      assertPermission(plugin.manifest, 'model:image-generate')
+      if (!imageGenerationModelService?.checkHealth) throw new Error('Creator model health check is not available')
+      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.model-health-check invoked' })
+      return { ok: true, result: await imageGenerationModelService.checkHealth({}) }
+    },
+    creatorModelImageGenerate: async (payload = {}) => {
+      assertPermission(plugin.manifest, 'model:image-generate')
+      if (!imageGenerationModelService?.generateImage) throw new Error('Creator model image generation is not available')
+      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.model-image-generate invoked' })
+      const {
+        backend: _ignoredBackend,
+        provider: _ignoredProvider,
+        baseUrl: _ignoredBaseUrl,
+        apiKeyRef: _ignoredApiKeyRef,
+        model: _ignoredModel,
+        runId: rawRunId,
+        ...providerPayload
+      } = payload
+      const ignoredOwnerFields = ['provider', 'baseUrl', 'apiKeyRef', 'model']
+        .filter((field) => Object.hasOwn(payload, field))
+      if (ignoredOwnerFields.length) {
+        appendLog({
+          pluginId: plugin.manifest.id,
+          commandId,
+          level: 'warn',
+          message: `Bridge ignored Provider owner-controlled fields: ${ignoredOwnerFields.join(', ')}`
+        })
+      }
+      const runId = String(rawRunId || '').trim()
+      providerPayload.traceContext = normalizeCreatorImageTraceContext({
+        runId,
+        traceContext: payload.traceContext
+      })
+      const canAccountProviderCall = Boolean(
+        plugin.manifest.id === CREATOR_STUDIO_PLUGIN_ID &&
+        runId &&
+        effectiveHatchPetAgentService?.reserveProviderCall &&
+        effectiveHatchPetAgentService?.recordProviderCall
+      )
+      const reservation = canAccountProviderCall
+        ? effectiveHatchPetAgentService.reserveProviderCall({
+            runId,
+            timeoutMs: Math.max(0, Number(payload.timeoutMs) || 0)
+          })
+        : null
+      let result
+      try {
+        result = await imageGenerationModelService.generateImage({
+          ...providerPayload,
+          referenceImages: sanitizeCreatorModelReferenceImages(plugin.manifest, payload.referenceImages),
+          output: {
+            ...(payload.output || {}),
+            dataDir: ensurePluginCreatorDirs(plugin.manifest).dataDir
+          }
+        })
+      } catch (error) {
+        if (reservation) {
+          const httpStatus = String(error?.message || '').match(/HTTP\s+(\d{3})/i)?.[1]
+          effectiveHatchPetAgentService.recordProviderCall({
+            runId,
+            reservationId: reservation.reservationId,
+            budgetLedger: reservation.budgetLedger,
+            ok: false,
+            code: httpStatus ? `http-${httpStatus}` : String(error?.code || 'provider-request-error').slice(0, 80)
+          })
+        }
+        throw error
+      }
+      if (reservation) {
+        effectiveHatchPetAgentService.recordProviderCall({
+          runId,
+          reservationId: reservation.reservationId,
+          budgetLedger: reservation.budgetLedger,
+          ok: true,
+          code: 'ok',
+          estimatedCost: result?.usage?.estimatedCostUsd ?? null
+        })
+      }
+      return {
+        ok: true,
+        result
+      }
+    },
+    creatorHatchPetPlan: async (payload = {}) => {
+      assertPermission(plugin.manifest, 'model:image-generate')
+      if (plugin.manifest.id !== CREATOR_STUDIO_PLUGIN_ID) throw new Error(`Plugin ${plugin.manifest.id} does not have Creator Studio hatch-pet planning ownership`)
+      if (!effectiveHatchPetAgentService?.planSprite) throw new Error('Creator hatch-pet planning is not available')
+      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.hatch-pet plan invoked' })
+      return {
+        ok: true,
+        result: await effectiveHatchPetAgentService.planSprite({
+          runId: String(payload.runId || ''),
+          userIntent: String(payload.userIntent || '')
+        })
+      }
+    },
+    creatorHatchPetEvaluate: async (payload = {}) => {
+      assertPermission(plugin.manifest, 'model:image-generate')
+      if (plugin.manifest.id !== CREATOR_STUDIO_PLUGIN_ID) throw new Error(`Plugin ${plugin.manifest.id} does not have Creator Studio hatch-pet evaluation ownership`)
+      if (!effectiveHatchPetAgentService?.evaluateSprite) throw new Error('Creator hatch-pet evaluation is not available')
+      const board = payload.board && typeof payload.board === 'object' ? payload.board : {}
+      const boardPath = resolvePluginDataPath(plugin.manifest, board.relativePath)
+      if (!fs.statSync(boardPath).isFile()) throw new Error('Creator hatch-pet review board must be a file')
+      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.hatch-pet evaluate invoked' })
+      return {
+        ok: true,
+        result: await effectiveHatchPetAgentService.evaluateSprite({
+          runId: String(payload.runId || ''),
+          scope: String(payload.scope || ''),
+          board: {
+            path: boardPath,
+            relativePath: String(board.relativePath || ''),
+            sha256: String(board.sha256 || ''),
+            regions: Array.isArray(board.regions) ? board.regions : []
+          },
+          qa: payload.qa && typeof payload.qa === 'object' ? payload.qa : {}
+        })
+      }
+    }
+  })
+
+  const createPluginServiceBridgeHandlers = (plugin, serviceId, bridgeRunId = '') => {
+    return {
+      ...createPluginPetBridgeHandlers(plugin, `service:${serviceId}`),
+      aiChat: async (payload = {}, { signal = null } = {}) => {
+        assertPermission(plugin.manifest, 'ai:chat')
+        if (!aiTalkService?.chatFromEntrypoint) throw new Error('AI talk service is not available')
+        const message = typeof payload?.message === 'string' ? payload.message.trim() : ''
+        const conversationKey = typeof payload?.conversationKey === 'string' ? payload.conversationKey.trim() : ''
+        if (!message) throw new Error('AI chat message is empty')
+        if (!conversationKey) throw new Error('AI chat conversationKey is required')
+        if (conversationKey.length > 160 || !/^[A-Za-z0-9:_-]+$/.test(conversationKey)) {
+          throw new Error('AI chat conversationKey is invalid')
+        }
+        appendLog({ pluginId: plugin.manifest.id, commandId: `service:${serviceId}`, level: 'info', message: 'Bridge ai.chat invoked' })
+        const result = await aiTalkService.chatFromEntrypoint({
+          message,
+          conversationId: `plugin:${plugin.manifest.id}:service:${serviceId}:${conversationKey}`,
+          entrypoint: plugin.manifest.id === IM_GATEWAY_PLUGIN_ID ? 'im-gateway' : 'plugin-service',
+          requestId: typeof payload?.requestId === 'string' ? payload.requestId.trim().slice(0, 120) : '',
+          signal
+        })
+        return {
+          ok: true,
+          result: {
+            reply: typeof result?.reply === 'string' ? result.reply : '',
+            requestId: typeof result?.requestId === 'string' ? result.requestId.slice(0, 120) : ''
+          }
+        }
+      }
+    }
+  }
+
+  const commandBridgeServer = createPluginCommandBridgeServer({
+    appendLog,
+    commandBridgeRuntimes
+  })
+  const serviceBridgeServer = createPluginRuntimeBridgeServer({
+    appendLog,
+    bridgeRuntimes: serviceBridgeRuntimes,
+    host: PLUGIN_BRIDGE_HOST,
+    jsonRoutes: SERVICE_BRIDGE_JSON_ROUTES,
+    readOnlyRoutes: SERVICE_BRIDGE_READ_ONLY_ROUTES,
+    routePattern: SERVICE_BRIDGE_ROUTE_PATTERN
+  })
+
+  const getPlugins = () => [
+    ...officialPlugins.map((plugin) => ({
+      manifest: normalizePluginManifest(plugin.manifest, { source: 'official' }),
+      configSchema: plugin.configSchema ? normalizeConfigSchema(plugin.configSchema) : null,
+      activate: plugin.activate,
+      mainPath: ''
+    })),
+    ...readLocalPluginManifests(pluginDirs)
+  ]
+
+  const getEnabledMap = () => settingsService.get().plugins?.enabled || {}
+
+  const getConfigMap = () => settingsService.get().plugins?.config || {}
+
+  const getStorageMap = () => settingsService.get().plugins?.storage || {}
+
+  const getInstalledMap = () => settingsService.get().plugins?.installed || {}
+
+  const normalizeServiceHealthPolicy = (policy = {}) => normalizePluginServiceHealthPolicy(policy, {
+    minIntervalMs: MIN_PLUGIN_SERVICE_HEALTH_INTERVAL_MS,
+    maxIntervalMs: MAX_PLUGIN_SERVICE_HEALTH_INTERVAL_MS,
+    defaultIntervalMs: DEFAULT_PLUGIN_SERVICE_HEALTH_INTERVAL_MS
+  })
+
+  const getServiceHealthPolicyMap = () => settingsService.get().plugins?.serviceHealthPolicies || {}
+
+  const getPluginServiceHealthPolicy = (pluginId, serviceId) => normalizeServiceHealthPolicy(
+    getServiceHealthPolicyMap()?.[pluginId]?.[serviceId]
+  )
+
+  const getPluginPolicyStatus = (manifestOrId) => {
+    const pluginId = typeof manifestOrId === 'string' ? manifestOrId : manifestOrId?.id
+    const installed = getInstalledMap()[pluginId] || {}
+    return getPluginBlockStatus({ id: pluginId, sha256: installed.packageHash || '', sourceSha256: installed.sourcePackageHash || '' }) || { blocked: false, reasons: [] }
+  }
+
+  const assertPluginAllowed = (manifestOrId) => {
+    const status = getPluginPolicyStatus(manifestOrId)
+    if (status.blocked) throw new Error(`Plugin is blocked: ${status.reasons.join(', ')}`)
+    return status
+  }
+
+  // SECURITY: entries.commands / entries.services / entries.setup spawn native
+  // OS processes with the user's full privileges — there is NO VM/permission
+  // sandbox around them (unlike JS `main` plugins). They are therefore disabled
+  // by default and require explicit per-plugin opt-in. Until OS-level sandboxing
+  // (macOS seatbelt / Linux bwrap) lands, this gate is the only thing standing
+  // between an installed declaration plugin and arbitrary code execution.
+  const getNativeExecutionApprovalMap = () => settingsService.get().plugins?.nativeExecutionApproved || {}
+
+  const isNativeExecutionApproved = (pluginId) => getNativeExecutionApprovalMap()[pluginId] === true
+
+  const assertNativeExecutionAllowed = (manifestOrId) => {
+    const pluginId = typeof manifestOrId === 'string' ? manifestOrId : manifestOrId?.id
+    if (!isNativeExecutionApproved(pluginId)) {
+      throw new Error('Plugin native execution is not approved. Enable native process execution for this plugin in the Control Center before running its commands, services, or setup.')
+    }
+  }
+
+  const getPluginSignatureStatus = (manifest) => derivePluginSignatureStatus(manifest, getInstalledMap()[manifest.id])
+
+  const getPluginStorageStats = (pluginId) => computePluginStorageStats(pluginId, {
+    getPluginStorage,
+    getJsonByteSize
+  })
+
+  const normalizePluginConfig = (schema, config = {}) => normalizePluginServiceConfig(schema, config, coerceConfigValue)
+
+  const getPluginConfig = (pluginId, schema) => normalizePluginConfig(schema, getConfigMap()[pluginId] || {})
+
+  const getImGatewaySecretState = () => ({
+    hasTelegramBotToken: Boolean(secretService?.getSecretValue?.(IM_GATEWAY_TELEGRAM_BOT_TOKEN_SECRET_ID)),
+    hasQqOfficialAppId: Boolean(secretService?.getSecretValue?.(IM_GATEWAY_QQ_APP_ID_SECRET_ID)),
+    hasQqOfficialClientSecret: Boolean(secretService?.getSecretValue?.(IM_GATEWAY_QQ_CLIENT_SECRET_SECRET_ID)),
+    hasQqOfficialCredentials: Boolean(
+      secretService?.getSecretValue?.(IM_GATEWAY_QQ_APP_ID_SECRET_ID) &&
+      secretService?.getSecretValue?.(IM_GATEWAY_QQ_CLIENT_SECRET_SECRET_ID)
+    ),
+    hasWecomCredentials: Boolean(
+      secretService?.getSecretValue?.(IM_GATEWAY_WECOM_CORP_SECRET_ID) &&
+      secretService?.getSecretValue?.(IM_GATEWAY_WECOM_TOKEN_SECRET_ID) &&
+      secretService?.getSecretValue?.(IM_GATEWAY_WECOM_ENCODING_AES_KEY_SECRET_ID)
+    )
+  })
+
+  const assertImGatewayRuntimeMutationAllowed = (message) => {
+    const runtime = getPluginServiceRuntime(IM_GATEWAY_PLUGIN_ID, IM_GATEWAY_SERVICE_ID)
+    if (ACTIVE_SERVICE_STATUSES.has(runtime?.status)) throw new Error(message)
+  }
+
+  const assertImGatewaySecretService = () => {
+    if (!secretService) throw new Error('Secret service is not available')
+  }
+
+  const saveImGatewayTelegramBotToken = (token) => {
+    assertImGatewaySecretService()
+    assertImGatewayRuntimeMutationAllowed('Stop IM Gateway before changing Telegram credentials')
+    const value = String(token || '').trim()
+    if (!value) throw new Error('Telegram bot token is required')
+    secretService.setSecret({
+      id: IM_GATEWAY_TELEGRAM_BOT_TOKEN_SECRET_ID,
+      value,
+      label: 'Telegram Bot Token'
+    })
+    appendLog({ pluginId: IM_GATEWAY_PLUGIN_ID, level: 'info', message: 'IM Gateway Telegram token saved' })
+    return getImGatewaySecretState()
+  }
+
+  const clearImGatewayTelegramBotToken = () => {
+    assertImGatewaySecretService()
+    assertImGatewayRuntimeMutationAllowed('Stop IM Gateway before changing Telegram credentials')
+    secretService.deleteSecret?.(IM_GATEWAY_TELEGRAM_BOT_TOKEN_SECRET_ID)
+    appendLog({ pluginId: IM_GATEWAY_PLUGIN_ID, level: 'info', message: 'IM Gateway Telegram token cleared' })
+    return getImGatewaySecretState()
+  }
+
+  const saveImGatewayQqOfficialCredentials = ({ appId, clientSecret } = {}) => {
+    assertImGatewaySecretService()
+    assertImGatewayRuntimeMutationAllowed('Stop IM Gateway before changing QQ credentials')
+    const normalizedAppId = String(appId || '').trim()
+    const normalizedClientSecret = String(clientSecret || '').trim()
+    if (!normalizedAppId || !normalizedClientSecret) throw new Error('QQ appId and clientSecret are required')
+    const previousAppId = secretService.getSecretValue?.(IM_GATEWAY_QQ_APP_ID_SECRET_ID) || ''
+    const previousClientSecret = secretService.getSecretValue?.(IM_GATEWAY_QQ_CLIENT_SECRET_SECRET_ID) || ''
+    try {
+      secretService.setSecret({ id: IM_GATEWAY_QQ_APP_ID_SECRET_ID, value: normalizedAppId, label: 'QQ Official App ID' })
+      secretService.setSecret({ id: IM_GATEWAY_QQ_CLIENT_SECRET_SECRET_ID, value: normalizedClientSecret, label: 'QQ Official Client Secret' })
+    } catch (error) {
+      try {
+        if (previousAppId) secretService.setSecret({ id: IM_GATEWAY_QQ_APP_ID_SECRET_ID, value: previousAppId, label: 'QQ Official App ID' })
+        else secretService.deleteSecret?.(IM_GATEWAY_QQ_APP_ID_SECRET_ID)
+        if (previousClientSecret) secretService.setSecret({ id: IM_GATEWAY_QQ_CLIENT_SECRET_SECRET_ID, value: previousClientSecret, label: 'QQ Official Client Secret' })
+        else secretService.deleteSecret?.(IM_GATEWAY_QQ_CLIENT_SECRET_SECRET_ID)
+      } catch (_) {}
+      throw error
+    }
+    appendLog({ pluginId: IM_GATEWAY_PLUGIN_ID, level: 'info', message: 'IM Gateway QQ official credentials saved' })
+    return getImGatewaySecretState()
+  }
+
+  const clearImGatewayQqOfficialCredentials = () => {
+    assertImGatewaySecretService()
+    assertImGatewayRuntimeMutationAllowed('Stop IM Gateway before changing QQ credentials')
+    const previousAppId = secretService.getSecretValue?.(IM_GATEWAY_QQ_APP_ID_SECRET_ID) || ''
+    const previousClientSecret = secretService.getSecretValue?.(IM_GATEWAY_QQ_CLIENT_SECRET_SECRET_ID) || ''
+    try {
+      secretService.deleteSecret?.(IM_GATEWAY_QQ_APP_ID_SECRET_ID)
+      secretService.deleteSecret?.(IM_GATEWAY_QQ_CLIENT_SECRET_SECRET_ID)
+    } catch (error) {
+      try {
+        if (previousAppId) secretService.setSecret({ id: IM_GATEWAY_QQ_APP_ID_SECRET_ID, value: previousAppId, label: 'QQ Official App ID' })
+        if (previousClientSecret) secretService.setSecret({ id: IM_GATEWAY_QQ_CLIENT_SECRET_SECRET_ID, value: previousClientSecret, label: 'QQ Official Client Secret' })
+      } catch (_) {}
+      throw error
+    }
+    appendLog({ pluginId: IM_GATEWAY_PLUGIN_ID, level: 'info', message: 'IM Gateway QQ official credentials cleared' })
+    return getImGatewaySecretState()
+  }
+
+  const saveImGatewayWecomCredentials = (credentials = {}) => {
+    assertImGatewaySecretService()
+    assertImGatewayRuntimeMutationAllowed('Stop IM Gateway before changing WeCom credentials')
+    const corpSecret = String(credentials.corpSecret || '').trim()
+    const token = String(credentials.token || '').trim()
+    const encodingAesKey = String(credentials.encodingAesKey || '').trim()
+    if (!corpSecret || !token || !encodingAesKey) throw new Error('WeCom credentials are required')
+    const previous = [
+      { id: IM_GATEWAY_WECOM_CORP_SECRET_ID, value: secretService.getSecretValue?.(IM_GATEWAY_WECOM_CORP_SECRET_ID) || '', next: corpSecret, label: 'WeCom Corp Secret' },
+      { id: IM_GATEWAY_WECOM_TOKEN_SECRET_ID, value: secretService.getSecretValue?.(IM_GATEWAY_WECOM_TOKEN_SECRET_ID) || '', next: token, label: 'WeCom Callback Token' },
+      { id: IM_GATEWAY_WECOM_ENCODING_AES_KEY_SECRET_ID, value: secretService.getSecretValue?.(IM_GATEWAY_WECOM_ENCODING_AES_KEY_SECRET_ID) || '', next: encodingAesKey, label: 'WeCom Encoding AES Key' }
+    ]
+    try {
+      for (const entry of previous) secretService.setSecret({ id: entry.id, value: entry.next, label: entry.label })
+    } catch (error) {
+      try {
+        for (const entry of previous) {
+          if (entry.value) secretService.setSecret({ id: entry.id, value: entry.value, label: entry.label })
+          else secretService.deleteSecret?.(entry.id)
+        }
+      } catch (_) {}
+      throw error
+    }
+    appendLog({ pluginId: IM_GATEWAY_PLUGIN_ID, level: 'info', message: 'IM Gateway WeCom credentials saved' })
+    return getImGatewaySecretState()
+  }
+
+  const clearImGatewayWecomCredentials = () => {
+    assertImGatewaySecretService()
+    assertImGatewayRuntimeMutationAllowed('Stop IM Gateway before changing WeCom credentials')
+    const previous = [
+      { id: IM_GATEWAY_WECOM_CORP_SECRET_ID, value: secretService.getSecretValue?.(IM_GATEWAY_WECOM_CORP_SECRET_ID) || '', label: 'WeCom Corp Secret' },
+      { id: IM_GATEWAY_WECOM_TOKEN_SECRET_ID, value: secretService.getSecretValue?.(IM_GATEWAY_WECOM_TOKEN_SECRET_ID) || '', label: 'WeCom Callback Token' },
+      { id: IM_GATEWAY_WECOM_ENCODING_AES_KEY_SECRET_ID, value: secretService.getSecretValue?.(IM_GATEWAY_WECOM_ENCODING_AES_KEY_SECRET_ID) || '', label: 'WeCom Encoding AES Key' }
+    ]
+    try {
+      for (const entry of previous) secretService.deleteSecret?.(entry.id)
+    } catch (error) {
+      try {
+        for (const entry of previous) {
+          if (entry.value) secretService.setSecret({ id: entry.id, value: entry.value, label: entry.label })
+        }
+      } catch (_) {}
+      throw error
+    }
+    appendLog({ pluginId: IM_GATEWAY_PLUGIN_ID, level: 'info', message: 'IM Gateway WeCom credentials cleared' })
+    return getImGatewaySecretState()
+  }
+
+  const createImGatewayServiceEnv = (plugin, serviceId) => {
+    if (plugin.manifest.id !== IM_GATEWAY_PLUGIN_ID || serviceId !== IM_GATEWAY_SERVICE_ID) return {}
+    const env = {
+      OPENPET_IM_GATEWAY_CONFIG_JSON: JSON.stringify(getPluginConfig(plugin.manifest.id, plugin.configSchema))
+    }
+    const token = secretService?.getSecretValue?.(IM_GATEWAY_TELEGRAM_BOT_TOKEN_SECRET_ID)
+    if (token) env.OPENPET_IM_TELEGRAM_BOT_TOKEN = token
+    const qqAppId = secretService?.getSecretValue?.(IM_GATEWAY_QQ_APP_ID_SECRET_ID)
+    const qqClientSecret = secretService?.getSecretValue?.(IM_GATEWAY_QQ_CLIENT_SECRET_SECRET_ID)
+    if (qqAppId) env.OPENPET_IM_QQ_APP_ID = qqAppId
+    if (qqClientSecret) env.OPENPET_IM_QQ_CLIENT_SECRET = qqClientSecret
+    const corpSecret = secretService?.getSecretValue?.(IM_GATEWAY_WECOM_CORP_SECRET_ID)
+    const callbackToken = secretService?.getSecretValue?.(IM_GATEWAY_WECOM_TOKEN_SECRET_ID)
+    const encodingAesKey = secretService?.getSecretValue?.(IM_GATEWAY_WECOM_ENCODING_AES_KEY_SECRET_ID)
+    const pluginConfig = getPluginConfig(plugin.manifest.id, plugin.configSchema)
+    if (pluginConfig.wecomCorpId) env.OPENPET_IM_WECOM_CORP_ID = pluginConfig.wecomCorpId
+    if (corpSecret) env.OPENPET_IM_WECOM_CORP_SECRET = corpSecret
+    if (callbackToken) env.OPENPET_IM_WECOM_TOKEN = callbackToken
+    if (encodingAesKey) env.OPENPET_IM_WECOM_ENCODING_AES_KEY = encodingAesKey
+    return env
+  }
+
+  const assertPermission = (manifest, permission) => {
+    if (!manifest.permissions.includes(permission)) {
+      throw new Error(`Plugin ${manifest.id} does not have ${permission} permission`)
+    }
+  }
+
+  const runPluginNetworkRequest = async (manifest, payload) => {
+    assertPermission(manifest, 'network')
+    const { url, request } = normalizeNetworkRequest(manifest, payload)
+    const response = await requestPluginNetwork({
+      manifest,
+      url,
+      request,
+      resolveAddress,
+      connect: pluginNetworkConnect,
+      timeoutMs: pluginNetworkTimeoutMs
+    })
+    const text = await readLimitedResponseText(response)
+    return {
+      ok: Boolean(response.ok),
+      status: response.status,
+      url: response.url || url,
+      headers: {
+        'content-type': response.headers?.get?.('content-type') || ''
+      },
+      text
+    }
+  }
+
+  const runPluginAiChat = async (manifest, payload = {}) => {
+    assertPermission(manifest, 'ai:chat')
+    if (!aiService?.chat) throw new Error('AI service is not available')
+    const message = typeof payload === 'string' ? payload : payload.message
+    const conversationId = typeof payload === 'object' && payload?.conversationId
+      ? `plugin:${manifest.id}:${payload.conversationId}`
+      : `plugin:${manifest.id}`
+    return aiService.chat({ message, conversationId })
+  }
+
+  const getPluginStorage = (pluginId) => cloneJsonValue(getStorageMap()[pluginId] || {}, 'value')
+
+  const savePluginStorage = (pluginId, storage) => {
+    assertStorageSize(storage)
+    const settings = settingsService.get()
+    settingsService.save({
+      ...settings,
+      plugins: {
+        ...(settings.plugins || {}),
+        storage: {
+          ...(settings.plugins?.storage || {}),
+          [pluginId]: cloneJsonValue(storage, 'value')
+        }
+      }
+    })
+  }
+
+  const clearStorage = (pluginId) => {
+    const plugin = getPlugins().find((candidate) => candidate.manifest.id === pluginId)
+    if (!plugin) throw new Error(`Plugin not found: ${pluginId}`)
+    savePluginStorage(pluginId, {})
+    appendLog({ pluginId, level: 'info', message: 'Plugin storage cleared' })
+    return listPlugins().find((candidate) => candidate.id === pluginId)
+  }
+
+  const getPluginDefinition = (pluginId) => getPlugins().find((candidate) => candidate.manifest.id === pluginId) || null
+
+  const createRuntimeView = (runtime, serviceEntry = {}) => buildPluginRuntimeView(
+    runtime,
+    serviceEntry,
+    createServiceHealthView
+  )
+
+  const createSetupRuntimeView = (runtime = {}) => buildPluginSetupRuntimeView(runtime)
+
+  const decorateEntriesWithRuntime = (manifest) => decoratePluginEntriesWithRuntime({
+    manifest,
+    setupRuntimes,
+    serviceRuntimes,
+    createPluginServiceKey,
+    createSetupRuntimeView,
+    createRuntimeView,
+    getPluginServiceHealthPolicy
+  })
+
+  const listPlugins = () => listPluginState({
+    plugins: getPlugins(),
+    enabledMap: getEnabledMap(),
+    decorateEntriesWithRuntime,
+    getPluginSignatureStatus,
+    getPluginPolicyStatus,
+    getPluginConfig,
+    getPluginStorageStats,
+    getNativeExecutionApproved: isNativeExecutionApproved
+  })
+
+  const getServiceEntry = (plugin, serviceId) => {
+    const serviceEntry = (plugin.manifest.entries?.services || []).find((entry) => entry.id === serviceId)
+    if (!serviceEntry) throw new Error(`Plugin service not found: ${serviceId}`)
+    return serviceEntry
+  }
+
+  const getSetupEntry = (plugin, setupId) => {
+    const setupEntry = (plugin.manifest.entries?.setup || []).find((entry) => entry.id === setupId)
+    if (!setupEntry) throw new Error(`Plugin setup entry not found: ${setupId}`)
+    return setupEntry
+  }
+
+  const getCommandEntry = (plugin, commandId) => {
+    const commandEntry = (plugin.manifest.entries?.commands || []).find((entry) => entry.id === commandId)
+    if (!commandEntry) throw new Error(`Plugin command entry not found: ${commandId}`)
+    return commandEntry
+  }
+
+  const resolveServiceRuntimeDeclaration = (serviceEntry) => {
+    const override = serviceEntry.platforms?.[process.platform] || {}
+    return {
+      command: override.command || serviceEntry.command,
+      cwd: override.cwd || serviceEntry.cwd || '.'
+    }
+  }
+
+  const resolvePluginEntryCwd = createPluginEntryCwdResolver()
+
+  const resolveServiceCwd = (manifest, cwd) => resolvePluginEntryCwd(manifest, cwd, 'service')
+
+  const resolveSetupCwd = (manifest, cwd) => resolvePluginEntryCwd(manifest, cwd, 'setup')
+
+  const resolveCommandCwd = (manifest, cwd) => resolvePluginEntryCwd(manifest, cwd, 'command')
+
+  const normalizeServiceHealthUrl = (serviceEntry) => {
+    const health = serviceEntry.health || {}
+    const type = String(health.type || '').trim() || 'none'
+    if (type === 'none' || !health.url) throw new Error('Plugin service health check is not configured')
+    if (type !== 'http') throw new Error('Plugin service health type must be http')
+    let healthUrl
+    try {
+      healthUrl = new URL(String(health.url || '').trim())
+    } catch (_) {
+      throw new Error('Plugin service health URL is invalid')
+    }
+    if (!['http:', 'https:'].includes(healthUrl.protocol)) {
+      throw new Error('Plugin service health URL must use HTTP or HTTPS')
+    }
+    if (!LOOPBACK_HEALTH_HOSTS.has(healthUrl.hostname.toLowerCase())) {
+      throw new Error('Plugin service health URL must use a loopback host')
+    }
+    return healthUrl.toString()
+  }
+
+  const findPluginForService = (pluginId, { requireEnabled = true } = {}) => {
+    const plugin = getPlugins().find((candidate) => candidate.manifest.id === pluginId)
+    if (!plugin) throw new Error(`Plugin not found: ${pluginId}`)
+    assertPluginAllowed(plugin.manifest)
+    if (requireEnabled && !getEnabledMap()[pluginId]) throw new Error('Plugin is disabled')
+    return plugin
+  }
+
+  const getPluginServiceRuntime = (pluginId, serviceId) => serviceRuntimes.get(createPluginServiceKey(pluginId, serviceId))
+
+  const getPluginSetupRuntime = (pluginId, setupId) => setupRuntimes.get(createPluginServiceKey(pluginId, setupId))
+
+  const expireServiceBridgeRuntime = (runtime) => {
+    if (!runtime?.bridgeRuntimeKey) return
+    serviceBridgeRuntimes.delete(runtime.bridgeRuntimeKey)
+    runtime.bridgeRuntimeKey = ''
+    serviceBridgeServer.unrefWhenIdle()
+  }
+
+  const expirePluginServiceBridgeRuntimes = (pluginId) => {
+    for (const runtime of serviceRuntimeRegistry.listRuntimes()) {
+      if (runtime?.pluginId === pluginId) expireServiceBridgeRuntime(runtime)
+    }
+  }
+
+  const setServiceRuntime = (pluginId, serviceId, runtime) => {
+    return serviceRuntimeRegistry.setRuntime(runtime)
+  }
+
+  const setSetupRuntime = (pluginId, setupId, runtime) => {
+    return setupRuntimeRegistry.setRuntime(runtime)
+  }
+
+  const getOrCreateServiceRuntime = (pluginId, serviceId, serviceEntry) => {
+    const existingRuntime = getPluginServiceRuntime(pluginId, serviceId)
+    if (existingRuntime) return existingRuntime
+    return setServiceRuntime(pluginId, serviceId, {
+      pluginId,
+      serviceId,
+      status: 'stopped',
+      pid: 0,
+      startedAt: '',
+      stoppedAt: '',
+      command: '',
+      cwd: '',
+      exitCode: null,
+      signal: '',
+      error: '',
+      child: null,
+      stopTimer: null,
+      healthTimer: null,
+      healthChecking: false,
+      stopGracePeriodMs: Number.isFinite(Number(serviceStopGracePeriodMs)) ? Math.max(0, Number(serviceStopGracePeriodMs)) : PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS,
+      health: createServiceHealthView({}, serviceEntry)
+    })
+  }
+
+  const clearServiceHealthSchedule = (runtime) => {
+    if (!runtime?.healthTimer) return
+    clearServiceHealthTimer(runtime.healthTimer)
+    runtime.healthTimer = null
+  }
+
+  const scheduleServiceHealthCheck = (pluginId, serviceId, runtime, serviceEntry) => {
+    clearServiceHealthSchedule(runtime)
+    if (!runtime || runtime.status !== 'running') return
+    if (!serviceEntry?.health?.url) return
+    const policy = getPluginServiceHealthPolicy(pluginId, serviceId)
+    if (!policy.enabled) return
+    runtime.healthTimer = setServiceHealthTimer(async () => {
+      runtime.healthTimer = null
+      if (runtime.status !== 'running') return
+      if (runtime.healthChecking || runtime.health?.status === 'checking') {
+        scheduleServiceHealthCheck(pluginId, serviceId, runtime, serviceEntry)
+        return
+      }
+      runtime.healthChecking = true
+      try {
+        await checkServiceHealth(pluginId, serviceId, { reschedule: false })
+      } catch (_) {
+        // checkServiceHealth already records a bounded runtime health result or log.
+      } finally {
+        runtime.healthChecking = false
+        scheduleServiceHealthCheck(pluginId, serviceId, runtime, serviceEntry)
+      }
+    }, policy.intervalMs)
+    runtime.healthTimer?.unref?.()
+  }
+
+  const stopServiceProcess = runtimeStopSupport.stopDetachedProcess
+  const forceStopServiceProcess = runtimeStopSupport.forceStopDetachedProcess
+  const stopRuntimeProcessWithFallback = runtimeStopSupport.stopRuntimeProcessWithFallback
+  const runtimeControl = createPluginRuntimeControl({
+    appendLog,
+    stopServiceProcess,
+    forceStopServiceProcess,
+    stopRuntimeProcessWithFallback,
+    clearServiceHealthSchedule,
+    clearTimeoutImpl: clearServiceHealthTimer,
+    serviceStopGracePeriodMs
+  })
+  const {
+    ensureStopWaiter,
+    resolveStopWaiter,
+    clearServiceStopTimer,
+    stopPluginServiceRuntime,
+    stopPluginSetupRuntime,
+    stopPluginCommandRuntime
+  } = runtimeControl
+  const serviceRuntimeRegistry = createPluginRuntimeRegistry({
+    runtimeIdKey: 'serviceId',
+    alreadyRunningMessage: 'Plugin service is already running',
+    stopRuntime: stopPluginServiceRuntime
+  })
+  const setupRuntimeRegistry = createPluginRuntimeRegistry({
+    runtimeIdKey: 'setupId',
+    alreadyRunningMessage: 'Plugin setup is already running',
+    stopRuntime: stopPluginSetupRuntime
+  })
+  const commandRuntimeRegistry = createPluginRuntimeRegistry({
+    runtimeIdKey: 'commandId',
+    alreadyRunningMessage: 'Plugin command is already running',
+    stopRuntime: stopPluginCommandRuntime
+  })
+  const createRuntimeRegistryMapView = (registry) => ({
+    get: (runtimeKey) => {
+      const { pluginId, runtimeId } = parsePluginServiceKey(runtimeKey)
+      return registry.getRuntime(pluginId, runtimeId)
+    }
+  })
+  const serviceRuntimes = createRuntimeRegistryMapView(serviceRuntimeRegistry)
+  const setupRuntimes = createRuntimeRegistryMapView(setupRuntimeRegistry)
+  const commandRuntimes = {
+    get: (runtimeKey) => {
+      const { pluginId, runtimeId } = parsePluginServiceKey(runtimeKey)
+      return commandRuntimeRegistry.getRuntime(pluginId, runtimeId)
+    },
+    set: (_runtimeKey, runtime) => commandRuntimeRegistry.setRuntime(runtime),
+    delete: (runtimeKey) => {
+      const { pluginId, runtimeId } = parsePluginServiceKey(runtimeKey)
+      return commandRuntimeRegistry.deleteRuntime(pluginId, runtimeId)
+    }
+  }
+
+  const stopPluginServices = (pluginId, options = {}) => {
+    expirePluginServiceBridgeRuntimes(pluginId)
+    serviceRuntimeRegistry.stopPlugin(pluginId, options)
+  }
+
+  const stopPluginSetups = (pluginId, options = {}) => {
+    setupRuntimeRegistry.stopPlugin(pluginId, options)
+  }
+
+  const stopPluginCommands = (pluginId, options = {}) => {
+    commandRuntimeRegistry.stopPlugin(pluginId, options)
+  }
+
+  const setEnabled = (pluginId, enabled) => {
+    if (enabled) assertPluginAllowed(pluginId)
+    if (!enabled) {
+      stopPluginCommands(pluginId)
+      stopPluginServices(pluginId)
+      stopPluginSetups(pluginId)
+    }
+    const settings = settingsService.get()
+    const nextSettings = {
+      ...settings,
+      plugins: {
+        ...(settings.plugins || {}),
+        enabled: {
+          ...(settings.plugins?.enabled || {}),
+          [pluginId]: Boolean(enabled)
+        }
+      }
+    }
+    settingsService.save(nextSettings)
+    appendLog({
+      pluginId,
+      level: 'info',
+      message: enabled ? 'Plugin enabled' : 'Plugin disabled'
+    })
+    return listPlugins().find((plugin) => plugin.id === pluginId)
+  }
+
+  // Grant/revoke explicit approval for a plugin to spawn native OS processes
+  // (entries.commands / services / setup). Revoking stops any running native
+  // processes for that plugin immediately.
+  const setNativeExecutionApproved = (pluginId, approved) => {
+    if (approved) assertPluginAllowed(pluginId)
+    if (!approved) {
+      stopPluginCommands(pluginId)
+      stopPluginServices(pluginId)
+      stopPluginSetups(pluginId)
+    }
+    const settings = settingsService.get()
+    settingsService.save({
+      ...settings,
+      plugins: {
+        ...(settings.plugins || {}),
+        nativeExecutionApproved: {
+          ...(settings.plugins?.nativeExecutionApproved || {}),
+          [pluginId]: Boolean(approved)
+        }
+      }
+    })
+    appendLog({
+      pluginId,
+      level: 'info',
+      message: approved ? 'Plugin native execution approved' : 'Plugin native execution revoked'
+    })
+    if (approved && pluginId === AGENT_AWARENESS_PLUGIN_ID) {
+      Promise.resolve().then(() => pollAgentAwarenessAutostart()).catch(() => {})
+    }
+    return listPlugins().find((plugin) => plugin.id === pluginId)
+  }
+
+  const saveConfig = (pluginId, config = {}) => {
+    const plugin = getPlugins().find((candidate) => candidate.manifest.id === pluginId)
+    if (!plugin) throw new Error(`Plugin not found: ${pluginId}`)
+    if (!plugin.configSchema) throw new Error('Plugin does not declare a config schema')
+    if (pluginId === IM_GATEWAY_PLUGIN_ID) {
+      assertImGatewayRuntimeMutationAllowed('Stop IM Gateway before changing its configuration')
+    }
+    const normalizedConfig = normalizePluginConfig(plugin.configSchema, config)
+    const settings = settingsService.get()
+    settingsService.save({
+      ...settings,
+      plugins: {
+        ...(settings.plugins || {}),
+        config: {
+          ...(settings.plugins?.config || {}),
+          [pluginId]: normalizedConfig
+        }
+      }
+    })
+    appendLog({ pluginId, level: 'info', message: 'Plugin config saved' })
+    if (pluginId === AGENT_AWARENESS_PLUGIN_ID && normalizedConfig.autoStartOnCodexSignal === true) {
+      Promise.resolve().then(() => pollAgentAwarenessAutostart()).catch(() => {})
+    }
+    return listPlugins().find((candidate) => candidate.id === pluginId)
+  }
+
+  const saveServiceHealthPolicy = (pluginId, serviceId, policy = {}) => {
+    const plugin = findPluginForService(pluginId)
+    const serviceEntry = getServiceEntry(plugin, serviceId)
+    if (!serviceEntry.health?.url) throw new Error('Plugin service health check is not configured')
+    const normalizedPolicy = normalizeServiceHealthPolicy(policy)
+    const settings = settingsService.get()
+    settingsService.save({
+      ...settings,
+      plugins: {
+        ...(settings.plugins || {}),
+        serviceHealthPolicies: {
+          ...(settings.plugins?.serviceHealthPolicies || {}),
+          [pluginId]: {
+            ...(settings.plugins?.serviceHealthPolicies?.[pluginId] || {}),
+            [serviceId]: normalizedPolicy
+          }
+        }
+      }
+    })
+
+    const runtime = getPluginServiceRuntime(pluginId, serviceId)
+    if (runtime) {
+      clearServiceHealthSchedule(runtime)
+      scheduleServiceHealthCheck(pluginId, serviceId, runtime, serviceEntry)
+    }
+    appendLog({
+      pluginId,
+      commandId: `service:${serviceId}`,
+      level: 'info',
+      message: normalizedPolicy.enabled ? 'Service health policy saved' : 'Service health policy cleared'
+    })
+    return listPlugins().find((candidate) => candidate.id === pluginId)
+  }
+
+  const getExistingTriggerProposalItem = (proposalId) => {
+    const currentConfig = actionService?.getConfig?.() || actionService?.getPreviewConfig?.() || {}
+    const inbox = Array.isArray(currentConfig.triggerProposalInbox) ? currentConfig.triggerProposalInbox : []
+    return inbox.find((item) => item?.id === proposalId) || null
+  }
+
+  const buildImportedTriggerProposalSubmission = ({ pluginId, commandId, parsedResult, importedActionIds }) => {
+    if (!actionService?.submitTriggerProposal || !isRecord(parsedResult)) return null
+    const candidate = isRecord(parsedResult.triggerProposal) ? parsedResult.triggerProposal : null
+    if (!candidate) return null
+    const type = String(candidate.type || '')
+    if (!TRIGGER_PROPOSAL_TYPES.has(type)) return null
+    const observedActionIds = Array.isArray(importedActionIds) ? importedActionIds.filter(Boolean) : []
+    if (observedActionIds.length < 1) return null
+    const run = isRecord(parsedResult.run) ? parsedResult.run : null
+    const runActionId = typeof run?.importedActionId === 'string' ? run.importedActionId : ''
+    const candidateActionId = typeof candidate.actionId === 'string' ? candidate.actionId : ''
+    const actionId = observedActionIds.includes(candidateActionId)
+      ? candidateActionId
+      : (observedActionIds.includes(runActionId) ? runActionId : (observedActionIds.length === 1 ? observedActionIds[0] : ''))
+    if (!actionId || !observedActionIds.includes(actionId)) return null
+    const runId = typeof run?.runId === 'string' ? run.runId : ''
+    return {
+      id: [
+        'proposal',
+        'auto',
+        toSafeProposalSegment(pluginId),
+        toSafeProposalSegment(commandId),
+        toSafeProposalSegment(runId, 'no-run'),
+        toSafeProposalSegment(type),
+        toSafeProposalSegment(actionId)
+      ].join(':').slice(0, 160),
+      actionId,
+      type,
+      binding: typeof candidate.binding === 'string' ? candidate.binding : '',
+      sourcePluginId: pluginId,
+      sourceRunId: runId,
+      sourceCommandId: commandId,
+      message: typeof candidate.notes === 'string' && candidate.notes
+        ? candidate.notes
+        : (typeof candidate.message === 'string' ? candidate.message : '')
+    }
+  }
+
+  const attachQueuedTriggerProposal = ({ pluginId, commandId, parsedResult, importedActionIds }) => {
+    const submission = buildImportedTriggerProposalSubmission({ pluginId, commandId, parsedResult, importedActionIds })
+    if (!submission) return parsedResult
+    const existingProposal = getExistingTriggerProposalItem(submission.id)
+    const proposal = existingProposal || actionService.submitTriggerProposal(submission).proposal
+    appendLog({
+      pluginId,
+      commandId,
+      level: 'info',
+      message: existingProposal
+        ? `Trigger proposal already queued: ${proposal.id}`
+        : `Trigger proposal queued: ${proposal.id}`
+    })
+    return isRecord(parsedResult)
+      ? { ...parsedResult, proposal }
+      : parsedResult
+  }
+
+  const createSdk = (plugin) => {
+    const manifest = plugin.manifest
+    const registeredCommands = {}
+
+    return {
+      [SDK_REGISTERED_COMMANDS]: () => registeredCommands,
+      config: {
+        get: (key) => {
+          const config = getPluginConfig(manifest.id, plugin.configSchema)
+          return key ? config[key] : { ...config }
+        }
+      },
+      storage: {
+        get: async (key, fallbackValue) => {
+          assertPermission(manifest, 'storage')
+          const storage = getPluginStorage(manifest.id)
+          if (key == null) return storage
+          assertStorageKey(key)
+          return hasOwn(storage, key) ? cloneJsonValue(storage[key], 'value') : fallbackValue
+        },
+        set: async (key, value) => {
+          assertPermission(manifest, 'storage')
+          assertStorageKey(key)
+          const storage = getPluginStorage(manifest.id)
+          const nextValue = cloneJsonValue(value, 'value')
+          assertStorageValueSize(nextValue)
+          savePluginStorage(manifest.id, { ...storage, [key]: nextValue })
+          return nextValue
+        },
+        remove: async (key) => {
+          assertPermission(manifest, 'storage')
+          assertStorageKey(key)
+          const storage = getPluginStorage(manifest.id)
+          delete storage[key]
+          savePluginStorage(manifest.id, storage)
+          return true
+        },
+        clear: async () => {
+          assertPermission(manifest, 'storage')
+          savePluginStorage(manifest.id, {})
+          return true
+        }
+      },
+      pet: {
+        say: async (payload) => {
+          assertPermission(manifest, 'pet:say')
+          const normalizedPayload = typeof payload === 'string' ? { text: payload } : { ...payload }
+          return petService.say({ ...normalizedPayload, source: `plugin:${manifest.id}`, sourceSurface: 'plugin-runtime' })
+        },
+        playAction: async (actionIdOrPayload) => {
+          assertPermission(manifest, 'pet:action')
+          const payload = typeof actionIdOrPayload === 'string'
+            ? { actionId: actionIdOrPayload }
+            : { ...actionIdOrPayload }
+          return petService.playAction({ ...payload, source: `plugin:${manifest.id}` })
+        },
+        setEvent: async (payload) => {
+          assertPermission(manifest, 'pet:event')
+          return petService.setEvent({ ...payload, source: `plugin:${manifest.id}` })
+        }
+      },
+      ai: {
+        chat: async (payload) => runPluginAiChat(manifest, payload)
+      },
+      network: {
+        fetch: async (url, options = {}) => runPluginNetworkRequest(manifest, { url, options })
+      },
+      commands: {
+        register: (command) => {
+          if (!command?.id) throw new Error('Plugin command id is required')
+          if (typeof command.handler !== 'function') throw new Error(`Plugin command handler is required: ${command.id}`)
+          registeredCommands[command.id] = command.handler
+          return command.id
+        }
+      }
+    }
+  }
+
+  const runCommandEntryProcess = async ({ plugin, commandEntry, commandId, payload, config }) => {
+    const pluginId = plugin.manifest.id
+    const runtimeKey = createPluginServiceKey(pluginId, commandId)
+    const existingRuntime = commandRuntimeRegistry.getRuntime(pluginId, commandId)
+    if (ACTIVE_COMMAND_STATUSES.has(existingRuntime?.status)) throw new Error('Plugin command is already running')
+    const bridgeState = {
+      importedActionIds: new Set()
+    }
+    return runPluginCommandEntryProcess({
+      plugin,
+      commandEntry,
+      commandId,
+      payload,
+      config,
+      runtimeKey,
+      commandRuntimes,
+      commandBridgeRuntimes,
+      commandBridgeServer,
+      createPluginBridgeRunId,
+      createPluginBridgeToken,
+      createPluginBridgeKey,
+      createPluginBridgeHandlers: (targetPlugin, targetCommandId, bridgeRunId) => createPluginBridgeHandlers(targetPlugin, targetCommandId, bridgeRunId, bridgeState),
+      createPluginCreatorDirs: ensurePluginCreatorDirs,
+      cloneJsonValue,
+      resolveCommandCwd,
+      spawnCommandProcess,
+      stopRuntimeProcessWithFallback,
+      resolveStopWaiter,
+      appendLog,
+      commandProcessTimeoutMs,
+      transformParsedResult: (parsedResult) => attachQueuedTriggerProposal({
+        pluginId,
+        commandId,
+        parsedResult,
+        importedActionIds: Array.from(bridgeState.importedActionIds)
+      })
+    })
+  }
+
+  const runCommand = async (pluginId, commandId, payload = {}) => {
+    try {
+      const plugin = getPlugins().find((candidate) => candidate.manifest.id === pluginId)
+      if (!plugin) throw new Error(`Plugin not found: ${pluginId}`)
+      assertPluginAllowed(plugin.manifest)
+      if (!getEnabledMap()[pluginId]) throw new Error('Plugin is disabled')
+      appendLog({ pluginId, commandId, level: 'info', message: 'Command started' })
+      let result
+      const sdk = createSdk(plugin)
+      if (typeof plugin.activate === 'function') {
+        const returnedCommands = plugin.activate(sdk) || {}
+        const commands = {
+          ...returnedCommands,
+          ...(sdk[SDK_REGISTERED_COMMANDS]?.() || {})
+        }
+        const handler = commands[commandId]
+        if (typeof handler !== 'function') throw new Error(`Plugin command not found: ${commandId}`)
+        result = await handler(payload)
+      } else if (plugin.mainPath) {
+        result = await runLocalPluginCommand({
+          plugin,
+          sdk,
+          commandId,
+          payload,
+          config: getPluginConfig(plugin.manifest.id, plugin.configSchema)
+        })
+      } else if (plugin.manifest.entries?.commands?.length) {
+        assertNativeExecutionAllowed(plugin.manifest)
+        const commandEntry = getCommandEntry(plugin, commandId)
+        result = await runCommandEntryProcess({
+          plugin,
+          commandEntry,
+          commandId,
+          payload,
+          config: getPluginConfig(plugin.manifest.id, plugin.configSchema)
+        })
+      } else {
+        throw new Error('Plugin is not runnable')
+      }
+      result = sanitizePluginCommandResultValue(result)
+      appendLog({ pluginId, commandId, level: 'info', message: 'Command completed' })
+      return result
+    } catch (error) {
+      if (error?.openpetLogged) throw error
+      const sanitizedMessage = sanitizePluginCommandText(error?.message || 'Command failed')
+      if (error && typeof error === 'object') error.message = sanitizedMessage
+      appendLog({
+        pluginId,
+        commandId,
+        level: 'error',
+        message: sanitizedMessage
+      })
+      throw error
+    }
+  }
+
+  const runSetup = (pluginId, setupId) => {
+    const commandId = `setup:${setupId || ''}`
+    try {
+      const plugin = findPluginForService(pluginId)
+      assertNativeExecutionAllowed(plugin.manifest)
+      const setupEntry = getSetupEntry(plugin, setupId)
+      const existingRuntime = getPluginSetupRuntime(pluginId, setupId)
+      if (ACTIVE_SETUP_STATUSES.has(existingRuntime?.status)) throw new Error('Plugin setup is already running')
+      const { file, args, runAsNode } = resolvePluginProcessLaunch(setupEntry.command)
+      const cwd = resolveSetupCwd(plugin.manifest, setupEntry.cwd)
+      const child = spawnSetupProcess(file, args, {
+        cwd,
+        detached: false,
+        env: createPluginProcessEnv({ runAsNode }),
+        shell: false,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true
+      })
+      const runtime = setSetupRuntime(pluginId, setupId, {
+        pluginId,
+        setupId,
+        status: 'running',
+        pid: Number(child.pid) || 0,
+        lastRunAt: new Date().toISOString(),
+        exitCode: null,
+        error: '',
+        child,
+        failStop: null,
+        stopCompleted: null,
+        resolveStopCompleted: null
+      })
+
+      appendLog({ pluginId, commandId, level: 'info', message: 'Setup started' })
+
+      return new Promise((resolve, reject) => {
+        let settled = false
+        const settle = (callback) => {
+          if (settled) return
+          settled = true
+          callback()
+        }
+        runtime.failStop = (error) => {
+          settle(() => {
+            resolveStopWaiter(runtime)
+            reject(error)
+          })
+        }
+
+        child.stdout?.on?.('data', (chunk) => {
+          const message = sanitizePluginCommandText(chunk)
+          if (message) appendLog({ pluginId, commandId, level: 'info', message: `Setup stdout: ${message}`.slice(0, 500) })
+        })
+        child.stderr?.on?.('data', (chunk) => {
+          const message = sanitizePluginCommandText(chunk)
+          if (message) appendLog({ pluginId, commandId, level: 'error', message: `Setup stderr: ${message}`.slice(0, 500) })
+        })
+        child.on?.('error', (error) => {
+          settle(() => {
+            const sanitizedError = sanitizePluginCommandText(error?.message || 'Plugin setup failed')
+            runtime.status = 'failed'
+            runtime.error = sanitizedError
+            runtime.exitCode = null
+            runtime.lastRunAt = new Date().toISOString()
+            resolveStopWaiter(runtime)
+            appendLog({ pluginId, commandId, level: 'error', message: sanitizedError })
+            reject(new Error(sanitizedError))
+          })
+        })
+        child.on?.('exit', (code, signal) => {
+          settle(() => {
+            const exitCode = Number.isFinite(Number(code)) ? Number(code) : null
+            const stopRequested = runtime.status === 'stopping'
+            runtime.status = stopRequested
+              ? 'failed'
+              : (exitCode === 0 && !signal ? 'succeeded' : 'failed')
+            runtime.exitCode = exitCode
+            runtime.error = stopRequested
+              ? 'Setup stopped'
+              : (runtime.status === 'failed' ? (signal ? `Setup exited with signal ${signal}` : `Setup exited with code ${exitCode ?? 'unknown'}`) : '')
+            runtime.lastRunAt = new Date().toISOString()
+            resolveStopWaiter(runtime)
+            appendLog({
+              pluginId,
+              commandId,
+              level: runtime.status === 'failed' ? 'error' : 'info',
+              message: stopRequested ? 'Setup stopped' : (runtime.status === 'failed' ? 'Setup failed' : 'Setup completed')
+            })
+            resolve({
+              ok: true,
+              pluginId,
+              setupId,
+              runtime: createSetupRuntimeView(runtime)
+            })
+          })
+        })
+      })
+    } catch (error) {
+      appendLog({ pluginId, commandId, level: 'error', message: sanitizePluginCommandText(error?.message || 'Setup failed') })
+      throw error
+    }
+  }
+
+  const openDashboard = async (pluginId, dashboardId, options = {}) => {
+    const commandId = `dashboard:${dashboardId || ''}`
+    try {
+      const plugin = getPlugins().find((candidate) => candidate.manifest.id === pluginId)
+      if (!plugin) throw new Error(`Plugin not found: ${pluginId}`)
+      assertPluginAllowed(plugin.manifest)
+      if (!getEnabledMap()[pluginId]) throw new Error('Plugin is disabled')
+      const dashboard = (plugin.manifest.entries?.dashboards || []).find((entry) => entry.id === dashboardId)
+      if (!dashboard) throw new Error(`Plugin dashboard not found: ${dashboardId}`)
+      let dashboardUrl
+      try {
+        dashboardUrl = new URL(dashboard.url)
+      } catch (_) {
+        throw new Error('Plugin dashboard URL is invalid')
+      }
+      if (!['http:', 'https:'].includes(dashboardUrl.protocol)) {
+        throw new Error('Plugin dashboard URL must use HTTP or HTTPS')
+      }
+      const query = options?.query && typeof options.query === 'object' && !Array.isArray(options.query)
+        ? options.query
+        : {}
+      for (const [key, value] of Object.entries(query)) {
+        const normalizedKey = String(key || '').trim()
+        const normalizedValue = String(value || '').trim()
+        if (!normalizedKey || !normalizedValue) continue
+        dashboardUrl.searchParams.set(normalizedKey, normalizedValue)
+      }
+      await openExternal(dashboardUrl.toString())
+      appendLog({ pluginId, commandId, level: 'info', message: 'Dashboard opened' })
+      return {
+        ok: true,
+        pluginId,
+        dashboardId,
+        url: dashboardUrl.toString()
+      }
+    } catch (error) {
+      appendLog({
+        pluginId,
+        commandId,
+        level: 'error',
+        message: error.message || 'Dashboard open failed'
+      })
+      throw error
+    }
+  }
+
+  const startService = (pluginId, serviceId) => {
+    const commandId = `service:${serviceId || ''}`
+    const serviceStartKey = createPluginServiceKey(pluginId, serviceId)
+    let plugin
+    let serviceEntry
+    let declaration
+    let file
+    let args
+    let runAsNode = false
+    let cwd
+    let existingRuntime
+    try {
+      plugin = findPluginForService(pluginId)
+      assertNativeExecutionAllowed(plugin.manifest)
+      serviceEntry = getServiceEntry(plugin, serviceId)
+      existingRuntime = getPluginServiceRuntime(pluginId, serviceId)
+      if (ACTIVE_SERVICE_STATUSES.has(existingRuntime?.status)) throw new Error('Plugin service is already running')
+      if (pendingServiceStarts.has(serviceStartKey)) throw new Error('Plugin service is already running')
+      declaration = resolveServiceRuntimeDeclaration(serviceEntry)
+      ;({ file, args, runAsNode } = resolvePluginProcessLaunch(declaration.command))
+      cwd = resolveServiceCwd(plugin.manifest, declaration.cwd)
+    } catch (error) {
+      appendLog({ pluginId, commandId, level: 'error', message: sanitizePluginCommandText(error?.message || 'Service start failed') })
+      throw error
+    }
+
+    pendingServiceStarts.add(serviceStartKey)
+    return (async () => {
+      let bridgeRuntimeKey = ''
+      try {
+        await serviceBridgeServer.ensureStarted()
+        assertPluginAllowed(plugin.manifest)
+        assertNativeExecutionAllowed(plugin.manifest)
+        if (!getEnabledMap()[pluginId]) throw new Error('Plugin is disabled')
+        if (ACTIVE_SERVICE_STATUSES.has(getPluginServiceRuntime(pluginId, serviceId)?.status)) {
+          throw new Error('Plugin service is already running')
+        }
+        const bridgeRunId = createPluginBridgeRunId()
+        const bridgeToken = createPluginBridgeToken()
+        bridgeRuntimeKey = createPluginBridgeKey(pluginId, serviceId, bridgeRunId)
+        const bridgeBaseUrl = serviceBridgeServer.createBridgeBaseUrl({
+          pluginId,
+          runtimeId: serviceId,
+          runId: bridgeRunId
+        })
+        const bridgeHandlers = createPluginServiceBridgeHandlers(plugin, serviceId, bridgeRunId)
+        serviceBridgeRuntimes.set(bridgeRuntimeKey, {
+          pluginId,
+          serviceId,
+          runId: bridgeRunId,
+          token: bridgeToken,
+          status: 'running',
+          logCommandId: commandId,
+          handlers: bridgeHandlers
+        })
+        const serviceDirs = ensurePluginCreatorDirs(plugin.manifest)
+        const child = spawnServiceProcess(file, args, {
+          cwd,
+          detached: true,
+          env: {
+            ...createPluginProcessEnv({ runAsNode }),
+            OPENPET_DATA_DIR: serviceDirs.dataDir,
+            OPENPET_CACHE_DIR: serviceDirs.cacheDir,
+            OPENPET_LOG_DIR: serviceDirs.logDir,
+            ...createAgentAwarenessServiceEnv({ pluginId, serviceId }),
+            OPENPET_SERVICE_BRIDGE_URL: bridgeBaseUrl,
+            OPENPET_SERVICE_BRIDGE_TOKEN: bridgeToken,
+            ...createImGatewayServiceEnv(plugin, serviceId)
+          },
+          shell: false,
+          stdio: ['ignore', 'pipe', 'pipe'],
+          windowsHide: true
+        })
+        const runtime = setServiceRuntime(pluginId, serviceId, {
+          pluginId,
+          serviceId,
+          status: 'running',
+          pid: Number(child.pid) || 0,
+          startedAt: new Date().toISOString(),
+          stoppedAt: '',
+          command: declaration.command,
+          cwd,
+          exitCode: null,
+          signal: '',
+          error: '',
+          child,
+          stopTimer: null,
+          stopCompleted: null,
+          resolveStopCompleted: null,
+          healthTimer: null,
+          healthChecking: false,
+          bridgeRuntimeKey,
+          stopGracePeriodMs: Number.isFinite(Number(serviceStopGracePeriodMs)) ? Math.max(0, Number(serviceStopGracePeriodMs)) : PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS,
+          health: existingRuntime?.health || createServiceHealthView({}, serviceEntry)
+        })
+
+        child.stdout?.on?.('data', (chunk) => {
+          const message = sanitizePluginCommandText(chunk)
+          if (message) appendLog({ pluginId, commandId, level: 'info', message: `Service stdout: ${message}`.slice(0, 500) })
+        })
+        child.stderr?.on?.('data', (chunk) => {
+          const message = sanitizePluginCommandText(chunk)
+          if (message) appendLog({ pluginId, commandId, level: 'error', message: `Service stderr: ${message}`.slice(0, 500) })
+        })
+        child.on?.('error', (error) => {
+          expireServiceBridgeRuntime(runtime)
+          clearServiceHealthSchedule(runtime)
+          runtime.status = 'failed'
+          runtime.error = sanitizePluginCommandText(error?.message || 'Plugin service failed')
+          runtime.stoppedAt = new Date().toISOString()
+          resolveStopWaiter(runtime)
+          appendLog({ pluginId, commandId, level: 'error', message: runtime.error })
+        })
+        child.on?.('exit', (code, signal) => {
+          expireServiceBridgeRuntime(runtime)
+          clearServiceStopTimer(runtime)
+          clearServiceHealthSchedule(runtime)
+          const stoppedByRequest = runtime.status === 'stopping'
+          let forcedStop = false
+          if (runtime.status === 'stopping') {
+            forcedStop = /force kill/i.test(String(runtime.error || ''))
+            runtime.status = forcedStop
+              ? 'failed'
+              : (Number.isFinite(Number(code)) && Number(code) !== 0 && !signal ? 'failed' : 'stopped')
+          } else if (runtime.status === 'running') {
+            runtime.status = code === 0 && !signal ? 'exited' : 'failed'
+          }
+          runtime.exitCode = Number.isFinite(Number(code)) ? Number(code) : null
+          runtime.signal = signal || ''
+          runtime.child = null
+          runtime.stoppedAt = runtime.stoppedAt || new Date().toISOString()
+          resolveStopWaiter(runtime)
+          if (stoppedByRequest) {
+            appendLog({
+              pluginId,
+              commandId,
+              level: runtime.status === 'failed' ? 'error' : 'info',
+              message: runtime.status === 'stopped'
+                ? 'Service stopped'
+                : (forcedStop ? 'Service exited after force stop' : 'Service exited')
+            })
+          } else {
+            appendLog({
+              pluginId,
+              commandId,
+              level: runtime.status === 'failed' ? 'error' : 'info',
+              message: 'Service exited'
+            })
+          }
+        })
+
+        appendLog({ pluginId, commandId, level: 'info', message: 'Service started' })
+        scheduleServiceHealthCheck(pluginId, serviceId, runtime, serviceEntry)
+        return {
+          ok: true,
+          pluginId,
+          serviceId,
+          runtime: createRuntimeView(runtime, serviceEntry)
+        }
+      } catch (error) {
+        if (typeof bridgeRuntimeKey === 'string' && bridgeRuntimeKey) {
+          serviceBridgeRuntimes.delete(bridgeRuntimeKey)
+        }
+        appendLog({ pluginId, commandId, level: 'error', message: sanitizePluginCommandText(error?.message || 'Service start failed') })
+        throw error
+      } finally {
+        pendingServiceStarts.delete(serviceStartKey)
+      }
+    })()
+  }
+
+  const stopService = (pluginId, serviceId) => {
+    const plugin = getPlugins().find((candidate) => candidate.manifest.id === pluginId)
+    if (!plugin) throw new Error(`Plugin not found: ${pluginId}`)
+    const serviceEntry = getServiceEntry(plugin, serviceId)
+    const runtime = getPluginServiceRuntime(pluginId, serviceId)
+    if (!runtime || runtime.status !== 'running') throw new Error('Plugin service is not running')
+    expireServiceBridgeRuntime(runtime)
+    stopPluginServiceRuntime(pluginId, serviceId, runtime)
+    return {
+      ok: true,
+      pluginId,
+      serviceId,
+      runtime: createRuntimeView(runtime, serviceEntry)
+    }
+  }
+
+  const maybeAutostartAgentAwareness = async ({
+    pluginId = AGENT_AWARENESS_PLUGIN_ID,
+    serviceId = AGENT_AWARENESS_SERVICE_ID,
+    signalSource = 'codex-rollout',
+    observedAt = ''
+  } = {}) => {
+    if (pluginId !== AGENT_AWARENESS_PLUGIN_ID || serviceId !== AGENT_AWARENESS_SERVICE_ID) {
+      return { started: false, reason: 'not-agent-awareness', signalSource, observedAt }
+    }
+    const plugin = getPluginDefinition(pluginId)
+    if (!plugin) return { started: false, reason: 'plugin-not-found', signalSource, observedAt }
+    if (!getEnabledMap()[pluginId]) return { started: false, reason: 'plugin-disabled', signalSource, observedAt }
+    if (!isNativeExecutionApproved(pluginId)) {
+      return { started: false, reason: 'native-execution-not-approved', signalSource, observedAt }
+    }
+    const config = getPluginConfig(pluginId, plugin.configSchema)
+    if (config.autoStartOnCodexSignal !== true) {
+      return { started: false, reason: 'opt-in-disabled', signalSource, observedAt }
+    }
+    if (ACTIVE_SERVICE_STATUSES.has(getPluginServiceRuntime(pluginId, serviceId)?.status)) {
+      return { started: false, reason: 'already-active', signalSource, observedAt }
+    }
+    await startService(pluginId, serviceId)
+    appendLog({
+      pluginId,
+      commandId: `service:${serviceId}`,
+      level: 'info',
+      message: `Agent Awareness auto-started from ${signalSource}`
+    })
+    return { started: true, reason: 'started', signalSource, observedAt }
+  }
+
+  const pollAgentAwarenessAutostart = async () => {
+    const signal = await Promise.resolve(probeAgentAwarenessActivity({
+      codexHome: resolveCodexSignalHome(),
+      nowMs: () => Date.now()
+    }))
+    if (!signal?.active) {
+      return { started: false, reason: 'no-signal', signalSource: signal?.signalSource || 'codex-rollout', observedAt: signal?.observedAt || '' }
+    }
+    const signalSource = String(signal.signalSource || 'codex-rollout')
+    const observedAt = String(signal.observedAt || '')
+    const signalKey = `${signalSource}:${observedAt}`
+    if (signalKey && signalKey === lastAgentAwarenessSignalKey) {
+      return { started: false, reason: 'signal-already-handled', signalSource, observedAt }
+    }
+    const result = await maybeAutostartAgentAwareness({
+      pluginId: AGENT_AWARENESS_PLUGIN_ID,
+      serviceId: AGENT_AWARENESS_SERVICE_ID,
+      signalSource,
+      observedAt
+    })
+    if (signalKey && (result.started || result.reason === 'already-active')) {
+      lastAgentAwarenessSignalKey = signalKey
+    }
+    return result
+  }
+
+  const ensureAgentAwarenessAutostartMonitor = () => {
+    if (agentAwarenessAutostartTimer || typeof setAgentAwarenessAutostartTimer !== 'function') return
+    agentAwarenessAutostartTimer = setAgentAwarenessAutostartTimer(() => {
+      pollAgentAwarenessAutostart().catch((error) => {
+        appendLog({
+          pluginId: AGENT_AWARENESS_PLUGIN_ID,
+          commandId: `service:${AGENT_AWARENESS_SERVICE_ID}`,
+          level: 'error',
+          message: sanitizePluginCommandText(error?.message || 'Agent Awareness auto-start check failed')
+        })
+      })
+    }, Math.max(1000, Number(agentAwarenessAutostartIntervalMs) || DEFAULT_AGENT_AWARENESS_AUTOSTART_INTERVAL_MS))
+    agentAwarenessAutostartTimer?.unref?.()
+  }
+
+  const checkServiceHealth = async (pluginId, serviceId, { reschedule = true } = {}) => {
+    const commandId = `service:${serviceId || ''}`
+    try {
+      const plugin = findPluginForService(pluginId)
+      const serviceEntry = getServiceEntry(plugin, serviceId)
+      const healthUrl = normalizeServiceHealthUrl(serviceEntry)
+      const runtime = getOrCreateServiceRuntime(pluginId, serviceId, serviceEntry)
+      const timeoutMs = Number.isFinite(Number(healthCheckTimeoutMs))
+        ? Math.max(0, Number(healthCheckTimeoutMs))
+        : PLUGIN_SERVICE_HEALTH_TIMEOUT_MS
+      const abortController = timeoutMs > 0 && typeof AbortController === 'function'
+        ? new AbortController()
+        : null
+      let timedOut = false
+      const timeoutId = abortController
+        ? setTimeout(() => {
+            timedOut = true
+            abortController.abort()
+          }, timeoutMs)
+        : null
+      timeoutId?.unref?.()
+      runtime.health = {
+        ...createServiceHealthView(runtime.health || {}, serviceEntry),
+        status: 'checking',
+        url: healthUrl,
+        checkedAt: new Date().toISOString(),
+        message: ''
+      }
+      let healthLogLevel = 'info'
+
+      try {
+        const response = await fetchImpl(healthUrl, {
+          method: 'GET',
+          ...(abortController ? { signal: abortController.signal } : {})
+        })
+        const statusCode = Number(response?.status)
+        const hasStatusCode = Number.isFinite(statusCode)
+        const httpHealthy = hasStatusCode ? statusCode >= 200 && statusCode < 300 : Boolean(response?.ok)
+        const healthResponse = await readServiceHealthResponse(response, { pluginId, serviceId })
+        const healthy = httpHealthy && healthResponse.healthy !== false
+        healthLogLevel = healthResponse.logLevel || (healthy ? 'info' : 'error')
+        runtime.health = {
+          status: healthy ? 'healthy' : 'unhealthy',
+          checkedAt: new Date().toISOString(),
+          url: healthUrl,
+          statusCode: hasStatusCode ? statusCode : null,
+          message: healthResponse.message || ''
+        }
+        if (Array.isArray(healthResponse.details) && healthResponse.details.length) {
+          runtime.health.details = healthResponse.details
+        }
+      } catch (error) {
+        healthLogLevel = 'error'
+        runtime.health = {
+          status: 'unhealthy',
+          checkedAt: new Date().toISOString(),
+          url: healthUrl,
+          statusCode: null,
+          message: timedOut ? 'Health check timed out' : (error.message || 'Health check failed')
+        }
+      } finally {
+        if (timeoutId) clearTimeout(timeoutId)
+      }
+
+      appendLog({
+        pluginId,
+        commandId,
+        level: runtime.health.status === 'healthy' && healthLogLevel === 'warn' ? 'warn' : (runtime.health.status === 'healthy' ? 'info' : 'error'),
+        message: runtime.health.status === 'healthy' && healthLogLevel === 'warn'
+          ? `IM Gateway diagnostic: ${runtime.health.message}`
+          : formatServiceHealthLogMessage({
+              pluginId,
+              serviceId,
+              status: runtime.health.status,
+              message: runtime.health.message
+            })
+      })
+
+      if (reschedule) scheduleServiceHealthCheck(pluginId, serviceId, runtime, serviceEntry)
+
+      return {
+        ok: true,
+        pluginId,
+        serviceId,
+        health: createServiceHealthView(runtime.health, serviceEntry),
+        runtime: createRuntimeView(runtime, serviceEntry)
+      }
+    } catch (error) {
+      appendLog({ pluginId, commandId, level: 'error', message: error.message || 'Service health check failed' })
+      throw error
+    }
+  }
+
+  const getLogs = (filters = {}) => filterLogs(getLogStore(), filters).map((entry) => ({ ...entry }))
+  const getLogPage = (filters = {}) => paginateLogs(getLogs(filters), filters)
+
+  const exportLogEntries = ({ format = 'json', ...filters } = {}) => exportLogs(getLogs(filters), format)
+
+  const clearLogs = () => {
+    saveLogStore([])
+    return getLogs()
+  }
+
+  const stopAllServices = async () => {
+    if (agentAwarenessAutostartTimer) {
+      clearAgentAwarenessAutostartTimer(agentAwarenessAutostartTimer)
+      agentAwarenessAutostartTimer = null
+    }
+    const setupWaiters = setupRuntimeRegistry.listRuntimes()
+      .filter((runtime) => runtime?.status === 'running')
+      .map((runtime) => ensureStopWaiter(runtime))
+      .filter(Boolean)
+    const commandWaiters = commandRuntimeRegistry.listRuntimes()
+      .filter((runtime) => runtime?.status === 'running')
+      .map((runtime) => ensureStopWaiter(runtime))
+      .filter(Boolean)
+
+    for (const runtime of serviceRuntimeRegistry.listRuntimes()) {
+      expireServiceBridgeRuntime(runtime)
+      stopPluginServiceRuntime(runtime.pluginId, runtime.serviceId, runtime, { log: false })
+    }
+    for (const runtime of setupRuntimeRegistry.listRuntimes()) {
+      stopPluginSetupRuntime(runtime.pluginId, runtime.setupId, runtime, { log: false })
+    }
+    for (const runtime of commandRuntimeRegistry.listRuntimes()) {
+      stopPluginCommandRuntime(runtime.pluginId, runtime.commandId, runtime, { log: false })
+    }
+
+    const serviceWaiters = serviceRuntimeRegistry.listRuntimes()
+      .filter((runtime) => runtime?.status === 'stopping' && runtime.stopCompleted instanceof Promise)
+      .map((runtime) => runtime.stopCompleted)
+
+    const waitForShutdown = Promise.allSettled([
+      ...serviceWaiters,
+      ...setupWaiters,
+      ...commandWaiters
+    ])
+
+    // 先等运行时退出、再关桥接服务器：优雅关停中的插件可能还要通过
+    // bridge 落盘最后的状态，提前 close 会让这些请求连接被拒。
+    await Promise.race([
+      waitForShutdown,
+      new Promise((resolve) => {
+        const timeoutId = setTimeout(resolve, PLUGIN_STOP_ALL_TIMEOUT_MS)
+        timeoutId?.unref?.()
+        waitForShutdown.finally(() => clearTimeout(timeoutId))
+      })
+    ])
+
+    commandBridgeRuntimes.clear()
+    serviceBridgeRuntimes.clear()
+    commandBridgeServer.close()
+    serviceBridgeServer.close()
+
+    return { ok: true }
+  }
+
+  const getPluginCreatorDataDir = (pluginId) => {
+    const plugin = getPluginDefinition(pluginId)
+    if (!plugin) throw new Error(`Plugin not found: ${pluginId}`)
+    return ensurePluginCreatorDirs(plugin.manifest).dataDir
+  }
+
+  const setHatchPetAgentService = (service) => {
+    effectiveHatchPetAgentService = service || null
+  }
+
+  return {
+    listPlugins,
+    setEnabled,
+    saveConfig,
+    saveServiceHealthPolicy,
+    clearStorage,
+    runCommand,
+    runSetup,
+    openDashboard,
+    startService,
+    stopService,
+    checkServiceHealth,
+    stopAllServices,
+    getLogs,
+    getLogPage,
+    exportLogs: exportLogEntries,
+    clearLogs,
+    setNativeExecutionApproved,
+    maybeAutostartAgentAwareness,
+    pollAgentAwarenessAutostart,
+    getPluginDefinition,
+    getPluginCreatorDataDir,
+    setHatchPetAgentService,
+    getImGatewaySecretState,
+    saveImGatewayTelegramBotToken,
+    clearImGatewayTelegramBotToken,
+    saveImGatewayQqOfficialCredentials,
+    clearImGatewayQqOfficialCredentials,
+    saveImGatewayWecomCredentials,
+    clearImGatewayWecomCredentials
+  }
+}
+
+module.exports = { createPluginService, readLocalPluginManifests }

@@ -8,7 +8,7 @@ const {
   parseDashboardCompletionSnapshot,
   isPackagedCreatorStudioUiE2eEnabled,
   runPackagedCreatorStudioUiE2e
-} = require('../../src/main/packaged-creator-studio-ui-e2e-runner')
+} = require('../../apps/desktop/src/services/packaged-creator-studio-ui-e2e-runner')
 
 test('isPackagedCreatorStudioUiE2eEnabled only enables the explicit packaged Creator Studio UI flag', () => {
   assert.equal(isPackagedCreatorStudioUiE2eEnabled({}), false)

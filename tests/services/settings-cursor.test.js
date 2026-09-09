@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const os = require('os')
 const Module = require('module')
-const { BUILTIN_CURSORS, LEGACY_CUSTOM_CURSOR_ID, SYSTEM_CURSOR_ID } = require('../../src/shared/cursor-library')
+const { BUILTIN_CURSORS, LEGACY_CUSTOM_CURSOR_ID, SYSTEM_CURSOR_ID } = require('../../apps/desktop/src/shared/cursor-library')
 
 const originalLoad = Module._load
 Module._load = function (request, parent, isMain) {
@@ -18,7 +18,7 @@ Module._load = function (request, parent, isMain) {
   return originalLoad.call(this, request, parent, isMain)
 }
 
-const { defaultSettings, mergeSettings } = require('../../src/main/settings')
+const { defaultSettings, mergeSettings } = require('../../apps/desktop/src/services/settings')
 
 test('settings default custom cursor is disabled', () => {
   assert.equal(defaultSettings.selectedCursorId, SYSTEM_CURSOR_ID)

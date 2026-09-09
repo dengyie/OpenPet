@@ -51,8 +51,8 @@ const createPluginSandboxEvaluation = ({ now = () => new Date() } = {}) => ({
     id: 'current-child-process-node-permission-vm',
     label: 'Current local plugin runner',
     files: [
-      'src/main/services/plugin-service.js',
-      'src/main/plugins/local-plugin-runner.js'
+      'apps/desktop/src/services/plugin-service.js',
+      'apps/desktop/src/services/plugins/local-plugin-runner.js'
     ],
     guarantees: [
       'Local third-party plugins execute in a child process created with child_process.fork.',

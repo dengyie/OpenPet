@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { IPC } = require('../../src/shared/ipc-channels')
+const { IPC } = require('../../apps/desktop/src/shared/ipc-channels')
 
 test('shared IPC contract exports stable frozen channel names', () => {
   for (const retiredChannel of [

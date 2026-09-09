@@ -5,7 +5,7 @@ const path = require('node:path')
 const os = require('node:os')
 const { fork } = require('child_process')
 
-const LOCAL_PLUGIN_RUNNER_PATH = path.resolve(__dirname, '../../src/main/plugins/local-plugin-runner.js')
+const LOCAL_PLUGIN_RUNNER_PATH = path.resolve(__dirname, '../../apps/desktop/src/services/plugins/local-plugin-runner.js')
 const TEST_TIMEOUT_MS = 8000
 
 const createTempDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-runner-test-'))

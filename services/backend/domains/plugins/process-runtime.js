@@ -12,8 +12,8 @@ const {
 	createPluginEntryCwdResolver,
 	createPluginProcessEnv,
 	resolvePluginProcessLaunch,
-} = require("../../../../src/main/services/plugin-process-support.js")
-const { createServiceProcessTree } = require("../../../../src/main/services/service-process-tree.js")
+} = require("../../../../apps/desktop/src/services/plugin-process-support.js")
+const { createServiceProcessTree } = require("../../../../apps/desktop/src/services/service-process-tree.js")
 
 const STOP_GRACE_MS = 1_500
 

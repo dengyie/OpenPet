@@ -3,7 +3,7 @@ const { test } = require("node:test")
 const settle = async () => { for (let i = 0; i < 12; i++) await Promise.resolve() }
 
 async function harness(t, fetchImpl) {
-	const { SseManager } = await import("../../src/control-center/src/hooks/useSse.ts")
+	const { SseManager } = await import("../../apps/control-center/src/hooks/useSse.ts")
 	const manager = new SseManager()
 	const timers = new Map()
 	manager.configure({
@@ -58,7 +58,7 @@ test("SSE runtime configuration wakes a subscription waiting for the backend", a
 	let backend = null
 	let calls = 0
 	const timers = new Map()
-	const { SseManager } = await import("../../src/control-center/src/hooks/useSse.ts")
+	const { SseManager } = await import("../../apps/control-center/src/hooks/useSse.ts")
 	const manager = new SseManager()
 	manager.configure({
 		getBackend: () => backend,

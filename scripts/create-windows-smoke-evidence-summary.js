@@ -12,12 +12,12 @@ const {
 
 const STATUS_ORDER = ['pass', 'fail', 'pending', 'blocked']
 
-/** @typedef {import('../src/shared/openpet-contracts').WindowsSmokeEvidenceSummary} WindowsSmokeEvidenceSummary */
-/** @typedef {import('../src/shared/openpet-contracts').WindowsSmokeEvidenceReport} WindowsSmokeEvidenceReport */
-/** @typedef {import('../src/shared/openpet-contracts').WindowsSmokeCheck} WindowsSmokeCheck */
-/** @typedef {import('../src/shared/openpet-contracts').WindowsSmokeReport} WindowsSmokeReport */
-/** @typedef {import('../src/shared/openpet-contracts').WindowsSmokeValidationResult} WindowsSmokeValidationResult */
-/** @typedef {import('../src/shared/openpet-contracts').WindowsSmokeEvidenceFile} WindowsSmokeEvidenceFile */
+/** @typedef {import('../apps/desktop/src/shared/openpet-contracts').WindowsSmokeEvidenceSummary} WindowsSmokeEvidenceSummary */
+/** @typedef {import('../apps/desktop/src/shared/openpet-contracts').WindowsSmokeEvidenceReport} WindowsSmokeEvidenceReport */
+/** @typedef {import('../apps/desktop/src/shared/openpet-contracts').WindowsSmokeCheck} WindowsSmokeCheck */
+/** @typedef {import('../apps/desktop/src/shared/openpet-contracts').WindowsSmokeReport} WindowsSmokeReport */
+/** @typedef {import('../apps/desktop/src/shared/openpet-contracts').WindowsSmokeValidationResult} WindowsSmokeValidationResult */
+/** @typedef {import('../apps/desktop/src/shared/openpet-contracts').WindowsSmokeEvidenceFile} WindowsSmokeEvidenceFile */
 /** @typedef {{ evidenceDir: string, reportPath: string | null, requireSigned: boolean, outputPath: string | null, json: boolean, help: boolean }} CliOptions */
 /** @typedef {{ evidenceDir: string | null, reportPath: string | null, requireSigned: boolean, outputPath: string | null, json: boolean, help: boolean }} CliParseState */
 /** @typedef {{ evidenceDir?: string, reportPath?: string | null, requireSigned?: boolean, now?: () => Date }} SummaryOptions */

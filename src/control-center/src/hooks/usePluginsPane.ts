@@ -1,1 +1,0 @@
-export { usePluginsPane } from './usePluginsPaneState'

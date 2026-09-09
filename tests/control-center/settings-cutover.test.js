@@ -6,7 +6,7 @@ const { describe, it } = require("node:test")
 let settingsApi
 
 describe("T41 settings HTTP cutover", async () => {
-	settingsApi = await import("../../src/control-center/src/features/settings/api.ts")
+	settingsApi = await import("../../apps/control-center/src/features/settings/api.ts")
 
 	it("maps backend settings while preserving the trusted runtime cursor capability", () => {
 		const view = settingsApi.settingsEnvelopeToViewModel({
@@ -70,7 +70,7 @@ describe("T41 settings HTTP cutover", async () => {
 	})
 
 	it("save reconciliation advances the reload barrier and preserves runtime cursor capability", () => {
-		const source = require("node:fs").readFileSync("src/control-center/src/hooks/usePetSettingsPane.ts", "utf8")
+		const source = require("node:fs").readFileSync("apps/control-center/src/hooks/usePetSettingsPane.ts", "utf8")
 		assert.match(source, /settingsReloadSequenceRef\.current \+= 1/)
 		assert.match(source, /settingsEnvelopeToViewModel\(savedSnapshot, runtimeStatus\)/)
 		assert.match(source, /acceptedSettingsVersionRef\.current = Math\.max\(acceptedSettingsVersionRef\.current, savedSnapshot\.version\)/)

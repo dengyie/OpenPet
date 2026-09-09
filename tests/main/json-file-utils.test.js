@@ -13,7 +13,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 
-const { writeJsonAtomic } = require('../../src/main/json-file-utils')
+const { writeJsonAtomic } = require('../../apps/desktop/src/services/json-file-utils')
 
 test('writeJsonAtomic writes formatted JSON with trailing newline', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-json-utils-'))

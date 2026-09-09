@@ -5,7 +5,7 @@ const os = require('os')
 const path = require('path')
 const sharp = require('sharp')
 
-const { createCreatorReferenceService } = require('../../src/main/services/creator-reference-service')
+const { createCreatorReferenceService } = require('../../apps/desktop/src/services/creator-reference-service')
 
 const createSettingsService = (initial = {}) => {
   let state = JSON.parse(JSON.stringify(initial))

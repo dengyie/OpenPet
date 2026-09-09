@@ -20,7 +20,7 @@ const {
   inspectZipArchive,
   runArchiveOperation,
   writeZipFromDirectory
-} = require('../../src/main/services/zip-archive-utils')
+} = require('../../apps/desktop/src/services/zip-archive-utils')
 
 const tightLimits = Object.freeze({
   maxEntries: 2,

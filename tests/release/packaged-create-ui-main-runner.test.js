@@ -7,7 +7,7 @@ const path = require('node:path')
 const {
   isPackagedCreateUiSmokeEnabled,
   runPackagedCreateUiSmoke
-} = require('../../src/main/packaged-create-ui-smoke-runner')
+} = require('../../apps/desktop/src/services/packaged-create-ui-smoke-runner')
 
 test('isPackagedCreateUiSmokeEnabled only enables the explicit packaged Create UI flag', () => {
   assert.equal(isPackagedCreateUiSmokeEnabled({}), false)

@@ -4,7 +4,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 
 const repoRoot = path.resolve(__dirname, '../..')
-const pluginBridgeServerPath = path.join(repoRoot, 'src', 'main', 'services', 'plugin-command-bridge-server.js')
+const pluginBridgeServerPath = path.join(repoRoot, 'apps', 'desktop', 'src', 'services', 'plugin-command-bridge-server.js')
 const pluginDevelopmentDocPath = path.join(repoRoot, 'docs', 'plugin-development.md')
 const pluginRulesDocPath = path.join(repoRoot, 'docs', 'plugin-ecosystem-rules.md')
 

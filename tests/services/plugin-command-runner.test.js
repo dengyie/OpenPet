@@ -6,10 +6,10 @@ const { PassThrough } = require('stream')
 const {
   readCommandResult,
   runPluginCommandEntryProcess
-} = require('../../src/main/services/plugin-command-runner')
+} = require('../../apps/desktop/src/services/plugin-command-runner')
 const {
   createPluginBridgeKey
-} = require('../../src/main/services/plugin-command-bridge-server')
+} = require('../../apps/desktop/src/services/plugin-command-bridge-server')
 
 const createChild = ({ pid = 1234, stdin = new PassThrough() } = {}) => {
   const child = new EventEmitter()

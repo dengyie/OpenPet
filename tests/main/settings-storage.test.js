@@ -20,7 +20,7 @@ Module._load = function (request, parent, isMain) {
   return originalLoad.call(this, request, parent, isMain)
 }
 
-const { settingsPath, defaultSettings, loadSettings, saveSettings } = require('../../src/main/settings')
+const { settingsPath, defaultSettings, loadSettings, saveSettings } = require('../../apps/desktop/src/services/settings')
 Module._load = originalLoad
 
 const backupPath = `${settingsPath}.bak`

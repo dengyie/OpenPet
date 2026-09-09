@@ -5,7 +5,7 @@ const os = require('os')
 const path = require('path')
 const sharp = require('sharp')
 
-const { createActionImportService } = require('../../src/main/services/action-import-service')
+const { createActionImportService } = require('../../apps/desktop/src/services/action-import-service')
 
 const createFrame = async (filePath) => {
   await sharp({

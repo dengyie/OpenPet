@@ -5,7 +5,7 @@ const {
   isPrivateAddress,
   readLimitedResponseText,
   requestPluginNetwork
-} = require('../../src/main/services/plugin-network-client')
+} = require('../../apps/desktop/src/services/plugin-network-client')
 
 const manifest = {
   id: 'network-plugin',

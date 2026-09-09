@@ -4,7 +4,7 @@ import { ApiError, sendSuccess } from "../http/middleware.js"
 import { streamAiChat } from "./ai-stream.js"
 
 const require = createRequire(import.meta.url)
-const { createAiConfigView, createAiPersonaProfileView, createAiPersonaDraftView, createAiMemoryProfileView, createAiBehaviorConfigView, createAiBehaviorResultView } = require("../../../src/main/control-center-adapters.js")
+const { createAiConfigView, createAiPersonaProfileView, createAiPersonaDraftView, createAiMemoryProfileView, createAiBehaviorConfigView, createAiBehaviorResultView } = require("../../../apps/desktop/src/services/control-center-adapters.js")
 
 export const AI_RUNTIME_ROUTES = Object.freeze([
   "GET /ai/state", "GET /ai/config", "PATCH /ai/config",

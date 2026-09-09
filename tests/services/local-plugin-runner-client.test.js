@@ -7,7 +7,7 @@ const path = require('node:path')
 const {
   LOCAL_PLUGIN_COMMAND_TIMEOUT_MS,
   runLocalPluginCommand
-} = require('../../src/main/services/local-plugin-runner-client')
+} = require('../../apps/desktop/src/services/local-plugin-runner-client')
 
 const TEST_TIMEOUT_MS = 8000
 

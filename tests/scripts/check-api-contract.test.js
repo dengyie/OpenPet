@@ -20,9 +20,9 @@ const fixtureFiles = [
 	'services/backend/routes/ai.js',
 	'services/backend/routes/ai-runtime.js',
 	'services/backend/routes/ai-stream.js',
-	'src/main/control-center-adapters.js',
-	'src/main/services/plugin-service-state.js',
-	'src/main/services/plugin-runtime-safety.js',
+	'apps/desktop/src/services/control-center-adapters.js',
+	'apps/desktop/src/services/plugin-service-state.js',
+	'apps/desktop/src/services/plugin-runtime-safety.js',
 	'services/backend/routes/about.js',
 	'services/backend/routes/settings.js',
 	'services/backend/routes/actions.js',
@@ -33,8 +33,8 @@ const fixtureFiles = [
 	'services/backend/jobs/state-machine.js',
 	'services/backend/http/router.js',
 	'services/backend/http/middleware.js',
-	'src/shared/ipc-channels.ts',
-	'src/shared/ipc-channels.js',
+	'apps/desktop/src/shared/ipc-channels.ts',
+	'apps/desktop/src/shared/ipc-channels.js',
 	'scripts/api-contract-route-parser.mjs',
 	'scripts/check-api-contract.mjs'
 ]
@@ -73,7 +73,7 @@ test('CLI reads Job statuses from section 6.2 instead of the jobs-recovered SSE 
 
 test('CLI hard-checks route registry and IPC inventories', (t) => {
 	const fixtureRoot = createFixture(t)
-	const tsPath = path.join(fixtureRoot, 'src/shared/ipc-channels.ts')
+	const tsPath = path.join(fixtureRoot, 'apps/desktop/src/shared/ipc-channels.ts')
 	fs.writeFileSync(tsPath, fs.readFileSync(tsPath, 'utf8').replace("  PET_QUIT: 'pet:quit',\n", ''))
 	const result = spawnSync(process.execPath, [path.join(fixtureRoot, 'scripts/check-api-contract.mjs')], { cwd: fixtureRoot, encoding: 'utf8' })
 	assert.equal(result.status, 1)

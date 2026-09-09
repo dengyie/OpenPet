@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const loadHelper = () => import('../../src/control-center/src/lib/creator-studio-dashboard.ts')
+const loadHelper = () => import('../../apps/control-center/src/lib/creator-studio-dashboard.ts')
 
 const createRuntime = (status, health) => ({
   status,

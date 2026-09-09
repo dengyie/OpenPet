@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 
-const apiSourcePath = path.resolve(__dirname, '../../src/control-center/src/api/control-center-api.ts')
+const apiSourcePath = path.resolve(__dirname, '../../apps/control-center/src/api/control-center-api.ts')
 const readApiSource = () => fs.readFileSync(apiSourcePath, 'utf8')
 
 // 静态守卫：demo API 是一份 4.8k 行的全量内存假后端。真机上 preload 桥总会注入，

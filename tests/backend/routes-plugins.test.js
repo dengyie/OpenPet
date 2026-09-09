@@ -26,7 +26,7 @@ describe("T25 plugin routes", () => {
 
 	it("mechanically covers all 29 real plugin channels: 23 HTTP and 6 IPC", async () => {
 		const [{ IPC }, routes] = await Promise.all([
-			import("../../src/shared/ipc-channels.js"),
+			import("../../apps/desktop/src/shared/ipc-channels.js"),
 			import("../../services/backend/routes/plugins.js"),
 		])
 		const channels = Object.keys(IPC).filter((key) => key.startsWith("PLUGINS_"))

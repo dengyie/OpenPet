@@ -1,6 +1,6 @@
 "use strict"
 
-const { sanitizeLogText } = require("../../../../src/main/services/log-safety")
+const { sanitizeLogText } = require("../services/log-safety")
 
 const BRIDGE_PROTOCOL_VERSION = 1
 const CATALOG_BLOCKLIST_TYPES = new Set(["pluginId", "packId", "sha256"])

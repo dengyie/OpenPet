@@ -8,7 +8,7 @@ import { createProgressThrottle } from "./progress.js"
 import { assertCancelable, canRetry, interruptionError } from "./state-machine.js"
 
 const require = createRequire(import.meta.url)
-const { sanitizePluginCommandResultValue, sanitizePluginCommandText } = require("../../../src/main/services/plugin-runtime-safety.js")
+const { sanitizePluginCommandResultValue, sanitizePluginCommandText } = require("../../../apps/desktop/src/services/plugin-runtime-safety.js")
 
 export const SIGKILL_DELAY_MS = 2_000
 export const SHUTDOWN_GRACE_MS = 5_000

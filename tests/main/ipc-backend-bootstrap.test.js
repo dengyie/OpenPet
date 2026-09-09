@@ -1,8 +1,8 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { IPC } = require('../../src/shared/ipc-channels')
-const { registerSettingsIpc } = require('../../src/main/ipc/register-settings-ipc')
+const { IPC } = require('../../apps/desktop/src/shared/ipc-channels')
+const { registerSettingsIpc } = require('../../apps/desktop/src/ipc/register-settings-ipc')
 
 test('settings:get and settings:save are retired from the native settings IPC surface', () => {
   const handlers = new Map()

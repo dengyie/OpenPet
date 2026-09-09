@@ -6,7 +6,7 @@ const http = require('http')
 const {
   createPluginBridgeKey,
   createPluginCommandBridgeServer
-} = require('../../src/main/services/plugin-command-bridge-server')
+} = require('../../apps/desktop/src/services/plugin-command-bridge-server')
 
 const requestJson = (url, { token = 'token', method = 'POST', body = {}, headers = {}, includeJsonHeader = body !== null } = {}) => new Promise((resolve, reject) => {
   const payload = body === null ? '' : JSON.stringify(body)

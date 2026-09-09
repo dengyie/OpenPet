@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { normalizePetPackManifest } = require('../../src/main/pet-pack/schema')
+const { normalizePetPackManifest } = require('../../apps/desktop/src/pet/pet-pack/schema')
 
 test('normalizes a minimal pet pack manifest with defaults', () => {
   const manifest = normalizePetPackManifest({

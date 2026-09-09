@@ -5,7 +5,7 @@ const Module = require('module')
 const os = require('os')
 const path = require('path')
 
-const coreServicesPath = require.resolve('../../src/main/bootstrap/create-core-services')
+const coreServicesPath = require.resolve('../../apps/desktop/src/services/bootstrap/create-core-services')
 
 const loadCreateCoreServices = () => {
   delete require.cache[coreServicesPath]

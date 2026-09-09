@@ -7,7 +7,7 @@ let formatPluginLogLevel
 let getPluginLogLevelClass
 
 test.before(async () => {
-  ;({ formatPluginLogLevel, getPluginLogLevelClass } = await import(pathToFileURL(path.resolve(__dirname, '../../src/control-center/src/lib/format.js')).href))
+  ;({ formatPluginLogLevel, getPluginLogLevelClass } = await import(pathToFileURL(path.resolve(__dirname, '../../apps/control-center/src/lib/format.js')).href))
 })
 
 test('plugin log formatting preserves warning severity for display', () => {

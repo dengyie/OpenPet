@@ -6,9 +6,9 @@ const path = require('node:path')
 const crypto = require('node:crypto')
 const { execFileSync } = require('node:child_process')
 
-const { createActionService } = require('../../src/main/services/action-service')
-const { BUILT_IN_PACK_ID, createPetPackService } = require('../../src/main/services/pet-pack-service')
-const zipArchiveUtils = require('../../src/main/services/zip-archive-utils')
+const { createActionService } = require('../../apps/desktop/src/services/action-service')
+const { BUILT_IN_PACK_ID, createPetPackService } = require('../../apps/desktop/src/services/pet-pack-service')
+const zipArchiveUtils = require('../../apps/desktop/src/services/zip-archive-utils')
 const { createMinimalWebp: createFixtureWebp } = require('../../examples/plugins/creator-studio/lib/fake-hatch-pet')
 
 const createSettingsService = (initialSettings = {}) => {

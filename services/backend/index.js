@@ -65,7 +65,7 @@ import { createJobsRepository } from "./store/repositories/jobs.js"
 import { createLogsRepository } from "./store/repositories/logs.js"
 import { createPluginJobHandlers, createImageJobHandlers } from "./jobs/handlers/index.js"
 const require = createRequire(import.meta.url)
-const { normalizeNetworkRequest, requestPluginNetwork } = require("../../src/main/services/plugin-network-client.js")
+const { normalizeNetworkRequest, requestPluginNetwork } = require("../../apps/desktop/src/services/plugin-network-client.js")
 
 const packageJson = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../package.json"), "utf8"))
 

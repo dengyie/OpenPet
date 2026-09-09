@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { createPetService } = require('../../src/main/services/pet-service')
+const { createPetService } = require('../../apps/desktop/src/services/pet-service')
 
 test('pet service exposes a snapshot composed from settings and actions', () => {
   const service = createPetService({

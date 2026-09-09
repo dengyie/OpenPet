@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 
 test('cloneServiceStatus normalizes config logs through cloneServiceLogs', async () => {
-  const { cloneServiceStatus } = await import('../../src/control-center/src/lib/defaults.ts')
+  const { cloneServiceStatus } = await import('../../apps/control-center/src/lib/defaults.ts')
 
   assert.deepEqual(cloneServiceStatus({
     config: {
