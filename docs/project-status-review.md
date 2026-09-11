@@ -1,6 +1,6 @@
 # OpenPet Project Status Review
 
-> Last updated: 2026-07-16
+> Last updated: 2026-09-12
 > Branch: `main`
 
 This is the compact product and release snapshot. Use [`TODO.md`](./TODO.md) for the active queue and `docs/release-evidence/` for archived proof.
@@ -14,6 +14,8 @@ Current archived proof also includes real-provider smoke paths for AI gateway ve
 The current Pet character-generation authority is [`pet-character-generation.md`](./pet-character-generation.md). The branch has technical atlas packaging/import plus Provider row-generation and QA infrastructure, but those capabilities and archived smoke runs do not prove official-quality production art. The normal input is one clean reference image and each Provider request must carry at most one image attachment. Current orchestration still requests both directional rows; the required target generates `running-right` once and derives `running-left` through the QA-gated `approved-mirror` path.
 
 Current common provider presets such as OpenRouter and Together remain endpoint templates rather than verified integrations; only the OpenPet gateway preset is tied to the archived smoke baseline. The archived signed closure keeps official desktop not-ready, macOS not-ready, and Windows not-ready until signed release evidence replaces the current blockers.
+
+Agent Awareness now has a fresh real local smoke archive at `docs/release-evidence/agent-awareness-local-smoke/2026-09-11T20-05-34-688Z/`. It records 19 sanitized sessions and 134 events with automated redaction checks passing; dashboard usefulness and pet speech/noise still require human desktop acceptance.
 
 ## Release Truth
 
