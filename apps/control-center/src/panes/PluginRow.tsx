@@ -1,4 +1,4 @@
-import type { PluginViewState } from '../../../desktop/src/shared/openpet-contracts.ts'
+import type { PluginViewState } from '@openpet/shared/src/openpet-contracts.ts'
 import { PluginEntryDetails } from '../components/PluginEntryDetails.tsx'
 import { Toggle } from '../components/Toggle.tsx'
 import { formatBytes } from '../lib/format.js'

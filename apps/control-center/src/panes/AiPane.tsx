@@ -20,7 +20,7 @@ import type {
   ProviderModelDiscoveryResult,
   PetChatStateViewState,
   VisionConfigViewState
-} from '../../../desktop/src/shared/openpet-contracts.ts'
+} from '@openpet/shared/src/openpet-contracts.ts'
 import { Toggle } from '../components/Toggle.tsx'
 import { defaultImageGenerationConfig } from '../lib/defaults.ts'
 import {

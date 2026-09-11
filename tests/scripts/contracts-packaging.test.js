@@ -120,3 +120,9 @@ test("PR test-build builds contracts before every contracts consumer", () => {
 		"Windows packaging should reuse the shared contracts build instead of rebuilding it",
 	)
 })
+
+test("shared runtime package builds with the canonical contracts", () => {
+
+	const scripts = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8")).scripts
+	assert.match(scripts["build:contracts"], /npm --workspace @openpet\/shared run build/)
+})

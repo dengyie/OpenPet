@@ -20,7 +20,7 @@
     "build:control-center": "npm run build:browser-contracts && vite build --config apps/control-center/vite.config.js",
     "build:browser-contracts": "node scripts/build-browser-contracts.mjs",
     "check:browser-contracts": "node scripts/build-browser-contracts.mjs --check",
-    "build:contracts": "npm --workspace @openpet/contracts run build",
+    "build:contracts": "npm --workspace @openpet/contracts run build && npm --workspace @openpet/shared run build",
     "pack": "npm run build:contracts && npm run build:system-cursor && npm run build:control-center && electron-builder --dir",
     "dist": "npm run build:contracts && npm run build:system-cursor && npm run build:control-center && electron-builder",
     "generate-icons": "node scripts/generate-icons.js",
@@ -196,6 +196,7 @@
   },
   "dependencies": {
     "@openpet/contracts": "0.0.0",
+    "@openpet/shared": "0.0.0",
     "@tanstack/react-query": "^5.101.4",
     "eventsource-parser": "^3.1.1",
     "grammy": "^1.44.0",

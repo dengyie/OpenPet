@@ -6,7 +6,7 @@ import type {
   ImageGenerationConfigViewState,
   VisionConfigSaveRequest,
   VisionConfigViewState
-} from '../../../desktop/src/shared/openpet-contracts.ts'
+} from '@openpet/shared/src/openpet-contracts.ts'
 
 export const normalizeProviderBaseUrl = (value: string) => value.trim().replace(/\/+$/, '')
 

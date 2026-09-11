@@ -3,7 +3,7 @@ import { aboutApi, resolveAboutUpdateJob } from '../features/about/api.ts'
 import { useJob } from './useJob.ts'
 import { cloneAboutInfo, cloneUpdateCheck, defaultAboutInfo, defaultUpdateCheck } from '../lib/defaults.ts'
 import { messageFromError } from '../lib/errors.ts'
-import type { AboutInfoViewState, UpdateCheckViewState } from '../../../desktop/src/shared/openpet-contracts.ts'
+import type { AboutInfoViewState, UpdateCheckViewState } from '@openpet/shared/src/openpet-contracts.ts'
 import type { AboutPaneProps } from '../panes/AboutPane.tsx'
 
 export function useAboutPane() {

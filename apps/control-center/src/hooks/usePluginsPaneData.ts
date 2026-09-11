@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { controlCenterAPI as api } from '../api/control-center-api.ts'
 import { pluginHttpApi, shouldUsePluginDemoApi } from '../features/plugins/api.ts'
-import type { ImGatewaySecretState, PaginatedLogsViewState, PluginLogEntry, PluginLogFilters, PluginViewState } from '../../../desktop/src/shared/openpet-contracts.ts'
+import type { ImGatewaySecretState, PaginatedLogsViewState, PluginLogEntry, PluginLogFilters, PluginViewState } from '@openpet/shared/src/openpet-contracts.ts'
 
 export const LOG_PAGE_SIZE = 50
 export const EMPTY_SECRET: ImGatewaySecretState = { hasTelegramBotToken: false, hasQqOfficialAppId: false, hasQqOfficialClientSecret: false, hasQqOfficialCredentials: false, hasWecomCredentials: false }

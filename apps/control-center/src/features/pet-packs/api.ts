@@ -3,7 +3,7 @@ import { EVENT_PET_PACK_ACTIVATED, type Job } from '../../../../desktop/src/shar
 import { backendClient } from '../../api/backend-client.ts';
 import type { ApiClient } from '../../api/client.ts';
 import { controlCenterAPI } from '../../api/control-center-api.ts';
-import type { PetPackExportResult, PetPackMutationResult, PetPacksViewState } from '../../../../desktop/src/shared/openpet-contracts.ts';
+import type { PetPackExportResult, PetPackMutationResult, PetPacksViewState } from '@openpet/shared/src/openpet-contracts.ts';
 const blockStatusSchema = v.object({
     blocked: v.boolean(),
     reasons: v.array(v.string()),

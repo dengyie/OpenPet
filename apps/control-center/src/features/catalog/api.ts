@@ -3,7 +3,7 @@ import type { Job } from '@openpet/contracts';
 import { backendClient } from '../../api/backend-client.ts';
 import { controlCenterAPI } from '../../api/control-center-api.ts';
 import type { ApiClient } from '../../api/client.ts';
-import type { CatalogBlocklistEntry, CatalogBlocklistResult, CatalogDemoApi, CatalogInstallRequest, CatalogInstallResult, CatalogInstallSelection, CatalogState, } from '../../../../desktop/src/shared/openpet-contracts.ts';
+import type { CatalogBlocklistEntry, CatalogBlocklistResult, CatalogDemoApi, CatalogInstallRequest, CatalogInstallResult, CatalogInstallSelection, CatalogState, } from '@openpet/shared/src/openpet-contracts.ts';
 const blocklistSchema = v.object({
     pluginIds: v.array(v.string()),
     packIds: v.array(v.string()),

@@ -8,7 +8,7 @@ import type {
   CatalogInstallSelection,
   CatalogItemKind,
   CatalogState
-} from '../../../desktop/src/shared/openpet-contracts.ts'
+} from '@openpet/shared/src/openpet-contracts.ts'
 import type { CatalogPaneProps } from '../panes/CatalogPane.tsx'
 
 export function useCatalogPane() {

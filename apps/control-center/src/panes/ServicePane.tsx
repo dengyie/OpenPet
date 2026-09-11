@@ -3,7 +3,7 @@ import type {
   PaginatedLogsViewState,
   ServiceLogEntry,
   ServiceStatusViewState
-} from '../../../desktop/src/shared/openpet-contracts.ts'
+} from '@openpet/shared/src/openpet-contracts.ts'
 import { Button } from '../components/Button.tsx'
 import { Card } from '../components/Card.tsx'
 import { FieldRow, ReadonlyRow } from '../components/Field.tsx'

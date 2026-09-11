@@ -1,4 +1,4 @@
-import type { ProviderModelCatalogViewState } from '../../../desktop/src/shared/openpet-contracts.ts'
+import type { ProviderModelCatalogViewState } from '@openpet/shared/src/openpet-contracts.ts'
 
 const uniqueModelOptions = (items: string[]) => {
   const models: string[] = []

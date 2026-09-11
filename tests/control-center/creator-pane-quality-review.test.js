@@ -49,9 +49,9 @@ test('creator pane treats quality as advice while reserving hard disablement for
 })
 
 test('creator pane lets owners compare and select retained action candidates without retry generation', () => {
-  const source = read('src/control-center/src/panes/CreatorPane.tsx')
-  const hook = read('src/control-center/src/hooks/useCreatorPane.ts')
-  const contracts = read('apps/desktop/src/shared/openpet-contracts.ts')
+  const source = read('apps/control-center/src/panes/CreatorPane.tsx')
+  const hook = read('apps/control-center/src/hooks/useCreatorPane.ts')
+  const contracts = read('packages/shared/src/openpet-contracts.ts')
   assert.match(source, /creator-action-candidate-review/)
   assert.match(source, /复用已有资产/)
   assert.match(source, /重新生成会产生新的图片请求/)
@@ -64,7 +64,7 @@ test('creator pane lets owners compare and select retained action candidates wit
 
 test('creator pane surfaces final package quality warnings after a human override', () => {
   const source = read('apps/control-center/src/panes/CreatorPane.tsx')
-  const contracts = read('apps/desktop/src/shared/openpet-contracts.ts')
+  const contracts = read('packages/shared/src/openpet-contracts.ts')
   assert.match(source, /最终包未达推荐标准，但已保留给你复查/)
   assert.match(source, /packageReview/)
   assert.match(contracts, /packageReview/)
@@ -91,7 +91,7 @@ test('creator pane gives archived paid retry assets their own review surface', (
 })
 
 test('identity acceptance is hash-bound through the Creator backend API', () => {
-  const contracts = read('apps/desktop/src/shared/openpet-contracts.ts')
+  const contracts = read('packages/shared/src/openpet-contracts.ts')
   const channels = read('apps/desktop/src/shared/ipc-channels.js')
   const channelsTs = read('apps/desktop/src/shared/ipc-channels.ts')
   const preload = read('apps/desktop/control-center-preload.js')

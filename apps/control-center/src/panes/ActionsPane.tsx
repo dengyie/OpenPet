@@ -17,7 +17,7 @@ import type {
   PetPackInspectionResult,
   PetPackPreviewAction,
   PetPacksViewState
-} from '../../../desktop/src/shared/openpet-contracts.ts'
+} from '@openpet/shared/src/openpet-contracts.ts'
 
 export interface ActionImportDraft {
   actionId: string

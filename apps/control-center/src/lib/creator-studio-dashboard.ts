@@ -2,7 +2,7 @@ import type {
   ControlCenterApi,
   PluginServiceHealthViewState,
   PluginServiceRuntimeViewState
-} from '../../../desktop/src/shared/openpet-contracts.ts'
+} from '@openpet/shared/src/openpet-contracts.ts'
 
 type CreatorStudioServiceApi = Pick<
   ControlCenterApi,

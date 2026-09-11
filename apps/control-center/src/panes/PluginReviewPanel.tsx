@@ -1,4 +1,4 @@
-import type { PluginPackageReviewViewState } from '../../../desktop/src/shared/openpet-contracts.ts'
+import type { PluginPackageReviewViewState } from '@openpet/shared/src/openpet-contracts.ts'
 import { PluginEntryDetails } from '../components/PluginEntryDetails.tsx'
 import { formatBytes } from '../lib/format.js'
 

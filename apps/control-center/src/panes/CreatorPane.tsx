@@ -7,7 +7,7 @@ import type {
   CreatorWorkflowProgressViewState,
   CreatorWorkflowResult,
   CreatorWorkflowStageViewState
-} from '../../../desktop/src/shared/openpet-contracts.ts'
+} from '@openpet/shared/src/openpet-contracts.ts'
 
 export type CreatorPaneMode = 'new-character' | 'existing-character'
 

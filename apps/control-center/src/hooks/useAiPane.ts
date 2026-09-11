@@ -58,7 +58,7 @@ import type {
   ProviderModelDiscoveryResult,
   PetChatStateViewState,
   VisionConfigViewState
-} from '../../../desktop/src/shared/openpet-contracts.ts'
+} from '@openpet/shared/src/openpet-contracts.ts'
 import type { AiPaneProps } from '../panes/AiPane.tsx'
 
 const getMainConversationId = (petPackId: string) => (

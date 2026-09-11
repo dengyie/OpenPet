@@ -4,7 +4,7 @@ const assert = require("node:assert/strict")
 const { test } = require("node:test")
 
 test("Creator Control Center API uses backend routes and Job timeouts for long operations", async () => {
-	const { createCreatorHttpApi } = await import("../../src/control-center/src/features/creator/api.ts")
+	const { createCreatorHttpApi } = await import("../../apps/control-center/src/features/creator/api.ts")
 	const requests = []
 	const responses = [
 		{ ok: true, provider: {}, hatchPetAgent: {}, editableTarget: {}, dashboard: {} },
@@ -32,7 +32,7 @@ test("Creator Control Center API uses backend routes and Job timeouts for long o
 })
 
 test("Creator Job resolution rejects restart failures and accepts workflow/export results", async () => {
-	const { resolveCreatorJob } = await import("../../src/control-center/src/features/creator/api.ts")
+	const { resolveCreatorJob } = await import("../../apps/control-center/src/features/creator/api.ts")
 	assert.deepEqual(resolveCreatorJob(null), { kind: "pending" })
 	assert.deepEqual(resolveCreatorJob({ status: "running" }), { kind: "pending" })
 	assert.deepEqual(resolveCreatorJob({ status: "failed", error: { message: "Creator Job input is unavailable after restart" } }), {

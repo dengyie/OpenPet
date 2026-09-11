@@ -2,7 +2,7 @@ import * as v from '../../../../desktop/src/shared/browser-validation.ts';
 import { backendClient } from '../../api/backend-client.ts';
 import { controlCenterAPI } from '../../api/control-center-api.ts';
 import type { ApiClient } from '../../api/client.ts';
-import type { JsonObject } from '../../../../desktop/src/shared/openpet-contracts.ts';
+import type { JsonObject } from '@openpet/shared/src/openpet-contracts.ts';
 export type PluginJobCreated = {
     jobId: string;
 };

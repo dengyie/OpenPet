@@ -1,6 +1,6 @@
 import { cloneActionsConfig, cloneAiConfig, cloneAiMemoryProfile, cloneAiPersonaProfile, cloneAiTalkTraceSummary, cloneCatalog, cloneChatMessages, cloneCreatorLastRun, cloneCreatorReference, cloneCreatorState, cloneImageGenerationConfig, clonePetChatState, clonePetPacks, cloneServiceStatus, cloneSettings, defaultActionsConfig, defaultAiConfig, defaultAiMemoryProfile, defaultAiPersonaProfile, defaultAiTalkTraceSummary, defaultCreatorState, defaultImageGenerationConfig, defaultPetChatState, defaultPetPacks, defaultServiceStatus, defaultSettings } from '../lib/defaults.ts'
 import { buildImageGenerationConfigSavePayload, buildProviderConfigSavePayload } from '../lib/ai-provider-config.ts'
-import { stripFileExtension } from '../../../desktop/src/shared/cursor-library.ts'
+import { stripFileExtension } from '@openpet/shared/src/cursor-library.ts'
 import type {
   ActionFrameInspectRequest,
   ActionFrameInspectionResult,
@@ -85,7 +85,7 @@ import type {
   PluginViewState,
   ServiceLogFilters,
   ServiceStatusViewState
-} from '../../../desktop/src/shared/openpet-contracts.ts'
+} from '@openpet/shared/src/openpet-contracts.ts'
 
 interface DemoState {
   settings: ControlCenterSettings

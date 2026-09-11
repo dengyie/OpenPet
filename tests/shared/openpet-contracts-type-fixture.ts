@@ -58,7 +58,7 @@ import type {
   WindowsSmokeArchiveManifest,
   WindowsSmokeReport,
   WindowsSmokeEvidenceSummary
-} from '../../apps/desktop/src/shared/openpet-contracts'
+} from '@openpet/shared/src/openpet-contracts.ts'
 
 const imageGenerationConfigSaveFixture = {
   provider: 'openai-compatible',

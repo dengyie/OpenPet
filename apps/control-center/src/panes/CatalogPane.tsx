@@ -7,7 +7,7 @@ import type {
   CatalogReviewState,
   CatalogState,
   PermissionDiffState
-} from '../../../desktop/src/shared/openpet-contracts.ts'
+} from '@openpet/shared/src/openpet-contracts.ts'
 import { Button } from '../components/Button.tsx'
 import { EmptyState, StatusLine } from '../components/Feedback.tsx'
 import { PaneScaffold } from '../components/PaneScaffold.tsx'

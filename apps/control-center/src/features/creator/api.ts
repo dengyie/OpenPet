@@ -19,7 +19,7 @@ import type {
   CreatorRetryIdentityRequest,
   CreatorStateViewState,
   CreatorWorkflowResult
-} from '../../../../desktop/src/shared/openpet-contracts.ts'
+} from '@openpet/shared/src/openpet-contracts.ts'
 
 const object = (value: unknown): value is Record<string, unknown> => (
   value !== null && typeof value === 'object' && !Array.isArray(value)

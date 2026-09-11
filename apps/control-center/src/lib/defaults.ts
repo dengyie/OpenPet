@@ -23,13 +23,13 @@ import type {
   UpdateAssetViewState,
   UpdateCheckViewState,
   VisionConfigViewState
-} from '../../../desktop/src/shared/openpet-contracts.ts'
+} from '@openpet/shared/src/openpet-contracts.ts'
 import {
   SYSTEM_CURSOR_ID,
   createDefaultRuntimeCursor,
   normalizeCursorSettingsState,
   normalizeRuntimeCursor
-} from '../../../desktop/src/shared/cursor-library.ts'
+} from '@openpet/shared/src/cursor-library.ts'
 
 const normalizeCursorState = (settings: Partial<ControlCenterSettings> | null | undefined) => (
   normalizeCursorSettingsState(settings || {}) as Pick<ControlCenterSettings, 'selectedCursorId' | 'customCursor' | 'customCursors' | 'hiddenCursorIds' | 'customCursorScope'>

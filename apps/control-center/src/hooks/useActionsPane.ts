@@ -18,7 +18,7 @@ import type {
   PetPackInspectionResult,
   PetPackMutationResult,
   PetPacksViewState
-} from '../../../desktop/src/shared/openpet-contracts.ts'
+} from '@openpet/shared/src/openpet-contracts.ts'
 import type { ActionImportDraft, ActionsPaneProps } from '../panes/ActionsPane.tsx'
 
 export function useActionsPane() {

@@ -1,4 +1,4 @@
-import type { AboutInfoViewState, UpdateCheckViewState } from '../../../desktop/src/shared/openpet-contracts.ts'
+import type { AboutInfoViewState, UpdateCheckViewState } from '@openpet/shared/src/openpet-contracts.ts'
 import { Button } from '../components/Button.tsx'
 import { Card } from '../components/Card.tsx'
 import { ReadonlyRow } from '../components/Field.tsx'

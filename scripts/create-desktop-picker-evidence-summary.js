@@ -9,12 +9,12 @@ const { REQUIRED_CHECKS, validateReport } = require('./validate-desktop-picker-s
 const DEFAULT_EVIDENCE_DIR = 'desktop-picker-evidence'
 const STATUS_ORDER = ['pass', 'fail', 'pending', 'blocked']
 
-/** @typedef {import('../apps/desktop/src/shared/openpet-contracts').DesktopPickerEvidenceSummary} DesktopPickerEvidenceSummary */
-/** @typedef {import('../apps/desktop/src/shared/openpet-contracts').DesktopPickerEvidenceReport} DesktopPickerEvidenceReport */
-/** @typedef {import('../apps/desktop/src/shared/openpet-contracts').DesktopPickerEvidenceFile} DesktopPickerEvidenceFile */
-/** @typedef {import('../apps/desktop/src/shared/openpet-contracts').DesktopPickerSmokeCheck} DesktopPickerSmokeCheck */
-/** @typedef {import('../apps/desktop/src/shared/openpet-contracts').DesktopPickerSmokeReport} DesktopPickerSmokeReport */
-/** @typedef {import('../apps/desktop/src/shared/openpet-contracts').DesktopPickerValidationResult} DesktopPickerValidationResult */
+/** @typedef {import('@openpet/shared/src/openpet-contracts.ts').DesktopPickerEvidenceSummary} DesktopPickerEvidenceSummary */
+/** @typedef {import('@openpet/shared/src/openpet-contracts.ts').DesktopPickerEvidenceReport} DesktopPickerEvidenceReport */
+/** @typedef {import('@openpet/shared/src/openpet-contracts.ts').DesktopPickerEvidenceFile} DesktopPickerEvidenceFile */
+/** @typedef {import('@openpet/shared/src/openpet-contracts.ts').DesktopPickerSmokeCheck} DesktopPickerSmokeCheck */
+/** @typedef {import('@openpet/shared/src/openpet-contracts.ts').DesktopPickerSmokeReport} DesktopPickerSmokeReport */
+/** @typedef {import('@openpet/shared/src/openpet-contracts.ts').DesktopPickerValidationResult} DesktopPickerValidationResult */
 /** @typedef {{ evidenceDir: string, reportPath: string | null, requireSigned: boolean, outputPath: string | null, json: boolean, help: boolean }} CliOptions */
 /** @typedef {{ evidenceDir: string | null, reportPath: string | null, requireSigned: boolean, outputPath: string | null, json: boolean, help: boolean }} CliParseState */
 /** @typedef {{ evidenceDir?: string, reportPath?: string | null, requireSigned?: boolean, now?: () => Date, fsImpl?: typeof fs }} SummaryOptions */

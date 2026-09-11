@@ -4,7 +4,7 @@ import { ensureCreatorStudioServiceReady } from '../lib/creator-studio-dashboard
 import { messageFromError } from '../lib/errors.ts'
 import { toCommandResultPreview } from '../lib/plugin-command-result.mjs'
 import { isBackendUnavailableBeforeDispatch, pluginHttpApi, shouldUseImmediatePluginCommandFallback } from '../features/plugins/api.ts'
-import type { JsonObject, JsonValue, PluginDashboardOpenOptions, PluginViewState } from '../../../desktop/src/shared/openpet-contracts.ts'
+import type { JsonObject, JsonValue, PluginDashboardOpenOptions, PluginViewState } from '@openpet/shared/src/openpet-contracts.ts'
 
 const CREATOR = 'openpet.creator-studio'
 const serviceStatus = (plugin: PluginViewState | null) => plugin?.entries?.services?.find((service) => service.id === 'studio')?.runtime?.status || 'stopped'

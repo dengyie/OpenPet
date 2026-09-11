@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
-import type { ControlCenterSettings, CursorOption } from '../../../desktop/src/shared/openpet-contracts.ts'
+import type { ControlCenterSettings, CursorOption } from '@openpet/shared/src/openpet-contracts.ts'
 import {
   CUSTOM_CURSOR_MAX_SIZE_PERCENT,
   CUSTOM_CURSOR_MIN_SIZE_PERCENT,
   CUSTOM_CURSOR_SIZE_STEP_PERCENT,
   SYSTEM_CURSOR_ID
-} from '../../../desktop/src/shared/cursor-library.ts'
+} from '@openpet/shared/src/cursor-library.ts'
 import { SegmentedControl } from '../components/SegmentedControl.tsx'
 import { Toggle } from '../components/Toggle.tsx'
 import { bubbleDurationOptions, homeRadiusOptions, menuPositionOptions, speedOptions, walkDurationOptions } from '../constants.ts'

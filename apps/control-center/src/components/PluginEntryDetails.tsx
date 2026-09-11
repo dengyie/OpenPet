@@ -1,4 +1,4 @@
-import type { JsonObject, PluginEntriesViewState } from '../../../desktop/src/shared/openpet-contracts.ts'
+import type { JsonObject, PluginEntriesViewState } from '@openpet/shared/src/openpet-contracts.ts'
 
 interface PluginEntryDetailsSource {
   entries?: PluginEntriesViewState

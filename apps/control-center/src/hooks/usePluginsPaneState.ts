@@ -1,6 +1,6 @@
 import { usePluginsPaneActions } from './usePluginsPaneActions.ts'
 import { usePluginsPaneData } from './usePluginsPaneData.ts'
-import type { JsonValue, PluginLogFilters } from '../../../desktop/src/shared/openpet-contracts.ts'
+import type { JsonValue, PluginLogFilters } from '@openpet/shared/src/openpet-contracts.ts'
 import type { PluginsPaneProps } from '../panes/PluginsPaneTypes.ts'
 
 export function usePluginsPane() {

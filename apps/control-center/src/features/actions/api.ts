@@ -3,7 +3,7 @@ import { EVENT_ACTIONS_CHANGED, type Job } from '../../../../desktop/src/shared/
 import { backendClient } from '../../api/backend-client.ts';
 import type { ApiClient } from '../../api/client.ts';
 import { controlCenterAPI } from '../../api/control-center-api.ts';
-import type { ActionFrameClearRequest, ActionFrameImportRequest, ActionFrameImportResult, ActionFrameInspectRequest, ActionFrameInspectionResult, ActionFrameReinspectRequest, ActionsConfigViewState, ActionsMutationResult, ActionsSaveConfigRequest, ActionTriggerProposalAcceptanceRequest, ActionTriggerProposalPreviewResult, ActionTriggerRuleMutationResult, ActionTriggerRuleStatus, ActionTriggerRuleUpdateRequest, } from '../../../../desktop/src/shared/openpet-contracts.ts';
+import type { ActionFrameClearRequest, ActionFrameImportRequest, ActionFrameImportResult, ActionFrameInspectRequest, ActionFrameInspectionResult, ActionFrameReinspectRequest, ActionsConfigViewState, ActionsMutationResult, ActionsSaveConfigRequest, ActionTriggerProposalAcceptanceRequest, ActionTriggerProposalPreviewResult, ActionTriggerRuleMutationResult, ActionTriggerRuleStatus, ActionTriggerRuleUpdateRequest, } from '@openpet/shared/src/openpet-contracts.ts';
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const actionsSchema = v.custom<ActionsConfigViewState>((value) => object(value) && typeof value.defaultAction === 'string' && typeof value.clickAction === 'string'
     && Array.isArray(value.actions) && value.actions.every((action) => object(action) && typeof action.id === 'string'));

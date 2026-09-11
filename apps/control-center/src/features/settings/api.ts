@@ -7,7 +7,7 @@ import type * as v from 'valibot'
 
 import type { ApiClient } from '../../api/client.ts'
 import { cloneSettings, defaultSettings } from '../../lib/defaults.ts'
-import type { ControlCenterSettings } from '../../../../desktop/src/shared/openpet-contracts.ts'
+import type { ControlCenterSettings } from '@openpet/shared/src/openpet-contracts.ts'
 
 export type SettingsSnapshot = v.InferOutput<typeof settingsEnvelopeSchema>
 export type SettingsPatch = v.InferOutput<typeof settingsPatchRequestSchema>

@@ -8,7 +8,7 @@ import type {
   PaginatedLogsViewState,
   ServiceLogEntry,
   ServiceStatusViewState
-} from '../../../desktop/src/shared/openpet-contracts.ts'
+} from '@openpet/shared/src/openpet-contracts.ts'
 import type { ServicePaneProps } from '../panes/ServicePane.tsx'
 
 type LogExportFormat = 'json' | 'csv'

@@ -21,8 +21,8 @@ import {
   normalizeCustomCursorCollection,
   removeStoredCursorRecord,
   resizeCustomCursorRecord
-} from '../../../desktop/src/shared/cursor-library.ts'
-import type { ControlCenterSettings, CursorOption, CustomCursorRecord } from '../../../desktop/src/shared/openpet-contracts.ts'
+} from '@openpet/shared/src/cursor-library.ts'
+import type { ControlCenterSettings, CursorOption, CustomCursorRecord } from '@openpet/shared/src/openpet-contracts.ts'
 import type { PetPaneProps } from '../panes/PetPane.tsx'
 
 const normalizeCursorState = (settings: Partial<ControlCenterSettings>) => (

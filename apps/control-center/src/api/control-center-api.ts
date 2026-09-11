@@ -1,4 +1,4 @@
-import type { ControlCenterApi } from '../../../desktop/src/shared/openpet-contracts.ts'
+import type { ControlCenterApi } from '@openpet/shared/src/openpet-contracts.ts'
 
 declare global {
   interface Window {

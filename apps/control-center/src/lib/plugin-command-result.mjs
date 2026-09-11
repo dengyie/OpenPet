@@ -1,5 +1,5 @@
 /**
- * @typedef {import('../../../desktop/src/shared/openpet-contracts.ts').PluginCommandRunResultViewState} PluginCommandRunResultViewState
+ * @typedef {import('@openpet/shared/src/openpet-contracts.ts').PluginCommandRunResultViewState} PluginCommandRunResultViewState
  */
 
 /**

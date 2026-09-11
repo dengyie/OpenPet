@@ -8,7 +8,7 @@ import type {
   CreatorExportRecoveryBundleResult,
   CreatorStateViewState,
   CreatorWorkflowResult
-} from '../../../desktop/src/shared/openpet-contracts.ts'
+} from '@openpet/shared/src/openpet-contracts.ts'
 import type { CreatorPaneProps, CreatorPaneMode } from '../panes/CreatorPane'
 import { useJob } from './useJob.ts'
 

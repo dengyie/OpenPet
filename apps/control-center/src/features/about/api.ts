@@ -3,7 +3,7 @@ import type { Job } from '@openpet/contracts';
 import { backendClient } from '../../api/backend-client.ts';
 import type { ApiClient } from '../../api/client.ts';
 import { cloneAboutInfo, cloneUpdateCheck, defaultAboutInfo, defaultUpdateCheck } from '../../lib/defaults.ts';
-import type { AboutInfoViewState, UpdateCheckViewState } from '../../../../desktop/src/shared/openpet-contracts.ts';
+import type { AboutInfoViewState, UpdateCheckViewState } from '@openpet/shared/src/openpet-contracts.ts';
 const updateSourceSchema = v.object({
     configured: v.boolean(),
     provider: v.string(),

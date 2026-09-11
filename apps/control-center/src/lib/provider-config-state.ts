@@ -1,7 +1,7 @@
 import type {
   AiConfigViewState,
   ImageGenerationConfigViewState
-} from '../../../desktop/src/shared/openpet-contracts.ts'
+} from '@openpet/shared/src/openpet-contracts.ts'
 import {
   cloneAiConfig,
   cloneImageGenerationConfig
