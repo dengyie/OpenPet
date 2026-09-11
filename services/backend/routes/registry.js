@@ -76,6 +76,7 @@ export const IMPLEMENTED_API_ROUTES = Object.freeze([
 	"POST /plugins/sync-bundled",
 	"GET /plugins/:id/config",
 	"PUT /plugins/:id/config",
+	...CREATOR_ROUTES,
 ])
 
 const noop = () => ({})
@@ -84,6 +85,7 @@ const actions = new Proxy({}, { get: () => noop })
 const packs = new Proxy({}, { get: () => noop })
 const catalog = new Proxy({}, { get: () => noop })
 const plugins = new Proxy({}, { get: () => noop })
+const creator = new Proxy({}, { get: () => noop })
 
 export function registeredImplementedRoutes() {
 	const router = createRouter({ basePath: "/api/v1" })
@@ -99,6 +101,7 @@ export function registeredImplementedRoutes() {
 	registerCatalogRoutes(router, { catalog, jobs: { insert: noop } })
 	registerJobRoutes(router, { jobs: { byId: noop }, runner: { cancel: noop }, dispatcher: { resume: noop } })
 	registerPluginRoutes(router, { plugins })
+	registerCreatorRoutes(router, { creator })
 	return router.routes().map((route) => route.replace(" /api/v1/", " /"))
 }
 import { createRouter } from "../http/router.js"
@@ -113,3 +116,4 @@ import { registerSettingsRoutes } from "./settings.js"
 import { registerPluginRoutes } from "./plugins.js"
 import { registerAiSecretRoutes, registerAiRoutes } from "./ai.js"
 import { AI_RUNTIME_ROUTES, registerAiRuntimeRoutes } from "./ai-runtime.js"
+import { CREATOR_ROUTES, registerCreatorRoutes } from "./creator.js"

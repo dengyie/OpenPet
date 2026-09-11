@@ -2439,6 +2439,13 @@ const createCreatorWorkflowService = ({
     }
   }
 
+  const deleteReference = async ({ targetType, targetId }) => {
+    if (typeof creatorReferenceService?.deleteReference !== 'function') {
+      throw new Error('Creator reference deletion is not available')
+    }
+    return creatorReferenceService.deleteReference({ targetType, targetId })
+  }
+
   const assertPluginReady = () => {
     const plugin = getPluginState()
     if (!plugin) {
@@ -4021,6 +4028,7 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
     getLastRun,
     getAssetPreview,
     bindReference,
+    deleteReference,
     generateNewCharacter,
     generateExistingAction,
     retryFullPetAction,

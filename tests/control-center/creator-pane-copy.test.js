@@ -89,7 +89,7 @@ test('creator pane explains degraded placeholder actions instead of presenting t
 test('creator pane hook wires import available actions API', () => {
   const hookPath = path.resolve(__dirname, '../../apps/control-center/src/hooks/useCreatorPane.ts')
   const source = fs.readFileSync(hookPath, 'utf-8')
-  assert.match(source, /importCreatorAvailableActions/)
+  assert.match(source, /creatorApi\.importAvailableActions/)
   assert.match(source, /onImportAvailableActions/)
   assert.match(source, /正在导入可用动作/)
 })
@@ -102,7 +102,7 @@ test('demo partial import falls back to the module-level creator last run', () =
 
 test('creator pane hook loads asset previews on demand and marks prompt copy state', () => {
   const source = fs.readFileSync(creatorPaneHookPath, 'utf-8')
-  assert.match(source, /getCreatorAssetPreview/)
+  assert.match(source, /creatorApi\.getAssetPreview/)
   assert.match(source, /onLoadAssetPreview/)
   assert.match(source, /setCopiedPromptKey/)
   assert.match(source, /预览仅支持已导入动作/)

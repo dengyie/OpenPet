@@ -357,6 +357,20 @@ const createCreatorReferenceService = ({
     return inspectSourceImage(record.assetPath, record.fileName)
   }
 
+  const deleteReference = ({ targetType, targetId }) => {
+    const normalizedTargetType = normalizeTargetType(targetType)
+    const normalizedTargetId = normalizeTargetId(targetId)
+    const references = readSettingsReferences(settingsService)
+    const key = createReferenceKey({ targetType: normalizedTargetType, targetId: normalizedTargetId })
+    const record = references[key]
+    if (!record) return { deleted: false, targetType: normalizedTargetType, targetId: normalizedTargetId }
+    delete references[key]
+    saveSettingsReferences(settingsService, references)
+    const targetDir = path.join(referenceRoot, normalizedTargetType, normalizedTargetId)
+    fs.rmSync(targetDir, { recursive: true, force: true })
+    return { deleted: true, targetType: normalizedTargetType, targetId: normalizedTargetId }
+  }
+
   const copyReferenceIntoRun = ({ targetType, targetId, pluginDataDir, runId }) => {
     const record = getReferenceRecord({ targetType, targetId })
     if (!record) {
@@ -419,6 +433,7 @@ const createCreatorReferenceService = ({
     approveSourcePath,
     getReference,
     bindReference,
+    deleteReference,
     copyReferenceIntoRun,
     inspectApprovedSource,
     inspectReference

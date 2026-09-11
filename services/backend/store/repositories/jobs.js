@@ -32,6 +32,22 @@ function persistedInput(kind, input) {
 		}
 		return redact(input ?? {})
 	}
+	if (typeof kind === "string" && kind.startsWith("creator.")) {
+		const operation = input && typeof input === "object" ? String(input.operation || kind) : kind
+		const allowed = new Set([
+			"operation", "flowId", "characterName", "stylePrompt", "actionName", "motionPrompt",
+			"runId", "actionId", "candidateId", "sha256", "qualityOverride", "acknowledgedWarningCodes", "activate",
+		])
+		const payload = input && typeof input === "object"
+			? Object.fromEntries(Object.entries(input).filter(([key]) => allowed.has(key)).map(([key, value]) => {
+				if (["stylePrompt", "motionPrompt", "characterName", "actionName"].includes(key)) return [key, typeof value === "string" ? value.slice(0, 8_000) : ""]
+				if (key === "acknowledgedWarningCodes") return [key, Array.isArray(value) ? value.filter((entry) => typeof entry === "string").slice(0, 32) : []]
+				if (key === "qualityOverride" || key === "activate") return [key, value === true]
+				return [key, typeof value === "string" ? value.slice(0, 512) : value]
+			}).filter(([, value]) => value !== undefined))
+			: {}
+		return { redacted: true, summary: `Creator ${operation}`, payload }
+	}
 	return input ?? {}
 }
 

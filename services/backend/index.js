@@ -64,6 +64,9 @@ import { migrateFromJson, needsJsonImport } from "./store/migrate-from-json.js"
 import { createJobsRepository } from "./store/repositories/jobs.js"
 import { createLogsRepository } from "./store/repositories/logs.js"
 import { createPluginJobHandlers, createImageJobHandlers } from "./jobs/handlers/index.js"
+import { createCreatorDomain } from "./domains/creator/index.js"
+import { createCreatorJobHandlers } from "./jobs/handlers/creator.js"
+import { registerCreatorRoutes } from "./routes/creator.js"
 const require = createRequire(import.meta.url)
 const { normalizeNetworkRequest, requestPluginNetwork } = require("../../apps/desktop/src/services/plugin-network-client.js")
 
@@ -197,6 +200,7 @@ const runtime = {
 	runner: null,
 	enqueueJob: null,
 	ai: null,
+	creator: null,
 }
 
 const initEnvelope = await initPromise.catch((error) => {
@@ -444,9 +448,16 @@ if (!runtime.degraded && runtime.jobs) {
 		onSnapshot: (snapshot) => shell.send({ type: "ai.state", snapshot }),
 		fetchImpl: globalThis.fetch, logger,
 	})
-	runtime.ai = createAiService({ settings: runtime.settings, secrets: runtime.secrets, fetchImpl: globalThis.fetch, logger, userDataDir: runtime.userDataDir })
-	runtime.queue = createQueue({ repo: runtime.jobs, logger })
-	runtime.runner = createRunner({
+		runtime.ai = createAiService({ settings: runtime.settings, secrets: runtime.secrets, fetchImpl: globalThis.fetch, logger, userDataDir: runtime.userDataDir })
+		runtime.queue = createQueue({ repo: runtime.jobs, logger })
+		runtime.creator = createCreatorDomain({
+		db: runtime.db,
+		shell,
+		enqueueJob: (input) => runtime.enqueueJob?.(input),
+		emit: (name, payload) => eventHub.publish(name, payload),
+		logger,
+	})
+		runtime.runner = createRunner({
 		repo: runtime.jobs,
 		queue: runtime.queue,
 		logger,
@@ -467,8 +478,9 @@ if (!runtime.degraded && runtime.jobs) {
 				plugins: runtime.plugins,
 				logger,
 			}),
-			...createImageJobHandlers({ ai: runtime.ai }),
-		},
+				...createImageJobHandlers({ ai: runtime.ai }),
+				...createCreatorJobHandlers({ creator: runtime.creator }),
+			},
 	})
 	runtime.enqueueJob = createJobDispatcher({
 		queue: runtime.queue,
@@ -489,6 +501,7 @@ if (!runtime.degraded && runtime.jobs) {
 }
 
 registerJobRoutes(router, { jobs: runtime.jobs ?? { byId: () => null }, runner: runtime.runner, dispatcher: runtime.enqueueJob })
+if (runtime.creator) registerCreatorRoutes(router, { creator: runtime.creator })
 // Plugin domain initializes after the HTTP listener is assembled. Keep route
 // handlers bound to the current runtime service instead of the initial null.
 const pluginRouteFacade = new Proxy({}, {

@@ -106,15 +106,15 @@
 | `SETTINGS_*` | 5 | 2 | 3 | `OPEN`/`CLOSE` 留(开窗); `GET`/`SAVE` 已在 T41 退役 |
 | `ACTIONS_*` | 1 | 1 | 0 | 仅 `INSPECT_FRAMES` 保留原生弹框；12 个业务通道退休，Control Center 通过 Backend HTTP |
 | `PET_PACKS_*` | 1 | 1 | 0 | 仅 `INSPECT_DIRECTORY` 保留原生弹框；其余 8 个通道已在 T42 同一提交退休 |
-| AI 总域 | 8 | 0 | 8 | 29 个对话、配置、记忆与行为通道已在 T47 退役；剩余图像和 Creator 操作随 T48 收口 |
+| AI 总域 | 8 | 0 | 8 | 29 个对话、配置、记忆与行为通道已在 T47 退役；图像和 Creator 操作由 Backend/Job 提供 |
 | `PLUGINS_*` | 29 | 6 | 23 | `OPEN_DASHBOARD`、`INSPECT_PACKAGE`、QQ/WeCom 凭据保存/清除留 |
-| `CREATOR_*` | 13 | 0 | 13 | 多数转 Job |
+| `CREATOR_*` | 1 | 1 | 0 | 仅 `PICK_REFERENCE_IMAGE` 保留原生文件选择；其余业务通道由 Backend/Job 提供 |
 | `SERVICE_*` | 7 | 0 | 7 | 全迁 |
 | `ABOUT_*` | 0 | 0 | 0 | `about:get-info` / `about:check-updates` 已在 T42 退休；能力改由 Backend HTTP/Job 提供 |
 | `CATALOG_*` | 0 | 0 | 0 | 6 个 Catalog 通道已在 T42 同一提交中退休；HTTP 路由仍由 Backend 提供 |
-| **合计** | **99** | **45** | **54** | |
+| **合计** | **87** | **46** | **41** | |
 
-> **实现登记（T47 AI）**：本表只统计当前 IPC 通道。AI 对话通过 HTTP/SSE 进入后端，历史由 SQLite 保存；孵化配置和密钥也由后端统一写入。Actions 的 12 个业务通道已由 `/actions*` HTTP 路由承接。`check:api-contract` 以 `src/shared/ipc-channels.ts` 为清单逐项复算：**99 = 45 留 IPC + 54 迁 HTTP**。
+> **实现登记（T47/T48）**：本表只统计当前 IPC 通道。AI 对话通过 HTTP/SSE 进入后端，历史由 SQLite 保存；孵化配置和密钥也由后端统一写入。Actions 的业务通道与 Creator 的 12 个业务通道已由 Backend HTTP/Job 承接。`check:api-contract` 以 `src/shared/ipc-channels.ts` 为清单逐项复算：**87 = 46 留 IPC + 41 迁 HTTP**。
 
 ## 4. 路由表
 
@@ -264,6 +264,8 @@
 | --- | --- | --- |
 | GET | `/creator/flows` | |
 | POST · PATCH · DELETE | `/creator/flows` · `/{id}` | |
+| GET | `/creator/state` | Creator Studio 状态快照 |
+| GET | `/creator/last-run` | 最近一次 Creator 运行摘要 |
 | POST | `/creator/characters/generate` | ✅ 265s |
 | POST | `/creator/sprites/generate` | ✅ |
 | POST | `/creator/sprites/evaluate` | ✅ |
@@ -271,6 +273,12 @@
 | POST | `/creator/workflows/{id}/run` | ✅ |
 | GET | `/creator/workflows/{id}/artifacts` | |
 | POST | `/creator/export` | ✅ |
+| GET | `/creator/assets/preview` | |
+| POST | `/creator/runs/{id}/retry-action` | ✅ |
+| POST | `/creator/runs/{id}/retry-identity` | ✅ |
+| POST | `/creator/runs/{id}/accept-identity` | ✅ |
+| POST | `/creator/runs/{id}/accept-action-candidate` | ✅ |
+| POST | `/creator/runs/{id}/import-actions` | ✅ |
 
 ### 4.9 Catalog
 

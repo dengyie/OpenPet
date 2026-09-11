@@ -49,14 +49,14 @@ test('creator pane treats quality as advice while reserving hard disablement for
 })
 
 test('creator pane lets owners compare and select retained action candidates without retry generation', () => {
-  const source = read('apps/control-center/src/panes/CreatorPane.tsx')
-  const hook = read('apps/control-center/src/hooks/useCreatorPane.ts')
+  const source = read('src/control-center/src/panes/CreatorPane.tsx')
+  const hook = read('src/control-center/src/hooks/useCreatorPane.ts')
   const contracts = read('apps/desktop/src/shared/openpet-contracts.ts')
   assert.match(source, /creator-action-candidate-review/)
   assert.match(source, /复用已有资产/)
   assert.match(source, /重新生成会产生新的图片请求/)
   assert.match(source, /onAcceptCreatorActionCandidate/)
-  assert.match(hook, /acceptCreatorActionCandidate/)
+  assert.match(hook, /creatorApi\.acceptActionCandidate/)
   assert.match(contracts, /CreatorAcceptActionCandidateRequest/)
   assert.match(source, /result\.failureCode/)
   assert.match(source, /状态原因/)
@@ -90,20 +90,22 @@ test('creator pane gives archived paid retry assets their own review surface', (
   assert.match(source, /重新生成|资产审查台/)
 })
 
-test('identity acceptance is hash-bound through shared API and IPC', () => {
+test('identity acceptance is hash-bound through the Creator backend API', () => {
   const contracts = read('apps/desktop/src/shared/openpet-contracts.ts')
   const channels = read('apps/desktop/src/shared/ipc-channels.js')
   const channelsTs = read('apps/desktop/src/shared/ipc-channels.ts')
   const preload = read('apps/desktop/control-center-preload.js')
   const ipc = read('apps/desktop/src/ipc/register-creator-ipc.js')
   const hook = read('apps/control-center/src/hooks/useCreatorPane.ts')
-  for (const source of [contracts, channels, channelsTs, preload, ipc, hook]) {
+  for (const source of [contracts, hook]) {
     assert.match(source, /accept.*identity|ACCEPT_IDENTITY|acceptCreatorIdentity/i)
   }
   assert.match(contracts, /sha256: string/)
-  assert.match(preload, /CREATOR_ACCEPT_IDENTITY/)
-  assert.match(ipc, /acceptCreatorIdentity/)
-  assert.match(hook, /acceptCreatorIdentity/)
+  assert.doesNotMatch(preload, /CREATOR_ACCEPT_IDENTITY|acceptCreatorIdentity/)
+  assert.doesNotMatch(ipc, /CREATOR_ACCEPT_IDENTITY|acceptCreatorIdentity/)
+  assert.match(channels, /CREATOR_PICK_REFERENCE_IMAGE/)
+  assert.match(channelsTs, /CREATOR_PICK_REFERENCE_IMAGE/)
+  assert.match(hook, /creatorApi\.acceptIdentity/)
 })
 
 test('public quality-first diagnostics expose candidates and next action without absolute paths', () => {

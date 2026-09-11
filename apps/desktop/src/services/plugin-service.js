@@ -2572,6 +2572,29 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     effectiveHatchPetAgentService = service || null
   }
 
+  const runCreatorSpriteEvaluation = async (payload = {}) => {
+    if (!effectiveHatchPetAgentService?.evaluateSprite) throw new Error('Creator hatch-pet evaluation is not available')
+    const plugin = getPluginDefinition(CREATOR_STUDIO_PLUGIN_ID)
+    if (!plugin) throw new Error('Creator Studio plugin is not available')
+    const board = payload.board && typeof payload.board === 'object' ? payload.board : {}
+    const boardPath = resolvePluginDataPath(plugin.manifest, board.relativePath)
+    if (!fs.statSync(boardPath).isFile()) throw new Error('Creator hatch-pet review board must be a file')
+    return {
+      ok: true,
+      result: await effectiveHatchPetAgentService.evaluateSprite({
+        runId: String(payload.runId || ''),
+        scope: String(payload.scope || ''),
+        board: {
+          path: boardPath,
+          relativePath: String(board.relativePath || ''),
+          sha256: String(board.sha256 || ''),
+          regions: Array.isArray(board.regions) ? board.regions : []
+        },
+        qa: payload.qa && typeof payload.qa === 'object' ? payload.qa : {}
+      })
+    }
+  }
+
   return {
     listPlugins,
     setEnabled,
@@ -2595,6 +2618,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     getPluginDefinition,
     getPluginCreatorDataDir,
     setHatchPetAgentService,
+    runCreatorSpriteEvaluation,
     getImGatewaySecretState,
     saveImGatewayTelegramBotToken,
     clearImGatewayTelegramBotToken,

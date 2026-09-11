@@ -170,6 +170,61 @@ const createOpenPetRuntime = ({
     },
     onPetPackRequest: (request) => ipcRuntimeHelpers.handlePetPackRequest(request),
     onActionsRequest: (request) => ipcRuntimeHelpers.handleActionsRequest(request),
+    onCreatorRequest: async ({ operation, payload = {} }) => {
+      switch (operation) {
+        case 'pick-reference': {
+          const selected = await showOpenDialogForEvent(null, {
+            title: '选择 Creator 参考图片',
+            properties: ['openFile'],
+            filters: [{ name: 'Reference Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }]
+          })
+          if (selected?.canceled || !selected?.filePaths?.[0]) {
+            return { canceled: true, referenceToken: '', fileName: '' }
+          }
+          const approved = creatorWorkflowService.approveReferenceSourcePath(selected.filePaths[0])
+          return { canceled: false, referenceToken: approved.referenceToken, fileName: approved.fileName }
+        }
+        case 'bind-reference':
+          return creatorWorkflowService.bindReference({
+            targetType: payload.targetType,
+            targetId: payload.targetId,
+            referenceToken: payload.referenceToken
+          })
+        case 'delete-reference':
+          return creatorWorkflowService.deleteReference({
+            targetType: payload.targetType,
+            targetId: payload.targetId
+          })
+        case 'get-state': return creatorWorkflowService.getState()
+        case 'get-last-run': return creatorWorkflowService.getLastRun()
+        case 'asset-preview': return creatorWorkflowService.getAssetPreview({ runId: payload.runId, relativePath: payload.relativePath })
+        case 'generate-character': return creatorWorkflowService.generateNewCharacter({
+          characterName: payload.characterName,
+          stylePrompt: payload.stylePrompt,
+          referenceImageToken: payload.referenceImageToken
+        })
+        case 'generate-action': return creatorWorkflowService.generateExistingAction({
+          actionName: payload.actionName,
+          motionPrompt: payload.motionPrompt,
+          referenceImageToken: payload.referenceImageToken
+        })
+        case 'retry-action': return creatorWorkflowService.retryFullPetAction({ runId: payload.runId, actionId: payload.actionId })
+        case 'retry-identity': return creatorWorkflowService.retryFullPetIdentity({ runId: payload.runId })
+        case 'accept-identity': return creatorWorkflowService.acceptCreatorIdentity(payload)
+        case 'accept-action-candidate': return creatorWorkflowService.acceptCreatorActionCandidate(payload)
+        case 'export-recovery': return creatorWorkflowService.exportRecoveryBundle({ runId: payload.runId })
+        case 'import-actions': return creatorWorkflowService.importAvailableActions({ runId: payload.runId, activate: payload.activate !== false })
+        case 'run-workflow': {
+          if (typeof creatorWorkflowService.runWorkflow === 'function') return creatorWorkflowService.runWorkflow(payload)
+          throw Object.assign(new Error('Creator workflow operation is unavailable'), { code: 'BACKEND_UNAVAILABLE' })
+        }
+        case 'evaluate-sprite': {
+          if (typeof pluginService?.runCreatorSpriteEvaluation === 'function') return pluginService.runCreatorSpriteEvaluation(payload)
+          throw Object.assign(new Error('Creator sprite evaluation is unavailable'), { code: 'BACKEND_UNAVAILABLE' })
+        }
+        default: throw Object.assign(new Error('Unsupported Creator operation'), { code: 'VALIDATION_FAILED' })
+      }
+    },
     onAiState: (snapshot) => aiSidecar.receive(snapshot),
     onAiHostRequest: ({ operation, payload }) => {
       if (operation === 'context') return {

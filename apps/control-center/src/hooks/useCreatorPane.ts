@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import { controlCenterAPI as api } from '../api/control-center-api.ts'
-import { cloneCreatorState, defaultCreatorState } from '../lib/defaults.ts'
-import { ensureCreatorStudioServiceReady } from '../lib/creator-studio-dashboard.ts'
-import { messageFromError } from '../lib/errors.ts'
+import { controlCenterAPI as api } from '../api/control-center-api'
+import { creatorApi, resolveCreatorJob, type CreatorJobResolution } from '../features/creator/api.ts'
+import { cloneCreatorState, defaultCreatorState } from '../lib/defaults'
+import { ensureCreatorStudioServiceReady } from '../lib/creator-studio-dashboard'
+import { messageFromError } from '../lib/errors'
 import type {
+  CreatorExportRecoveryBundleResult,
   CreatorStateViewState,
   CreatorWorkflowResult
 } from '../../../desktop/src/shared/openpet-contracts.ts'
-import type { CreatorPaneProps, CreatorPaneMode } from '../panes/CreatorPane.tsx'
+import type { CreatorPaneProps, CreatorPaneMode } from '../panes/CreatorPane'
+import { useJob } from './useJob.ts'
 
 interface SelectedReferenceDraft {
   referenceImageToken: string
@@ -98,12 +101,14 @@ export function useCreatorPane(active: boolean) {
   const [previewing, setPreviewing] = useState(false)
   const [openingDashboard, setOpeningDashboard] = useState(false)
   const [result, setResult] = useState<CreatorWorkflowResult | null>(null)
+  const [creatorJobRequest, setCreatorJobRequest] = useState<{ jobId: string; kind: 'workflow' | 'export' } | null>(null)
+  const { job: creatorJob } = useJob(creatorJobRequest?.jobId || null)
   const [copiedPromptKey, setCopiedPromptKey] = useState('')
   const previewCacheRef = useRef(new Map<string, string>())
   const hasLoadedRef = useRef(false)
 
   const refreshCreatorState = async () => {
-    const nextState = cloneCreatorState(await api.getCreatorState())
+    const nextState = cloneCreatorState(await creatorApi.getState())
     setCreatorState(nextState)
     return nextState
   }
@@ -172,22 +177,76 @@ export function useCreatorPane(active: boolean) {
     }
   }
 
+  const resolveCreatorJobResult = (resolution: CreatorJobResolution, kind: 'workflow' | 'export') => {
+    if (resolution.kind === 'pending') return false
+    setCreatorJobRequest(null)
+    if (resolution.kind === 'failed') {
+      setRunning(false)
+      setStatus(resolution.message)
+      return true
+    }
+    if (kind === 'export') {
+      const exported = resolution.result
+      if ('byteSize' in exported) {
+        setStatus(exported.ok
+          ? `资产恢复包已验证：${exported.relativePath}（${exported.byteSize} bytes）`
+          : (exported.message || '资产恢复包不可用'))
+      } else setStatus('资产恢复包返回结果不完整')
+      return true
+    }
+    if ('state' in resolution.result) {
+      void syncAfterWorkflow(resolution.result).finally(() => setRunning(false))
+    } else {
+      setRunning(false)
+      setStatus('Creator workflow 返回结果不完整')
+    }
+    return true
+  }
+
+  useEffect(() => {
+    if (!creatorJobRequest || !creatorJob || creatorJob.jobId !== creatorJobRequest.jobId) return
+    const resolution = resolveCreatorJob(creatorJob)
+    if (resolution.kind === 'pending') {
+      setStatus(creatorJob.progress?.message || (creatorJobRequest.kind === 'export' ? '正在验证资产恢复包…' : '生成任务进行中…'))
+      return
+    }
+    resolveCreatorJobResult(resolution, creatorJobRequest.kind)
+  }, [creatorJob, creatorJobRequest])
+
+  const submitCreatorJob = async (
+    start: { jobId: string } | { result: CreatorWorkflowResult | CreatorExportRecoveryBundleResult },
+    kind: 'workflow' | 'export'
+  ) => {
+    if ('jobId' in start) {
+      setCreatorJobRequest({ jobId: start.jobId, kind })
+      setStatus(kind === 'export' ? '资产恢复包任务已提交' : 'Creator 生成任务已提交')
+      return
+    }
+    if (kind === 'workflow' && 'state' in start.result) {
+      await syncAfterWorkflow(start.result)
+    } else if (kind === 'export' && 'byteSize' in start.result) {
+      setStatus(start.result.ok
+        ? `资产恢复包已验证：${start.result.relativePath}（${start.result.byteSize} bytes）`
+        : (start.result.message || '资产恢复包不可用'))
+    }
+    setRunning(false)
+  }
+
   const onGenerateNewCharacter = async () => {
     if (running) return
     setRunning(true)
     setStatus('')
     setResult(createInFlightResult('new-character'))
     try {
-      const nextResult = await api.generateCreatorNewCharacter({
+      const nextResult = await creatorApi.generateNewCharacter({
         characterName: newCharacterDraft.characterName,
         stylePrompt: newCharacterDraft.stylePrompt,
         referenceImageToken: newCharacterDraft.referenceImageToken
       })
-      await syncAfterWorkflow(nextResult)
+      await submitCreatorJob(nextResult, 'workflow')
     } catch (error) {
       setResult(null)
       setStatus(messageFromError(error, '角色生成失败'))
-    } finally {
       setRunning(false)
     }
   }
@@ -198,16 +257,15 @@ export function useCreatorPane(active: boolean) {
     setStatus('')
     setResult(createInFlightResult('existing-character'))
     try {
-      const nextResult = await api.generateCreatorExistingAction({
+      const nextResult = await creatorApi.generateExistingAction({
         actionName: existingActionDraft.actionName,
         motionPrompt: existingActionDraft.motionPrompt,
         referenceImageToken: existingActionDraft.referenceImageToken || undefined
       })
-      await syncAfterWorkflow(nextResult)
+      await submitCreatorJob(nextResult, 'workflow')
     } catch (error) {
       setResult(null)
       setStatus(messageFromError(error, '动作生成失败'))
-    } finally {
       setRunning(false)
     }
   }
@@ -312,11 +370,10 @@ export function useCreatorPane(active: boolean) {
     setRunning(true)
     setStatus('')
     try {
-      const nextResult = await api.retryCreatorAction({ runId, actionId })
-      await syncAfterWorkflow(nextResult)
+      const nextResult = await creatorApi.retryAction({ runId, actionId })
+      await submitCreatorJob(nextResult, 'workflow')
     } catch (error) {
       setStatus(messageFromError(error, `动作 ${actionId} 修复失败`))
-    } finally {
       setRunning(false)
     }
   }
@@ -327,11 +384,10 @@ export function useCreatorPane(active: boolean) {
     setRunning(true)
     setStatus('')
     try {
-      const nextResult = await api.retryCreatorIdentity({ runId })
-      await syncAfterWorkflow(nextResult)
+      const nextResult = await creatorApi.retryIdentity({ runId })
+      await submitCreatorJob(nextResult, 'workflow')
     } catch (error) {
       setStatus(messageFromError(error, 'Canonical identity 修复失败'))
-    } finally {
       setRunning(false)
     }
   }
@@ -346,11 +402,10 @@ export function useCreatorPane(active: boolean) {
     setRunning(true)
     setStatus(`正在接受身份候选 ${candidateId}，随后会先生成并检查 idle…`)
     try {
-      const nextResult = await api.acceptCreatorIdentity({ runId, candidateId, sha256, ...options })
-      await syncAfterWorkflow(nextResult)
+      const nextResult = await creatorApi.acceptIdentity({ runId, candidateId, sha256, ...options })
+      await submitCreatorJob(nextResult, 'workflow')
     } catch (error) {
       setStatus(messageFromError(error, `身份候选 ${candidateId} 接受失败`))
-    } finally {
       setRunning(false)
     }
   }
@@ -366,11 +421,10 @@ export function useCreatorPane(active: boolean) {
     setRunning(true)
     setStatus(`正在复用 ${actionId} 的已有候选 ${candidateId}；不会产生新的图片请求…`)
     try {
-      const nextResult = await api.acceptCreatorActionCandidate({ runId, actionId, candidateId, sha256, ...options })
-      await syncAfterWorkflow(nextResult)
+      const nextResult = await creatorApi.acceptActionCandidate({ runId, actionId, candidateId, sha256, ...options })
+      await submitCreatorJob(nextResult, 'workflow')
     } catch (error) {
       setStatus(messageFromError(error, `动作候选 ${candidateId} 采用失败`))
-    } finally {
       setRunning(false)
     }
   }
@@ -380,10 +434,8 @@ export function useCreatorPane(active: boolean) {
     if (!runId || running) return
     setStatus('正在验证资产恢复包…')
     try {
-      const exported = await api.exportCreatorRecoveryBundle({ runId })
-      setStatus(exported.ok
-        ? `资产恢复包已验证：${exported.relativePath}（${exported.byteSize} bytes）`
-        : (exported.message || '资产恢复包不可用'))
+      const exported = await creatorApi.exportRecoveryBundle({ runId })
+      await submitCreatorJob(exported, 'export')
     } catch (error) {
       setStatus(messageFromError(error, '资产恢复包导出失败'))
     }
@@ -395,11 +447,10 @@ export function useCreatorPane(active: boolean) {
     setRunning(true)
     setStatus('正在导入可用动作…')
     try {
-      const nextResult = await api.importCreatorAvailableActions({ runId, activate: true })
-      await syncAfterWorkflow(nextResult)
+      const nextResult = await creatorApi.importAvailableActions({ runId, activate: true })
+      await submitCreatorJob(nextResult, 'workflow')
     } catch (error) {
       setStatus(messageFromError(error, '可用动作导入失败'))
-    } finally {
       setRunning(false)
     }
   }
@@ -446,7 +497,7 @@ export function useCreatorPane(active: boolean) {
       return ''
     }
     try {
-      const preview = await api.getCreatorAssetPreview({ runId, relativePath: safePath })
+      const preview = await creatorApi.getAssetPreview({ runId, relativePath: safePath })
       if (!preview?.ok || !preview.previewDataUrl) {
         setStatus(preview?.message || '资源预览加载失败')
         return ''
@@ -494,7 +545,7 @@ export function useCreatorPane(active: boolean) {
 
   const selectReference = async (applyDraft: (draft: SelectedReferenceDraft) => void, errorFallback: string) => {
     try {
-      const picked = await api.pickCreatorReferenceImage()
+      const picked = await creatorApi.pickReferenceImage()
       if (picked.canceled) return
       applyDraft({
         referenceImageToken: String(picked.referenceToken || '').trim(),

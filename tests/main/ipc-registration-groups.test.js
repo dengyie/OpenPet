@@ -314,36 +314,13 @@ test('registerPluginIpc wires plugin lifecycle and package inspection handlers',
   assert.ok(ipcMain.handlers.has(IPC.PLUGINS_SAVE_SERVICE_HEALTH_POLICY))
 })
 
-test('registerCreatorIpc wires creator workflow handlers', async () => {
+test('registerCreatorIpc keeps only the native Creator reference picker', async () => {
   const ipcMain = createIpcMainStub()
-  const calls = []
   const creatorWorkflowService = {
-    getState: async () => ({ ok: true, provider: { ready: true } }),
     approveReferenceSourcePath: () => ({
       referenceToken: 'token-reference',
       fileName: 'reference.png'
     }),
-    bindReference: async (payload) => {
-      calls.push({ type: 'bind', payload })
-      return { ok: true, replaced: false, reference: payload }
-    },
-    generateNewCharacter: async (payload) => {
-      calls.push({ type: 'new', payload })
-      return { ok: true, state: 'completed', code: 'pet_imported', message: 'ok', run: null }
-    },
-    generateExistingAction: async (payload) => {
-      calls.push({ type: 'action', payload })
-      return { ok: true, state: 'completed', code: 'action_imported', message: 'ok', run: null }
-    },
-    acceptCreatorIdentity: async (payload) => {
-      calls.push({ type: 'accept-identity', payload })
-      return { ok: true, state: 'review-required', code: 'identity_accepted_review_required', message: 'ok', run: null }
-    },
-    acceptCreatorActionCandidate: async (payload) => {
-      calls.push({ type: 'accept-action-candidate', payload })
-      return { ok: true, state: 'review-required', code: 'action_candidate_accepted_review_required', message: 'ok', run: null }
-    },
-    getLastRun: async () => ({ ok: true, run: null })
   }
 
   registerCreatorIpc({
@@ -352,102 +329,13 @@ test('registerCreatorIpc wires creator workflow handlers', async () => {
     creatorWorkflowService
   })
 
-  assert.deepEqual(await ipcMain.handlers.get(IPC.CREATOR_GET_STATE)(), { ok: true, provider: { ready: true } })
   assert.deepEqual(await ipcMain.handlers.get(IPC.CREATOR_PICK_REFERENCE_IMAGE)({}, {}), {
     ok: true,
     canceled: false,
     referenceToken: 'token-reference',
     fileName: 'reference.png'
   })
-  assert.deepEqual(
-    await ipcMain.handlers.get(IPC.CREATOR_BIND_REFERENCE)(null, {
-      targetType: 'editable-action-host',
-      targetId: 'legacy-editable-host',
-      referenceToken: 'token-reference'
-    }),
-    {
-      ok: true,
-      replaced: false,
-      reference: {
-        targetType: 'editable-action-host',
-        targetId: 'legacy-editable-host',
-        referenceToken: 'token-reference'
-      }
-    }
-  )
-  await ipcMain.handlers.get(IPC.CREATOR_GENERATE_NEW_CHARACTER)(null, {
-    characterName: 'Mango',
-    stylePrompt: 'orange cat',
-    referenceImageToken: 'token-reference'
-  })
-  await ipcMain.handlers.get(IPC.CREATOR_GENERATE_EXISTING_ACTION)(null, {
-    actionName: 'spin',
-    motionPrompt: 'spin quickly',
-    referenceImageToken: 'token-reference'
-  })
-  await ipcMain.handlers.get(IPC.CREATOR_ACCEPT_IDENTITY)(null, {
-    runId: 'run-1',
-    candidateId: 'canonical-4',
-    sha256: 'f'.repeat(64),
-    qualityOverride: true,
-    acknowledgedWarningCodes: ['visual-score-overall-below-minimum']
-  })
-  await ipcMain.handlers.get(IPC.CREATOR_ACCEPT_ACTION_CANDIDATE)(null, {
-    runId: 'run-1',
-    actionId: 'waving',
-    candidateId: 'candidate-2',
-    sha256: 'c'.repeat(64),
-    qualityOverride: true,
-    acknowledgedWarningCodes: ['visual-defect-motion-unreadable']
-  })
-  assert.deepEqual(await ipcMain.handlers.get(IPC.CREATOR_GET_LAST_RUN)(), { ok: true, run: null })
-  assert.deepEqual(calls, [
-    {
-      type: 'bind',
-      payload: {
-        targetType: 'editable-action-host',
-        targetId: 'legacy-editable-host',
-        referenceToken: 'token-reference'
-      }
-    },
-    {
-      type: 'new',
-      payload: {
-        characterName: 'Mango',
-        stylePrompt: 'orange cat',
-        referenceImageToken: 'token-reference'
-      }
-    },
-    {
-      type: 'action',
-      payload: {
-        actionName: 'spin',
-        motionPrompt: 'spin quickly',
-        referenceImageToken: 'token-reference'
-      }
-    },
-    {
-      type: 'accept-identity',
-      payload: {
-        runId: 'run-1',
-        candidateId: 'canonical-4',
-        sha256: 'f'.repeat(64),
-        qualityOverride: true,
-        acknowledgedWarningCodes: ['visual-score-overall-below-minimum']
-      }
-    },
-    {
-      type: 'accept-action-candidate',
-      payload: {
-        runId: 'run-1',
-        actionId: 'waving',
-        candidateId: 'candidate-2',
-        sha256: 'c'.repeat(64),
-        qualityOverride: true,
-        acknowledgedWarningCodes: ['visual-defect-motion-unreadable']
-      }
-    }
-  ])
+  assert.deepEqual([...ipcMain.handlers.keys()], [IPC.CREATOR_PICK_REFERENCE_IMAGE])
 })
 
 test('registerServiceIpc wires service status, token rotation, and config persistence handlers', async () => {

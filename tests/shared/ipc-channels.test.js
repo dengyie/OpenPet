@@ -45,12 +45,13 @@ test('shared IPC contract exports stable frozen channel names', () => {
   ]) assert.equal(IPC[retiredChannel], undefined, `${retiredChannel} must stay retired after the Actions HTTP cutover`)
   assert.equal(IPC.ACTIONS_INSPECT_FRAMES, 'actions:inspect-frames')
   assert.equal(IPC.PLUGINS_RUN_CREATOR_STUDIO_DEFAULT_FLOW, 'plugins:run-creator-studio-default-flow')
-  assert.equal(IPC.CREATOR_GET_STATE, 'creator:get-state')
   assert.equal(IPC.CREATOR_PICK_REFERENCE_IMAGE, 'creator:pick-reference-image')
-  assert.equal(IPC.CREATOR_BIND_REFERENCE, 'creator:bind-reference')
-  assert.equal(IPC.CREATOR_GENERATE_NEW_CHARACTER, 'creator:generate-new-character')
-  assert.equal(IPC.CREATOR_GENERATE_EXISTING_ACTION, 'creator:generate-existing-action')
-  assert.equal(IPC.CREATOR_GET_LAST_RUN, 'creator:get-last-run')
+  for (const retiredCreatorChannel of [
+    'CREATOR_GET_STATE', 'CREATOR_BIND_REFERENCE', 'CREATOR_GENERATE_NEW_CHARACTER',
+    'CREATOR_GENERATE_EXISTING_ACTION', 'CREATOR_RETRY_ACTION', 'CREATOR_RETRY_IDENTITY',
+    'CREATOR_ACCEPT_IDENTITY', 'CREATOR_ACCEPT_ACTION_CANDIDATE', 'CREATOR_EXPORT_RECOVERY_BUNDLE',
+    'CREATOR_IMPORT_AVAILABLE_ACTIONS', 'CREATOR_GET_LAST_RUN', 'CREATOR_GET_ASSET_PREVIEW'
+  ]) assert.equal(IPC[retiredCreatorChannel], undefined, `${retiredCreatorChannel} must stay retired after the Creator HTTP cutover`)
   assert.equal(IPC.SETTINGS_OPEN, 'settings:open')
   assert.equal(Object.isFrozen(IPC), true)
 })
