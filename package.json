@@ -137,6 +137,7 @@
       "apps/desktop/src/**",
       "package.json",
       "packages/contracts/**",
+      "examples/plugins/creator-studio/**",
       "node_modules/@openpet/contracts/**",
       "node_modules/zod/**",
       "node_modules/**"

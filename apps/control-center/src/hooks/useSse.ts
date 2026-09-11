@@ -17,9 +17,12 @@ export type BackendInfo = { baseUrl: string; sessionToken: string }
 export type SseRuntime = {
   getBackend: () => BackendInfo | null
   fetchImpl?: typeof fetch
+  requestTimeoutMs?: number
   setTimeout?: typeof setTimeout
   clearTimeout?: typeof clearTimeout
 }
+
+export const DEFAULT_BACKEND_REQUEST_TIMEOUT_MS = 15_000
 
 type BackendBridge = {
   getBackend: () => BackendInfo | null
@@ -223,19 +226,39 @@ class SseManager {
     if (!backend) throw Object.assign(new Error('BACKEND_UNAVAILABLE'), { code: 'BACKEND_UNAVAILABLE' })
     const headers = new Headers(init.headers)
     headers.set('authorization', `Bearer ${backend.sessionToken}`)
-    const response = await (this.runtime.fetchImpl ?? globalThis.fetch)(`${backend.baseUrl.replace(/\/$/, '')}/${path.replace(/^\//, '')}`, { ...init, headers })
-    if (!response.ok) {
-      let payload: unknown = null
-      try { payload = await response.json() } catch { /* preserve status when body is not JSON */ }
-      const errorPayload = payload && typeof payload === 'object' && 'error' in payload
-        ? (payload as { error?: { code?: string; message?: string } }).error
-        : undefined
-      const code = errorPayload?.code
-      const message = errorPayload?.message || `Backend request failed: ${response.status}`
-      const error = Object.assign(new Error(message), { code, status: response.status })
-      throw error
+    const controller = new AbortController()
+    const callerSignal = init.signal
+    const onCallerAbort = () => controller.abort(callerSignal?.reason)
+    if (callerSignal) {
+      if (callerSignal.aborted) onCallerAbort()
+      else callerSignal.addEventListener('abort', onCallerAbort, { once: true })
     }
-    return response.json()
+    const configuredTimeoutMs = Number(this.runtime.requestTimeoutMs)
+    const timeoutMs = Number.isFinite(configuredTimeoutMs) && configuredTimeoutMs > 0
+      ? Math.max(1, Math.trunc(configuredTimeoutMs))
+      : DEFAULT_BACKEND_REQUEST_TIMEOUT_MS
+    const timeout = (this.runtime.setTimeout ?? setTimeout)(
+      () => controller.abort(new Error(`Backend request timed out after ${timeoutMs}ms`)),
+      timeoutMs,
+    )
+    try {
+      const response = await (this.runtime.fetchImpl ?? globalThis.fetch)(`${backend.baseUrl.replace(/\/$/, '')}/${path.replace(/^\//, '')}`, { ...init, headers, signal: controller.signal })
+      if (!response.ok) {
+        let payload: unknown = null
+        try { payload = await response.json() } catch { /* preserve status when body is not JSON */ }
+        const errorPayload = payload && typeof payload === 'object' && 'error' in payload
+          ? (payload as { error?: { code?: string; message?: string } }).error
+          : undefined
+        const code = errorPayload?.code
+        const message = errorPayload?.message || `Backend request failed: ${response.status}`
+        const error = Object.assign(new Error(message), { code, status: response.status })
+        throw error
+      }
+      return response.json()
+    } finally {
+      (this.runtime.clearTimeout ?? clearTimeout)(timeout)
+      callerSignal?.removeEventListener('abort', onCallerAbort)
+    }
   }
 
   stop() { this.enabled = false; this.controller?.abort(RECONNECT); this.wakeDelay?.(); this.notifyState('idle') }

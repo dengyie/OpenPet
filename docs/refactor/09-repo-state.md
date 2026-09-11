@@ -1,6 +1,6 @@
 # 09 · 仓库现状快照
 
-> v1.8 · 2026-09-08 · T42 Actions 切换与 T44–T46 落地复核
+> v2.2 · 2026-09-12 · T43/T47–T50 落地复核与 G13 ownership 闭合
 
 **读者**:领到任务卡准备写代码的 agent。前置阅读 [08 篇 执行手册](./08-agent-guide.md)。
 
@@ -43,7 +43,7 @@ tests/backend/state-machine.test.js     ✅ 测试样板
 
 根 `package.json` 已开启 workspaces(`apps/*`、`services/*`、`packages/*`),`check:node` 已覆盖 `apps` 与 `services`。backend 当前由 12 组 routes 文件装配 133 条实际 method/path；`routes/registry.js` 是硬对账注册表，不是第二套业务实现。
 
-**当前 backend 已完成启动、迁移、Job 恢复/调度和 HTTP 业务路由注册。** 尚未归属仓储的三张表见缺口 G13。
+**当前 backend 已完成启动、迁移、Job 恢复/调度和 HTTP 业务路由注册。** 所有当前运行期表均已有明确 owner；AI traces 与 HTTP access logs 的归属见 §2.6 与缺口 G13。
 
 ---
 
@@ -274,7 +274,7 @@ countByStatus(status?)                     // → number | { [status]: number }
 
 | 组 | 待建 |
 | --- | --- |
-| 迁移与仓储 | ~~`store/migrate.js`、`store/repositories/*.js`、`store/migrate-from-json.js`~~ ✅ T01/T02/T14/T47 已落地；traces、HTTP access logs 等归属仍见缺口 G13 |
+| 迁移与仓储 | ~~`store/migrate.js`、`store/repositories/*.js`、`store/migrate-from-json.js`~~ ✅ T01/T02/T14/T47 已落地；`logs.js` 与 `conversations.js` 分别承担 HTTP access logs、插件 logs 与 AI-owned traces |
 | Job 引擎 | ~~`jobs/queue.js`、`jobs/runner.js`、`jobs/progress.js`、`jobs/recovery.js`、`jobs/handlers/*.js`~~ ✅ T05–T08/T31 已落地 |
 | HTTP | ~~`routes/*.js`、`domains/*.js`、SSE 推送~~ ✅ T09–T33 已落地；当前注册表实际 133 条 method/path |
 | 密钥 | ~~`secrets/*.js`~~ ✅ T44 `1433b299` 已落地，只写边界与脱敏摘要 |
@@ -306,7 +306,7 @@ countByStatus(status?)                     // → number | { [status]: number }
 | 缺口 G10 | ✅ | `tests/backend/state-machine.test.js` 有一处 `it()` 标题笔误 | E9 已改为「6 个状态,17 个 kind」(证据: `bbfdb096d8a224f513eea5160cf000281f487161`) |
 | 缺口 G11 | ✅ | E3 的 `:memory:` SQLite 探针不证明 WAL | T35 已由 file-backed `tests/backend/sqlite-driver.test.js` 复验 WAL、四项默认 pragma 与跨连接持久化(证据: `08c24e1c364e9ca6a59f57bc6544cb447aa0b565`) |
 | 缺口 G12 | ✅ | 03 篇 §3 盘点 7 个 `SERVICE_*` 写通道,§4.1 已有对应入口 | T16 已补齐并实现服务配置写入端点 `PUT /service/config`,同时同步契约表(实现证据: `4480c4b5749d2ed242716732e45573ffc1a3131a`;契约/注册表证据: `4faa07df0244e9ce8bb53501589eaee4e50ac0b9`) |
-| 缺口 G13 | ⏳ | `001_init.sql` 已建 9 张表；T47 已补齐 AI conversations、messages、memories 的运行期 repository；`traces`、`http_access_logs` 仍需独立 ownership card | 后续底层存储任务明确 traces 与 HTTP access logs 的归属和生命周期，不再重复建设 conversations 仓储 |
+| 缺口 G13 | ✅ | `logs.js` 已负责 `http_access_logs` 的写入、分页与 7 天/1 万行 retention；`conversations.js` 已以 `owner = 'ai-talk'` 隔离并持久化 AI traces；`tests/backend/access-logs.test.js`、`tests/backend/conversations-repository.test.js` 覆盖生命周期与隔离 | ownership 已闭合：HTTP access logs 与 plugin logs 归 `createLogsRepository`，AI traces 归 AI conversations repository；非 AI trace 保留给其原 owner，不由 AI 提交删除 |
 
 ---
 
@@ -349,3 +349,4 @@ countByStatus(status?)                     // → number | { [status]: number }
 | v1.9 | 2026-09-10 | T47 AI 域与 SQLite 会话仓储落地；当前 99 条 IPC、112 条实际路由；T48 Creator 迁移仍待完成 |
 | v2.0 | 2026-09-12 | T43 删除插件 HTTP 对等 preload bridge；实测 preload 7,833 字节并将 `check:preload-size` 收紧到 10 KiB |
 | v2.1 | 2026-09-12 | T48 Creator 迁移完成；当前 87 条 IPC、133 条实际 method/path，注册表与运行时门禁一致 |
+| v2.2 | 2026-09-12 | G13 ownership 闭合：`logs.js` 管理 HTTP/plugin logs，`conversations.js` 管理 AI-owned traces；补充 retention、隔离和回归测试证据 |
