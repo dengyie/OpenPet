@@ -149,4 +149,12 @@ describe("dialog.request bridge", () => {
 		])
 		assert.equal(settled, true)
 	})
+
+	it("rejects waiters when the Shell client is disposed", async () => {
+		const client = shellClient.createShellClient({ send: () => {} })
+		const waiting = client.waitFor("dialog.result", { timeoutMs: 60_000 })
+		client.dispose()
+		await assert.rejects(waiting, /shellClient 已销毁/)
+		await assert.rejects(client.waitFor("dialog.result"), /shellClient 已销毁/)
+	})
 })

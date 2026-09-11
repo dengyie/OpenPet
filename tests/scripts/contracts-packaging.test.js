@@ -29,6 +29,15 @@ test("packaged backend keeps contracts and zod in the unpacked ESM boundary", ()
 	assert.ok(build.asarUnpack.includes("node_modules/zod/**"))
 })
 
+test("packaged Creator Studio keeps host-side relative imports unpacked", () => {
+	const build = readJson("package.json").build
+	assert.ok(build.files.includes("examples/plugins/creator-studio/**/*"))
+	assert.ok(
+		build.asarUnpack.includes("examples/plugins/creator-studio/**"),
+		"creator workflow imports examples/plugins/creator-studio from an unpacked desktop service",
+	)
+})
+
 test("CI and release packaging explicitly build contracts", () => {
 	const ci = fs.readFileSync(path.join(repoRoot, ".github/workflows/ci.yml"), "utf8")
 	const release = fs.readFileSync(path.join(repoRoot, ".github/workflows/release.yml"), "utf8")

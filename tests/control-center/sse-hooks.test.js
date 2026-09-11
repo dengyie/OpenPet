@@ -121,6 +121,27 @@ describe("T22 SSE hook seams", () => {
 		})
 	})
 
+	it("T22 backend requests abort when the response exceeds the request deadline", async () => {
+		const { SseManager } = await import("../../apps/control-center/src/hooks/useSse.ts")
+		const manager = new SseManager()
+		manager.configure({
+			getBackend: () => ({ baseUrl: "http://127.0.0.1:4321", sessionToken: "test-token" }),
+			requestTimeoutMs: 10,
+			fetchImpl: async (_url, init = {}) => new Promise((resolve, reject) => {
+				init.signal?.addEventListener("abort", () => reject(init.signal.reason), { once: true })
+			}),
+		})
+		await assert.rejects(manager.request("/jobs/slow"), /timed out after 10ms/)
+	})
+
+	it("T22 Job refreshes use a generation guard so stale responses cannot overwrite newer state", () => {
+		const source = require("node:fs").readFileSync("apps/control-center/src/hooks/useJob.ts", "utf8")
+		assert.match(source, /useRef\(0\)/)
+		assert.match(source, /const generation = \+\+refreshGeneration\.current/)
+		assert.match(source, /refreshGeneration\.current !== generation/)
+		assert.match(source, /activeJobId\.current !== requestedJobId/)
+	})
+
 	it("T32 backend bootstrap stays outside the frozen IPC channel contract", () => {
 		const preload = require("node:fs").readFileSync("apps/desktop/control-center-preload.js", "utf8")
 		const runtime = require("node:fs").readFileSync("apps/desktop/src/services/bootstrap/create-openpet-runtime.js", "utf8")

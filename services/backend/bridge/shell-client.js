@@ -202,6 +202,7 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 
 	function waitFor(type, options = {}) {
 		const timeoutMs = options.timeoutMs ?? DIALOG_RESULT_TIMEOUT_MS
+		if (disposed) return Promise.reject(new Error("shellClient 已销毁"))
 		return new Promise((resolve, reject) => {
 			if (!waiters.has(type)) waiters.set(type, new Set())
 			const bucket = waiters.get(type)
@@ -229,7 +230,10 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 		}
 		pending.clear()
 		for (const bucket of waiters.values()) {
-			for (const waiter of bucket) clearTimeout(waiter.timer)
+			for (const waiter of bucket) {
+				clearTimeout(waiter.timer)
+				waiter.reject(new Error("shellClient 已销毁"))
+			}
 			bucket.clear()
 		}
 		waiters.clear()
