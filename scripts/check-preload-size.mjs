@@ -1,9 +1,9 @@
 import { statSync } from "node:fs"
 import { resolve } from "node:path"
 
-// M2 keeps this deliberately loose while the IPC bridge is still present.
-// M5 must reduce the limit to 5 KiB after the HTTP cutover removes these methods.
-export const PRELOAD_SIZE_LIMIT = 24 * 1024
+// T43 removes plugin HTTP-parity methods from the renderer bridge.
+// M5 may reduce the limit further after the remaining native boundaries migrate.
+export const PRELOAD_SIZE_LIMIT = 10 * 1024
 const file = resolve(process.cwd(), "apps/desktop/control-center-preload.js")
 
 try {

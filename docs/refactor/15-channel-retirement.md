@@ -1,10 +1,10 @@
 # 15 · IPC 通道退役台账
 
-> v1.6 · 2026-09-10 · T47 AI · 以 `apps/desktop/src/shared/ipc-channels.ts` 为当前清单
+> v2.1 · 2026-09-12 · T43/T47/T48 · 以 `apps/desktop/src/shared/ipc-channels.ts` 为当前清单
 
-本台账登记当前 99 个 IPC 常量的去向。`keep` 是 02 篇允许长期存在的窗口/原生边界；`cutover:<domain>` 表示 03 篇已有 HTTP/SSE 对等入口；`blocked:Txx` 表示等待指定任务卡完成后再切换；`retired` 表示已从当前清单删除并保留历史记录；`dead` 仅用于确认没有生产调用方的遗留常量。
+本台账登记当前 87 个 IPC 常量的去向。`keep` 是 02 篇允许长期存在的窗口/原生边界；`cutover:<domain>` 表示 03 篇已有 HTTP/SSE 对等入口；`blocked:Txx` 表示等待指定任务卡完成后再切换；`retired` 表示已从当前清单删除并保留历史记录；`dead` 仅用于确认没有生产调用方的遗留常量。
 
-当前台账由 93 个 `ipcMainService.handle/on` 注册和 6 个事件-only 通道组成。Source 列是实际生产引用文件，不是推测路径；门禁会逐项检查 TS/JS 清单、注册/事件来源、重复项和未知 `IPC.*` 引用。
+当前台账由 81 个 `ipcMainService.handle/on` 注册和 6 个事件-only 通道组成。Source 列是实际生产引用文件，不是推测路径；门禁会逐项检查 TS/JS 清单、注册/事件来源、重复项和未知 `IPC.*` 引用。
 
 T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `keep ≤ 41`，因此新增的 QQ/WeCom 四个 host-secret 通道登记为 `blocked:T44`，而不是伪装成长期 keep。T41 及后续任务可把已删除常量保留为 `retired` 历史行，并在 Retired by 列记录提交 SHA；历史行不计入当前通道对账或 keep 上限。
 
@@ -12,14 +12,14 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 
 | Scope | Count |
 | --- | ---: |
-| Current IPC constants | 99 |
-| Current direct registrations | 93 |
+| Current IPC constants | 87 |
+| Current direct registrations | 81 |
 | Current event-only channels | 6 |
 | Current keep | 41 |
 | Current cutover | 29 |
-| Current blocked | 29 |
+| Current blocked | 17 |
 | Current dead | 0 |
-| Historical retired | 59 |
+| Historical retired | 71 |
 
 ## Ledger
 
@@ -187,9 +187,11 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 ## Operating rules
 
 - `npm run check:channel-retirement` 对当前 active 行与 TS 清单逐项对账；active 必须精确覆盖当前常量，历史 `retired` 行可以不再存在于当前源。
-- 当前通道上限为 158，后续提交只能减少 active 数量；新增 IPC 常量必须先更新本台账和 T40 依据。
+- 当前 active 通道数为 87，后续提交只能减少 active 数量；新增 IPC 常量必须先更新本台账和 T40 依据。
 - `retired` 行必须保留原 channel、真实历史 source、删除提交的完整或短 SHA（至少 7 位）；它不计入 current、keep、cutover、blocked、dead 计数。
 - `keep` 上限是 41。四个 QQ/WeCom host-secret 通道等待 T44 的 secrets 边界，不能借 `keep` 绕过上限。
 - `cutover` 行在同一切换提交中完成 HTTP/SSE 接入、旧 IPC 删除和台账状态更新；不得先并行双写再补删除。
+
+T43 已收窄 `apps/desktop/control-center-preload.js`：插件 HTTP 对等方法不再暴露给 renderer；`openPluginDashboard`、`inspectPluginPackage` 与四个 QQ/WeCom host-secret 方法继续保留。T48 已完成 Creator 迁移。主进程 IPC 注册表按当前 87 条通道对账，其中 81 个为直接注册、6 个为事件-only。
 
 Refs #41

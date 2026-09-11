@@ -41,7 +41,7 @@ scripts/check-api-contract.mjs          ✅ M0 门禁
 tests/backend/state-machine.test.js     ✅ 测试样板
 ```
 
-根 `package.json` 已开启 workspaces(`apps/*`、`services/*`、`packages/*`),`check:node` 已覆盖 `apps` 与 `services`。backend 当前由 12 组 routes 文件装配 76 条实际 method/path；`routes/registry.js` 是硬对账注册表，不是第二套业务实现。
+根 `package.json` 已开启 workspaces(`apps/*`、`services/*`、`packages/*`),`check:node` 已覆盖 `apps` 与 `services`。backend 当前由 12 组 routes 文件装配 133 条实际 method/path；`routes/registry.js` 是硬对账注册表，不是第二套业务实现。
 
 **当前 backend 已完成启动、迁移、Job 恢复/调度和 HTTP 业务路由注册。** 尚未归属仓储的三张表见缺口 G13。
 
@@ -266,7 +266,7 @@ countByStatus(status?)                     // → number | { [status]: number }
 
 ### 2.18 T42 Actions 接口
 
-`createActionService({ shell, jobs, emit, now })` 通过 Shell 原服务提供活动包视图。`importFrames({ selectionId, actionId, label? })` 只创建 Job；`runImportFrames({ selectionId, actionId, label, signal, report, finalize })` 在 finalizing 内派发导入。Shell 的 `src/main/ipc/actions-sidecar-bridge.js` 保留原生选择、配置写入、提案与规则校验、动画广播、运行诊断。12 个业务 IPC 退休，原生 inspect 留用；T47 又退休 29 个 AI 业务 IPC，当前 99 个 IPC，preload 13,490 字节。T43 的 10 KiB 目标尚未达到，当前 24 KiB 阈值只作为过渡门禁。
+`createActionService({ shell, jobs, emit, now })` 通过 Shell 原服务提供活动包视图。`importFrames({ selectionId, actionId, label? })` 只创建 Job；`runImportFrames({ selectionId, actionId, label, signal, report, finalize })` 在 finalizing 内派发导入。Shell 的 `src/main/ipc/actions-sidecar-bridge.js` 保留原生选择、配置写入、提案与规则校验、动画广播、运行诊断。12 个业务 IPC 退休，原生 inspect 留用；T47 又退休 29 个 AI 业务 IPC，T48 已完成 Creator 迁移，当前 87 个 IPC。T43 删除插件 HTTP 对等 bridge 后，`npm run check:preload-size` 实测 preload 7,833 字节，达到 10 KiB 门禁；M5 的 5 KiB 目标仍待后续迁移。
 
 ## 3. 还不存在的文件
 
@@ -276,11 +276,11 @@ countByStatus(status?)                     // → number | { [status]: number }
 | --- | --- |
 | 迁移与仓储 | ~~`store/migrate.js`、`store/repositories/*.js`、`store/migrate-from-json.js`~~ ✅ T01/T02/T14/T47 已落地；traces、HTTP access logs 等归属仍见缺口 G13 |
 | Job 引擎 | ~~`jobs/queue.js`、`jobs/runner.js`、`jobs/progress.js`、`jobs/recovery.js`、`jobs/handlers/*.js`~~ ✅ T05–T08/T31 已落地 |
-| HTTP | ~~`routes/*.js`、`domains/*.js`、SSE 推送~~ ✅ T09–T33 已落地；当前注册表实际 76 条路由 |
+| HTTP | ~~`routes/*.js`、`domains/*.js`、SSE 推送~~ ✅ T09–T33 已落地；当前注册表实际 133 条 method/path |
 | 密钥 | ~~`secrets/*.js`~~ ✅ T44 `1433b299` 已落地，只写边界与脱敏摘要 |
 | 反向通道 | ~~`dialog.request` 补齐、`apps/desktop/src/sidecar/message-handler.js`、`orphan-cleanup.js`、`domains/plugins/process-ledger.js`(T29)~~ ✅ T12/T13/T29 已落地 |
 | 兼容层 | ~~`mcp/*.js`、`/api/pet/*` 与 `/mcp`~~ ✅ T45 `7bdf4f77` 已迁入同一 sidecar 的独立监听器，默认关闭 |
-| AI / Creator | T46 `40358259` 与 `4b6a1ac2` 已实现 image.generate Job 和 finalizing；T47 `6dc7e9f0` 已完成 AI 对话域与 SQLite；T48 Creator 迁移待完成 |
+| AI / Creator | T46 `40358259` 与 `4b6a1ac2` 已实现 image.generate Job 和 finalizing；T47 `6dc7e9f0` 已完成 AI 对话域与 SQLite；T48 `5d164d84` 已完成 Creator 迁移与 Job/finalizing |
 
 > ✅ **`conversations` 仓储已在 T47 建成。** T14 的 JSON 导入仍直接使用迁移事务；运行期 AI 对话由 `store/repositories/conversations.js` 负责，新增结构只通过 `002_ai_talk.sql` 扩展。
 
@@ -302,7 +302,7 @@ countByStatus(status?)                     // → number | { [status]: number }
 | 缺口 G6 | ✅ | M0 六条 spike 结果未回填 | E3–E8 已全部实测并回填;唯一权威结果见 [07 篇](./07-spike.md) §7(证据: `bbfdb096d8a224f513eea5160cf000281f487161`) |
 | 缺口 G7 | ✅ | 04 篇 §2.6 的 ⚠️ 待补登记 注记已过期 | 已关闭:注记改为「已补登(v1.3)」,并说明 `system` topic 现列四个事件、已纳入 `check:api-contract` 的 `EVENT_NAMES` 对账范围(证据: `e38940dbd8466712f6c499631e9e5ee9f4250959`) |
 | 缺口 G8 | ✅ | 06 篇 §9 风险表缺 R20 | 已关闭:R20 已补入风险登记册,并同步收紧 §2 spike 第 5 条的判定标准(证据: `6248d2366435ee765799bdf581c8b6ae22a526e4`) |
-| 缺口 G9 | ✅ | 路由表与 IPC 通道盘点门禁已硬化 | `check:api-contract` 对账 `routes/registry.js`、实际 `router.routes()`、03 篇 §4 与 TS/JS IPC 清单;当前为 112 条实际路由、99 条通道（T47 AI 退休 29 条 IPC，证据：`6dc7e9f0`） |
+| 缺口 G9 | ✅ | 路由表与 IPC 通道盘点门禁已硬化 | `check:api-contract` 对账 `routes/registry.js`、实际 `router.routes()`、03 篇 §4 与 TS/JS IPC 清单;当前为 133 条实际 method/path、87 条通道（T47/T48 迁移证据：`6dc7e9f0`、`5d164d84`） |
 | 缺口 G10 | ✅ | `tests/backend/state-machine.test.js` 有一处 `it()` 标题笔误 | E9 已改为「6 个状态,17 个 kind」(证据: `bbfdb096d8a224f513eea5160cf000281f487161`) |
 | 缺口 G11 | ✅ | E3 的 `:memory:` SQLite 探针不证明 WAL | T35 已由 file-backed `tests/backend/sqlite-driver.test.js` 复验 WAL、四项默认 pragma 与跨连接持久化(证据: `08c24e1c364e9ca6a59f57bc6544cb447aa0b565`) |
 | 缺口 G12 | ✅ | 03 篇 §3 盘点 7 个 `SERVICE_*` 写通道,§4.1 已有对应入口 | T16 已补齐并实现服务配置写入端点 `PUT /service/config`,同时同步契约表(实现证据: `4480c4b5749d2ed242716732e45573ffc1a3131a`;契约/注册表证据: `4faa07df0244e9ce8bb53501589eaee4e50ac0b9`) |
@@ -346,4 +346,6 @@ countByStatus(status?)                     // → number | { [status]: number }
 | v1.6 | 2026-09-05 | T42 Catalog 6 条 IPC 已在 `ac59d75f` 同提交退休；当前 148 条 IPC、74 条 REST 路由；T41 live bridge 修复提交 `bac49b80` 待总控 rebase 验收 |
 | v1.7 | 2026-09-05 | T42 Pet Packs 8 条 IPC 已在 `490357f7` 同提交退休；当前 140 条 IPC、74 条 REST 路由；T41 live bridge rebase 后提交 `890dac82` 待合入 |
 | v1.8 | 2026-09-08 | T42 Actions 活动包权威与 Job 切换；当前 128 条 IPC、76 条 REST 路由；T44 密钥、T45 MCP、T46 图像任务补录，T43/T47/T48 保留未完成状态 |
-| v1.9 | 2026-09-10 | T47 AI 域与 SQLite 会话仓储落地；当前 99 条 IPC、112 条实际路由、preload 13,490 字节；T43 阈值收紧与 T48 Creator 迁移仍待完成 |
+| v1.9 | 2026-09-10 | T47 AI 域与 SQLite 会话仓储落地；当前 99 条 IPC、112 条实际路由；T48 Creator 迁移仍待完成 |
+| v2.0 | 2026-09-12 | T43 删除插件 HTTP 对等 preload bridge；实测 preload 7,833 字节并将 `check:preload-size` 收紧到 10 KiB |
+| v2.1 | 2026-09-12 | T48 Creator 迁移完成；当前 87 条 IPC、133 条实际 method/path，注册表与运行时门禁一致 |

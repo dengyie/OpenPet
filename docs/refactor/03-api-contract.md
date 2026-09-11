@@ -1,6 +1,6 @@
 # 03 · API 契约与通信协议
 
-> 🔌 本篇是前后端并行开发的唯一依据。契约未定稿前不得开始写业务代码。当前 99 个 IPC 通道的去向已在本篇逐域定义。
+> 🔌 本篇是前后端并行开发的唯一依据。契约未定稿前不得开始写业务代码。当前 87 个 IPC 通道的去向已在本篇逐域定义。
 
 ## 1. 协议基础
 
@@ -96,7 +96,7 @@
 
 **专用业务码**(搭配 400/409/423):`PLUGIN_MANIFEST_INVALID`、`PLUGIN_ALREADY_RUNNING`、`PLUGIN_NATIVE_NOT_APPROVED`、`PET_PACK_INCOMPATIBLE`、`ACTION_FRAMES_MISSING`、`AI_KEY_NOT_CONFIGURED`、`JOB_NOT_CANCELABLE`、`MIGRATION_REQUIRED`。
 
-## 3. 99 个通道的去向总表
+## 3. 87 个通道的去向总表
 
 | 域 | 通道数 | 留 IPC | 迁 HTTP | 备注 |
 | --- | --- | --- | --- | --- |
@@ -310,7 +310,7 @@
 
 ### 4.11 当前实现注册表（T39）
 
-`services/backend/routes/registry.js` 是当前已实现 REST 路由的可执行登记表；它与各 `register*Routes` 的运行时注册结果均为 **74 条**。`check:api-contract` 会展开 §4.1–§4.10 的紧凑方法/路径单元格，并按规范化参数路径逐条比较这 74 条，而不是只比较总数。§4 的其余目标路由仍保留在契约表中，待对应域实现后加入登记表。
+`services/backend/routes/registry.js` 是当前已实现 REST 路由的可执行登记表；它与各 `register*Routes` 的运行时注册结果均为 **133 条 method/path**。`check:api-contract` 会展开 §4.1–§4.10 的紧凑方法/路径单元格，并按规范化参数路径逐条比较这 133 条，而不是只比较总数。§4 的其余目标路由仍保留在契约表中，待对应域实现后加入登记表。
 
 SSE 不属于上述 REST 登记子集，但仍是 API 路由的一部分：
 
@@ -318,7 +318,7 @@ SSE 不属于上述 REST 登记子集，但仍是 API 路由的一部分：
 | --- | --- | --- | --- |
 | GET | `/events` | `services/backend/routes/events.js` + `services/backend/events/hub.js` | SSE 订阅；事件名、topic 与 §5 目录逐项对账 |
 
-`GET /api/v1/events` 不计入 §4.1–§4.10 的 74 条 REST registry 对账，也不计入 §3 IPC 通道数。
+`GET /api/v1/events` 不计入 §4.1–§4.10 的 133 条 REST registry 对账，也不计入 §3 IPC 通道数。
 
 ## 5. SSE 事件规范
 

@@ -100,3 +100,43 @@ for (const fileName of PRELOAD_FILES) {
     assert.deepStrictEqual(duplicates, [], `暴露对象存在重复键（后者会静默覆盖前者）：${duplicates.join(', ')}`)
   })
 }
+
+test('control-center-preload.js: plugin bridge only exposes native and host-secret methods', () => {
+  const source = readPreload('apps/desktop/control-center-preload.js')
+  const exposed = new Set(extractExposedApiKeys(source))
+  const retained = [
+    'openPluginDashboard',
+    'inspectPluginPackage',
+    'saveImGatewayQqOfficialCredentials',
+    'clearImGatewayQqOfficialCredentials',
+    'saveImGatewayWecomCredentials',
+    'clearImGatewayWecomCredentials'
+  ]
+  const retired = [
+    'getPlugins',
+    'setPluginEnabled',
+    'setPluginNativeExecutionApproved',
+    'savePluginConfig',
+    'getImGatewaySecretState',
+    'saveImGatewayTelegramBotToken',
+    'clearImGatewayTelegramBotToken',
+    'runCreatorStudioDefaultFlow',
+    'runPluginCommand',
+    'runPluginSetup',
+    'startPluginService',
+    'stopPluginService',
+    'checkPluginServiceHealth',
+    'savePluginServiceHealthPolicy',
+    'inspectPluginGithubRepository',
+    'clearPluginSelection',
+    'installPlugin',
+    'updatePlugin',
+    'uninstallPlugin',
+    'getPluginLogs',
+    'exportPluginLogs',
+    'clearPluginLogs',
+    'clearPluginStorage'
+  ]
+  for (const key of retained) assert.ok(exposed.has(key), `应保留插件原生/host-secret API：${key}`)
+  for (const key of retired) assert.ok(!exposed.has(key), `不应再暴露已迁移插件 API：${key}`)
+})
