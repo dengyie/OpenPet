@@ -15,10 +15,10 @@ import { createPluginProcessRuntime } from "./process-runtime.js"
 import { createPluginLogWriter } from "./plugin-log-writer.js"
 
 const require = createRequire(import.meta.url)
-const { createPluginInstallService } = require("../../../../src/main/services/plugin-install-service.js")
-const { createPluginGithubImportService } = require("../../../../src/main/services/plugin-github-import-service.js")
-const { syncBundledPlugins } = require("../../../../src/main/services/bundled-plugin-sync-service.js")
-const { sanitizeLogText } = require("../../../../src/main/services/log-safety.js")
+const { createPluginInstallService } = require("../../../../apps/desktop/src/services/plugin-install-service.js")
+const { createPluginGithubImportService } = require("../../../../apps/desktop/src/services/plugin-github-import-service.js")
+const { syncBundledPlugins } = require("../../../../apps/desktop/src/services/bundled-plugin-sync-service.js")
+const { sanitizeLogText } = require("../../../../apps/desktop/src/services/log-safety.js")
 
 const PLUGIN_EVENTS = new Set(EVENT_NAMES.filter((name) => name.startsWith("plugin.")))
 

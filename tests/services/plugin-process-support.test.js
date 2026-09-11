@@ -9,7 +9,7 @@ const {
   createPluginProcessEnv,
   parsePluginProcessCommand,
   resolvePluginProcessLaunch
-} = require('../../src/main/services/plugin-process-support')
+} = require('../../apps/desktop/src/services/plugin-process-support')
 
 test('plugin process support parses quoted commands and escapes', () => {
   assert.deepEqual(

@@ -4,7 +4,7 @@ const assert = require('node:assert/strict')
 const {
   buildPetContextMenuItems,
   filterManualPetActions
-} = require('../../src/main/pet-context-menu-model')
+} = require('../../apps/desktop/src/windows/pet-context-menu-model')
 
 const createCallbacks = () => {
   const calls = []

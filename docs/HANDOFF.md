@@ -1,6 +1,6 @@
 # OpenPet Handoff
 
-> Last updated: 2026-09-03
+> Last updated: 2026-09-12
 > Canonical active queue: [`TODO.md`](./TODO.md)
 > Branch: `main`
 
@@ -35,7 +35,7 @@ This file is the compact maintainer continuation note. Historical phase-level de
 - The current plugin host bridge keeps `trigger-proposals:write` and `model:image-generate` as the narrow generation/review permissions, and plugin-managed provider credentials are unsupported for host-managed generation.
 - IM platform decisions are now fixed and implemented: QQ's first route is the official QQ robot, and WeChat's first route is a WeCom self-built application. OneBot remains a future experimental compatibility layer; personal-client injection and an Official Account first route remain outside scope.
 - Both adapters are merged in `main` through `ab0ec234` inside bundled `openpet.im-gateway`. The host owns secret storage and service lifecycle; each route is disabled by default, requires native execution approval, does not persist raw messages, and does not add QQ/WeCom SDKs to the Electron main process. The deterministic protocol/UI/host gates are green; `origin/main@ab0ec234` is pushed and remote CI run [33697412974](https://github.com/dengyie/OpenPet/actions/runs/33697412974) succeeded. Real Telegram/QQ/WeCom account smoke remains manual `not-run` evidence rather than a test-version development blocker. The implementation record is [`superpowers/plans/2026-09-02-im-platform-adapters.md`](./superpowers/plans/2026-09-02-im-platform-adapters.md).
-- Agent Awareness durable usage rollups are landed. The remaining Phase B work is human desktop acceptance for dashboard usefulness, pet speech/noise, and fresh Codex signal smoke/archive evidence; Phase C companion features remain deferred pending separate product approval.
+- Agent Awareness durable usage rollups are landed. A fresh real local smoke is archived at `docs/release-evidence/agent-awareness-local-smoke/2026-09-11T20-05-34-688Z/` with 19 sanitized sessions, 134 events, and all automated redaction checks passing. Dashboard usefulness and pet speech/noise remain manual acceptance items; Phase C companion features remain deferred pending separate product approval.
 - Trigger editing is intentionally bounded: the current UI, contract, and runtime cover random mode/interval, state predicate/source, event name/source, summary, enable/disable, and delete. Expand it only when a new runtime semantic requires additional fields.
 - The scoped TypeScript evidence-summary tranche is landed in `20ef3ebf`: the two selected evidence-summary scripts use `// @ts-check` and shared contract JSDoc, with `tsconfig` limited to those files. There is no approval for a global `checkJs` rollout or a main-process rewrite.
 - The current public posture is macOS-first release track; the archived signed closure keeps official desktop, macOS, and Windows in a not-ready state until signed evidence is archived.

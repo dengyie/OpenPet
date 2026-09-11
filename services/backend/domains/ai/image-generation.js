@@ -4,7 +4,7 @@ import { join, relative, resolve, dirname, sep } from "node:path"
 import { createRequire } from "node:module"
 
 const require = createRequire(import.meta.url)
-const { createImageGenerationModelService } = require("../../../../src/main/services/image-generation-model-service.js")
+const { createImageGenerationModelService } = require("../../../../apps/desktop/src/services/image-generation-model-service.js")
 
 function settingsAdapter(settings) {
 	return {

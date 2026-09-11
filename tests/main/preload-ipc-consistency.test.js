@@ -2,7 +2,7 @@
  * Preload IPC 一致性回归。
  *
  * preload 脚本因 Electron 沙盒限制内联维护了一份 IPC 通道常量表（无法 require
- * 项目子目录模块），这份表容易与 src/shared/ipc-channels.js 漂移：
+ * 项目子目录模块），这份表容易与 apps/desktop/src/shared/ipc-channels.js 漂移：
  * - 曾出现 preload 引用 IPC.PET_PLAY_ACTION 但内联表缺失该键，
  *   导致 ipcRenderer.invoke(undefined) 恒定抛错；
  * - 曾出现 contextBridge 暴露对象中重复键（onActivePetPackChanged 定义两次），
@@ -14,10 +14,10 @@ const assert = require('node:assert')
 const fs = require('fs')
 const path = require('path')
 
-const { IPC: SHARED_IPC } = require('../../src/shared/ipc-channels')
+const { IPC: SHARED_IPC } = require('../../apps/desktop/src/shared/ipc-channels')
 
 const PROJECT_ROOT = path.join(__dirname, '..', '..')
-const PRELOAD_FILES = ['preload.js', 'control-center-preload.js']
+const PRELOAD_FILES = ['apps/desktop/preload.js', 'apps/desktop/control-center-preload.js']
 
 const readPreload = (fileName) => fs.readFileSync(path.join(PROJECT_ROOT, fileName), 'utf8')
 
@@ -73,7 +73,7 @@ for (const fileName of PRELOAD_FILES) {
     assert.deepStrictEqual(missing, [], `内联 IPC 表缺失被引用的键：${missing.join(', ')}`)
   })
 
-  test(`${fileName}: 内联表与 src/shared/ipc-channels.js 保持一致`, () => {
+  test(`${fileName}: 内联表与 apps/desktop/src/shared/ipc-channels.js 保持一致`, () => {
     const source = readPreload(fileName)
     for (const { key, value } of extractInlineIpcEntries(source)) {
       assert.ok(
@@ -100,3 +100,43 @@ for (const fileName of PRELOAD_FILES) {
     assert.deepStrictEqual(duplicates, [], `暴露对象存在重复键（后者会静默覆盖前者）：${duplicates.join(', ')}`)
   })
 }
+
+test('control-center-preload.js: plugin bridge only exposes native and host-secret methods', () => {
+  const source = readPreload('apps/desktop/control-center-preload.js')
+  const exposed = new Set(extractExposedApiKeys(source))
+  const retained = [
+    'openPluginDashboard',
+    'inspectPluginPackage',
+    'saveImGatewayQqOfficialCredentials',
+    'clearImGatewayQqOfficialCredentials',
+    'saveImGatewayWecomCredentials',
+    'clearImGatewayWecomCredentials'
+  ]
+  const retired = [
+    'getPlugins',
+    'setPluginEnabled',
+    'setPluginNativeExecutionApproved',
+    'savePluginConfig',
+    'getImGatewaySecretState',
+    'saveImGatewayTelegramBotToken',
+    'clearImGatewayTelegramBotToken',
+    'runCreatorStudioDefaultFlow',
+    'runPluginCommand',
+    'runPluginSetup',
+    'startPluginService',
+    'stopPluginService',
+    'checkPluginServiceHealth',
+    'savePluginServiceHealthPolicy',
+    'inspectPluginGithubRepository',
+    'clearPluginSelection',
+    'installPlugin',
+    'updatePlugin',
+    'uninstallPlugin',
+    'getPluginLogs',
+    'exportPluginLogs',
+    'clearPluginLogs',
+    'clearPluginStorage'
+  ]
+  for (const key of retained) assert.ok(exposed.has(key), `应保留插件原生/host-secret API：${key}`)
+  for (const key of retired) assert.ok(!exposed.has(key), `不应再暴露已迁移插件 API：${key}`)
+})

@@ -1,6 +1,6 @@
 # OpenPet Development Summary
 
-> Last updated: 2026-07-17
+> Last updated: 2026-09-12
 > Branch: `main`
 
 This is the compact engineering snapshot for the current repository state. Use [`TODO.md`](./TODO.md) for active work, and use `docs/phases/` plus `docs/reviews/` for detailed implementation history.
@@ -24,6 +24,7 @@ OpenPet currently has:
 - archived community-source discovery/intake tooling that now includes the 2026-07-06 GitHub-topic rerun under `docs/release-evidence/plugin-community-source-discovery-report/2026-07-06T15-46-14Z-openpets-model-divergence-rerun/` plus the npm-package rerun under `docs/release-evidence/plugin-community-source-discovery-report/2026-07-06T16-17-27Z-npm-package-model-rerun/`, which together show the adjacent `openpets.plugin.json` or package.json-based SDK v3 ecosystem split across both public repositories and published `@openpets/*` tarballs while still truthfully ending at `compatible-source-not-found`,
 - loopback-only local HTTP/MCP endpoints,
 - and a TypeScript migration baseline across shared contracts plus key Control Center and evidence boundaries, including discriminated random/state/event trigger-rule spec contracts plus current smoke report contracts.
+- a fresh real local Agent Awareness smoke archive at `docs/release-evidence/agent-awareness-local-smoke/2026-09-11T20-05-34-688Z/` with 19 sanitized sessions and 134 events; dashboard usefulness and pet speech/noise remain manual acceptance checks.
 
 ## Architecture Facts
 

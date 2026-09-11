@@ -7,7 +7,7 @@
 const fs = require('fs')
 const path = require('path')
 
-const FILE = path.resolve(__dirname, '../src/control-center/src/styles.css')
+const FILE = path.resolve(__dirname, '../apps/control-center/src/styles.css')
 
 // 语义映射：先精确匹配（小写）。颜色尽量归并到既有令牌，减少视觉漂移。
 const MAP = {

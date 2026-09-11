@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { findSemanticAction } = require('../../src/main/services/ai-action-orchestrator')
+const { findSemanticAction } = require('../../apps/desktop/src/services/ai-action-orchestrator')
 
 const actions = [
   { id: 'idle', label: '待机', kind: 'idle' },

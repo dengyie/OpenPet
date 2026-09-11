@@ -4,7 +4,7 @@ import { createRequire } from "node:module"
 import { execFileSync } from "node:child_process"
 
 const require = createRequire(import.meta.url)
-const { createServiceProcessTree } = require("../../../../src/main/services/service-process-tree.js")
+const { createServiceProcessTree } = require("../../../../apps/desktop/src/services/service-process-tree.js")
 
 export const PID_LEDGER_FILE = "pids.json"
 

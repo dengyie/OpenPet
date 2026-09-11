@@ -6,7 +6,7 @@ const { pathToFileURL } = require('node:url')
 let shouldRestoreScalePreview
 
 test.before(async () => {
-  ;({ shouldRestoreScalePreview } = await import(pathToFileURL(path.resolve(__dirname, '../../src/control-center/src/lib/pet-scale-preview.mjs')).href))
+  ;({ shouldRestoreScalePreview } = await import(pathToFileURL(path.resolve(__dirname, '../../apps/control-center/src/lib/pet-scale-preview.mjs')).href))
 })
 
 test('does not restore scale preview when the user never changed the preview scale', () => {

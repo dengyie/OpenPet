@@ -6,14 +6,14 @@ const {
   choosePetContextSubmenuPoint,
   estimatePetContextMenuSize,
   filterManualPetActions
-} = require('../../src/main/pet-context-menu')
+} = require('../../apps/desktop/src/windows/pet-context-menu')
 const {
   MENU_METRICS,
   constrainPetContextMenuSize,
   layoutPetContextMenu,
   layoutPetContextSubmenu,
   measurePetContextMenu
-} = require('../../src/main/pet-context-menu-layout')
+} = require('../../apps/desktop/src/windows/pet-context-menu-layout')
 
 test('menu metrics measure the exact rendered row and separator blocks', () => {
   const size = measurePetContextMenu([

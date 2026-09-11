@@ -1,8 +1,8 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { normalizePluginManifest } = require('../../src/main/plugins/manifest')
-const { normalizeConfigSchema } = require('../../src/main/plugins/config-schema')
+const { normalizePluginManifest } = require('../../apps/desktop/src/services/plugins/manifest')
+const { normalizeConfigSchema } = require('../../apps/desktop/src/services/plugins/config-schema')
 
 test('normalizes a plugin manifest with permissions and commands', () => {
   const manifest = normalizePluginManifest({

@@ -74,7 +74,7 @@ describe("T42 Pet Packs cutover boundary", () => {
 	})
 
 	it("keeps the Control Center on the Shell PetPackService snapshot", () => {
-		const hook = read("src/control-center/src/hooks/useActionsPane.ts")
+		const hook = read("apps/control-center/src/hooks/useActionsPane.ts")
 		assert.match(hook, /petPackApi\.list\(\)/)
 		assert.match(hook, /resolvePetPackJob/)
 		assert.match(hook, /useSse\(\['pet'\]\)/)
@@ -100,8 +100,8 @@ describe("T42 Pet Packs cutover boundary", () => {
 		const channels = [
 			"PET_PACKS_INSPECT_DIRECTORY",
 		]
-		const preload = read("control-center-preload.js")
-		const shared = read("src/shared/ipc-channels.js") + read("src/shared/ipc-channels.ts")
+		const preload = read("apps/desktop/control-center-preload.js")
+		const shared = read("apps/desktop/src/shared/ipc-channels.js") + read("apps/desktop/src/shared/ipc-channels.ts")
 		for (const channel of channels) {
 			assert.match(preload, new RegExp(`\\b${channel}\\b`), channel)
 			assert.match(shared, new RegExp(`\\b${channel}\\b`), channel)
@@ -119,7 +119,7 @@ describe("T42 Pet Packs cutover boundary", () => {
 			assert.doesNotMatch(preload, new RegExp(`${method}:`), method)
 		}
 
-		const mainIpc = read("src/main/ipc.js")
+		const mainIpc = read("apps/desktop/src/ipc/index.js")
 		assert.match(mainIpc, /handle\(IPC\.PET_PACKS_INSPECT_DIRECTORY/)
 		for (const retired of ["PET_PACKS_LIST", "PET_PACKS_CLEAR_SELECTION", "PET_PACKS_IMPORT", "PET_PACKS_EXPORT", "PET_PACKS_SET_ACTIVE", "PET_PACKS_REMOVE"]) {
 			assert.doesNotMatch(mainIpc, new RegExp(`handle\\(IPC\\.${retired}`), retired)
@@ -127,10 +127,10 @@ describe("T42 Pet Packs cutover boundary", () => {
 	})
 
 	it("filters Pet Pack refreshes to activation events and suppresses duplicate event ids", async () => {
-		const sse = read("src/control-center/src/hooks/useSse.ts")
-		const actions = read("src/control-center/src/hooks/useActionsPane.ts")
-		const ai = read("src/control-center/src/hooks/useAiPane.ts")
-		const { nextPetPackActivationEventId } = await import("../../src/control-center/src/features/pet-packs/api.ts")
+		const sse = read("apps/control-center/src/hooks/useSse.ts")
+		const actions = read("apps/control-center/src/hooks/useActionsPane.ts")
+		const ai = read("apps/control-center/src/hooks/useAiPane.ts")
+		const { nextPetPackActivationEventId } = await import("../../apps/control-center/src/features/pet-packs/api.ts")
 		assert.match(sse, /lastEventName: string \| null/)
 		assert.match(sse, /event\.id === current\.lastEventId && event\.event === current\.lastEventName/)
 		for (const hook of [actions, ai]) {

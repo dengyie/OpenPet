@@ -1,0 +1,278 @@
+{
+  "ok": true,
+  "generatedAt": "2026-09-11T20:05:34.689Z",
+  "source": "scripts/run-agent-awareness-local-smoke.js",
+  "codexHome": "[redacted-local-codex-home]",
+  "sessionId": "2026-09-11T20-05-34-688Z",
+  "sessionDir": "agent-awareness-local-smoke/2026-09-11T20-05-34-688Z",
+  "pluginDataDir": "plugin-data",
+  "resultPath": "agent-awareness-local-smoke-result.json",
+  "scanTimeoutMs": 20000,
+  "sampleLimit": 8,
+  "sanitizedSignalDetected": true,
+  "timedOut": false,
+  "healthUrl": "[local-url]",
+  "hookPlan": {
+    "ok": true,
+    "serviceUrl": "[local-url]",
+    "authFile": "plugin-auth-file",
+    "instructionsFile": "codex-hook-plan.md",
+    "externalWrites": false,
+    "dataDirConfigured": true
+  },
+  "health": {
+    "ok": true,
+    "service": "agent-awareness",
+    "hookMode": {
+      "installed": false,
+      "mode": "not-installed",
+      "planAvailable": true,
+      "tokenConfigured": true,
+      "ingestAuthRequired": true
+    },
+    "diagnostics": {
+      "sessionCount": 19,
+      "liveSessionCount": 19,
+      "activeSessionCount": 1,
+      "totalEvents": 134,
+      "seenCount": 134,
+      "ignoredContentRecordCount": 357,
+      "ignoredMetadataRecordCount": 127,
+      "unknownRecordCount": 35,
+      "malformedRecordCount": 15,
+      "unsupportedLifecycleRecordCount": 268,
+      "storeSchemaVersion": 2,
+      "retentionDays": 30,
+      "historyWindowStart": "",
+      "historyWindowEnd": "",
+      "retainedSessionSummaryCount": 19,
+      "retainedProjectCount": 3,
+      "storeError": "",
+      "attentionSession": {
+        "sessionId": "3a677e441d5f",
+        "project": "OpenPet #19b550",
+        "status": "failed",
+        "reason": "Failed and needs review"
+      },
+      "usageTotalTokens": 0,
+      "usageInputTokens": 0,
+      "usageOutputTokens": 0,
+      "usageCachedInputTokens": 0,
+      "usageEstimatedCostUsd": 0,
+      "usageCurrency": "",
+      "usagePeakContextUsedPercent": 0,
+      "lastEventAt": "2026-09-11T20:03:37.479Z",
+      "lastScanAt": "2026-09-11T20:05:34.694Z",
+      "lastError": ""
+    },
+    "codexPoller": {
+      "enabled": true,
+      "lastScanAt": "2026-09-11T20:05:34.694Z",
+      "lastError": "",
+      "seenCount": 134,
+      "ignoredContentRecordCount": 357,
+      "ignoredMetadataRecordCount": 127,
+      "unknownRecordCount": 35,
+      "malformedRecordCount": 15,
+      "unsupportedLifecycleRecordCount": 268
+    }
+  },
+  "sessions": [
+    {
+      "sessionId": "8ef09d547c79",
+      "status": "working",
+      "type": "tool.started",
+      "project": "OpenPet #19b550",
+      "message": "Codex started a tool call.",
+      "timestamp": "2026-09-11T20:03:37.479Z",
+      "eventCount": 37,
+      "usage": null,
+      "git": {
+        "branch": "codex/pelican-bike-animation",
+        "dirty": false,
+        "dirtyCount": 0,
+        "ahead": 0,
+        "behind": 0,
+        "repository": "OpenPet #19b550"
+      },
+      "summary": {
+        "title": "OpenPet #19b550",
+        "currentStep": "Tool: spawn_agent",
+        "recentProgressHint": "Using tool spawn_agent"
+      }
+    },
+    {
+      "sessionId": "0b3b652d25f3",
+      "status": "completed",
+      "type": "turn.completed",
+      "project": "OpenPet #19b550",
+      "message": "Codex completed a turn.",
+      "timestamp": "2026-09-10T14:25:59.197Z",
+      "eventCount": 14,
+      "usage": null,
+      "git": {
+        "branch": "codex/pelican-bike-animation",
+        "dirty": false,
+        "dirtyCount": 0,
+        "ahead": 0,
+        "behind": 0,
+        "repository": "OpenPet #19b550"
+      },
+      "summary": {
+        "title": "OpenPet #19b550 on codex/pelican-bike-animation",
+        "currentStep": "Completed",
+        "recentProgressHint": "Codex completed a turn."
+      }
+    },
+    {
+      "sessionId": "e0824d9322bc",
+      "status": "completed",
+      "type": "turn.completed",
+      "project": "test #750302",
+      "message": "Codex completed a turn.",
+      "timestamp": "2026-09-10T04:47:44.007Z",
+      "eventCount": 10,
+      "usage": null,
+      "git": {
+        "branch": "codex/pelican-bike-animation",
+        "dirty": true,
+        "dirtyCount": 1,
+        "ahead": 0,
+        "behind": 0,
+        "repository": "test #750302"
+      },
+      "summary": {
+        "title": "test #750302 on codex/pelican-bike-animation",
+        "currentStep": "Completed",
+        "recentProgressHint": "Codex completed a turn."
+      }
+    },
+    {
+      "sessionId": "79ee402bd832",
+      "status": "completed",
+      "type": "turn.completed",
+      "project": "OpenPet #19b550",
+      "message": "Codex completed a turn.",
+      "timestamp": "2026-09-10T04:37:08.908Z",
+      "eventCount": 8,
+      "usage": null,
+      "git": {
+        "branch": "codex/pelican-bike-animation",
+        "dirty": false,
+        "dirtyCount": 0,
+        "ahead": 0,
+        "behind": 0,
+        "repository": "OpenPet #19b550"
+      },
+      "summary": {
+        "title": "OpenPet #19b550 on codex/pelican-bike-animation",
+        "currentStep": "Completed",
+        "recentProgressHint": "Codex completed a turn."
+      }
+    },
+    {
+      "sessionId": "a85cf0b3d8a0",
+      "status": "completed",
+      "type": "turn.completed",
+      "project": "OpenPet #19b550",
+      "message": "Codex completed a turn.",
+      "timestamp": "2026-09-10T02:51:36.113Z",
+      "eventCount": 6,
+      "usage": null,
+      "git": {
+        "branch": "codex/pelican-bike-animation",
+        "dirty": false,
+        "dirtyCount": 0,
+        "ahead": 0,
+        "behind": 0,
+        "repository": "OpenPet #19b550"
+      },
+      "summary": {
+        "title": "OpenPet #19b550 on codex/pelican-bike-animation",
+        "currentStep": "Completed",
+        "recentProgressHint": "Codex completed a turn."
+      }
+    },
+    {
+      "sessionId": "80abf93f945c",
+      "status": "completed",
+      "type": "turn.completed",
+      "project": "OpenPet #19b550",
+      "message": "Codex completed a turn.",
+      "timestamp": "2026-09-09T22:31:23.865Z",
+      "eventCount": 2,
+      "usage": null,
+      "git": null,
+      "summary": {
+        "title": "OpenPet #19b550",
+        "currentStep": "Completed",
+        "recentProgressHint": "Codex completed a turn."
+      }
+    },
+    {
+      "sessionId": "ee47f1044fdc",
+      "status": "completed",
+      "type": "turn.completed",
+      "project": "OpenPet #19b550",
+      "message": "Codex completed a turn.",
+      "timestamp": "2026-09-09T21:48:52.533Z",
+      "eventCount": 2,
+      "usage": null,
+      "git": null,
+      "summary": {
+        "title": "OpenPet #19b550",
+        "currentStep": "Completed",
+        "recentProgressHint": "Codex completed a turn."
+      }
+    },
+    {
+      "sessionId": "3a677e441d5f",
+      "status": "failed",
+      "type": "turn.failed",
+      "project": "OpenPet #19b550",
+      "message": "Codex stopped before completion.",
+      "timestamp": "2026-09-09T19:23:39.687Z",
+      "eventCount": 2,
+      "usage": null,
+      "git": null,
+      "summary": {
+        "title": "OpenPet #19b550",
+        "currentStep": "Failed",
+        "recentProgressHint": "Codex stopped before completion."
+      }
+    }
+  ],
+  "redactionChecks": {
+    "sessionIdsHashed": true,
+    "projectLabelsRedacted": true,
+    "noRawPaths": true,
+    "noLoopbackUrls": true,
+    "noSecrets": true
+  },
+  "notificationPolicyEvidence": {
+    "source": "state-mapper-synthetic-sequence",
+    "eventCount": 5,
+    "petEventCount": 5,
+    "speechCount": 2,
+    "suppressedSpeechCount": 3,
+    "routineStatusSuppressed": true,
+    "urgentTransitionSpoke": true,
+    "repeatedUrgentSuppressed": true,
+    "repeatedCompletionSuppressed": true,
+    "eventPreservedWhenSpeechSuppressed": true,
+    "contentFreeDecisionEvidence": true,
+    "decisionFields": [
+      "status",
+      "priority",
+      "reason",
+      "shouldSpeak",
+      "cooldownMs"
+    ]
+  },
+  "manualAcceptanceTemplate": {
+    "dashboardUseful": null,
+    "petSpeechNoiseAcceptable": null,
+    "redactionLooksSafe": true,
+    "notes": ""
+  }
+}

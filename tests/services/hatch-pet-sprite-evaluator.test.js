@@ -13,7 +13,7 @@ const {
   evaluateVisualGate,
   recordSpriteEvaluation,
   validateSpriteEvaluation
-} = require('../../src/main/services/hatch-pet-sprite-evaluator')
+} = require('../../apps/desktop/src/services/hatch-pet-sprite-evaluator')
 
 const REGIONS = [
   { regionId: 'source', role: 'source-identity' },

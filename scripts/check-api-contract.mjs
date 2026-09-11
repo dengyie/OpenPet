@@ -247,10 +247,13 @@ for (let i = 1; i <= 10; i += 1) {
 }
 const registrySrc = readText("services/backend/routes/registry.js")
 if (!registrySrc.includes("IMPLEMENTED_API_ROUTES")) fail("routes", "找不到 IMPLEMENTED_API_ROUTES 注册表")
-const registryRoutes = new Set(quoted(registrySrc).filter((value) => /^(GET|POST|PUT|PATCH|DELETE) \//.test(value)))
+let registryRoutes = new Set()
 let actualRoutes = []
 try {
   const registryModule = await import(new URL("../services/backend/routes/registry.js", import.meta.url))
+  if (!Array.isArray(registryModule.IMPLEMENTED_API_ROUTES)) throw new Error("IMPLEMENTED_API_ROUTES must be an array")
+  registryRoutes = new Set(registryModule.IMPLEMENTED_API_ROUTES)
+  if (registryRoutes.size !== registryModule.IMPLEMENTED_API_ROUTES.length) fail("routes", "注册表包含重复路由")
   actualRoutes = registryModule.registeredImplementedRoutes()
 } catch (error) {
   fail("routes", `无法执行实际路由注册:${String(error)}`)
@@ -284,10 +287,10 @@ function ipcValues(file) {
   const source = readText(file)
   return [...source.matchAll(/:\s*["']([^"']+)["']/g)].map((match) => match[1])
 }
-const tsChannels = ipcValues("src/shared/ipc-channels.ts")
-const jsChannels = ipcValues("src/shared/ipc-channels.js")
+const tsChannels = ipcValues("apps/desktop/src/shared/ipc-channels.ts")
+const jsChannels = ipcValues("apps/desktop/src/shared/ipc-channels.js")
 compare("TS/JS IPC 通道", tsChannels, jsChannels)
-if (new Set(tsChannels).size !== tsChannels.length) fail("ipc", "src/shared/ipc-channels.ts 存在重复通道值")
+if (new Set(tsChannels).size !== tsChannels.length) fail("ipc", "apps/desktop/src/shared/ipc-channels.ts 存在重复通道值")
 if (tsChannels.length !== sumTotal) fail("ipc", `IPC 通道数 ${tsChannels.length} != §3 盘点 ${sumTotal}`)
 else passes.push(`IPC 通道盘点一致(${tsChannels.length} 项)`)
 

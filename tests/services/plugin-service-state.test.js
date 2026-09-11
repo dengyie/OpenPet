@@ -9,7 +9,7 @@ const {
   normalizePluginConfig,
   getPluginStorageStats,
   listPlugins
-} = require('../../src/main/services/plugin-service-state')
+} = require('../../apps/desktop/src/services/plugin-service-state')
 
 test('plugin service state normalizes periodic health policy bounds', () => {
   assert.deepEqual(

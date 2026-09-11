@@ -4,8 +4,8 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 
-const { createImageGenerationModelService } = require('../../src/main/services/image-generation-model-service')
-const { createSavedProviderModelCatalog } = require('../../src/main/services/provider-model-catalog')
+const { createImageGenerationModelService } = require('../../apps/desktop/src/services/image-generation-model-service')
+const { createSavedProviderModelCatalog } = require('../../apps/desktop/src/services/provider-model-catalog')
 const { buildCharacterAnchorPrompt } = require('../../examples/plugins/creator-studio/lib/anchor-prompt-builder')
 
 const createSettingsService = (initialSettings = {}) => {

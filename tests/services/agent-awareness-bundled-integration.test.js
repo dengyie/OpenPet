@@ -5,8 +5,8 @@ const os = require('node:os')
 const path = require('node:path')
 const { EventEmitter } = require('node:events')
 
-const { syncBundledPlugins } = require('../../src/main/services/bundled-plugin-sync-service')
-const { createPluginService } = require('../../src/main/services/plugin-service')
+const { syncBundledPlugins } = require('../../apps/desktop/src/services/bundled-plugin-sync-service')
+const { createPluginService } = require('../../apps/desktop/src/services/plugin-service')
 
 const pluginId = 'openpet.agent-awareness'
 const pluginRoot = path.resolve(__dirname, '../../examples/plugins/agent-awareness')

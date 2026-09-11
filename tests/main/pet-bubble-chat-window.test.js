@@ -2,8 +2,8 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const Module = require('module')
 
-const modulePath = require.resolve('../../src/main/pet-bubble-chat-window')
-const { IPC } = require('../../src/shared/ipc-channels')
+const modulePath = require.resolve('../../apps/desktop/src/windows/pet-bubble-chat-window')
+const { IPC } = require('../../apps/desktop/src/shared/ipc-channels')
 
 const loadModuleWithElectron = (electronStub) => {
   delete require.cache[modulePath]

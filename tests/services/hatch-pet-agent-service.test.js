@@ -5,8 +5,8 @@ const os = require('os')
 const path = require('path')
 const sharp = require('sharp')
 
-const { createHatchPetAgentService } = require('../../src/main/services/hatch-pet-agent-service')
-const { createBudgetLedger } = require('../../src/main/services/hatch-pet-agent-budget-ledger')
+const { createHatchPetAgentService } = require('../../apps/desktop/src/services/hatch-pet-agent-service')
+const { createBudgetLedger } = require('../../apps/desktop/src/services/hatch-pet-agent-budget-ledger')
 const { getQualityFirstQualityProfile } = require('../../examples/plugins/creator-studio/lib/pet-generation-quality-profile')
 
 const validDecision = (decision = 'generate-identity') => ({ schemaVersion: 1, decision, scope: {}, reasonCodes: ['ready'], confidence: 0.8 })

@@ -1,10 +1,10 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { IPC } = require('../../src/shared/ipc-channels')
-const { registerIpcHandlers } = require('../../src/main/ipc')
-const { registerCursorRepair } = require('../../src/main/bootstrap/startup-side-effects')
-const { createSettingsHostEffect } = require('../../src/main/settings-host-effects')
+const { IPC } = require('../../apps/desktop/src/shared/ipc-channels')
+const { registerIpcHandlers } = require('../../apps/desktop/src/ipc')
+const { registerCursorRepair } = require('../../apps/desktop/src/services/bootstrap/startup-side-effects')
+const { createSettingsHostEffect } = require('../../apps/desktop/src/services/settings-host-effects')
 
 const createIpcMainStub = () => {
   const handlers = new Map()

@@ -4,7 +4,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 
-const { syncBundledPlugins } = require('../../src/main/services/bundled-plugin-sync-service')
+const { syncBundledPlugins } = require('../../apps/desktop/src/services/bundled-plugin-sync-service')
 
 const createSettingsService = (initialSettings = {}) => {
   let current = {

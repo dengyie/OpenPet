@@ -1,10 +1,10 @@
 # 15 · IPC 通道退役台账
 
-> v1.5 · 2026-09-08 · T42 Actions · 以 `src/shared/ipc-channels.ts` 为当前清单
+> v2.1 · 2026-09-12 · T43/T47/T48 · 以 `apps/desktop/src/shared/ipc-channels.ts` 为当前清单
 
-本台账登记当前 128 个 IPC 常量的去向。`keep` 是 02 篇允许长期存在的窗口/原生边界；`cutover:<domain>` 表示 03 篇已有 HTTP/SSE 对等入口；`blocked:Txx` 表示等待指定任务卡完成后再切换；`retired` 表示已从当前清单删除并保留历史记录；`dead` 仅用于确认没有生产调用方的遗留常量。
+本台账登记当前 87 个 IPC 常量的去向。`keep` 是 02 篇允许长期存在的窗口/原生边界；`cutover:<domain>` 表示 03 篇已有 HTTP/SSE 对等入口；`blocked:Txx` 表示等待指定任务卡完成后再切换；`retired` 表示已从当前清单删除并保留历史记录；`dead` 仅用于确认没有生产调用方的遗留常量。
 
-当前台账由 122 个 `ipcMainService.handle/on` 注册和 6 个事件-only 通道组成。Source 列是实际生产引用文件，不是推测路径；门禁会逐项检查 TS/JS 清单、注册/事件来源、重复项和未知 `IPC.*` 引用。
+当前台账由 81 个 `ipcMainService.handle/on` 注册和 6 个事件-only 通道组成。Source 列是实际生产引用文件，不是推测路径；门禁会逐项检查 TS/JS 清单、注册/事件来源、重复项和未知 `IPC.*` 引用。
 
 T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `keep ≤ 41`，因此新增的 QQ/WeCom 四个 host-secret 通道登记为 `blocked:T44`，而不是伪装成长期 keep。T41 及后续任务可把已删除常量保留为 `retired` 历史行，并在 Retired by 列记录提交 SHA；历史行不计入当前通道对账或 keep 上限。
 
@@ -12,184 +12,186 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 
 | Scope | Count |
 | --- | ---: |
-| Current IPC constants | 128 |
-| Current direct registrations | 122 |
+| Current IPC constants | 87 |
+| Current direct registrations | 81 |
 | Current event-only channels | 6 |
 | Current keep | 41 |
 | Current cutover | 29 |
-| Current blocked | 58 |
+| Current blocked | 17 |
 | Current dead | 0 |
-| Historical retired | 30 |
+| Historical retired | 71 |
 
 ## Ledger
 
 | IPC channel | Status | HTTP route / blocker | Source | Reason | Retired by |
 | --- | --- | --- | --- | --- | --- |
-| `pet:get-animations` | `keep` | `IPC-only (native/window)` | `src/main/ipc/register-pet-runtime-ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet:animations-changed` | `keep` | `IPC-only (native/window)` | `preload.js` | Window/native IPC remains the intended boundary | — |
-| `pet:get-bounds` | `keep` | `IPC-only (native/window)` | `src/main/ipc/register-pet-runtime-ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet:get-movement-state` | `keep` | `IPC-only (native/window)` | `src/main/ipc/register-pet-runtime-ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet:set-viewport` | `keep` | `IPC-only (native/window)` | `src/main/ipc/register-pet-runtime-ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet:set-position` | `keep` | `IPC-only (native/window)` | `src/main/ipc/register-pet-runtime-ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet:set-mouse-passthrough` | `keep` | `IPC-only (native/window)` | `src/main/ipc/register-pet-runtime-ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet:request-focus-for-cursor` | `keep` | `IPC-only (native/window)` | `src/main/ipc/register-pet-runtime-ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet:record-app-log` | `keep` | `IPC-only (native/window)` | `src/main/ipc/register-pet-runtime-ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet:drag-ended` | `keep` | `IPC-only (native/window)` | `src/main/ipc/register-pet-runtime-ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet:move-by` | `keep` | `IPC-only (native/window)` | `src/main/ipc/register-pet-runtime-ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet:say` | `keep` | `IPC-only (native/window)` | `preload.js` | Window/native IPC remains the intended boundary | — |
-| `pet:play-action` | `keep` | `IPC-only (native/window)` | `src/main/ipc/register-pet-runtime-ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet:show-context-menu` | `keep` | `IPC-only (native/window)` | `src/main/ipc/register-pet-runtime-ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet:menu-command` | `keep` | `IPC-only (native/window)` | `preload.js` | Window/native IPC remains the intended boundary | — |
-| `pet:quit` | `keep` | `IPC-only (native/window)` | `src/main/ipc/register-system-ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet-chat:open` | `keep` | `IPC-only (native/window)` | `src/main/ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet-chat:get-state` | `keep` | `IPC-only (native/window)` | `src/main/ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet-chat:hide` | `keep` | `IPC-only (native/window)` | `src/main/ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet-chat:set-always-on-top` | `keep` | `IPC-only (native/window)` | `src/main/ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet-chat:open-settings` | `keep` | `IPC-only (native/window)` | `src/main/ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet-chat:send-message` | `keep` | `IPC-only (native/window)` | `src/main/ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet-chat:cancel-message` | `keep` | `IPC-only (native/window)` | `src/main/ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet-chat:state-changed` | `keep` | `IPC-only (native/window)` | `src/main/pet-chat-preload.js` | Window/native IPC remains the intended boundary | — |
-| `pet-bubble-chat:get-state` | `keep` | `IPC-only (native/window)` | `src/main/ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet-bubble-chat:open` | `keep` | `IPC-only (native/window)` | `src/main/ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet-bubble-chat:show-message` | `keep` | `IPC-only (native/window)` | `src/main/ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet-bubble-chat:hide` | `keep` | `IPC-only (native/window)` | `src/main/ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet-bubble-chat:set-pinned` | `keep` | `IPC-only (native/window)` | `src/main/ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet-bubble-chat:set-interacting` | `keep` | `IPC-only (native/window)` | `src/main/ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet-bubble-chat:set-hit-test-mode` | `keep` | `IPC-only (native/window)` | `src/main/ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet-bubble-chat:drag-to` | `keep` | `IPC-only (native/window)` | `src/main/ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet-bubble-chat:send-message` | `keep` | `IPC-only (native/window)` | `src/main/ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet-bubble-chat:cancel-message` | `keep` | `IPC-only (native/window)` | `src/main/ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet-bubble-chat:state-changed` | `keep` | `IPC-only (native/window)` | `src/main/pet-bubble-chat-preload.js` | Window/native IPC remains the intended boundary | — |
-| `settings:open` | `keep` | `IPC-only (native/window)` | `src/main/ipc/register-system-ipc.js` | Window/native IPC remains the intended boundary | — |
-| `settings:get` | `retired` | `GET /settings` | `src/main/ipc/register-settings-ipc.js` | Control Center reads the versioned, redacted Backend envelope through HTTP | 13a419a66eb2b42781fc2a79d193499fc6b99916 |
-| `settings:save` | `retired` | `PATCH /settings` | `src/main/ipc/register-settings-ipc.js` | Control Center writes canonical point-path patches through Backend optimistic locking; trusted Shell effects are applied from Backend snapshots | 13a419a66eb2b42781fc2a79d193499fc6b99916 |
-| `settings:import-cursor` | `blocked:T41` | `POST /settings/cursor/import` — unavailable fallback | `src/main/ipc/register-settings-ipc.js` | Route registration receives no handler from the backend composition root, so it returns `BACKEND_UNAVAILABLE`; T41 must bridge the host dialog and cursor importer | — |
-| `settings:preview-scale` | `blocked:T41` | `POST /settings/preview-scale` — unavailable fallback | `src/main/ipc/register-settings-ipc.js` | Route registration receives no handler from the backend composition root, so it returns `BACKEND_UNAVAILABLE`; T41 must bridge the host preview side effect | — |
-| `settings:close` | `keep` | `IPC-only (native/window)` | `src/main/ipc/register-settings-ipc.js` | Window/native IPC remains the intended boundary | — |
-| `settings:changed` | `blocked:T41` | `SSE settings.changed` — renderer/bootstrap parity pending | `control-center-preload.js` | SSE only publishes changed paths and version after backend PATCH; IPC still synchronizes pet-renderer settings and multiplexes backend bootstrap updates, which T41 must replace before retirement | — |
-| `actions:get` | `retired` | `GET /actions` | `src/main/ipc.js` | Control Center reads the active Shell action view through Backend HTTP | 36bf913c |
-| `actions:inspect-frames` | `keep` | `IPC-only (native/window)` | `src/main/ipc.js` | Native folder picker creates an opaque Shell-owned selection handle | — |
-| `actions:reinspect-frames` | `retired` | `POST /actions/frames/reinspect` | `src/main/ipc.js` | Reinspection uses the HTTP action selection lifecycle | 36bf913c |
-| `actions:clear-frame-selection` | `retired` | `DELETE /actions/frames/selection` | `src/main/ipc.js` | HTTP selection cleanup uses the original Shell-owned selection handle | 36bf913c |
-| `actions:import-frames` | `retired` | `POST /actions/frames/import` → Job/SSE | `src/main/ipc.js` | Frame import uses the shared Jobs runner and publishes action changes | 36bf913c |
-| `actions:save-config` | `retired` | `PUT /actions/config` | `src/main/ipc.js` | Config writes use host ActionService persistence semantics | 36bf913c |
-| `actions:preview-trigger-proposal` | `retired` | `POST /actions/triggers/preview` | `src/main/ipc.js` | Preview delegates to host validation without persisting | 36bf913c |
-| `actions:submit-trigger-proposal` | `retired` | `POST /actions/triggers/proposals` | `src/main/ipc.js` | Proposal inbox is persisted in the action manifest | 36bf913c |
-| `actions:accept-trigger-proposal` | `retired` | `POST /actions/triggers/proposals/:id/accept` | `src/main/ipc.js` | Acceptance applies host action/rule effects | 36bf913c |
-| `actions:reject-trigger-proposal` | `retired` | `POST /actions/triggers/proposals/:id/reject` | `src/main/ipc.js` | Rejection persists status and reason | 36bf913c |
-| `actions:update-trigger-rule` | `retired` | `PATCH /actions/triggers/rules/:id` | `src/main/ipc.js` | Rule updates use host validation and persistence | 36bf913c |
-| `actions:delete-trigger-rule` | `retired` | `DELETE /actions/triggers/rules/:id` | `src/main/ipc.js` | Rule deletion uses host persistence semantics | 36bf913c |
-| `actions:delete` | `retired` | `DELETE /actions/:id` | `src/main/ipc.js` | Deletion delegates to the shared importer | 36bf913c |
-| `pet-packs:list` | `retired` | `GET /pet-packs` | `src/main/ipc.js` | Pet Pack state is served through the Shell-owned reverse bridge and Backend HTTP | 490357f7 |
-| `pet-packs:inspect-directory` | `keep` | `IPC-only (native/window)` | `src/main/ipc.js` | Window/native IPC remains the intended boundary | — |
-| `pet-packs:clear-selection` | `retired` | `POST /pet-packs/validate` | `src/main/ipc.js` | Selection lifecycle is handled through the Shell Pet Pack reverse bridge | 490357f7 |
-| `pet-packs:import` | `retired` | `POST /pet-packs/import` → Job | `src/main/ipc.js` | Import job delegates to the Shell-owned Pet Pack service | 490357f7 |
-| `pet-packs:export` | `retired` | `POST /pet-packs/:id/export` → Job | `src/main/ipc.js` | Export job delegates to the Shell-owned Pet Pack service | 490357f7 |
-| `pet-packs:set-active` | `retired` | `POST /pet-packs/:id/activate` | `src/main/ipc.js` | Activation and runtime refresh are owned by the Shell bridge | 490357f7 |
-| `pet-packs:active-changed` | `retired` | `SSE pet.pack-activated` | `control-center-preload.js` | Active-pack updates are delivered through SSE after Shell activation | 490357f7 |
-| `pet-packs:remove` | `retired` | `DELETE /pet-packs/:id` | `src/main/ipc.js` | Removal delegates to the Shell-owned Pet Pack service | 490357f7 |
-| `control-center:active-pet-pack-changed` | `retired` | `SSE pet.pack-activated` | `control-center-preload.js` | Control Center now invalidates Pet Pack state from SSE | 490357f7 |
-| `ai:get-config` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai:save-config` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai:save-api-key` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai:save-vision-api-key` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai:clear-vision-api-key` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai:test-connection` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai:discover-models` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai:discover-vision-models` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai:get-persona-profile` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai:generate-persona-draft` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai:save-persona-override` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai:get-memory-profile` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai:delete-memory` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai:clear-pet-pack-memories` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai-talk:get-trace-summary` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai-talk:export-trace` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `hatch-pet-agent:get-config` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `hatch-pet-agent:save-config` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `hatch-pet-agent:save-api-key` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `hatch-pet-agent:clear-api-key` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `hatch-pet-agent:check-capability` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `hatch-pet-agent:get-run-status` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `image-generation:get-config` | `blocked:T46` | `Backend image-generation Job not landed` | `src/main/ipc/register-ai-ipc.js` | Image generation waits for T46 Job handler | — |
-| `image-generation:save-config` | `blocked:T46` | `Backend image-generation Job not landed` | `src/main/ipc/register-ai-ipc.js` | Image generation waits for T46 Job handler | — |
-| `image-generation:save-api-key` | `blocked:T46` | `Backend image-generation Job not landed` | `src/main/ipc/register-ai-ipc.js` | Image generation waits for T46 Job handler | — |
-| `image-generation:clear-api-key` | `blocked:T46` | `Backend image-generation Job not landed` | `src/main/ipc/register-ai-ipc.js` | Image generation waits for T46 Job handler | — |
-| `image-generation:check-health` | `blocked:T46` | `Backend image-generation Job not landed` | `src/main/ipc/register-ai-ipc.js` | Image generation waits for T46 Job handler | — |
-| `image-generation:discover-models` | `blocked:T46` | `Backend image-generation Job not landed` | `src/main/ipc/register-ai-ipc.js` | Image generation waits for T46 Job handler | — |
-| `ai:get-conversation` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai:chat` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai:export-trace-diagnostics` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai-behavior:get` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai-behavior:save` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai-behavior:dry-run` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai-behavior:replay-decision` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai-behavior:export-diagnostics` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai-behavior:clear-decisions` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `plugins:list` | `cutover:plugins` | `GET /plugins` | `src/main/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
-| `plugins:set-enabled` | `cutover:plugins` | `POST /plugins/:id/enable` | `src/main/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
-| `plugins:set-native-execution-approved` | `cutover:plugins` | `POST /plugins/:id/native-approval` | `src/main/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
-| `plugins:save-config` | `cutover:plugins` | `PUT /plugins/:id/config` | `src/main/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
-| `plugins:im-gateway:get-secret-state` | `cutover:plugins` | `GET /plugins/:id/config?operation=secret-state` | `src/main/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
-| `plugins:im-gateway:save-telegram-token` | `cutover:plugins` | `PUT /plugins/:id/config?operation=secret-save` | `src/main/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
-| `plugins:im-gateway:clear-telegram-token` | `cutover:plugins` | `PUT /plugins/:id/config?operation=secret-clear` | `src/main/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
-| `plugins:im-gateway:save-qq-credentials` | `blocked:T44` | `Backend secrets boundary not landed` | `src/main/ipc/register-plugin-ipc.js` | Host-secret channel waits for T44 secrets boundary | — |
-| `plugins:im-gateway:clear-qq-credentials` | `blocked:T44` | `Backend secrets boundary not landed` | `src/main/ipc/register-plugin-ipc.js` | Host-secret channel waits for T44 secrets boundary | — |
-| `plugins:im-gateway:save-wecom-credentials` | `blocked:T44` | `Backend secrets boundary not landed` | `src/main/ipc/register-plugin-ipc.js` | Host-secret channel waits for T44 secrets boundary | — |
-| `plugins:im-gateway:clear-wecom-credentials` | `blocked:T44` | `Backend secrets boundary not landed` | `src/main/ipc/register-plugin-ipc.js` | Host-secret channel waits for T44 secrets boundary | — |
-| `plugins:run-creator-studio-default-flow` | `cutover:plugins` | `POST /plugins/:id/commands/:cmd?operation=creator-default-flow` | `src/main/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
-| `plugins:run-command` | `cutover:plugins` | `POST /plugins/:id/commands/:cmd` | `src/main/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
-| `plugins:run-setup` | `cutover:plugins` | `POST /plugins/:id/commands/:cmd?operation=setup` | `src/main/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
-| `plugins:open-dashboard` | `keep` | `IPC-only (native/window)` | `src/main/ipc/register-plugin-ipc.js` | Window/native IPC remains the intended boundary | — |
-| `plugins:start-service` | `cutover:plugins` | `POST /plugins/:id/start` | `src/main/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
-| `plugins:stop-service` | `cutover:plugins` | `POST /plugins/:id/stop` | `src/main/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
-| `plugins:check-service-health` | `cutover:plugins` | `POST /plugins/:id/start?operation=health` | `src/main/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
-| `plugins:save-service-health-policy` | `cutover:plugins` | `PUT /plugins/:id/config?operation=health-policy` | `src/main/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
-| `plugins:inspect-package` | `keep` | `IPC-only (native/window)` | `src/main/ipc/register-plugin-ipc.js` | Window/native IPC remains the intended boundary | — |
-| `plugins:inspect-github-repository` | `cutover:plugins` | `POST /plugins/validate` | `src/main/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
-| `plugins:clear-selection` | `cutover:plugins` | `POST /plugins/install?operation=clear-selection` | `src/main/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
-| `plugins:install` | `cutover:plugins` | `POST /plugins/install` | `src/main/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
-| `plugins:update` | `cutover:plugins` | `POST /plugins/install (update)` | `src/main/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
-| `plugins:uninstall` | `cutover:plugins` | `DELETE /plugins/:id` | `src/main/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
-| `plugins:get-logs` | `cutover:plugins` | `GET /plugins/:id/logs` | `src/main/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
-| `plugins:export-logs` | `cutover:plugins` | `GET /plugins/:id/logs?operation=export` | `src/main/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
-| `plugins:clear-logs` | `cutover:plugins` | `DELETE /plugins/:id/logs` | `src/main/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
-| `plugins:clear-storage` | `cutover:plugins` | `POST /plugins/:id/enable?operation=storage-clear` | `src/main/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
-| `creator:get-state` | `blocked:T48` | `Backend Creator domain not landed` | `src/main/ipc/register-creator-ipc.js` | Creator Studio waits for T48 migration | — |
-| `creator:pick-reference-image` | `blocked:T48` | `Backend Creator domain not landed` | `src/main/ipc/register-creator-ipc.js` | Creator Studio waits for T48 migration | — |
-| `creator:bind-reference` | `blocked:T48` | `Backend Creator domain not landed` | `src/main/ipc/register-creator-ipc.js` | Creator Studio waits for T48 migration | — |
-| `creator:generate-new-character` | `blocked:T48` | `Backend Creator domain not landed` | `src/main/ipc/register-creator-ipc.js` | Creator Studio waits for T48 migration | — |
-| `creator:generate-existing-action` | `blocked:T48` | `Backend Creator domain not landed` | `src/main/ipc/register-creator-ipc.js` | Creator Studio waits for T48 migration | — |
-| `creator:retry-action` | `blocked:T48` | `Backend Creator domain not landed` | `src/main/ipc/register-creator-ipc.js` | Creator Studio waits for T48 migration | — |
-| `creator:retry-identity` | `blocked:T48` | `Backend Creator domain not landed` | `src/main/ipc/register-creator-ipc.js` | Creator Studio waits for T48 migration | — |
-| `creator:accept-identity` | `blocked:T48` | `Backend Creator domain not landed` | `src/main/ipc/register-creator-ipc.js` | Creator Studio waits for T48 migration | — |
-| `creator:accept-action-candidate` | `blocked:T48` | `Backend Creator domain not landed` | `src/main/ipc/register-creator-ipc.js` | Creator Studio waits for T48 migration | — |
-| `creator:export-recovery-bundle` | `blocked:T48` | `Backend Creator domain not landed` | `src/main/ipc/register-creator-ipc.js` | Creator Studio waits for T48 migration | — |
-| `creator:import-available-actions` | `blocked:T48` | `Backend Creator domain not landed` | `src/main/ipc/register-creator-ipc.js` | Creator Studio waits for T48 migration | — |
-| `creator:get-last-run` | `blocked:T48` | `Backend Creator domain not landed` | `src/main/ipc/register-creator-ipc.js` | Creator Studio waits for T48 migration | — |
-| `creator:get-asset-preview` | `blocked:T48` | `Backend Creator domain not landed` | `src/main/ipc/register-creator-ipc.js` | Creator Studio waits for T48 migration | — |
-| `service:get-status` | `cutover:service` | `GET /service/status` | `src/main/ipc/register-service-ipc.js` | Existing backend route is the migration target | — |
-| `service:save-config` | `cutover:service` | `PUT /service/config` | `src/main/ipc/register-service-ipc.js` | Existing backend route is the migration target | — |
-| `service:get-logs` | `cutover:service` | `GET /service/logs` | `src/main/ipc/register-service-ipc.js` | Existing backend route is the migration target | — |
-| `service:export-logs` | `cutover:service` | `GET /service/logs?operation=export` | `src/main/ipc/register-service-ipc.js` | Existing backend route is the migration target | — |
-| `service:clear-logs` | `cutover:service` | `DELETE /service/logs` | `src/main/ipc/register-service-ipc.js` | Existing backend route is the migration target | — |
-| `service:rotate-token` | `cutover:service` | `POST /service/token/rotate` | `src/main/ipc/register-service-ipc.js` | Existing backend route is the migration target | — |
-| `service:revoke-mcp-sessions` | `blocked:T45` | `Backend route not implemented: POST /service/token/revoke-sessions` | `src/main/ipc/register-service-ipc.js` | Waiting for T45 MCP sidecar migration; current backend route registry has no MCP session revoke endpoint | — |
-| `about:get-info` | `retired` | `GET /about` | `src/main/ipc.js` | Control Center reads the host About view through Backend HTTP | 413c5825 |
-| `about:check-updates` | `retired` | `POST /about/check-updates` | `src/main/ipc.js` | Control Center queues the existing update-check Job and follows its result through Backend Job/SSE APIs | 413c5825 |
-| `catalog:get` | `retired` | `GET /catalog` | `src/main/ipc.js` | Catalog state now comes from the Shell-owned Catalog bridge and Backend HTTP route | ac59d75f |
-| `catalog:prepare-install` | `retired` | `POST /catalog/prepare` | `src/main/ipc.js` | Reviewed install preparation is handled by the Backend Catalog domain | ac59d75f |
-| `catalog:install-selection` | `retired` | `POST /catalog/install` → Job | `src/main/ipc.js` | Install consumes the reviewed selection through the Backend Job boundary | ac59d75f |
-| `catalog:clear-selection` | `retired` | `POST /catalog/clear-selection` | `src/main/ipc.js` | Pending selection lifecycle is owned by the Backend Catalog bridge | ac59d75f |
-| `catalog:add-blocklist` | `retired` | `POST /catalog/blocklist` | `src/main/ipc.js` | Catalog blocklist mutation is handled by the Backend Catalog domain | ac59d75f |
-| `catalog:remove-blocklist` | `retired` | `DELETE /catalog/blocklist/:id` | `src/main/ipc.js` | Catalog blocklist removal is handled by the Backend Catalog domain | ac59d75f |
+| `pet:get-animations` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/register-pet-runtime-ipc.js` | Window/native IPC remains the intended boundary | — |
+| `pet:animations-changed` | `keep` | `IPC-only (native/window)` | `apps/desktop/preload.js` | Window/native IPC remains the intended boundary | — |
+| `pet:get-bounds` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/register-pet-runtime-ipc.js` | Window/native IPC remains the intended boundary | — |
+| `pet:get-movement-state` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/register-pet-runtime-ipc.js` | Window/native IPC remains the intended boundary | — |
+| `pet:set-viewport` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/register-pet-runtime-ipc.js` | Window/native IPC remains the intended boundary | — |
+| `pet:set-position` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/register-pet-runtime-ipc.js` | Window/native IPC remains the intended boundary | — |
+| `pet:set-mouse-passthrough` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/register-pet-runtime-ipc.js` | Window/native IPC remains the intended boundary | — |
+| `pet:request-focus-for-cursor` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/register-pet-runtime-ipc.js` | Window/native IPC remains the intended boundary | — |
+| `pet:record-app-log` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/register-pet-runtime-ipc.js` | Window/native IPC remains the intended boundary | — |
+| `pet:drag-ended` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/register-pet-runtime-ipc.js` | Window/native IPC remains the intended boundary | — |
+| `pet:move-by` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/register-pet-runtime-ipc.js` | Window/native IPC remains the intended boundary | — |
+| `pet:say` | `keep` | `IPC-only (native/window)` | `apps/desktop/preload.js` | Window/native IPC remains the intended boundary | — |
+| `pet:play-action` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/register-pet-runtime-ipc.js` | Window/native IPC remains the intended boundary | — |
+| `pet:show-context-menu` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/register-pet-runtime-ipc.js` | Window/native IPC remains the intended boundary | — |
+| `pet:menu-command` | `keep` | `IPC-only (native/window)` | `apps/desktop/preload.js` | Window/native IPC remains the intended boundary | — |
+| `pet:quit` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/register-system-ipc.js` | Window/native IPC remains the intended boundary | — |
+| `pet-chat:open` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/index.js` | Window/native IPC remains the intended boundary | — |
+| `pet-chat:get-state` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/index.js` | Window/native IPC remains the intended boundary | — |
+| `pet-chat:hide` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/index.js` | Window/native IPC remains the intended boundary | — |
+| `pet-chat:set-always-on-top` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/index.js` | Window/native IPC remains the intended boundary | — |
+| `pet-chat:open-settings` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/index.js` | Window/native IPC remains the intended boundary | — |
+| `pet-chat:send-message` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/index.js` | Window/native IPC remains the intended boundary | — |
+| `pet-chat:cancel-message` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/index.js` | Window/native IPC remains the intended boundary | — |
+| `pet-chat:state-changed` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/windows/pet-chat-preload.js` | Window/native IPC remains the intended boundary | — |
+| `pet-bubble-chat:get-state` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/index.js` | Window/native IPC remains the intended boundary | — |
+| `pet-bubble-chat:open` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/index.js` | Window/native IPC remains the intended boundary | — |
+| `pet-bubble-chat:show-message` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/index.js` | Window/native IPC remains the intended boundary | — |
+| `pet-bubble-chat:hide` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/index.js` | Window/native IPC remains the intended boundary | — |
+| `pet-bubble-chat:set-pinned` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/index.js` | Window/native IPC remains the intended boundary | — |
+| `pet-bubble-chat:set-interacting` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/index.js` | Window/native IPC remains the intended boundary | — |
+| `pet-bubble-chat:set-hit-test-mode` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/index.js` | Window/native IPC remains the intended boundary | — |
+| `pet-bubble-chat:drag-to` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/index.js` | Window/native IPC remains the intended boundary | — |
+| `pet-bubble-chat:send-message` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/index.js` | Window/native IPC remains the intended boundary | — |
+| `pet-bubble-chat:cancel-message` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/index.js` | Window/native IPC remains the intended boundary | — |
+| `pet-bubble-chat:state-changed` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/windows/pet-bubble-chat-preload.js` | Window/native IPC remains the intended boundary | — |
+| `settings:open` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/register-system-ipc.js` | Window/native IPC remains the intended boundary | — |
+| `settings:get` | `retired` | `GET /settings` | `apps/desktop/src/ipc/register-settings-ipc.js` | Control Center reads the versioned, redacted Backend envelope through HTTP | 13a419a66eb2b42781fc2a79d193499fc6b99916 |
+| `settings:save` | `retired` | `PATCH /settings` | `apps/desktop/src/ipc/register-settings-ipc.js` | Control Center writes canonical point-path patches through Backend optimistic locking; trusted Shell effects are applied from Backend snapshots | 13a419a66eb2b42781fc2a79d193499fc6b99916 |
+| `settings:import-cursor` | `blocked:T41` | `POST /settings/cursor/import` — unavailable fallback | `apps/desktop/src/ipc/register-settings-ipc.js` | Route registration receives no handler from the backend composition root, so it returns `BACKEND_UNAVAILABLE`; T41 must bridge the host dialog and cursor importer | — |
+| `settings:preview-scale` | `blocked:T41` | `POST /settings/preview-scale` — unavailable fallback | `apps/desktop/src/ipc/register-settings-ipc.js` | Route registration receives no handler from the backend composition root, so it returns `BACKEND_UNAVAILABLE`; T41 must bridge the host preview side effect | — |
+| `settings:close` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/register-settings-ipc.js` | Window/native IPC remains the intended boundary | — |
+| `settings:changed` | `blocked:T41` | `SSE settings.changed` — renderer/bootstrap parity pending | `apps/desktop/control-center-preload.js` | SSE only publishes changed paths and version after backend PATCH; IPC still synchronizes pet-renderer settings and multiplexes backend bootstrap updates, which T41 must replace before retirement | — |
+| `actions:get` | `retired` | `GET /actions` | `apps/desktop/src/ipc/index.js` | Control Center reads the active Shell action view through Backend HTTP | 36bf913c |
+| `actions:inspect-frames` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/index.js` | Native folder picker creates an opaque Shell-owned selection handle | — |
+| `actions:reinspect-frames` | `retired` | `POST /actions/frames/reinspect` | `apps/desktop/src/ipc/index.js` | Reinspection uses the HTTP action selection lifecycle | 36bf913c |
+| `actions:clear-frame-selection` | `retired` | `DELETE /actions/frames/selection` | `apps/desktop/src/ipc/index.js` | HTTP selection cleanup uses the original Shell-owned selection handle | 36bf913c |
+| `actions:import-frames` | `retired` | `POST /actions/frames/import` → Job/SSE | `apps/desktop/src/ipc/index.js` | Frame import uses the shared Jobs runner and publishes action changes | 36bf913c |
+| `actions:save-config` | `retired` | `PUT /actions/config` | `apps/desktop/src/ipc/index.js` | Config writes use host ActionService persistence semantics | 36bf913c |
+| `actions:preview-trigger-proposal` | `retired` | `POST /actions/triggers/preview` | `apps/desktop/src/ipc/index.js` | Preview delegates to host validation without persisting | 36bf913c |
+| `actions:submit-trigger-proposal` | `retired` | `POST /actions/triggers/proposals` | `apps/desktop/src/ipc/index.js` | Proposal inbox is persisted in the action manifest | 36bf913c |
+| `actions:accept-trigger-proposal` | `retired` | `POST /actions/triggers/proposals/:id/accept` | `apps/desktop/src/ipc/index.js` | Acceptance applies host action/rule effects | 36bf913c |
+| `actions:reject-trigger-proposal` | `retired` | `POST /actions/triggers/proposals/:id/reject` | `apps/desktop/src/ipc/index.js` | Rejection persists status and reason | 36bf913c |
+| `actions:update-trigger-rule` | `retired` | `PATCH /actions/triggers/rules/:id` | `apps/desktop/src/ipc/index.js` | Rule updates use host validation and persistence | 36bf913c |
+| `actions:delete-trigger-rule` | `retired` | `DELETE /actions/triggers/rules/:id` | `apps/desktop/src/ipc/index.js` | Rule deletion uses host persistence semantics | 36bf913c |
+| `actions:delete` | `retired` | `DELETE /actions/:id` | `apps/desktop/src/ipc/index.js` | Deletion delegates to the shared importer | 36bf913c |
+| `pet-packs:list` | `retired` | `GET /pet-packs` | `apps/desktop/src/ipc/index.js` | Pet Pack state is served through the Shell-owned reverse bridge and Backend HTTP | 490357f7 |
+| `pet-packs:inspect-directory` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/index.js` | Window/native IPC remains the intended boundary | — |
+| `pet-packs:clear-selection` | `retired` | `POST /pet-packs/validate` | `apps/desktop/src/ipc/index.js` | Selection lifecycle is handled through the Shell Pet Pack reverse bridge | 490357f7 |
+| `pet-packs:import` | `retired` | `POST /pet-packs/import` → Job | `apps/desktop/src/ipc/index.js` | Import job delegates to the Shell-owned Pet Pack service | 490357f7 |
+| `pet-packs:export` | `retired` | `POST /pet-packs/:id/export` → Job | `apps/desktop/src/ipc/index.js` | Export job delegates to the Shell-owned Pet Pack service | 490357f7 |
+| `pet-packs:set-active` | `retired` | `POST /pet-packs/:id/activate` | `apps/desktop/src/ipc/index.js` | Activation and runtime refresh are owned by the Shell bridge | 490357f7 |
+| `pet-packs:active-changed` | `retired` | `SSE pet.pack-activated` | `apps/desktop/control-center-preload.js` | Active-pack updates are delivered through SSE after Shell activation | 490357f7 |
+| `pet-packs:remove` | `retired` | `DELETE /pet-packs/:id` | `apps/desktop/src/ipc/index.js` | Removal delegates to the Shell-owned Pet Pack service | 490357f7 |
+| `control-center:active-pet-pack-changed` | `retired` | `SSE pet.pack-activated` | `apps/desktop/control-center-preload.js` | Control Center now invalidates Pet Pack state from SSE | 490357f7 |
+| `ai:get-config` | `retired` | `GET /ai/config` | `apps/desktop/src/ipc/register-ai-ipc.js` | AI config is served by the backend AI domain | 6dc7e9f0 |
+| `ai:save-config` | `retired` | `PATCH /ai/config` | `apps/desktop/src/ipc/register-ai-ipc.js` | AI config writes use the backend mutation authority | 6dc7e9f0 |
+| `ai:save-api-key` | `retired` | `PUT /ai/providers/ai.default/key` | `apps/desktop/src/ipc/register-ai-ipc.js` | Provider secrets use the backend secret boundary | 6dc7e9f0 |
+| `ai:save-vision-api-key` | `retired` | `PUT /ai/providers/ai.vision/key` | `apps/desktop/src/ipc/register-ai-ipc.js` | Vision secrets use the backend secret boundary | 6dc7e9f0 |
+| `ai:clear-vision-api-key` | `retired` | `DELETE /ai/providers/ai.vision/key` | `apps/desktop/src/ipc/register-ai-ipc.js` | Vision secret removal uses the backend secret boundary | 6dc7e9f0 |
+| `ai:test-connection` | `retired` | `POST /ai/providers/chat/test` | `apps/desktop/src/ipc/register-ai-ipc.js` | Provider probes run in the backend | 6dc7e9f0 |
+| `ai:discover-models` | `retired` | `GET /ai/providers/chat/models` | `apps/desktop/src/ipc/register-ai-ipc.js` | Chat model discovery runs in the backend | 6dc7e9f0 |
+| `ai:discover-vision-models` | `retired` | `GET /ai/providers/vision/models` | `apps/desktop/src/ipc/register-ai-ipc.js` | Vision model discovery runs in the backend | 6dc7e9f0 |
+| `ai:get-persona-profile` | `retired` | `GET /ai/persona` | `apps/desktop/src/ipc/register-ai-ipc.js` | Persona state is served by the backend AI domain | 6dc7e9f0 |
+| `ai:generate-persona-draft` | `retired` | `POST /ai/persona/draft` | `apps/desktop/src/ipc/register-ai-ipc.js` | Persona generation runs in the backend | 6dc7e9f0 |
+| `ai:save-persona-override` | `retired` | `PUT /ai/persona` | `apps/desktop/src/ipc/register-ai-ipc.js` | Persona persistence uses the backend repository | 6dc7e9f0 |
+| `ai:get-memory-profile` | `retired` | `GET /ai/memories` | `apps/desktop/src/ipc/register-ai-ipc.js` | Memory state is served by the backend AI domain | 6dc7e9f0 |
+| `ai:delete-memory` | `retired` | `DELETE /ai/memories/:id` | `apps/desktop/src/ipc/register-ai-ipc.js` | Memory deletion uses the backend repository | 6dc7e9f0 |
+| `ai:clear-pet-pack-memories` | `retired` | `DELETE /ai/memories` | `apps/desktop/src/ipc/register-ai-ipc.js` | Memory clearing uses the backend repository | 6dc7e9f0 |
+| `ai-talk:get-trace-summary` | `retired` | `GET /ai/traces` | `apps/desktop/src/ipc/register-ai-ipc.js` | Trace summaries are served by the backend AI domain | 6dc7e9f0 |
+| `ai-talk:export-trace` | `retired` | `POST /ai/traces/export` | `apps/desktop/src/ipc/register-ai-ipc.js` | Trace export runs in the backend | 6dc7e9f0 |
+| `hatch-pet-agent:get-config` | `retired` | `GET /ai/hatch/config` | `apps/desktop/src/ipc/register-ai-ipc.js` | Hatch configuration is served by the backend AI domain | 6dc7e9f0 |
+| `hatch-pet-agent:save-config` | `retired` | `PATCH /ai/hatch/config` | `apps/desktop/src/ipc/register-ai-ipc.js` | Hatch configuration writes use the backend mutation authority | 6dc7e9f0 |
+| `hatch-pet-agent:save-api-key` | `retired` | `PUT /ai/providers/ai.hatch-pet/key` | `apps/desktop/src/ipc/register-ai-ipc.js` | Hatch secrets use the backend secret boundary | 6dc7e9f0 |
+| `hatch-pet-agent:clear-api-key` | `retired` | `DELETE /ai/providers/ai.hatch-pet/key` | `apps/desktop/src/ipc/register-ai-ipc.js` | Hatch secret removal uses the backend secret boundary | 6dc7e9f0 |
+| `hatch-pet-agent:check-capability` | `blocked:T47` | `IPC-only (native/window)` | `apps/desktop/src/ipc/register-ai-ipc.js` | Capability checks remain a native host boundary until the Hatch runtime contract is migrated | — |
+| `hatch-pet-agent:get-run-status` | `blocked:T47` | `IPC-only (native/window)` | `apps/desktop/src/ipc/register-ai-ipc.js` | Run status remains a native host boundary until the Hatch runtime contract is migrated | — |
+| `image-generation:get-config` | `blocked:T46` | `Backend image-generation Job not landed` | `apps/desktop/src/ipc/register-ai-ipc.js` | Image generation waits for T46 Job handler | — |
+| `image-generation:save-config` | `blocked:T46` | `Backend image-generation Job not landed` | `apps/desktop/src/ipc/register-ai-ipc.js` | Image generation waits for T46 Job handler | — |
+| `image-generation:save-api-key` | `blocked:T46` | `Backend image-generation Job not landed` | `apps/desktop/src/ipc/register-ai-ipc.js` | Image generation waits for T46 Job handler | — |
+| `image-generation:clear-api-key` | `blocked:T46` | `Backend image-generation Job not landed` | `apps/desktop/src/ipc/register-ai-ipc.js` | Image generation waits for T46 Job handler | — |
+| `image-generation:check-health` | `blocked:T46` | `Backend image-generation Job not landed` | `apps/desktop/src/ipc/register-ai-ipc.js` | Image generation waits for T46 Job handler | — |
+| `image-generation:discover-models` | `blocked:T46` | `Backend image-generation Job not landed` | `apps/desktop/src/ipc/register-ai-ipc.js` | Image generation waits for T46 Job handler | — |
+| `ai:get-conversation` | `retired` | `GET /ai/conversations?conversationId=:id` | `apps/desktop/src/ipc/register-ai-ipc.js` | Conversation reads use the SQLite-backed backend repository | 6dc7e9f0 |
+| `ai:chat` | `retired` | `POST /ai/chat` | `apps/desktop/src/ipc/register-ai-ipc.js` | AI chat streams through authenticated backend SSE | 6dc7e9f0 |
+| `ai:export-trace-diagnostics` | `retired` | `POST /ai/traces/diagnostics` | `apps/desktop/src/ipc/register-ai-ipc.js` | Trace diagnostics export runs in the backend | 6dc7e9f0 |
+| `ai-behavior:get` | `retired` | `GET /ai/behavior` | `apps/desktop/src/ipc/register-ai-ipc.js` | Behavior configuration is served by the backend AI domain | 6dc7e9f0 |
+| `ai-behavior:save` | `retired` | `PATCH /ai/behavior` | `apps/desktop/src/ipc/register-ai-ipc.js` | Behavior writes use the backend mutation authority | 6dc7e9f0 |
+| `ai-behavior:dry-run` | `retired` | `POST /ai/behavior/dry-run` | `apps/desktop/src/ipc/register-ai-ipc.js` | Behavior dry runs execute in the backend | 6dc7e9f0 |
+| `ai-behavior:replay-decision` | `retired` | `POST /ai/behavior/replay` | `apps/desktop/src/ipc/register-ai-ipc.js` | Behavior replay executes in the backend | 6dc7e9f0 |
+| `ai-behavior:export-diagnostics` | `retired` | `POST /ai/behavior/diagnostics` | `apps/desktop/src/ipc/register-ai-ipc.js` | Behavior diagnostics export runs in the backend | 6dc7e9f0 |
+| `ai-behavior:clear-decisions` | `retired` | `DELETE /ai/behavior/decisions` | `apps/desktop/src/ipc/register-ai-ipc.js` | Behavior decision cleanup uses the backend repository | 6dc7e9f0 |
+| `plugins:list` | `cutover:plugins` | `GET /plugins` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
+| `plugins:set-enabled` | `cutover:plugins` | `POST /plugins/:id/enable` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
+| `plugins:set-native-execution-approved` | `cutover:plugins` | `POST /plugins/:id/native-approval` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
+| `plugins:save-config` | `cutover:plugins` | `PUT /plugins/:id/config` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
+| `plugins:im-gateway:get-secret-state` | `cutover:plugins` | `GET /plugins/:id/config?operation=secret-state` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
+| `plugins:im-gateway:save-telegram-token` | `cutover:plugins` | `PUT /plugins/:id/config?operation=secret-save` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
+| `plugins:im-gateway:clear-telegram-token` | `cutover:plugins` | `PUT /plugins/:id/config?operation=secret-clear` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
+| `plugins:im-gateway:save-qq-credentials` | `blocked:T44` | `Backend secrets boundary not landed` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Host-secret channel waits for T44 secrets boundary | — |
+| `plugins:im-gateway:clear-qq-credentials` | `blocked:T44` | `Backend secrets boundary not landed` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Host-secret channel waits for T44 secrets boundary | — |
+| `plugins:im-gateway:save-wecom-credentials` | `blocked:T44` | `Backend secrets boundary not landed` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Host-secret channel waits for T44 secrets boundary | — |
+| `plugins:im-gateway:clear-wecom-credentials` | `blocked:T44` | `Backend secrets boundary not landed` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Host-secret channel waits for T44 secrets boundary | — |
+| `plugins:run-creator-studio-default-flow` | `cutover:plugins` | `POST /plugins/:id/commands/:cmd?operation=creator-default-flow` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
+| `plugins:run-command` | `cutover:plugins` | `POST /plugins/:id/commands/:cmd` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
+| `plugins:run-setup` | `cutover:plugins` | `POST /plugins/:id/commands/:cmd?operation=setup` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
+| `plugins:open-dashboard` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Window/native IPC remains the intended boundary | — |
+| `plugins:start-service` | `cutover:plugins` | `POST /plugins/:id/start` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
+| `plugins:stop-service` | `cutover:plugins` | `POST /plugins/:id/stop` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
+| `plugins:check-service-health` | `cutover:plugins` | `POST /plugins/:id/start?operation=health` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
+| `plugins:save-service-health-policy` | `cutover:plugins` | `PUT /plugins/:id/config?operation=health-policy` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
+| `plugins:inspect-package` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Window/native IPC remains the intended boundary | — |
+| `plugins:inspect-github-repository` | `cutover:plugins` | `POST /plugins/validate` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
+| `plugins:clear-selection` | `cutover:plugins` | `POST /plugins/install?operation=clear-selection` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
+| `plugins:install` | `cutover:plugins` | `POST /plugins/install` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
+| `plugins:update` | `cutover:plugins` | `POST /plugins/install (update)` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
+| `plugins:uninstall` | `cutover:plugins` | `DELETE /plugins/:id` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
+| `plugins:get-logs` | `cutover:plugins` | `GET /plugins/:id/logs` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
+| `plugins:export-logs` | `cutover:plugins` | `GET /plugins/:id/logs?operation=export` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
+| `plugins:clear-logs` | `cutover:plugins` | `DELETE /plugins/:id/logs` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
+| `plugins:clear-storage` | `cutover:plugins` | `POST /plugins/:id/enable?operation=storage-clear` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
+| `creator:get-state` | `retired` | `GET /creator/state` | `apps/desktop/src/ipc/register-creator-ipc.js` | Creator state is served by the Backend Creator domain | 15758aec |
+| `creator:pick-reference-image` | `blocked:T48` | `IPC-only (native/window)` | `apps/desktop/src/ipc/register-creator-ipc.js` | Native file selection remains the Shell authority; the approved token is sent to Backend jobs and is intentionally outside the HTTP cutover | — |
+| `creator:bind-reference` | `retired` | `POST /creator/references` | `apps/desktop/src/ipc/register-creator-ipc.js` | Reference metadata is persisted by the Backend Creator domain | 15758aec |
+| `creator:generate-new-character` | `retired` | `POST /creator/characters/generate` -> Job | `apps/desktop/src/ipc/register-creator-ipc.js` | Character generation runs through the Backend Creator Job boundary | 15758aec |
+| `creator:generate-existing-action` | `retired` | `POST /creator/sprites/generate` -> Job | `apps/desktop/src/ipc/register-creator-ipc.js` | Action generation runs through the Backend Creator Job boundary | 15758aec |
+| `creator:retry-action` | `retired` | `POST /creator/runs/:id/retry-action` -> Job | `apps/desktop/src/ipc/register-creator-ipc.js` | Action retries run through the Backend Creator Job boundary | 15758aec |
+| `creator:retry-identity` | `retired` | `POST /creator/runs/:id/retry-identity` -> Job | `apps/desktop/src/ipc/register-creator-ipc.js` | Identity retries run through the Backend Creator Job boundary | 15758aec |
+| `creator:accept-identity` | `retired` | `POST /creator/runs/:id/accept-identity` -> Job | `apps/desktop/src/ipc/register-creator-ipc.js` | Hash-bound identity acceptance runs through Backend Jobs | 15758aec |
+| `creator:accept-action-candidate` | `retired` | `POST /creator/runs/:id/accept-action-candidate` -> Job | `apps/desktop/src/ipc/register-creator-ipc.js` | Hash-bound action acceptance runs through Backend Jobs | 15758aec |
+| `creator:export-recovery-bundle` | `retired` | `POST /creator/export` -> Job | `apps/desktop/src/ipc/register-creator-ipc.js` | Recovery export runs through the Backend Creator Job boundary | 15758aec |
+| `creator:import-available-actions` | `retired` | `POST /creator/runs/:id/import-actions` -> Job | `apps/desktop/src/ipc/register-creator-ipc.js` | Action import runs through the Backend Creator Job boundary | 15758aec |
+| `creator:get-last-run` | `retired` | `GET /creator/last-run` | `apps/desktop/src/ipc/register-creator-ipc.js` | Creator run state is served by the Backend Creator domain | 15758aec |
+| `creator:get-asset-preview` | `retired` | `GET /creator/assets/preview` | `apps/desktop/src/ipc/register-creator-ipc.js` | Asset previews are validated and served by the Backend Creator domain | 15758aec |
+| `service:get-status` | `cutover:service` | `GET /service/status` | `apps/desktop/src/ipc/register-service-ipc.js` | Existing backend route is the migration target | — |
+| `service:save-config` | `cutover:service` | `PUT /service/config` | `apps/desktop/src/ipc/register-service-ipc.js` | Existing backend route is the migration target | — |
+| `service:get-logs` | `cutover:service` | `GET /service/logs` | `apps/desktop/src/ipc/register-service-ipc.js` | Existing backend route is the migration target | — |
+| `service:export-logs` | `cutover:service` | `GET /service/logs?operation=export` | `apps/desktop/src/ipc/register-service-ipc.js` | Existing backend route is the migration target | — |
+| `service:clear-logs` | `cutover:service` | `DELETE /service/logs` | `apps/desktop/src/ipc/register-service-ipc.js` | Existing backend route is the migration target | — |
+| `service:rotate-token` | `cutover:service` | `POST /service/token/rotate` | `apps/desktop/src/ipc/register-service-ipc.js` | Existing backend route is the migration target | — |
+| `service:revoke-mcp-sessions` | `blocked:T45` | `Backend route not implemented: POST /service/token/revoke-sessions` | `apps/desktop/src/ipc/register-service-ipc.js` | Waiting for T45 MCP sidecar migration; current backend route registry has no MCP session revoke endpoint | — |
+| `about:get-info` | `retired` | `GET /about` | `apps/desktop/src/ipc/index.js` | Control Center reads the host About view through Backend HTTP | 413c5825 |
+| `about:check-updates` | `retired` | `POST /about/check-updates` | `apps/desktop/src/ipc/index.js` | Control Center queues the existing update-check Job and follows its result through Backend Job/SSE APIs | 413c5825 |
+| `catalog:get` | `retired` | `GET /catalog` | `apps/desktop/src/ipc/index.js` | Catalog state now comes from the Shell-owned Catalog bridge and Backend HTTP route | ac59d75f |
+| `catalog:prepare-install` | `retired` | `POST /catalog/prepare` | `apps/desktop/src/ipc/index.js` | Reviewed install preparation is handled by the Backend Catalog domain | ac59d75f |
+| `catalog:install-selection` | `retired` | `POST /catalog/install` → Job | `apps/desktop/src/ipc/index.js` | Install consumes the reviewed selection through the Backend Job boundary | ac59d75f |
+| `catalog:clear-selection` | `retired` | `POST /catalog/clear-selection` | `apps/desktop/src/ipc/index.js` | Pending selection lifecycle is owned by the Backend Catalog bridge | ac59d75f |
+| `catalog:add-blocklist` | `retired` | `POST /catalog/blocklist` | `apps/desktop/src/ipc/index.js` | Catalog blocklist mutation is handled by the Backend Catalog domain | ac59d75f |
+| `catalog:remove-blocklist` | `retired` | `DELETE /catalog/blocklist/:id` | `apps/desktop/src/ipc/index.js` | Catalog blocklist removal is handled by the Backend Catalog domain | ac59d75f |
 
 ## Operating rules
 
 - `npm run check:channel-retirement` 对当前 active 行与 TS 清单逐项对账；active 必须精确覆盖当前常量，历史 `retired` 行可以不再存在于当前源。
-- 当前通道上限为 158，后续提交只能减少 active 数量；新增 IPC 常量必须先更新本台账和 T40 依据。
+- 当前 active 通道数为 87，后续提交只能减少 active 数量；新增 IPC 常量必须先更新本台账和 T40 依据。
 - `retired` 行必须保留原 channel、真实历史 source、删除提交的完整或短 SHA（至少 7 位）；它不计入 current、keep、cutover、blocked、dead 计数。
 - `keep` 上限是 41。四个 QQ/WeCom host-secret 通道等待 T44 的 secrets 边界，不能借 `keep` 绕过上限。
 - `cutover` 行在同一切换提交中完成 HTTP/SSE 接入、旧 IPC 删除和台账状态更新；不得先并行双写再补删除。
+
+T43 已收窄 `apps/desktop/control-center-preload.js`：插件 HTTP 对等方法不再暴露给 renderer；`openPluginDashboard`、`inspectPluginPackage` 与四个 QQ/WeCom host-secret 方法继续保留。T48 已完成 Creator 迁移。主进程 IPC 注册表按当前 87 条通道对账，其中 81 个为直接注册、6 个为事件-only。
 
 Refs #41

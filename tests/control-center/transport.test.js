@@ -6,7 +6,7 @@ const { before, describe, it } = require("node:test")
 let transport
 
 before(async () => {
-	transport = await import("../../src/control-center/src/api/transport.ts")
+	transport = await import("../../apps/control-center/src/api/transport.ts")
 })
 
 function createClock() {

@@ -10,7 +10,7 @@ const {
   reserveEvaluatorCall,
   reservePlannerCall,
   reserveProviderCall
-} = require('../../src/main/services/hatch-pet-agent-budget-ledger')
+} = require('../../apps/desktop/src/services/hatch-pet-agent-budget-ledger')
 
 const limits = Object.freeze({
   maxProviderCalls: 72,

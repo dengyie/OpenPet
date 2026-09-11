@@ -8,8 +8,8 @@ const test = require("node:test")
 
 const { spawnSidecar, stopSidecar } = require("../../apps/desktop/src/sidecar/spawn.js")
 const { createMessageHandler } = require("../../apps/desktop/src/sidecar/message-handler.js")
-const { createSettingsSidecarBridge } = require("../../src/main/settings-sidecar-bridge.js")
-const { createSettingsHostEffect } = require("../../src/main/settings-host-effects.js")
+const { createSettingsSidecarBridge } = require("../../apps/desktop/src/services/settings-sidecar-bridge.js")
+const { createSettingsHostEffect } = require("../../apps/desktop/src/services/settings-host-effects.js")
 
 const repoRoot = path.resolve(__dirname, "../..")
 

@@ -3,9 +3,9 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 
-const creatorPanePath = path.resolve(__dirname, '../../src/control-center/src/panes/CreatorPane.tsx')
-const creatorPaneHookPath = path.resolve(__dirname, '../../src/control-center/src/hooks/useCreatorPane.ts')
-const demoControlCenterApiPath = path.resolve(__dirname, '../../src/control-center/src/api/demo-control-center-api.ts')
+const creatorPanePath = path.resolve(__dirname, '../../apps/control-center/src/panes/CreatorPane.tsx')
+const creatorPaneHookPath = path.resolve(__dirname, '../../apps/control-center/src/hooks/useCreatorPane.ts')
+const demoControlCenterApiPath = path.resolve(__dirname, '../../apps/control-center/src/api/demo-control-center-api.ts')
 
 test('creator pane copy explains internal anchor preparation instead of rejecting composite-board wording', () => {
   const source = fs.readFileSync(creatorPanePath, 'utf-8')
@@ -44,7 +44,7 @@ test('creator pane renders safe Provider attempt diagnostics for failed paid can
 })
 
 test('creator pane hook gives explicit feedback and starts a stopped dashboard service before opening details', () => {
-  const hookPath = path.resolve(__dirname, '../../src/control-center/src/hooks/useCreatorPane.ts')
+  const hookPath = path.resolve(__dirname, '../../apps/control-center/src/hooks/useCreatorPane.ts')
   const source = fs.readFileSync(hookPath, 'utf-8')
  assert.match(source, /当前状态不可预览/)
  assert.match(source, /ensureCreatorStudioServiceReady/)
@@ -87,9 +87,9 @@ test('creator pane explains degraded placeholder actions instead of presenting t
 })
 
 test('creator pane hook wires import available actions API', () => {
-  const hookPath = path.resolve(__dirname, '../../src/control-center/src/hooks/useCreatorPane.ts')
+  const hookPath = path.resolve(__dirname, '../../apps/control-center/src/hooks/useCreatorPane.ts')
   const source = fs.readFileSync(hookPath, 'utf-8')
-  assert.match(source, /importCreatorAvailableActions/)
+  assert.match(source, /creatorApi\.importAvailableActions/)
   assert.match(source, /onImportAvailableActions/)
   assert.match(source, /正在导入可用动作/)
 })
@@ -102,7 +102,7 @@ test('demo partial import falls back to the module-level creator last run', () =
 
 test('creator pane hook loads asset previews on demand and marks prompt copy state', () => {
   const source = fs.readFileSync(creatorPaneHookPath, 'utf-8')
-  assert.match(source, /getCreatorAssetPreview/)
+  assert.match(source, /creatorApi\.getAssetPreview/)
   assert.match(source, /onLoadAssetPreview/)
   assert.match(source, /setCopiedPromptKey/)
   assert.match(source, /预览仅支持已导入动作/)

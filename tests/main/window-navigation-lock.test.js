@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { applyNavigationLock } = require('../../src/main/window')
+const { applyNavigationLock } = require('../../apps/desktop/src/windows/window')
 
 // Minimal stand-in for a BrowserWindow's webContents. applyNavigationLock
 // registers handlers we can then invoke with crafted URLs to assert which
@@ -97,7 +97,7 @@ test('navigation lock denies all window.open and webview attachment', () => {
 test('every main-process window applies navigation hardening', () => {
   const fs = require('fs')
   const path = require('path')
-  const mainDir = path.join(__dirname, '..', '..', 'src', 'main')
+  const mainDir = path.join(__dirname, '..', '..', 'apps', 'desktop', 'src', 'windows')
   const files = fs.readdirSync(mainDir)
     .filter((name) => name.endsWith('.js'))
     .map((name) => ({ name, source: fs.readFileSync(path.join(mainDir, name), 'utf8') }))

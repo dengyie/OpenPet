@@ -18,6 +18,11 @@ const fixtureFiles = [
 	'services/backend/routes/health.js',
 	'services/backend/routes/service.js',
 	'services/backend/routes/ai.js',
+	'services/backend/routes/ai-runtime.js',
+	'services/backend/routes/ai-stream.js',
+	'apps/desktop/src/services/control-center-adapters.js',
+	'apps/desktop/src/services/plugin-service-state.js',
+	'apps/desktop/src/services/plugin-runtime-safety.js',
 	'services/backend/routes/about.js',
 	'services/backend/routes/settings.js',
 	'services/backend/routes/actions.js',
@@ -25,11 +30,12 @@ const fixtureFiles = [
 	'services/backend/routes/catalog.js',
 	'services/backend/routes/jobs.js',
 	'services/backend/routes/plugins.js',
+	'services/backend/routes/creator.js',
 	'services/backend/jobs/state-machine.js',
 	'services/backend/http/router.js',
 	'services/backend/http/middleware.js',
-	'src/shared/ipc-channels.ts',
-	'src/shared/ipc-channels.js',
+	'apps/desktop/src/shared/ipc-channels.ts',
+	'apps/desktop/src/shared/ipc-channels.js',
 	'scripts/api-contract-route-parser.mjs',
 	'scripts/check-api-contract.mjs'
 ]
@@ -68,7 +74,7 @@ test('CLI reads Job statuses from section 6.2 instead of the jobs-recovered SSE 
 
 test('CLI hard-checks route registry and IPC inventories', (t) => {
 	const fixtureRoot = createFixture(t)
-	const tsPath = path.join(fixtureRoot, 'src/shared/ipc-channels.ts')
+	const tsPath = path.join(fixtureRoot, 'apps/desktop/src/shared/ipc-channels.ts')
 	fs.writeFileSync(tsPath, fs.readFileSync(tsPath, 'utf8').replace("  PET_QUIT: 'pet:quit',\n", ''))
 	const result = spawnSync(process.execPath, [path.join(fixtureRoot, 'scripts/check-api-contract.mjs')], { cwd: fixtureRoot, encoding: 'utf8' })
 	assert.equal(result.status, 1)
@@ -105,7 +111,7 @@ test('CLI permits only the explicitly registered T45 transitional revoke route',
 	assert.doesNotMatch(doc, /token\/revoke-sessions/)
 	const result = spawnSync(process.execPath, [path.join(fixtureRoot, 'scripts/check-api-contract.mjs')], { cwd: fixtureRoot, encoding: 'utf8' })
 	assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`)
-	assert.match(result.stdout, /实际路由、注册表与 §4 精确对账\(76\/103 行\)/)
+	assert.match(result.stdout, /实际路由、注册表与 §4 精确对账\(133\/127 行\)/)
 
 	const registryPath = path.join(fixtureRoot, 'services/backend/routes/registry.js')
 	const registry = fs.readFileSync(registryPath, 'utf8')

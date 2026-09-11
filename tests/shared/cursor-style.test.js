@@ -5,7 +5,7 @@ const {
   createCustomCursorCss,
   resolvePetCursorOverlayState,
   resolvePetCursorStyle
-} = require('../../src/shared/cursor-style')
+} = require('../../apps/desktop/src/shared/cursor-style')
 
 test('createCustomCursorCss returns empty style unless a hosted cursor is enabled', () => {
   assert.equal(createCustomCursorCss(null), '')

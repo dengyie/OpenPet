@@ -5,7 +5,7 @@ const os = require('os')
 const path = require('path')
 const sharp = require('sharp')
 
-const { generateSpritesFromFrames, inspectFrameFolder } = require('../../src/main/services/sprite-generator')
+const { generateSpritesFromFrames, inspectFrameFolder } = require('../../apps/desktop/src/services/sprite-generator')
 
 const createFrame = async (filePath, width, height) => {
   await sharp({

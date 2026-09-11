@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { setImmediate: setImmediatePromise } = require('node:timers/promises')
 
-const { createOpenPetRuntime } = require('../../src/main/bootstrap/create-openpet-runtime')
+const { createOpenPetRuntime } = require('../../apps/desktop/src/services/bootstrap/create-openpet-runtime')
 
 test('bootstrap runtime wires plugin install and service block-status lookups through the created catalog service', async () => {
   const dialogCalls = []
@@ -22,6 +22,7 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
   const fetchCalls = []
   const fetchImpl = async (url, init = {}) => {
     fetchCalls.push({ url: String(url), method: init.method || 'GET', body: init.body ? JSON.parse(init.body) : null })
+    if (String(url).endsWith('/ai/state')) return new Response(JSON.stringify({ ok: true, data: { config: {}, messages: [], petPackId: '' } }))
     return new Response(JSON.stringify({ ok: true, data: {
       version: 1,
       values: { ...settings, customCursorScope: 'system', petBehavior: { home: { enabled: true, anchor: { displayId: 'old-display', x: 1, y: 2 } } } }
@@ -138,6 +139,7 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
       createCreatorReferenceService: () => ({
         getReference: () => null,
         bindReference: async () => ({ replaced: false, reference: null }),
+        deleteReference: async ({ targetType, targetId }) => ({ deleted: true, targetType, targetId }),
         copyReferenceIntoRun: () => ({})
       }),
       createCreatorStudioDefaultFlowService: () => ({
@@ -146,7 +148,13 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
         stop: () => {},
         refresh: () => {}
       }),
-      createCreatorWorkflowService: () => ({ id: 'creator-workflow' }),
+      createCreatorWorkflowService: () => ({
+        id: 'creator-workflow',
+        getState: async () => ({ ok: true, marker: 'state' }),
+        deleteReference: async (payload) => ({ ok: true, marker: 'deleted', payload }),
+        runWorkflow: async (payload) => ({ ok: true, marker: 'workflow', payload }),
+        bindReference: async (payload) => ({ ok: true, marker: 'bound', payload })
+      }),
       createEventBus: () => ({ on: () => {}, emit: () => {} }),
       createImageGenerationModelService: () => ({ id: 'image-service' }),
       createHatchPetAgentService: (dependencies) => ({ id: 'hatch-pet-agent', dependencies }),
@@ -187,6 +195,7 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
           return getPluginBlockStatus(candidate)
         },
         pickFrames: selectCreatorAssetFrameFolder,
+        runCreatorSpriteEvaluation: async (payload) => ({ ok: true, marker: 'evaluation', payload }),
         stopAllServices: () => {}
       }),
       createSecretService: () => undefined,
@@ -225,6 +234,17 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
   assert.equal(screenHandlers.has('display-added'), true)
   assert.equal(typeof appHandlers.get('activate'), 'function')
   assert.equal(typeof coordinatorDependencies.onCatalogRequest, 'function')
+  assert.deepEqual(await coordinatorDependencies.onCreatorRequest({ operation: 'get-state', payload: {} }), { ok: true, marker: 'state' })
+  assert.deepEqual(await coordinatorDependencies.onCreatorRequest({ operation: 'delete-reference', payload: { targetType: 'editable-action-host', targetId: 'legacy-editable-host' } }), {
+    ok: true,
+    marker: 'deleted',
+    payload: { targetType: 'editable-action-host', targetId: 'legacy-editable-host' }
+  })
+  assert.deepEqual(await coordinatorDependencies.onCreatorRequest({ operation: 'evaluate-sprite', payload: { runId: 'run-1' } }), {
+    ok: true,
+    marker: 'evaluation',
+    payload: { runId: 'run-1' }
+  })
   assert.deepEqual(await coordinatorDependencies.onCatalogRequest({ operation: 'listCatalog' }), {
     schemaVersion: 1,
     updatedAt: '',

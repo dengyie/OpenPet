@@ -14,7 +14,7 @@
  */
 const fs = require('fs')
 const path = require('path')
-const { generateSpritesFromFrames } = require('../src/main/services/sprite-generator')
+const { generateSpritesFromFrames } = require('../apps/desktop/src/services/sprite-generator')
 
 const projectRoot = path.join(__dirname, '..')
 const framesRoot = path.join(projectRoot, 'cat_anime', 'flames')

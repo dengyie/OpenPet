@@ -7,8 +7,8 @@ const crypto = require('node:crypto')
 const { spawn, spawnSync } = require('node:child_process')
 const sharp = require('sharp')
 
-const { normalizePluginManifest } = require('../../src/main/plugins/manifest')
-const { normalizeConfigSchema } = require('../../src/main/plugins/config-schema')
+const { normalizePluginManifest } = require('../../apps/desktop/src/services/plugins/manifest')
+const { normalizeConfigSchema } = require('../../apps/desktop/src/services/plugins/config-schema')
 const { createMinimalWebp } = require('../../examples/plugins/creator-studio/lib/fake-hatch-pet')
 const { writeGoodSubtleWaveSheet } = require('../fixtures/creator-studio/action-quality-fixtures')
 const {

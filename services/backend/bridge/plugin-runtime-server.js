@@ -5,8 +5,8 @@ import { createRequire } from "node:module"
 import { ApiError, MAX_BODY_BYTES } from "../http/middleware.js"
 
 const require = createRequire(import.meta.url)
-const { readBoundedResponseBuffer } = require("../../../src/main/services/bounded-response-body.js")
-const { sanitizeLogText } = require("../../../src/main/services/log-safety.js")
+const { readBoundedResponseBuffer } = require("../../../apps/desktop/src/services/bounded-response-body.js")
+const { sanitizeLogText } = require("../../../apps/desktop/src/services/log-safety.js")
 
 const HOST = "127.0.0.1"
 const NETWORK_RESPONSE_MAX_BYTES = 128 * 1024

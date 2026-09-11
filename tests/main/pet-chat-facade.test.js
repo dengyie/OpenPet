@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { createPetChatFacade } = require('../../src/main/ipc/pet-chat-facade')
+const { createPetChatFacade } = require('../../apps/desktop/src/ipc/pet-chat-facade')
 
 test('pet chat facade builds current chat state from AI, full chat, bubble chat, and active pet pack profile', () => {
   const conversationRequests = []

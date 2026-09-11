@@ -6,7 +6,7 @@ import { ApiError } from "../../http/middleware.js"
 import { inspectPluginManifest, publicManifestInspection } from "./manifest.js"
 
 const require = createRequire(import.meta.url)
-const { coerceConfigValue } = require("../../../../src/main/plugins/config-schema.js")
+const { coerceConfigValue } = require("../../../../apps/desktop/src/services/plugins/config-schema.js")
 
 function isRecord(value) {
 	return value !== null && typeof value === "object" && !Array.isArray(value)

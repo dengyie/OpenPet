@@ -4,8 +4,8 @@ const path = require('path')
 const Module = require('module')
 
 const projectRoot = path.join(__dirname, '..', '..')
-const petIndexPath = path.join(projectRoot, 'index.html')
-const windowModulePath = require.resolve('../../src/main/window')
+const petIndexPath = path.join(projectRoot, 'apps', 'desktop', 'index.html')
+const windowModulePath = require.resolve('../../apps/desktop/src/windows/window')
 
 const createScreenStub = () => ({
   getPrimaryDisplay: () => ({

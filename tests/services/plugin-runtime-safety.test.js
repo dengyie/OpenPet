@@ -4,7 +4,7 @@ const assert = require('node:assert/strict')
 const {
   sanitizePluginCommandResultValue,
   sanitizePluginCommandText
-} = require('../../src/main/services/plugin-runtime-safety')
+} = require('../../apps/desktop/src/services/plugin-runtime-safety')
 
 test('plugin runtime safety redacts command log text consistently', () => {
   const message = sanitizePluginCommandText([

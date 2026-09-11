@@ -3,7 +3,7 @@
 const crypto = require('node:crypto')
 const fs = require('node:fs')
 const path = require('node:path')
-const { VERIFIED_CREATOR_WORKFLOW_IMAGE_MODELS } = require('../src/main/services/image-generation-model-service')
+const { VERIFIED_CREATOR_WORKFLOW_IMAGE_MODELS } = require('../apps/desktop/src/services/image-generation-model-service')
 
 const DEFAULT_API_KEY_ENV = 'OPENPET_IMAGE_PROVIDER_API_KEY'
 const DEFAULT_OUTPUT_DIR = path.join(__dirname, '..', 'release', 'image-edits-provider-probe')

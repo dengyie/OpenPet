@@ -2,13 +2,13 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { setTimeout: delay } = require('node:timers/promises')
 
-const { IPC } = require('../../src/shared/ipc-channels')
+const { IPC } = require('../../apps/desktop/src/shared/ipc-channels')
 const {
   PLUGIN_SHUTDOWN_TIMEOUT_MS,
   registerDisplayLifecycle,
   registerPetWindowLifecycle,
   registerRuntimeAppLifecycle
-} = require('../../src/main/bootstrap/runtime-lifecycle')
+} = require('../../apps/desktop/src/services/bootstrap/runtime-lifecycle')
 
 test('runtime app lifecycle continues quit after plugin shutdown timeout', async () => {
   const appHandlers = new Map()

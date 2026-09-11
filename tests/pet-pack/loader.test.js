@@ -4,7 +4,7 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 
-const { getLegacyPetAnimations, loadPetPackFromDirectory, loadLegacyPetPack } = require('../../src/main/pet-pack/loader')
+const { getLegacyPetAnimations, loadPetPackFromDirectory, loadLegacyPetPack } = require('../../apps/desktop/src/pet/pet-pack/loader')
 const { createMinimalWebp: createFixtureWebp } = require('../../examples/plugins/creator-studio/lib/fake-hatch-pet')
 
 const WRONG_SIZE_WEBP = Buffer.from(

@@ -63,10 +63,39 @@ export const ACTIONS_BRIDGE_OPERATIONS = [
 ] as const
 export type ActionsBridgeOperation = (typeof ACTIONS_BRIDGE_OPERATIONS)[number]
 
+export const CREATOR_BRIDGE_OPERATIONS = [
+  "pick-reference", "bind-reference", "delete-reference", "get-state", "get-last-run", "asset-preview",
+  "generate-character", "generate-action", "run-workflow", "evaluate-sprite", "retry-action", "retry-identity",
+  "accept-identity", "accept-action-candidate", "export-recovery", "import-actions",
+] as const
+export type CreatorBridgeOperation = (typeof CREATOR_BRIDGE_OPERATIONS)[number]
+
+const creatorResultSchema = z.object({
+  type: z.literal("creator.result"),
+  operation: z.enum(CREATOR_BRIDGE_OPERATIONS),
+  ok: z.boolean(),
+  result: z.unknown().optional(),
+  error: z.object({ code: z.enum(ERROR_CODES), message: z.string().min(1) }).strict().optional(),
+}).strict().superRefine((body, ctx) => {
+  const hasResult = Object.hasOwn(body, "result")
+  const hasError = Object.hasOwn(body, "error")
+  if (body.ok && (!hasResult || hasError)) {
+    ctx.addIssue({ code: "custom", message: "successful Creator result must contain result and no error" })
+  }
+  if (!body.ok && (!hasError || hasResult)) {
+    ctx.addIssue({ code: "custom", message: "failed Creator result must contain error and no result" })
+  }
+})
+
 export const backendToShellSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("actions.request"),
     operation: z.enum(ACTIONS_BRIDGE_OPERATIONS),
+    payload: z.record(z.string(), z.unknown()),
+  }).strict(),
+  z.object({
+    type: z.literal("creator.request"),
+    operation: z.enum(CREATOR_BRIDGE_OPERATIONS),
     payload: z.record(z.string(), z.unknown()),
   }).strict(),
   z.object({
@@ -99,6 +128,12 @@ export const backendToShellSchema = z.discriminatedUnion("type", [
     operation: z.enum(PET_PACK_BRIDGE_OPERATIONS),
     payload: z.record(z.string(), z.unknown()),
   }).strict(),
+  z.object({ type: z.literal("ai.state"), snapshot: z.record(z.string(), z.unknown()) }).strict(),
+  z.object({
+    type: z.literal("ai.host.request"),
+    operation: z.enum(["context", "present"]),
+    payload: z.record(z.string(), z.unknown()),
+  }).strict(),
 ])
 export type BackendToShell = z.infer<typeof backendToShellSchema>
 export const actionsRequestSchema = backendToShellSchema.options[0]
@@ -111,6 +146,7 @@ export const shellToBackendSchema = z.discriminatedUnion("type", [
     result: z.unknown().optional(),
     error: z.object({ code: z.enum(ERROR_CODES), message: z.string().min(1) }).strict().optional(),
   }).strict(),
+  creatorResultSchema,
   z.object({
     type: z.literal("init"),
     userDataPath: z.string(),
@@ -159,6 +195,7 @@ export const shellToBackendSchema = z.discriminatedUnion("type", [
     payload: z.record(z.string(), z.unknown()),
   }).strict(),
   z.object({ type: z.literal("pet.command.result"), ok: z.boolean(), result: z.unknown().optional(), error: z.string().optional() }).strict(),
+  z.object({ type: z.literal("ai.host.result"), operation: z.enum(["context", "present"]), ok: z.boolean(), result: z.unknown().optional(), error: z.string().optional() }).strict(),
 ])
 export type ShellToBackend = z.infer<typeof shellToBackendSchema>
 

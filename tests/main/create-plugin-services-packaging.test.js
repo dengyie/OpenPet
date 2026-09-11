@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const path = require('node:path')
 
 const packageJson = require('../../package.json')
-const { createPluginServices } = require('../../src/main/bootstrap/create-plugin-services')
+const { createPluginServices } = require('../../apps/desktop/src/services/bootstrap/create-plugin-services')
 
 test('packaged app build files cover every bundled plugin synchronized at bootstrap', () => {
   const projectRoot = path.resolve(__dirname, '../..')

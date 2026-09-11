@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 
 test('buildProviderModelSelectorGroups dedupes models and keeps current custom model as manual', async () => {
-  const { buildProviderModelSelectorGroups } = await import('../../src/control-center/src/lib/provider-model-catalog.ts')
+  const { buildProviderModelSelectorGroups } = await import('../../apps/control-center/src/lib/provider-model-catalog.ts')
 
   assert.deepEqual(buildProviderModelSelectorGroups({
     currentModel: 'custom-gateway-model',
@@ -21,7 +21,7 @@ test('buildProviderModelSelectorGroups dedupes models and keeps current custom m
 })
 
 test('current source label distinguishes recommended cached and manual values', async () => {
-  const { describeCurrentModelSource } = await import('../../src/control-center/src/lib/provider-model-catalog.ts')
+  const { describeCurrentModelSource } = await import('../../apps/control-center/src/lib/provider-model-catalog.ts')
 
   assert.deepEqual(describeCurrentModelSource({
     currentModel: 'gpt-5.5',
@@ -52,7 +52,7 @@ test('current source label distinguishes recommended cached and manual values', 
 })
 
 test('formatProviderModelCatalogMeta reports empty and populated cache states', async () => {
-  const { formatProviderModelCatalogMeta } = await import('../../src/control-center/src/lib/provider-model-catalog.ts')
+  const { formatProviderModelCatalogMeta } = await import('../../apps/control-center/src/lib/provider-model-catalog.ts')
 
   assert.match(
     formatProviderModelCatalogMeta({
@@ -76,7 +76,7 @@ test('formatProviderModelCatalogMeta reports empty and populated cache states', 
 })
 
 test('buildProviderModelSelectorGroups prefers recommended display rows and marks cached duplicates', async () => {
-  const { buildProviderModelSelectorGroups } = await import('../../src/control-center/src/lib/provider-model-catalog.ts')
+  const { buildProviderModelSelectorGroups } = await import('../../apps/control-center/src/lib/provider-model-catalog.ts')
 
   assert.deepEqual(buildProviderModelSelectorGroups({
     currentModel: 'gpt-5.5',
@@ -97,7 +97,7 @@ test('buildProviderModelSelectorGroups prefers recommended display rows and mark
 })
 
 test('buildProviderModelSelectorGroups filters rows and keeps the current manual model visible', async () => {
-  const { buildProviderModelSelectorGroups } = await import('../../src/control-center/src/lib/provider-model-catalog.ts')
+  const { buildProviderModelSelectorGroups } = await import('../../apps/control-center/src/lib/provider-model-catalog.ts')
 
   assert.deepEqual(buildProviderModelSelectorGroups({
     currentModel: 'custom-gateway-model',

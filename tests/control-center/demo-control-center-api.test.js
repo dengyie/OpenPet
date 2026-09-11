@@ -50,7 +50,7 @@ let demoControlCenterAPI
 const demoStorageKey = 'openpet.controlCenter.demoState'
 
 test.before(async () => {
-  ;({ demoControlCenterAPI } = await import('../../src/control-center/src/api/demo-control-center-api.ts'))
+  ;({ demoControlCenterAPI } = await import('../../apps/control-center/src/api/demo-control-center-api.ts'))
 })
 
 test('demo pet chat state initializes shared streaming state to null', async () => {
@@ -61,7 +61,7 @@ test('demo pet chat state initializes shared streaming state to null', async () 
 
 test('demo QQ credentials survive a module reload through session storage', async () => {
   await demoControlCenterAPI.saveImGatewayQqOfficialCredentials({ appId: 'demo-app-id', clientSecret: 'demo-client-secret' })
-  const reloaded = await import(`../../src/control-center/src/api/demo-control-center-api.ts?qqReload=${Date.now()}`)
+  const reloaded = await import(`../../apps/control-center/src/api/demo-control-center-api.ts?qqReload=${Date.now()}`)
   assert.deepEqual(await reloaded.demoControlCenterAPI.getImGatewaySecretState(), {
     hasTelegramBotToken: false,
     hasQqOfficialAppId: true,
@@ -195,7 +195,7 @@ const createImGatewayPhase2DemoPlugin = () => ({
 // 断言的就是生产行为——明确失败，且失败信息指向真正的原因（preload 桥没注入）。
 test('control center API entrypoint refuses the demo fallback outside a dev build', async () => {
   delete global.window.controlCenterAPI
-  const { controlCenterAPI } = await import('../../src/control-center/src/api/control-center-api.ts')
+  const { controlCenterAPI } = await import('../../apps/control-center/src/api/control-center-api.ts')
 
   assert.equal(global.window.controlCenterAPI, undefined)
 
@@ -219,7 +219,7 @@ test('control center API entrypoint forwards to the injected bridge when present
     }
   }
   try {
-    const { controlCenterAPI } = await import('../../src/control-center/src/api/control-center-api.ts')
+    const { controlCenterAPI } = await import('../../apps/control-center/src/api/control-center-api.ts')
     const settings = await controlCenterAPI.getSettings()
     assert.equal(settings.scale, 1.25)
     assert.deepEqual(calls, [['getSettings', []]])

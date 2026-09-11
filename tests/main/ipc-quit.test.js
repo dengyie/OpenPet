@@ -1,8 +1,8 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { IPC } = require('../../src/shared/ipc-channels')
-const { registerIpcHandlers } = require('../../src/main/ipc')
+const { IPC } = require('../../apps/desktop/src/shared/ipc-channels')
+const { registerIpcHandlers } = require('../../apps/desktop/src/ipc')
 
 const createIpcMainStub = () => {
   const handlers = new Map()

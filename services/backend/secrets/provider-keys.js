@@ -1,4 +1,4 @@
-import logSafety from "../../../src/main/services/log-safety.js"
+import logSafety from "../../../apps/desktop/src/services/log-safety.js"
 
 import { ApiError } from "../http/middleware.js"
 

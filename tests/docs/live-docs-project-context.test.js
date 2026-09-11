@@ -75,12 +75,15 @@ test('project-context indexes the archived provider smoke evidence and current s
   const context = readProjectContext()
   const facts = context.currentFacts.join('\n')
   const docsReadme = fs.readFileSync(path.join(repoRoot, 'docs/README.md'), 'utf-8')
+  const agentAwarenessRoot = path.join(repoRoot, 'docs/release-evidence/agent-awareness-local-smoke')
+  const archivedSessionIds = fs.readdirSync(agentAwarenessRoot)
+    .filter((entry) => /^\d{4}-\d{2}-\d{2}T/.test(entry))
+    .sort()
+  assert.ok(archivedSessionIds.length > 0, 'agent-awareness evidence should contain an archived session')
+  const latestAgentAwarenessSession = archivedSessionIds.at(-1)
   const agentAwarenessEvidence = JSON.parse(
     fs.readFileSync(
-      path.join(
-        repoRoot,
-        'docs/release-evidence/agent-awareness-local-smoke/2026-07-03T16-04-08-824Z/agent-awareness-local-smoke-result.json'
-      ),
+      path.join(agentAwarenessRoot, latestAgentAwarenessSession, 'agent-awareness-local-smoke-result.json'),
       'utf-8'
     )
   )
@@ -133,10 +136,13 @@ test('project-context indexes the archived provider smoke evidence and current s
   )
   assert.match(
     facts,
-    /run-agent-awareness-local-smoke[\s\S]*manualAcceptanceTemplate[\s\S]*docs\/release-evidence\/agent-awareness-local-smoke\/2026-07-03T16-04-08-824Z\/[\s\S]*unknownRecordCount 0[\s\S]*unsupportedLifecycleRecordCount 0/i,
+    new RegExp(
+      `run-agent-awareness-local-smoke[\\s\\S]*manualAcceptanceTemplate[\\s\\S]*docs/release-evidence/agent-awareness-local-smoke/${latestAgentAwarenessSession}/[\\s\\S]*19 sanitized sessions[\\s\\S]*134 events`,
+      'i'
+    ),
     'project-context.json should describe the agent-awareness smoke entrypoint and archived evidence path'
   )
-  assert.equal(agentAwarenessEvidence.sessionDir, 'agent-awareness-local-smoke/2026-07-03T16-04-08-824Z')
+  assert.equal(agentAwarenessEvidence.sessionDir, `agent-awareness-local-smoke/${latestAgentAwarenessSession}`)
   assert.equal(agentAwarenessEvidence.pluginDataDir, 'plugin-data')
   assert.equal(agentAwarenessEvidence.resultPath, 'agent-awareness-local-smoke-result.json')
   assert.equal(agentAwarenessEvidence.healthUrl, '[local-url]')

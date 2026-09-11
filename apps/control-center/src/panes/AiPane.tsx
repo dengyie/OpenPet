@@ -1,0 +1,2373 @@
+import { useState } from 'react'
+import type { ReactNode } from 'react'
+import type {
+  AiBehaviorConfig,
+  AiBehaviorResult,
+  AiConfigViewState,
+  AiConnectionTestResult,
+  AiTalkTraceDiagnosticsFilters,
+  ImageGenerationHealthCheckResult,
+  AiMemoryItemViewState,
+  AiMemoryProfileViewState,
+  AiPersonaDraftViewState,
+  AiPersonaProfileViewState,
+  AiTalkTraceSummaryViewState,
+  ChatMessage,
+  HatchPetAgentCapabilityResult,
+  HatchPetAgentConfigView,
+  ImageGenerationConfigViewState,
+  ProviderModelCatalogViewState,
+  ProviderModelDiscoveryResult,
+  PetChatStateViewState,
+  VisionConfigViewState
+} from '@openpet/shared/src/openpet-contracts.ts'
+import { Toggle } from '../components/Toggle.tsx'
+import { defaultImageGenerationConfig } from '../lib/defaults.ts'
+import {
+  buildProviderModelSelectorGroups,
+  describeCurrentModelSource,
+  formatProviderModelCatalogMeta
+} from '../lib/provider-model-catalog.ts'
+
+type ImageProviderPreset = {
+  id: string
+  title: string
+  description: string
+  baseUrl: string
+  model?: string
+  timeoutMs: number
+  maxConcurrentJobs: number
+}
+
+type ChatProviderPreset = {
+  id: string
+  title: string
+  description: string
+  baseUrl: string
+  model?: string
+}
+
+type ProviderFamily = 'openai' | 'openrouter' | 'together' | 'lm-studio' | 'vllm' | 'local-gateway' | 'generic-openai-compatible'
+
+type ProviderStatusItemProps = {
+  label: string
+  value: string
+  tone?: 'default' | 'ok' | 'warn'
+}
+
+type ProviderModelSelectorProps = {
+  ariaLabel: string
+  currentModel: string
+  cachedCatalog: ProviderModelCatalogViewState
+  recommendedModels?: string[]
+  saving?: boolean
+  statusText?: string
+  onSelectModel: (model: string) => void
+  onRefreshModels?: () => void | Promise<void>
+}
+
+function ProviderStatusItem({ label, value, tone = 'default' }: ProviderStatusItemProps) {
+  return (
+    <div className={`provider-status-item provider-status-item-${tone}`}>
+      <strong>{label}</strong>
+      <span>{value}</span>
+    </div>
+  )
+}
+
+function ProviderModelSelector({
+  ariaLabel,
+  currentModel,
+  cachedCatalog,
+  recommendedModels = [],
+  saving = false,
+  statusText = '',
+  onSelectModel,
+  onRefreshModels
+}: ProviderModelSelectorProps) {
+  const [expanded, setExpanded] = useState(false)
+  const [filterText, setFilterText] = useState('')
+  const normalizedCurrentModel = String(currentModel || '').trim()
+  const currentSource = describeCurrentModelSource({
+    currentModel,
+    recommendedModels,
+    cachedModels: cachedCatalog.models
+  })
+  const groups = buildProviderModelSelectorGroups({
+    currentModel,
+    filterText,
+    recommendedModels,
+    cachedModels: cachedCatalog.models
+  })
+  const allModels = [
+    ...groups.recommended.map((row) => ({ ...row, source: 'recommended' as const })),
+    ...groups.cached.map((row) => ({ ...row, source: 'cached' as const })),
+    ...groups.manual.map((row) => ({ ...row, source: 'manual' as const }))
+  ]
+  const cachedCount = Array.isArray(cachedCatalog.models) ? cachedCatalog.models.length : 0
+  const datalistId = `${ariaLabel.replace(/\s+/g, '-')}-options`
+  const sourceListId = `${ariaLabel.replace(/\s+/g, '-')}-sources`
+  const sourceListTestId = `${ariaLabel}-sources`
+  const searchLabelPrefix = ariaLabel.replace(/\s*Model\s*$/i, '').trim()
+  const searchAriaLabel = searchLabelPrefix
+    ? `搜索${searchLabelPrefix === 'Vision' ? ' Vision ' : searchLabelPrefix}模型`
+    : '搜索模型'
+  const refreshAriaLabel = searchLabelPrefix
+    ? `刷新${searchLabelPrefix === 'Vision' ? ' Vision ' : searchLabelPrefix}模型`
+    : '刷新模型'
+  const listButtonLabel = expanded
+    ? '收起模型列表'
+    : `查看模型列表${cachedCount ? ` ${cachedCount}` : ''}`
+  const normalizedStatusText = String(statusText || '').trim()
+  const getSourceLabel = (source: 'recommended' | 'cached' | 'manual') => {
+    if (source === 'recommended') return '推荐模型'
+    if (source === 'cached') return '缓存模型'
+    return '手动输入'
+  }
+  const renderRows = (rows: typeof groups.recommended, emptyLabel: string) => (
+    rows.length
+      ? rows.map((row) => (
+        <button
+          key={row.id}
+          type="button"
+          aria-label={row.id}
+          className={`provider-model-pill${row.selected ? ' active' : ''}`}
+          onClick={() => onSelectModel(row.id)}
+        >
+          <span>{row.id}</span>
+          {row.cached ? <span className="provider-model-pill-badge" aria-hidden="true">已缓存</span> : null}
+        </button>
+      ))
+      : <span className="field-note">{emptyLabel}</span>
+  )
+
+  return (
+    <div className="provider-model-picker">
+      <input
+        aria-label={ariaLabel}
+        className="text-input"
+        list={datalistId}
+        value={normalizedCurrentModel}
+        placeholder="输入以搜索模型，也可直接手填"
+        onChange={(event) => onSelectModel(event.target.value)}
+      />
+      <datalist id={datalistId}>
+        {allModels.map((option) => (
+          <option key={`${option.source}:${option.id}`} value={option.id} label={getSourceLabel(option.source)} />
+        ))}
+      </datalist>
+      <div className="provider-model-picker-meta">
+        <span className={`provider-model-source-badge provider-model-source-${currentSource.source}`}>{currentSource.label}</span>
+        {normalizedCurrentModel && currentSource.source === 'manual' ? <span className="field-note">当前值不依赖 /models，可直接保存使用。</span> : null}
+      </div>
+      <div className="provider-model-picker-toolbar">
+        {onRefreshModels ? (
+          <button type="button" className="ghost" aria-label={refreshAriaLabel} onClick={onRefreshModels} disabled={saving}>
+            刷新模型
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="ghost"
+          aria-expanded={expanded}
+          aria-controls={sourceListId}
+          onClick={() => setExpanded((current) => !current)}
+        >
+          {listButtonLabel}
+        </button>
+      </div>
+      <div className="field-note">{formatProviderModelCatalogMeta(cachedCatalog)}</div>
+      {normalizedStatusText ? (
+        <div className="provider-model-status" data-testid={`${ariaLabel}-status`} aria-live="polite">
+          {normalizedStatusText}
+        </div>
+      ) : null}
+      <div className="provider-model-option-groups" id={sourceListId} data-testid={sourceListTestId} hidden={!expanded}>
+        <label className="provider-model-filter">
+          <span className="field-label">搜索模型</span>
+          <input
+            aria-label={searchAriaLabel}
+            className="text-input"
+            value={filterText}
+            placeholder="输入关键词过滤模型"
+            onChange={(event) => setFilterText(event.target.value)}
+          />
+        </label>
+        <div className="provider-model-options-scroll">
+          <div className="provider-model-option-group">
+            <strong>推荐模型</strong>
+            <div className="provider-model-pill-row">
+              {renderRows(groups.recommended, '暂无推荐模型')}
+            </div>
+          </div>
+          <div className="provider-model-option-group">
+            <strong>缓存模型</strong>
+            <div className="provider-model-pill-row">
+              {renderRows(groups.cached, '暂无缓存模型')}
+            </div>
+          </div>
+          {groups.manual.length ? (
+            <div className="provider-model-option-group">
+              <strong>手动输入</strong>
+              <div className="provider-model-pill-row">
+                {renderRows(groups.manual, '当前过滤没有匹配手动模型')}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ProviderCapabilityPanelSummary({
+  title,
+  description,
+  hostSummary,
+  modelSummary,
+  draftSummary,
+  hasApiKey
+}: {
+  title: string
+  description: string
+  hostSummary: string
+  modelSummary: string
+  draftSummary: string
+  hasApiKey: boolean
+}) {
+  return (
+    <summary className="provider-capability-summary">
+      <div className="provider-capability-summary-main">
+        <div>
+          <h3>{title}</h3>
+          <p>{description}</p>
+        </div>
+        <div className="provider-inline-summary provider-inline-summary-compact">
+          <code>{hostSummary || '未设置 host'}</code>
+          <span>{modelSummary || '未设置模型'}</span>
+          <span>{hasApiKey ? 'API Key 已保存' : 'API Key 未保存'}</span>
+          <span>{draftSummary || '无未保存草稿'}</span>
+        </div>
+      </div>
+      <span className="provider-capability-caret" aria-hidden="true">⌄</span>
+    </summary>
+  )
+}
+
+const getProviderHostSummary = (value: string) => {
+  try {
+    const parsed = new URL(String(value || '').trim())
+    return parsed.host || parsed.href
+  } catch (_) {
+    return String(value || '').trim() || '未设置'
+  }
+}
+
+const imageProviderPresets: readonly ImageProviderPreset[] = [
+  {
+    id: 'openai',
+    title: 'OpenAI 官方',
+    description: '官方图片 endpoint 模板；保存后请用健康检查确认当前账号和模型权限。',
+    baseUrl: 'https://api.openai.com/v1',
+    model: 'gpt-image-2',
+    timeoutMs: 120000,
+    maxConcurrentJobs: 1
+  },
+  {
+    id: 'together',
+    title: 'Together',
+    description: '常见云端图片 endpoint 模板；未包含当前 OpenPet smoke 证据，请按 Together 已开通模型调整并健康检查。',
+    baseUrl: 'https://api.together.xyz/v1',
+    timeoutMs: 120000,
+    maxConcurrentJobs: 1
+  },
+  {
+    id: 'openrouter',
+    title: 'OpenRouter',
+    description: '常见云端图片 endpoint 模板；未包含当前 OpenPet smoke 证据，请按 OpenRouter 实际可用模型调整并健康检查。',
+    baseUrl: 'https://openrouter.ai/api/v1',
+    timeoutMs: 120000,
+    maxConcurrentJobs: 1
+  },
+  {
+    id: 'local-openai-compatible',
+    title: '本地/代理 OpenAI-compatible',
+    description: '本机、反代或局域网 endpoint 模板；保存后请用健康检查确认实际 /models 和图片接口。',
+    baseUrl: 'http://127.0.0.1:8317/v1',
+    model: 'gpt-image-2',
+    timeoutMs: 120000,
+    maxConcurrentJobs: 1
+  },
+  {
+    id: 'openpet-8317-gateway',
+    title: 'OpenPet 8317 网关',
+    description: '当前开发网关已有归档 Creator Studio smoke：gpt-image-2 路径可跑通；仍不代表图片质量批准。',
+    baseUrl: 'http://127.0.0.1:8317/v1',
+    model: 'gpt-image-2',
+    timeoutMs: 120000,
+    maxConcurrentJobs: 1
+  }
+] as const
+
+const chatProviderPresets: readonly ChatProviderPreset[] = [
+  {
+    id: 'openai',
+    title: 'OpenAI 官方',
+    description: '官方聊天 endpoint 模板；保存后请测试当前账号、模型和网关可达性。',
+    baseUrl: 'https://api.openai.com/v1',
+    model: 'gpt-4o-mini'
+  },
+  {
+    id: 'lm-studio',
+    title: 'LM Studio',
+    description: '本地 endpoint 模板；未包含当前 OpenPet smoke 证据，请按已加载模型调整并测试。',
+    baseUrl: 'http://127.0.0.1:1234/v1'
+  },
+  {
+    id: 'vllm',
+    title: 'vLLM',
+    description: '自托管 endpoint 模板；未包含当前 OpenPet smoke 证据，请按部署模型调整并测试。',
+    baseUrl: 'http://127.0.0.1:8000/v1'
+  },
+  {
+    id: 'openrouter',
+    title: 'OpenRouter',
+    description: '常见云端聚合 endpoint 模板；未包含当前 OpenPet smoke 证据，请按路由模型调整并测试。',
+    baseUrl: 'https://openrouter.ai/api/v1'
+  },
+  {
+    id: 'together',
+    title: 'Together',
+    description: '常见云端推理 endpoint 模板；未包含当前 OpenPet smoke 证据，请按 Together 模型列表调整并测试。',
+    baseUrl: 'https://api.together.xyz/v1'
+  },
+  {
+    id: 'local-openai-compatible',
+    title: '本地/代理 OpenAI-compatible',
+    description: '本机、反代或局域网 endpoint 模板；保存后请测试实际 /models 和聊天接口。',
+    baseUrl: 'http://127.0.0.1:8317/v1',
+    model: 'gpt-4o-mini'
+  },
+  {
+    id: 'openpet-8317-gateway',
+    title: 'OpenPet 8317 网关',
+    description: '当前开发网关已有归档 AI smoke：/models 发现 gpt-5.5，聊天可达；只填草稿不覆盖密钥。',
+    baseUrl: 'http://127.0.0.1:8317/v1',
+    model: 'gpt-5.5'
+  }
+] as const
+
+const quickChatProviderPresetIds = new Set(['lm-studio', 'openrouter', 'together'])
+const quickChatProviderPresets = chatProviderPresets.filter((preset) => quickChatProviderPresetIds.has(preset.id))
+const detailedChatProviderPresets = chatProviderPresets.filter((preset) => !quickChatProviderPresetIds.has(preset.id))
+
+const detectProviderFamily = (baseUrl: string): ProviderFamily => {
+  const normalized = String(baseUrl || '').trim().toLowerCase()
+  if (normalized.includes('api.openai.com')) return 'openai'
+  if (normalized.includes('openrouter.ai')) return 'openrouter'
+  if (normalized.includes('api.together.xyz')) return 'together'
+  if (normalized.includes('127.0.0.1:1234') || normalized.includes('localhost:1234')) return 'lm-studio'
+  if (normalized.includes('127.0.0.1:8000') || normalized.includes('localhost:8000')) return 'vllm'
+  if (normalized.includes('127.0.0.1:8317') || normalized.includes('localhost:8317')) return 'local-gateway'
+  return 'generic-openai-compatible'
+}
+
+const describeImageModelCompatibility = (baseUrl: string, model: string) => {
+  const normalizedModel = String(model || '').trim()
+  const normalizedModelId = normalizedModel.toLowerCase()
+  const providerFamily = detectProviderFamily(baseUrl)
+  if (!normalizedModel) {
+    return {
+      title: '图片模型兼容提示',
+      summary: '填写图片 Model 后，这里会显示背景生成与本地去背兼容策略。'
+    }
+  }
+  if (normalizedModelId === 'gpt-image-2') {
+    const familyPrefix = providerFamily === 'openai'
+      ? 'OpenAI 官方'
+      : providerFamily === 'local-gateway'
+        ? '当前本地/代理网关'
+        : '当前 Provider'
+    return {
+      title: `${normalizedModel} 不透明去背模式`,
+      summary: `${familyPrefix} 使用 ${normalizedModel} 时，Creator Studio 不会强制发送 background 参数；提示词要求不透明纯色背景，生成后由本地去背流程产出透明素材。`
+    }
+  }
+  if (normalizedModelId === 'gpt-image-1' || normalizedModelId === 'gpt-image-1.5') {
+    return {
+      title: `${normalizedModel} 直接透明模式`,
+      summary: '该模型已注册直接透明输出能力；Creator Studio 会发送 background=transparent 和 b64_json。'
+    }
+  }
+  if (providerFamily === 'openrouter') {
+    return {
+      title: `${normalizedModel} OpenRouter 图片兼容模式`,
+      summary: '当前 OpenRouter 路由中的未注册模型使用保守背景合同：OpenPet 会发送 background=white 和 b64_json，要求不透明纯色背景，并在生成后执行本地去背。'
+    }
+  }
+  if (providerFamily === 'together') {
+    return {
+      title: `${normalizedModel} Together 图片兼容模式`,
+      summary: '未注册模型使用保守背景合同：OpenPet 会发送 background=white 和 b64_json，要求不透明纯色背景，并在生成后执行本地去背。'
+    }
+  }
+  if (providerFamily === 'local-gateway' || providerFamily === 'lm-studio' || providerFamily === 'vllm') {
+    return {
+      title: `${normalizedModel} 本地网关图片兼容模式`,
+      summary: '未注册模型使用保守背景合同：OpenPet 会发送 background=white 和 b64_json，要求不透明纯色背景，并在生成后执行本地去背。'
+    }
+  }
+  return {
+    title: `${normalizedModel} OpenAI-compatible 不透明去背模式`,
+    summary: '未注册模型使用保守背景合同：Creator Studio 会发送 background=white 和 b64_json，要求不透明纯色背景，并在生成后执行本地去背。'
+  }
+}
+
+const describeChatModelCompatibility = (baseUrl: string, model: string) => {
+  const normalizedModel = String(model || '').trim()
+  const providerFamily = detectProviderFamily(baseUrl)
+  if (!normalizedModel) {
+    return {
+      title: '聊天模型兼容提示',
+      summary: '填写聊天 Model 后，这里会显示当前 OpenAI-compatible 聊天接口的兼容提示。'
+    }
+  }
+  if (normalizedModel === 'gpt-4o-mini') {
+    const familyPrefix = providerFamily === 'openai' ? 'OpenAI 官方' : '当前 Provider'
+    return {
+      title: `${normalizedModel} OpenAI 官方兼容模式`,
+      summary: `${familyPrefix} 下默认按 OpenAI chat/completions 兼容请求发送，适合作为基础联通性测试模型。`
+    }
+  }
+  if (providerFamily === 'openrouter') {
+    return {
+      title: `${normalizedModel} OpenRouter 聊天兼容模式`,
+      summary: 'OpenPet 会按 OpenAI-compatible chat/completions 请求发送消息；请确认当前 OpenRouter 路由已映射到该聊天模型，并检查额外 provider 选项是否仍需在网关侧配置。'
+    }
+  }
+  if (providerFamily === 'together') {
+    return {
+      title: `${normalizedModel} Together 聊天兼容模式`,
+      summary: 'OpenPet 会按 OpenAI-compatible chat/completions 请求发送消息；请确认 Together 当前模型支持标准消息字段和返回结构。'
+    }
+  }
+  if (providerFamily === 'lm-studio') {
+    return {
+      title: `${normalizedModel} LM Studio 聊天兼容模式`,
+      summary: 'OpenPet 会按本地 OpenAI-compatible chat/completions 请求发送消息；请先在 LM Studio 打开本地服务并确认当前模型已加载。'
+    }
+  }
+  if (providerFamily === 'vllm') {
+    return {
+      title: `${normalizedModel} vLLM 聊天兼容模式`,
+      summary: 'OpenPet 会按 OpenAI-compatible chat/completions 请求发送消息；请确认当前 vLLM 服务已暴露对应模型并兼容标准消息字段。'
+    }
+  }
+  if (providerFamily === 'local-gateway') {
+    return {
+      title: `${normalizedModel} 本地网关聊天兼容模式`,
+      summary: 'OpenPet 会按 OpenAI-compatible chat/completions 请求发送消息；请确认当前本地或代理网关已把该模型名正确路由到后端提供者。'
+    }
+  }
+  return {
+    title: `${normalizedModel} OpenAI-compatible 聊天模式`,
+    summary: 'OpenPet 会按 OpenAI-compatible chat/completions 方式发送 system/user 消息、可选 tools 和 JSON body；请确认当前网关对该模型的字段兼容性。'
+  }
+}
+
+const renderImageModelDiscovery = (
+  result: ProviderModelDiscoveryResult | null,
+  currentModel: string,
+  hasUnsavedDraft: boolean
+) => {
+  const normalizedCurrentModel = String(currentModel || '').trim()
+  if (!result) {
+    return (
+      <div className="provider-feedback" data-testid="image-model-discovery">
+        <strong>模型列表探测</strong>
+        <span>运行“检查图片健康”后，这里会显示 /models 探测结果。</span>
+      </div>
+    )
+  }
+
+  const discoveredModels = Array.isArray(result.models) ? result.models : []
+  if (result.ok && result.code !== 'provider_reachable_models_unavailable') {
+    const currentModelIncluded = normalizedCurrentModel ? discoveredModels.includes(normalizedCurrentModel) : false
+    return (
+      <div className={`provider-feedback ${result.ok ? 'ok' : ''}`} data-testid="image-model-discovery">
+        <strong>模型列表探测成功</strong>
+        {hasUnsavedDraft ? <span>当前有未保存的图片草稿；下面的模型列表结果仍对应已保存配置，保存后请重新检查图片健康。</span> : null}
+        <span>共发现 {discoveredModels.length} 个模型。</span>
+        <span>{hasUnsavedDraft ? '当前草稿模型是否在列表中仍未重新验证' : (currentModelIncluded ? '已包含当前模型' : '当前保存的图片 Model 未出现在探测列表中')}</span>
+        {discoveredModels.length ? (
+          <div className="model-chip-list">
+            {discoveredModels.map((modelName) => (
+              <code key={modelName} className="model-chip">{modelName}</code>
+            ))}
+          </div>
+        ) : (
+          <span>Provider 可达，但没有返回模型列表内容。</span>
+        )}
+      </div>
+    )
+  }
+
+  if (result.ok && result.code === 'provider_reachable_models_unavailable') {
+    return (
+      <div className="provider-feedback" data-testid="image-model-discovery">
+        <strong>模型列表探测不可用</strong>
+        {hasUnsavedDraft ? <span>当前有未保存的图片草稿；下面的探测状态仍对应已保存配置，保存后请重新检查图片健康。</span> : null}
+        <span>当前 Provider 可达，但没有开放 /models；请手动确认模型名称。</span>
+      </div>
+    )
+  }
+
+  const normalizedCode = String(result.code || '').trim().toLowerCase()
+  const failureTitle = normalizedCode.includes('timeout') ? '模型列表探测超时' : '模型列表探测失败'
+
+  return (
+    <div className={`provider-feedback ${result.ok ? 'ok' : 'error'}`} data-testid="image-model-discovery">
+      <strong>{failureTitle}</strong>
+      {hasUnsavedDraft ? <span>当前有未保存的图片草稿；下面的探测状态仍对应已保存配置。</span> : null}
+      <span>{result.message || '本次健康检查没有拿到模型列表。'}</span>
+    </div>
+  )
+}
+
+const renderImageUsageSummary = (result: ImageGenerationHealthCheckResult | null, hasUnsavedDraft: boolean) => {
+  const estimatedCost = result?.usage?.estimatedCostUsd
+  const hasUsage = result != null && result.usage != null && typeof estimatedCost === 'number'
+
+  if (!hasUsage) {
+    return (
+      <div className="provider-feedback" data-testid="image-usage-summary">
+        <strong>使用量摘要</strong>
+        <span>运行“检查图片健康”后，这里会显示本次健康检查返回的 usage 摘要（如有）。</span>
+      </div>
+    )
+  }
+
+  const formattedCost = Number.isFinite(estimatedCost) ? estimatedCost.toFixed(2) : '0.00'
+
+  return (
+    <div className={`provider-feedback ${result?.ok ? 'ok' : ''}`} data-testid="image-usage-summary">
+      <strong>使用量摘要</strong>
+      {hasUnsavedDraft ? <span>当前有未保存的图片草稿；下面的 usage 结果仍对应已保存配置，保存后请重新检查图片健康。</span> : null}
+      <span>{`当前健康检查返回的 usage.estimatedCostUsd：USD ${formattedCost}`}</span>
+      <span>这只是健康检查返回值，不代表完整生成流程的真实计费结算。</span>
+    </div>
+  )
+}
+
+const renderChatModelDiscovery = (
+  result: ProviderModelDiscoveryResult | null,
+  currentModel: string,
+  hasUnsavedDraft: boolean,
+  label = '聊天',
+  rerunActionLabel = '测试已保存配置'
+) => {
+  const normalizedCurrentModel = String(currentModel || '').trim()
+  if (!result) {
+    return (
+      <div className="provider-feedback" data-testid="chat-model-discovery">
+        <strong>模型列表探测</strong>
+        <span>运行“{rerunActionLabel}”后，这里会显示{label} Provider 的 /models 探测结果。</span>
+      </div>
+    )
+  }
+
+  const discoveredModels = Array.isArray(result.models) ? result.models : []
+  if (result.ok && result.code !== 'provider_reachable_models_unavailable') {
+    const currentModelIncluded = normalizedCurrentModel ? discoveredModels.includes(normalizedCurrentModel) : false
+    return (
+      <div className={`provider-feedback ${result.ok ? 'ok' : ''}`} data-testid="chat-model-discovery">
+        <strong>模型列表探测成功</strong>
+        {hasUnsavedDraft ? <span>当前有未保存的{label}草稿；下面的模型列表结果仍对应已保存配置，保存后请重新运行“{rerunActionLabel}”。</span> : null}
+        <span>共发现 {discoveredModels.length} 个模型。</span>
+        <span>{hasUnsavedDraft ? '当前草稿模型是否在列表中仍未重新验证' : (currentModelIncluded ? '已包含当前模型' : `当前保存的${label} Model 未出现在探测列表中`)}</span>
+        {discoveredModels.length ? (
+          <div className="model-chip-list">
+            {discoveredModels.map((modelName) => (
+              <code key={modelName} className="model-chip">{modelName}</code>
+            ))}
+          </div>
+        ) : (
+          <span>Provider 可达，但没有返回模型列表内容。</span>
+        )}
+      </div>
+    )
+  }
+
+  if (result.ok && result.code === 'provider_reachable_models_unavailable') {
+    return (
+      <div className="provider-feedback" data-testid="chat-model-discovery">
+        <strong>模型列表探测不可用</strong>
+        {hasUnsavedDraft ? <span>当前有未保存的{label}草稿；下面的探测状态仍对应已保存配置，保存后请重新运行“{rerunActionLabel}”。</span> : null}
+        <span>当前 Provider 可达，但没有开放 /models；请手动确认模型名称。</span>
+      </div>
+    )
+  }
+
+  const normalizedCode = String(result.code || '').trim().toLowerCase()
+  const failureTitle = normalizedCode.includes('timeout') ? '模型列表探测超时' : '模型列表探测失败'
+
+  return (
+    <div className={`provider-feedback ${result.ok ? 'ok' : 'error'}`} data-testid="chat-model-discovery">
+      <strong>{failureTitle}</strong>
+      {hasUnsavedDraft ? <span>当前有未保存的{label}草稿；下面的探测状态仍对应已保存配置。</span> : null}
+      <span>{result.message || '本次连接测试没有拿到模型列表。'}</span>
+    </div>
+  )
+}
+
+const CollapsibleAiSection = ({
+  title,
+  note,
+  defaultOpen = false,
+  children
+}: {
+  title: string
+  note: string
+  defaultOpen?: boolean
+  children: ReactNode
+}) => (
+  <details className="ai-section" open={defaultOpen}>
+    <summary className="ai-section-summary">
+      <div>
+        <h2>{title}</h2>
+        <p>{note}</p>
+      </div>
+      <span className="ai-section-caret" aria-hidden="true">⌄</span>
+    </summary>
+    <div className="ai-section-body">
+      {children}
+    </div>
+  </details>
+)
+
+const formatMemoryScore = (value: number) => `${Math.round(Math.max(0, Math.min(1, Number(value) || 0)) * 100)}%`
+
+const MemoryList = ({
+  title,
+  memories,
+  emptyText,
+  saving,
+  onDeleteMemory
+}: {
+  title: string
+  memories: AiMemoryItemViewState[]
+  emptyText: string
+  saving: boolean
+  onDeleteMemory: (memoryId: string) => void | Promise<void>
+}) => (
+  <div className="memory-column">
+    <div className="memory-column-header">
+      <strong>{title}</strong>
+      <span>{memories.length} 条</span>
+    </div>
+    <div className="memory-list">
+      {memories.length === 0 ? (
+        <div className="empty-chat">{emptyText}</div>
+      ) : memories.map((memory) => (
+        <article className="memory-row" key={memory.id} data-testid={`ai-memory-${memory.id}`}>
+          <div className="memory-row-main">
+            <p>{memory.text}</p>
+            <div className="memory-meta">
+              <span>importance {formatMemoryScore(memory.importance)}</span>
+              <span>confidence {formatMemoryScore(memory.confidence)}</span>
+              {memory.updatedAt ? <span>{memory.updatedAt}</span> : null}
+            </div>
+            {memory.tags.length ? (
+              <div className="memory-tags">
+                {memory.tags.map((tag) => <span key={tag}>{tag}</span>)}
+              </div>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            className="danger-text"
+            aria-label={`删除记忆 ${memory.id}`}
+            onClick={() => onDeleteMemory(memory.id)}
+            disabled={saving}
+          >
+            删除
+          </button>
+        </article>
+      ))}
+    </div>
+  </div>
+)
+
+export interface AiPaneProps {
+  config: AiConfigViewState
+  activeConfig: AiConfigViewState
+  imageGenerationConfig: ImageGenerationConfigViewState
+  activeImageGenerationConfig: ImageGenerationConfigViewState
+  hatchPetAgentConfig: HatchPetAgentConfigView
+  activeHatchPetAgentConfig: HatchPetAgentConfigView
+  hatchPetAgentConfigDirty: boolean
+  hatchPetAgentApiKeyDraft: string
+  hatchPetAgentStatus: string
+  hatchPetAgentCapabilityResult: HatchPetAgentCapabilityResult | null
+  personaProfile: AiPersonaProfileViewState
+  memoryProfile: AiMemoryProfileViewState
+  personaDraft: {
+    name: string
+    identity: string
+    tone: string
+    speakingStyle: string
+    relationshipToUser: string
+    actionStyle: string
+    coreTraitsText: string
+    boundariesText: string
+  }
+  providerConfigDirty: boolean
+  providerConfigChanges: string[]
+  providerConfigValidationError: string
+  connectionTestResult: AiConnectionTestResult | null
+  chatModelDiscovery: ProviderModelDiscoveryResult | null
+  chatModelDiscoveryStatus: string
+  visionModelDiscovery: ProviderModelDiscoveryResult | null
+  visionModelDiscoveryStatus: string
+  imageProviderValidationError: string
+  imageHealthResult: ImageGenerationHealthCheckResult | null
+  imageModelDiscovery: ProviderModelDiscoveryResult | null
+  imageModelDiscoveryStatus: string
+  imageTransparencyCompatibilityHint: string
+  onChange: (partial: Partial<AiConfigViewState>) => void
+  onChangeVision: (partial: Partial<VisionConfigViewState>) => void
+  onChangeImageGeneration: (partial: Partial<ImageGenerationConfigViewState>) => void
+  onChangeHatchPetAgent: (partial: Partial<HatchPetAgentConfigView>) => void
+  onSave: () => void | Promise<void>
+  onSaveHatchPetAgentConfig: () => void | Promise<void>
+  onSaveHatchPetAgentApiKey: () => void | Promise<void>
+  onClearHatchPetAgentApiKey: () => void | Promise<void>
+  onCheckHatchPetAgentCapability: () => void | Promise<void>
+  onSaveApiKey: () => void | Promise<void>
+  onSaveVisionApiKey: () => void | Promise<void>
+  onClearVisionApiKey: () => void | Promise<void>
+  onTest: () => void | Promise<void>
+  onDiscoverAiModels: () => void | Promise<void>
+  onDiscoverVisionModels: () => void | Promise<void>
+  onSaveImageGeneration: () => void | Promise<void>
+  onSavePersonaOverride: () => void | Promise<void>
+  onResetPersonaOverride: () => void | Promise<void>
+  onGeneratePersonaDraft: () => void | Promise<void>
+  onApplyGeneratedPersonaDraft: () => void | Promise<void>
+  onDismissGeneratedPersonaDraft: () => void | Promise<void>
+  onSaveImageGenerationApiKey: () => void | Promise<void>
+  onClearImageGenerationApiKey: () => void | Promise<void>
+  onCheckImageGenerationHealth: () => void | Promise<void>
+  onDiscoverImageGenerationModels: () => void | Promise<void>
+  onSendChat: () => void | Promise<void>
+  saving: boolean
+  status: string
+  connectionStatus: string
+  visionStatus: string
+  imageStatus: string
+  imageHealthStatus: string
+  chatStatus: string
+  hasUnsavedConfigChanges: boolean
+  hasUnsavedApiKeyDraft: boolean
+  hasUnsavedVisionApiKeyDraft: boolean
+  hasUnsavedImageGenerationChanges: boolean
+  hasUnsavedImageApiKeyDraft: boolean
+  apiKeyDraft: string
+  setApiKeyDraft: (value: string) => void
+  visionApiKeyDraft: string
+  setVisionApiKeyDraft: (value: string) => void
+  imageApiKeyDraft: string
+  setImageApiKeyDraft: (value: string) => void
+  setHatchPetAgentApiKeyDraft: (value: string) => void
+  onChangePersonaDraft: (partial: Partial<AiPaneProps['personaDraft']>) => void
+  personaGenerationInstruction: string
+  setPersonaGenerationInstruction: (value: string) => void
+  generatedPersonaDraft: AiPersonaDraftViewState | null
+  chatDraft: string
+  setChatDraft: (value: string) => void
+  chatMessages: ChatMessage[]
+  petChatState: PetChatStateViewState
+  traceSummary: AiTalkTraceSummaryViewState | null
+  chatting: boolean
+  behavior: AiBehaviorConfig
+  behaviorRulesText: string
+  setBehaviorRulesText: (value: string) => void
+  onChangeBehavior: (partial: Partial<AiBehaviorConfig>) => void
+  onSaveBehavior: () => void | Promise<void>
+  dryRunText: string
+  setDryRunText: (value: string) => void
+  dryRunResult: AiBehaviorResult | null
+  onDryRunBehavior: () => void | Promise<void>
+  replayDraft: string
+  setReplayDraft: (value: string) => void
+  replayResult: AiBehaviorResult | null
+  behaviorStatus: string
+  onReplayBehaviorDecision: () => void | Promise<void>
+  traceDiagnosticsFilters: AiTalkTraceDiagnosticsFilters
+  onChangeTraceDiagnosticsFilters: (partial: AiTalkTraceDiagnosticsFilters) => void
+  onExportBehaviorDiagnostics: () => void | Promise<void>
+  onExportAiTalkTraceDiagnostics: () => void | Promise<void>
+  onClearBehaviorDecisions: () => void | Promise<void>
+  onRefreshMemoryProfile: () => void | Promise<void>
+  onDeleteMemory: (memoryId: string) => void | Promise<void>
+  onClearPetPackMemories: () => void | Promise<void>
+  onOpenDesktopChat: () => void | Promise<void>
+  onOpenBubbleChat: () => void | Promise<void>
+}
+
+export function AiPane({
+  config,
+  activeConfig,
+  imageGenerationConfig = defaultImageGenerationConfig,
+  activeImageGenerationConfig = defaultImageGenerationConfig,
+  hatchPetAgentConfig,
+  activeHatchPetAgentConfig,
+  hatchPetAgentConfigDirty,
+  hatchPetAgentApiKeyDraft,
+  hatchPetAgentStatus,
+  hatchPetAgentCapabilityResult,
+  personaProfile,
+  memoryProfile,
+  personaDraft,
+  providerConfigDirty,
+  providerConfigChanges,
+  providerConfigValidationError,
+  connectionTestResult,
+  chatModelDiscovery,
+  chatModelDiscoveryStatus,
+  visionModelDiscovery,
+  visionModelDiscoveryStatus,
+  imageProviderValidationError,
+  imageHealthResult,
+  imageModelDiscovery,
+  imageModelDiscoveryStatus,
+  imageTransparencyCompatibilityHint,
+  onChange,
+  onChangeVision,
+  onChangeImageGeneration,
+  onChangeHatchPetAgent,
+  onSave,
+  onSaveHatchPetAgentConfig,
+  onSaveHatchPetAgentApiKey,
+  onClearHatchPetAgentApiKey,
+  onCheckHatchPetAgentCapability,
+  onSaveApiKey,
+  onSaveVisionApiKey,
+  onClearVisionApiKey,
+  onTest,
+  onDiscoverAiModels,
+  onDiscoverVisionModels,
+  onSaveImageGeneration,
+  onSavePersonaOverride,
+  onResetPersonaOverride,
+  onGeneratePersonaDraft,
+  onApplyGeneratedPersonaDraft,
+  onDismissGeneratedPersonaDraft,
+  onSaveImageGenerationApiKey,
+  onClearImageGenerationApiKey,
+  onCheckImageGenerationHealth,
+  onDiscoverImageGenerationModels,
+  onSendChat,
+  saving,
+  status,
+  connectionStatus,
+  visionStatus,
+  imageStatus,
+  imageHealthStatus,
+  chatStatus,
+  hasUnsavedConfigChanges,
+  hasUnsavedApiKeyDraft,
+  hasUnsavedVisionApiKeyDraft,
+  hasUnsavedImageGenerationChanges,
+  hasUnsavedImageApiKeyDraft,
+  apiKeyDraft,
+  setApiKeyDraft,
+  visionApiKeyDraft,
+  setVisionApiKeyDraft,
+  imageApiKeyDraft,
+  setImageApiKeyDraft,
+  setHatchPetAgentApiKeyDraft,
+  onChangePersonaDraft,
+  personaGenerationInstruction,
+  setPersonaGenerationInstruction,
+  generatedPersonaDraft,
+  chatDraft,
+  setChatDraft,
+  chatMessages,
+  petChatState,
+  traceSummary,
+  chatting,
+  behavior,
+  behaviorRulesText,
+  setBehaviorRulesText,
+  onChangeBehavior,
+  onSaveBehavior,
+  dryRunText,
+  setDryRunText,
+  dryRunResult,
+  onDryRunBehavior,
+  replayDraft,
+  setReplayDraft,
+  replayResult,
+  behaviorStatus,
+  onReplayBehaviorDecision,
+  traceDiagnosticsFilters,
+  onChangeTraceDiagnosticsFilters,
+  onExportBehaviorDiagnostics,
+  onExportAiTalkTraceDiagnostics,
+  onClearBehaviorDecisions,
+  onRefreshMemoryProfile,
+  onDeleteMemory,
+  onClearPetPackMemories,
+  onOpenDesktopChat,
+  onOpenBubbleChat
+}: AiPaneProps) {
+  const decisions = Array.isArray(behavior.decisions) ? behavior.decisions : []
+  const latestMemoryJob = memoryProfile.recentJobs[0]
+  const saveDisabled = saving || Boolean(providerConfigValidationError)
+  const imageSaveDisabled = saving || Boolean(imageProviderValidationError)
+  const apiKeyDraftReady = Boolean(apiKeyDraft.trim())
+  const visionApiKeyDraftReady = Boolean(visionApiKeyDraft.trim())
+  const visionConfigChanges = providerConfigChanges.filter((item) => item.startsWith('Vision'))
+  const draftSummary = [
+    hasUnsavedConfigChanges ? '配置草稿未保存' : '',
+    hasUnsavedApiKeyDraft ? '密钥草稿未保存' : ''
+  ].filter(Boolean).join(' · ')
+  const visionDraftSummary = [
+    visionConfigChanges.length ? visionConfigChanges.join(' / ') : '',
+    hasUnsavedVisionApiKeyDraft ? 'Vision 密钥草稿未保存' : ''
+  ].filter(Boolean).join(' · ')
+  const imageDraftSummary = [
+    hasUnsavedImageGenerationChanges ? '图片配置草稿未保存' : '',
+    hasUnsavedImageApiKeyDraft ? '图片密钥草稿未保存' : ''
+  ].filter(Boolean).join(' · ')
+  const imageTargetSummary = `${activeImageGenerationConfig.provider} · ${activeImageGenerationConfig.baseUrl} · ${activeImageGenerationConfig.model} · ${activeImageGenerationConfig.hasApiKey ? 'API key saved' : 'API key missing'}`
+  const imageModelCompatibility = describeImageModelCompatibility(imageGenerationConfig.baseUrl, imageGenerationConfig.model)
+  const chatModelCompatibility = describeChatModelCompatibility(config.baseUrl, config.model)
+  const chatRecommendedModels = chatProviderPresets
+    .map((preset) => String(preset.model || '').trim())
+    .filter(Boolean)
+  const visionRecommendedModels = Array.from(new Set(['gpt-4.1-mini', 'gpt-4o', 'gpt-4o-mini', ...chatRecommendedModels]))
+  const imageRecommendedModels = imageProviderPresets
+    .map((preset) => String(preset.model || '').trim())
+    .filter(Boolean)
+  const hasUnsavedChatProbeInputs = hasUnsavedConfigChanges || hasUnsavedApiKeyDraft
+  const hasUnsavedVisionProbeInputs = hasUnsavedConfigChanges || hasUnsavedVisionApiKeyDraft
+  const hasUnsavedImageProbeInputs = hasUnsavedImageGenerationChanges || hasUnsavedImageApiKeyDraft
+  const chatConnectionHasPartialProbeIssue = Boolean(
+    connectionTestResult?.ok
+    && ['timed_out', 'failed'].includes(String(connectionTestResult.modelsProbe || ''))
+  )
+  const chatModelDiscoverySummary = [
+    chatModelDiscoveryStatus,
+    chatModelDiscovery?.models?.length ? `models: ${chatModelDiscovery.models.join(', ')}` : '',
+    hasUnsavedChatProbeInputs && (chatModelDiscoveryStatus || chatModelDiscovery) ? '仍对应已保存配置' : ''
+  ].filter(Boolean).join(' · ')
+  const imageModelDiscoverySummary = [
+    imageModelDiscoveryStatus,
+    imageModelDiscovery?.models?.length ? `models: ${imageModelDiscovery.models.join(', ')}` : '',
+    hasUnsavedImageProbeInputs && (imageModelDiscoveryStatus || imageModelDiscovery) ? '仍对应已保存配置' : ''
+  ].filter(Boolean).join(' · ')
+  const activeChatHostSummary = getProviderHostSummary(activeConfig.baseUrl)
+  const activeVisionHostSummary = getProviderHostSummary(activeConfig.vision.effectiveBaseUrl)
+  const activeImageHostSummary = getProviderHostSummary(activeImageGenerationConfig.baseUrl)
+  const chatConnectionSummary = connectionTestResult
+    ? ((connectionTestResult.ok && !chatConnectionHasPartialProbeIssue) ? '最近测试通过' : '最近测试失败')
+    : (connectionStatus || '尚未测试')
+  const imageHealthSummary = imageHealthResult
+    ? (imageHealthResult.ok ? '最近健康检查通过' : '最近健康检查失败')
+    : (imageHealthStatus || '尚未检查')
+  const hatchPetAgentApiKeyDraftReady = Boolean(hatchPetAgentApiKeyDraft.trim())
+  const hatchPetAgentEffectiveHost = getProviderHostSummary(activeHatchPetAgentConfig.effectiveBaseUrl)
+  const hatchPetAgentCapabilityTone = hatchPetAgentCapabilityResult?.ok ? 'ok' : 'error'
+  const applyChatProviderPreset = (preset: typeof chatProviderPresets[number]) => onChange({
+    provider: 'openai-compatible',
+    baseUrl: preset.baseUrl,
+    ...(preset.model ? { model: preset.model } : {})
+  })
+  const traceScopeLabel = (scopes: string[]) => scopes.length ? scopes.join(' / ') : 'none'
+  const traceModeLabel = (summary: AiTalkTraceSummaryViewState) => (summary.result.streaming ? 'streaming' : 'standard')
+  const traceStatusLabel = (summary: AiTalkTraceSummaryViewState) => summary.result.status || (summary.result.replyChars > 0 ? 'completed' : 'unknown')
+  const traceLatencyLabel = (summary: AiTalkTraceSummaryViewState) => {
+    const providerLatency = Number(summary.result.providerLatencyMs) || 0
+    const elapsed = Number(summary.result.elapsedMs) || 0
+    if (providerLatency > 0 && elapsed > 0) return `provider ${providerLatency}ms / total ${elapsed}ms`
+    if (providerLatency > 0) return `provider ${providerLatency}ms`
+    if (elapsed > 0) return `total ${elapsed}ms`
+    return 'latency n/a'
+  }
+  const applyImageProviderPreset = (preset: typeof imageProviderPresets[number]) => onChangeImageGeneration({
+    provider: 'openai-compatible',
+    baseUrl: preset.baseUrl,
+    ...(preset.model ? { model: preset.model } : {}),
+    timeoutMs: preset.timeoutMs,
+    maxConcurrentJobs: preset.maxConcurrentJobs
+  })
+
+  return (
+    <section className="pane ai-pane">
+      <header className="pane-header">
+        <div>
+          <h1>AI</h1>
+          <p>聊天 Provider 与模型配置</p>
+        </div>
+        <button type="button" className="ghost" onClick={onExportAiTalkTraceDiagnostics}>
+          导出 AI Talk Trace
+        </button>
+      </header>
+
+      <CollapsibleAiSection title="模型 Provider" note="统一管理聊天与图片生成模型；本地、代理、云端都使用 Base URL + API Key + Model" defaultOpen>
+        <div className="provider-hub" data-testid="ai-provider-hub">
+          <div className="provider-hub-intro">
+            <div>
+              <strong>Provider 总览</strong>
+              <span>OpenPet 把模型能力拆成两张卡：聊天模型负责宠物对话，图片模型负责 Creator Studio 生成。两者都必须显式配置 Base URL、API Key 和 Model，不再区分本地/cloud 模式。</span>
+            </div>
+            <div className="provider-hub-badges" aria-label="Provider capability summary">
+              <ProviderStatusItem label="聊天模型" value={activeConfig.model || '未设置'} tone={activeConfig.hasApiKey ? 'ok' : 'warn'} />
+              <ProviderStatusItem label="图片模型" value={activeImageGenerationConfig.model || '未设置'} tone={activeImageGenerationConfig.hasApiKey ? 'ok' : 'warn'} />
+              <ProviderStatusItem
+                label="聊天连接"
+                value={chatConnectionSummary}
+                tone={(connectionTestResult?.ok && !chatConnectionHasPartialProbeIssue) ? 'ok' : 'warn'}
+              />
+              <ProviderStatusItem label="图片健康" value={imageHealthSummary} tone={imageHealthResult?.ok ? 'ok' : 'default'} />
+            </div>
+          </div>
+
+          <div className="provider-capability-grid">
+            <details className="provider-capability-card provider-capability-panel" data-testid="chat-provider-card" open>
+              <ProviderCapabilityPanelSummary
+                title="聊天模型"
+                description="用于宠物气泡聊天、扩展聊天面板、人格生成、记忆抽取和行为编排。"
+                hostSummary={activeChatHostSummary}
+                modelSummary={activeConfig.model}
+                draftSummary={draftSummary}
+                hasApiKey={activeConfig.hasApiKey}
+              />
+              <div className="provider-capability-body">
+                <div className="section provider-summary provider-core-summary" data-testid="ai-provider-summary">
+                  {providerConfigDirty ? (
+                    <div className="provider-warning" data-testid="ai-provider-dirty-warning">
+                      <strong>未保存修改：</strong> {providerConfigChanges.join(' / ') || 'Provider 草稿'}
+                      <br />
+                      保存只写入配置；测试只检查已保存配置，不会偷用草稿。
+                    </div>
+                  ) : null}
+                  {providerConfigValidationError ? (
+                    <div className="provider-warning error" data-testid="ai-provider-validation-error">{providerConfigValidationError}</div>
+                  ) : null}
+
+                  <label className="field-row">
+                    <span className="field-label">Base URL</span>
+                    <input
+                      aria-label="聊天 Base URL"
+                      className="text-input"
+                      value={config.baseUrl}
+                      onChange={(event) => onChange({ baseUrl: event.target.value })}
+                    />
+                  </label>
+
+                  <div className="field-row">
+                    <span className="field-label">Model</span>
+                    <ProviderModelSelector
+                      ariaLabel="聊天 Model"
+                      currentModel={config.model}
+                      cachedCatalog={activeConfig.modelCatalog}
+                      recommendedModels={chatRecommendedModels}
+                      saving={saving}
+                      statusText={chatModelDiscoveryStatus}
+                      onSelectModel={(model) => onChange({ model })}
+                      onRefreshModels={onDiscoverAiModels}
+                    />
+                  </div>
+
+                  <div className="field-row">
+                    <div>
+                      <div className="field-label">API Key</div>
+                      <div className="field-note">{config.hasApiKey ? '已保存' : '未保存'}</div>
+                    </div>
+                    <div className="inline-action">
+                      <input
+                        aria-label="聊天 API Key"
+                        className="text-input"
+                        type="password"
+                        value={apiKeyDraft}
+                        placeholder={config.hasApiKey ? '输入新密钥覆盖' : '输入 API Key'}
+                        onChange={(event) => setApiKeyDraft(event.target.value)}
+                      />
+                      <button type="button" className="ghost" aria-label="保存聊天密钥" onClick={onSaveApiKey} disabled={!apiKeyDraftReady || saving}>
+                        保存
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="provider-card-actions provider-card-actions-inline">
+                    <button type="button" className="primary" aria-label="保存聊天 Provider" onClick={onSave} disabled={saveDisabled}>
+                      {saving ? '保存中' : '保存'}
+                    </button>
+                    <div className="provider-card-secondary-actions">
+                      <button type="button" className="ghost" aria-label="测试已保存配置" onClick={onTest} disabled={saving}>
+                        测试
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </details>
+
+            <details className="provider-capability-card provider-capability-panel" data-testid="image-provider-card" open>
+              <ProviderCapabilityPanelSummary
+                title="图片模型"
+                description="用于 Creator Studio 生成宠物立绘、动作帧和导入前图片资产。"
+                hostSummary={activeImageHostSummary}
+                modelSummary={activeImageGenerationConfig.model}
+                draftSummary={imageDraftSummary}
+                hasApiKey={activeImageGenerationConfig.hasApiKey}
+              />
+              <div className="provider-capability-body">
+                <div className="section provider-core-summary">
+                  {imageProviderValidationError ? (
+                    <div className="provider-warning error">{imageProviderValidationError}</div>
+                  ) : null}
+
+                  <label className="field-row">
+                    <span className="field-label">Base URL</span>
+                    <input
+                      aria-label="图片 Base URL"
+                      className="text-input"
+                      value={imageGenerationConfig.baseUrl}
+                      onChange={(event) => onChangeImageGeneration({ baseUrl: event.target.value })}
+                    />
+                  </label>
+
+                  <div className="field-row">
+                    <span className="field-label">Model</span>
+                    <ProviderModelSelector
+                      ariaLabel="图片 Model"
+                      currentModel={imageGenerationConfig.model}
+                      cachedCatalog={activeImageGenerationConfig.modelCatalog}
+                      recommendedModels={imageRecommendedModels}
+                      saving={saving}
+                      statusText={imageModelDiscoveryStatus}
+                      onSelectModel={(model) => onChangeImageGeneration({ model })}
+                      onRefreshModels={onDiscoverImageGenerationModels}
+                    />
+                  </div>
+
+                  <div className="field-row">
+                    <div>
+                      <div className="field-label">API Key</div>
+                      <div className="field-note">
+                        {imageGenerationConfig.hasApiKey ? '已保存' : '未保存'}
+                        {imageGenerationConfig.apiKeyPreview ? ` · ${imageGenerationConfig.apiKeyPreview}` : ''}
+                      </div>
+                    </div>
+                    <div className="inline-action">
+                      <input
+                        aria-label="图片 API Key"
+                        className="text-input"
+                        type="password"
+                        value={imageApiKeyDraft}
+                        placeholder={imageGenerationConfig.hasApiKey ? '输入新密钥覆盖' : '输入图片 API Key'}
+                        onChange={(event) => setImageApiKeyDraft(event.target.value)}
+                      />
+                      <button type="button" className="ghost" aria-label="保存图片密钥" onClick={onSaveImageGenerationApiKey} disabled={!imageApiKeyDraft.trim() || saving}>
+                        保存
+                      </button>
+                      <button type="button" className="danger-text" aria-label="清除图片密钥" onClick={onClearImageGenerationApiKey} disabled={saving || !imageGenerationConfig.hasApiKey}>
+                        清除
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="provider-card-actions provider-card-actions-inline">
+                    <button type="button" className="primary" aria-label="保存图片 Provider" onClick={onSaveImageGeneration} disabled={imageSaveDisabled}>
+                      保存
+                    </button>
+                    <div className="provider-card-secondary-actions">
+                      <button type="button" className="ghost" aria-label="检查图片健康" onClick={onCheckImageGenerationHealth} disabled={saving}>
+                        健康检查
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </details>
+          </div>
+
+          <details className="provider-disclosure provider-hub-diagnostics" data-testid="provider-hub-diagnostics">
+            <summary>高级 / 诊断</summary>
+            <div className="provider-disclosure-body provider-hub-diagnostics-body">
+              <section className="provider-diagnostics-group" aria-label="聊天 Provider 高级诊断">
+                <h3>聊天 Provider</h3>
+                <div className="provider-status-strip">
+                  <ProviderStatusItem label="当前模型" value={activeConfig.model || '未设置'} tone={activeConfig.hasApiKey ? 'ok' : 'warn'} />
+                  <ProviderStatusItem label="当前 Endpoint" value={activeConfig.baseUrl || '未设置'} />
+                  <ProviderStatusItem label="密钥状态" value={activeConfig.hasApiKey ? '已保存' : '未保存'} tone={activeConfig.hasApiKey ? 'ok' : 'warn'} />
+                  <ProviderStatusItem label="草稿状态" value={draftSummary || '当前没有未保存修改'} tone={draftSummary ? 'warn' : 'default'} />
+                </div>
+
+                <div className="readonly-row">
+                  <strong>当前生效配置</strong>
+                  <div className="provider-inline-summary" data-testid="ai-provider-active-summary">
+                    <code>{activeChatHostSummary}</code>
+                    <span>{activeConfig.model || '未设置模型'}</span>
+                    <span>{activeConfig.hasApiKey ? 'API Key 已保存' : 'API Key 未保存'}</span>
+                  </div>
+                </div>
+
+                <div className="field-row">
+                  <div className="field-label">启用聊天</div>
+                  <Toggle ariaLabel="Enable AI chat" checked={config.enabled} onChange={(enabled) => onChange({ enabled })} />
+                </div>
+
+                <label className="field-row">
+                  <span className="field-label">Provider</span>
+                  <select
+                    className="text-input"
+                    value={config.provider}
+                    onChange={(event) => onChange({ provider: event.target.value })}
+                  >
+                    <option value="openai-compatible">OpenAI compatible</option>
+                  </select>
+                </label>
+
+                <div className="field-row">
+                  <div>
+                    <div className="field-label">长期记忆</div>
+                    <div className="field-note">主回复不阻塞，后台自动抽取用户与宠物关系记忆</div>
+                  </div>
+                  <Toggle
+                    ariaLabel="Enable AI memory"
+                    checked={config.memory.enabled}
+                    onChange={(enabled) => onChange({ memory: { ...config.memory, enabled } })}
+                  />
+                </div>
+
+                <details className="provider-disclosure">
+                  <summary>查看聊天 Provider 边界</summary>
+                  <div className="provider-disclosure-body">
+                    <div className="provider-feedback" data-testid="chat-provider-boundary">
+                      <strong>聊天 Provider 边界</strong>
+                      <span>本地网关、代理服务和云端接口共用同一套 OpenAI-compatible 聊天 Provider 契约；切换环境只需要改 Base URL 和 Model。</span>
+                      <span>“保存聊天 Provider”只写入当前配置；“测试已保存配置”只测试已保存的生效配置，不会偷用草稿。</span>
+                      <span>API Key 只保存在 OpenPet host；renderer、dashboard 和普通插件都不能直接读取。</span>
+                    </div>
+                  </div>
+                </details>
+
+                <details className="provider-disclosure">
+                  <summary>显示常用聊天 Provider 预设</summary>
+                  <div className="provider-disclosure-body">
+                    <div className="field-note">预设只填充 Base URL / 可安全默认的 Model；不会读取或覆盖 API Key。除 OpenPet 8317 外，预设只是 endpoint 模板，需要保存后测试确认。</div>
+                    <div className="provider-preset-grid">
+                      {detailedChatProviderPresets.map((preset) => (
+                        <button
+                          type="button"
+                          key={preset.id}
+                          className="provider-preset-card"
+                          onClick={() => applyChatProviderPreset(preset)}
+                          disabled={saving}
+                        >
+                          <strong>{preset.title}</strong>
+                          <span>{preset.description}</span>
+                          <code>{preset.baseUrl}</code>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </details>
+
+                <details className="provider-disclosure">
+                  <summary>显示高级聊天配置</summary>
+                  <div className="provider-disclosure-body">
+                    <label className="field-row tall">
+                      <span className="field-label">System Prompt</span>
+                      <textarea
+                        aria-label="System Prompt"
+                        className="text-input textarea"
+                        value={config.systemPrompt}
+                        onChange={(event) => onChange({ systemPrompt: event.target.value })}
+                      />
+                    </label>
+                  </div>
+                </details>
+
+                <div className="provider-diagnostics">
+                  <div className="provider-diagnostics-heading">诊断与兼容性</div>
+                  {(connectionStatus || connectionTestResult) ? (
+                    <div
+                      className={`provider-feedback ${connectionTestResult ? ((connectionTestResult.ok && !chatConnectionHasPartialProbeIssue) ? 'ok' : 'error') : ''}`}
+                      data-testid="ai-provider-feedback"
+                      aria-live="polite"
+                    >
+                      <strong>聊天 Provider 状态</strong>
+                      {connectionStatus ? <span>{connectionStatus}</span> : null}
+                      {connectionTestResult ? (
+                        <div className="connection-result" data-testid="ai-connection-result">
+                          <strong>{connectionTestResult.ok ? (chatConnectionHasPartialProbeIssue ? '连接测试部分通过' : '连接测试通过') : '连接测试失败'}</strong>
+                          <span>Provider: {connectionTestResult.provider}</span>
+                          <span>Base URL: {connectionTestResult.baseUrl}</span>
+                          <span>Model: {connectionTestResult.model}</span>
+                          <span>API Key: {connectionTestResult.hasApiKey ? '已保存' : '未保存'}</span>
+                          <span>耗时: {connectionTestResult.elapsedMs}ms</span>
+                          {connectionTestResult.ok ? <span>回复: {connectionTestResult.reply || 'ok'}</span> : null}
+                          {!connectionTestResult.ok ? <span>错误: {connectionTestResult.code || 'unknown'} · {connectionTestResult.message || '连接失败'}</span> : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {(chatModelDiscoveryStatus || chatModelDiscovery) ? (
+                    <div className="readonly-row" data-testid="ai-chat-model-discovery">
+                      <strong>聊天模型探测</strong>
+                      <span>{chatModelDiscoverySummary}</span>
+                    </div>
+                  ) : null}
+
+                  {renderChatModelDiscovery(chatModelDiscovery, config.model, hasUnsavedChatProbeInputs)}
+
+                  <div className="provider-feedback" data-testid="chat-model-compatibility">
+                    <strong>{chatModelCompatibility.title}</strong>
+                    <span>{chatModelCompatibility.summary}</span>
+                  </div>
+                  <div className="provider-preset-grid">
+                    {quickChatProviderPresets.map((preset) => (
+                      <button
+                        type="button"
+                        key={preset.id}
+                        className="provider-preset-card"
+                        onClick={() => applyChatProviderPreset(preset)}
+                        disabled={saving}
+                      >
+                        <strong>{preset.title}</strong>
+                        <span>{preset.description}</span>
+                        <code>{preset.baseUrl}</code>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </section>
+
+              <section className="provider-diagnostics-group" aria-label="Vision Provider 高级配置">
+                <h3>Vision / 多模态文本模型</h3>
+                <details className="provider-disclosure">
+                  <summary>Vision / 多模态文本模型</summary>
+                  <div className="provider-disclosure-body">
+                    <div className="readonly-row" data-testid="vision-provider-effective-summary">
+                      <strong>当前生效 Vision Provider</strong>
+                      <div className="provider-inline-summary">
+                        <code>{activeVisionHostSummary}</code>
+                        <span>{activeConfig.vision.effectiveModel || '未设置模型'}</span>
+                        <span>{activeConfig.vision.effectiveHasApiKey ? 'API Key 已保存' : 'API Key 未保存'}</span>
+                        <span>{activeConfig.vision.mode === 'override' ? '单独配置' : '跟随聊天模型'}</span>
+                      </div>
+                    </div>
+
+                    <label className="field-row">
+                      <span className="field-label">Vision 模式</span>
+                      <select
+                        aria-label="Vision Provider Mode"
+                        className="text-input"
+                        value={config.vision.mode}
+                        onChange={(event) => onChangeVision({ mode: event.target.value === 'override' ? 'override' : 'follow-chat' })}
+                      >
+                        <option value="follow-chat">跟随聊天模型</option>
+                        <option value="override">单独配置</option>
+                      </select>
+                    </label>
+
+                    {config.vision.mode === 'follow-chat' ? (
+                      <div className="provider-feedback" data-testid="vision-provider-follow-chat">
+                        <strong>当前跟随聊天模型</strong>
+                        <span>Vision / 多模态文本任务默认复用聊天 Provider，不单独保存 endpoint、模型或密钥。</span>
+                        <span>当前继承：{activeConfig.provider} · {activeConfig.baseUrl} · {activeConfig.model}</span>
+                      </div>
+                    ) : (
+                      <>
+                        <label className="field-row">
+                          <span className="field-label">Vision Provider</span>
+                          <select
+                            className="text-input"
+                            value={config.vision.provider}
+                            onChange={(event) => onChangeVision({ provider: event.target.value })}
+                          >
+                            <option value="openai-compatible">OpenAI compatible</option>
+                          </select>
+                        </label>
+
+                        <label className="field-row">
+                          <span className="field-label">Vision Base URL</span>
+                          <input
+                            aria-label="Vision Base URL"
+                            className="text-input"
+                            value={config.vision.baseUrl}
+                            onChange={(event) => onChangeVision({ baseUrl: event.target.value })}
+                          />
+                        </label>
+
+                        <div className="field-row">
+                          <span className="field-label">Vision Model</span>
+                          <ProviderModelSelector
+                            ariaLabel="Vision Model"
+                            currentModel={config.vision.model}
+                            cachedCatalog={activeConfig.vision.modelCatalog}
+                            recommendedModels={visionRecommendedModels}
+                            saving={saving}
+                            statusText={visionModelDiscoveryStatus}
+                            onSelectModel={(model) => onChangeVision({ model })}
+                            onRefreshModels={onDiscoverVisionModels}
+                          />
+                        </div>
+
+                        <div className="field-row">
+                          <div>
+                            <div className="field-label">Vision API Key</div>
+                            <div className="field-note">{config.vision.hasApiKey ? '已保存' : '未保存'}</div>
+                          </div>
+                          <div className="inline-action">
+                            <input
+                              aria-label="Vision API Key"
+                              className="text-input"
+                              type="password"
+                              value={visionApiKeyDraft}
+                              placeholder={config.vision.hasApiKey ? '输入新密钥覆盖' : '输入 Vision API Key'}
+                              onChange={(event) => setVisionApiKeyDraft(event.target.value)}
+                            />
+                            <button type="button" className="ghost" onClick={onSaveVisionApiKey} disabled={!visionApiKeyDraftReady || saving}>
+                              保存 Vision 密钥
+                            </button>
+                            <button type="button" className="danger-text" onClick={onClearVisionApiKey} disabled={saving || !config.vision.hasApiKey}>
+                              清除
+                            </button>
+                          </div>
+                        </div>
+
+                        {(visionStatus || visionModelDiscoveryStatus || visionModelDiscovery) ? (
+                          <div className="provider-feedback" data-testid="vision-provider-status">
+                            <strong>Vision Provider 状态</strong>
+                            {visionStatus ? <span>{visionStatus}</span> : null}
+                            {visionModelDiscoveryStatus ? <span>{visionModelDiscoveryStatus}</span> : null}
+                            {visionModelDiscovery?.models?.length ? (
+                              <span>models: {visionModelDiscovery.models.join(', ')}</span>
+                            ) : null}
+                          </div>
+                        ) : null}
+
+                        {renderChatModelDiscovery(visionModelDiscovery, config.vision.model, hasUnsavedVisionProbeInputs, 'Vision', '刷新 Vision 模型')}
+
+                      </>
+                    )}
+
+                    {visionDraftSummary ? (
+                      <div className="field-note">{visionDraftSummary}</div>
+                    ) : null}
+                  </div>
+                </details>
+              </section>
+
+              <section className="provider-diagnostics-group" aria-label="图片 Provider 高级诊断">
+                <h3>图片 Provider</h3>
+                <div className="provider-status-strip">
+                  <ProviderStatusItem label="当前模型" value={activeImageGenerationConfig.model || '未设置'} tone={activeImageGenerationConfig.hasApiKey ? 'ok' : 'warn'} />
+                  <ProviderStatusItem label="当前 Endpoint" value={activeImageGenerationConfig.baseUrl || '未设置'} />
+                  <ProviderStatusItem label="密钥状态" value={activeImageGenerationConfig.hasApiKey ? '已保存' : '未保存'} tone={activeImageGenerationConfig.hasApiKey ? 'ok' : 'warn'} />
+                  <ProviderStatusItem label="草稿状态" value={imageDraftSummary || '当前没有未保存修改'} tone={imageDraftSummary ? 'warn' : 'default'} />
+                </div>
+
+                <div className="readonly-row">
+                  <strong>图片当前 Provider</strong>
+                  <div className="provider-inline-summary">
+                    <code>{activeImageHostSummary}</code>
+                    <span>{activeImageGenerationConfig.model || '未设置模型'}</span>
+                    <span>{activeImageGenerationConfig.hasApiKey ? 'API Key 已保存' : 'API Key 未保存'}</span>
+                  </div>
+                </div>
+
+                <div className="readonly-row">
+                  <strong>生成边界</strong>
+                  <span>Creator Studio 只提交提示词和输出目录；Provider 调用、API Key、图片写入都由 OpenPet host 执行。</span>
+                </div>
+
+                <details className="provider-disclosure">
+                  <summary>查看图片 Provider 边界</summary>
+                  <div className="provider-disclosure-body">
+                    <div className="provider-feedback" data-testid="image-provider-boundary">
+                      <strong>图片 Provider 边界</strong>
+                      <span>本地网关、代理服务和云端接口共用同一套 OpenAI-compatible 图片 Provider 契约；切换环境只需要改 Base URL、Model 和超时配置。</span>
+                      <span>“保存图片 Provider”只更新 host 配置；“检查图片健康”只检查当前已保存的图片 Provider，不会偷用草稿。</span>
+                      <span>Creator Studio 只提交提示词和输出目录；Provider 调用、API Key、图片写入都由 OpenPet host 执行。</span>
+                    </div>
+                  </div>
+                </details>
+
+                <details className="provider-disclosure">
+                  <summary>显示常用图片 Provider 预设</summary>
+                  <div className="provider-disclosure-body">
+                    <div className="field-note">预设只填充 Base URL / 可安全默认的 Model / 超时；不会读取或覆盖 API Key。除 OpenPet 8317 外，预设只是 endpoint 模板，需要保存后健康检查确认。</div>
+                    <div className="provider-preset-grid">
+                      {imageProviderPresets.map((preset) => (
+                        <button
+                          type="button"
+                          key={preset.id}
+                          className="provider-preset-card"
+                          onClick={() => applyImageProviderPreset(preset)}
+                          disabled={saving}
+                        >
+                          <strong>{preset.title}</strong>
+                          <span>{preset.description}</span>
+                          <code>{preset.baseUrl}</code>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </details>
+
+                <details className="provider-disclosure">
+                  <summary>显示高级图片配置</summary>
+                  <div className="provider-disclosure-body">
+                    <label className="field-row">
+                      <div>
+                        <div className="field-label">图片 Timeout</div>
+                        <div className="field-note">Provider 生成请求的最长等待时间，单位毫秒。</div>
+                      </div>
+                      <input
+                        aria-label="图片 Timeout MS"
+                        className="text-input"
+                        type="number"
+                        min={1000}
+                        step={1000}
+                        value={imageGenerationConfig.timeoutMs}
+                        onChange={(event) => onChangeImageGeneration({ timeoutMs: Number(event.target.value) })}
+                      />
+                    </label>
+
+                    <label className="field-row">
+                      <div>
+                        <div className="field-label">图片最大并发</div>
+                        <div className="field-note">当前建议保持 1，避免桌宠生成任务互相抢占。</div>
+                      </div>
+                      <input
+                        aria-label="图片最大并发"
+                        className="text-input"
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={imageGenerationConfig.maxConcurrentJobs}
+                        onChange={(event) => onChangeImageGeneration({ maxConcurrentJobs: Number(event.target.value) })}
+                      />
+                    </label>
+                  </div>
+                </details>
+
+                <div className="provider-diagnostics">
+                  <div className="provider-diagnostics-heading">诊断与兼容性</div>
+                  {imageHealthStatus ? (
+                    <div className="readonly-row">
+                      <strong>图片健康状态</strong>
+                      <span>{imageHealthStatus}</span>
+                    </div>
+                  ) : null}
+
+                  {imageStatus ? (
+                    <div className="provider-feedback" data-testid="ai-image-status" aria-live="polite">
+                      <strong>图片 Provider 状态</strong>
+                      <span>{imageStatus}</span>
+                    </div>
+                  ) : null}
+
+                  {renderImageModelDiscovery(imageModelDiscovery, imageGenerationConfig.model, hasUnsavedImageProbeInputs)}
+
+                  {renderImageUsageSummary(imageHealthResult, hasUnsavedImageProbeInputs)}
+
+                  <div className="provider-feedback" data-testid="image-model-compatibility">
+                    <strong>{imageModelCompatibility.title}</strong>
+                    <span>{imageModelCompatibility.summary}</span>
+                  </div>
+
+                  {(imageModelDiscoveryStatus || imageModelDiscovery) ? (
+                    <div className="readonly-row" data-testid="ai-image-model-discovery">
+                      <strong>图片模型探测</strong>
+                      <span>{imageModelDiscoverySummary}</span>
+                    </div>
+                  ) : null}
+
+                  <div className="readonly-row" data-testid="ai-image-compatibility-hint">
+                    <strong>透明背景兼容性</strong>
+                    <span>{imageTransparencyCompatibilityHint}</span>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </details>
+        </div>
+      </CollapsibleAiSection>
+
+      <CollapsibleAiSection
+        title="Hatch Pet Agent"
+        note="配置质量优先角色生成所需的规划、评价模型和安全预算"
+        defaultOpen
+      >
+        <div className="provider-capability-card provider-capability-body" data-testid="hatch-pet-agent-card">
+          <div className="provider-card-header">
+            <div>
+              <h3>Hatch Pet Agent</h3>
+              <p>质量优先角色生成会在创建 run 前检查此模型的结构化工具能力，并用它规划角色和评价候选；关闭或未就绪时不会启动角色生成。人工审批、导入和激活仍由用户明确执行。</p>
+            </div>
+            <div className="provider-card-actions">
+              <button type="button" className="primary" onClick={onSaveHatchPetAgentConfig} disabled={saving || !hatchPetAgentConfigDirty}>
+                {saving ? '保存中' : '保存 Agent 配置'}
+              </button>
+              <button type="button" className="ghost" onClick={onCheckHatchPetAgentCapability} disabled={saving}>
+                Capability check
+              </button>
+            </div>
+          </div>
+
+          <div className="provider-status-strip">
+            <ProviderStatusItem label="Execution mode" value="Shadow" tone="ok" />
+            <ProviderStatusItem label="Config source" value={activeHatchPetAgentConfig.configMode === 'override' ? 'Dedicated model' : 'Follow chat model'} />
+            <ProviderStatusItem label="Effective endpoint" value={hatchPetAgentEffectiveHost} />
+            <ProviderStatusItem label="Effective model" value={activeHatchPetAgentConfig.effectiveModel || '未设置'} tone={activeHatchPetAgentConfig.hasApiKey ? 'ok' : 'warn'} />
+          </div>
+
+          <div className="section provider-summary">
+            <div className="field-row">
+              <div>
+                <div className="field-label">Enabled</div>
+                <div className="field-note">关闭时质量优先角色生成会在创建 run 前停止；单动作生成仍可独立使用。</div>
+              </div>
+              <Toggle
+                ariaLabel="Enable Hatch Pet Agent"
+                checked={hatchPetAgentConfig.enabled}
+                onChange={(enabled) => onChangeHatchPetAgent({ enabled })}
+              />
+            </div>
+
+            <div className="field-row">
+              <div>
+                <div className="field-label">Model source</div>
+                <div className="field-note">跟随聊天模型会复用已保存的聊天 Provider；Dedicated model 使用下面的专用配置。</div>
+              </div>
+              <div className="segmented" role="group" aria-label="Hatch Pet Agent model source">
+                <button
+                  type="button"
+                  className={hatchPetAgentConfig.configMode === 'follow-chat' ? 'active' : ''}
+                  onClick={() => onChangeHatchPetAgent({ configMode: 'follow-chat' })}
+                >
+                  Follow chat model
+                </button>
+                <button
+                  type="button"
+                  className={hatchPetAgentConfig.configMode === 'override' ? 'active' : ''}
+                  onClick={() => onChangeHatchPetAgent({ configMode: 'override' })}
+                >
+                  Dedicated model
+                </button>
+              </div>
+            </div>
+
+            <div className="readonly-row">
+              <strong>Execution mode</strong>
+              <div className="provider-inline-summary">
+                <span className="provider-model-source-badge provider-model-source-cached">Shadow</span>
+                <span>只记录建议，不改变固定生成流程。</span>
+              </div>
+            </div>
+
+            {hatchPetAgentConfig.configMode === 'override' ? (
+              <details className="provider-disclosure" open>
+                <summary>Dedicated model</summary>
+                <div className="provider-disclosure-body">
+                  <label className="field-row">
+                    <span className="field-label">Provider</span>
+                    <select
+                      className="text-input"
+                      value={hatchPetAgentConfig.provider}
+                      onChange={(event) => onChangeHatchPetAgent({ provider: event.target.value })}
+                    >
+                      <option value="openai-compatible">OpenAI compatible</option>
+                    </select>
+                  </label>
+
+                  <label className="field-row">
+                    <span className="field-label">Base URL</span>
+                    <input
+                      aria-label="Hatch Pet Agent Base URL"
+                      className="text-input"
+                      value={hatchPetAgentConfig.baseUrl}
+                      onChange={(event) => onChangeHatchPetAgent({ baseUrl: event.target.value })}
+                    />
+                  </label>
+
+                  <label className="field-row">
+                    <span className="field-label">Model</span>
+                    <input
+                      aria-label="Hatch Pet Agent Model"
+                      className="text-input"
+                      value={hatchPetAgentConfig.model}
+                      onChange={(event) => onChangeHatchPetAgent({ model: event.target.value })}
+                    />
+                  </label>
+
+                  <div className="field-row">
+                    <div>
+                      <div className="field-label">API Key</div>
+                      <div className="field-note">{hatchPetAgentConfig.hasApiKey ? '专用密钥已保存' : '专用密钥未保存'} · secret ref 只读</div>
+                    </div>
+                    <div className="inline-action">
+                      <input
+                        aria-label="Hatch Pet Agent API Key"
+                        className="text-input"
+                        type="password"
+                        value={hatchPetAgentApiKeyDraft}
+                        placeholder={hatchPetAgentConfig.hasApiKey ? '输入新密钥覆盖' : '输入专用 API Key'}
+                        onChange={(event) => setHatchPetAgentApiKeyDraft(event.target.value)}
+                      />
+                      <button type="button" className="ghost" onClick={onSaveHatchPetAgentApiKey} disabled={saving || !hatchPetAgentApiKeyDraftReady}>
+                        保存密钥
+                      </button>
+                      <button type="button" className="danger-text" onClick={onClearHatchPetAgentApiKey} disabled={saving || !hatchPetAgentConfig.hasApiKey}>
+                        清除
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="readonly-row">
+                    <strong>Secret reference</strong>
+                    <code>{hatchPetAgentConfig.apiKeyRef}</code>
+                  </div>
+                </div>
+              </details>
+            ) : (
+              <div className="provider-feedback" data-testid="hatch-pet-agent-follow-chat">
+                <strong>Follow chat model</strong>
+                <span>当前继承：{activeHatchPetAgentConfig.effectiveProvider} · {activeHatchPetAgentConfig.effectiveBaseUrl} · {activeHatchPetAgentConfig.effectiveModel}</span>
+                <span>API Key 仍由 OpenPet host 管理，renderer 不读取或保存聊天密钥值。</span>
+              </div>
+            )}
+
+            <details className="provider-disclosure" open>
+              <summary>Budgets</summary>
+              <div className="provider-disclosure-body">
+                <label className="field-row">
+                  <span className="field-label">Identity regenerations</span>
+                  <input
+                    className="text-input"
+                    type="number"
+                    min={0}
+                    max={3}
+                    value={hatchPetAgentConfig.budgets.maxIdentityRegenerations}
+                    onChange={(event) => onChangeHatchPetAgent({ budgets: { ...hatchPetAgentConfig.budgets, maxIdentityRegenerations: Number(event.target.value) } })}
+                  />
+                </label>
+                <label className="field-row">
+                  <span className="field-label">Action attempts per action</span>
+                  <input
+                    className="text-input"
+                    type="number"
+                    min={1}
+                    max={6}
+                    value={hatchPetAgentConfig.budgets.maxActionAttemptsPerAction}
+                    onChange={(event) => onChangeHatchPetAgent({ budgets: { ...hatchPetAgentConfig.budgets, maxActionAttemptsPerAction: Number(event.target.value) } })}
+                  />
+                </label>
+                <label className="field-row">
+                  <span className="field-label">Evaluation attempts per artifact</span>
+                  <input
+                    className="text-input"
+                    type="number"
+                    min={1}
+                    max={3}
+                    value={hatchPetAgentConfig.budgets.maxEvaluationAttemptsPerArtifact}
+                    onChange={(event) => onChangeHatchPetAgent({ budgets: { ...hatchPetAgentConfig.budgets, maxEvaluationAttemptsPerArtifact: Number(event.target.value) } })}
+                  />
+                </label>
+                <label className="field-row">
+                  <span className="field-label">Provider-call budget</span>
+                  <input
+                    className="text-input"
+                    type="number"
+                    min={1}
+                    max={200}
+                    value={hatchPetAgentConfig.budgets.maxProviderCalls}
+                    onChange={(event) => onChangeHatchPetAgent({ budgets: { ...hatchPetAgentConfig.budgets, maxProviderCalls: Number(event.target.value) } })}
+                  />
+                </label>
+                <label className="field-row">
+                  <span className="field-label">Time budget (ms)</span>
+                  <input
+                    className="text-input"
+                    type="number"
+                    min={60000}
+                    max={14400000}
+                    step={60000}
+                    value={hatchPetAgentConfig.budgets.maxElapsedMs}
+                    onChange={(event) => onChangeHatchPetAgent({ budgets: { ...hatchPetAgentConfig.budgets, maxElapsedMs: Number(event.target.value) } })}
+                  />
+                </label>
+                <label className="field-row">
+                  <div>
+                    <div className="field-label">Estimated cost budget (USD)</div>
+                    <div className="field-note">留空表示不设置估算成本上限。</div>
+                  </div>
+                  <input
+                    className="text-input"
+                    type="number"
+                    min={0.01}
+                    max={10000}
+                    step={0.01}
+                    value={hatchPetAgentConfig.budgets.maxEstimatedCost ?? ''}
+                    onChange={(event) => onChangeHatchPetAgent({ budgets: { ...hatchPetAgentConfig.budgets, maxEstimatedCost: event.target.value === '' ? null : Number(event.target.value) } })}
+                  />
+                </label>
+              </div>
+            </details>
+
+            <div className="field-row">
+              <div>
+                <div className="field-label">Identity checkpoint</div>
+                <div className="field-note">在动作阶段前要求身份人工复查；Shadow 仍不会自行批准或改变生成。</div>
+              </div>
+              <Toggle
+                ariaLabel="Require identity checkpoint before actions"
+                checked={hatchPetAgentConfig.requireIdentityReviewBeforeActions}
+                onChange={(requireIdentityReviewBeforeActions) => onChangeHatchPetAgent({ requireIdentityReviewBeforeActions })}
+              />
+            </div>
+
+            {hatchPetAgentConfigDirty ? (
+              <div className="provider-warning" data-testid="hatch-pet-agent-dirty">
+                Hatch Pet Agent 有未保存配置；capability check 只使用已保存配置。
+              </div>
+            ) : null}
+
+            {(hatchPetAgentStatus || hatchPetAgentCapabilityResult) ? (
+              <div className={`provider-feedback ${hatchPetAgentCapabilityResult ? hatchPetAgentCapabilityTone : ''}`.trim()} data-testid="hatch-pet-agent-status" aria-live="polite">
+                <strong>Hatch Pet Agent status</strong>
+                {hatchPetAgentStatus ? <span>{hatchPetAgentStatus}</span> : null}
+                {hatchPetAgentCapabilityResult ? (
+                  <span>
+                    {hatchPetAgentCapabilityResult.ok ? 'Supported' : 'Unsupported'} · {hatchPetAgentCapabilityResult.provider} · {hatchPetAgentCapabilityResult.model} · {hatchPetAgentCapabilityResult.elapsedMs}ms · {hatchPetAgentCapabilityResult.code}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </CollapsibleAiSection>
+
+      <CollapsibleAiSection title="长期记忆" note="查看和管理自动抽取的用户与宠物关系记忆">
+        <div className="section memory-section" data-testid="ai-memory-profile">
+          <div className="field-row">
+            <div>
+              <div className="field-label">当前宠物包</div>
+              <div className="field-note">{memoryProfile.petPackDisplayName} · {memoryProfile.petPackId}</div>
+            </div>
+            <div className="inline-action">
+              <button type="button" className="ghost" onClick={onRefreshMemoryProfile} disabled={saving}>
+                刷新记忆
+              </button>
+              <button type="button" className="ghost" onClick={onExportAiTalkTraceDiagnostics}>
+                导出 AI Talk Trace
+              </button>
+              <button type="button" className="danger-text" onClick={onClearPetPackMemories} disabled={saving || memoryProfile.petPackMemories.length === 0}>
+                清空当前宠物记忆
+              </button>
+            </div>
+          </div>
+
+          <div className="field-row">
+            <div>
+              <div className="field-label">Trace 导出范围</div>
+              <div className="field-note">导出 redacted 诊断时，可缩小到当前宠物包或当前主会话。</div>
+            </div>
+            <select
+              className="text-input"
+              value={traceDiagnosticsFilters.conversationId
+                ? 'conversation'
+                : (traceDiagnosticsFilters.petPackId ? 'petPack' : 'all')}
+              onChange={(event) => {
+                const nextMode = event.target.value
+                if (nextMode === 'conversation') {
+                  onChangeTraceDiagnosticsFilters({
+                    petPackId: petChatState.petPack.id || memoryProfile.petPackId,
+                    conversationId: petChatState.conversationId || `control-center:${memoryProfile.petPackId}:main`
+                  })
+                  return
+                }
+                if (nextMode === 'petPack') {
+                  onChangeTraceDiagnosticsFilters({
+                    petPackId: petChatState.petPack.id || memoryProfile.petPackId,
+                    conversationId: ''
+                  })
+                  return
+                }
+                onChangeTraceDiagnosticsFilters({ petPackId: '', conversationId: '' })
+              }}
+              data-testid="ai-trace-filter-select"
+            >
+              <option value="all">全部 AI Talk 数据</option>
+              <option value="petPack">仅当前宠物包</option>
+              <option value="conversation">仅当前主会话</option>
+            </select>
+          </div>
+
+          <div className="readonly-row">
+            <strong>当前 Trace 过滤</strong>
+            <span>
+              {traceDiagnosticsFilters.conversationId
+                ? `会话 ${traceDiagnosticsFilters.conversationId}`
+                : traceDiagnosticsFilters.petPackId
+                  ? `宠物包 ${traceDiagnosticsFilters.petPackId}`
+                  : '不过滤，导出全部'}
+            </span>
+          </div>
+
+          <div className="memory-grid">
+            <MemoryList
+              title="全局用户记忆"
+              memories={memoryProfile.globalMemories}
+              emptyText="暂无全局用户记忆"
+              saving={saving}
+              onDeleteMemory={onDeleteMemory}
+            />
+            <MemoryList
+              title="当前宠物关系记忆"
+              memories={memoryProfile.petPackMemories}
+              emptyText="暂无当前宠物关系记忆"
+              saving={saving}
+              onDeleteMemory={onDeleteMemory}
+            />
+          </div>
+
+          <div className="readonly-row">
+            <strong>最近记忆任务</strong>
+            {latestMemoryJob ? (
+              <span>
+                {latestMemoryJob.status} · applied {latestMemoryJob.appliedCount} · filtered {latestMemoryJob.filteredCount}
+                {latestMemoryJob.errorCode ? ` · ${latestMemoryJob.errorCode}` : ''}
+              </span>
+            ) : <span>暂无后台抽取任务</span>}
+          </div>
+        </div>
+      </CollapsibleAiSection>
+
+      <CollapsibleAiSection title="Pet Persona Override" note="按当前宠物包覆盖 AI 人格">
+        <div className="section">
+          <div className="field-row">
+            <div>
+              <div className="field-label">Pet Persona Override</div>
+              <div className="field-note">当前激活宠物包：{personaProfile.petPackDisplayName} · {personaProfile.petPackId}</div>
+            </div>
+            <div className="inline-action">
+              <button type="button" className="ghost" onClick={onResetPersonaOverride} disabled={saving}>
+                清空 override
+              </button>
+              <button type="button" className="primary" onClick={onSavePersonaOverride} disabled={saving}>
+                保存人格 override
+              </button>
+            </div>
+          </div>
+
+          <label className="field-row">
+            <span className="field-label">Name</span>
+            <input
+              className="text-input"
+              value={personaDraft.name}
+              placeholder={personaProfile.packPersona.name}
+              onChange={(event) => onChangePersonaDraft({ name: event.target.value })}
+            />
+          </label>
+
+          <label className="field-row">
+            <span className="field-label">Identity</span>
+            <input
+              className="text-input"
+              value={personaDraft.identity}
+              placeholder={personaProfile.packPersona.identity}
+              onChange={(event) => onChangePersonaDraft({ identity: event.target.value })}
+            />
+          </label>
+
+          <label className="field-row">
+            <span className="field-label">Tone</span>
+            <input
+              className="text-input"
+              value={personaDraft.tone}
+              placeholder={personaProfile.packPersona.tone}
+              onChange={(event) => onChangePersonaDraft({ tone: event.target.value })}
+            />
+          </label>
+
+          <label className="field-row">
+            <span className="field-label">Speaking Style</span>
+            <input
+              className="text-input"
+              value={personaDraft.speakingStyle}
+              placeholder={personaProfile.packPersona.speakingStyle}
+              onChange={(event) => onChangePersonaDraft({ speakingStyle: event.target.value })}
+            />
+          </label>
+
+          <label className="field-row">
+            <span className="field-label">Relationship</span>
+            <input
+              className="text-input"
+              value={personaDraft.relationshipToUser}
+              placeholder={personaProfile.packPersona.relationshipToUser}
+              onChange={(event) => onChangePersonaDraft({ relationshipToUser: event.target.value })}
+            />
+          </label>
+
+          <label className="field-row">
+            <span className="field-label">Action Style</span>
+            <input
+              className="text-input"
+              value={personaDraft.actionStyle}
+              placeholder={personaProfile.packPersona.actionStyle}
+              onChange={(event) => onChangePersonaDraft({ actionStyle: event.target.value })}
+            />
+          </label>
+
+          <label className="field-row tall">
+            <span className="field-label">Core Traits</span>
+            <textarea
+              className="text-input textarea"
+              value={personaDraft.coreTraitsText}
+              placeholder={personaProfile.packPersona.coreTraits.join('\n')}
+              onChange={(event) => onChangePersonaDraft({ coreTraitsText: event.target.value })}
+            />
+          </label>
+
+          <label className="field-row tall">
+            <span className="field-label">Boundaries</span>
+            <textarea
+              className="text-input textarea"
+              value={personaDraft.boundariesText}
+              placeholder={personaProfile.packPersona.boundaries.join('\n')}
+              onChange={(event) => onChangePersonaDraft({ boundariesText: event.target.value })}
+            />
+          </label>
+
+          <div className="readonly-row">
+            <strong>Compiled Persona Prompt</strong>
+            <pre className="json-preview">{personaProfile.compiledPersonaPrompt || '暂无编译结果'}</pre>
+          </div>
+
+          <div className="readonly-row">
+            <strong>Compiled System Prompt</strong>
+            <pre className="json-preview">{personaProfile.compiledSystemPrompt || '暂无编译结果'}</pre>
+          </div>
+
+          <label className="field-row tall">
+            <span className="field-label">生成说明</span>
+            <textarea
+              className="text-input textarea"
+              value={personaGenerationInstruction}
+              placeholder="例如：更活泼一点，但保持简短、可靠、适合工作陪伴"
+              onChange={(event) => setPersonaGenerationInstruction(event.target.value)}
+            />
+          </label>
+
+          <div className="field-row">
+            <div>
+              <div className="field-label">人格生成草稿</div>
+              <div className="field-note">生成后先预览，确认后才写入本地 override</div>
+            </div>
+            <button type="button" className="ghost" onClick={onGeneratePersonaDraft} disabled={saving}>
+              生成人格草稿
+            </button>
+          </div>
+
+          {generatedPersonaDraft ? (
+            <div className="readonly-row">
+              <strong>Generated Persona Draft</strong>
+              <pre className="json-preview">{generatedPersonaDraft.compiledPersonaPrompt}</pre>
+              <div className="inline-action">
+                <button type="button" className="primary" onClick={onApplyGeneratedPersonaDraft} disabled={saving}>
+                  应用草稿
+                </button>
+                <button type="button" className="ghost" onClick={onDismissGeneratedPersonaDraft} disabled={saving}>
+                  放弃草稿
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </CollapsibleAiSection>
+
+      {status ? <div className="status-line" data-testid="ai-status-line">{status}</div> : null}
+
+      <CollapsibleAiSection title="Behavior" note="AI 回复到宠物动作的编排与诊断">
+        <div className="section">
+          {behaviorStatus ? (
+            <div className="provider-feedback" data-testid="ai-behavior-status" aria-live="polite">
+              <strong>Behavior 状态</strong>
+              <span>{behaviorStatus}</span>
+            </div>
+          ) : null}
+          <div className="field-row">
+            <div>
+              <div className="field-label">Behavior</div>
+              <div className="field-note">AI 行为编排</div>
+            </div>
+            <Toggle ariaLabel="Enable AI behavior" checked={behavior.enabled} onChange={(enabled) => onChangeBehavior({ enabled })} />
+          </div>
+
+          <div className="field-row">
+            <div>
+              <div className="field-label">Provider tools</div>
+              <div className="field-note">openpet_behavior tool_call</div>
+            </div>
+            <Toggle ariaLabel="Enable provider tools" checked={behavior.useTools} onChange={(useTools) => onChangeBehavior({ useTools })} />
+          </div>
+
+          <label className="field-row">
+            <span className="field-label">Cooldown</span>
+            <input
+              className="text-input"
+              type="number"
+              min="0"
+              value={behavior.cooldownMs}
+              onChange={(event) => onChangeBehavior({ cooldownMs: Number(event.target.value) })}
+            />
+          </label>
+
+          <label className="field-row tall">
+            <span className="field-label">Rules JSON</span>
+            <textarea
+              className="text-input textarea behavior-rules"
+              value={behaviorRulesText}
+              onChange={(event) => setBehaviorRulesText(event.target.value)}
+            />
+          </label>
+
+          <div className="field-row tall">
+            <div className="field-label">Dry run</div>
+            <div className="behavior-dry-run">
+              <div className="inline-action">
+                <input
+                  className="text-input"
+                  value={dryRunText}
+                  placeholder="输入一段 AI 回复"
+                  onChange={(event) => setDryRunText(event.target.value)}
+                />
+                <button type="button" className="ghost" onClick={onDryRunBehavior} disabled={!dryRunText.trim()}>
+                  测试
+                </button>
+                <button type="button" className="primary" onClick={onSaveBehavior} disabled={saving}>
+                  保存 Behavior
+                </button>
+              </div>
+              {dryRunResult ? (
+                <div className="behavior-result">
+                  <strong>{dryRunResult.matched ? 'Matched' : 'No match'}</strong>
+                  <span>{dryRunResult.reason}</span>
+                  {dryRunResult.actionId ? <span>{dryRunResult.actionId}</span> : null}
+                  {dryRunResult.ruleId ? <span>{dryRunResult.ruleId}</span> : null}
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="field-row tall">
+            <div>
+              <div className="field-label">Decisions</div>
+              <div className="field-note">{decisions.length} 条</div>
+            </div>
+            <div className="behavior-diagnostics">
+              <div className="inline-action">
+                <input
+                  className="text-input"
+                  value={replayDraft}
+                  placeholder="Decision ID"
+                  onChange={(event) => setReplayDraft(event.target.value)}
+                />
+                <button type="button" className="ghost" onClick={onReplayBehaviorDecision} disabled={!replayDraft.trim()}>
+                  Replay
+                </button>
+                <button type="button" className="ghost" onClick={onExportBehaviorDiagnostics} disabled={decisions.length === 0}>
+                  导出
+                </button>
+                <button type="button" className="danger-text" onClick={onClearBehaviorDecisions} disabled={decisions.length === 0}>
+                  清空
+                </button>
+              </div>
+
+              {replayResult ? (
+                <div className="behavior-result">
+                  <strong>{replayResult.matched ? 'Replay matched' : 'Replay no match'}</strong>
+                  <span>{replayResult.reason}</span>
+                  {replayResult.providerReason ? <span>{replayResult.providerReason}</span> : null}
+                  {replayResult.displayMode ? <span>{replayResult.displayMode}</span> : null}
+                  {replayResult.actionId ? <span>{replayResult.actionId}</span> : null}
+                </div>
+              ) : null}
+
+              <div className="behavior-decision-list">
+                {decisions.length === 0 ? (
+                  <div className="empty-chat">暂无决策记录</div>
+                ) : decisions.slice(0, 8).map((decision) => (
+                  <div className="behavior-decision-row" key={decision.id}>
+                    <div>
+                      <strong>#{decision.id} {decision.matched ? 'matched' : 'blocked'}</strong>
+                      <span>{decision.reason || decision.blockedReason || 'no reason'}</span>
+                      {decision.inputSummary ? <span>{decision.inputSummary}</span> : null}
+                    </div>
+                    <div className="behavior-decision-meta">
+                      {decision.ruleId ? <span>{decision.ruleId}</span> : null}
+                      {decision.actionId ? <span>{decision.actionId}</span> : null}
+                      {decision.displayMode ? <span>display: {decision.displayMode}</span> : null}
+                      {decision.providerReason ? <span>provider: {decision.providerReason}</span> : null}
+                      {decision.cooldown ? <span>cooldown</span> : null}
+                      {decision.fallback ? <span>fallback</span> : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </CollapsibleAiSection>
+
+      <CollapsibleAiSection title="聊天" note="默认在这里和宠物对话；需要长历史时可打开扩展聊天面板">
+        <div className="chat-panel">
+          {chatStatus ? (
+            <div className="provider-feedback" data-testid="ai-chat-status" aria-live="polite">
+              <strong>聊天状态</strong>
+              <span>{chatStatus}</span>
+            </div>
+          ) : null}
+          <div className="chat-meta-bar">
+            <div>
+              <strong>{petChatState.petPack.displayName || '当前宠物'}</strong>
+              <span>
+                {petChatState.ai.ready
+                  ? `${petChatState.ai.provider} · ${petChatState.ai.model}`
+                  : (petChatState.ai.reason || '请先配置 AI Provider')}
+              </span>
+            </div>
+            <div className="inline-action">
+              <button type="button" className="ghost" onClick={onOpenBubbleChat}>
+                打开默认气泡聊天
+              </button>
+              <button type="button" className="ghost" onClick={onOpenDesktopChat}>
+                打开扩展聊天面板
+              </button>
+            </div>
+          </div>
+          {petChatState.bubble.text ? (
+            <div className="chat-bubble-preview" data-testid="ai-chat-bubble-preview">
+              <strong>宠物当前气泡</strong>
+              <span>{petChatState.bubble.text}</span>
+            </div>
+          ) : null}
+          <div className="section" data-testid="ai-trace-summary">
+            <div className="readonly-row">
+              <strong>当前 Trace</strong>
+              {traceSummary ? (
+                <span>
+                  {traceSummary.conversation.petPackDisplayName || traceSummary.conversation.petPackId || 'Unknown pet'}
+                  {' · '}
+                  {traceSummary.conversation.conversationId || 'no-conversation'}
+                </span>
+              ) : <span>暂无 AI Talk trace</span>}
+            </div>
+            <div className="readonly-row">
+              <strong>Provider</strong>
+              <span>
+                {traceSummary
+                  ? `${traceSummary.provider.provider || 'unknown'} · ${traceSummary.provider.baseUrl || 'n/a'} · ${traceSummary.provider.model || 'n/a'}`
+                  : 'n/a'}
+              </span>
+            </div>
+            <div className="readonly-row">
+              <strong>请求摘要</strong>
+              <span>
+                {traceSummary
+                  ? `消息数 ${traceSummary.request.messagesCount} · history ${traceSummary.request.historyCount} · tools ${traceSummary.request.toolsCount} · recent pet activity ${traceSummary.request.recentPetActivityCount}`
+                  : '暂无请求摘要'}
+              </span>
+            </div>
+            <div className="readonly-row">
+              <strong>记忆摘要</strong>
+              <span>
+                {traceSummary
+                  ? `injected ${traceSummary.memory.injectedCount} (${traceScopeLabel(traceSummary.memory.injectedScopes)}) · used ${traceSummary.memory.usedCount} (${traceScopeLabel(traceSummary.memory.usedScopes)})`
+                  : '暂无记忆注入'}
+              </span>
+            </div>
+            <div className="readonly-row">
+              <strong>行为摘要</strong>
+              <span>
+                {traceSummary
+                  ? `intent ${traceSummary.behavior.providerIntent?.intent || 'none'} · final ${traceSummary.behavior.finalDecision?.actionId || 'none'} · display ${traceSummary.result.displayMode || 'auto'}`
+                  : '暂无行为结果'}
+              </span>
+            </div>
+            <div className="readonly-row">
+              <strong>结果摘要</strong>
+              <span>
+                {traceSummary
+                  ? `reply chars ${traceSummary.result.replyChars} · persisted ${traceSummary.result.persistedMessageCount} · bubble segments ${traceSummary.result.bubbleSegmentCount}`
+                  : '暂无结果摘要'}
+              </span>
+            </div>
+            <div className="readonly-row">
+              <strong>流式摘要</strong>
+              <span>
+                {traceSummary
+                  ? [
+                      `mode ${traceModeLabel(traceSummary)}`,
+                      `status ${traceStatusLabel(traceSummary)}`,
+                      `chunks ${traceSummary.result.chunkCount}`,
+                      `partial chars ${traceSummary.result.partialReplyChars}`,
+                      traceLatencyLabel(traceSummary),
+                      `finish ${traceSummary.result.finishReason || 'n/a'}`,
+                      `cancel ${traceSummary.result.cancelReason || 'none'}`,
+                      `memory job ${traceSummary.result.memoryExtractionScheduled ? 'scheduled' : 'none'}`,
+                      `behavior job ${traceSummary.result.behaviorDecisionScheduled ? 'scheduled' : 'none'}`
+                    ].join(' · ')
+                  : '暂无流式状态'}
+              </span>
+            </div>
+          </div>
+          <div className="readonly-row" data-testid="ai-bubble-chat-state">
+            <strong>默认气泡聊天</strong>
+            <span>{petChatState.bubbleChat.visible ? '当前已显示' : '当前未显示'}</span>
+          </div>
+          <div className="chat-transcript" aria-live="polite">
+            {chatMessages.length === 0 ? (
+              <div className="empty-chat">暂无对话</div>
+            ) : chatMessages.map((message, index) => (
+              <div className={`chat-message ${message.role}`} key={`${message.role}-${index}`}>
+                <strong>{message.role === 'user' ? 'You' : 'Pet'}</strong>
+                <span>{message.content}</span>
+              </div>
+            ))}
+          </div>
+          <div className="chat-input-row">
+            <textarea
+              className="text-input textarea chat-composer"
+              value={chatDraft}
+              placeholder="说点什么"
+              onChange={(event) => setChatDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault()
+                  onSendChat()
+                }
+              }}
+              disabled={!petChatState.ai.ready || chatting}
+            />
+            <button type="button" className="primary" onClick={onSendChat} disabled={!chatDraft.trim() || chatting || !petChatState.ai.ready}>
+              {chatting ? '发送中' : '发送'}
+            </button>
+          </div>
+        </div>
+      </CollapsibleAiSection>
+    </section>
+  )
+}

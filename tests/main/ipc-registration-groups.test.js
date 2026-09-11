@@ -1,14 +1,14 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { IPC } = require('../../src/shared/ipc-channels')
-const { registerAiIpc } = require('../../src/main/ipc/register-ai-ipc')
-const { registerCreatorIpc } = require('../../src/main/ipc/register-creator-ipc')
-const { registerPetRuntimeIpc } = require('../../src/main/ipc/register-pet-runtime-ipc')
-const { registerPluginIpc } = require('../../src/main/ipc/register-plugin-ipc')
-const { registerServiceIpc } = require('../../src/main/ipc/register-service-ipc')
-const { registerSettingsIpc } = require('../../src/main/ipc/register-settings-ipc')
-const { registerSystemIpc } = require('../../src/main/ipc/register-system-ipc')
+const { IPC } = require('../../apps/desktop/src/shared/ipc-channels')
+const { registerAiIpc } = require('../../apps/desktop/src/ipc/register-ai-ipc')
+const { registerCreatorIpc } = require('../../apps/desktop/src/ipc/register-creator-ipc')
+const { registerPetRuntimeIpc } = require('../../apps/desktop/src/ipc/register-pet-runtime-ipc')
+const { registerPluginIpc } = require('../../apps/desktop/src/ipc/register-plugin-ipc')
+const { registerServiceIpc } = require('../../apps/desktop/src/ipc/register-service-ipc')
+const { registerSettingsIpc } = require('../../apps/desktop/src/ipc/register-settings-ipc')
+const { registerSystemIpc } = require('../../apps/desktop/src/ipc/register-system-ipc')
 
 const createIpcMainStub = () => {
   const handlers = new Map()
@@ -168,7 +168,7 @@ test('registerPetRuntimeIpc wires pet movement and focus handlers', () => {
   assert.equal(win.focusCalled, 1)
 })
 
-test('registerAiIpc wires AI config, behavior, and chat-adjacent handlers', async () => {
+test('registerAiIpc retains only image and Creator operations after AI HTTP cutover', async () => {
   const ipcMain = createIpcMainStub()
   const dryRunCalls = []
   const hatchCalls = []
@@ -243,40 +243,18 @@ test('registerAiIpc wires AI config, behavior, and chat-adjacent handlers', asyn
     }
   })
 
-  const config = await ipcMain.handlers.get(IPC.AI_GET_CONFIG)()
-  const chat = await ipcMain.handlers.get(IPC.AI_CHAT)(null, { message: 'hi' })
-  const dryRun = await ipcMain.handlers.get(IPC.AI_BEHAVIOR_DRY_RUN)(null, { reply: 'wave' })
-  const behaviorConfig = await ipcMain.handlers.get(IPC.AI_BEHAVIOR_GET)()
-  const savedBehavior = await ipcMain.handlers.get(IPC.AI_BEHAVIOR_SAVE)(null, { enabled: false })
-  const replay = await ipcMain.handlers.get(IPC.AI_BEHAVIOR_REPLAY_DECISION)(null, { decisionId: 7 })
-  const cleared = await ipcMain.handlers.get(IPC.AI_BEHAVIOR_CLEAR_DECISIONS)()
-  const exported = await ipcMain.handlers.get(IPC.AI_BEHAVIOR_EXPORT_DIAGNOSTICS)()
-
-  assert.deepEqual(config, { kind: 'ai-config', config: { enabled: true, model: 'gpt-5.5' } })
-  assert.deepEqual(chat, { payload: { message: 'hi' }, options: { source: 'control-center' } })
-  assert.deepEqual(dryRun, { kind: 'behavior-result', result: { matched: false } })
-  assert.deepEqual(behaviorConfig, { kind: 'behavior-config', config: { enabled: true, decisions: [{ id: 'd1' }] } })
-  assert.deepEqual(savedBehavior, { kind: 'behavior-config', config: { enabled: false } })
-  assert.deepEqual(replay, { kind: 'behavior-result', result: { decisionId: 7, actions: [{ id: 'wave' }] } })
-  assert.deepEqual(cleared, { kind: 'behavior-decisions', decisions: { ok: true } })
-  assert.deepEqual(exported, { ok: true })
-  assert.deepEqual(behaviorAdapterCalls, [
-    ['result', { matched: false }],
-    ['config', { enabled: true, decisions: [{ id: 'd1' }] }],
-    ['config', { enabled: false }],
-    ['result', { decisionId: 7, actions: [{ id: 'wave' }] }],
-    ['decisions', { ok: true }]
-  ])
-  assert.deepEqual(dryRunCalls, [{ reply: 'wave', actions: [{ id: 'wave' }] }])
-  assert.ok(ipcMain.handlers.has(IPC.AI_GET_PERSONA_PROFILE))
+  assert.equal(ipcMain.handlers.size, 8)
+  for (const channel of ipcMain.handlers.keys()) assert.doesNotMatch(channel, /^ai[:\-]/)
+  assert.deepEqual(await ipcMain.handlers.get(IPC.IMAGE_GENERATION_GET_CONFIG)(), { kind: 'image-config', config: { provider: 'cloud' } })
+  assert.deepEqual(await ipcMain.handlers.get(IPC.IMAGE_GENERATION_CHECK_HEALTH)(null, {}), { kind: 'image-health', result: { ok: true } })
+  assert.deepEqual(behaviorAdapterCalls, [])
+  assert.deepEqual(dryRunCalls, [])
   assert.ok(ipcMain.handlers.has(IPC.IMAGE_GENERATION_CHECK_HEALTH))
-  assert.deepEqual(await ipcMain.handlers.get(IPC.HATCH_PET_AGENT_GET_CONFIG)(), { enabled: false })
-  await ipcMain.handlers.get(IPC.HATCH_PET_AGENT_SAVE_CONFIG)(null, { enabled: true })
-  await ipcMain.handlers.get(IPC.HATCH_PET_AGENT_SAVE_API_KEY)(null, 'host-only')
-  await ipcMain.handlers.get(IPC.HATCH_PET_AGENT_CLEAR_API_KEY)()
+  assert.equal(ipcMain.handlers.has('hatch-pet-agent:save-config'), false)
+  assert.equal(ipcMain.handlers.has('hatch-pet-agent:save-api-key'), false)
   assert.deepEqual(await ipcMain.handlers.get(IPC.HATCH_PET_AGENT_CHECK_CAPABILITY)(), { ok: true })
   assert.deepEqual(await ipcMain.handlers.get(IPC.HATCH_PET_AGENT_GET_RUN_STATUS)(null, { runId: 'run-1' }), { ok: true, runId: 'run-1' })
-  assert.deepEqual(hatchCalls, [['save', { enabled: true }], ['key', 'host-only'], ['clear'], ['status', 'run-1']])
+  assert.deepEqual(hatchCalls, [['status', 'run-1']])
 })
 
 test('registerPluginIpc wires plugin lifecycle and package inspection handlers', async () => {
@@ -336,36 +314,13 @@ test('registerPluginIpc wires plugin lifecycle and package inspection handlers',
   assert.ok(ipcMain.handlers.has(IPC.PLUGINS_SAVE_SERVICE_HEALTH_POLICY))
 })
 
-test('registerCreatorIpc wires creator workflow handlers', async () => {
+test('registerCreatorIpc keeps only the native Creator reference picker', async () => {
   const ipcMain = createIpcMainStub()
-  const calls = []
   const creatorWorkflowService = {
-    getState: async () => ({ ok: true, provider: { ready: true } }),
     approveReferenceSourcePath: () => ({
       referenceToken: 'token-reference',
       fileName: 'reference.png'
     }),
-    bindReference: async (payload) => {
-      calls.push({ type: 'bind', payload })
-      return { ok: true, replaced: false, reference: payload }
-    },
-    generateNewCharacter: async (payload) => {
-      calls.push({ type: 'new', payload })
-      return { ok: true, state: 'completed', code: 'pet_imported', message: 'ok', run: null }
-    },
-    generateExistingAction: async (payload) => {
-      calls.push({ type: 'action', payload })
-      return { ok: true, state: 'completed', code: 'action_imported', message: 'ok', run: null }
-    },
-    acceptCreatorIdentity: async (payload) => {
-      calls.push({ type: 'accept-identity', payload })
-      return { ok: true, state: 'review-required', code: 'identity_accepted_review_required', message: 'ok', run: null }
-    },
-    acceptCreatorActionCandidate: async (payload) => {
-      calls.push({ type: 'accept-action-candidate', payload })
-      return { ok: true, state: 'review-required', code: 'action_candidate_accepted_review_required', message: 'ok', run: null }
-    },
-    getLastRun: async () => ({ ok: true, run: null })
   }
 
   registerCreatorIpc({
@@ -374,102 +329,13 @@ test('registerCreatorIpc wires creator workflow handlers', async () => {
     creatorWorkflowService
   })
 
-  assert.deepEqual(await ipcMain.handlers.get(IPC.CREATOR_GET_STATE)(), { ok: true, provider: { ready: true } })
   assert.deepEqual(await ipcMain.handlers.get(IPC.CREATOR_PICK_REFERENCE_IMAGE)({}, {}), {
     ok: true,
     canceled: false,
     referenceToken: 'token-reference',
     fileName: 'reference.png'
   })
-  assert.deepEqual(
-    await ipcMain.handlers.get(IPC.CREATOR_BIND_REFERENCE)(null, {
-      targetType: 'editable-action-host',
-      targetId: 'legacy-editable-host',
-      referenceToken: 'token-reference'
-    }),
-    {
-      ok: true,
-      replaced: false,
-      reference: {
-        targetType: 'editable-action-host',
-        targetId: 'legacy-editable-host',
-        referenceToken: 'token-reference'
-      }
-    }
-  )
-  await ipcMain.handlers.get(IPC.CREATOR_GENERATE_NEW_CHARACTER)(null, {
-    characterName: 'Mango',
-    stylePrompt: 'orange cat',
-    referenceImageToken: 'token-reference'
-  })
-  await ipcMain.handlers.get(IPC.CREATOR_GENERATE_EXISTING_ACTION)(null, {
-    actionName: 'spin',
-    motionPrompt: 'spin quickly',
-    referenceImageToken: 'token-reference'
-  })
-  await ipcMain.handlers.get(IPC.CREATOR_ACCEPT_IDENTITY)(null, {
-    runId: 'run-1',
-    candidateId: 'canonical-4',
-    sha256: 'f'.repeat(64),
-    qualityOverride: true,
-    acknowledgedWarningCodes: ['visual-score-overall-below-minimum']
-  })
-  await ipcMain.handlers.get(IPC.CREATOR_ACCEPT_ACTION_CANDIDATE)(null, {
-    runId: 'run-1',
-    actionId: 'waving',
-    candidateId: 'candidate-2',
-    sha256: 'c'.repeat(64),
-    qualityOverride: true,
-    acknowledgedWarningCodes: ['visual-defect-motion-unreadable']
-  })
-  assert.deepEqual(await ipcMain.handlers.get(IPC.CREATOR_GET_LAST_RUN)(), { ok: true, run: null })
-  assert.deepEqual(calls, [
-    {
-      type: 'bind',
-      payload: {
-        targetType: 'editable-action-host',
-        targetId: 'legacy-editable-host',
-        referenceToken: 'token-reference'
-      }
-    },
-    {
-      type: 'new',
-      payload: {
-        characterName: 'Mango',
-        stylePrompt: 'orange cat',
-        referenceImageToken: 'token-reference'
-      }
-    },
-    {
-      type: 'action',
-      payload: {
-        actionName: 'spin',
-        motionPrompt: 'spin quickly',
-        referenceImageToken: 'token-reference'
-      }
-    },
-    {
-      type: 'accept-identity',
-      payload: {
-        runId: 'run-1',
-        candidateId: 'canonical-4',
-        sha256: 'f'.repeat(64),
-        qualityOverride: true,
-        acknowledgedWarningCodes: ['visual-score-overall-below-minimum']
-      }
-    },
-    {
-      type: 'accept-action-candidate',
-      payload: {
-        runId: 'run-1',
-        actionId: 'waving',
-        candidateId: 'candidate-2',
-        sha256: 'c'.repeat(64),
-        qualityOverride: true,
-        acknowledgedWarningCodes: ['visual-defect-motion-unreadable']
-      }
-    }
-  ])
+  assert.deepEqual([...ipcMain.handlers.keys()], [IPC.CREATOR_PICK_REFERENCE_IMAGE])
 })
 
 test('registerServiceIpc wires service status, token rotation, and config persistence handlers', async () => {

@@ -4,11 +4,11 @@ const assert = require('node:assert/strict')
 const {
   createPluginRuntimeKey,
   createPluginRuntimeRegistry
-} = require('../../src/main/services/plugin-runtime-registry')
+} = require('../../apps/desktop/src/services/plugin-runtime-registry')
 const {
   ACTIVE_PLUGIN_RUNTIME_STATUSES,
   isActivePluginRuntimeStatus
-} = require('../../src/main/services/plugin-runtime-status')
+} = require('../../apps/desktop/src/services/plugin-runtime-status')
 
 test('plugin runtime status exposes the shared active status policy', () => {
   assert.equal(createPluginRuntimeKey('weather', 'refresh'), 'weather:refresh')

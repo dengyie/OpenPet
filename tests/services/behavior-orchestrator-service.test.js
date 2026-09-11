@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { createBehaviorOrchestratorService } = require('../../src/main/services/behavior-orchestrator-service')
+const { createBehaviorOrchestratorService } = require('../../apps/desktop/src/services/behavior-orchestrator-service')
 
 const actions = [
   { id: 'idle', label: 'Idle', kind: 'idle' },

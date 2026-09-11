@@ -1,9 +1,14 @@
 "use strict"
 
-const { sanitizeLogText } = require("../../../../src/main/services/log-safety")
+const { sanitizeLogText } = require("../services/log-safety")
 
 const BRIDGE_PROTOCOL_VERSION = 1
 const CATALOG_BLOCKLIST_TYPES = new Set(["pluginId", "packId", "sha256"])
+const CREATOR_OPERATIONS = new Set([
+	"pick-reference", "bind-reference", "get-state", "get-last-run", "asset-preview",
+	"generate-character", "generate-action", "run-workflow", "evaluate-sprite", "retry-action", "retry-identity",
+	"accept-identity", "accept-action-candidate", "export-recovery", "import-actions",
+])
 
 function exactKeys(value, keys) {
 	const actual = Object.keys(value).sort()
@@ -37,6 +42,7 @@ function normalizeCatalogRequest(value) {
 // capabilities may reach Electron/PetService.
 const BACKEND_TO_SHELL_TYPES = Object.freeze([
 	"actions.request",
+	"creator.request",
 	"pet.command.request",
 	"pet.say",
 	"pet.playAction",
@@ -53,6 +59,8 @@ const BACKEND_TO_SHELL_TYPES = Object.freeze([
 	"secrets.persist.request",
 	"catalog.request",
 	"pet-packs.request",
+	"ai.state",
+	"ai.host.request",
 ])
 
 const PET_PACK_OPERATIONS = Object.freeze([
@@ -106,8 +114,17 @@ function parseEnvelope(raw) {
 	if (!BACKEND_TO_SHELL_TYPES.includes(body.type)) return fail("unknown-type", body.type)
 
 	switch (body.type) {
+		case "ai.state":
+			if (!body.snapshot || typeof body.snapshot !== "object" || Array.isArray(body.snapshot)) return fail("bad-body", "ai.state")
+			break
+		case "ai.host.request":
+			if (!["context", "present"].includes(body.operation) || !body.payload || typeof body.payload !== "object" || Array.isArray(body.payload)) return fail("bad-body", "ai.host.request")
+			break
 		case "actions.request":
 			if (typeof body.operation !== "string" || body.payload === null || typeof body.payload !== "object" || Array.isArray(body.payload)) return fail("bad-body", "actions.request")
+			break
+		case "creator.request":
+			if (!CREATOR_OPERATIONS.has(body.operation) || body.payload === null || typeof body.payload !== "object" || Array.isArray(body.payload)) return fail("bad-body", "creator.request")
 			break
 		case "pet.command.request":
 			if (!["say", "playAction", "setEvent"].includes(body.operation) || body.payload === null || typeof body.payload !== "object" || Array.isArray(body.payload)) return fail("bad-body", "pet.command.request")
@@ -165,7 +182,7 @@ function parseEnvelope(raw) {
 	return { ok: true, envelope: { v: raw.v, id: raw.id, at: raw.at, body: normalizedBody } }
 }
 
-function createMessageHandler({ dialog, petService, secretService, logger, send, onNotify, onBadge, onDashboard, onSettingsChanged, onSettingsApplyRequest, onCatalogRequest, onPetPackRequest, onActionsRequest, productionService } = {}) {
+function createMessageHandler({ dialog, petService, secretService, logger, send, onNotify, onBadge, onDashboard, onSettingsChanged, onSettingsApplyRequest, onCatalogRequest, onPetPackRequest, onActionsRequest, onCreatorRequest, onAiState, onAiHostRequest, productionService } = {}) {
 	if (typeof send !== "function") throw new TypeError("createMessageHandler 需要 send")
 
 	async function handle(raw) {
@@ -178,6 +195,18 @@ function createMessageHandler({ dialog, petService, secretService, logger, send,
 
 		try {
 			switch (body.type) {
+				case "ai.state":
+					onAiState?.(structuredClone(body.snapshot))
+					return true
+				case "ai.host.request": {
+					let response
+					try {
+						if (!onAiHostRequest) throw new Error("AI host effects are unavailable")
+						response = { ok: true, result: await onAiHostRequest({ operation: body.operation, payload: structuredClone(body.payload) }) }
+					} catch (error) { response = { ok: false, error: error?.message || "AI host request failed" } }
+					send({ v: 1, id: raw.id, at: Date.now(), body: { type: "ai.host.result", operation: body.operation, ...response } })
+					return true
+				}
 				case "pet-packs.request": {
 					let responseBody
 					try {
@@ -217,6 +246,21 @@ function createMessageHandler({ dialog, petService, secretService, logger, send,
 						responseBody = { type: "actions.result", operation: body.operation, ok: true, result }
 					} catch (error) {
 						responseBody = { type: "actions.result", operation: body.operation, ok: false, error: {
+							code: await normalizePetPackErrorCode(error?.code),
+							message: sanitizeLogText(error?.message || String(error)),
+						} }
+					}
+					send({ v: BRIDGE_PROTOCOL_VERSION, id: raw.id, at: Date.now(), body: responseBody })
+					return true
+				}
+				case "creator.request": {
+					let responseBody
+					try {
+						if (typeof onCreatorRequest !== "function") throw Object.assign(new Error("Shell Creator authority unavailable"), { code: "BACKEND_UNAVAILABLE" })
+						const result = await onCreatorRequest({ operation: body.operation, payload: structuredClone(body.payload) })
+						responseBody = { type: "creator.result", operation: body.operation, ok: true, result }
+					} catch (error) {
+						responseBody = { type: "creator.result", operation: body.operation, ok: false, error: {
 							code: await normalizePetPackErrorCode(error?.code),
 							message: sanitizeLogText(error?.message || String(error)),
 						} }

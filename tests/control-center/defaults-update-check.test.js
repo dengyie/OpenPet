@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 
 test('cloneUpdateCheck normalizes update assets to the shared update asset shape', async () => {
-  const { cloneUpdateCheck } = await import('../../src/control-center/src/lib/defaults.ts')
+  const { cloneUpdateCheck } = await import('../../apps/control-center/src/lib/defaults.ts')
 
   assert.deepEqual(cloneUpdateCheck({
     status: 'ok',

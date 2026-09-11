@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 
-const { loadPetPackFromDirectory } = require('../../src/main/pet-pack/loader')
+const { loadPetPackFromDirectory } = require('../../apps/desktop/src/pet/pet-pack/loader')
 
 const BUNDLED_PACKS_DIR = path.join(__dirname, '..', '..', 'assets', 'pet-packs')
 const EXPECTED_BUNDLED_PACKS = ['chispa', 'doro', 'duodong']

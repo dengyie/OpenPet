@@ -4,8 +4,8 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 
-const { createPluginInstallService } = require('../../src/main/services/plugin-install-service')
-const { createPluginService } = require('../../src/main/services/plugin-service')
+const { createPluginInstallService } = require('../../apps/desktop/src/services/plugin-install-service')
+const { createPluginService } = require('../../apps/desktop/src/services/plugin-service')
 
 const EXAMPLE_PLUGIN_PATH = path.join(__dirname, '../../examples/plugins/rss-reader')
 const EXAMPLE_PLUGIN_ID = 'openpet.example.rss-reader'

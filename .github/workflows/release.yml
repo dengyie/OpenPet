@@ -5,11 +5,13 @@ on:
     paths:
       - 'package.json'
       - 'package-lock.json'
-      - 'main.js'
-      - 'control-center-preload.js'
-      - 'renderer.js'
-      - 'preload.js'
-      - 'src/**'
+      - 'apps/desktop/main.js'
+      - 'apps/desktop/control-center-preload.js'
+      - 'apps/desktop/renderer.js'
+      - 'apps/desktop/preload.js'
+      - 'apps/**'
+      - 'services/**'
+      - 'packages/**'
       - 'tests/**'
       - 'build/**'
       - 'scripts/**'
@@ -46,6 +48,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6.0.3
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v6.4.0
@@ -92,6 +96,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6.0.3
         with:
+          fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.checkout_ref || github.ref }}
 
       - name: Setup Node
@@ -228,6 +233,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6.0.3
         with:
+          fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.checkout_ref || github.ref }}
 
       - name: Setup Node

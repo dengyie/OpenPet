@@ -73,6 +73,20 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 			if (body.ok && !Object.hasOwn(body, "result")) return "pet.command.result has no result"
 			if (!body.ok && typeof body.error !== "string") return "pet.command.result has no error"
 		}
+		if (expectedType === "ai.host.result") {
+			const body = envelope.body
+			if (body.operation !== expectedOperation || typeof body.ok !== "boolean") return "Invalid AI host result"
+			if (body.ok && !Object.hasOwn(body, "result")) return "AI host result is missing"
+			if (!body.ok && typeof body.error !== "string") return "AI host error is missing"
+		}
+		if (expectedType === "creator.result") {
+			const body = envelope.body
+			if (body.operation !== expectedOperation || typeof body.ok !== "boolean") return "Invalid Creator result"
+			const hasResult = Object.hasOwn(body, "result")
+			const hasError = Object.hasOwn(body, "error")
+			if (body.ok && (!hasResult || hasError)) return "Successful Creator result must contain result and no error"
+			if (!body.ok && (!hasError || hasResult || body.error === null || typeof body.error !== "object" || Array.isArray(body.error) || !ERROR_CODES.includes(body.error.code) || typeof body.error.message !== "string" || body.error.message.length === 0)) return "Failed Creator result must contain a structured error and no result"
+		}
 		return null
 	}
 
@@ -162,8 +176,10 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 			"pet-packs.request": "pet-packs.result",
 			"actions.request": "actions.result",
 			"pet.command.request": "pet.command.result",
+			"ai.host.request": "ai.host.result",
+			"creator.request": "creator.result",
 		})[body?.type] ?? null
-		const expectedOperation = options.expectedOperation ?? (["pet-packs.request", "actions.request"].includes(body?.type) ? body.operation : null)
+		const expectedOperation = options.expectedOperation ?? (["pet-packs.request", "actions.request", "ai.host.request", "creator.request"].includes(body?.type) ? body.operation : null)
 		const envelope = dispatch(body, true)
 		if (envelope === null) return Promise.reject(new Error("shellClient 已销毁"))
 

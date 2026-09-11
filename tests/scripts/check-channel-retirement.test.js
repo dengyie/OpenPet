@@ -15,22 +15,22 @@ const createFixture = (t, { rows, channelCount = rows.length, registrationChanne
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-channel-retirement-'))
   t.after(() => fs.rmSync(fixtureRoot, { recursive: true, force: true }))
   fs.mkdirSync(path.join(fixtureRoot, 'docs/refactor'), { recursive: true })
-  fs.mkdirSync(path.join(fixtureRoot, 'src/shared'), { recursive: true })
-  fs.mkdirSync(path.join(fixtureRoot, 'src/main/ipc'), { recursive: true })
+  fs.mkdirSync(path.join(fixtureRoot, 'apps/desktop/src/shared'), { recursive: true })
+  fs.mkdirSync(path.join(fixtureRoot, 'apps/desktop/src/ipc'), { recursive: true })
 
   const sourceRows = Array.from({ length: channelCount }, (_, index) => {
     const channel = rows[index]?.channel || `fixture:channel-${index + 1}`
     return `  CHANNEL_${index + 1}: '${channel}',`
   })
-  fs.writeFileSync(path.join(fixtureRoot, 'src/shared/ipc-channels.ts'), `export const IPC = Object.freeze({\n${sourceRows.join('\n')}\n})\n`)
-  fs.writeFileSync(path.join(fixtureRoot, 'src/main/ipc/register-fixture.js'), registrationChannels
+  fs.writeFileSync(path.join(fixtureRoot, 'apps/desktop/src/shared/ipc-channels.ts'), `export const IPC = Object.freeze({\n${sourceRows.join('\n')}\n})\n`)
+  fs.writeFileSync(path.join(fixtureRoot, 'apps/desktop/src/ipc/register-fixture.js'), registrationChannels
     .map((channel) => `ipcMainService.handle(IPC.${rows.find((row) => row.channel === channel)?.key || 'CHANNEL_1'}, () => {})`)
     .join('\n'))
 
   const table = [
     '| IPC channel | Status | HTTP route / blocker | Source | Reason | Retired by |',
     '| --- | --- | --- | --- | --- | --- |',
-    ...rows.map((row) => `| \`${row.channel}\` | \`${row.status}\` | ${row.route || '—'} | \`src/main/ipc/register-fixture.js\` | ${row.reason || 'fixture'} | ${row.retiredBy || '—'} |`)
+    ...rows.map((row) => `| \`${row.channel}\` | \`${row.status}\` | ${row.route || '—'} | \`apps/desktop/src/ipc/register-fixture.js\` | ${row.reason || 'fixture'} | ${row.retiredBy || '—'} |`)
   ].join('\n')
   fs.writeFileSync(path.join(fixtureRoot, 'docs/refactor/15-channel-retirement.md'), `# Fixture\n\n${table}\n`)
   return fixtureRoot
@@ -82,7 +82,7 @@ test('CLI rejects duplicate ledger channels', (t) => {
 
 test('CLI rejects a TypeScript/JavaScript IPC mirror mismatch', (t) => {
   const fixtureRoot = createFixture(t, { rows: [row(1, 'keep'), row(2)] })
-  fs.writeFileSync(path.join(fixtureRoot, 'src/shared/ipc-channels.js'), "module.exports = { IPC: { CHANNEL_1: 'fixture:wrong-value', CHANNEL_2: 'fixture:channel-2' } }\n")
+  fs.writeFileSync(path.join(fixtureRoot, 'apps/desktop/src/shared/ipc-channels.js'), "module.exports = { IPC: { CHANNEL_1: 'fixture:wrong-value', CHANNEL_2: 'fixture:channel-2' } }\n")
   const result = run(fixtureRoot)
   assert.equal(result.status, 1)
   assert.match(result.stderr, /source mismatch|mismatched/i)
@@ -123,7 +123,7 @@ test('CLI accepts retired historical rows that are absent from the current IPC s
 
 test('CLI rejects unknown production IPC references', (t) => {
   const fixtureRoot = createFixture(t, { rows: [row(1, 'keep'), row(2)] })
-  fs.appendFileSync(path.join(fixtureRoot, 'src/main/ipc/register-fixture.js'), '\nipcMainService.handle(IPC.UNKNOWN_CHANNEL, () => {})\n')
+  fs.appendFileSync(path.join(fixtureRoot, 'apps/desktop/src/ipc/register-fixture.js'), '\nipcMainService.handle(IPC.UNKNOWN_CHANNEL, () => {})\n')
   const result = run(fixtureRoot)
   assert.equal(result.status, 1)
   assert.match(result.stderr, /unknown.*channel/i)

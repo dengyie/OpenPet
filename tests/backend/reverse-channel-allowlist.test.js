@@ -12,6 +12,7 @@ const {
 
 const EXPECTED_BACKEND_TO_SHELL_TYPES = [
 	"actions.request",
+	"creator.request",
 	"pet.command.request",
 	"pet.say",
 	"pet.playAction",
@@ -28,6 +29,8 @@ const EXPECTED_BACKEND_TO_SHELL_TYPES = [
 	"secrets.persist.request",
 	"catalog.request",
 	"pet-packs.request",
+	"ai.state",
+	"ai.host.request",
 ]
 
 function envelope(type, body = {}) {
@@ -49,13 +52,13 @@ function contractBackendToShellTypes() {
 }
 
 	describe("T28 reverse-channel allowlist", () => {
-	it("keeps the Backend and Shell allowlists exactly aligned with the 17 contract types", async () => {
+	it("keeps the Backend and Shell allowlists exactly aligned with the 20 contract types", async () => {
 		const backendSchema = await import("../../services/backend/bridge/message-schema.js")
 
 		assert.deepEqual(contractBackendToShellTypes(), EXPECTED_BACKEND_TO_SHELL_TYPES)
 		assert.deepEqual(backendSchema.BACKEND_TO_SHELL_TYPES, EXPECTED_BACKEND_TO_SHELL_TYPES)
 		assert.deepEqual(SHELL_BACKEND_TO_SHELL_TYPES, EXPECTED_BACKEND_TO_SHELL_TYPES)
-		assert.equal(new Set(SHELL_BACKEND_TO_SHELL_TYPES).size, 17)
+		assert.equal(new Set(SHELL_BACKEND_TO_SHELL_TYPES).size, 20)
 	})
 
 	it("drops malformed and non-allowlisted envelopes and logs each rejection", async () => {
@@ -120,6 +123,24 @@ function contractBackendToShellTypes() {
 		})), true)
 
 		assert.deepEqual(dashboards, [{ pluginId: "focus-timer" }])
+	})
+
+	it("handles Creator authority requests with correlated strict result envelopes", async () => {
+		const replies = []
+		const handler = createMessageHandler({
+			send: (reply) => replies.push(reply),
+			onCreatorRequest: async ({ operation, payload }) => ({ operation, payload, ok: true }),
+		})
+		assert.equal(await handler.handle(envelope("creator.request", { operation: "get-state", payload: {} })), true)
+		assert.equal(replies[0].id, "test-creator.request")
+		assert.deepEqual(replies[0].body, { type: "creator.result", operation: "get-state", ok: true, result: { operation: "get-state", payload: {}, ok: true } })
+		const failed = []
+		const failingHandler = createMessageHandler({
+			send: (reply) => failed.push(reply),
+			onCreatorRequest: () => { throw Object.assign(new Error("provider failed"), { code: "BACKEND_UNAVAILABLE" }) },
+		})
+		assert.equal(await failingHandler.handle(envelope("creator.request", { operation: "get-state", payload: {} })), true)
+		assert.deepEqual(failed[0].body, { type: "creator.result", operation: "get-state", ok: false, error: { code: "BACKEND_UNAVAILABLE", message: "provider failed" } })
 	})
 
 	it("delivers settings.changed as paths and version only", async () => {

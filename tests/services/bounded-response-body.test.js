@@ -4,7 +4,7 @@ const assert = require('node:assert/strict')
 const {
   cancelResponseBodyQuietly,
   readBoundedResponseBuffer
-} = require('../../src/main/services/bounded-response-body')
+} = require('../../apps/desktop/src/services/bounded-response-body')
 
 const createStreamingResponse = (chunks, { contentLength = '' } = {}) => {
   let index = 0

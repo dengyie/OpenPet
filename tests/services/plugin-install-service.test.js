@@ -6,7 +6,7 @@ const path = require('path')
 const crypto = require('crypto')
 const { execFileSync } = require('child_process')
 
-const { createPluginInstallService } = require('../../src/main/services/plugin-install-service')
+const { createPluginInstallService } = require('../../apps/desktop/src/services/plugin-install-service')
 
 const createSettingsService = (initialSettings = {}) => {
   let current = {

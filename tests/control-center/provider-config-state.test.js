@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 
 test('applySavedAiConfigState preserves draft fields while refreshing saved chat provider state', async () => {
-  const { applySavedAiConfigState } = await import('../../src/control-center/src/lib/provider-config-state.ts')
+  const { applySavedAiConfigState } = await import('../../apps/control-center/src/lib/provider-config-state.ts')
 
   const draftConfig = {
     provider: 'openai-compatible',
@@ -92,7 +92,7 @@ test('applySavedAiConfigState preserves draft fields while refreshing saved chat
 })
 
 test('applySavedImageGenerationConfigState preserves draft fields while refreshing saved image provider state', async () => {
-  const { applySavedImageGenerationConfigState } = await import('../../src/control-center/src/lib/provider-config-state.ts')
+  const { applySavedImageGenerationConfigState } = await import('../../apps/control-center/src/lib/provider-config-state.ts')
 
   const draftConfig = {
     baseUrl: 'https://draft-images.example.test/v1',
@@ -142,7 +142,7 @@ test('applySavedImageGenerationConfigState preserves draft fields while refreshi
 })
 
 test('applySavedAiConfigState replaces draft entirely when preserveDraft is false', async () => {
-  const { applySavedAiConfigState } = await import('../../src/control-center/src/lib/provider-config-state.ts')
+  const { applySavedAiConfigState } = await import('../../apps/control-center/src/lib/provider-config-state.ts')
 
   const savedConfig = {
     provider: 'openai-compatible',

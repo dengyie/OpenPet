@@ -3,8 +3,8 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const { test } = require('node:test')
-const { createActionsSidecarBridge } = require('../../src/main/ipc/actions-sidecar-bridge')
-const { createActionImportService } = require('../../src/main/services/action-import-service')
+const { createActionsSidecarBridge } = require('../../apps/desktop/src/ipc/actions-sidecar-bridge')
+const { createActionImportService } = require('../../apps/desktop/src/services/action-import-service')
 
 function fixture(overrides = {}) {
   const calls = []

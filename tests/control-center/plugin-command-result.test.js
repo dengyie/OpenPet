@@ -6,7 +6,7 @@ const { pathToFileURL } = require('node:url')
 let toCommandResultPreview
 
 test.before(async () => {
-  ;({ toCommandResultPreview } = await import(pathToFileURL(path.resolve(__dirname, '../../src/control-center/src/lib/plugin-command-result.mjs')).href))
+  ;({ toCommandResultPreview } = await import(pathToFileURL(path.resolve(__dirname, '../../apps/control-center/src/lib/plugin-command-result.mjs')).href))
 })
 
 test('toCommandResultPreview prefers structured result message and keeps output snippets', () => {

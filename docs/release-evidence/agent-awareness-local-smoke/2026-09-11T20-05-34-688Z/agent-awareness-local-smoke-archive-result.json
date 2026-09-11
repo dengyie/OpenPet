@@ -1,0 +1,53 @@
+{
+  "generatedAt": "2026-09-11T20:05:57.966Z",
+  "ok": true,
+  "source": {
+    "sessionDir": "agent-awareness-local-smoke/2026-09-11T20-05-34-688Z",
+    "resultPath": "agent-awareness-local-smoke/2026-09-11T20-05-34-688Z/agent-awareness-local-smoke-result.json"
+  },
+  "archive": {
+    "archiveDir": "docs/release-evidence/agent-awareness-local-smoke/2026-09-11T20-05-34-688Z",
+    "outputPath": "docs/release-evidence/agent-awareness-local-smoke/2026-09-11T20-05-34-688Z/agent-awareness-local-smoke-archive-result.json"
+  },
+  "smoke": {
+    "sanitizedSignalDetected": true,
+    "sessionCount": 19,
+    "activeSessionCount": 1,
+    "totalEvents": 134,
+    "unsupportedLifecycleRecordCount": 268,
+    "notificationPolicy": {
+      "present": true,
+      "eventCount": 5,
+      "petEventCount": 5,
+      "speechCount": 2,
+      "suppressedSpeechCount": 3,
+      "routineStatusSuppressed": "pass",
+      "urgentTransitionSpoke": "pass",
+      "repeatedUrgentSuppressed": "pass",
+      "repeatedCompletionSuppressed": "pass",
+      "eventPreservedWhenSpeechSuppressed": "pass",
+      "contentFreeDecisionEvidence": "pass"
+    },
+    "manualAcceptanceTemplatePresent": true,
+    "manualAcceptance": {
+      "dashboardUseful": "pending",
+      "petSpeechNoiseAcceptable": "pending",
+      "redactionLooksSafe": "pass",
+      "notesPresent": false
+    }
+  },
+  "files": [
+    {
+      "role": "agentAwarenessLocalSmokeResult",
+      "path": "agent-awareness-local-smoke-result.json",
+      "bytes": 7981,
+      "sha256": "39ba0a79d059e9b7857e20629c6c339749c3b9263bea612f0deafdb7737de161"
+    },
+    {
+      "role": "archiveReadme",
+      "path": "README.md",
+      "bytes": 3633,
+      "sha256": "8e1d37c70b217cb03975b499872ecc311f23e0b1be2d0852541269333e0a4391"
+    }
+  ]
+}

@@ -3,7 +3,7 @@
 const assert = require("node:assert/strict")
 const { before, describe, it } = require("node:test")
 
-const { sanitizeLogText } = require("../../src/main/services/log-safety.js")
+const { sanitizeLogText } = require("../../apps/desktop/src/services/log-safety.js")
 
 let secretsModule
 let routesModule

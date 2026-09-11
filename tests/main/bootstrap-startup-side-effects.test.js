@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { setImmediate: setImmediatePromise } = require('node:timers/promises')
 
-const { runPostPluginStartupSideEffects } = require('../../src/main/bootstrap/startup-side-effects')
+const { runPostPluginStartupSideEffects } = require('../../apps/desktop/src/services/bootstrap/startup-side-effects')
 
 const createBaseDependencies = (overrides = {}) => ({
   petService: {

@@ -4,8 +4,8 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 
-const { createAiTalkStore } = require('../../src/main/services/ai-talk-store')
-const { createAiTalkService } = require('../../src/main/services/ai-talk-service')
+const { createAiTalkStore } = require('../../apps/desktop/src/services/ai-talk-store')
+const { createAiTalkService } = require('../../apps/desktop/src/services/ai-talk-service')
 
 const createStore = () => createAiTalkStore({
   storePath: path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-ai-talk-service-test-')), 'ai-talk-store.json'),

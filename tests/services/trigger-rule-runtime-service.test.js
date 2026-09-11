@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { createTriggerRuleRuntimeService } = require('../../src/main/services/trigger-rule-runtime-service')
+const { createTriggerRuleRuntimeService } = require('../../apps/desktop/src/services/trigger-rule-runtime-service')
 
 const createHarness = ({ triggerRules = [] } = {}) => {
   let nowMs = 0

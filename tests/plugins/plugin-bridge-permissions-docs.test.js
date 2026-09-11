@@ -4,7 +4,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 
 const repoRoot = path.resolve(__dirname, '../..')
-const pluginServicePath = path.join(repoRoot, 'src', 'main', 'services', 'plugin-service.js')
+const pluginServicePath = path.join(repoRoot, 'apps', 'desktop', 'src', 'services', 'plugin-service.js')
 const pluginDevelopmentDocPath = path.join(repoRoot, 'docs', 'plugin-development.md')
 const pluginRulesDocPath = path.join(repoRoot, 'docs', 'plugin-ecosystem-rules.md')
 

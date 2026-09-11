@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const { EventEmitter } = require('node:events')
 const Module = require('module')
 
-const modulePath = require.resolve('../../src/main/pet-chat-window')
+const modulePath = require.resolve('../../apps/desktop/src/windows/pet-chat-window')
 
 const loadPetChatWindowModule = () => {
   delete require.cache[modulePath]
@@ -169,7 +169,7 @@ test('pet chat window opens next to the pet and saves moved bounds', () => {
   assert.equal(chatWindow.options.x, 262)
   assert.equal(chatWindow.options.y, 200)
   assert.equal(chatWindow.visible, true)
-  assert.match(chatWindow.loadedFile, /src\/main\/pet-chat\/index\.html$/)
+  assert.match(chatWindow.loadedFile, /apps\/desktop\/src\/windows\/pet-chat\/index\.html$/)
 
   chatWindow.setBounds({ x: 320, y: 180, width: 420, height: 540 })
   chatWindow.emit('move')

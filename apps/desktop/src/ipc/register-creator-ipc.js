@@ -1,0 +1,39 @@
+const { IPC } = require('../shared/ipc-channels')
+
+const registerCreatorIpc = ({
+  ipcMainService,
+  showOpenDialogForEvent = async () => ({ canceled: true, filePaths: [] }),
+  creatorWorkflowService = null
+}) => {
+  const requireService = () => {
+    if (!creatorWorkflowService) throw new Error('Creator workflow service is not available')
+    return creatorWorkflowService
+  }
+
+  ipcMainService.handle(IPC.CREATOR_PICK_REFERENCE_IMAGE, async (event) => {
+    const selected = await showOpenDialogForEvent(event, {
+      title: '选择 Creator 参考图片',
+      properties: ['openFile'],
+      filters: [{ name: 'Reference Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }]
+    })
+    if (selected.canceled || !selected.filePaths[0]) {
+      return {
+        ok: true,
+        canceled: true,
+        referenceToken: '',
+        fileName: ''
+      }
+    }
+    const approved = requireService().approveReferenceSourcePath(selected.filePaths[0])
+    return {
+      ok: true,
+      canceled: false,
+      referenceToken: approved.referenceToken,
+      fileName: approved.fileName
+    }
+  })
+}
+
+module.exports = {
+  registerCreatorIpc
+}

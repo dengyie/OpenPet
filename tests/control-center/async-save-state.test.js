@@ -8,7 +8,7 @@ const deferred = () => {
 }
 
 test('pet settings save preserves a field edited after dispatch', async () => {
-  const { mergeSavedFields } = await import('../../src/control-center/src/lib/async-save-state.mjs')
+  const { mergeSavedFields } = await import('../../apps/control-center/src/lib/async-save-state.mjs')
   const submitted = { scale: 1.2, walkSpeed: 2 }
   let current = submitted
   const save = deferred()
@@ -23,7 +23,7 @@ test('pet settings save preserves a field edited after dispatch', async () => {
 })
 
 test('ai provider save preserves newer draft fields while applying unchanged saved fields', async () => {
-  const { mergeSavedFields } = await import('../../src/control-center/src/lib/async-save-state.mjs')
+  const { mergeSavedFields } = await import('../../apps/control-center/src/lib/async-save-state.mjs')
   const submitted = { provider: 'openai-compatible', baseUrl: 'https://a.test/v1', model: 'model-a', vision: {} }
   let current = submitted
   const save = deferred()
@@ -39,7 +39,7 @@ test('ai provider save preserves newer draft fields while applying unchanged sav
 })
 
 test('save revision gate rejects response A after newer response B was applied', async () => {
-  const { shouldApplySaveResponse } = await import('../../src/control-center/src/lib/async-save-state.mjs')
+  const { shouldApplySaveResponse } = await import('../../apps/control-center/src/lib/async-save-state.mjs')
   const responseA = deferred()
   const responseB = deferred()
   let appliedRevision = 0
@@ -60,7 +60,7 @@ test('save revision gate rejects response A after newer response B was applied',
 })
 
 test('behavior save preserves edits made while the request is pending', async () => {
-  const { mergeSavedFields } = await import('../../src/control-center/src/lib/async-save-state.mjs')
+  const { mergeSavedFields } = await import('../../apps/control-center/src/lib/async-save-state.mjs')
   const submitted = { enabled: true, useTools: true, cooldownMs: 1500, rules: [] }
   const current = { ...submitted, cooldownMs: 2200 }
   const saved = { ...submitted, cooldownMs: 1500 }

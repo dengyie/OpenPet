@@ -6,8 +6,8 @@ const completed = { ok: true, canceled: false, animations: view, result: { impor
 const success = (data) => ({ ok: true, data, meta: { requestId: 'actions-test', elapsedMs: 1 } })
 
 test('Actions HTTP returns the active view and preserves diagnostic fields', async () => {
-  const { createActionsHttpApi } = await import('../../src/control-center/src/features/actions/api.ts')
-  const { createApiClient } = await import('../../src/control-center/src/api/client.ts')
+  const { createActionsHttpApi } = await import('../../apps/control-center/src/features/actions/api.ts')
+  const { createApiClient } = await import('../../apps/control-center/src/api/client.ts')
   const requests = []
   const client = createApiClient({ request: async (request) => { requests.push(request); return success(view) } })
   assert.deepEqual(await createActionsHttpApi(client).getActions(), view)
@@ -15,8 +15,8 @@ test('Actions HTTP returns the active view and preserves diagnostic fields', asy
 })
 
 test('Actions preserves native selection handles and does not turn queued jobs into import results', async () => {
-  const { createActionsHttpApi } = await import('../../src/control-center/src/features/actions/api.ts')
-  const { createApiClient } = await import('../../src/control-center/src/api/client.ts')
+  const { createActionsHttpApi } = await import('../../apps/control-center/src/features/actions/api.ts')
+  const { createApiClient } = await import('../../apps/control-center/src/api/client.ts')
   const requests = []
   const responses = [
     { canceled: false, selectionId: 'native:one', folderName: 'frames', actionId: 'wave', inspection: { valid: true } },
@@ -37,13 +37,13 @@ test('Actions initial inspection goes through the injected native picker', async
   t.after(() => { if (previous === undefined) delete globalThis.window; else globalThis.window = previous })
   const calls = []
   globalThis.window = { controlCenterAPI: { inspectActionFrames: async (payload) => { calls.push(payload); return { canceled: false, selectionId: 'native-selection' } } } }
-  const { actionsHttpApi } = await import('../../src/control-center/src/features/actions/api.ts')
+  const { actionsHttpApi } = await import('../../apps/control-center/src/features/actions/api.ts')
   assert.deepEqual(await actionsHttpApi.inspectActionFrames({ actionId: 'wave' }), { canceled: false, selectionId: 'native-selection' })
   assert.deepEqual(calls, [{ actionId: 'wave' }])
 })
 
 test('Actions Job resolution waits for terminal evidence and surfaces failures or invalid results', async () => {
-  const { resolveActionImportJob } = await import('../../src/control-center/src/features/actions/api.ts')
+  const { resolveActionImportJob } = await import('../../apps/control-center/src/features/actions/api.ts')
   for (const job of [null, { status: 'queued', result: completed }, { status: 'running', result: completed }]) {
     assert.deepEqual(resolveActionImportJob(job), { kind: 'pending' })
   }
@@ -56,7 +56,7 @@ test('Actions Job resolution waits for terminal evidence and surfaces failures o
 })
 
 test('Actions SSE refreshes only new action-change events', async () => {
-  const { nextActionsEventId } = await import('../../src/control-center/src/features/actions/api.ts')
+  const { nextActionsEventId } = await import('../../apps/control-center/src/features/actions/api.ts')
   assert.equal(nextActionsEventId({ lastEventId: '1', lastEventName: 'pet.actions-changed' }, null), '1')
   assert.equal(nextActionsEventId({ lastEventId: '1', lastEventName: 'pet.actions-changed' }, '1'), null)
   assert.equal(nextActionsEventId({ lastEventId: '2', lastEventName: 'pet.pack-activated' }, null), null)

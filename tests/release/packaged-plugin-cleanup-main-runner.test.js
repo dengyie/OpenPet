@@ -7,7 +7,7 @@ const path = require('path')
 const {
   isPackagedCleanupEvidenceEnabled,
   runPackagedPluginCleanupEvidence
-} = require('../../src/main/packaged-plugin-cleanup-evidence-runner')
+} = require('../../apps/desktop/src/services/packaged-plugin-cleanup-evidence-runner')
 
 test('isPackagedCleanupEvidenceEnabled only enables the explicit packaged cleanup flag', () => {
   assert.equal(isPackagedCleanupEvidenceEnabled({}), false)

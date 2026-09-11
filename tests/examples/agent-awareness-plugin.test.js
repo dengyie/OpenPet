@@ -5,7 +5,7 @@ const os = require('node:os')
 const path = require('node:path')
 const { spawnSync } = require('node:child_process')
 
-const { normalizePluginManifest } = require('../../src/main/plugins/manifest')
+const { normalizePluginManifest } = require('../../apps/desktop/src/services/plugins/manifest')
 const { normalizeCodexEvent } = require('../../examples/plugins/agent-awareness/service/adapters/codex')
 const { normalizeCodexHookEvent } = require('../../examples/plugins/agent-awareness/service/adapters/codex-hook')
 const {

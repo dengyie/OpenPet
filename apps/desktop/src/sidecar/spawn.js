@@ -3,7 +3,7 @@
 // Shell 侧的 sidecar 启动器。
 //
 // 故意写成 CommonJS:仓库根目前没有 "type": "module",主进程(main.js、
-// src/main/**)仍然是 CJS,这个文件要能被它们直接 require。子进程那边是 ESM 不
+// apps/desktop/src/services/**)仍然是 CJS,这个文件要能被它们直接 require。子进程那边是 ESM 不
 // 矛盾 —— fork 后子进程按自己最近的 package.json 解析模块类型,
 // 而 services/backend/package.json 声明了 "type": "module"。
 //
@@ -20,11 +20,8 @@ const MAX_VERSION_MISMATCH_RELAUNCHES = 2
 const BRIDGE_PROTOCOL_VERSION = 1
 
 /**
- * 解析 sidecar 入口。路径策略与 spike 5 验过的一致:app.getAppPath() 在打包后
- * 指向 app.asar 内部,ADR-004 让 sidecar 就住在同一个 asar 里,不需要 unpack。
- *
- * ⚠️ 但 ESM loader 从 asar 内解析入口这一步 spike 5 没有覆盖,
- * 详见 services/backend/README.md「已知待验证风险」。
+ * ESM resolves the entry and its dependency graph from the unpacked tree.
+ * Keep package.json's asarUnpack list aligned with backend runtime imports.
  */
 function resolveSidecarEntry(app) {
 	if (!app || typeof app.getAppPath !== "function") {

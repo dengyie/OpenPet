@@ -9,9 +9,9 @@ const http = require('http')
 const { PassThrough } = require('stream')
 const sharp = require('sharp')
 
-const { createPluginService } = require('../../src/main/services/plugin-service')
-const { createActionImportService } = require('../../src/main/services/action-import-service')
-const { createPetPackService } = require('../../src/main/services/pet-pack-service')
+const { createPluginService } = require('../../apps/desktop/src/services/plugin-service')
+const { createActionImportService } = require('../../apps/desktop/src/services/action-import-service')
+const { createPetPackService } = require('../../apps/desktop/src/services/pet-pack-service')
 const { createMinimalWebp } = require('../../examples/plugins/creator-studio/lib/fake-hatch-pet')
 
 const createHumanApprovalEvidence = () => ({

@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { registerAppLifecycleLogs } = require('../../src/main/app-lifecycle-logger')
+const { registerAppLifecycleLogs } = require('../../apps/desktop/src/services/app-lifecycle-logger')
 
 const createAppStub = () => {
   const handlers = new Map()

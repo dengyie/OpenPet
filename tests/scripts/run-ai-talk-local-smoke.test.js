@@ -13,7 +13,7 @@ const {
   sanitizeArchiveSummary,
   runAiTalkLocalSmoke
 } = require('../../scripts/run-ai-talk-local-smoke')
-const { createAiService } = require('../../src/main/services/ai-service')
+const { createAiService } = require('../../apps/desktop/src/services/ai-service')
 
 const createTempDir = (prefix) => fs.mkdtempSync(path.join(os.tmpdir(), prefix))
 const resolveOutputPath = (outputDir, sessionId, recordedPath) => (

@@ -4,7 +4,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 
-const { createSecretService } = require('../../src/main/services/secret-service')
+const { createSecretService } = require('../../apps/desktop/src/services/secret-service')
 
 const createTempStore = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-secrets-')), 'secrets.json')
 

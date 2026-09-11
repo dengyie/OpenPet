@@ -7,7 +7,7 @@ const path = require('node:path')
 const {
   isPackagedCreatorStudioEvidenceEnabled,
   runPackagedCreatorStudioEvidence
-} = require('../../src/main/packaged-creator-studio-evidence-runner')
+} = require('../../apps/desktop/src/services/packaged-creator-studio-evidence-runner')
 
 test('isPackagedCreatorStudioEvidenceEnabled only enables the explicit packaged Creator Studio flag', () => {
   assert.equal(isPackagedCreatorStudioEvidenceEnabled({}), false)

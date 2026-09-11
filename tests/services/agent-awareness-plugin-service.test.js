@@ -5,7 +5,7 @@ const os = require('node:os')
 const path = require('path')
 const { EventEmitter } = require('events')
 
-const { createPluginService } = require('../../src/main/services/plugin-service')
+const { createPluginService } = require('../../apps/desktop/src/services/plugin-service')
 
 const createBareSettingsService = (initialSettings = {}) => {
   let current = {

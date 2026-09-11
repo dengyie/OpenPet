@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 
 test('buildProviderConfigSavePayload only includes owner-managed changed fields', async () => {
-  const { buildProviderConfigSavePayload } = await import('../../src/control-center/src/lib/ai-provider-config.ts')
+  const { buildProviderConfigSavePayload } = await import('../../apps/control-center/src/lib/ai-provider-config.ts')
 
   const activeConfig = {
     enabled: false,
@@ -85,7 +85,7 @@ test('buildProviderConfigSavePayload only includes owner-managed changed fields'
 })
 
 test('buildImageGenerationConfigSavePayload only includes owner-managed changed fields', async () => {
-  const { buildImageGenerationConfigSavePayload } = await import('../../src/control-center/src/lib/ai-provider-config.ts')
+  const { buildImageGenerationConfigSavePayload } = await import('../../apps/control-center/src/lib/ai-provider-config.ts')
 
   const activeConfig = {
     provider: 'openai-compatible',
@@ -135,7 +135,7 @@ test('getImageGenerationConfigChanges reports only image owner field changes', a
   const {
     getImageGenerationConfigChanges,
     hasImageGenerationConfigChanges
-  } = await import('../../src/control-center/src/lib/ai-provider-config.ts')
+  } = await import('../../apps/control-center/src/lib/ai-provider-config.ts')
 
   const activeConfig = {
     provider: 'openai-compatible',
@@ -163,7 +163,7 @@ test('getImageGenerationConfigChanges reports only image owner field changes', a
 })
 
 test('validateProviderConfig validates vision override only when enabled', async () => {
-  const { validateProviderConfig } = await import('../../src/control-center/src/lib/ai-provider-config.ts')
+  const { validateProviderConfig } = await import('../../apps/control-center/src/lib/ai-provider-config.ts')
 
   const baseConfig = {
     enabled: true,

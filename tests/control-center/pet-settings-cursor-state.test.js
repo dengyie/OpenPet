@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 
 test('external cursor fallback preserves unrelated unsaved pet settings', async () => {
-  const { mergeExternalCursorSettings } = await import('../../src/control-center/src/lib/pet-settings-cursor-state.mjs')
+  const { mergeExternalCursorSettings } = await import('../../apps/control-center/src/lib/pet-settings-cursor-state.mjs')
   const draft = {
     scale: 1.6,
     grounded: true,
@@ -31,7 +31,7 @@ test('external cursor fallback preserves unrelated unsaved pet settings', async 
 })
 
 test('failed immediate cursor mutation restores cursor fields without discarding newer drafts', async () => {
-  const { resolvePersistedCursorMutation } = await import('../../src/control-center/src/lib/pet-settings-cursor-state.mjs')
+  const { resolvePersistedCursorMutation } = await import('../../apps/control-center/src/lib/pet-settings-cursor-state.mjs')
   const previous = { scale: 1, selectedCursorId: 'old', customCursorScope: 'openpet' }
   const optimistic = { scale: 1, selectedCursorId: 'new', customCursorScope: 'system' }
   const current = { ...optimistic, scale: 1.5 }
@@ -44,7 +44,7 @@ test('failed immediate cursor mutation restores cursor fields without discarding
 })
 
 test('failed immediate cursor mutation does not overwrite a newer external cursor fallback', async () => {
-  const { resolvePersistedCursorMutation } = await import('../../src/control-center/src/lib/pet-settings-cursor-state.mjs')
+  const { resolvePersistedCursorMutation } = await import('../../apps/control-center/src/lib/pet-settings-cursor-state.mjs')
   const previous = { selectedCursorId: 'old', customCursorScope: 'system' }
   const optimistic = { selectedCursorId: 'new', customCursorScope: 'system' }
   const fallback = { selectedCursorId: 'new', customCursorScope: 'openpet' }
@@ -53,7 +53,7 @@ test('failed immediate cursor mutation does not overwrite a newer external curso
 })
 
 test('successful immediate cursor mutation only reconciles cursor-owned fields', async () => {
-  const { resolvePersistedCursorMutation } = await import('../../src/control-center/src/lib/pet-settings-cursor-state.mjs')
+  const { resolvePersistedCursorMutation } = await import('../../apps/control-center/src/lib/pet-settings-cursor-state.mjs')
   const previous = { selectedCursorId: 'old', customCursorScope: 'openpet' }
   const optimistic = { selectedCursorId: 'new', customCursorScope: 'system' }
   const current = { ...optimistic, scale: 1.6, grounded: true }
@@ -68,7 +68,7 @@ test('successful immediate cursor mutation only reconciles cursor-owned fields',
 })
 
 test('successful immediate cursor mutation does not overwrite a newer cursor choice or fallback', async () => {
-  const { resolvePersistedCursorMutation } = await import('../../src/control-center/src/lib/pet-settings-cursor-state.mjs')
+  const { resolvePersistedCursorMutation } = await import('../../apps/control-center/src/lib/pet-settings-cursor-state.mjs')
   const previous = { selectedCursorId: 'old', customCursorScope: 'openpet' }
   const optimistic = { selectedCursorId: 'cursor-a', customCursorScope: 'system' }
   const current = { selectedCursorId: 'cursor-b', customCursorScope: 'openpet', scale: 1.6 }

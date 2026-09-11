@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { createPluginRuntimeStopSupport } = require('../../src/main/services/plugin-runtime-stop-support')
+const { createPluginRuntimeStopSupport } = require('../../apps/desktop/src/services/plugin-runtime-stop-support')
 
 const createRuntime = (overrides = {}) => ({
   pid: 4321,

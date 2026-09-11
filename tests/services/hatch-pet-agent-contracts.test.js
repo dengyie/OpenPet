@@ -9,7 +9,7 @@ const {
   resolveHatchPetCompletionConfig,
   createHatchPetAgentPublicConfig,
   validateHatchPetDecision
-} = require('../../src/main/services/hatch-pet-agent-contracts')
+} = require('../../apps/desktop/src/services/hatch-pet-agent-contracts')
 
 test('quality-first hatch-pet contracts default to final review and preserve an explicit identity-review choice', () => {
   assert.equal(HATCH_PET_EXECUTION_MODES.has('production'), true)

@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { createCreatorStudioDefaultFlowService } = require('../../src/main/services/creator-studio-default-flow-service')
+const { createCreatorStudioDefaultFlowService } = require('../../apps/desktop/src/services/creator-studio-default-flow-service')
 
 const createPluginView = ({
   enabled = true,

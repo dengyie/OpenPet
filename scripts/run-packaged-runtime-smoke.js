@@ -6,7 +6,7 @@ const path = require('path')
 const { createPackagedRuntimeSmokeReport, writeReport } = require('./create-packaged-runtime-smoke-report')
 const { REQUIRED_CHECKS, validateReport } = require('./validate-packaged-runtime-smoke-report')
 const { validateReport: validateDesktopPickerReport } = require('./validate-desktop-picker-smoke-report')
-const { sanitizeLogText } = require('../src/main/services/log-safety')
+const { sanitizeLogText } = require('../apps/desktop/src/services/log-safety')
 
 const DEFAULT_RELEASE_DIR = path.join(__dirname, '..', 'release')
 const DEFAULT_OUTPUT_DIR = path.join(__dirname, '..', 'docs', 'release-evidence', 'packaged-runtime')

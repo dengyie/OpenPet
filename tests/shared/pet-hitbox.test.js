@@ -6,7 +6,7 @@ const {
   getWindowHitbox,
   getViewportHitbox,
   isPointInHitbox
-} = require('../../src/shared/pet-hitbox')
+} = require('../../apps/desktop/src/shared/pet-hitbox')
 
 test('viewport hitbox covers the whole action area when the current frame trim is smaller', () => {
   const animation = {

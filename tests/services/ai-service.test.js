@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { createAiService, getBehaviorToolDefinition } = require('../../src/main/services/ai-service')
+const { createAiService, getBehaviorToolDefinition } = require('../../apps/desktop/src/services/ai-service')
 
 const createSettingsService = (initialSettings = {}) => {
   let current = {

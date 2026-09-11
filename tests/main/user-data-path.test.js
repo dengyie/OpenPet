@@ -4,7 +4,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 
-const { LEGACY_USER_DATA_DIR_NAME, configureUserDataPath, resolveExplicitUserDataPath } = require('../../src/main/user-data-path')
+const { LEGACY_USER_DATA_DIR_NAME, configureUserDataPath, resolveExplicitUserDataPath } = require('../../apps/desktop/src/services/user-data-path')
 
 const createFakeApp = ({ appData, userData }) => {
   const paths = { appData, userData }
@@ -25,7 +25,7 @@ const createFakeApp = ({ appData, userData }) => {
 const createTempAppData = () => fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-user-data-'))
 
 test('main configures legacy userData before requesting the single instance lock', () => {
-  const mainSource = fs.readFileSync(path.join(__dirname, '..', '..', 'main.js'), 'utf8')
+  const mainSource = fs.readFileSync(path.join(__dirname, '..', '..', 'apps', 'desktop', 'main.js'), 'utf8')
   const configureIndex = mainSource.indexOf('configureUserDataPath({ app })')
   const lockIndex = mainSource.indexOf('configureSingleInstanceLock({ app, getPetWindow })')
 
@@ -36,7 +36,7 @@ test('main configures legacy userData before requesting the single instance lock
 
 test('main syncs bundled creator studio plugin before plugin services read pluginDir', () => {
   const bootstrapSource = fs.readFileSync(
-    path.join(__dirname, '..', '..', 'src', 'main', 'bootstrap', 'create-plugin-services.js'),
+    path.join(__dirname, '..', '..', 'apps', 'desktop', 'src', 'services', 'bootstrap', 'create-plugin-services.js'),
     'utf8'
   )
   const syncIndex = bootstrapSource.indexOf('syncBundledPlugins({')
