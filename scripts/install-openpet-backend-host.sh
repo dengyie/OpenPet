@@ -62,6 +62,9 @@ export PATH="$node_candidate/bin:$PATH"
 app_stage="${APP_ROOT}.new"
 rm -rf "$app_stage"; install -d -m 0755 "$app_stage"
 tar -xzf "$RELEASE_ARCHIVE" -C "$app_stage" --strip-components=1
+# macOS source archives can contain AppleDouble metadata beside real files.
+# Never let those metadata files enter the runtime tree or migration scanner.
+find "$app_stage" -type f \( -name '._*' -o -name '.DS_Store' \) -delete
 chown -R root:root "$app_stage"; chmod -R a=rX,u+w "$app_stage"
 cd "$app_stage"
 "$node_candidate/bin/npm" ci --ignore-scripts --no-audit --no-fund

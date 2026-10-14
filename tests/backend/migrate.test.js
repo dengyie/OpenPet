@@ -1,6 +1,9 @@
 "use strict"
 
 const assert = require("node:assert/strict")
+const { mkdtemp, rm, writeFile } = require("node:fs/promises")
+const { tmpdir } = require("node:os")
+const { join } = require("node:path")
 const { before, describe, it } = require("node:test")
 
 const EXPECTED_TABLES = [
@@ -54,6 +57,21 @@ describe("迁移运行器 · 文件与校验和", () => {
 			migrateModule.checksumOf("openpet"),
 			"301b7310596415fdcc4d23e523ff2e6014e0fece972c0da90c4f01befc690f6b",
 		)
+	})
+
+	it("忽略 macOS AppleDouble 迁移元数据,但仍拒绝普通错误命名", async () => {
+		const directory = await mkdtemp(join(tmpdir(), "openpet-migrations-"))
+		try {
+			await writeFile(join(directory, "001_init.sql"), "CREATE TABLE ok (id INTEGER);")
+			await writeFile(join(directory, "._001_init.sql"), "AppleDouble metadata")
+			await writeFile(join(directory, ".DS_Store"), "metadata")
+			assert.deepEqual(migrateModule.listMigrationFiles(directory).map(({ file }) => file), ["001_init.sql"])
+
+			await writeFile(join(directory, "bad.sql"), "SELECT 1;")
+			assert.throws(() => migrateModule.listMigrationFiles(directory), /迁移文件名不符合/)
+		} finally {
+			await rm(directory, { recursive: true, force: true })
+		}
 	})
 })
 
