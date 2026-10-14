@@ -23,14 +23,10 @@ function persistedInput(kind, input) {
     }
 	}
 	if (kind === "image.generate") {
-		const redact = (value) => {
-			if (Array.isArray(value)) return value.map(redact)
-			if (!value || typeof value !== "object") return value
-			return Object.fromEntries(Object.entries(value)
-				.filter(([key]) => !/api.?key|password|secret|token|credential/i.test(key))
-				.map(([key, entry]) => [key, redact(entry)]))
-		}
-		return redact(input ?? {})
+		return { redacted: true, summary: "Image generation input withheld" }
+	}
+	if (kind === "actions.import-frames") {
+		return { redacted: true, summary: "Action frame import input withheld" }
 	}
 	if (typeof kind === "string" && kind.startsWith("creator.")) {
 		const operation = input && typeof input === "object" ? String(input.operation || kind) : kind
@@ -72,12 +68,15 @@ function normalizeError(error) {
 
 function toJob(row) {
 	if (!row) return null
+	const input = ["image.generate", "actions.import-frames"].includes(row.kind)
+		? persistedInput(row.kind)
+		: fromJson(row.input_json)
 	return {
 		id: row.id,
 		kind: row.kind,
 		status: row.status,
 		resourceKey: row.resource_key,
-		input: fromJson(row.input_json),
+		input,
 		result: fromJson(row.result_json),
 		error: fromJson(row.error_json),
 		progress: fromJson(row.progress_json),
@@ -86,7 +85,7 @@ function toJob(row) {
 		createdAt: row.created_at,
 		startedAt: row.started_at,
 		finishedAt: row.finished_at,
-		canRetry: canRetry({ status: row.status, kind: row.kind, attempt: row.attempt, maxAttempts: row.max_attempts }),
+		canRetry: canRetry({ status: row.status, kind: row.kind, input, attempt: row.attempt, maxAttempts: row.max_attempts }),
 	}
 }
 
@@ -124,14 +123,15 @@ export function createJobsRepository({ db, now = Date.now } = {}) {
 	if (!db || typeof db.prepare !== "function") {
 		throw new ApiError("INTERNAL", "Jobs repository 需要数据库 driver")
 	}
+	const redactedImageInput = asJson({ redacted: true, summary: "Image generation input withheld" })
+	const redactedActionImportInput = asJson({ redacted: true, summary: "Action frame import input withheld" })
 
 	function activeByResourceKey(resourceKey) {
 		if (resourceKey === null || resourceKey === undefined) return null
-		return toJob(
-			db.prepare(
+		const row = db.prepare(
 				"SELECT * FROM jobs WHERE resource_key = ? AND status IN ('queued','running') ORDER BY created_at ASC LIMIT 1",
-			).get(resourceKey),
-		)
+		).get(resourceKey)
+		return toJob(row)
 	}
 
 	function byId(id) {
@@ -139,6 +139,20 @@ export function createJobsRepository({ db, now = Date.now } = {}) {
 		if (!row) return null
 		return toJob(row)
 	}
+
+	function scrubSensitiveJobInputs() {
+		db.prepare("UPDATE jobs SET input_json = ? WHERE kind = ? AND input_json <> ?").run(
+			redactedImageInput,
+			"image.generate",
+			redactedImageInput,
+		)
+		db.prepare("UPDATE jobs SET input_json = ? WHERE kind = ? AND input_json <> ?").run(
+			redactedActionImportInput,
+			"actions.import-frames",
+			redactedActionImportInput,
+		)
+	}
+	const scrubPersistedSensitiveInputs = scrubSensitiveJobInputs
 
 	function insert(input = {}) {
 		const id = input.id
@@ -148,6 +162,7 @@ export function createJobsRepository({ db, now = Date.now } = {}) {
 		}
 
 		const resourceKey = input.resourceKey ?? null
+		const persisted = persistedInput(kind, input.input)
 		const attempt = 1
 		const maxAttempts = maxAttemptsFor(kind)
 		const createdAt = input.createdAt ?? now()
@@ -159,7 +174,7 @@ export function createJobsRepository({ db, now = Date.now } = {}) {
 				kind,
 					"queued",
 				resourceKey,
-				asJson(persistedInput(kind, input.input)),
+					asJson(persisted),
 				attempt,
 				maxAttempts,
 				createdAt,
@@ -195,10 +210,14 @@ export function createJobsRepository({ db, now = Date.now } = {}) {
 		const limit = parseLimit(options.limit)
 		const offset = parseOffset(options.offset)
 		const where = clauses.length > 0 ? " WHERE " + clauses.join(" AND ") : ""
-		return db
+		const rows = db
 			.prepare("SELECT * FROM jobs" + where + " ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?")
 			.all(...params, limit, offset)
-			.map(toJob)
+		return rows.map((row) => row.kind === "image.generate" && row.input_json !== redactedImageInput
+			? { ...row, input_json: redactedImageInput }
+			: row.kind === "actions.import-frames" && row.input_json !== redactedActionImportInput
+				? { ...row, input_json: redactedActionImportInput }
+			: row).map(toJob)
 	}
 
 	function count(options = {}) {
@@ -290,6 +309,21 @@ export function createJobsRepository({ db, now = Date.now } = {}) {
 		return byId(id)
 	}
 
+	function incrementAttempt(id) {
+		const current = byId(id)
+		if (!current) throw new ApiError("NOT_FOUND", "Job 不存在", { details: { jobId: id } })
+		if (current.status !== "running") {
+			throw new ApiError("CONFLICT", "只有运行中的 Job 可以开始自动重试", {
+				details: { jobId: id, status: current.status },
+			})
+		}
+		const result = db.prepare("UPDATE jobs SET attempt = attempt + 1 WHERE id = ? AND status = ? AND attempt < max_attempts").run(id, "running")
+		if (Number(result.changes) !== 1) {
+			throw new ApiError("CONFLICT", "Job 已用尽自动重试次数或状态已更新", { details: { jobId: id } })
+		}
+		return byId(id)
+	}
+
 	function appendEvent(jobId, event = {}) {
 		const at = event.at ?? now()
 		try {
@@ -330,13 +364,17 @@ export function createJobsRepository({ db, now = Date.now } = {}) {
 		return counts
 	}
 
+	scrubPersistedSensitiveInputs()
+
 	return {
 		insert,
 		byId,
+		scrubPersistedSensitiveInputs,
 		list,
 		count,
 		removeCompleted,
 		transition,
+		incrementAttempt,
 		setProgress,
 		finish,
 		appendEvent,

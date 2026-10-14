@@ -17,9 +17,32 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
   const registeredIpcDependencies = []
   const safeLogs = []
   const settingsWindowPayloads = []
+  const deletedActionIds = []
+  const settingsWindowEventListeners = new Map()
+  let settingsWindowLoading = true
+  const addSettingsWindowListener = (eventName, handler, once) => {
+    const listeners = settingsWindowEventListeners.get(eventName) || []
+    listeners.push({ handler, once })
+    settingsWindowEventListeners.set(eventName, listeners)
+  }
+  const emitSettingsWindowEvent = (eventName) => {
+    const listeners = settingsWindowEventListeners.get(eventName) || []
+    settingsWindowEventListeners.set(eventName, listeners.filter((listener) => !listener.once))
+    for (const listener of listeners) listener.handler()
+  }
+  const settingsWindow = {
+    isDestroyed: () => false,
+    webContents: {
+      isLoading: () => settingsWindowLoading,
+      on: (eventName, handler) => addSettingsWindowListener(eventName, handler, false),
+      once: (eventName, handler) => addSettingsWindowListener(eventName, handler, true),
+      send: (_channel, payload) => settingsWindowPayloads.push(payload)
+    }
+  }
   const saveSettingsCalls = []
   const persistenceRequests = []
   const fetchCalls = []
+  let failNextSettingsPatch = false
   const fetchImpl = async (url, init = {}) => {
     fetchCalls.push({ url: String(url), method: init.method || 'GET', body: init.body ? JSON.parse(init.body) : null })
     if (String(url).endsWith('/ai/state')) return new Response(JSON.stringify({ ok: true, data: { config: {}, messages: [], petPackId: '' } }))
@@ -78,13 +101,7 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
     getPetWindow: () => petWindow,
     setPetWindow: (nextPetWindow) => { petWindow = nextPetWindow },
     fetchImpl,
-    createSettingsWindow: () => ({
-      isDestroyed: () => false,
-      webContents: {
-        isLoading: () => false,
-        send: (_channel, payload) => settingsWindowPayloads.push(payload)
-      }
-    }),
+    createSettingsWindow: () => settingsWindow,
     createWindow: (options = {}) => {
       createWindowCalls.push(options)
       return petWindow
@@ -112,7 +129,13 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
     maybeRunPackagedCreateUiSmoke: () => {},
     factories: {
       createAboutService: () => ({ id: 'about' }),
-      createActionImportService: () => ({ id: 'action-import' }),
+      createActionImportService: () => ({
+        id: 'action-import',
+        deleteAction: async (actionId) => {
+          deletedActionIds.push(actionId)
+          return { deleted: actionId }
+        }
+      }),
       createActionService: () => ({ id: 'action-service' }),
       createAiService: () => ({ id: 'ai-service' }),
       createAiTalkService: () => ({ id: 'ai-talk-service' }),
@@ -234,6 +257,17 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
   assert.equal(screenHandlers.has('display-added'), true)
   assert.equal(typeof appHandlers.get('activate'), 'function')
   assert.equal(typeof coordinatorDependencies.onCatalogRequest, 'function')
+  assert.deepEqual(await coordinatorDependencies.onActionsRequest({
+    operation: 'delete-action',
+    payload: { actionId: 'wave' }
+  }), {
+    animations: {
+      actions: [],
+      triggerRuntimeDiagnostics: { currentState: { actionId: '' }, decisions: [] }
+    },
+    result: { deleted: 'wave' }
+  })
+  assert.deepEqual(deletedActionIds, ['wave'])
   assert.deepEqual(await coordinatorDependencies.onCreatorRequest({ operation: 'get-state', payload: {} }), { ok: true, marker: 'state' })
   assert.deepEqual(await coordinatorDependencies.onCreatorRequest({ operation: 'delete-reference', payload: { targetType: 'editable-action-host', targetId: 'legacy-editable-host' } }), {
     ok: true,
@@ -273,9 +307,41 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
   ])
   assert.equal(fetchCalls.some((call) => call.method === 'GET'), true)
 
+  // A sidecar restart can happen after a Shell repair has already changed the
+  // in-memory authority. The write must stay queued across a failed replay and
+  // use the cloned value on the next ready notification.
+  backend = null
+  settings.customCursorScope = 'system'
+  await unexpectedCursorExit()
+  settings.customCursorScope = 'mutated-after-enqueue'
+  failNextSettingsPatch = true
+  backend = { baseUrl: 'http://127.0.0.1:3210/api/v1', sessionToken: 'session-token-2' }
+  await coordinatorOnReady(backend)
+  const patchBodiesAfterFailedReplay = fetchCalls.filter((call) => call.method === 'PATCH').map((call) => call.body.patch)
+  assert.deepEqual(patchBodiesAfterFailedReplay, [
+    { customCursorScope: 'openpet' },
+    { customCursorScope: 'openpet' }
+  ])
+  assert.equal(safeLogs.some((entry) => entry.event === 'settings.deferred-persist.failed'), true)
+
+  await coordinatorOnReady(backend)
+  assert.deepEqual(fetchCalls.filter((call) => call.method === 'PATCH').map((call) => call.body.patch), [
+    { customCursorScope: 'openpet' },
+    { customCursorScope: 'openpet' },
+    { customCursorScope: 'openpet' }
+  ])
+
   const ipcDependencies = registeredIpcDependencies[0]
   assert.ok(ipcDependencies.sidecarRuntimeCoordinator)
   assert.ok(ipcDependencies.createSettingsWindow())
+  assert.equal(settingsWindowPayloads.length, 0)
+  settingsWindowLoading = false
+  emitSettingsWindowEvent('did-finish-load')
+  assert.equal(settingsWindowPayloads.length, 1)
+  settingsWindowLoading = true
+  emitSettingsWindowEvent('did-finish-load')
+  assert.equal(settingsWindowPayloads.length, 2)
+  assert.deepEqual(settingsWindowPayloads.at(-1).__openpetBackend, backend)
   assert.equal(settingsWindowPayloads.at(-1).__openpetSecretStorageSecurity, null)
   assert.equal(typeof ipcDependencies.sidecarRuntimeCoordinator.getBackend, 'function')
   assert.equal(ipcDependencies.hatchPetAgentService.id, 'hatch-pet-agent')

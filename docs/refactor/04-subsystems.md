@@ -107,6 +107,7 @@ queued       ──(出队执行)──►   running
 queued       ──(用户取消)──►   canceled
 running      ──(完成)──────►   succeeded
 running      ──(异常)──────►   failed
+running      ──(可自动重试)──► running (退避中,继续持有 resourceKey)
 running      ──(用户取消)──►   canceled
 running      ──(进程重启)──►   interrupted
 
@@ -117,7 +118,7 @@ succeeded 为终态,不可再转
 | 状态 | 含义 | 可取消 | 可重试 |
 | --- | --- | --- | --- |
 | `queued` | 已入队未开始 | ✅ | — |
-| `running` | 执行中 | ✅(取决于 kind) | — |
+| `running` | 执行中(含自动重试退避) | ✅(取决于 kind) | — |
 | `succeeded` | 成功 | ❌ | ❌ |
 | `failed` | 失败 | ❌ | ✅ |
 | `canceled` | 用户取消 | ❌ | ❌ |
@@ -156,22 +157,22 @@ type JobProgress = {
 | 场景 | 实现 |
 | --- | --- |
 | 取消 queued | 直接出队,置 `canceled` |
-| 取消 running(provider 请求) | `AbortController.abort()`,清理临时文件 |
-| 取消 running(子进程) | SIGTERM → 2s → SIGKILL,走 `service-process-tree` |
-| 不可取消阶段 | 如正在写入最终文件,返 `423 JOB_NOT_CANCELABLE` |
+| 取消 running(provider 请求) | `runner.cancel()` 创建并缓存 cancellation promise,调用 `AbortController.abort()`,清理临时文件,等待 handler 结束后再写 `canceled` |
+| 取消 running(子进程) | SIGTERM → 2s → SIGKILL,走 `service-process-tree`;同一 Job 的重复请求复用同一个 cancellation promise |
+| 不可取消阶段 | 没有既有 cancellation 且正在写入最终文件(`finalizing`)时,返 `423 JOB_NOT_CANCELABLE`;进入取消流程后跨入 `finalizing` 不再制造第二个冲突 |
 | 超时 | 每 kind 独立阀值;图像生成沿用现有 420s |
-| 重试 | 默认 `maxAttempts: 1`(即不重试);provider/网络类 kind 取 `maxAttempts: 2`,自动重试 1 次 —— [03 篇 §6.2](./03-api-contract.md) 里 `image.generate` 示例的 `maxAttempts: 2` 就是后者 |
+| 重试 | 默认 `maxAttempts: 1`(即不重试);provider/网络类 kind 取 `maxAttempts: 2`,自动重试 1 次。可自动重试的失败尝试保持 `running` 并持有 `resourceKey`,退避后才递增 `attempt` 并再次调用 handler;只有重试耗尽或不可重试时才进入 `failed` 并发出 `job.failed`。后端在进程关闭期间会将退避中的 Job 恢复为 `interrupted` —— [03 篇 §6.2](./03-api-contract.md) 里 `image.generate` 示例的 `maxAttempts: 2` 就是后者 |
 
 ### 2.6 重启恢复
 
-启动时扫描 `jobs` 表:
+启动时扫描 `jobs` 表。`recoverJobs()` 的 unit 默认 `requeueRecovered = true`; production Backend 通过 `initializeBackendRuntime()` 显式传 `false`,先把 running 标成 interrupted,再由 `services/backend/index.js` 将持久化 queued Job 按 id 重新入队并启动 runner:
 
 1. `running` → `interrupted`,写入 `error.code = "BACKEND_RESTARTED"`
-2. `queued` → 保持,重新入队
+2. `queued` → 保持; production 启动完成恢复后重新入队
 3. 清理临时目录 `userData/backend/tmp/job-*`
 4. 发 SSE `system.jobs-recovered` 告知前端刷新
 
-> ✅ **已补登(v1.3)。** 第 4 步的 `system.jobs-recovered` 与背压段的 `system.events-dropped` 已补进 [03 篇 §5](./03-api-contract.md) 的事件目录(`system` topic 现列四个事件),并已纳入 `check:api-contract` 的 `EVENT_NAMES` 对账范围。实现时事件名一律从 `packages/contracts` 取,不要在后端重写字面量。
+> ✅ **已实现。** `system.jobs-recovered` 与背压段的 `system.events-dropped` 已补进 [03 篇 §5](./03-api-contract.md) 的事件目录(`system` topic 现列四个事件),并已纳入 `check:api-contract` 的 `EVENT_NAMES` 对账范围。running Job 恢复为 `interrupted` 后不自动重跑;可恢复的 queued Job 由 production 启动编排重新 enqueue。实现时事件名一律从 `packages/contracts` 取,不要在后端重写字面量。
 
 ## 3. 存储与并发
 

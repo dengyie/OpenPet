@@ -13,6 +13,7 @@ const {
   FULL_PET_ROW_QUALITY,
   OFFICIAL_FULL_PET_ACTION_IDS
 } = require('../../examples/plugins/creator-studio/lib/full-pet-row-contract')
+const { getQualityFirstQualityProfile } = require('../../examples/plugins/creator-studio/lib/pet-generation-quality-profile')
 const { extractRowStripFrames } = require('../../examples/plugins/creator-studio/lib/full-pet-row-extractor')
 const { createFullPetRowJobManifest } = require('../../examples/plugins/creator-studio/lib/full-pet-row-jobs')
 const { buildRealAtlasFromGeneratedImage } = require('../../examples/plugins/creator-studio/lib/real-atlas-builder')
@@ -467,6 +468,32 @@ test('real atlas builder composes an idle-only quality package with transparent 
   assert.equal(atlasQa.basicActions.actionAvailability['running-right'].reason, 'identity-descriptor-distance-high')
   assert.deepEqual(rowQa.rows.map((row) => row.actionId), ['idle'])
   assert.deepEqual(atlasQa.visualReview.previews.map((preview) => preview.actionId), ['idle'])
+})
+
+test('real atlas builder supports the quality-first profile used by Creator Studio finalization', async () => {
+  const dataDir = makeTempDataDir()
+  const { relativePath } = await writeSourcePng({ dataDir })
+  const outputDir = path.join(dataDir, 'runs', 'run-1', 'outputs')
+  const qaDir = path.join(dataDir, 'runs', 'run-1', 'qa')
+  const completeRows = await writeOfficialRows({
+    rootDir: path.join(dataDir, 'runs', 'run-1', 'official-row-frames')
+  })
+  const officialRows = { rows: completeRows.rows.filter((row) => row.actionId === 'idle') }
+
+  const result = await buildRealAtlasFromGeneratedImage({
+    dataDir,
+    generationResult: createGenerationResult(relativePath),
+    outputDir,
+    qaDir,
+    officialRows,
+    qualityProfile: getQualityFirstQualityProfile()
+  })
+
+  const metadata = await sharp(result.spritesheetPath).metadata()
+  const rowQa = JSON.parse(fs.readFileSync(path.join(qaDir, 'full-pet-row-validation.json'), 'utf-8'))
+  assert.deepEqual({ width: metadata.width, height: metadata.height }, { width: CODEX_ATLAS.width, height: CODEX_ATLAS.height })
+  assert.equal(rowQa.qualityProfile.id, getQualityFirstQualityProfile().id)
+  assert.equal(rowQa.rows[0].quality, FULL_PET_ROW_QUALITY.ROW_REAL)
 })
 
 test('real atlas builder does not let stable-slots hide identity drift', async () => {

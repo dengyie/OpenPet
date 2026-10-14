@@ -26,6 +26,10 @@ Common entrypoints:
 npm start
 npm run dev:control-center
 npm run build:control-center
+npm run build:contracts
+npm run check:api-contract
+npm run check:channel-retirement
+npm run check:docs-drift
 ~~~
 
 npm start builds the native cursor helper and Control Center before launching
@@ -64,7 +68,7 @@ switch the protected primary worktree away from main.
 
 - main.js assembles Electron lifecycle and injected services.
 - src/main/bootstrap/ owns service and runtime construction.
-- src/main/services/ contains the operating service layer.
+- src/main/services/ contains active Shell/native services and migration-era services.
 - PetService is the single source of truth for pet state, actions, speech, and
   events.
 - src/main/ipc.js and src/main/ipc/ expose bounded renderer-facing adapters.
@@ -72,6 +76,11 @@ switch the protected primary worktree away from main.
 - src/main/plugins/ and plugin services own extension validation, permissions,
   process isolation, storage, and networking.
 - src/main/pet-pack/ owns pet-pack schema, loading, and import.
+- apps/desktop/src/sidecar/ owns Backend process lifecycle and reverse messages.
+- services/backend/index.js owns Backend composition; its domains, routes, jobs,
+  stores, events, and bridge must not be recreated in the renderer.
+- packages/contracts/ is the source for bridge, settings, Job, event, and response
+  contracts.
 - scripts/ owns release evidence, maintenance, and package tooling.
 
 Preserve dependency direction: renderers call typed/preload APIs, IPC adapters
@@ -107,13 +116,15 @@ security, process lifecycle, request cancellation, and AI conversation state.
 ~~~bash
 node --test <focused-test-files>
 npm run test:core:all
-npm test
+npm run test:all
 npm run check:syntax
 git diff --check
 ~~~
 
 Also run the relevant manual acceptance when the behavior depends on the
 desktop, OS integration, credentials, signing, or a real provider.
+When the required target device, account, or external runtime is unavailable,
+record the gap as `manual-required`; code-level smoke evidence does not close it.
 
 ### Grade B: User-Facing Control Center And Runtime Integration
 
@@ -142,6 +153,21 @@ git diff --check
 
 Run broader suites when a tooling or contract change is consumed by runtime
 code.
+
+In a fresh worktree, build the workspace contract package before the API check:
+
+~~~bash
+npm run build:contracts
+npm run check:api-contract
+npm run check:channel-retirement
+npm run check:docs-drift
+~~~
+
+`check:api-contract` currently reports `140 = 45 retained IPC + 95 migrated
+HTTP` and reconciles `117` registered REST routes against `119` documented
+target/implemented route rows. Run `npm run build:contracts` first. A missing
+`packages/contracts/dist` is a dependency/setup failure, not evidence that routes
+are unregistered.
 
 ## Area-Specific Workflows
 
@@ -177,13 +203,14 @@ pet-pack service, and mirrored tests.
 
 Use [the release checklist](./release-checklist.md) and
 [the release evidence index](./release-evidence/README.md). Synthetic
-rehearsals prove tooling and data flow only. They do not replace external
-evidence or manual-required signing, notarization, real-device, provider, or
-human acceptance.
+rehearsals prove tooling and data flow only. They do not replace target-OS
+runtime evidence, provider/account checks, or human acceptance. OpenPet uses
+self-managed signing only; paid signing credentials and notarization are out
+of scope. Self-signing does not imply Gatekeeper or SmartScreen trust.
 
 ## Security And Data Handling
 
-- Keep API keys and provider credentials in main-process secret storage.
+- Keep provider credentials Shell-owned for persistence; the Backend may hold only an in-memory init copy and must persist through the Shell bridge.
 - Never expose credentials, raw prompts, private paths, tokens, or plugin
   payloads in renderer state, logs, fixtures, or evidence archives.
 - Validate and bound plugin file, archive, process, bridge, and network inputs.
@@ -228,3 +255,5 @@ Before requesting integration:
 - Plugin authoring: [docs/plugin-development.md](./plugin-development.md)
 - Release gates: [docs/release-checklist.md](./release-checklist.md)
 - Machine-readable facts: [docs/project-context.json](./project-context.json)
+- Migration implementation map: [refactor/09-repo-state.md](./refactor/09-repo-state.md)
+- API implementation/target split: [refactor/03-api-contract.md](./refactor/03-api-contract.md)

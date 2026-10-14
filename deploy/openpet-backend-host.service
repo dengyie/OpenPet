@@ -1,0 +1,35 @@
+[Unit]
+Description=OpenPet remote Backend host
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=openpet
+Group=openpet
+WorkingDirectory=/opt/openpet/app
+Environment=OPENPET_ROOT_DIR=/opt/openpet/app
+Environment=OPENPET_DATA_DIR=/var/lib/openpet
+Environment=OPENPET_HOST_PORT=48330
+Environment=OPENPET_BRIDGE_PORT=48331
+Environment=OPENPET_BACKEND_PORT=48332
+ExecStart=/opt/openpet/node/bin/node /opt/openpet/app/services/backend/host.js
+Restart=on-failure
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=15
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=/var/lib/openpet
+UMask=0077
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

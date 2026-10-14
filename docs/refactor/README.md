@@ -1,10 +1,12 @@
-# OpenPet 前后端分离 · 开发文档 v1.7
+# OpenPet 前后端分离 · 开发文档 v1.11
 
-> 📌 **状态** M0 已完成:E1–E10 真机结果已回填 · **版本** v1.7 · **代码基线** `main` · **更新日期** 2026-09-04
+> 📌 **状态** 迁移中，M0 骨架与部分 Backend 域已落地；**版本** v1.11 · **代码基线** `main` · **更新日期** 2026-10-04
+> 当前实现必须以 `main.js`、`apps/desktop/src/sidecar/`、`services/backend/`、
+> `packages/contracts/` 和运行门禁为准；本目录的任务卡与目标路由不是完成证明。
 
 > **本目录是这份文档的权威副本。** 文档最初写在 Notion,现已随代码进入
 > `main`。代码在 Git、文档在别处会必然漂移,而这份文档里有
-> 154 条通道映射和一整张契约表 —— 漂了就等于没有。后续变更改这里,不改 Notion。
+> 当前契约包含 140 条 IPC 通道映射和一整张路由/事件表 —— 漂了就等于没有。后续变更改这里,不改 Notion。
 > Notion 原稿已于 2026-08-15 降为归档副本并回指本目录。
 
 > 🤖 **如果你是来实现代码的 agent,不要从本文件开始。** 直接去 [00 · 从这里开始](./00-START-HERE.md)。
@@ -25,11 +27,13 @@
 
 ## 二、执行摘要
 
-**核心判断:OpenPet 已经是「逻辑分离、物理耦合」。分离工作的本质不是拆分业务,而是把 154 个 Electron IPC 通道替换为协议边界,并把重负载模块迁出主进程。**
+**核心判断:OpenPet 处于「Shell + sidecar Backend」迁移中。当前 IPC 清单为 140
+个通道（45 留在 Shell、95 迁移 HTTP），Backend registry 最近登记 117 条 REST 路由，
+契约文档展开 110 条目标/实现行；这三个数字必须由门禁重新核对，不能从历史快照复制。**
 
 三个已经存在、可直接复用的接缝:
 
-1. `src/shared/openpet-contracts.ts`（96 KB）—— 完整类型契约已存在,这是分离中最贵的一步,已经付过成本。
+1. `packages/contracts/src/` —— 已迁移 bridge/settings/Job/event 契约的源；`src/shared/openpet-contracts.ts` 仍是被 Shell 适配器引用的迁移期 legacy seam，不能当作 Backend 契约源或直接删除。
 2. `src/main/ipc/register-*-ipc.js`（13 个域注册器）—— IPC 已按业务域切分,几乎就是未来的路由表。
 3. `src/main/services/local-http-service.js`（15 KB）—— 已具备 loopback 绑定校验、Bearer token 常量时间比较、1 MB body 上限、访问日志、MCP session 管理,是后端 HTTP 层的现成骨架。
 
@@ -138,7 +142,7 @@
 | --- | --- | --- |
 | 01 | [现状盘点与问题诊断](./01-current-state.md) | 代码体积、耦合点、五个真实阻碍 |
 | 02 | [目标架构、进程职责与安全设计](./02-architecture.md) | 三层架构、边界、降级、密钥 |
-| 03 | [API 契约与通信协议](./03-api-contract.md) | 154 通道映射、完整路由表、错误码、SSE |
+| 03 | [API 契约与通信协议](./03-api-contract.md) | 140 通道映射、完整路由表、错误码、SSE |
 | 04 | [关键子系统改造](./04-subsystems.md) | 插件运行时、Job 引擎、存储与并发 |
 | 05 | [前端改造方案](./05-frontend.md) | pane 拆分、api client、mock 替换、preload 清零 |
 | 06 | [迁移路线图、测试门禁与风险登记](./06-roadmap.md) | 六阶段任务清单、验收、回滚、R1–R20 |
@@ -148,7 +152,7 @@
 
 | # | 文档 | 内容 |
 | --- | --- | --- |
-| 00 | [从这里开始](./00-START-HERE.md) | 入口:读的顺序、三条门禁命令、领卡方式、三个真相源（**实现 agent 从这里开始**） |
+| 00 | [从这里开始](./00-START-HERE.md) | 入口:读的顺序、当前门禁顺序、领卡方式、真相源（**实现 agent 从这里开始**） |
 | 08 | [Agent 执行手册](./08-agent-guide.md) | 十条硬规则 H1–H10、错误怎么抛、测试怎么写、分支与 PR 规范、八条已知陷阱 |
 | 09 | [仓库现状快照](./09-repo-state.md) | 每个已落地文件的对外接口逐一列出、待建文件、缺口 G1–G13 |
 | 10 | [M1 任务卡:存储层与 Job 引擎](./10-tasks-m1.md) | T01–T08,每卡含精确导出签名与验收断言 |
@@ -185,7 +189,7 @@
 1. **任务卡认领、交付数与验收结论看 [#41 §4](https://github.com/dengyie/OpenPet/issues/41)**,本文件不另维护任务卡看板。
 2. **实现依据与架构现状看 [09 篇 §1](./09-repo-state.md)**;目标定义仍以本篇 §三为准。
 
-> **维护边界:**本节只保留架构目标的状态快照;任务卡进度、依赖和卡面证据不在这里复制,统一回到 #41 §4。当前 main 已合入 T41、T42 About、T42 Catalog 与 T42 Pet Packs；Catalog/Pet Packs 共 14 条旧 IPC 已退休，Actions 因语义对等缺口仍保留旧 IPC/preload，具体证据见 [09 篇 §1/§4](./09-repo-state.md) 与 [15 篇台账](./15-channel-retirement.md)。
+> **维护边界:**本节只保留架构目标的状态快照;任务卡进度、依赖和卡面证据不在这里复制,统一回到 #41 §4。当前 main 已合入 T41、T42 About、T42 Catalog 与 T42 Pet Packs；Catalog/Pet Packs 共 14 条旧 IPC 已退休，Actions vertical slice 已接入 HTTP → reverse channel → Shell authority，但 legacy IPC/preload 仍保留，具体证据见 [09 篇 §1/§4](./09-repo-state.md) 与 [15 篇台账](./15-channel-retirement.md)。
 
 ## 十、变更记录
 
@@ -201,4 +205,6 @@
 | v1.7 | 2026-09-04 | §九改为以 #41 §4 为唯一任务卡进度来源;区分任务卡交付数与架构目标 G1–G8 达成度,并按评审 v1.0 / 09 篇 §1 更新现状 | mango |
 | v1.8 | 2026-09-05 | 同步 T41/T42 当前 main：154 条 IPC、About 两条业务通道已退休；Catalog、Pet Packs、Actions 的不等价后端语义登记为 blocked，回链 09 篇与 15 篇台账 | mango |
 | v1.9 | 2026-09-05 | 同步 Catalog T42 合入：当前 148 条 IPC、74 条 REST 路由；Catalog 6 条 IPC 已退休，Pet Packs/Actions 仍按语义差异登记 blocked | mango |
-| v1.10 | 2026-09-05 | 同步 Pet Packs T42 合入：当前 140 条 IPC、74 条 REST 路由；Catalog/Pet Packs 14 条旧 IPC 已退休，Actions 仍按语义差异登记 blocked | mango |
+| v1.10 | 2026-09-05 | 同步 Pet Packs T42 合入：当时记录 140 条 IPC、74 条 REST 路由；属于历史快照 | mango |
+| v1.11 | 2026-10-04 | 以 HEAD `4b6a1ac2` 重跑门禁；更新 Shell/sidecar/backend 实际边界、76/103 路由对账、contracts build 前置条件，并将目标/历史文档标识清楚 | codex |
+| v1.12 | 2026-10-05 | 同步 Actions vertical slice 与 18/15 反向通道；明确 legacy IPC 保留需 reachability proof，不把 HTTP cutover 误写成全量删除 | codex |

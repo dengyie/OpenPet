@@ -703,6 +703,9 @@ const classifyConnectionError = (error) => {
     const status = Number(error.providerStatus) || 0
     if (status === 401 || status === 403) return { code: 'auth_failed', message: 'AI provider rejected the API key' }
     if (status === 404) return { code: 'model_or_endpoint_not_found', message: 'AI provider endpoint or model was not found' }
+    if (status === 408 || status === 504) return { code: 'timeout', message: 'AI provider request timed out' }
+    if (status === 429) return { code: 'rate_limited', message: 'AI provider rate limit exceeded' }
+    if (status >= 500) return { code: 'provider_unavailable', message: 'AI provider is temporarily unavailable' }
     return { code: 'provider_http_error', message: `AI provider request failed with status ${status}` }
   }
   if (error?.message === 'AI provider returned an empty response') {
@@ -747,15 +750,27 @@ const probeAvailableModels = async ({ config, fetchImpl, apiKey, requestTimeoutM
     }
 
     if (!response.ok) {
-      if ([401, 403, 404, 405, 501].includes(Number(response.status) || 0)) {
+      const status = Number(response.status) || 0
+      if (status === 408 || status === 504) {
+        return { modelsProbe: 'timed_out', modelsProbeMessage: 'AI provider model discovery timed out', availableModels: [], currentModelDiscovered: false }
+      }
+      if ([401, 403, 404, 405, 501].includes(status)) {
         return {
           modelsProbe: 'unavailable',
+          modelsProbeMessage: 'AI provider is reachable, but the optional /models probe is unavailable',
           availableModels: [],
           currentModelDiscovered: false
         }
       }
+      if (status === 429) {
+        return { modelsProbe: 'rate_limited', modelsProbeMessage: 'AI provider rate limit exceeded', availableModels: [], currentModelDiscovered: false }
+      }
+      if (status >= 500) {
+        return { modelsProbe: 'provider_unavailable', modelsProbeMessage: 'AI provider is temporarily unavailable', availableModels: [], currentModelDiscovered: false }
+      }
       return {
         modelsProbe: 'failed',
+        modelsProbeMessage: 'AI provider model discovery failed',
         availableModels: [],
         currentModelDiscovered: false
       }
@@ -765,6 +780,15 @@ const probeAvailableModels = async ({ config, fetchImpl, apiKey, requestTimeoutM
     if (!parsed.ok) {
       return {
         modelsProbe: 'failed',
+        modelsProbeMessage: 'AI provider model discovery failed',
+        availableModels: [],
+        currentModelDiscovered: false
+      }
+    }
+    if (!isPlainObject(parsed.body) || !Array.isArray(parsed.body.data)) {
+      return {
+        modelsProbe: 'unavailable',
+        modelsProbeMessage: 'AI provider is reachable, but the optional /models probe is unavailable',
         availableModels: [],
         currentModelDiscovered: false
       }
@@ -773,14 +797,15 @@ const probeAvailableModels = async ({ config, fetchImpl, apiKey, requestTimeoutM
 
     return {
       modelsProbe: 'ok',
+      modelsProbeMessage: 'AI provider model discovery succeeded',
       availableModels,
       currentModelDiscovered: availableModels.includes(String(config.model || '').trim())
     }
   } catch (error) {
+    const timedOut = error?.name === 'TimeoutError' || linkedSignal.isTimeout()
     return {
-      modelsProbe: error?.name === 'TimeoutError' || linkedSignal.isTimeout()
-        ? 'timed_out'
-        : 'failed',
+      modelsProbe: timedOut ? 'timed_out' : 'failed',
+      modelsProbeMessage: timedOut ? 'AI provider model discovery timed out' : 'AI provider model discovery failed',
       availableModels: [],
       currentModelDiscovered: false
     }
@@ -1985,7 +2010,6 @@ const createAiService = ({
         signal: linkedSignal.signal
       }), linkedSignal)
 
-      const { body } = await readJsonBody(response, linkedSignal, responseLimits.jsonBytes)
       if (!response.ok) {
         if (isOptionalModelsProbeStatus(response.status)) {
           return completeDiscovery({
@@ -1996,9 +2020,20 @@ const createAiService = ({
             message: 'AI provider is reachable, but the optional /models probe is unavailable'
           })
         }
+        const { body } = await readJsonBody(response, linkedSignal, responseLimits.jsonBytes)
         throw createProviderError({
           status: response.status,
           code: body?.error?.code
+        })
+      }
+      const { body, ok: bodyParsed } = await readJsonBody(response, linkedSignal, responseLimits.jsonBytes)
+      if (!bodyParsed || !isPlainObject(body) || !Array.isArray(body.data)) {
+        return completeDiscovery({
+          ok: true,
+          ...baseResult,
+          models: [],
+          code: 'provider_reachable_models_unavailable',
+          message: 'AI provider is reachable, but the optional /models probe returned an unreadable or invalid response'
         })
       }
 
@@ -2108,6 +2143,7 @@ const createAiService = ({
       return result
     }
     let linkedSignal = null
+    let response = null
     try {
       visionConfig = resolveRuntimeProviderConfig(storedEffectiveVisionConfig, 'Vision')
       const apiKey = secretService.getSecretValue(visionConfig.apiKeyRef)
@@ -2138,7 +2174,6 @@ const createAiService = ({
           message: 'Fetch is not available'
         })
       }
-      let response
       linkedSignal = createLinkedAbortSignal(null, requestTimeoutMs)
       response = await raceWithLinkedAbort(fetchImpl(`${visionConfig.baseUrl}/models`, {
         method: 'GET',
@@ -2149,7 +2184,6 @@ const createAiService = ({
         signal: linkedSignal.signal
       }), linkedSignal)
       const status = response?.status || 'error'
-      const { body } = await readJsonBody(response, linkedSignal, responseLimits.jsonBytes)
       if (!response?.ok) {
         if (isOptionalModelsProbeStatus(status)) {
           return completeDiscovery({
@@ -2160,12 +2194,17 @@ const createAiService = ({
             message: 'Vision provider is reachable, but the optional /models probe is unavailable'
           }, { status })
         }
+        const { body } = await readJsonBody(response, linkedSignal, responseLimits.jsonBytes)
+        throw createProviderError({ status, code: body?.error?.code })
+      }
+      const { body, ok: bodyParsed } = await readJsonBody(response, linkedSignal, responseLimits.jsonBytes)
+      if (!bodyParsed || !isPlainObject(body) || !Array.isArray(body.data)) {
         return completeDiscovery({
-          ok: false,
+          ok: true,
           ...baseResult,
           models: [],
-          code: 'provider_http_error',
-          message: `Vision provider request failed with status ${status}`
+          code: 'provider_reachable_models_unavailable',
+          message: 'Vision provider is reachable, but the optional /models probe returned an unreadable or invalid response'
         }, { status })
       }
       const discoveredModels = extractDiscoveredModelIds(body, { secrets: [apiKey] })
@@ -2186,7 +2225,7 @@ const createAiService = ({
         models: [],
         code: classified.code,
         message: classified.message
-      })
+      }, { status: response?.status || 0 })
     } finally {
       linkedSignal?.clear()
     }

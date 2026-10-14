@@ -1,0 +1,247 @@
+{
+  "ok": true,
+  "generatedAt": "2026-10-08T22:33:47.890Z",
+  "source": "scripts/run-agent-awareness-local-smoke.js",
+  "codexHome": "[redacted-local-codex-home]",
+  "sessionId": "2026-10-08T22-33-47-889Z",
+  "sessionDir": "agent-awareness-local-smoke/2026-10-08T22-33-47-889Z",
+  "pluginDataDir": "plugin-data",
+  "resultPath": "agent-awareness-local-smoke-result.json",
+  "scanTimeoutMs": 12000,
+  "sampleLimit": 5,
+  "sanitizedSignalDetected": true,
+  "timedOut": false,
+  "healthUrl": "[local-url]",
+  "hookPlan": {
+    "ok": true,
+    "serviceUrl": "[local-url]",
+    "authFile": "plugin-auth-file",
+    "instructionsFile": "codex-hook-plan.md",
+    "externalWrites": false,
+    "dataDirConfigured": true
+  },
+  "health": {
+    "ok": true,
+    "service": "agent-awareness",
+    "hookMode": {
+      "installed": false,
+      "mode": "not-installed",
+      "planAvailable": true,
+      "tokenConfigured": true,
+      "ingestAuthRequired": true
+    },
+    "diagnostics": {
+      "sessionCount": 19,
+      "liveSessionCount": 21,
+      "activeSessionCount": 1,
+      "totalEvents": 515,
+      "seenCount": 515,
+      "ignoredContentRecordCount": 1267,
+      "ignoredMetadataRecordCount": 53,
+      "unknownRecordCount": 0,
+      "malformedRecordCount": 24,
+      "unsupportedLifecycleRecordCount": 0,
+      "storeSchemaVersion": 2,
+      "retentionDays": 30,
+      "historyWindowStart": "2026-10-07",
+      "historyWindowEnd": "2026-10-08",
+      "retainedSessionSummaryCount": 19,
+      "retainedProjectCount": 4,
+      "storeError": "",
+      "attentionSession": {
+        "sessionId": "113f55a8da9d",
+        "project": "OpenPet #19b550",
+        "status": "working",
+        "reason": "Working now"
+      },
+      "usageTotalTokens": 3174690574,
+      "usageInputTokens": 3159658017,
+      "usageOutputTokens": 14926770,
+      "usageCachedInputTokens": 2520602377,
+      "usageEstimatedCostUsd": 0,
+      "usageCurrency": "",
+      "usagePeakContextUsedPercent": 100,
+      "lastEventAt": "2026-10-08T22:33:47.781Z",
+      "lastScanAt": "2026-10-08T22:33:47.894Z",
+      "lastError": ""
+    },
+    "codexPoller": {
+      "enabled": true,
+      "lastScanAt": "2026-10-08T22:33:47.894Z",
+      "lastError": "",
+      "seenCount": 515,
+      "ignoredContentRecordCount": 1267,
+      "ignoredMetadataRecordCount": 53,
+      "unknownRecordCount": 0,
+      "malformedRecordCount": 24,
+      "unsupportedLifecycleRecordCount": 0
+    }
+  },
+  "sessions": [
+    {
+      "sessionId": "113f55a8da9d",
+      "status": "working",
+      "type": "turn.usage",
+      "project": "OpenPet #19b550",
+      "message": "Codex usage metadata updated.",
+      "timestamp": "2026-10-08T22:33:47.781Z",
+      "eventCount": 5,
+      "usage": {
+        "inputTokens": 829310695,
+        "outputTokens": 3473977,
+        "cachedInputTokens": 683161240,
+        "totalTokens": 832846563,
+        "contextWindow": null,
+        "contextUsedPercent": null,
+        "estimatedCostUsd": null,
+        "currency": ""
+      },
+      "git": null,
+      "summary": {
+        "title": "OpenPet #19b550",
+        "currentStep": "Updating usage metadata",
+        "recentProgressHint": "Usage updated: 832,846,563 tokens"
+      }
+    },
+    {
+      "sessionId": "86327ddfc8ae",
+      "status": "completed",
+      "type": "turn.completed",
+      "project": "agent-fleet #d5fc16",
+      "message": "Codex completed a turn.",
+      "timestamp": "2026-10-08T22:23:33.985Z",
+      "eventCount": 55,
+      "usage": {
+        "inputTokens": 619476585,
+        "outputTokens": 3507849,
+        "cachedInputTokens": 502711107,
+        "totalTokens": 623006677,
+        "contextWindow": 258400,
+        "contextUsedPercent": 100,
+        "estimatedCostUsd": null,
+        "currency": ""
+      },
+      "git": {
+        "branch": "feat/t3.7-offline-browser-boundary",
+        "dirty": false,
+        "dirtyCount": 0,
+        "ahead": 0,
+        "behind": 0,
+        "repository": "agent-fleet #d5fc16"
+      },
+      "summary": {
+        "title": "agent-fleet #d5fc16",
+        "currentStep": "Completed",
+        "recentProgressHint": "Codex completed a turn."
+      }
+    },
+    {
+      "sessionId": "418e0ecc763e",
+      "status": "completed",
+      "type": "turn.completed",
+      "project": "download #389d85",
+      "message": "Codex completed a turn.",
+      "timestamp": "2026-10-08T22:08:51.021Z",
+      "eventCount": 32,
+      "usage": {
+        "inputTokens": 617440465,
+        "outputTokens": 3036979,
+        "cachedInputTokens": 511818342,
+        "totalTokens": 620499097,
+        "contextWindow": 258400,
+        "contextUsedPercent": 100,
+        "estimatedCostUsd": null,
+        "currency": ""
+      },
+      "git": null,
+      "summary": {
+        "title": "download #389d85",
+        "currentStep": "Completed",
+        "recentProgressHint": "Codex completed a turn."
+      }
+    },
+    {
+      "sessionId": "7b0f5d04cae1",
+      "status": "completed",
+      "type": "turn.completed",
+      "project": "codex #5bd67c",
+      "message": "Codex completed a turn.",
+      "timestamp": "2026-10-08T21:53:06.229Z",
+      "eventCount": 19,
+      "usage": {
+        "inputTokens": 38196429,
+        "outputTokens": 324164,
+        "cachedInputTokens": 35958363,
+        "totalTokens": 38520593,
+        "contextWindow": 258400,
+        "contextUsedPercent": 100,
+        "estimatedCostUsd": null,
+        "currency": ""
+      },
+      "git": null,
+      "summary": {
+        "title": "codex #5bd67c",
+        "currentStep": "Completed",
+        "recentProgressHint": "Codex completed a turn."
+      }
+    },
+    {
+      "sessionId": "78230b45d317",
+      "status": "completed",
+      "type": "turn.completed",
+      "project": "agent-fleet #d5fc16",
+      "message": "Codex completed a turn.",
+      "timestamp": "2026-10-08T19:25:41.580Z",
+      "eventCount": 23,
+      "usage": {
+        "inputTokens": 1126657,
+        "outputTokens": 7588,
+        "cachedInputTokens": 1057792,
+        "totalTokens": 1134245,
+        "contextWindow": 258400,
+        "contextUsedPercent": 100,
+        "estimatedCostUsd": null,
+        "currency": ""
+      },
+      "git": null,
+      "summary": {
+        "title": "agent-fleet #d5fc16",
+        "currentStep": "Completed",
+        "recentProgressHint": "Codex completed a turn."
+      }
+    }
+  ],
+  "redactionChecks": {
+    "sessionIdsHashed": true,
+    "projectLabelsRedacted": true,
+    "noRawPaths": true,
+    "noLoopbackUrls": true,
+    "noSecrets": true
+  },
+  "notificationPolicyEvidence": {
+    "source": "state-mapper-synthetic-sequence",
+    "eventCount": 5,
+    "petEventCount": 5,
+    "speechCount": 2,
+    "suppressedSpeechCount": 3,
+    "routineStatusSuppressed": true,
+    "urgentTransitionSpoke": true,
+    "repeatedUrgentSuppressed": true,
+    "repeatedCompletionSuppressed": true,
+    "eventPreservedWhenSpeechSuppressed": true,
+    "contentFreeDecisionEvidence": true,
+    "decisionFields": [
+      "status",
+      "priority",
+      "reason",
+      "shouldSpeak",
+      "cooldownMs"
+    ]
+  },
+  "manualAcceptanceTemplate": {
+    "dashboardUseful": null,
+    "petSpeechNoiseAcceptable": null,
+    "redactionLooksSafe": true,
+    "notes": ""
+  }
+}

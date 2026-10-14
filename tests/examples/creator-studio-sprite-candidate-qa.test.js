@@ -36,6 +36,20 @@ test('candidate qa accepts bounded raw metrics', () => {
   assert.deepEqual(result.failures, [])
 })
 
+test('candidate qa accepts null profile while the idle scale profile is being established', () => {
+  const result = analyzeSpriteCandidate({
+    actionId: 'idle',
+    rawMetrics: { frames: [
+      { empty: false, edgeTouch: false, pasteClamped: false, unmatchedComponentCount: 0, subjectHeightRatio: 0.71, anchorY: 0.9 },
+      { empty: false, edgeTouch: false, pasteClamped: false, unmatchedComponentCount: 0, subjectHeightRatio: 0.73, anchorY: 0.91 }
+    ] },
+    profile: null
+  })
+
+  assert.equal(result.ok, true)
+  assert.deepEqual(result.failures, [])
+})
+
 test('candidate qa rejects a jumping row without a readable raw trajectory', () => {
   const result = analyzeSpriteCandidate({
     actionId: 'jumping',

@@ -1,5 +1,5 @@
 import { createServer } from "node:http"
-import { timingSafeEqual } from "node:crypto"
+import { randomUUID, timingSafeEqual } from "node:crypto"
 import { createRequire } from "node:module"
 
 import { ApiError, MAX_BODY_BYTES } from "../http/middleware.js"
@@ -158,9 +158,12 @@ export function createPluginRuntimeServer({ shell, plugins, settings, jobs, netw
 				return requireMethod(plugins, "submitTriggerProposal", "Plugin trigger proposal service is unavailable")(pluginId, body)
 			case "model:image-generate": {
 				const insert = requireMethod(jobs, "insert", "Image Job service is unavailable")
+				const input = { pluginId, ...structuredClone(body) }
 				const job = insert({
+				id: `image-generate:${randomUUID()}`,
 					kind: "image.generate",
-					input: { pluginId, ...structuredClone(body) },
+					input: { redacted: true, summary: "Image generation input withheld" },
+					privateInput: input,
 					resourceKey: `plugin:${pluginId}`,
 				})
 				return { jobId: job.id }

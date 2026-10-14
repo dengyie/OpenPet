@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "sessionId": "2026-10-08T10-54-25-410Z-darwin-arm64",
+  "generatedAt": "2026-10-08T10:54:27.788Z",
+  "appPath": "/Users/mango/.codex/worktrees/openpet-docs-review-20261004/release/mac-arm64/OpenPet.app",
+  "state": {
+    "launch": {
+      "ok": true,
+      "pid": 61659
+    },
+    "window": {
+      "ok": true,
+      "visible": true,
+      "focused": true,
+      "bounds": {
+        "x": 1205,
+        "y": 689,
+        "width": 150,
+        "height": 150
+      },
+      "transparent": true,
+      "alwaysOnTop": true
+    },
+    "renderer": {
+      "ok": true,
+      "bodyBackground": "rgba(0, 0, 0, 0)",
+      "htmlBackground": "rgba(0, 0, 0, 0)",
+      "transparentBackground": true,
+      "sprite": {
+        "visible": true,
+        "width": 130,
+        "height": 87,
+        "backgroundImage": "url(\"file:///Users/mango/.codex/worktrees/openpet-docs-review-20261004/release/mac-arm64/OpenPet.app/Contents/Resources/app.asar/cat_anime/sprites/eat_no_bg.png\")"
+      },
+      "legacyInlineBubble": {
+        "present": true,
+        "visible": false,
+        "text": ""
+      },
+      "action": {
+        "current": "",
+        "firstPosition": "-390px",
+        "secondPosition": "-780px",
+        "advanced": true,
+        "requested": "eat_no_bg"
+      },
+      "bubbleChat": {
+        "visible": true,
+        "hasWindow": true,
+        "text": "OpenPet runtime smoke",
+        "source": "packaged-runtime-smoke",
+        "screenshotPath": "/Users/mango/.codex/worktrees/openpet-docs-review-20261004/docs/release-evidence/packaged-runtime/2026-10-08T10-54-25-410Z-darwin-arm64/screenshots/packaged-runtime-bubble-chat.png",
+        "items": [
+          {
+            "kind": "dialogue",
+            "role": "pet",
+            "source": "packaged-runtime-smoke",
+            "text": "OpenPet runtime smoke"
+          }
+        ],
+        "noticeCount": 0,
+        "dialogueCount": 1
+      }
+    },
+    "packs": [
+      {
+        "id": "legacy-cat",
+        "ok": true,
+        "actionCount": 2,
+        "defaultAction": "bai_no_bg",
+        "spriteVisible": true,
+        "spriteSize": {
+          "width": 55,
+          "height": 130
+        }
+      },
+      {
+        "id": "doro",
+        "ok": true,
+        "actionCount": 9,
+        "defaultAction": "idle",
+        "spriteVisible": true,
+        "spriteSize": {
+          "width": 96,
+          "height": 104
+        }
+      },
+      {
+        "id": "duodong",
+        "ok": true,
+        "actionCount": 9,
+        "defaultAction": "idle",
+        "spriteVisible": true,
+        "spriteSize": {
+          "width": 96,
+          "height": 104
+        }
+      },
+      {
+        "id": "chispa",
+        "ok": true,
+        "actionCount": 9,
+        "defaultAction": "idle",
+        "spriteVisible": true,
+        "spriteSize": {
+          "width": 96,
+          "height": 104
+        }
+      }
+    ],
+    "invalidPackage": {
+      "status": "blocked",
+      "notes": "Native picker invalid-package path requires a paired desktop picker smoke report."
+    },
+    "finalState": {
+      "ok": true,
+      "activePackId": "legacy-cat"
+    }
+  },
+  "screenshotPath": "/Users/mango/.codex/worktrees/openpet-docs-review-20261004/docs/release-evidence/packaged-runtime/2026-10-08T10-54-25-410Z-darwin-arm64/screenshots/packaged-runtime.png"
+}

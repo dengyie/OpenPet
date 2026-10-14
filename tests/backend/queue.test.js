@@ -113,6 +113,7 @@ describe("Job queue · scheduling", () => {
 describe("Job queue · timeout", () => {
 	it("expires an idle queued job when the timer check advances", async () => {
 		let currentTime = 0
+		const terminal = []
 		await withQueue(({ repo, queue }) => {
 			queue.enqueue(job("timeout-job"))
 			currentTime = 101
@@ -121,6 +122,7 @@ describe("Job queue · timeout", () => {
 			currentTime = 1_001
 			assert.equal(queue.expire().length, 1)
 			assert.equal(repo.byId("timeout-job").status, "canceled")
-		}, { now: () => currentTime, queueTimeoutMs: 1_000, tickMs: 50 })
+		}, { now: () => currentTime, queueTimeoutMs: 1_000, tickMs: 50, onJobTerminal: (job) => terminal.push(job.id) })
+		assert.deepEqual(terminal, ["timeout-job"])
 	})
 })

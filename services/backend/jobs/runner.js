@@ -123,6 +123,8 @@ export function createRunner({
 	isRunning = isProcessRunning,
 	shutdownGraceMs = SHUTDOWN_GRACE_MS,
 	tmpRoot = null,
+	takePrivateInput = () => undefined,
+	forgetPrivateInput = () => false,
 } = {}) {
 	if (!repo || !queue || typeof queue.next !== "function" || typeof repo.byId !== "function") {
 		throw new ApiError("INTERNAL", "Job runner 需要 repository 与 queue")
@@ -132,14 +134,18 @@ export function createRunner({
 	let shuttingDown = false
 
 	async function terminateProcess(record) {
-		if (!record.processHandle) return
-		try {
-			signalTree(record.processHandle, "SIGTERM")
-			await delay(SIGKILL_DELAY_MS)
-			if (isRunning(record.processHandle)) signalTree(record.processHandle, "SIGKILL")
-		} catch (error) {
-			logger?.warn?.("终止 Job 子进程树失败", { jobId: record.jobId, error: String(error) })
-		}
+		if (record.terminationPromise) return record.terminationPromise
+		record.terminationPromise = (async () => {
+			if (!record.processHandle) return
+			try {
+				signalTree(record.processHandle, "SIGTERM")
+				await delay(SIGKILL_DELAY_MS)
+				if (isRunning(record.processHandle)) signalTree(record.processHandle, "SIGKILL")
+			} catch (error) {
+				logger?.warn?.("终止 Job 子进程树失败", { jobId: record.jobId, error: String(error) })
+			}
+		})()
+		return record.terminationPromise
 	}
 
 	function createJobProgress(record) {
@@ -158,6 +164,7 @@ export function createRunner({
 	async function execute(job) {
 		const handler = handlers[job.kind]
 		if (typeof handler !== "function") {
+			forgetPrivateInput(job.id)
 			const error = new ApiError("INTERNAL", "Job handler 不存在", { details: { kind: job.kind } })
 			repo.finish(job.id, { status: "failed", error: jobError(error) })
 			const nextJob = queue.release(job.id)
@@ -177,6 +184,8 @@ export function createRunner({
 			phase: job.progress?.phase ?? null,
 			canceled: false,
 			interrupted: false,
+			cancelPromise: null,
+			terminationPromise: null,
 			promise: null,
 		}
 		active.set(job.id, record)
@@ -185,6 +194,7 @@ export function createRunner({
 		const context = {
 			job,
 			tmpDir,
+			privateInput: takePrivateInput(job.id),
 			signal: record.controller.signal,
 			report(frame) {
 				jobProgress.report(frame)
@@ -219,18 +229,22 @@ export function createRunner({
 				} catch (error) {
 					jobProgress.flush()
 					if (record.canceled || record.interrupted) return repo.byId(job.id)
-					const failed = repo.finish(job.id, { status: "failed", error: jobError(error) })
-					emit?.("job.failed", failed)
-					if (!retryableStatus(error) || !canRetry(failed)) return failed
+					const failed = repo.byId(job.id)
+					const retryInput = context.privateInput === undefined ? failed.input : context.privateInput
+					if (!retryableStatus(error) || !canRetry({ ...failed, status: "failed", input: retryInput })) {
+						const terminal = repo.finish(job.id, { status: "failed", error: jobError(error) })
+						emit?.("job.failed", terminal)
+						return terminal
+					}
 					await delay(RETRY_BASE_DELAY_MS * (2 ** Math.max(0, failed.attempt - 1)))
 					if (record.canceled || record.interrupted || shuttingDown) return repo.byId(job.id)
-					const queued = repo.transition(job.id, "queued")
-					current = repo.transition(queued.id, "running")
+					current = repo.incrementAttempt(job.id)
 					jobProgress.reset()
 				}
 			}
 		})()
 			.finally(() => {
+				forgetPrivateInput(job.id)
 				if (tmpDir !== null) {
 					try { fs.rmSync(tmpDir, { recursive: true, force: true }) } catch (error) {
 						logger?.warn?.("清理 Job 临时目录失败", { jobId: job.id, tmpDir, error: String(error) })
@@ -268,8 +282,15 @@ export function createRunner({
 	async function cancel(jobId) {
 		const current = repo.byId(jobId)
 		if (!current) throw new ApiError("NOT_FOUND", "Job 不存在", { details: { jobId } })
-		if (current.status === "queued") return queue.cancel(jobId)
+		if (current.status === "canceled") return current
+		if (current.status === "queued") {
+			const canceled = queue.cancel(jobId)
+			forgetPrivateInput(jobId)
+			if (canceled?.status === "canceled") emit?.("job.canceled", canceled)
+			return canceled
+		}
 		const record = active.get(jobId)
+		if (record?.cancelPromise) return record.cancelPromise
 		assertCancelable({ ...current, phase: record?.phase ?? current.progress?.phase ?? null })
 		if (!record) {
 			throw new ApiError("JOB_NOT_CANCELABLE", "运行中的 Job 不属于当前 runner", {
@@ -277,12 +298,21 @@ export function createRunner({
 				details: { jobId },
 			})
 		}
-		record.canceled = true
-		record.controller.abort()
-		await terminateProcess(record)
-		const canceled = repo.finish(jobId, { status: "canceled" })
-		emit?.("job.canceled", canceled)
-		return canceled
+		record.cancelPromise = (async () => {
+			record.canceled = true
+			record.controller.abort()
+			await terminateProcess(record)
+			try { await record.promise } catch (error) {
+				logger?.warn?.("取消 Job 时 handler 未正常结束", { jobId, error: String(error) })
+			}
+			const settled = repo.byId(jobId)
+			if (settled?.status === "canceled") return settled
+			if (settled?.status !== "running") return settled
+			const canceled = repo.finish(jobId, { status: "canceled" })
+			emit?.("job.canceled", canceled)
+			return canceled
+		})()
+		return record.cancelPromise
 	}
 
 	async function shutdown() {

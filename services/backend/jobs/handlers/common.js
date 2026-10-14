@@ -1,4 +1,8 @@
 import { ApiError } from "../../http/middleware.js"
+import { createRequire } from "node:module"
+
+const require = createRequire(import.meta.url)
+const { githubRepositoryResourceKey, validateRepositoryUrl } = require("../../../../src/main/services/plugin-github-import-service.js")
 
 export function requirePluginMethod(plugins, name) {
 	if (typeof plugins?.[name] !== "function") {
@@ -14,6 +18,23 @@ export function pluginResourceKey(input = {}) {
 			? input.id.trim()
 			: ""
 	return id ? `plugin:${id}` : null
+}
+
+export function pluginGithubResourceKey(input = {}) {
+	const pluginKey = pluginResourceKey(input)
+	if (pluginKey) return pluginKey
+	if (typeof input.repositoryUrl !== "string" || input.repositoryUrl.trim().length === 0) return null
+	return githubRepositoryResourceKey(input.repositoryUrl)
+}
+
+export function resolvePrivatePluginInput(input, ctx = {}) {
+	if (input?.redacted !== true) return input
+	if (ctx.privateInput && typeof ctx.privateInput === "object") return ctx.privateInput
+	throw new ApiError("CONFLICT", "Plugin Job 的临时输入已不可用", { status: 409, retryable: false })
+}
+
+export function normalizePluginGithubRepositoryUrl(repositoryUrl) {
+	return validateRepositoryUrl(repositoryUrl).repositoryUrl
 }
 
 export function report(ctx, frame) {

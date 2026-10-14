@@ -5,6 +5,11 @@ import { interruptionError } from "./state-machine.js"
 
 const JOB_TMP_PREFIX = "job-"
 const RECOVERY_EVENT = "system.jobs-recovered"
+const TRANSIENT_INPUT_KINDS = new Set(["image.generate", "plugin.command", "plugin.install", "plugin.install.github", "actions.import-frames"])
+
+function requiresTransientInput(job) {
+	return TRANSIENT_INPUT_KINDS.has(job?.kind) && job?.input?.redacted === true
+}
 
 function listJobTmpEntries(tmpDir, logger) {
 	if (typeof tmpDir !== "string" || tmpDir.length === 0) return []
@@ -45,16 +50,17 @@ export function recoverJobs({ repo, tmpDir, emit, logger, requeueRecovered = tru
 
 	const interrupted = []
 	const requeued = []
+	repo.scrubPersistedSensitiveInputs?.()
 	for (const job of repo.list({ status: "running" })) {
 		repo.finish(job.id, { status: "interrupted", error: interruptionError() })
 		interrupted.push(job.id)
-		if (requeueRecovered && (job.kind !== "plugin.command" || job.input?.redacted !== true)) {
+		if (requeueRecovered && !requiresTransientInput(job)) {
 			repo.transition(job.id, "queued")
 			requeued.push(job.id)
 		}
 	}
 	for (const job of repo.list({ status: "queued" })) {
-		if (job.kind === "plugin.command" && job.input?.redacted === true) {
+		if (requiresTransientInput(job)) {
 			repo.transition(job.id, "running")
 			repo.finish(job.id, { status: "interrupted", error: interruptionError() })
 			interrupted.push(job.id)

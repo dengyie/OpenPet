@@ -393,12 +393,22 @@ const createSmokeRuntime = ({
     },
     getPluginBlockStatus: () => ({ blocked: false, reasons: [] })
   })
+  const hatchPetAgentService = createHatchPetAgentService({
+    aiService,
+    settingsService,
+    secretService,
+    pluginService,
+    appLogService
+  })
+  pluginService.setHatchPetAgentService?.(hatchPetAgentService)
 
   const creatorWorkflowService = createCreatorWorkflowService({
     pluginService,
     imageGenerationModelService,
     actionService,
     creatorReferenceService,
+    petPackService,
+    hatchPetAgentService,
     appLogService
   })
 
@@ -407,6 +417,7 @@ const createSmokeRuntime = ({
     appLogService,
     creatorWorkflowService,
     imageGenerationModelService,
+    petPackService,
     pluginService,
     settingsService
   }
@@ -1146,6 +1157,7 @@ if (require.main === module) {
 module.exports = {
   DEFAULT_OUTPUT_DIR,
   DEFAULT_SCENARIO,
+  createSmokeRuntime,
   createScenarioList,
   createSessionPaths,
   defaultAppDataDir,

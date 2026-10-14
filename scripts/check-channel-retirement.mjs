@@ -55,6 +55,20 @@ const parseHttpRoutes = (root) => {
     for (const match of source.matchAll(/router\.(get|post|put|patch|delete)\(\s*["']([^"']+)["']/gi)) {
       add(match[1].toUpperCase(), match[2])
     }
+    // AI routes pass through a shared validation wrapper before invoking the
+    // router. Count only literal registrations made through that wrapper, and
+    // only when its method/path arguments reach the router in the helper.
+    const aiRouteWrapper = source.match(/\bconst\s+register\s*=\s*\(\s*method\s*,\s*(\w+)\s*,\s*handler\s*\)\s*=>\s*registerAiRoute\(\s*router\s*,\s*method\s*,\s*\1\s*,\s*handler\s*\)/)
+    const aiRouteHelper = source.match(/\bfunction\s+registerAiRoute\s*\(\s*router\s*,\s*method\s*,\s*(\w+)\s*,\s*handler\s*\)\s*\{([\s\S]*?)^\}/m)
+    const routePathParameter = aiRouteHelper?.[1]
+    const aiRouteHelperBody = aiRouteHelper?.[2] ?? ""
+    const registersAiWrapperWithRouter = /\bconst\s+register\s*=\s*router\s*\[\s*method\s*\]/.test(aiRouteHelperBody) &&
+      new RegExp(`\\bregister\\.call\\(\\s*router\\s*,\\s*${routePathParameter}\\s*,`).test(aiRouteHelperBody)
+    if (aiRouteWrapper && registersAiWrapperWithRouter) {
+      for (const match of source.matchAll(/\bregister\(\s*["'](get|post|put|patch|delete)["']\s*,\s*["']([^"']+)["']/gi)) {
+        add(match[1].toUpperCase(), match[2])
+      }
+    }
     // Settings and health use router.register() with route tuples declared in
     // the same route module. Restrict this to method/path tuple shapes so
     // unrelated Object.freeze arrays cannot be mistaken for routes.

@@ -23,19 +23,26 @@ test('maintainer summary docs keep current real/manual-required gaps explicit', 
 
   assert.match(
     handoff,
-    /Produce passing macOS release evidence[\s\S]*Collect real signed Windows smoke evidence[\s\S]*Collect packaged native picker evidence from real app runs[\s\S]*real compatible package/i,
-    'HANDOFF.md should keep current priorities anchored to the remaining real/manual-required gaps'
+    /current delivery target is a demo[\s\S]*local unsigned package[\s\S]*Future macOS and Windows packages will use self-managed signing only[\s\S]*target-OS smoke/i,
+    'HANDOFF.md should keep demo priorities separate from deferred public distribution gates'
+  )
+
+  const todo = readText('docs/TODO.md')
+  assert.match(
+    todo,
+    /P0 Demo Scope[\s\S]*local unsigned app[\s\S]*Self-Signed Distribution Policy[\s\S]*Paid signing and notarization are not future gates/i,
+    'TODO.md should prioritize demo acceptance and require only self-managed signing'
   )
 
   assert.match(
     developmentSummary,
-    /real passing macOS closure path[\s\S]*real signed Windows artifacts[\s\S]*Packaged native picker evidence still needs real archived runs[\s\S]*compatible third-party package path/i,
+    /Release tooling still follows the previous paid-signing\/notarization policy[\s\S]*self-managed macOS and Windows signing[\s\S]*Packaged picker evidence[\s\S]*8\/9[\s\S]*plugin-install-disabled[\s\S]*pending[\s\S]*compatible third-party package path/i,
     'development-summary.md should keep the open engineering themes grounded in remaining real/manual-required gaps'
   )
 
   assert.match(
     projectStatusReview,
-    /Real passing macOS evidence must still be archived[\s\S]*Real signed Windows smoke evidence must exist[\s\S]*Packaged native picker evidence still needs real archived runs[\s\S]*compatible third-party package path/i,
+    /Adapt macOS packaging\/evidence to self-managed signing without notarization[\s\S]*locally generated self-signed certificate[\s\S]*11\/14[\s\S]*docs\/release-evidence\/desktop-picker\/2026-10-08T21-01-48Z-darwin-arm64[\s\S]*8\/9[\s\S]*plugin-install-disabled[\s\S]*pending[\s\S]*compatible third-party package path/i,
     'project-status-review.md should keep the main remaining gaps grounded in remaining real/manual-required gaps'
   )
 })
@@ -94,8 +101,8 @@ test('release entry docs keep current not-ready release truth explicit', () => {
 
   assert.match(
     releaseChecklist,
-    /Current public macOS caution:[\s\S]*failing signed readiness/i,
-    'release-checklist.md should keep the current failing macOS release-truth caution explicit'
+    /Historical macOS caution:[\s\S]*failing the previous signed-readiness gate[\s\S]*active policy is self-managed signing without notarization/i,
+    'release-checklist.md should preserve historical macOS evidence under the current self-managed signing policy'
   )
   assert.match(
     releaseChecklist,
@@ -104,12 +111,12 @@ test('release entry docs keep current not-ready release truth explicit', () => {
   )
   assert.match(
     releaseChecklist,
-    /\| macOS \| Public assets and imported workflow evidence currently fail signed readiness \| macOS-first release track; official artifacts still need passing signed\/notarized evidence \|/i,
+    /\| macOS \| Current demo package is unsigned; self-managed signing workflow adaptation remains open \| Use ad-hoc\/local signing; no notarization or Gatekeeper-trust claim \|/i,
     'release-checklist.md should keep the macOS top-table wording aligned with the current not-ready truth'
   )
   assert.match(
     releaseChecklist,
-    /\| Windows \| [\s\S]*Do not publish as supported until the Windows checklist passes \|/i,
-    'release-checklist.md should keep Windows support wording conservative until the checklist passes'
+    /\| Windows \| Packaging\/evidence tooling exists; self-signed package and target-OS smoke remain open \| Use a locally generated certificate; no SmartScreen or publisher-trust claim \|/i,
+    'release-checklist.md should keep the self-managed Windows signing and trust boundary explicit'
   )
 })

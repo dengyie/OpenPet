@@ -43,6 +43,7 @@ export function createQueue({
 	now = Date.now,
 	queueTimeoutMs = QUEUE_TIMEOUT_MS,
 	tickMs = QUEUE_TICK_MS,
+	onJobTerminal = () => {},
 } = {}) {
 	if (!repo || typeof repo.insert !== "function" || typeof repo.byId !== "function") {
 		throw new ApiError("INTERNAL", "Jobs queue 需要 repository")
@@ -114,18 +115,25 @@ export function createQueue({
 		const id = idOf(job)
 		const entry = removeWaiting(id)
 		if (!entry) {
-			if (running.has(id)) {
+				if (running.has(id)) {
 				throw new ApiError("JOB_NOT_CANCELABLE", "运行中的 Job 不在队列取消范围内", {
 					status: 423,
 					details: { jobId: id },
 				})
-			}
-			return null
+				}
+			const current = repo.byId(id)
+			if (!current || current.status !== "queued") return current
+			assertTransition(current.status, "canceled", { jobId: id })
+			const canceled = typeof repo.transition === "function" ? repo.transition(id, "canceled") : current
+			onJobTerminal(canceled)
+			return canceled
 		}
 		const current = repo.byId(id)
 		if (!current) return null
 		assertTransition(current.status, "canceled", { jobId: id })
-		return typeof repo.transition === "function" ? repo.transition(id, "canceled") : current
+		const canceled = typeof repo.transition === "function" ? repo.transition(id, "canceled") : current
+		onJobTerminal(canceled)
+		return canceled
 	}
 
 	function expire(nowValue = now()) {
@@ -137,6 +145,7 @@ export function createQueue({
 			const current = repo.byId(entry.id)
 			if (!current || current.status !== "queued") continue
 			const canceled = typeof repo.transition === "function" ? repo.transition(entry.id, "canceled") : current
+			onJobTerminal(canceled)
 			expired.push(canceled)
 			logger?.warn?.("Job 排队超时", { jobId: entry.id, group: entry.group })
 		}

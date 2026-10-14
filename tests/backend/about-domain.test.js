@@ -194,9 +194,10 @@ describe("Backend About domain", () => {
 		const { shellToBackendSchema } = await import("@openpet/contracts")
 		const parsed = shellToBackendSchema.parse({
 			type: "init",
-			userDataPath: "/tmp/openpet",
-			sessionToken: "x".repeat(32),
-			logLevel: "info",
+			userDataDir: "/tmp/openpet",
+			providerKeys: {},
+			legacyToken: null,
+			localHttpConfig: { enabled: false, host: "127.0.0.1", port: 0 },
 			appInfo: {
 				name: "OpenPet",
 				version: "1.2.3",

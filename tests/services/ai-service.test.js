@@ -1454,6 +1454,39 @@ test('ai service testConnection keeps chat success when optional models probe pa
   ])
 })
 
+test('ai service testConnection keeps chat success and saved models when the /models body has no data array', async () => {
+  const settingsService = createSettingsService({
+    ai: {
+      enabled: false,
+      provider: 'openai-compatible',
+      baseUrl: 'https://models-json-error.example.test/v1',
+      model: 'example-model',
+      apiKeyRef: 'ai.default',
+      systemPrompt: '',
+      modelCatalog: {
+        cacheKey: 'chat:openai-compatible:https://models-json-error.example.test/v1',
+        models: ['cached-model'],
+        fetchedAt: '2026-10-07T00:00:00.000Z',
+        source: 'saved'
+      }
+    }
+  })
+  const service = createAiService({
+    settingsService,
+    secretService: { getSecretValue: () => 'sk-test', setSecret: () => {} },
+    fetchImpl: async (url) => url.endsWith('/chat/completions')
+      ? { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: 'ok' } }] }) }
+      : { ok: true, status: 200, json: async () => ({}) }
+  })
+
+  const result = await service.testConnection()
+
+  assert.equal(result.ok, true)
+  assert.equal(result.modelsProbe, 'unavailable')
+  assert.deepEqual(result.availableModels, [])
+  assert.deepEqual(service.getConfig().modelCatalog.models, ['cached-model'])
+})
+
 test('ai service testConnection distinguishes model probe timeout during fetch and body parsing', async () => {
   const createService = (modelsFetch) => createAiService({
     settingsService: createSettingsService({
@@ -1502,6 +1535,55 @@ test('ai service testConnection distinguishes model probe timeout during fetch a
     assert.equal(result.modelsProbe, 'timed_out')
     assert.deepEqual(result.availableModels, [])
     assert.equal(result.currentModelDiscovered, false)
+  }
+})
+
+test('ai service connection test preserves optional model probe HTTP failure classes', async () => {
+  const cases = [
+    { status: 408, probe: 'timed_out' },
+    { status: 429, probe: 'rate_limited' },
+    { status: 500, probe: 'provider_unavailable' },
+    { status: 504, probe: 'timed_out' },
+    { status: 404, probe: 'unavailable' },
+    { status: 405, probe: 'unavailable' },
+    { status: 501, probe: 'unavailable' },
+    { status: 400, probe: 'failed' }
+  ]
+
+  for (const expected of cases) {
+    const settingsService = createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://models-probe-failure.example.test/v1',
+        model: 'example-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: '',
+        modelCatalog: {
+          cacheKey: 'chat:openai-compatible:https://models-probe-failure.example.test/v1',
+          models: ['cached-model'],
+          fetchedAt: '2026-10-07T00:00:00.000Z',
+          source: 'saved'
+        }
+      }
+    })
+    const service = createAiService({
+      settingsService,
+      secretService: { getSecretValue: () => 'sk-test', setSecret: () => {} },
+      fetchImpl: async (url) => url.endsWith('/chat/completions')
+        ? { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: 'ok' } }] }) }
+        : { ok: false, status: expected.status, json: async () => ({ error: { message: 'private provider detail' } }) }
+    })
+
+    const result = await service.testConnection()
+
+    assert.equal(result.ok, true)
+    assert.equal(result.modelsProbe, expected.probe, 'HTTP ' + expected.status + ' probe class')
+    assert.equal(result.modelsProbeMessage.includes('private provider detail'), false)
+    assert.equal(result.modelsProbeMessage.length <= 240, true)
+    if (expected.probe === 'unavailable') {
+      assert.deepEqual(service.getConfig().modelCatalog.models, ['cached-model'], 'HTTP ' + expected.status + ' preserves saved catalog')
+    }
   }
 })
 
@@ -1576,6 +1658,53 @@ test('ai service testConnection logs provider failures without leaking secrets o
   assert.match(serializedLogs, /ai\.settings\.connection-test\.failed/)
 })
 
+test('ai service preserves provider HTTP status classes across connection and model probes', async () => {
+  const cases = [
+    { status: 408, code: 'timeout', message: 'AI provider request timed out' },
+    { status: 429, code: 'rate_limited', message: 'AI provider rate limit exceeded' },
+    { status: 500, code: 'provider_unavailable', message: 'AI provider is temporarily unavailable' },
+    { status: 503, code: 'provider_unavailable', message: 'AI provider is temporarily unavailable' },
+    { status: 504, code: 'timeout', message: 'AI provider request timed out' }
+  ]
+  const createService = (status) => createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://provider-errors.example.test/v1',
+        model: 'example-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: '',
+        vision: {
+          mode: 'override',
+          provider: 'openai-compatible',
+          baseUrl: 'https://vision-errors.example.test/v1',
+          model: 'vision-model'
+        }
+      }
+    }),
+    secretService: { getSecretValue: () => 'sk-test', setSecret: () => {} },
+    fetchImpl: async () => ({
+      ok: false,
+      status,
+      json: async () => ({ error: { code: 'private-provider-code', message: 'private provider detail' } })
+    })
+  })
+
+  for (const expected of cases) {
+    const connection = await createService(expected.status).testConnection()
+    const chatDiscovery = await createService(expected.status).discoverModels()
+    const visionDiscovery = await createService(expected.status).discoverVisionModels()
+
+    for (const result of [connection, chatDiscovery, visionDiscovery]) {
+      assert.equal(result.ok, false, 'HTTP ' + expected.status + ' should fail')
+      assert.equal(result.code, expected.code, 'HTTP ' + expected.status + ' should retain its failure class')
+      assert.equal(result.message, expected.message, 'HTTP ' + expected.status + ' should use its fixed safe message')
+      assert.equal(result.message.includes('private provider detail'), false)
+    }
+  }
+})
+
 test('ai service discovers available models through the optional /models probe', async () => {
   const requests = []
   const logs = []
@@ -1626,6 +1755,68 @@ test('ai service discovers available models through the optional /models probe',
   assert.equal(logs[0].details.requestId, 'chat-models-1')
   assert.equal(logs.at(-1).details.requestId, 'chat-models-1')
   assert.equal(typeof logs.at(-1).details.durationMs, 'number')
+})
+
+test('ai service does not replace the chat model catalog when the /models body is unreadable', async () => {
+  const settingsService = createSettingsService({
+    ai: {
+      enabled: true,
+      provider: 'openai-compatible',
+      baseUrl: 'https://models.example.test/v1',
+      model: 'current-model',
+      apiKeyRef: 'ai.default',
+      systemPrompt: '',
+      modelCatalog: {
+        cacheKey: 'chat:openai-compatible:https://models.example.test/v1',
+        models: ['cached-model'],
+        fetchedAt: '2026-10-07T00:00:00.000Z',
+        source: 'saved'
+      }
+    }
+  })
+  const service = createAiService({
+    settingsService,
+    secretService: { getSecretValue: () => 'sk-test', setSecret: () => {} },
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => { throw new Error('invalid provider body') } })
+  })
+
+  const result = await service.discoverModels()
+
+  assert.equal(result.ok, true)
+  assert.equal(result.code, 'provider_reachable_models_unavailable')
+  assert.deepEqual(result.models, [])
+  assert.deepEqual(service.getConfig().modelCatalog.models, ['cached-model'])
+})
+
+test('ai service does not replace the chat model catalog when the /models body has no data array', async () => {
+  const settingsService = createSettingsService({
+    ai: {
+      enabled: true,
+      provider: 'openai-compatible',
+      baseUrl: 'https://models.example.test/v1',
+      model: 'current-model',
+      apiKeyRef: 'ai.default',
+      systemPrompt: '',
+      modelCatalog: {
+        cacheKey: 'chat:openai-compatible:https://models.example.test/v1',
+        models: ['cached-model'],
+        fetchedAt: '2026-10-07T00:00:00.000Z',
+        source: 'saved'
+      }
+    }
+  })
+  const service = createAiService({
+    settingsService,
+    secretService: { getSecretValue: () => 'sk-test', setSecret: () => {} },
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({}) })
+  })
+
+  const result = await service.discoverModels()
+
+  assert.equal(result.ok, true)
+  assert.equal(result.code, 'provider_reachable_models_unavailable')
+  assert.deepEqual(result.models, [])
+  assert.deepEqual(service.getConfig().modelCatalog.models, ['cached-model'])
 })
 
 test('ai service filters secrets and bounds model discovery results before caching or returning them', async () => {
@@ -1829,6 +2020,58 @@ test('ai service treats missing /models support as a safe discovery fallback', a
   assert.deepEqual(result.models, [])
 })
 
+test('ai service does not read optional /models error bodies before using the fallback', async () => {
+  const createService = (status) => {
+    const settingsService = createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://models-unavailable.example.test/v1',
+        model: 'chat-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: '',
+        modelCatalog: {
+          cacheKey: 'chat:openai-compatible:https://models-unavailable.example.test/v1',
+          models: ['cached-chat-model'],
+          fetchedAt: '2026-10-07T00:00:00.000Z',
+          source: 'saved'
+        },
+        visionModelCatalog: {
+          cacheKey: 'vision:openai-compatible:https://models-unavailable.example.test/v1',
+          models: ['cached-vision-model'],
+          fetchedAt: '2026-10-07T00:00:00.000Z',
+          source: 'saved'
+        },
+        vision: { mode: 'override', provider: 'openai-compatible', baseUrl: 'https://models-unavailable.example.test/v1', model: 'vision-model' }
+      }
+    })
+    return createAiService({
+      settingsService,
+      secretService: { getSecretValue: () => 'sk-test', setSecret: () => {} },
+      requestTimeoutMs: 5,
+      fetchImpl: async () => ({
+        ok: false,
+        status,
+        json: async () => new Promise(() => {})
+      })
+    })
+  }
+
+  for (const status of [404, 405, 501]) {
+    const chatService = createService(status)
+    const chat = await chatService.discoverModels()
+    assert.equal(chat.ok, true, 'HTTP ' + status + ' chat discovery remains successful')
+    assert.equal(chat.code, 'provider_reachable_models_unavailable')
+    assert.deepEqual(chatService.getConfig().modelCatalog.models, ['cached-chat-model'])
+
+    const visionService = createService(status)
+    const vision = await visionService.discoverVisionModels()
+    assert.equal(vision.ok, true, 'HTTP ' + status + ' Vision discovery remains successful')
+    assert.equal(vision.code, 'provider_reachable_models_unavailable')
+    assert.deepEqual(visionService.getConfig().vision.modelCatalog.models, ['cached-vision-model'])
+  }
+})
+
 test('ai service resolves vision provider to chat config by default and to override when enabled', () => {
   const service = createAiService({
     settingsService: createSettingsService({
@@ -1983,6 +2226,41 @@ test('ai service filters the effective Vision secret from discovered model ids',
   assert.deepEqual(service.getConfig().vision.modelCatalog.models, ['safe-vision-model'])
 })
 
+test('ai service classifies Vision provider authentication failures without exposing response text', async () => {
+  const logs = []
+  const secret = 'sk-vision-private-secret'
+  const service = createAiService({
+    settingsService: createSettingsService({
+      ai: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: 'https://chat.example.test/v1',
+        model: 'chat-model',
+        apiKeyRef: 'ai.default',
+        systemPrompt: '',
+        vision: { mode: 'override', provider: 'openai-compatible', baseUrl: 'https://vision.example.test/v1', model: 'vision-model' }
+      }
+    }),
+    secretService: { getSecretValue: (key) => key === 'ai.vision' ? secret : 'sk-chat-secret', setSecret: () => {} },
+    appLogService: { record: (entry) => logs.push(entry) },
+    fetchImpl: async () => ({
+      ok: false,
+      status: 401,
+      json: async () => ({ error: { code: 'unauthorized', message: 'Rejected ' + secret } })
+    })
+  })
+
+  const result = await service.discoverVisionModels()
+
+  assert.equal(result.ok, false)
+  assert.equal(result.code, 'auth_failed')
+  assert.equal(result.message, 'AI provider rejected the API key')
+  assert.deepEqual(result.models, [])
+  assert.equal(JSON.stringify(logs).includes(secret), false)
+  assert.equal(logs.at(-1).details.status, 401)
+  assert.equal(logs.at(-1).details.errorCode, 'auth_failed')
+})
+
 test('ai service filters a short Vision owner secret from discovery and persisted catalogs', async () => {
   const visionApiKey = 'abc'
   const service = createAiService({
@@ -2103,6 +2381,80 @@ test('ai service discovers vision models with an override-scoped catalog', async
     fetchedAt: settingsService.get().ai.visionModelCatalog.fetchedAt,
     source: 'saved'
   })
+})
+
+test('ai service does not replace the Vision model catalog when the /models body is unreadable', async () => {
+  const settingsService = createSettingsService({
+    ai: {
+      enabled: true,
+      provider: 'openai-compatible',
+      baseUrl: 'https://chat.example.test/v1',
+      model: 'chat-model',
+      apiKeyRef: 'ai.default',
+      systemPrompt: '',
+      visionModelCatalog: {
+        cacheKey: 'vision:openai-compatible:https://vision.example.test/v1',
+        models: ['cached-vision-model'],
+        fetchedAt: '2026-10-07T00:00:00.000Z',
+        source: 'saved'
+      },
+      vision: {
+        mode: 'override',
+        provider: 'openai-compatible',
+        baseUrl: 'https://vision.example.test/v1',
+        model: 'vision-model'
+      }
+    }
+  })
+  const service = createAiService({
+    settingsService,
+    secretService: { getSecretValue: (key) => key === 'ai.vision' ? 'sk-vision' : 'sk-chat', setSecret: () => {} },
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => { throw new Error('invalid provider body') } })
+  })
+
+  const result = await service.discoverVisionModels()
+
+  assert.equal(result.ok, true)
+  assert.equal(result.code, 'provider_reachable_models_unavailable')
+  assert.deepEqual(result.models, [])
+  assert.deepEqual(service.getConfig().vision.modelCatalog.models, ['cached-vision-model'])
+})
+
+test('ai service does not replace the Vision model catalog when the /models body has no data array', async () => {
+  const settingsService = createSettingsService({
+    ai: {
+      enabled: true,
+      provider: 'openai-compatible',
+      baseUrl: 'https://chat.example.test/v1',
+      model: 'chat-model',
+      apiKeyRef: 'ai.default',
+      systemPrompt: '',
+      visionModelCatalog: {
+        cacheKey: 'vision:openai-compatible:https://vision.example.test/v1',
+        models: ['cached-vision-model'],
+        fetchedAt: '2026-10-07T00:00:00.000Z',
+        source: 'saved'
+      },
+      vision: {
+        mode: 'override',
+        provider: 'openai-compatible',
+        baseUrl: 'https://vision.example.test/v1',
+        model: 'vision-model'
+      }
+    }
+  })
+  const service = createAiService({
+    settingsService,
+    secretService: { getSecretValue: (key) => key === 'ai.vision' ? 'sk-vision' : 'sk-chat', setSecret: () => {} },
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({}) })
+  })
+
+  const result = await service.discoverVisionModels()
+
+  assert.equal(result.ok, true)
+  assert.equal(result.code, 'provider_reachable_models_unavailable')
+  assert.deepEqual(result.models, [])
+  assert.deepEqual(service.getConfig().vision.modelCatalog.models, ['cached-vision-model'])
 })
 
 test('ai service streamComplete parses OpenAI-compatible SSE deltas', async () => {

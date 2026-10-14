@@ -36,6 +36,49 @@ export const settingsChangedSchema = z.object({
 })
 export type SettingsChanged = z.infer<typeof settingsChangedSchema>
 
+export const settingsPreviewScaleRequestSchema = z.object({
+  scale: z.number().finite().min(0.5).max(1.5),
+}).strict()
+
+export const settingsPreviewScaleResponseSchema = z.object({
+  scale: z.number().finite().min(0.5).max(1.5),
+}).strict()
+
+export const settingsCursorImportResultSchema = z.object({
+  canceled: z.boolean(),
+  cursor: z.object({
+    id: z.string().min(1),
+    type: z.literal("custom"),
+    source: z.literal("uploaded"),
+    name: z.string(),
+    enabled: z.boolean(),
+    assetPath: z.string().min(1),
+    assetUrl: z.string().min(1),
+    fileName: z.string(),
+    width: z.number().finite().nonnegative(),
+    height: z.number().finite().nonnegative(),
+    byteSize: z.number().int().nonnegative(),
+    hotspotX: z.number().finite().nonnegative(),
+    hotspotY: z.number().finite().nonnegative(),
+    createdAt: z.string(),
+  }).strict().optional(),
+}).strict().superRefine((value, ctx) => {
+  if (!value.canceled && value.cursor === undefined) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["cursor"], message: "completed cursor import requires a cursor" })
+  }
+  if (value.canceled && value.cursor !== undefined) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["cursor"], message: "canceled cursor import cannot include a cursor" })
+  }
+})
+
+export const settingsSchemaResponseSchema = z.object({
+  version: z.literal(1),
+  writablePaths: z.array(z.string()),
+  trustedPaths: z.array(z.string()),
+  scalePreview: z.object({ min: z.number(), max: z.number(), step: z.number() }).strict(),
+  cursorImport: z.object({ extensions: z.array(z.string()), maxBytes: z.number().int().positive() }).strict(),
+}).strict()
+
 /** 密钥类字段的对外形状:任何响应体都不得含明文 */
 export const secretStatusSchema = z.object({
   configured: z.boolean(),

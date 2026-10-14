@@ -35,7 +35,7 @@ function createStore() {
 	}
 }
 
-async function withServer(run) {
+async function withServer(run, commands) {
 	const router = createRouter({ basePath: "/api/v1" })
 	const store = createStore()
 	const events = []
@@ -43,7 +43,7 @@ async function withServer(run) {
 	router.use(middleware.errorBoundary())
 	router.use(middleware.loopbackOnly())
 	router.use(middleware.jsonBody())
-	settingsRoutes.registerSettingsRoutes({ router, store, emit: (...event) => events.push(event) })
+	settingsRoutes.registerSettingsRoutes({ router, store, commands, emit: (...event) => events.push(event) })
 	const server = createServer((req, res) => void router.handle(req, res))
 	await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve))
 	try {
@@ -61,13 +61,57 @@ function jsonRequest(url, init) {
 }
 
 describe("T10 settings routes", () => {
-	it("registers the five canonical routes", () => {
+	it("registers the complete Settings route surface", () => {
 		const router = createRouter({ basePath: "/api/v1" })
 		settingsRoutes.registerSettingsRoutes({ router, store: createStore() })
 		assert.deepEqual(router.routes(), settingsRoutes.SETTINGS_ROUTES_LIST.map((route) => {
 			const [method, path] = route.split(" ")
 			return `${method} /api/v1${path}`
 		}))
+		assert.equal(router.routes().length, 5)
+	})
+
+	it("serves its schema and requires the Shell owner for native commands", async () => {
+		await withServer(async ({ url }) => {
+			const schema = await fetch(url + "/settings/schema")
+			assert.equal(schema.status, 200)
+			assert.deepEqual((await schema.json()).data, settingsRoutes.SETTINGS_SCHEMA)
+			const unavailable = await jsonRequest(url + "/settings/cursor/import", { method: "POST", body: "{}" })
+			assert.equal(unavailable.status, 503)
+			assert.equal((await unavailable.json()).error.code, "BACKEND_UNAVAILABLE")
+		})
+	})
+
+	it("validates scale preview and returns the Shell-settled scale", async () => {
+		const calls = []
+		await withServer(async ({ url }) => {
+			const invalid = await jsonRequest(url + "/settings/preview-scale", { method: "POST", body: JSON.stringify({ scale: 1.6 }) })
+			assert.equal(invalid.status, 400)
+			assert.deepEqual(calls, [])
+			const valid = await jsonRequest(url + "/settings/preview-scale", { method: "POST", body: JSON.stringify({ scale: 1.25 }) })
+			assert.equal(valid.status, 200)
+			assert.deepEqual((await valid.json()).data, { scale: 1.25 })
+			assert.deepEqual(calls, [1.25])
+		}, { previewScale: async (scale) => { calls.push(scale); return { scale } } })
+	})
+
+	it("validates the imported cursor DTO and preserves picker cancellation", async () => {
+		const cursor = {
+			id: "cursor-test", type: "custom", source: "uploaded", name: "Test", enabled: true,
+			assetPath: "/user-data/cursors/test.png", assetUrl: "file:///user-data/cursors/test.png",
+			fileName: "test.png", width: 32, height: 32, byteSize: 120, hotspotX: 16, hotspotY: 16,
+			createdAt: "2026-10-09T00:00:00.000Z",
+		}
+		await withServer(async ({ url }) => {
+			const imported = await jsonRequest(url + "/settings/cursor/import", { method: "POST", body: "{}" })
+			assert.equal(imported.status, 200)
+			assert.deepEqual((await imported.json()).data, { canceled: false, cursor })
+		}, { importCursor: async () => ({ canceled: false, cursor }) })
+		await withServer(async ({ url }) => {
+			const canceled = await jsonRequest(url + "/settings/cursor/import", { method: "POST", body: "{}" })
+			assert.equal(canceled.status, 200)
+			assert.deepEqual((await canceled.json()).data, { canceled: true })
+		}, { importCursor: async () => ({ canceled: true }) })
 	})
 
 	it("reads and patches with optimistic locking and emits only real changes", async () => {

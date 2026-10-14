@@ -18,6 +18,7 @@ export function createPluginJobHandlers({ db, plugins, logger } = {}) {
 			db,
 			plugins,
 			logger,
+			privateInput: runnerContext.privateInput,
 			progress: runnerContext.report,
 			signal: runnerContext.signal,
 			tmpDir: runnerContext.tmpDir,
@@ -29,7 +30,7 @@ export function createPluginJobHandlers({ db, plugins, logger } = {}) {
 }
 
 export function createImageJobHandlers({ ai } = {}) {
-	return { "image.generate": (runnerContext) => imageGenerate.run(runnerContext.job.input ?? {}, {
+	return { "image.generate": (runnerContext) => imageGenerate.run(runnerContext.privateInput ?? runnerContext.job.input ?? {}, {
 		ai,
 		signal: runnerContext.signal,
 		progress: runnerContext.report,

@@ -1,6 +1,8 @@
 # 05 · 前端改造方案
 
 > 🎨 前端的目标是变轻:从「抽主进程能力的 UI」变成「消费 HTTP 契约的 UI」。量化目标:preload 从 19 KB 降到 5 KB 以下,删除 181 KB 的 demo 后端。
+>
+> **状态：目标方案 + 当前实现对照。** 本篇的目标形态不能当作已交付清单；当前入口以 `src/control-center/src/api/transport.ts`、`api/client.ts`、`api/backend-client.ts`、`hooks/useSse.ts`、`hooks/useJob.ts` 和各 feature API 为准。任何“已完成”结论都必须有对应测试或门禁证据。
 
 ## 1. 前端职责边界
 
@@ -33,16 +35,25 @@
 ### 2.2 transport 抽象
 
 ```ts
+// 当前实现（src/control-center/src/api/transport.ts）
 export type Transport = {
-  request<T>(req: ApiRequest): Promise<ApiResult<T>>
-  subscribe(topics: string[], onEvent: (e: SseEvent) => void): Unsubscribe
+  request<T>(input: RequestInput): Promise<T>
+  stream(topic: string, onEvent: (event: SseEvent) => void): Unsubscribe
+  readonly state: 'pending' | 'ready' | 'unavailable'
 }
 
-// 三种实现
-httpTransport   // 生产:fetch → 127.0.0.1:<port>
-mockTransport   // 开发/测试:MSW(取代 demo-control-center-api.ts)
-ipcTransport    // 过渡期:未迁移通道仍走 IPC,M4 后删除
+createHttpTransport   // 生产：fetch → 127.0.0.1:<port>，后端未就绪时排队
+createMockTransport   // Node 测试/受控 mock；不是完整业务后端
+createIpcTransport    // 迁移工具层保留的通用适配器，不代表当前 pane 都有 IPC fallback
+
+// 目标方案（尚未完成）
+MSW handlers            // 目标：替换浏览器 dev 运行中的 demo-control-center-api.ts
 ```
+
+当前 `npm run dev:control-center` 在没有 Electron preload 时仍由各 feature 的
+`import.meta.env.DEV` 分支使用 `src/control-center/src/api/demo-control-center-api.ts`
+或 feature 内存 adapter；MSW 尚未接管这条路径。不能把 MSW 目标写成当前开发环境的
+真实依赖，也不能因为 `createMockTransport()` 存在就宣称 demo API 已删除。
 
 #### 后端未就绪时的排队(必须实现)
 
@@ -72,7 +83,9 @@ shell.onBackendChanged((next) => {
 
 完整规则见 [03 篇 §1.2](./03-api-contract.md):`null` 是正常初始态而非错误;超过 10 秒未就绪则丢弃队列并进入 `degraded`。这是**每次冷启动都会走到**的路径,不是边缘情况。
 
-> 💡 **`ipcTransport` 是平滑迁移的关键。** 它让前端能在后端只完成部分域时就开始切换,不需要等全部 113 个路由就绪。每个域切完就把该域的 transport 改成 http。
+> 💡 `createIpcTransport()` 只提供通用适配器。当前已迁移域的生产 caller 直接使用
+> `backendClient`；仍保留的 Shell/native 能力通过明确的 preload API 调用。新增域必须
+> 先完成 route/domain/bridge 证据，不能把通用 IPC transport 当成未验证的业务兜底。
 
 ### 2.3 client 能力
 
@@ -84,10 +97,10 @@ shell.onBackendChanged((next) => {
 | 重试 | 仅 `retryable: true` 且幂等方法,指数退避最多 2 次 |
 | 幂等键 | 写操作自动生成 `Idempotency-Key` |
 | requestId | 自动生成并在错误提示里展示(方便用户报障) |
-| 401 处理 | 触发一次 token 刷新(走 IPC 重新取),失败则进降级 |
-| 503 处理 | 直接进降级模式,启动健康轮询 |
+| 401 处理 | 当前 `api/client.ts` 不自动刷新 token；由 Shell/backend 生命周期重新发布 backend 信息，调用方处理 `ApiError` |
+| 503 处理 | 当前转换为 `ApiError`/transport state；健康轮询与统一降级横幅仍是目标验收项 |
 | 后端未就绪 | `getBackend()` 返 `null` 时请求入队(50 条 / 10 秒上限),`onBackendChanged` 后冲刷;超时则丢弃并进降级 |
-| 后端换端口 | 崩溃重拉后端口与 token 都会变;收到 `onBackendChanged` 立即替换 baseUrl,并重建进行中的 SSE 连接 |
+| 后端换端口 | `backendTransport` 与 `SseManager` 监听 backend changed；重建连接的代码已存在，具体 pane 是否全量重拉仍需逐域验收 |
 | 性能预算 | 切 tab 低于 150 ms、`GET /settings` 低于 30 ms(见 [03 篇 §10](./03-api-contract.md));超标时按该表加缓存或预取 |
 | 响应校验 | dev 模式用 `packages/contracts` 的 zod schema 校验响应并在控制台报错;生产构建把 zod tree-shake 掉,前端零体积代价(ADR-016) |
 
@@ -99,7 +112,7 @@ function useSse(topics: string[]) {
   // 2. 断线自动重连,携带 Last-Event-ID
   // 3. 45s 无帧(含心跳)则主动重连
   // 4. 重连退避:1s → 2s → 5s → 10s(上限)
-  // 5. 页面隐藏时降频,可见时立即重连并全量重拉
+  // 5. 页面隐藏时降频、可见时立即重连并全量重拉：目标行为，当前 SseManager 尚未实现页面可见性策略
 }
 ```
 
@@ -113,7 +126,8 @@ const { job, start, cancel, retry } = useJob("image.generate")
 // 行为:
 // 1. start() → POST 拿 jobId,立即写入本地状态
 // 2. 优先听 SSE job.progress
-// 3. SSE 断线 → 降级为 2s 轮询 GET /jobs/{id}
+// 3. 当前 useJob 在 SSE 事件到达时重新 GET /jobs/{id}；没有 2s 定时轮询 fallback。
+//    “断线后定时轮询”仍是目标验收项，不能写成现状。
 // 4. 组件卸载不取消 Job(后端继续跑)
 // 5. 重新进入页面 → GET /jobs?status=running 恢复展示
 // 6. 刷新页面不丢进度(关键验收点)
@@ -237,8 +251,8 @@ packages/contracts/
 
 | 项 | 方案 |
 | --- | --- |
-| 服务端数据 | **TanStack Query**(ADR-015 已定案,不自写 `useResource`),配置见 §7.1 |
-| 缓存失效 | 由 SSE 事件驱动,不靠轮询;`useSse` 把 topic 映射为 `invalidateQueries`,这是**唯一**的失效入口 |
+| 服务端数据 | `QueryClient` 已在 `app/queryClient.ts` 配置；现有 pane 大量仍用 `useState` + 显式 API reload，尚未全部迁移到 `useQuery` |
+| 缓存失效 | `useSse` 会调用 `queryClient.invalidateQueries`，同时现有 pane 自己消费 `lastEventId` 或 Job 结果；因此当前不是单一失效入口，逐域迁移后才可收敛 |
 | 乐观更新 | 仅用于开关类(enable/disable),失败回滚 |
 | 本地 UI 状态 | 保持现有 `useState`,不引入全局 store |
 | 宠物帧缓存 | 内存 + `pet.actions-changed` 失效 |
@@ -248,14 +262,14 @@ packages/contracts/
 
 ### 7.1 TanStack Query 使用约束(ADR-015)
 
-选它而不是自写 `useResource`,理由是自写必须自己做对四件事:请求去重、乱序响应丢弃、卸载取消、缓存回收。这四件事写错的表现都是「界面偶尔显示旧数据」,属于最难定位的一类 bug;而依赖代价只有约 13 KB。
+目标采用 TanStack Query 而不是继续扩展 pane 自己的请求状态，理由是请求去重、乱序响应丢弃、卸载取消和缓存回收都应由一套数据层处理。当前 `QueryClient` 已落地，但迁移尚未完成；不要把目标约束当成所有 pane 的当前实现。
 
 为了不让它退化成第二套状态模型(见 [06 篇](./06-roadmap.md) R19),硬约束四条:
 
 1. `staleTime: Infinity` —— 永不自动过期,什么时候失效完全由 SSE 事件决定。
 2. 关闭 `refetchOnWindowFocus` 与 `refetchOnReconnect` —— 桌面应用切窗口极频繁,聚焦重取会反复打后端;且后端就在本机,网络事件没有意义。
 3. `retry: false` —— 重试策略统一留在 `api/client.ts`(仅 `retryable` 且幂等方法,指数退避 2 次),不在缓存层再重复一套。
-4. `useQuery` 只允许出现在 `features/*/` 的 pane 级 hook 中,组件内一律通过 props 或该 hook 取数(对应验收项 F13)。
+4. 迁移完成后，`useQuery` 只允许出现在 `features/*/` 的 pane 级 hook 中；当前静态验收仍是目标项。
 
 ```ts
 // app/queryClient.ts —— 全局唯一配置
@@ -268,11 +282,12 @@ export const queryClient = new QueryClient({
   } },
 })
 
-// hooks/useSse.ts —— 唯一的失效入口
+// hooks/useSse.ts —— 目标方案中的统一失效入口（当前仍有 pane 自行 reload）
 onEvent((e) => queryClient.invalidateQueries({ queryKey: [e.topic] }))
 ```
 
-> 💡 **`queryKey` 直接对齐 SSE topic**(`pet` / `jobs` / `plugins` / `ai` / `logs` / `settings` / `catalog` / `system`,见 [03 篇 §5](./03-api-contract.md))。失效逻辑因此只有一行,不需要维护 topic 到 key 的映射表 —— 这是选 TanStack 之后最大的一处结构性简化。
+> 💡 目标可以让 `queryKey` 对齐 SSE topic，但现有 pane 仍有本地状态和事件后显式 reload。
+> 在某个域完成 Query 迁移并有回归测试前，不能删除该域的显式刷新逻辑。
 
 ## 8. 样式与 design-system
 
@@ -290,7 +305,7 @@ onEvent((e) => queryClient.invalidateQueries({ queryKey: [e.topic] }))
 | # | 验收项 | 验证方式 |
 | --- | --- | --- |
 | F1 | `control-center-preload.js` < 5 KB | `check:preload-size` |
-| F2 | `demo-control-center-api.ts` 已删除 | 文件不存在 |
+| F2 | **目标**：`demo-control-center-api.ts` 已删除 | 文件不存在；当前仍由 dev fallback 使用，删除前必须完成 MSW、真实 dev 启动验证和测试 |
 | F3 | 无单文件 > 400 行 | `check:file-size` |
 | F4 | 前端代码零 `ipcRenderer` 业务调用 | 静态扫描 |
 | F5 | 刷新页面不丢 Job 进度 | Playwright |
@@ -298,10 +313,12 @@ onEvent((e) => queryClient.invalidateQueries({ queryKey: [e.topic] }))
 | F7 | 后端重启后前端自动恢复 | Playwright |
 | F8 | 降级模式不丢表单输入 | Playwright |
 | F9 | SSE 断线自动重连且不丢事件 | 集成测试(Last-Event-ID) |
-| F10 | `dev:control-center` 仍可脱离 Electron 运行 | MSW transport |
+| F10 | `dev:control-center` 仍可脱离 Electron 运行 | 当前由 demo API/内存 adapter 提供；MSW 替换仍未完成 |
 | F11 | 冷启动时后端未就绪,首屏不报错且请求被正确排队后冲刷 | Playwright(人为延迟 sidecar 启动 3 秒) |
 | F12 | 后端崩溃重拉换端口后,前端无需刷新即自动恢复 | Playwright(kill 后端) |
-| F13 | `useQuery` 仅出现在 `features/*/` 的 hook 文件中,组件文件内为零 | 静态扫描(ADR-015 / [06 篇](./06-roadmap.md) R19) |
+| F13 | **目标**：`useQuery` 仅出现在 `features/*/` 的 hook 文件中,组件文件内为零 | 静态扫描；当前 Query 迁移未闭合 |
 | F14 | 排队超时由定时器触发:入队 1 条后不再发请求,10 秒必须 reject | 单测(假时钟) |
 
-> 📌 F10 很重要:`npm run dev:control-center` 的能力不能因为删了 demo-api 而丢失。MSW transport 必须在删除 demo-api **之前**就已可用。
+> 📌 F10 目前证明的是 dev fallback 仍可用，不是 MSW 已交付。删除
+> `demo-control-center-api.ts` 前必须先落地契约驱动的 MSW handlers、真实 dev 启动验证和
+> 对应测试；在此之前该文件不是可确认的废弃内容。

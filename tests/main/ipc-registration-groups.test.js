@@ -376,7 +376,7 @@ test('registerServiceIpc wires service status, token rotation, and config persis
   assert.equal(startedConfigs[1].port, 8456)
   assert.equal(savedSettings.length, 2)
   assert.deepEqual(rotated.runtime, { enabled: true, host: '127.0.0.1', port: 8317, mcp: { activeSessions: 1, sessionTtlMs: 1000 } })
-  assert.deepEqual(saved.config, { host: '127.0.0.1', enabled: true, port: 8456, token: 'custom-token' })
+  assert.deepEqual(saved.config, { host: '127.0.0.1', enabled: true, port: 8456, token: 'custom-token', backendMode: 'local', sshAlias: 'gz-cvm', backendPort: 48330 })
   assert.ok(ipcMain.handlers.has(IPC.SERVICE_REVOKE_MCP_SESSIONS))
 })
 

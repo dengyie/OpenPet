@@ -63,8 +63,20 @@ export function createCatalogService({ root, db, logger, now = Date.now, emit, s
 	}
 	const refresh = async () => {
 		const catalog = await list()
-		emit?.(EVENT_CATALOG_REFRESHED, { updatedAt: catalog.updatedAt || "", at: now() })
+		emit?.(EVENT_CATALOG_REFRESHED, { updatedAt: typeof catalog.updatedAt === "string" ? catalog.updatedAt : "", at: now() })
 		return catalog
+	}
+	const catalogFromMutationResult = (result) => {
+		if (!result || typeof result !== "object" || Array.isArray(result)
+			|| !result.catalog || typeof result.catalog !== "object" || Array.isArray(result.catalog)) {
+			throw new ApiError("INTERNAL", "Shell Catalog mutation returned an invalid state")
+		}
+		return result.catalog
+	}
+	const publishCatalogRefresh = (result) => {
+		const catalog = catalogFromMutationResult(result)
+		emit?.(EVENT_CATALOG_REFRESHED, { updatedAt: typeof catalog.updatedAt === "string" ? catalog.updatedAt : "", at: now() })
+		return result
 	}
 	const prepareInstall = ({ kind, itemId } = {}) => {
 		if (!["plugin", "pet-pack"].includes(kind)) {
@@ -72,16 +84,22 @@ export function createCatalogService({ root, db, logger, now = Date.now, emit, s
 		}
 		return request({ operation: "prepareInstall", kind, itemId: requiredString(itemId, "itemId") })
 	}
-	const installSelection = (selectionId) => request({
+	const installSelection = async (selectionId) => publishCatalogRefresh(await request({
 		operation: "installSelection",
 		selectionId: requiredString(selectionId, "selectionId"),
-	})
+	}))
 	const clearSelection = (selectionId) => request({
 		operation: "clearSelection",
 		selectionId: requiredString(selectionId, "selectionId"),
 	})
-	const addBlocklistEntry = (entry) => request({ operation: "addBlocklistEntry", ...blocklistEntry(entry) })
-	const removeBlocklistEntry = (entry) => request({ operation: "removeBlocklistEntry", ...blocklistEntry(entry) })
+	const addBlocklistEntry = async (entry) => publishCatalogRefresh(await request({
+		operation: "addBlocklistEntry",
+		...blocklistEntry(entry),
+	}))
+	const removeBlocklistEntry = async (entry) => publishCatalogRefresh(await request({
+		operation: "removeBlocklistEntry",
+		...blocklistEntry(entry),
+	}))
 	const installed = async () => {
 		const catalog = await list()
 		return {

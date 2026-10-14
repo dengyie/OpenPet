@@ -317,6 +317,19 @@ test('demo API saves and clears vision API key and discovers vision models', asy
   assert.equal(cleared.hasApiKey, false)
 })
 
+test('demo API clears the chat API key without changing the vision key', async () => {
+  const demoApi = (await import('../../apps/control-center/src/api/demo-control-center-api.ts')).demoControlCenterAPI
+  await demoApi.saveAiApiKey('sk-demo-chat')
+  await demoApi.saveAiVisionApiKey('sk-demo-vision')
+
+  const cleared = await demoApi.clearAiApiKey()
+  const config = await demoApi.getAiConfig()
+
+  assert.equal(cleared.hasApiKey, false)
+  assert.equal(config.hasApiKey, false)
+  assert.equal(config.vision.hasApiKey, true)
+})
+
 test('demo API installs a fixture plugin and returns command mock output', async () => {
   const review = await demoControlCenterAPI.inspectPluginPackage()
   const installResult = await demoControlCenterAPI.installPlugin(review.selectionId)
@@ -1340,6 +1353,13 @@ test('demo API keeps per-pack conversations and trace summaries aligned with req
     conversationId: 'control-center:citrus-cat:main'
   }))
   assert.deepEqual(diagnostics.conversations.map((conversation) => conversation.conversationId), ['control-center:citrus-cat:main'])
+  for (const decision of diagnostics.behaviorDecisions) {
+    assert.equal('reason' in decision, false)
+    assert.equal('providerReason' in decision, false)
+    assert.equal('inputSummary' in decision, false)
+    assert.equal('replay' in decision, false)
+  }
+  assert.equal(diagnostics.redaction.behavior, 'decision free text and replay payloads omitted')
 
   const exportedTrace = JSON.parse(await demoControlCenterAPI.exportAiTalkTrace({
     conversationId: 'control-center:citrus-cat:main'

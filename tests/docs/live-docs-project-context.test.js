@@ -299,13 +299,13 @@ test('project-context indexes archived release-truth evidence and blockers truth
   )
   assert.match(
     facts,
-    /releaseReady is false[\s\S]*macOS codesign\/notarization\/Gatekeeper now classify as fail[\s\S]*Windows smoke remains unsigned\/pending[\s\S]*desktop-picker archives remain archived but not signed-ready/i,
-    'project-context.json should capture the signed release closure not-ready state and core blockers'
+    /previous-policy closure report marks official desktop, macOS, and Windows claims not-ready[\s\S]*archived blocker facts are macOS codesign\/notarization\/Gatekeeper fail, unsigned\/pending Windows smoke, and Windows picker archives not signed-ready/i,
+    'project-context.json should capture the archived closure result as previous-policy evidence'
   )
   assert.match(
     facts,
-    /Apple signing\/notarization credentials[\s\S]*real Windows signed artifact execution[\s\S]*human evidence review/i,
-    'project-context.json should keep the manual-required release prerequisites explicit'
+    /OpenPet distribution policy is self-managed signing only[\s\S]*target-OS runtime\/install validation and human evidence review remain required/i,
+    'project-context.json should keep self-managed signing and target-platform evidence requirements explicit'
   )
 })
 

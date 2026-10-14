@@ -1,5 +1,7 @@
 # 12 · M1 补卡与 M2 任务卡(轻域切换)
 
+> **状态：历史迁移任务卡。** T14–T23 描述的是目标拆分和验收方法，不是当前任务队列；当前 Control Center 实际目录是 `src/control-center/`，当前已实现路由和 blocked 能力以 [03 篇](./03-api-contract.md)、[09 篇](./09-repo-state.md) 及 `routes/registry.js` 为准。
+
 > v1.1 · 2026-08-16 · 基线分支 `main`
 >
 > 🤖 **受众:实现 agent。** 先读 [08 篇](./08-agent-guide.md)(硬规则)与 [09 篇](./09-repo-state.md)(仓库现状),再回来领卡。
@@ -143,7 +145,7 @@ export function createLocalHttpManager({ settings, logger, now, secrets })
 
 **验收断言**
 
-- `router.routes()` 与 03 篇 §4.1 的 `SERVICE_*` 行对账。09 篇记着这里有个已知缺口:**`PUT /service/config` 在表里存在但没有对应实现,本卡负责补上**。
+- `router.routes()` 与 03 篇 §4.1 的 `SERVICE_*` 行对账。历史记录中的 **`PUT /service/config` 缺口已由 T16 落地**；实施时不得按旧任务卡重复实现，先以 registry 和 `check:api-contract` 确认当前状态。
 - 按 **ADR-009 / D7**:对外端口与路径必须**继承原值**。写一个断言把 `/api/pet/say` 与 `/mcp` 的路径字符串钉死 —— 改动它等于违反「不改 MCP 对外行为」这条非目标。
 - `POST /service/diagnostics` 的输出里搜不到任何密钥明文(04 篇 §4.1 硬性约束)。
 
@@ -179,7 +181,7 @@ export function createCatalogService({ root, db, logger, now, emit })
 **依赖与阻塞**
 
 - 依赖 T09、T11。
-- **强依赖 T12**(`dialog.request` 加入 `BACKEND_TO_SHELL_TYPES`,即缺口 G2)。**T12 没落地,本卡做不了** —— 文件选择必须由 Shell 弹框。
+- **历史依赖 T12**(`dialog.request` 加入 `BACKEND_TO_SHELL_TYPES`,即缺口 G2)。T12 已落地；实现新文件选择能力时仍必须沿 Shell dialog bridge，不得把弹框逻辑写进 Backend。
 - 依赖 T06/T07(队列与执行器):`pet-pack.import` / `pet-pack.export` 是 Job。
 - 先读 `src/main/services/pet-pack-service.js`(32 KB),照抄现有方法签名。
 
@@ -234,7 +236,7 @@ export function createActionService({ root, db, jobs, dialog, logger, now, emit 
 
 **依赖与阻塞** 无后端依赖,**可与 T15–T19 完全并行**。按 [05 篇 §2.2](./05-frontend.md) 实现。
 
-**建哪个文件** `apps/control-center/src/api/transport.ts`(+ `httpTransport.ts`、`mockTransport.ts`、`ipcTransport.ts`)、`apps/control-center/src/api/__tests__/transport.test.ts`
+**目标文件（历史路径；当前目录）** `src/control-center/src/api/transport.ts`(+ `httpTransport.ts`、`mockTransport.ts`、`ipcTransport.ts`)、`src/control-center/src/api/__tests__/transport.test.ts`
 
 **精确导出签名**
 
@@ -269,7 +271,7 @@ export function createIpcTransport(opts: { invoke: IpcInvoke }): Transport
 
 **依赖与阻塞** 依赖 T20。按 **ADR-015** 的四条硬约束。
 
-**建哪个文件** `apps/control-center/src/api/client.ts`、`apps/control-center/src/app/queryClient.ts`、`apps/control-center/src/features/*/api.ts`
+**目标文件（历史路径；当前目录）** `src/control-center/src/api/client.ts`、`src/control-center/src/app/queryClient.ts`、`src/control-center/src/features/*/api.ts`
 
 **精确导出签名**
 
@@ -292,7 +294,7 @@ export function createApiClient(transport: Transport): ApiClient
 
 **依赖与阻塞** 依赖 T21、**T11**(后端 SSE 端点)。按 [05 篇 §2.4/§2.5](./05-frontend.md)。
 
-**建哪个文件** `apps/control-center/src/hooks/useSse.ts`、`apps/control-center/src/hooks/useJob.ts`
+**目标文件（历史路径；当前目录）** `src/control-center/src/hooks/useSse.ts`、`src/control-center/src/hooks/useJob.ts`
 
 **精确导出签名**
 

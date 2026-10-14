@@ -10,7 +10,6 @@ const { spawnSync } = require('node:child_process')
 const repoRoot = path.resolve(__dirname, '../..')
 const fixtureFiles = [
 	'docs/refactor/03-api-contract.md',
-	'docs/refactor/15-channel-retirement.md',
 	'packages/contracts/src/envelope.ts',
 	'packages/contracts/src/events.ts',
 	'packages/contracts/src/jobs.ts',
@@ -32,12 +31,16 @@ const fixtureFiles = [
 	'services/backend/routes/plugins.js',
 	'services/backend/routes/creator.js',
 	'services/backend/jobs/state-machine.js',
+	'services/backend/jobs/handlers/common.js',
 	'services/backend/http/router.js',
 	'services/backend/http/middleware.js',
 	'apps/desktop/src/shared/ipc-channels.ts',
 	'apps/desktop/src/shared/ipc-channels.js',
 	'scripts/api-contract-route-parser.mjs',
 	'scripts/check-api-contract.mjs'
+	,'src/main/services/plugin-github-import-service.js'
+	,'src/main/services/bounded-response-body.js'
+	,'src/main/services/zip-archive-utils.js'
 ]
 
 const createFixture = (t) => {
@@ -104,11 +107,12 @@ test('CLI rejects route registration and registry omissions', (t) => {
 	}
 })
 
-test('CLI permits only the explicitly registered T45 transitional revoke route', (t) => {
+test('CLI requires every registered route to appear in the API contract', (t) => {
 	const fixtureRoot = createFixture(t)
 	const docPath = path.join(fixtureRoot, 'docs/refactor/03-api-contract.md')
 	const doc = fs.readFileSync(docPath, 'utf8')
-	assert.doesNotMatch(doc, /token\/revoke-sessions/)
+	assert.match(doc, /token\/revoke-sessions/)
+	fs.writeFileSync(docPath, doc.replace(/\| POST \| `\/service\/token\/revoke-sessions` \|[^\n]*\n/, ''))
 	const result = spawnSync(process.execPath, [path.join(fixtureRoot, 'scripts/check-api-contract.mjs')], { cwd: fixtureRoot, encoding: 'utf8' })
 	assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`)
 	assert.match(result.stdout, /实际路由、注册表与 §4 精确对账\(133\/127 行\)/)

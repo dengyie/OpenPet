@@ -9,6 +9,24 @@ const { describe, it } = require("node:test")
 const read = (file) => fs.readFileSync(file, "utf8")
 
 describe("T42 Pet Packs cutover boundary", () => {
+	it("uses the HTTP picker operation without sending a renderer filesystem path", async () => {
+		const { createPetPackHttpApi } = await import("../../apps/control-center/src/features/pet-packs/api.ts")
+		const calls = []
+		const api = createPetPackHttpApi({ request: async (request) => {
+			calls.push(request)
+			return { canceled: true }
+		} })
+
+		assert.deepEqual(await api.inspect(), { canceled: true })
+		assert.deepEqual(calls.map(({ method, path, body, timeoutMs, retry }) => ({ method, path, body, timeoutMs, retry })), [{
+			method: "POST",
+			path: "/pet-packs/validate",
+			body: { operation: "pick" },
+			timeoutMs: 180_000,
+			retry: false,
+		}])
+	})
+
 	it("uses Shell for Pet Pack Jobs without creating a sidecar pack directory", async () => {
 		const requests = []
 		let finalizing = false

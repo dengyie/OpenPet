@@ -539,6 +539,50 @@ const createAiTalkStore = ({ storePath, repository = null, now = () => new Date(
     return clone(state.messages[`${sessionId}:${conversationId}`] || [])
   }
 
+  const listConversations = ({ entrypoint = '', petPackId = '' } = {}) => {
+    const requestedEntrypoint = typeof entrypoint === 'string' ? entrypoint.trim() : ''
+    const requestedPetPackId = typeof petPackId === 'string' ? petPackId.trim() : ''
+    return Object.entries(state.conversations || {})
+      .map(([key, conversation]) => {
+        const messages = normalizeMessages(state.messages[key] || [])
+        return {
+          id: typeof conversation?.id === 'string' ? conversation.id : '',
+          conversationId: key,
+          sessionId: typeof conversation?.sessionId === 'string' ? conversation.sessionId : '',
+          entrypoint: typeof state.sessions?.[conversation?.sessionId]?.entrypoint === 'string'
+            ? state.sessions[conversation.sessionId].entrypoint
+            : '',
+          petPackId: typeof conversation?.petPackId === 'string' ? conversation.petPackId : '',
+          title: typeof conversation?.title === 'string' ? conversation.title : '',
+          messageCount: messages.length,
+          createdAt: typeof conversation?.createdAt === 'string' ? conversation.createdAt : '',
+          updatedAt: typeof conversation?.updatedAt === 'string' ? conversation.updatedAt : ''
+        }
+      })
+      .filter((conversation) => (
+        (!requestedEntrypoint || conversation.entrypoint === requestedEntrypoint) &&
+        (!requestedPetPackId || conversation.petPackId === requestedPetPackId)
+      ))
+      .sort((left, right) => String(right.updatedAt || '').localeCompare(String(left.updatedAt || '')))
+      .slice(0, MAX_EXTERNAL_CONVERSATIONS)
+  }
+
+  const deleteConversation = (conversationId) => {
+    const key = typeof conversationId === 'string' ? conversationId.trim() : ''
+    if (!key || !state.conversations[key]) return { conversationId: key, deleted: false }
+    const conversation = state.conversations[key]
+    delete state.conversations[key]
+    delete state.messages[key]
+    if (conversation?.sessionId && state.sessions?.[conversation.sessionId]) {
+      const session = state.sessions[conversation.sessionId]
+      if (session.activeConversationId === conversation.id) {
+        state.sessions[conversation.sessionId] = { ...session, activeConversationId: 'main', updatedAt: now() }
+      }
+    }
+    persist()
+    return { conversationId: key, deleted: true }
+  }
+
   const appendMessages = (sessionId, conversationId = 'main', messages = []) => {
     const conversationKey = `${sessionId}:${conversationId}`
     if (!state.conversations[conversationKey]) throw new Error(`AI talk conversation does not exist: ${conversationKey}`)
@@ -1260,7 +1304,7 @@ const createAiTalkStore = ({ storePath, repository = null, now = () => new Date(
         messages: 'content omitted; contentChars and contentSha256 retained',
         memories: 'text omitted; textChars and textSha256 retained',
         provider: 'api keys and credentials omitted by provider view contract',
-        behavior: 'decision replay payloads omitted'
+        behavior: 'decision free text and replay payloads omitted'
       },
       provider: {
         enabled: Boolean(provider.enabled),
@@ -1277,21 +1321,16 @@ const createAiTalkStore = ({ storePath, repository = null, now = () => new Date(
       traces,
       behaviorDecisions: filteredBehaviorDecisions
         .slice(0, MAX_TRACE_ITEMS)
-        .map(({ replay: _replay, ...decision }) => ({
+        .map((decision) => ({
           id: Number.isFinite(Number(decision?.id)) ? Number(decision.id) : 0,
-          timestamp: typeof decision?.timestamp === 'string' ? decision.timestamp : '',
+          timestamp: Number.isFinite(Date.parse(decision?.timestamp))
+            ? new Date(Date.parse(decision.timestamp)).toISOString()
+            : '',
           matched: Boolean(decision?.matched),
-          type: typeof decision?.type === 'string' ? decision.type : '',
-          ruleId: typeof decision?.ruleId === 'string' ? decision.ruleId : '',
-          reason: typeof decision?.reason === 'string' ? decision.reason : '',
-          actionId: typeof decision?.actionId === 'string' ? decision.actionId : '',
-          intent: typeof decision?.intent === 'string' ? decision.intent : '',
-          providerReason: typeof decision?.providerReason === 'string' ? decision.providerReason : '',
-          displayMode: typeof decision?.displayMode === 'string' ? decision.displayMode : '',
-          inputSummary: typeof decision?.inputSummary === 'string' ? decision.inputSummary : '',
+          type: ['say', 'playAction', 'setEvent'].includes(decision?.type) ? decision.type : '',
+          displayMode: ['none', 'bubble', 'action', 'event'].includes(decision?.displayMode) ? decision.displayMode : '',
           cooldown: Boolean(decision?.cooldown),
           fallback: Boolean(decision?.fallback),
-          blockedReason: typeof decision?.blockedReason === 'string' ? decision.blockedReason : '',
           replayRedacted: true
         }))
     }, null, 2)
@@ -1308,6 +1347,8 @@ const createAiTalkStore = ({ storePath, repository = null, now = () => new Date(
     deleteMemory,
     ensureConversation,
     ensureMainConversation,
+    listConversations,
+    deleteConversation,
     finishMemoryJob,
     getMessages,
     getLatestTraceByConversation,

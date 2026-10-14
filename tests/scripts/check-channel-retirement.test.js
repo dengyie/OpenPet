@@ -65,6 +65,45 @@ test('CLI rejects a cutover target that is not an implemented HTTP route', (t) =
   assert.match(result.stderr, /not an implemented route|HTTP target/i)
 })
 
+test('CLI recognizes routes registered through the AI route wrapper', (t) => {
+  const fixtureRoot = createFixture(t, { rows: [{ ...row(1), route: '`GET /fixture`' }] })
+  fs.mkdirSync(path.join(fixtureRoot, 'services/backend/routes'), { recursive: true })
+  fs.writeFileSync(path.join(fixtureRoot, 'services/backend/routes/ai.js'), [
+    'function registerAiRoute(router, method, routePath, handler) {',
+    '  const register = router[method]',
+    '  register.call(router, routePath, handler)',
+    '}',
+    'function registerAiRoutes(router) {',
+    '  const register = (method, routePath, handler) => registerAiRoute(router, method, routePath, handler)',
+    '  register("get", "/fixture", () => {})',
+    '}'
+  ].join('\n'))
+  const result = run(fixtureRoot)
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`)
+})
+
+test('CLI does not count AI wrapper calls when the helper never registers with the router', (t) => {
+  const fixtureRoot = createFixture(t, { rows: [{ ...row(1), route: '`GET /fixture`' }] })
+  fs.mkdirSync(path.join(fixtureRoot, 'services/backend/routes'), { recursive: true })
+  fs.writeFileSync(path.join(fixtureRoot, 'services/backend/routes/ai.js'), [
+    'function registerAiRoute(router, method, path, handler) {',
+    '  const register = router[method]',
+    '  return handler',
+    '}',
+    'function unrelatedHelper(router, path) {',
+    '  const register = router.get',
+    '  register.call(router, path, () => {})',
+    '}',
+    'function registerAiRoutes(router) {',
+    '  const register = (method, path, handler) => registerAiRoute(router, method, path, handler)',
+    '  register("get", "/fixture", () => {})',
+    '}'
+  ].join('\n'))
+  const result = run(fixtureRoot)
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /not an implemented route|HTTP target/i)
+})
+
 test('CLI rejects ledger count or channel mismatch', (t) => {
   const fixtureRoot = createFixture(t, { rows: [row(1, 'keep')] , channelCount: 2 })
   const result = run(fixtureRoot)
@@ -129,22 +168,19 @@ test('CLI rejects unknown production IPC references', (t) => {
   assert.match(result.stderr, /unknown.*channel/i)
 })
 
-test('real ledger records the T41 settings retirement boundary', () => {
+test('real ledger records current Settings cutover and retirement boundaries', () => {
   const ledger = fs.readFileSync(ledgerPath, 'utf8')
-  const channels = [
-    'settings:get',
-    'settings:save',
-    'settings:import-cursor',
-    'settings:preview-scale',
-    'settings:changed'
-  ]
+  const statuses = new Map([
+    ['settings:get', 'retired'],
+    ['settings:save', 'retired'],
+    ['settings:import-cursor', 'cutover:settings'],
+    ['settings:preview-scale', 'cutover:settings'],
+    ['settings:changed', 'blocked:T41']
+  ])
 
-  for (const channel of channels) {
+  for (const [channel, status] of statuses) {
     const line = ledger.split('\n').find((candidate) => candidate.startsWith(`| \`${channel}\` |`))
     assert.ok(line, `missing ledger row for ${channel}`)
-    const expected = channel === 'settings:get' || channel === 'settings:save'
-      ? /\| `retired` \|/
-      : /\| `blocked:T41` \|/
-    assert.match(line, expected, `${channel} must reflect the T41 boundary`)
+    assert.ok(line.includes(`| \`${status}\` |`), `${channel} must reflect ${status}`)
   }
 })

@@ -50,6 +50,7 @@ async function withRunner(handlers, run, options = {}) {
 			delay: options.delay ?? (async () => {}),
 			signalTree: options.signalTree,
 			isRunning: options.isRunning,
+			emit: options.emit,
 			shutdownGraceMs: options.shutdownGraceMs ?? 1,
 		})
 		return await run({ queue, repo, runner })
@@ -105,6 +106,82 @@ describe("Job runner · finalizing and cancellation", () => {
 			isRunning: () => true,
 		})
 	})
+
+	it("returns the canceled terminal job for duplicate queued cancellation", async () => {
+		await withRunner({
+			"about.check-updates": async () => ({ ok: true }),
+		}, async ({ queue, repo, runner }) => {
+			enqueue(queue, "duplicate-queued-cancel", "about.check-updates")
+			const first = await runner.cancel("duplicate-queued-cancel")
+			const second = await runner.cancel("duplicate-queued-cancel")
+
+			assert.equal(first.status, "canceled")
+			assert.deepEqual(second, first)
+			assert.equal(repo.byId("duplicate-queued-cancel").status, "canceled")
+		})
+	})
+
+	it("coalesces concurrent running cancellation and emits one terminal event", async () => {
+		const started = deferred()
+		const release = deferred()
+		const canceledEvents = []
+		await withRunner({
+			"plugin.command": async ({ signal }) => {
+				started.resolve()
+				await release.promise
+				if (signal.aborted) throw new Error("aborted")
+			},
+		}, async ({ queue, repo, runner }) => {
+			enqueue(queue, "duplicate-running-cancel", "plugin.command")
+			const running = runner.run()
+			await started.promise
+			const first = runner.cancel("duplicate-running-cancel")
+			const second = runner.cancel("duplicate-running-cancel")
+			await new Promise((resolve) => setImmediate(resolve))
+			assert.equal(repo.byId("duplicate-running-cancel").status, "running")
+			release.resolve()
+
+			const results = await Promise.all([first, second])
+			await running
+			assert.equal(results[0].status, "canceled")
+			assert.deepEqual(results[1], results[0])
+			assert.equal(repo.byId("duplicate-running-cancel").status, "canceled")
+			assert.equal(canceledEvents.length, 1)
+		}, {
+			emit: (name, payload) => {
+				if (name === "job.canceled") canceledEvents.push(payload)
+			},
+		})
+	})
+
+	it("keeps duplicate cancellation idempotent if the first request crosses into finalizing", async () => {
+		const started = deferred()
+		const enterFinalizing = deferred()
+		const release = deferred()
+		await withRunner({
+			"image.generate": async ({ report }) => {
+				started.resolve()
+				await enterFinalizing.promise
+				report({ phase: "finalizing", percent: 100 })
+				await release.promise
+				return { ok: true }
+			},
+		}, async ({ queue, repo, runner }) => {
+			enqueue(queue, "cancel-phase-race", "image.generate")
+			const running = runner.run()
+			await started.promise
+			const first = runner.cancel("cancel-phase-race")
+			enterFinalizing.resolve()
+			await eventually(() => repo.byId("cancel-phase-race").progress?.phase === "finalizing")
+			const second = runner.cancel("cancel-phase-race")
+			release.resolve()
+
+			const results = await Promise.all([first, second])
+			await running
+			assert.equal(results[0].status, "canceled")
+			assert.deepEqual(results[1], results[0])
+		})
+	})
 })
 
 describe("Job runner · retry policy", () => {
@@ -147,18 +224,18 @@ describe("Job runner · retry policy", () => {
 		})
 	})
 
-	it("retries 429/5xx failures within maxAttempts using repository transitions", async () => {
+	it("retries 429/5xx creator workflow failures within maxAttempts using repository transitions", async () => {
 		for (const status of [429, 503]) {
 			let calls = 0
 			await withRunner({
-				"image.generate": async () => {
+				"creator.workflow": async () => {
 					calls += 1
 					if (calls === 1) throw new ApiError("PROVIDER_ERROR", "temporary", { status })
 					return { ok: true }
 				},
 			}, async ({ queue, repo, runner }) => {
 				const jobId = `retry-${status}`
-				enqueue(queue, jobId, "image.generate")
+				enqueue(queue, jobId, "creator.workflow")
 				const result = await runner.run()
 				assert.equal(result.status, "succeeded")
 				assert.equal(repo.byId(jobId).attempt, 2)
@@ -197,6 +274,118 @@ describe("Job runner · retry policy", () => {
 			assert.equal(result.attempt, 1)
 			assert.equal(calls, 1)
 		})
+	})
+
+	it("retries catalog.install without publishing an intermediate terminal failure", async () => {
+		let calls = 0
+		const events = []
+		await withRunner({
+			"catalog.install": async () => {
+				calls += 1
+				if (calls === 1) throw new ApiError("INTERNAL", "temporary catalog dependency outage", { status: 503 })
+				return { catalog: { updatedAt: "2026-10-05T00:00:00.000Z" } }
+			},
+		}, async ({ queue, repo, runner }) => {
+			queue.enqueue({ id: "catalog-retry", kind: "catalog.install", input: { selectionId: "selection-1" }, resourceKey: "catalog-selection:selection-1" })
+			const result = await runner.run()
+			assert.equal(result.status, "succeeded")
+			assert.equal(result.attempt, 2)
+			assert.equal(calls, 2)
+			assert.deepEqual(events.map(({ name, payload }) => [name, payload.status]), [["job.succeeded", "succeeded"]])
+			assert.equal(repo.byId("catalog-retry").status, "succeeded")
+		}, { emit: (name, payload) => events.push({ name, payload }) })
+	})
+
+	it("keeps a retrying catalog install resource locked during backoff", async () => {
+		const backoff = deferred()
+		const retrying = deferred()
+		let calls = 0
+		const events = []
+		await withRunner({
+			"catalog.install": async () => {
+				calls += 1
+				if (calls === 1) throw new ApiError("INTERNAL", "temporary catalog dependency outage", { status: 503 })
+				return { ok: true }
+			},
+	}, async ({ queue, repo, runner }) => {
+		queue.enqueue({ id: "catalog-retry-owner", kind: "catalog.install", input: { selectionId: "selection-1" }, resourceKey: "catalog-selection:selection-1" })
+		const running = runner.run()
+		await retrying.promise
+		let result
+		try {
+			assert.equal(repo.byId("catalog-retry-owner").status, "running")
+			assert.equal(repo.byId("catalog-retry-owner").attempt, 1)
+			assert.deepEqual(events.map(({ name }) => name), [])
+			assert.throws(
+				() => queue.enqueue({ id: "catalog-retry-intruder", kind: "catalog.install", input: { selectionId: "selection-1" }, resourceKey: "catalog-selection:selection-1" }),
+				(error) => error.code === "LOCKED",
+			)
+		} finally {
+			backoff.resolve()
+			result = await running
+		}
+		assert.equal(result.status, "succeeded")
+	}, {
+		delay: async () => { retrying.resolve(); await backoff.promise },
+		emit: (name, payload) => events.push({ name, payload }),
+	})
+	})
+
+	it("publishes one terminal catalog failure after exhausting its retry budget", async () => {
+		let calls = 0
+		const events = []
+		await withRunner({
+			"catalog.install": async () => {
+				calls += 1
+				throw new ApiError("INTERNAL", "catalog dependency unavailable", { status: 503 })
+			},
+		}, async ({ queue, repo, runner }) => {
+			queue.enqueue({ id: "catalog-exhausted", kind: "catalog.install", input: { selectionId: "selection-1" }, resourceKey: "catalog-selection:selection-1" })
+			const result = await runner.run()
+			assert.equal(result.status, "failed")
+			assert.equal(result.attempt, 2)
+			assert.equal(result.canRetry, false)
+			assert.equal(calls, 2)
+			assert.deepEqual(events.map(({ name, payload }) => [name, payload.status]), [["job.failed", "failed"]])
+			assert.equal(repo.byId("catalog-exhausted").status, "failed")
+		}, { emit: (name, payload) => events.push({ name, payload }) })
+	})
+
+	it("publishes one terminal failure for an unknown Job handler", async () => {
+		const events = []
+		await withRunner({}, async ({ queue, repo, runner }) => {
+			enqueue(queue, "unknown-job-handler", "creator.workflow")
+			await assert.rejects(() => runner.run(), (error) => error.code === "INTERNAL")
+			assert.equal(repo.byId("unknown-job-handler").status, "failed")
+			assert.deepEqual(events.map(({ name, payload }) => [name, payload.status]), [["job.failed", "failed"]])
+		}, { emit: (name, payload) => events.push({ name, payload }) })
+	})
+
+	it("publishes catalog.refreshed before job.succeeded for a successful catalog install", async () => {
+		const events = []
+		const { createCatalogService } = await import("../../services/backend/domains/catalog.js")
+		const catalog = createCatalogService({
+			root: process.cwd(),
+			shell: {
+				request: async () => ({
+					body: {
+						type: "catalog.result",
+						ok: true,
+						result: { catalog: { updatedAt: "2026-10-05T00:00:00.000Z" } },
+					},
+				}),
+			},
+			emit: (name, payload) => events.push({ name, payload }),
+		})
+		await withRunner({
+			"catalog.install": async () => catalog.installSelection("selection-1"),
+		}, async ({ queue, runner }) => {
+			queue.enqueue({ id: "catalog-event-order", kind: "catalog.install", input: { selectionId: "selection-1" }, resourceKey: "catalog-selection:selection-1" })
+			const result = await runner.run()
+			assert.equal(result.status, "succeeded")
+		}, { emit: (name, payload) => events.push({ name, payload }) })
+
+		assert.deepEqual(events.map(({ name }) => name), ["catalog.refreshed", "job.succeeded"])
 	})
 })
 

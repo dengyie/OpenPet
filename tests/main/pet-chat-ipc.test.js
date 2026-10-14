@@ -1030,12 +1030,16 @@ test('pet chat send stops before provider call when chat provider is not ready',
 test('pet pack activation notifies control center and desktop chat with refreshed AI talk state', async () => {
   const backendNotifications = []
   const desktopStates = []
+  let activePackId = 'legacy-cat'
   const ipcMain = registerPetChatHandlers({
     petPackService: {
-      setActivePack: (packId) => ({ activePackId: packId, pack: { id: packId, displayName: 'Mochi Cat' } }),
+      setActivePack: (packId) => {
+        activePackId = packId
+        return { activePackId: packId, pack: { id: packId, displayName: 'Mochi Cat' } }
+      },
       listPacks: () => ({
-        activePackId: 'mochi-cat',
-        packs: [{ id: 'mochi-cat', displayName: 'Mochi Cat', active: true }]
+        activePackId,
+        packs: [{ id: activePackId, displayName: activePackId === 'mochi-cat' ? 'Mochi Cat' : 'Legacy Cat', active: true }]
       })
     },
     aiService: {

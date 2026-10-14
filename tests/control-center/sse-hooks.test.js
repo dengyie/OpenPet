@@ -151,6 +151,63 @@ describe("T22 SSE hook seams", () => {
 		assert.doesNotMatch(runtime, /IPC\.BACKEND_GET|IPC\.BACKEND_CHANGED/)
 	})
 
+	it("routes Telegram secret operations through HTTP and QQ or WeCom credentials through host IPC", async () => {
+		const { configureBackendClient } = await import("../../apps/control-center/src/api/backend-client.ts")
+		const { pluginHttpApi } = await import("../../apps/control-center/src/features/plugins/api.ts")
+		const httpCalls = []
+		const ipcCalls = []
+		const previousWindow = global.window
+		global.window = {
+			controlCenterAPI: {
+				getImGatewaySecretState: async () => { ipcCalls.push(["telegram-state"]); return { host: "telegram" } },
+				saveImGatewayTelegramBotToken: async (token) => { ipcCalls.push(["telegram-save", token]); return { host: "telegram" } },
+				clearImGatewayTelegramBotToken: async () => { ipcCalls.push(["telegram-clear"]); return { host: "telegram" } },
+				saveImGatewayQqOfficialCredentials: async (credentials) => { ipcCalls.push(["qq-save", credentials]); return { host: "qq" } },
+				clearImGatewayQqOfficialCredentials: async () => { ipcCalls.push(["qq-clear"]); return { host: "qq" } },
+				saveImGatewayWecomCredentials: async (credentials) => { ipcCalls.push(["wecom-save", credentials]); return { host: "wecom" } },
+				clearImGatewayWecomCredentials: async () => { ipcCalls.push(["wecom-clear"]); return { host: "wecom" } },
+			},
+		}
+		try {
+			configureBackendClient({
+				getBackend: () => ({ baseUrl: "http://127.0.0.1:4321", sessionToken: "test-token" }),
+				fetchImpl: async (url) => {
+					httpCalls.push(String(url))
+					const operation = new URL(String(url)).searchParams.get("operation")
+					const data = operation === "secret-state" ? { configured: true } : { saved: true }
+					return new Response(JSON.stringify({ ok: true, data, meta: { requestId: "r_secret_boundary" } }), {
+						status: 200,
+						headers: { "content-type": "application/json" },
+					})
+				},
+			})
+			assert.deepEqual(await pluginHttpApi.imSecret("state"), { configured: true })
+			assert.deepEqual(await pluginHttpApi.imSecret("save", "telegram-secret"), { saved: true })
+			assert.deepEqual(await pluginHttpApi.imSecret("clear"), { saved: true })
+			assert.deepEqual(await pluginHttpApi.imQqCredentials("state"), { configured: true })
+			await pluginHttpApi.imQqCredentials("save", { appId: "app", clientSecret: "secret" })
+			await pluginHttpApi.imQqCredentials("clear")
+			await pluginHttpApi.imSecret("save-wecom", undefined, { corpSecret: "corp", token: "token", encodingAesKey: "aes" })
+			await pluginHttpApi.imSecret("clear-wecom")
+			assert.deepEqual(ipcCalls, [
+				["qq-save", { appId: "app", clientSecret: "secret" }],
+				["qq-clear"],
+				["wecom-save", { corpSecret: "corp", token: "token", encodingAesKey: "aes" }],
+				["wecom-clear"],
+			])
+			assert.deepEqual(httpCalls.map((url) => new URL(url).searchParams.get("operation")), [
+				"secret-state",
+				"secret-save",
+				"secret-clear",
+				"secret-state",
+			])
+		} finally {
+			configureBackendClient()
+			if (previousWindow === undefined) delete global.window
+			else global.window = previousWindow
+		}
+	})
+
 	it("T41 settings IPC exposes backend bootstrap only through the lifecycle bridge", async () => {
 		const vm = require("node:vm")
 		const source = require("node:fs").readFileSync("apps/desktop/control-center-preload.js", "utf8")

@@ -6,13 +6,16 @@ This is an Electron desktop pet platform.
 
 The project has evolved from a single-window pet app into a multi-layer platform:
 
-- **Main process** (`main.js`): assembles and injects all services, manages lifecycle
-- **Service layer** (`src/main/services/`): EventBus → SettingsService → ActionService → PetService → AiService / PluginService / LocalHttpService
+- **Shell entry** (`main.js` and `src/main/bootstrap/`): assembles Electron lifecycle, legacy Shell services, IPC adapters, and the sidecar coordinator. `src/main/` remains active during migration.
+- **Shell service layer** (`src/main/services/`): owns window/native capabilities and remaining in-process services.
 - **PetService is the single source of truth** for pet state — all say/action/event operations go through it
-- **Control Center** (`src/control-center/`): React + Vite web app embedded in Electron BrowserWindow, with Pet / Actions / AI / Plugins / Catalog / Service / About tabs
-- **Plugin system** (`src/main/plugins/`): permission-whitelisted SDK, official plugins validated, local third-party plugins run in an isolated Node permission-model runner
-- **Pet pack runtime** (`src/main/pet-pack/`): manifest schema, loader, importer
-- **Local HTTP API** (`src/main/services/local-http-service.js`): loopback only, off by default
+- **Sidecar coordinator** (`apps/desktop/src/sidecar/`): starts/stops the Backend, publishes readiness, hydrates settings, and forwards reverse-channel requests.
+- **Backend sidecar** (`services/backend/`): owns HTTP routes, settings/catalog/actions/pet-pack/plugin/AI domains, Job queue/runner/recovery, SQLite stores, SSE, and the Shell bridge. `index.js` is its composition root.
+- **Contracts** (`packages/contracts/`): TypeScript/Zod source for bridge, settings, Job, event, and response contracts.
+- **Control Center** (currently `src/control-center/`): React + Vite web app embedded in Electron. There is no `apps/control-center/` directory in this checkout.
+- **Plugin system** (`src/main/plugins/` plus `services/backend/domains/plugins/`): Shell-native capabilities remain in `src/main`; package validation, lifecycle, logs, and Job-backed operations run in the Backend.
+- **Pet pack runtime** (`src/main/pet-pack/` plus `services/backend/domains/pet-packs.js`): native asset operations and management operations are split by capability.
+- **Local HTTP/MCP** (`services/backend/mcp/` and `src/main/services/local-http-service.js`): loopback only, off by default; the legacy Shell service remains during migration.
 
 ## Development
 
@@ -25,6 +28,10 @@ The project has evolved from a single-window pet app into a multi-layer platform
 - Use `npm run test:control-center` to run the Control Center Playwright UI regression baseline
 - Use `npm run generate-sprites` to regenerate sprite sheets from `cat_anime/flames/`
 - Use `npm run check:syntax` for JS syntax validation
+- Use `npm run build:contracts` before `npm run check:api-contract` in a fresh worktree
+- Use `npm run check:api-contract` for contract, IPC, document, and route reconciliation
+- Use `npm run check:channel-retirement` for retired/blocked IPC registration checks
+- Use `npm run check:docs-drift` for live documentation truth checks
 - Do not commit `node_modules/`, `dist/`, build output, or temporary OS files
 
 ## Adding new pet actions

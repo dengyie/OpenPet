@@ -15,9 +15,11 @@ An Electron desktop pet platform with a visual Control Center, AI chat, plugins,
 
 OpenPet puts a small animated pet on your desktop and gives it a real platform behind the scenes. The pet can walk, speak, play actions, switch character packs, react to AI replies, and grow through a developer-first local extension ecosystem.
 
-The project is currently a release-candidate desktop platform rather than a toy demo: it has a real Electron service layer, a React Control Center, bundled pet packs, OpenAI-compatible AI settings, local extension runtime controls, loopback-only automation APIs, and release evidence tooling.
+The current delivery target is a demo. The repository contains an Electron Shell, a forked Backend sidecar, a React Control Center, bundled pet packs, OpenAI-compatible AI settings, local extension runtime controls, loopback-only automation APIs, and release evidence tooling. Native/window services remain under `src/main/`, while migrated management and long-running work lives under `services/backend/`.
 
-The current release track is macOS-first. Windows build and validation tooling exists, but Windows is not advertised as release-ready until signed installer evidence and real smoke reports are archived.
+The current demo release track is macOS-first. macOS and Windows packages use unsigned or locally self-signed builds; the project will not purchase Apple Developer ID, notarization, Windows publisher certificates, or third-party signing services. Self-signing does not establish Gatekeeper approval, SmartScreen reputation, or publisher trust. Target-platform runtime smoke remains useful for checking demo flows.
+
+Remote Backend deployment is documented in [docs/deployment/openpet-mesh-backend.md](docs/deployment/openpet-mesh-backend.md). The Guangzhou service is loopback-only over the existing EasyTier `ssh gz-cvm` alias; macOS and Windows development builds use self-signed artifacts.
 
 ## What You Get
 
@@ -58,32 +60,39 @@ npm test                     # Full Node test suite
 npm run test:control-center  # Playwright UI regression suite
 npm run typecheck            # TypeScript no-emit check
 npm run check:syntax         # Node syntax + typecheck + Control Center build
+npm run build:contracts      # Build @openpet/contracts before API contract checks
+npm run check:api-contract   # 140 IPC accounting and current REST route reconciliation (120/119)
+npm run check:channel-retirement
+npm run check:docs-drift
 npm run pack                 # electron-builder directory package
 npm run dist                 # macOS DMG/ZIP on macOS
 ```
 
 ## Project Shape
 
-OpenPet is split into a small pet renderer, an Electron main process, and an embedded Control Center.
+OpenPet is split into a small pet renderer, an Electron Shell, a forked Backend sidecar, and an embedded Control Center.
 
 ```text
-main.js
-  assembles services and Electron lifecycle
+main.js + src/main/bootstrap/
+  Electron Shell composition root and lifecycle
+
+apps/desktop/src/sidecar/
+  Backend spawn, readiness, restart, settings hydration, and reverse bridge
+
+services/backend/
+  HTTP router/middleware, domains, Jobs, SQLite repositories, SSE, and Shell bridge
+
+packages/contracts/
+  TypeScript/Zod bridge, settings, Job, event, and response contracts
 
 src/main/services/
-  EventBus -> SettingsService -> ActionService -> PetService
-                                      |-> AiService
-                                      |-> PluginService
-                                      |-> LocalHttpService / MCP
-
-src/main/services/plugin-*.js
-  plugin discovery, JSON/storage/log/network helpers, and local runner boundary modules
+  Active Shell/native services and migration-era services still called by main.js
 
 src/control-center/
-  React + Vite UI embedded in Electron
+  React + Vite UI embedded in Electron (current Control Center location)
 
 src/main/pet-pack/
-  pet.json schema, loader, importer, Codex atlas adapter
+  Shell-side pet.json schema, loader, importer, and native asset operations
 ```
 
 Important project rules:

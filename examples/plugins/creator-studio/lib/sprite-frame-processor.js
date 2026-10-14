@@ -4,6 +4,7 @@ const path = require('node:path')
 const sharp = require('sharp')
 
 const { ALPHA_THRESHOLD, measureBodyMask } = require('./character-scale-profile')
+const { removeOpaqueEdgeBackground } = require('./edge-background-cutout')
 
 const sha256File = (filePath) => crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex')
 
@@ -54,26 +55,44 @@ const createAnimatedGif = async ({ frames, outputPath }) => {
 
 const processSpriteSheet = async ({ inputPath, outputDir, layout, profile = {}, actionPolicy = {} } = {}) => {
   if (!fs.existsSync(inputPath) || !fs.statSync(inputPath).isFile()) throw new Error('Sprite processor input must be a file')
+  profile = profile && typeof profile === 'object' ? profile : {}
   const columns = Number(layout?.columns)
   const rows = Number(layout?.rows)
   const cellCount = Number(layout?.cellCount || columns * rows)
   const unused = new Set(Array.isArray(layout?.unusedCells) ? layout.unusedCells.map(Number) : [])
   const metadata = await sharp(inputPath).metadata()
-  const width = Number(metadata.width)
-  const height = Number(metadata.height)
+  const sourceWidth = Number(metadata.width)
+  const sourceHeight = Number(metadata.height)
+  const width = Number(layout?.canvas?.width || 1024)
+  const height = Number(layout?.canvas?.height || 1024)
   if (width !== 1024 || height !== 1024 || !Number.isInteger(columns) || !Number.isInteger(rows) || columns < 1 || rows < 1) {
     throw new Error('Sprite processor requires a 1024x1024 declared grid')
+  }
+  if (sourceWidth < 1 || sourceHeight < 1 || sourceWidth / sourceHeight !== width / height) {
+    throw new Error('Sprite processor input aspect ratio does not match the declared grid canvas')
   }
   if (!Number.isInteger(cellCount) || cellCount < 1 || cellCount > columns * rows || [...unused].some((index) => !Number.isInteger(index) || index < 0 || index >= cellCount)) {
     throw new Error('Sprite processor requires a valid declared grid cell set')
   }
 
+  const normalizedToCanvas = sourceWidth !== width || sourceHeight !== height
+  const gridSource = normalizedToCanvas
+    ? await sharp(inputPath).resize({ width, height, fit: 'fill' }).png().toBuffer()
+    : inputPath
+  const sheetBackgroundRemoval = await removeOpaqueEdgeBackground(gridSource)
+  const transparentGridSource = sheetBackgroundRemoval.buffer
+
   const cells = []
   const unusedCellMetrics = []
   for (let index = 0; index < cellCount; index += 1) {
     const bounds = cellBounds({ index, columns, rows, width, height })
-    const { data, info } = await sharp(inputPath)
+    const cellBuffer = await sharp(transparentGridSource)
       .extract({ left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height })
+      .ensureAlpha()
+      .png()
+      .toBuffer()
+    const backgroundRemoval = await removeOpaqueEdgeBackground(cellBuffer)
+    const { data, info } = await sharp(backgroundRemoval.buffer)
       .ensureAlpha()
       .raw()
       .toBuffer({ resolveWithObject: true })
@@ -188,6 +207,9 @@ const processSpriteSheet = async ({ inputPath, outputDir, layout, profile = {}, 
   const processorMetadata = {
     version: 1,
     inputSha256: sha256File(inputPath),
+    sourceDimensions: { width: sourceWidth, height: sourceHeight },
+    canvas: { width, height },
+    normalizedToCanvas,
     appliedScale,
     layout: { columns, rows, cellCount, unusedCells: [...unused] },
     unusedCellMetrics,

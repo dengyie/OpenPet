@@ -68,6 +68,35 @@ describe("T21 API client contract boundary", () => {
 		)
 	})
 
+	it("uses Backend HTTP for cursor import, scale preview and Settings schema", async () => {
+		const seen = []
+		const transport = transportModule.createMockTransport({ handlers: [(input) => {
+			seen.push(input)
+			if (input.path === "/settings/preview-scale") return success({ scale: 1.25 })
+			if (input.path === "/settings/cursor/import") return success({ canceled: true })
+			return success({
+				version: 1,
+				writablePaths: ["scale"],
+				trustedPaths: ["petBehavior.home.anchor"],
+				scalePreview: { min: 0.5, max: 1.5, step: 0.01 },
+				cursorImport: { extensions: ["png", "webp"], maxBytes: 512_000 },
+			})
+		}] })
+		const api = settingsApiModule.createSettingsApi(clientModule.createApiClient(transport))
+
+		assert.deepEqual(await api.previewScale(1.25, { keepalive: true }), { scale: 1.25 })
+		assert.deepEqual(await api.importCursor(), { canceled: true })
+		assert.equal((await api.schema()).version, 1)
+		assert.deepEqual(seen.map(({ method, path }) => [method, path]), [
+			["POST", "/settings/preview-scale"],
+			["POST", "/settings/cursor/import"],
+			["GET", "/settings/schema"],
+		])
+		assert.equal(seen[0].keepalive, true)
+		assert.deepEqual(JSON.parse(seen[0].body), { scale: 1.25 })
+		assert.deepEqual(JSON.parse(seen[1].body), {})
+	})
+
 	it("throws the typed contract error instead of matching messages", async () => {
 		const transport = transportModule.createMockTransport({ handlers: [() => ({
 			ok: false,

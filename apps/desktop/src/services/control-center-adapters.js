@@ -281,7 +281,10 @@ const createLocalHttpConfigView = (config = {}) => ({
         .filter((entry) => entry && typeof entry.path === 'string')
         .map((entry) => createServiceLogEntryView(entry || {}))
     )
-    : /** @type {ServiceLogEntry[]} */ ([]) 
+    : /** @type {ServiceLogEntry[]} */ ([]),
+  backendMode: config.backendMode === 'remote' ? 'remote' : 'local',
+  sshAlias: typeof config.sshAlias === 'string' && config.sshAlias ? config.sshAlias : 'gz-cvm',
+  backendPort: toPort(config.backendPort || 48330)
 })
 
 /**

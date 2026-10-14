@@ -133,7 +133,10 @@ const defaultSettings = {
     host: '127.0.0.1',
     port: 0,
     token: '',
-    logs: []
+    logs: [],
+    backendMode: 'local',
+    sshAlias: 'gz-cvm',
+    backendPort: 48330
   }
 }
 
@@ -230,7 +233,10 @@ const mergeSettings = (settings = {}) => ({
   localHttp: {
     ...defaultSettings.localHttp,
     ...(settings.localHttp || {}),
-    logs: Array.isArray(settings.localHttp?.logs) ? settings.localHttp.logs : defaultSettings.localHttp.logs
+    logs: Array.isArray(settings.localHttp?.logs) ? settings.localHttp.logs : defaultSettings.localHttp.logs,
+    backendMode: settings.localHttp?.backendMode === 'remote' ? 'remote' : 'local',
+    sshAlias: typeof settings.localHttp?.sshAlias === 'string' && settings.localHttp.sshAlias.trim() ? settings.localHttp.sshAlias.trim() : defaultSettings.localHttp.sshAlias,
+    backendPort: Number.isInteger(Number(settings.localHttp?.backendPort)) && Number(settings.localHttp.backendPort) >= 1 && Number(settings.localHttp.backendPort) <= 65535 ? Number(settings.localHttp.backendPort) : defaultSettings.localHttp.backendPort
   }
 })
 

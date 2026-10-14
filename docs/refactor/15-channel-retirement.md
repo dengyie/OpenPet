@@ -190,7 +190,7 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 - 当前 active 通道数为 87，后续提交只能减少 active 数量；新增 IPC 常量必须先更新本台账和 T40 依据。
 - `retired` 行必须保留原 channel、真实历史 source、删除提交的完整或短 SHA（至少 7 位）；它不计入 current、keep、cutover、blocked、dead 计数。
 - `keep` 上限是 41。四个 QQ/WeCom host-secret 通道等待 T44 的 secrets 边界，不能借 `keep` 绕过上限。
-- `cutover` 行在同一切换提交中完成 HTTP/SSE 接入、旧 IPC 删除和台账状态更新；不得先并行双写再补删除。
+- `cutover` 行必须在同一切换提交中完成 HTTP/SSE 接入、调用方切换、台账状态和 focused evidence；旧 IPC 只有在 renderer/preload、生产引用、测试和打包清单都完成 reachability proof 后才可改为 `retired`。迁移期间允许旧 IPC 与 HTTP 并存，但不得双写同一业务状态或把旧 IPC 当作 HTTP 的数据源。
 
 T43 已收窄 `apps/desktop/control-center-preload.js`：插件 HTTP 对等方法不再暴露给 renderer；`openPluginDashboard`、`inspectPluginPackage` 与四个 QQ/WeCom host-secret 方法继续保留。T48 已完成 Creator 迁移。主进程 IPC 注册表按当前 87 条通道对账，其中 81 个为直接注册、6 个为事件-only。
 

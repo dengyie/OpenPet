@@ -15,9 +15,11 @@
 
 OpenPet 会把一只小宠物放在你的桌面上。它能走动、说话、播放动作、切换宠物包，也可以通过 AI 回复触发行为，并通过面向开发者的本地扩展生态继续成长。
 
-当前项目已经进入 release-candidate 桌面平台阶段，而不是一个简单 demo：它包含 Electron service layer、React Control Center、内置宠物包、OpenAI-compatible AI 设置、本地扩展运行时控制、loopback-only 自动化 API 和发布证据工具。
+当前交付目标是 demo。项目包含 Electron Shell、Backend sidecar、React Control Center、内置宠物包、OpenAI-compatible AI 设置、本地扩展运行时控制、loopback-only 自动化 API 和发布证据工具。
 
-当前发布轨道优先验证 macOS。Windows 的打包和证据工具已经在仓库里，但在真实签名安装包和冒烟报告归档前，不声明 Windows release-ready。
+当前 demo 发布轨道优先验证 macOS。macOS 和 Windows 使用未签名或本地自签名构建；项目不会购买 Apple Developer ID、公证服务、Windows 发布者证书或第三方签名服务。自签名不代表通过 Gatekeeper、获得 SmartScreen 信誉或建立发布者信任。仍可通过目标平台的运行烟测验证 demo 功能。
+
+Backend 可托管在广州 CVM，并通过 EasyTier 上的 `ssh gz-cvm` 私有转发连接；配置和部署说明见 [mesh Backend 部署文档](docs/deployment/openpet-mesh-backend.md)。
 
 ## 能做什么
 

@@ -1,8 +1,14 @@
 # 00 · 从这里开始(实现 agent 入口)
 
-> v1.2 · 2026-08-16 · 基线分支 `main`
+> v1.3 · 2026-10-04 · 基线分支 `main`
 
-你被叫来实现 OpenPet 的前后端分离重构。设计已经冻结,**你的工作不包括重新做技术选型**。
+> **文档状态：迁移执行参考，不是当前唯一任务队列。** 当前代码已部分
+> 落地 sidecar/backend；本目录保留设计和任务卡的历史上下文。当前工作优先读
+> [`../development-workflow.md`](../development-workflow.md)、[`../HANDOFF.md`](../HANDOFF.md)
+> 和 [`../TODO.md`](../TODO.md)，再按任务需要回查本目录。
+
+你被叫来维护 OpenPet 的前后端分离重构。本文的目标设计和任务卡仍有参考价值，
+但不得把未登记在当前代码和 `check:api-contract` 中的目标能力当成已交付功能。
 
 ## 读的顺序
 
@@ -13,29 +19,35 @@
    - M2:[12 篇](./12-tasks-m2.md) T15–T23(轻域与前端接线)。
    - M3:[13 篇](./13-tasks-m3.md) T24–T33(插件域与反向通道)。
    - **等 M1 全绿再开 M2/M3 的卡。** 卡已经写好了,不代表现在就该做。
-4. 需要背景才去翻 01–07 篇(设计文档,主要给人看)。其中 **[03 接口契约](./03-api-contract.md)** 是唯一真相源,改它必须同步改代码。
+4. 需要背景才去翻 01–07 篇(设计文档,主要给人看)。`packages/contracts/src/` 是已迁移契约的源；**[03 接口契约](./03-api-contract.md)** 是目标映射与文档对账面，改任一侧都必须同步代码和门禁。
 
-> 🔧 **如果你手上有真机**(能跑 Electron、能打包):先看 **[14 交接单](./14-handoff.md)** —— 六条 spike 与三条门禁的首次执行(E1–E10)全在那里。只写代码的人不必读它。
+> 🔧 **如果你手上有真机**(能跑 Electron、能打包):先看 **[14 交接单](./14-handoff.md)** —— 六条 spike 与历史 E1–E10 执行记录在那里。只写代码的人不必读它。
 
-## 装一次,门禁三条
+## 装一次,门禁顺序
 
 ```bash
 npm install                 # 首次会大改 package-lock.json,这是预期(G5)
-
+npm run build:contracts     # 生成 @openpet/contracts/dist
 npm run check:node          # 语法
 npm run test:backend        # 单测
 npm run check:api-contract  # 契约与文档对账
+npm run check:channel-retirement
+npm run check:docs-drift
 ```
 
-**后三条全绿才能开 PR。** PR 描述里必须贴门禁输出,并单开一段写「我发现但没做的东西」。
+**以上门禁必须按变更等级执行并如实记录。** `check:api-contract` 当前会对账
+`140` 个 IPC、`120/119` 个 REST 路由单元；若缺少 `packages/contracts/dist`，先构建
+workspace，不要把环境错误当成路由缺失。
 
-`check:api-contract` 会打印 2 条 `todo`(路由表、通道盘点)—— 那是 G9,**不算红**。
+`check:api-contract` 当前是硬门禁：会对账契约枚举、IPC 清单、文档路由和
+`services/backend/routes/registry.js`。缺少 `packages/contracts/dist` 时先运行
+`npm run build:contracts`；环境缺包不能被解释成路由未注册。
 
 ## 领卡方式
 
 一卡一分支一 PR,分支名形如 `refactor/t07-jobs-runner`,在独立 worktree 中从最新 `main` 切出,PR base 也必须是 `main`。
 
-依赖关系看卡顶部的**依赖与阻塞**字段。原 T01–T33 中当前可直接认领的是 T01、T05、T12、T20;T03 已完成,T04 依赖 T01。
+依赖关系看卡顶部的**依赖与阻塞**字段。原 T01–T33 的认领顺序是历史参考；当前优先级和方法级修改边界以 `docs/superpowers/plans/2026-10-04-openpet-development-plan.md` 与 `TODO.md` 为准。
 
 ## 最重要的一条
 
@@ -77,6 +89,5 @@ npm run check:api-contract  # 契约与文档对账
 
 - 设计文档完成,8 个决策点全关闭。
 - 后端**骨架**已落:入口、路由器、中间件链、桥层、SQLite 驱动、Job 状态机 + 单测、初始迁移、契约包 + 门禁。
-- 任务卡已开到 M3:**T01–T33,共 33 张**。M4(AI 37 通道 + Creator 13 通道)与 M5(清理)的卡还没写。
-- **M0 已完成**,E1–E10 真机结果见 [07 篇 §7](./07-spike.md);E7 为预期的 3/4,未结算队列归 T20。
-- M1–M3 原 33 张任务卡仍是 **1/33**(仅 T03 / #9 完成)。领卡、验收与文档欠账统一看 [#41](https://github.com/dengyie/OpenPet/issues/41)。
+- M0 的 spike 与 sidecar/backend/contracts 基础设施已落地；E1–E10 的历史证据仍见 [07 篇 §7](./07-spike.md)，不等同于所有迁移能力完成。
+- M1–M3 任务卡是历史迁移参考，当前优先级与验收以 [`../TODO.md`](../TODO.md)、[`../HANDOFF.md`](../HANDOFF.md) 和 [`../superpowers/plans/2026-10-04-openpet-development-plan.md`](../superpowers/plans/2026-10-04-openpet-development-plan.md) 为准；不要使用旧的 `1/33` 计数判断当前进度。

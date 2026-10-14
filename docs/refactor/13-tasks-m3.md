@@ -1,5 +1,7 @@
 # 13 · M3 任务卡(插件与 Job)
 
+> **状态：历史迁移任务卡。** T24–T33 保留设计期的目标拆分和验收场景；当前实现边界、Job 生命周期和 Control Center 路径以 [09 篇](./09-repo-state.md)、[2026-10-04 开发方案](../superpowers/plans/2026-10-04-openpet-development-plan.md) 与实际源码为准。当前 Control Center 位于 `src/control-center/`，不存在 `apps/control-center/`。
+
 > v1.1 · 2026-08-16 · 基线分支 `main`
 >
 > 🤖 **受众:实现 agent。** 先读 [08 篇](./08-agent-guide.md) 与 [09 篇](./09-repo-state.md)。卡号接在 [12 篇](./12-tasks-m2.md) 之后:T24–T33。
@@ -129,7 +131,7 @@ export function createPluginCommandServer({ plugins, jobs, logger, now })
 
 **验收断言**
 
-- 完整白名单 = `pet.say` / `pet.playAction` / `pet.event` / `dialog.request` / `window.openPluginDashboard`,加上基础消息 `notify` / `tray.setBadge` / `ready` / `degraded` —— 共 **9** 项,与 `packages/contracts` 的 `backendToShellSchema` 逐项相等。
+- **历史白名单（T33）** = `pet.say` / `pet.playAction` / `pet.event` / `dialog.request` / `window.openPluginDashboard`,加上基础消息 `notify` / `tray.setBadge` / `ready` / `degraded` —— 当时共 9 项。当前完整白名单为 Backend → Shell 18 类、Shell → Backend 15 类（含 plugin production、settings、secrets、catalog、pet-pack、Actions 与 pet command 类型），必须以 `packages/contracts/src/bridge.ts`、`services/backend/bridge/message-schema.js` 和门禁为准。
 - **白名单之外的消息被丢弃并记日志**,单测覆盖。
 - 🔒 **`window.openPluginDashboard` 的窗口参数必须在 Shell 侧硬编码**。后端只能传 `pluginId`。写一条断言:后端传任意 `preload` / `webPreferences` / 文件路径时必须被忽略。这是 04 篇 §1.3 的 🔒 红线,也是 R15 的主防线。
 - 信封 `v` 不符 → exit 78 → Shell 重拉,最多 2 次后进降级模式(ADR-011)。
@@ -195,7 +197,7 @@ export function createProcessLedger({ userDataDir, logger, now })
 
 ```js
 export const kind = "plugin.install"          // 必须是 JOB_KINDS 里的字面量
-export function resourceKey(input)            // → "plugin:{id}" 或 null
+export function resourceKey(input)            // → "plugin:{id}"、"github:{owner}/{repo}" 或 null
 export async function run(input, ctx)         // ctx = { db, plugins, logger, progress, signal, tmpDir }
 ```
 
@@ -215,7 +217,7 @@ export async function run(input, ctx)         // ctx = { db, plugins, logger, pr
 
 **依赖与阻塞** 依赖 T22(`useJob`)、T25。
 
-**建哪个文件** `apps/control-center/src/features/plugins/api.ts`、`apps/control-center/src/features/jobs/JobPanel.tsx`
+**目标文件（历史路径；当前目录）** `src/control-center/src/features/plugins/api.ts`、`src/control-center/src/features/jobs/JobPanel.tsx`
 
 **验收断言**
 

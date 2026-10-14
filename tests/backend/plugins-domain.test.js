@@ -200,6 +200,25 @@ test("initialized plugin service synchronizes bundled plugins before returning",
 	assert.ok(authorityCalls.every((request) => Object.keys(request.patch).every((path) => path.startsWith("plugins."))))
 })
 
+test("plugin production operations unwrap correlated Shell responses", async () => {
+	const requests = []
+	const harness = createHarness({ id: "production-demo", name: "Production Demo", version: "1.0.0", main: "index.js" })
+	harness.bridge.request = async (body) => {
+		requests.push(body)
+		return {
+			id: "bridge-1",
+			body: { type: "plugin.production.result", requestId: "bridge-1", ok: true, result: { ok: true, pluginId: body.pluginId } },
+		}
+	}
+	assert.deepEqual(await harness.service.clearStorage("production-demo"), { ok: true, pluginId: "production-demo" })
+	assert.deepEqual(requests, [{ type: "plugin.production.request", operation: "storage.clear", pluginId: "production-demo" }])
+	harness.bridge.request = async () => ({
+		id: "bridge-2",
+		body: { type: "plugin.production.result", requestId: "bridge-2", ok: false, error: "host rejected" },
+	})
+	await assert.rejects(() => harness.service.clearStorage("production-demo"), (error) => error.code === "BACKEND_UNAVAILABLE" && error.status === 503)
+})
+
 test("plugin domain installs, configures, starts, rejects duplicate start, and stops", async () => {
 	const harness = createHarness({
 		id: "native-demo",

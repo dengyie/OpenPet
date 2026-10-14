@@ -1,7 +1,9 @@
 # OpenPet Testing Strategy
 
 OpenPet keeps all automated tests available through `npm test`, but day-to-day
-runtime work should use the smaller core suites first.
+runtime work should use the smaller core suites first. Use `npm run test:all`
+for a full Node suite when browser tests need the repository-pinned Playwright
+cache discovered outside Playwright's default cache path.
 
 ## Validation Grades
 
@@ -80,8 +82,10 @@ Auxiliary tests currently include:
 
 ## Full Regression
 
-Run `npm test` before release or broad refactors. It still runs every Node test
-under `tests/**/*.test.js`.
+Run `npm run test:all` before release or broad refactors when Playwright browsers
+are installed in the isolated OpenPet cache. It runs every Node test under
+`tests/**/*.test.js` and selects the cache matching the repository-pinned
+Chromium revision. `npm test` remains the direct Node native test runner.
 
 Run `npm run check:syntax` before merge when JavaScript, TypeScript contracts,
 or Control Center build output may be affected.

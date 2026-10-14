@@ -292,6 +292,7 @@ test('actions:save-config returns animations with trigger runtime diagnostics af
 test('Shell Pet Pack activate bridge returns runtime diagnostics and emits one successful activation event', async () => {
   const ipcMain = createIpcMainStub()
   const notifications = []
+  let activePackId = 'previous-cat'
   const { registerIpcHandlers } = loadIpcWithElectron({
     ipcMain,
     BrowserWindow: { fromWebContents: () => null },
@@ -306,9 +307,9 @@ test('Shell Pet Pack activate bridge returns runtime diagnostics and emits one s
     ...createRequiredServices({
       petPackService: {
         listPacks: () => ({
-          activePackId: 'citrus-cat',
+          activePackId,
           packs: [{
-            id: 'citrus-cat',
+            id: activePackId,
             displayName: 'Citrus Cat',
             version: '1.2.0',
             source: 'local',
@@ -322,6 +323,7 @@ test('Shell Pet Pack activate bridge returns runtime diagnostics and emits one s
         setActivePack: (packId) => {
           if (packId === 'missing-cat') throw new Error('Pet pack is not installed: missing-cat')
           if (packId === 'blocked-cat') throw new Error('Pet pack is blocked: package hash denied')
+          activePackId = packId
           return {
             ok: true,
             pack: {

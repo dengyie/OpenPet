@@ -393,13 +393,15 @@ test('checkDocsDrift fails when active TODO loses the current release closure ev
   const docsRoot = createDocsFixture()
   const todoPath = path.join(docsRoot, 'TODO.md')
   const todo = fs.readFileSync(todoPath, 'utf-8')
+  const updatedTodo = todo
+    .replace(/(?:docs\/|\.\/)?release-evidence\/signed-release-closure\/2026-07-06T16-46-49Z-v1\.0\.1-rc\.3-authenticated-closure-archive-rerun\//g, 'release-evidence/signed-release-closure/outdated-current-closure/')
+    .replace(/(?:docs\/|\.\/)?release-evidence\/packaged-runtime\/2026-07-06T17-00-00Z-darwin-arm64-authenticated-artifact\//g, 'release-evidence/packaged-runtime/outdated-current-runtime/')
+    .replace(/(?:docs\/|\.\/)?release-evidence\/windows-smoke\/2026-07-06T16-46-49Z-v1\.0\.1-rc\.3-authenticated-artifact-archive-rerun\//g, 'release-evidence/windows-smoke/outdated-current-archive/')
+    .replace(/(?:docs\/|\.\/)?release-evidence\/desktop-picker\/2026-07-06T16-46-49Z-win32-x64-authenticated-artifact-archive-rerun\//g, 'release-evidence/desktop-picker/outdated-current-archive/')
+  assert.notEqual(updatedTodo, todo, 'fixture should replace the current release evidence paths')
   fs.writeFileSync(
     todoPath,
-    todo
-      .replace(/docs\/release-evidence\/signed-release-closure\/2026-07-06T16-46-49Z-v1\.0\.1-rc\.3-authenticated-closure-archive-rerun\//g, 'docs/release-evidence/signed-release-closure/outdated-current-closure/')
-      .replace(/docs\/release-evidence\/packaged-runtime\/2026-07-06T17-00-00Z-darwin-arm64-authenticated-artifact\//g, 'docs/release-evidence/packaged-runtime/outdated-current-runtime/')
-      .replace(/docs\/release-evidence\/windows-smoke\/2026-07-06T16-46-49Z-v1\.0\.1-rc\.3-authenticated-artifact-archive-rerun\//g, 'docs/release-evidence/windows-smoke/outdated-current-archive/')
-      .replace(/docs\/release-evidence\/desktop-picker\/2026-07-06T16-46-49Z-win32-x64-authenticated-artifact-archive-rerun\//g, 'docs/release-evidence/desktop-picker/outdated-current-archive/'),
+    updatedTodo,
     'utf-8'
   )
 
@@ -409,14 +411,14 @@ test('checkDocsDrift fails when active TODO loses the current release closure ev
   assert.match(result.errors.join('\n'), /release closure and supporting evidence paths/i)
 })
 
-test('checkDocsDrift fails when handoff current priorities drift away from the remaining real/manual-required gaps', () => {
+test('checkDocsDrift fails when handoff hides deferred distribution evidence gaps', () => {
   const docsRoot = createDocsFixture()
   const handoffPath = path.join(docsRoot, 'HANDOFF.md')
   const handoff = fs.readFileSync(handoffPath, 'utf-8')
   fs.writeFileSync(
     handoffPath,
     handoff
-      .replace(/Produce passing macOS release evidence/g, 'Document the existing macOS tooling')
+      .replace(/Archive real signed macOS release evidence/g, 'Document the existing macOS tooling')
       .replace(/Collect real signed Windows smoke evidence/g, 'Keep the Windows automation around')
       .replace(/Collect packaged native picker evidence from real app runs/g, 'Keep packaged picker tooling documented')
       .replace(/real compatible package/g, 'community momentum'),
@@ -426,7 +428,7 @@ test('checkDocsDrift fails when handoff current priorities drift away from the r
   const result = checkDocsDrift({ docsRoot })
 
   assert.equal(result.ok, false)
-  assert.match(result.errors.join('\n'), /priority gaps anchored to real\/manual-required work/i)
+  assert.match(result.errors.join('\n'), /separates demo priorities from deferred public distribution evidence/i)
 })
 
 test('checkDocsDrift fails when public release metadata drops out of the docs map', () => {
@@ -509,21 +511,23 @@ test('checkDocsDrift fails when openpet-current-todo-architecture loses the curr
   const docsRoot = createDocsFixture()
   const todoPath = path.join(docsRoot, 'openpet-current-todo-architecture.md')
   const todo = fs.readFileSync(todoPath, 'utf-8')
+  const updatedTodo = todo
+    .replace(/docs\/release-evidence\/signed-release-closure\/2026-07-06T16-46-49Z-v1\.0\.1-rc\.3-authenticated-closure-archive-rerun\//g, 'docs/release-evidence/signed-release-closure/outdated-current-closure/')
+    .replace(/docs\/release-evidence\/packaged-runtime\/2026-07-06T17-00-00Z-darwin-arm64-authenticated-artifact\//g, 'docs/release-evidence/packaged-runtime/outdated-current-runtime/')
+    .replace(/macOS codesign\/notarization\/Gatekeeper classify as `?fail`?/g, 'macOS release evidence still needs review')
+    .replace(/Windows smoke is unsigned\/pending/g, 'Windows support needs future work')
+    .replace(/Windows smoke\/picker archives are not signed-ready/g, 'desktop picker evidence still needs more detail')
+  assert.notEqual(updatedTodo, todo, 'fixture should remove the current archived closure summary')
   fs.writeFileSync(
     todoPath,
-    todo
-      .replace(/docs\/release-evidence\/signed-release-closure\/2026-07-06T16-46-49Z-v1\.0\.1-rc\.3-authenticated-closure-archive-rerun\//g, 'docs/release-evidence/signed-release-closure/outdated-current-closure/')
-      .replace(/docs\/release-evidence\/packaged-runtime\/2026-07-06T17-00-00Z-darwin-arm64-authenticated-artifact\//g, 'docs/release-evidence/packaged-runtime/outdated-current-runtime/')
-      .replace(/macOS codesign\/notarization\/Gatekeeper classify as `fail`/g, 'macOS release evidence still needs review')
-      .replace(/Windows smoke remains unsigned\/pending/g, 'Windows support needs future work')
-      .replace(/desktop-picker archives remain archived but not signed-ready/g, 'desktop picker evidence still needs more detail'),
+    updatedTodo,
     'utf-8'
   )
 
   const result = checkDocsDrift({ docsRoot })
 
   assert.equal(result.ok, false)
-  assert.match(result.errors.join('\n'), /current release blocker summary aligned with the archived closure truth/i)
+  assert.match(result.errors.join('\n'), /archived paid-signing result from current self-managed policy/i)
 })
 
 test('checkDocsDrift fails when maintainer summaries drift away from real/manual-required gap language', () => {

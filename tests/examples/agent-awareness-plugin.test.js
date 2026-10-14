@@ -251,6 +251,24 @@ test('codex rollout poller derives only safe lifecycle events from JSONL', async
   assert.equal(emitted.length, 4)
 })
 
+test('codex rollout poller ignores a partial record at the beginning of a bounded tail read', () => {
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-codex-tail-boundary-'))
+  const sessionsDir = path.join(codexHome, 'sessions')
+  fs.mkdirSync(sessionsDir, { recursive: true })
+  const filePath = path.join(sessionsDir, 'rollout-tail-boundary.jsonl')
+  fs.writeFileSync(filePath, [
+    JSON.stringify({ type: 'session_meta', payload: { id: 'raw-tail-session', cwd: '/Users/mango/private/project/OpenPet' } }),
+    JSON.stringify({ type: 'event_msg', payload: { type: 'item_completed', item: { type: 'commandExecution', stdout: 'x'.repeat(300 * 1024) } } }),
+    JSON.stringify({ type: 'event_msg', payload: { type: 'task_started' } })
+  ].join('\n'))
+
+  const inspection = inspectRolloutFile({ filePath })
+
+  assert.deepEqual(inspection.events.map((event) => event.type), ['session.discovered', 'turn.started'])
+  assert.equal(inspection.malformedRecordKeys.length, 0)
+  assert.equal(JSON.stringify(inspection.events).includes('/Users/mango/private'), false)
+})
+
 test('codex rollout poller derives safe usage and git metadata from metadata-only records', () => {
   const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-codex-visible-info-'))
   const sessionsDir = path.join(codexHome, 'sessions')
@@ -280,6 +298,80 @@ test('codex rollout poller derives safe usage and git metadata from metadata-onl
   assert.equal(events[2].git.branch, 'codex/dev7')
   assert.equal(events[2].summary.title, 'OpenPet #111111 on codex/dev7')
   assert.equal(JSON.stringify(events).includes('/Users/mango/private'), false)
+})
+
+test('codex rollout poller supports current nested token usage and classifies current metadata records', () => {
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-codex-current-rollout-'))
+  const sessionsDir = path.join(codexHome, 'sessions')
+  fs.mkdirSync(sessionsDir, { recursive: true })
+  const filePath = path.join(sessionsDir, 'rollout-current-format.jsonl')
+  fs.writeFileSync(filePath, [
+    JSON.stringify({
+      type: 'session_meta',
+      timestamp: '2026-10-08T22:20:00.000Z',
+      payload: { id: 'raw-current-session', cwd: '/Users/mango/private/project/OpenPet' }
+    }),
+    JSON.stringify({
+      type: 'event_msg',
+      timestamp: '2026-10-08T22:20:01.000Z',
+      payload: {
+        type: 'token_count',
+        info: {
+          last_token_usage: { input_tokens: 120, output_tokens: 30, total_tokens: 150 },
+          total_token_usage: { input_tokens: 960, output_tokens: 240, cached_input_tokens: 80, total_tokens: 1200 },
+          model_context_window: 200000
+        },
+        rate_limits: {}
+      }
+    }),
+    JSON.stringify({
+      type: 'token_usage_record',
+      timestamp: '2026-10-08T22:20:02.000Z',
+      payload: {
+        usage: { input_tokens: 20, output_tokens: 5, total_tokens: 25 },
+        turn_token_usage: { input_tokens: 980, output_tokens: 245, total_tokens: 1225 },
+        thread_token_usage: { input_tokens: 980, output_tokens: 245, cached_input_tokens: 80, total_tokens: 1225 }
+      }
+    }),
+    JSON.stringify({ type: 'event_msg', payload: { type: 'item_completed', item: { type: 'commandExecution', stdout: 'private command output' } } }),
+    JSON.stringify({ type: 'event_msg', payload: { type: 'thread_settings_applied', thread_settings: { cwd: '/Users/mango/private/project/OpenPet' } } }),
+    JSON.stringify({ type: 'world_state', payload: { full: true, state: { tools: {} } } }),
+    JSON.stringify({ type: 'inter_agent_communication_metadata', payload: { trigger_turn: false } }),
+    JSON.stringify({ type: 'response_item', payload: { type: 'agent_message', content: [{ type: 'text', text: 'private assistant content' }] } })
+  ].join('\n'))
+
+  const inspection = inspectRolloutFile({ filePath })
+  const usageEvents = inspection.events.filter((event) => event.type === 'turn.usage')
+
+  assert.deepEqual(usageEvents.map((event) => event.usage), [
+    {
+      inputTokens: 960,
+      outputTokens: 240,
+      cachedInputTokens: 80,
+      totalTokens: 1200,
+      contextWindow: 200000,
+      contextUsedPercent: 0.6,
+      estimatedCostUsd: null,
+      currency: ''
+    },
+    {
+      inputTokens: 980,
+      outputTokens: 245,
+      cachedInputTokens: 80,
+      totalTokens: 1225,
+      contextWindow: null,
+      contextUsedPercent: null,
+      estimatedCostUsd: null,
+      currency: ''
+    }
+  ])
+  assert.equal(inspection.unknownRecordKeys.length, 0)
+  assert.equal(inspection.ignoredContentRecordKeys.length, 2)
+  assert.equal(inspection.ignoredMetadataRecordKeys.length, 3)
+  assert.equal(inspection.unsupportedLifecycleRecordKeys.length, 0)
+  assert.equal(JSON.stringify(inspection.events).includes('private command output'), false)
+  assert.equal(JSON.stringify(inspection.events).includes('private assistant content'), false)
+  assert.equal(JSON.stringify(inspection.events).includes('/Users/mango/private'), false)
 })
 
 test('codex rollout poller skips git metadata when provider fails without dropping other safe events', () => {

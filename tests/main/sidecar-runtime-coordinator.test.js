@@ -65,6 +65,95 @@ test("runs the settings hydration callback after sidecar ready", async () => {
 	assert.deepEqual(hydrated, { baseUrl: "http://127.0.0.1:3210/api/v1", sessionToken: "session-token" })
 })
 
+test("starts the remote Backend transport and routes Shell replies through its adapter", async () => {
+	const sent = []
+	const child = { pid: 88, send: (message) => sent.push(message), kill() {} }
+	let connectorOptions
+	let handlerOptions
+	const ledgerCalls = []
+	const coordinator = createSidecarRuntimeCoordinator({
+		pidLedger: {
+			register: (pid, metadata) => ledgerCalls.push(["register", pid, metadata]),
+			unregister: (pid) => ledgerCalls.push(["unregister", pid]),
+		},
+		getInitBody: async () => ({ providerKeys: { "ai.default": "memory-only" }, localHttpConfig: { enabled: false }, appInfo: {} }),
+		getRemoteBackend: () => ({ sshAlias: "gz-cvm", hostPort: 48330 }),
+		connectRemoteBackend: async (options) => {
+			connectorOptions = options
+			return {
+				child,
+				baseUrl: "http://127.0.0.1:48330/api/v1",
+				sessionToken: "session-secret",
+				startupMs: 25,
+				processName: "ssh",
+				close: async () => {},
+			}
+		},
+		createMessageHandler: (options) => {
+			handlerOptions = options
+			return { handle: async () => true }
+		},
+	})
+	const backend = await coordinator.start()
+	assert.deepEqual(backend, { baseUrl: "http://127.0.0.1:48330/api/v1", sessionToken: "session-secret" })
+	assert.deepEqual(connectorOptions.providerKeys, { "ai.default": "memory-only" })
+	assert.deepEqual(ledgerCalls[0].slice(0, 2), ["register", 88])
+	assert.equal(typeof handlerOptions.send, "function")
+	    handlerOptions.send({ id: "shell-reply" })
+	assert.deepEqual(sent, [{ id: "shell-reply" }])
+	await coordinator.stop()
+	assert.deepEqual(ledgerCalls.at(-1), ["unregister", 88])
+})
+
+test("does not publish ready if SSH exits before the remote connector returns", async () => {
+	let closed = false
+	const ledgerCalls = []
+	const coordinator = createSidecarRuntimeCoordinator({
+		pidLedger: {
+			register: (pid) => ledgerCalls.push(["register", pid]),
+			unregister: (pid) => ledgerCalls.push(["unregister", pid]),
+		},
+		getRemoteBackend: () => ({ sshAlias: "gz-cvm", hostPort: 48330 }),
+		connectRemoteBackend: async ({ onExit }) => {
+			onExit(255)
+			return {
+				child: { pid: 89, send() {}, kill() {} },
+				baseUrl: "http://127.0.0.1:48330/api/v1",
+				sessionToken: "expired-session-token",
+				close: async () => { closed = true },
+			}
+		},
+	})
+	assert.equal(await coordinator.start(), null)
+	assert.equal(coordinator.getState().status, "degraded")
+	assert.equal(coordinator.getState().reason, "REMOTE_SSH_EXIT_255")
+	assert.equal(closed, true)
+	assert.deepEqual(ledgerCalls, [])
+})
+
+test("degrades a ready remote Backend when its SSH transport exits", async () => {
+	let notifyExit
+	const coordinator = createSidecarRuntimeCoordinator({
+		getRemoteBackend: () => ({ sshAlias: "gz-cvm", hostPort: 48330 }),
+		connectRemoteBackend: async (options) => {
+			notifyExit = options.onExit
+			return {
+				child: { pid: 90, send() {}, kill() {} },
+				baseUrl: "http://127.0.0.1:48330/api/v1",
+				sessionToken: "active-session-token",
+				close: async () => {},
+			}
+		},
+	})
+	await coordinator.start()
+	notifyExit(255)
+	assert.deepEqual(coordinator.getState(), {
+		status: "degraded",
+		backend: null,
+		reason: "REMOTE_SSH_EXIT_255",
+	})
+})
+
 test("forwards the Catalog owner handler to the sidecar message boundary", async () => {
 	const child = { send() {} }
 	const onCatalogRequest = async () => ({ plugins: [], petPacks: [] })
@@ -134,6 +223,28 @@ test("uses caller-provided init body including explicitly selected providerKeys"
 	const harness = createHarness({ getInitBody: async () => ({ custom: true, providerKeys: { "ai.default": "selected-secret" } }) })
 	await harness.coordinator.start()
 	assert.deepEqual(harness.calls.initBodies, [{ custom: true, providerKeys: { "ai.default": "selected-secret" } }])
+})
+
+test("passes the Electron app to the default sidecar launcher", async () => {
+	const app = {
+		getPath: () => "/tmp/openpet-user-data",
+		getName: () => "OpenPet Host",
+		getVersion: () => "1.2.3",
+		isPackaged: true,
+	}
+	const child = { send() {} }
+	let receivedApp = null
+	const coordinator = createSidecarRuntimeCoordinator({
+		app,
+		spawnSidecar: async (options) => {
+			receivedApp = options.app
+			return { child, baseUrl: "http://127.0.0.1:3210/api/v1", sessionToken: "session-token" }
+		},
+		createMessageHandler: () => ({ handle: async () => {} }),
+	})
+
+	await coordinator.start()
+	assert.equal(receivedApp, app)
 })
 
 test("startup failure becomes degraded without rejecting", async () => {

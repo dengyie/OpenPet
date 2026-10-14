@@ -475,6 +475,32 @@ test('image generation model service reports missing provider api key in health 
   assert.equal(logs[1].details.errorCode, 'missing_api_key')
 })
 
+test('image generation health classifies provider authentication failures without exposing response text', async () => {
+  const logs = []
+  const secret = 'sk-image-private-secret'
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings()),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-image', label: 'Image API Key' }
+    }),
+    appLogService: { record: (entry) => logs.push(entry) },
+    fetchImpl: async () => ({
+      ok: false,
+      status: 401,
+      json: async () => ({ error: { message: `Rejected ${secret}` } })
+    })
+  })
+
+  const result = await service.checkHealth()
+
+  assert.equal(result.ok, false)
+  assert.equal(result.code, 'auth_failed')
+  assert.equal(result.message, 'Image Provider rejected the API key')
+  assert.equal(logs.at(-1).details.status, 401)
+  assert.equal(logs.at(-1).details.errorCode, 'auth_failed')
+  assert.equal(JSON.stringify(logs).includes(secret), false)
+})
+
 test('image generation model service treats missing models endpoint as reachable for custom image providers', async () => {
   const requests = []
   const logs = []
@@ -602,6 +628,62 @@ test('image generation model service discovers available models through the opti
   assert.equal(service.getConfig().modelCatalog.source, 'saved')
 })
 
+test('image generation health keeps the saved model catalog when the /models body has no model list', async () => {
+  const savedCatalog = createSavedProviderModelCatalog({
+    capability: 'image',
+    provider: 'openai-compatible',
+    baseUrl: 'https://images.example.test/v1',
+    models: ['cached-image-model'],
+    fetchedAt: '2026-10-07T00:00:00.000Z'
+  })
+  const settingsService = createSettingsService(providerSettings({
+    baseUrl: 'https://images.example.test/v1',
+    modelCatalog: savedCatalog
+  }))
+  const service = createImageGenerationModelService({
+    settingsService,
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-image', label: 'Image API Key' }
+    }),
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({}) })
+  })
+
+  const result = await service.checkHealth()
+
+  assert.equal(result.ok, true)
+  assert.equal(result.code, 'provider_reachable_models_unavailable')
+  assert.equal(result.modelsProbe, 'unavailable')
+  assert.deepEqual(settingsService.get().models.imageGeneration.modelCatalog.models, ['cached-image-model'])
+})
+
+test('image generation model discovery keeps the saved model catalog when the /models body has no model list', async () => {
+  const savedCatalog = createSavedProviderModelCatalog({
+    capability: 'image',
+    provider: 'openai-compatible',
+    baseUrl: 'https://images.example.test/v1',
+    models: ['cached-image-model'],
+    fetchedAt: '2026-10-07T00:00:00.000Z'
+  })
+  const settingsService = createSettingsService(providerSettings({
+    baseUrl: 'https://images.example.test/v1',
+    modelCatalog: savedCatalog
+  }))
+  const service = createImageGenerationModelService({
+    settingsService,
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-image', label: 'Image API Key' }
+    }),
+    fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({}) })
+  })
+
+  const result = await service.discoverModels()
+
+  assert.equal(result.ok, true)
+  assert.equal(result.code, 'provider_reachable_models_unavailable')
+  assert.deepEqual(result.models, [])
+  assert.deepEqual(service.getConfig().modelCatalog.models, ['cached-image-model'])
+})
+
 test('image generation model service filters secrets and bounds discovered models', async () => {
   const apiKey = 'sk-image-secret-123456'
   const service = createImageGenerationModelService({
@@ -675,6 +757,32 @@ test('image generation model discovery does not expose provider response text in
   assert.equal(Object.hasOwn(logs.at(-1).details, 'providerMessage'), false)
   assert.equal(JSON.stringify(logs).includes('private provider response'), false)
   assert.equal(JSON.stringify(logs).includes('prompt text'), false)
+})
+
+test('image model discovery classifies provider authentication failures without exposing response text', async () => {
+  const logs = []
+  const secret = 'sk-image-private-secret'
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings()),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-image', label: 'Image API Key' }
+    }),
+    appLogService: { record: (entry) => logs.push(entry) },
+    fetchImpl: async () => ({
+      ok: false,
+      status: 403,
+      json: async () => ({ error: { message: `Forbidden ${secret}` } })
+    })
+  })
+
+  const result = await service.discoverModels()
+
+  assert.equal(result.ok, false)
+  assert.equal(result.code, 'auth_failed')
+  assert.equal(result.message, 'Image Provider rejected the API key')
+  assert.equal(logs.at(-1).details.status, 403)
+  assert.equal(logs.at(-1).details.errorCode, 'auth_failed')
+  assert.equal(JSON.stringify(logs).includes(secret), false)
 })
 
 test('image generation model service bounds model discovery and returns sanitized timeout diagnostics', async () => {
@@ -1195,6 +1303,194 @@ test('image generation model service uses a gpt-image-2 compatible edit payload'
   assert.ok(Array.isArray(result.conditioning.promptCompiler.promptClauseIds))
 })
 
+test('image generation model service downloads a Provider image URL when b64_json is omitted', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-url-'))
+  const requests = []
+  const imageRequests = []
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings()),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-1234', label: 'Image API Key' }
+    }),
+    appLogService: { record: () => {} },
+    fetchImpl: async (url, options) => {
+      requests.push({ url, options })
+      if (url.endsWith('/images/edits')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [{ url: 'https://cdn.example.test/generated.png' }] })
+        }
+      }
+      throw new Error('Image URL downloads must use the pinned HTTPS connector')
+    },
+    resolveImageUrlAddress: async (hostname) => {
+      assert.equal(hostname, 'cdn.example.test')
+      return ['93.184.216.34']
+    },
+    connectImageUrl: async (request) => {
+      imageRequests.push(request)
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: (name) => name === 'content-length' ? String(Buffer.byteLength('url-image-bytes')) : '' },
+        arrayBuffer: async () => Buffer.from('url-image-bytes')
+      }
+    }
+  })
+
+  const result = await service.generateImage({
+    prompt: 'a friendly helper cat',
+    referenceImages: createReferenceImages(dataDir),
+    output: { dataDir, dataRelativeDir: 'runs/url-output' },
+    constraints: { width: 1024, height: 1024, transparent: false }
+  })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.outputs.length, 1)
+  assert.equal(requests.length, 1)
+  assert.equal(imageRequests.length, 1)
+  assert.equal(imageRequests[0].url, 'https://cdn.example.test/generated.png')
+  assert.equal(imageRequests[0].address, '93.184.216.34')
+  assert.deepEqual(imageRequests[0].request.headers, {})
+  assert.equal(fs.existsSync(path.join(dataDir, result.outputs[0].dataRelativePath)), true)
+})
+
+test('image generation model service rejects private image URL redirect targets before connecting', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-url-ssrf-'))
+  let connected = 0
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings()),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-1234', label: 'Image API Key' }
+    }),
+    appLogService: { record: () => {} },
+    fetchImpl: async (url) => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: [{ url: 'https://cdn.example.test/generated.png' }] })
+    }),
+    resolveImageUrlAddress: async (hostname) => hostname === '127.0.0.1' ? ['127.0.0.1'] : ['93.184.216.34'],
+    connectImageUrl: async (request) => {
+      connected += 1
+      if (request.url === 'https://cdn.example.test/generated.png') {
+        return {
+          ok: false,
+          status: 302,
+          headers: { get: (name) => name === 'location' ? 'https://127.0.0.1/latest' : '' },
+          arrayBuffer: async () => Buffer.alloc(0)
+        }
+      }
+      throw new Error('Unsafe redirect target must not be connected')
+    }
+  })
+
+  await assert.rejects(() => service.generateImage({
+    prompt: 'a friendly helper cat',
+    referenceImages: createReferenceImages(dataDir),
+    output: { dataDir, dataRelativeDir: 'runs/url-ssrf' },
+    constraints: { width: 1024, height: 1024, transparent: false }
+  }), /non-public address/)
+
+  assert.equal(connected, 1)
+})
+
+test('image generation model service rejects a direct private image URL before connecting', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-url-private-'))
+  let connected = false
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings()),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-1234', label: 'Image API Key' }
+    }),
+    appLogService: { record: () => {} },
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: [{ url: 'https://127.0.0.1/generated.png' }] })
+    }),
+    connectImageUrl: async () => {
+      connected = true
+      throw new Error('Private image URL must not be connected')
+    }
+  })
+
+  await assert.rejects(() => service.generateImage({
+    prompt: 'a friendly helper cat',
+    referenceImages: createReferenceImages(dataDir),
+    output: { dataDir, dataRelativeDir: 'runs/url-private' },
+    constraints: { width: 1024, height: 1024, transparent: false }
+  }), /non-public address/)
+
+  assert.equal(connected, false)
+})
+
+test('image generation model service rejects RFC 2544 test addresses for image URLs', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-url-reserved-'))
+  let connected = false
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings()),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-1234', label: 'Image API Key' }
+    }),
+    appLogService: { record: () => {} },
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: [{ url: 'https://image.example.test/generated.png' }] })
+    }),
+    resolveImageUrlAddress: async () => ['198.18.0.35'],
+    connectImageUrl: async () => {
+      connected = true
+      throw new Error('RFC 2544 test address must not be connected')
+    }
+  })
+
+  await assert.rejects(() => service.generateImage({
+    prompt: 'a friendly helper cat',
+    referenceImages: createReferenceImages(dataDir),
+    output: { dataDir, dataRelativeDir: 'runs/url-reserved' },
+    constraints: { width: 1024, height: 1024, transparent: false }
+  }), /198\.18\.0\.35/)
+
+  assert.equal(connected, false)
+})
+
+test('image generation model service limits image URL redirects', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-url-redirects-'))
+  let connected = 0
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings()),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-1234', label: 'Image API Key' }
+    }),
+    appLogService: { record: () => {} },
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: [{ url: 'https://cdn.example.test/generated.png' }] })
+    }),
+    resolveImageUrlAddress: async () => ['93.184.216.34'],
+    connectImageUrl: async (request) => {
+      connected += 1
+      return {
+        ok: false,
+        status: 302,
+        headers: { get: (name) => name === 'location' ? `${request.url}?redirect=${connected}` : '' }
+      }
+    }
+  })
+
+  await assert.rejects(() => service.generateImage({
+    prompt: 'a friendly helper cat',
+    referenceImages: createReferenceImages(dataDir),
+    output: { dataDir, dataRelativeDir: 'runs/url-redirects' },
+    constraints: { width: 1024, height: 1024, transparent: false }
+  }), /exceeded the redirect limit/)
+
+  assert.equal(connected, 4)
+})
+
 test('image generation model service applies gpt-image-2 transport capabilities case-insensitively', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-'))
   const requests = []
@@ -1625,6 +1921,46 @@ test('image generation model service does not retry non-transient provider HTTP 
   assert.equal(calls, 1)
 })
 
+test('image generation classifies authentication failures without retrying or exposing provider response text', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-auth-failure-'))
+  const logs = []
+  const responseSecret = 'private-provider-auth-response'
+  let calls = 0
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings({ model: 'gpt-image-2' })),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-1234', label: 'Image API Key' }
+    }),
+    appLogService: { record: (entry) => logs.push(entry) },
+    fetchImpl: async () => {
+      calls += 1
+      return {
+        ok: false,
+        status: 401,
+        json: async () => ({ error: { message: responseSecret } })
+      }
+    }
+  })
+
+  await assert.rejects(() => service.generateImage({
+    prompt: 'keep the same character identity',
+    referenceImages: createReferenceImages(dataDir),
+    output: { dataDir, dataRelativeDir: 'runs/auth-failure/frames/base' },
+    constraints: { width: 1024, height: 1024, transparent: true }
+  }), (error) => {
+    assert.equal(error.code, 'auth_failed')
+    assert.equal(error.message, 'Image Provider rejected the API key')
+    assert.equal(error.httpStatus, 401)
+    assert.equal(error.modelAttempts[0].errorCode, 'auth_failed')
+    assert.equal(error.modelAttempts[0].httpStatus, 401)
+    return true
+  })
+
+  assert.equal(calls, 1)
+  assert.equal(logs.find((entry) => entry.event === 'imageGeneration.provider.request.failed').details.errorCode, 'auth_failed')
+  assert.equal(JSON.stringify(logs).includes(responseSecret), false)
+})
+
 test('image generation model service keeps a transient retry inside the original timeout budget', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-retry-budget-'))
   let calls = 0
@@ -1754,6 +2090,46 @@ test('image generation model service enforces provider maxConcurrentJobs by queu
   assert.equal(logs.some((entry) => entry.event === 'imageGeneration.provider.queue.acquired' && entry.details.requestId === 'img-run-queue-2'), true)
   assert.equal(JSON.stringify(logs).includes('sk-test-1234'), false)
   assert.equal(JSON.stringify(logs).includes('queued custom pet prompt'), false)
+})
+
+test('image generation model service cancels a request while it waits for a concurrency slot', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-'))
+  const requests = []
+  let releaseFirstRequest
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings({ maxConcurrentJobs: 1 })),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-1234', label: 'Image API Key' }
+    }),
+    fetchImpl: async (_url, options) => {
+      requests.push(options)
+      if (requests.length === 1) await new Promise((resolve) => { releaseFirstRequest = resolve })
+      return { ok: true, status: 200, json: async () => ({ data: [{ b64_json: Buffer.from('image').toString('base64') }] }) }
+    }
+  })
+  const input = (name) => ({
+    prompt: name,
+    referenceImages: createReferenceImages(dataDir, `${name}.png`),
+    output: { dataDir, dataRelativeDir: `runs/${name}` },
+    constraints: { width: 1024, height: 1024, transparent: true }
+  })
+  const first = service.generateImage(input('first'))
+  try {
+    await waitForRequestCount(requests, 1)
+    const controller = new AbortController()
+    const second = service.generateImage({ ...input('second'), signal: controller.signal })
+    await waitForTurn()
+    controller.abort()
+    releaseFirstRequest()
+    const results = await Promise.allSettled([first, second])
+    assert.equal(results[0].status, 'fulfilled')
+    assert.equal(results[1].status, 'rejected')
+    assert.equal(results[1].reason.name, 'AbortError')
+    assert.equal(requests.length, 1)
+  } finally {
+    releaseFirstRequest?.()
+    fs.rmSync(dataDir, { recursive: true, force: true })
+  }
 })
 
 test('image generation model service rejects output paths outside the allowed data directory', async () => {

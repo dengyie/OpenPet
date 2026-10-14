@@ -30,6 +30,7 @@ type RequestBase<TResponseSchema extends ContractSchema> = {
   idempotencyKey?: string
   job?: boolean
   retry?: boolean
+  keepalive?: boolean
 }
 
 export type ApiRequest<
@@ -197,6 +198,7 @@ export function createApiClient(transport: Transport): ApiClient {
         headers,
         body,
         signal,
+        keepalive: input.keepalive,
       }
 
       for (let attempt = 0; ; attempt += 1) {

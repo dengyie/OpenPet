@@ -37,13 +37,113 @@ function job(id, overrides = {}) {
 describe("Jobs repository · insert 与互斥", () => {
 	it("insert 从 queued / attempt 1 开始并按 kind 填 maxAttempts", async () => {
 		await withRepository(({ repo }) => {
-			const inserted = repo.insert(job("job-defaults", { attempt: 9, maxAttempts: 99 }))
+			const inserted = repo.insert(job("job-defaults", {
+				kind: "creator.workflow",
+				attempt: 9,
+				maxAttempts: 99,
+				input: { redacted: true, summary: "test job-defaults" },
+			}))
 
 			assert.equal(inserted.id, "job-defaults")
 			assert.equal(inserted.status, "queued")
 			assert.equal(inserted.attempt, 1)
 			assert.equal(inserted.maxAttempts, 2)
 			assert.deepEqual(inserted.input, { redacted: true, summary: "test job-defaults" })
+		})
+	})
+
+	it("image generation Job input is redacted before persistence and public reads", async () => {
+		await withRepository(({ db, repo }) => {
+			const input = {
+				prompt: "private character prompt",
+				referenceImages: [{ path: "/Users/private/pet/reference.png" }],
+				output: { dataDir: "/Users/private/OpenPet", dataRelativeDir: "runs/private/frames" },
+				apiKey: "sk-image-must-not-persist",
+			}
+			repo.insert(job("job-private-image", { input }))
+
+			const expected = { redacted: true, summary: "Image generation input withheld" }
+			assert.deepEqual(repo.byId("job-private-image").input, expected)
+			const persisted = db.prepare("SELECT input_json FROM jobs WHERE id = ?").get("job-private-image").input_json
+			assert.deepEqual(JSON.parse(persisted), expected)
+			for (const value of [input.prompt, input.referenceImages[0].path, input.output.dataDir, input.apiKey]) {
+				assert.equal(persisted.includes(value), false)
+			}
+		})
+	})
+
+	it("Actions import Job input is redacted before persistence and public reads", async () => {
+		await withRepository(({ db, repo }) => {
+			const input = { selectionId: "selection-private-id", path: "/Users/private/frames", label: "Wave" }
+			repo.insert(job("job-private-actions-import", { kind: "actions.import-frames", input }))
+
+			const expected = { redacted: true, summary: "Action frame import input withheld" }
+			assert.deepEqual(repo.byId("job-private-actions-import").input, expected)
+			const persisted = db.prepare("SELECT input_json FROM jobs WHERE id = ?").get("job-private-actions-import").input_json
+			assert.deepEqual(JSON.parse(persisted), expected)
+			for (const value of Object.values(input)) assert.equal(persisted.includes(value), false)
+		})
+	})
+
+	it("repository startup scrubs previously persisted image inputs", async () => {
+		await withRepository(({ db }) => {
+			db.prepare("INSERT INTO jobs (id, kind, status, input_json, attempt, max_attempts, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+				.run("legacy-image", "image.generate", "queued", JSON.stringify({ prompt: "legacy private prompt", output: { dataDir: "/Users/private" } }), 1, 2, 1)
+			const repo = createJobsRepository({ db })
+			const persisted = db.prepare("SELECT input_json FROM jobs WHERE id = ?").get("legacy-image").input_json
+			assert.deepEqual(JSON.parse(persisted), { redacted: true, summary: "Image generation input withheld" })
+			assert.equal(persisted.includes("legacy private prompt"), false)
+			assert.equal(repo.byId("legacy-image").input.redacted, true)
+		})
+	})
+
+	it("repository startup scrubs previously persisted Actions import paths and selection handles", async () => {
+		await withRepository(({ db }) => {
+			db.prepare("INSERT INTO jobs (id, kind, status, input_json, attempt, max_attempts, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+				.run(
+					"legacy-actions-import", "actions.import-frames", "queued",
+					JSON.stringify({ selectionId: "selection-private-id", path: "/Users/private/frames", label: "Wave" }),
+					1, 1, 1,
+				)
+			const repo = createJobsRepository({ db })
+			const persisted = db.prepare("SELECT input_json FROM jobs WHERE id = ?").get("legacy-actions-import").input_json
+			const expected = { redacted: true, summary: "Action frame import input withheld" }
+			assert.deepEqual(JSON.parse(persisted), expected)
+			assert.deepEqual(repo.byId("legacy-actions-import").input, expected)
+			for (const value of ["selection-private-id", "/Users/private/frames", "Wave"]) assert.equal(persisted.includes(value), false)
+		})
+	})
+
+	it("every repository read hides legacy image input before startup recovery runs", async () => {
+		await withRepository(({ db, repo }) => {
+			db.prepare("INSERT INTO jobs (id, kind, status, resource_key, input_json, attempt, max_attempts, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+				.run(
+					"legacy-image-readable",
+					"image.generate",
+					"queued",
+					"image:legacy",
+					JSON.stringify({ prompt: "legacy private prompt", output: { dataDir: "/Users/private" } }),
+					1,
+					2,
+					1,
+				)
+			const expected = { redacted: true, summary: "Image generation input withheld" }
+			assert.deepEqual(repo.list()[0].input, expected)
+			assert.deepEqual(repo.activeByResourceKey("image:legacy").input, expected)
+		})
+	})
+
+	it("every repository read hides legacy Actions import input before startup recovery runs", async () => {
+		await withRepository(({ db, repo }) => {
+			db.prepare("INSERT INTO jobs (id, kind, status, resource_key, input_json, attempt, max_attempts, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+				.run(
+					"legacy-actions-import-readable", "actions.import-frames", "queued", "actions:legacy",
+					JSON.stringify({ selectionId: "selection-private-id", path: "/Users/private/frames" }),
+					1, 1, 1,
+				)
+			const expected = { redacted: true, summary: "Action frame import input withheld" }
+			assert.deepEqual(repo.list()[0].input, expected)
+			assert.deepEqual(repo.activeByResourceKey("actions:legacy").input, expected)
 		})
 	})
 
@@ -137,7 +237,6 @@ describe("Jobs repository · CAS 与状态时间", () => {
 				retryable: true,
 			})
 		}, { now: () => ticks.shift() })
-		})
 	})
 
 	it("重试状态回到 queued 时在 CAS 内递增 attempt", async () => {
@@ -167,6 +266,23 @@ describe("Jobs repository · CAS 与状态时间", () => {
 			assert.equal(repo.byId("retry-owner").attempt, 1)
 		})
 	})
+
+	it("increments an automatic retry attempt while keeping the Job running and resource locked", async () => {
+		await withRepository(({ repo, db }) => {
+			repo.insert(job("retrying-owner", { kind: "catalog.install", resourceKey: "catalog-selection:selection-1" }))
+			repo.transition("retrying-owner", "running")
+			const retrying = repo.incrementAttempt("retrying-owner")
+
+			assert.equal(retrying.status, "running")
+			assert.equal(retrying.attempt, 2)
+			assert.throws(
+				() => repo.insert(job("retrying-intruder", { kind: "catalog.install", resourceKey: "catalog-selection:selection-1" })),
+				(error) => error.code === "LOCKED",
+			)
+			assert.equal(db.prepare("SELECT attempt FROM jobs WHERE id = ?").get("retrying-owner").attempt, 2)
+		})
+	})
+})
 
 describe("Jobs repository · progress、events 与查询", () => {
 	it("JSON 字段、事件顺序、过滤列表与状态计数可往返", async () => {

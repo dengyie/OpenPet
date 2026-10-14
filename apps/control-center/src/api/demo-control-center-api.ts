@@ -135,7 +135,9 @@ interface DemoState {
   creatorReferencePickerPath: string
 }
 
-type DemoControlCenterApi = ControlCenterApi & CatalogDemoApi
+type DemoControlCenterApi = ControlCenterApi & CatalogDemoApi & {
+  clearAiApiKey: () => Promise<{ apiKeyRef: string; hasApiKey: boolean }>
+}
 
 let demoApi: DemoControlCenterApi
 
@@ -3267,6 +3269,17 @@ export const demoControlCenterAPI: DemoControlCenterApi = {
       updatedAt: new Date().toISOString()
     }
   },
+  clearAiApiKey: async () => {
+    demoState.aiConfig = cloneDemoAiConfig({
+      ...demoState.aiConfig,
+      hasApiKey: false
+    })
+    writeDemoState()
+    return {
+      apiKeyRef: demoState.aiConfig.apiKeyRef,
+      hasApiKey: false
+    }
+  },
   saveAiVisionApiKey: async (apiKey) => {
     demoState.aiConfig = cloneDemoAiConfig({
       ...demoState.aiConfig,
@@ -3674,6 +3687,37 @@ export const demoControlCenterAPI: DemoControlCenterApi = {
     const { conversationId: resolvedConversationId } = resolveDemoConversationContext({ conversationId })
     return getDemoConversationMessages(resolvedConversationId)
   },
+  listAiConversations: async ({ entrypoint = 'control-center', petPackId = '' } = {}) => {
+    const normalizedPetPackId = String(petPackId || '').trim()
+    const conversations = Object.entries(demoState.petChatConversations)
+      .map(([conversationId, messages]) => {
+        const context = resolveDemoConversationContext({ conversationId })
+        return {
+          conversationId,
+          entrypoint,
+          petPackId: context.petPackId,
+          messageCount: messages.length,
+          updatedAt: '',
+        }
+      })
+      .filter((conversation) => !normalizedPetPackId || conversation.petPackId === normalizedPetPackId)
+    return { conversations }
+  },
+  getAiConversationView: async (conversationId) => ({
+    conversationId,
+    messages: await demoApi.getAiConversation(conversationId),
+  }),
+  deleteAiConversation: async (conversationId) => {
+    const normalizedConversationId = String(conversationId || '').trim()
+    if (!normalizedConversationId || !demoState.petChatConversations[normalizedConversationId]) {
+      throw new Error('Conversation not found')
+    }
+    delete demoState.petChatConversations[normalizedConversationId]
+    delete demoState.petChatConversationBubbles[normalizedConversationId]
+    syncActiveDemoConversationState()
+    writeDemoState()
+    return { deleted: true, conversationId: normalizedConversationId }
+  },
   chat: sendDemoPetChatMessage,
   getPetChatState: async () => {
     syncDemoStateFromStorage()
@@ -3744,7 +3788,7 @@ export const demoControlCenterAPI: DemoControlCenterApi = {
         messages: 'content omitted; contentChars and contentSha256 retained',
         memories: 'text omitted; textChars and textSha256 retained',
         provider: 'api keys and credentials omitted by provider view contract',
-        behavior: 'decision replay payloads omitted'
+        behavior: 'decision free text and replay payloads omitted'
       },
       provider: {
         enabled: demoState.aiConfig.enabled,
@@ -3764,8 +3808,14 @@ export const demoControlCenterAPI: DemoControlCenterApi = {
         petPackId: conversation.petPackId
       })),
       behaviorDecisions: (!normalizedPetPackId && !normalizedConversationId) || matchesFilters(activeContext)
-        ? demoState.aiConfig.behavior.decisions.map(({ replay: _replay, ...decision }) => ({
-            ...decision,
+        ? demoState.aiConfig.behavior.decisions.map((decision) => ({
+            id: Number.isFinite(Number(decision.id)) ? Number(decision.id) : 0,
+            timestamp: typeof decision.timestamp === 'string' ? decision.timestamp : '',
+            matched: Boolean(decision.matched),
+            type: ['say', 'playAction', 'setEvent'].includes(String(decision.type)) ? String(decision.type) : '',
+            displayMode: ['none', 'bubble', 'action', 'event'].includes(String(decision.displayMode)) ? String(decision.displayMode) : '',
+            cooldown: Boolean(decision.cooldown),
+            fallback: Boolean(decision.fallback),
             replayRedacted: true
           }))
         : []
@@ -3785,7 +3835,7 @@ export const demoControlCenterAPI: DemoControlCenterApi = {
   sendPetChatMessage: sendDemoPetChatMessage,
   getAiBehavior: async () => cloneAiConfig(demoState.aiConfig).behavior,
   saveAiBehavior: async (config) => {
-    demoState.aiConfig = cloneAiConfig({ ...demoState.aiConfig, behavior: config })
+    demoState.aiConfig = cloneAiConfig({ ...demoState.aiConfig, behavior: { ...demoState.aiConfig.behavior, ...config } })
     writeDemoState()
     return demoState.aiConfig.behavior
   },

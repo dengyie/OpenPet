@@ -142,6 +142,23 @@ let demoSettingsSnapshot: SettingsSnapshot = {
   values: settingsViewToBackendValues(initialDemoSettings),
 }
 
+const demoCursor = {
+  id: 'demo-cursor',
+  type: 'custom',
+  source: 'uploaded',
+  name: 'demo-cursor',
+  enabled: true,
+  assetPath: '/demo/cursors/demo-cursor.png',
+  assetUrl: SYSTEM_CURSOR_PREVIEW_URL,
+  fileName: 'demo-cursor.png',
+  width: 32,
+  height: 32,
+  byteSize: 2048,
+  hotspotX: 0,
+  hotspotY: 0,
+  createdAt: '2026-06-19T10:00:00.000Z',
+} satisfies CustomCursorRecord & { enabled: boolean }
+
 const demoSettingsApi: SettingsApi = {
   async get() {
     return structuredClone(demoSettingsSnapshot)
@@ -159,6 +176,21 @@ const demoSettingsApi: SettingsApi = {
       version: demoSettingsSnapshot.version,
       changedPaths,
       snapshot: structuredClone(demoSettingsSnapshot.values),
+    }
+  },
+    async previewScale(scale) {
+    return { scale: Math.max(0.5, Math.min(1.5, scale)) }
+  },
+  async importCursor() {
+    return { canceled: false, cursor: structuredClone(demoCursor) }
+  },
+  async schema() {
+    return {
+      version: 1,
+      writablePaths: ['pet.scale', 'scale', 'walkSpeed', 'walkDuration', 'bubbleDuration', 'menuPosition', 'autoStart', 'selectedCursorId', 'customCursor', 'customCursors', 'hiddenCursorIds', 'customCursorScope', 'petBehavior.grounded', 'petBehavior.home.enabled', 'petBehavior.home.radius', 'petBubbleChat.enabled', 'petBubbleChat.autoPopup', 'petBubbleChat.autoHide', 'petBubbleChat.pinOnInteraction'],
+      trustedPaths: ['petBehavior.home.anchor'],
+      scalePreview: { min: 0.5, max: 1.5, step: 0.01 },
+      cursorImport: { extensions: ['png', 'webp'], maxBytes: 512_000 },
     }
   },
 }
@@ -211,6 +243,35 @@ export function createSettingsApi(client: ApiClient, fallback: SettingsApi = dem
         requestSchema: settingsPatchRequestSchema,
         responseSchema: settingsPatchResponseSchema,
         body,
+      })
+    },
+    previewScale(scale: number, options: { keepalive?: boolean } = {}): Promise<z.infer<typeof settingsPreviewScaleResponseSchema>> {
+      if (useDemoFallback()) return fallback.previewScale(scale, options)
+      return client.request({
+        method: 'POST',
+        path: '/settings/preview-scale',
+        requestSchema: settingsPreviewScaleRequestSchema,
+        responseSchema: settingsPreviewScaleResponseSchema,
+        body: { scale },
+        keepalive: options.keepalive,
+      })
+    },
+    importCursor(): Promise<z.infer<typeof settingsCursorImportResultSchema>> {
+      if (useDemoFallback()) return fallback.importCursor()
+      return client.request({
+        method: 'POST',
+        path: '/settings/cursor/import',
+        requestSchema: z.object({}).strict(),
+        responseSchema: settingsCursorImportResultSchema,
+        body: {},
+      })
+    },
+    schema(): Promise<z.infer<typeof settingsSchemaResponseSchema>> {
+      if (useDemoFallback()) return fallback.schema()
+      return client.request({
+        method: 'GET',
+        path: '/settings/schema',
+        responseSchema: settingsSchemaResponseSchema,
       })
     },
   }

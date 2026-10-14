@@ -10,16 +10,62 @@ export const IMPLEMENTED_API_ROUTES = Object.freeze([
 	"GET /service/config",
 	"PUT /service/config",
 	"POST /service/diagnostics",
-	"PUT /ai/providers/:id/key",
-	"DELETE /ai/providers/:id/key",
-	"POST /ai/images/generate",
-	"GET /about",
-	"POST /about/check-updates",
 	"GET /settings",
 	"PATCH /settings",
 	"POST /settings/cursor/import",
 	"POST /settings/preview-scale",
 	"GET /settings/schema",
+	"PUT /ai/providers/:id/key",
+	"DELETE /ai/providers/:id/key",
+	"POST /ai/images/generate",
+	"GET /ai/images/config",
+	"PATCH /ai/images/config",
+	"PUT /ai/images/key",
+	"DELETE /ai/images/key",
+	"GET /ai/config",
+	"PATCH /ai/config",
+	"POST /ai/providers/:id/test",
+	"GET /ai/providers/:id/models",
+	"GET /ai/persona",
+	"PUT /ai/persona",
+	"POST /ai/persona/draft",
+	"GET /ai/memories",
+	"POST /ai/memories",
+	"DELETE /ai/memories/pet-pack",
+	"DELETE /ai/memories/:id",
+	"POST /ai/chat",
+	"GET /ai/conversations",
+	"GET /ai/conversations/:id",
+	"DELETE /ai/conversations/:id",
+	"POST /ai/talk/start",
+	"POST /ai/talk/stop",
+	"GET /ai/behavior",
+	"PATCH /ai/behavior",
+	"GET /ai/behavior/rules",
+	"POST /ai/behavior/rules",
+	"PATCH /ai/behavior/rules/:id",
+	"DELETE /ai/behavior/rules/:id",
+	"POST /ai/behavior/dry-run",
+	"GET /ai/traces",
+	"POST /ai/traces/export",
+	"GET /ai/hatch/agents",
+	"GET /ai/hatch/config",
+	"PATCH /ai/hatch/config",
+	"PUT /ai/hatch/key",
+	"DELETE /ai/hatch/key",
+	"POST /ai/hatch/capability",
+	"GET /ai/hatch/runs/:runId",
+	"POST /ai/hatch/start",
+	"GET /ai/hatch/budget",
+	"POST /ai/behavior/decisions/:id/replay",
+	"GET /ai/behavior/diagnostics",
+	"DELETE /ai/behavior/decisions",
+	"GET /ai/images/health",
+	"GET /ai/images/models",
+	"GET /about",
+	"POST /about/check-updates",
+	"GET /settings",
+	"PATCH /settings",
 	"GET /actions",
 	"POST /actions/frames/inspect",
 	"POST /actions/frames/reinspect",
@@ -80,6 +126,7 @@ export const IMPLEMENTED_API_ROUTES = Object.freeze([
 ])
 
 const noop = () => ({})
+const settingsCommandNoop = { previewScale: async (scale) => ({ scale }), importCursor: async () => ({ canceled: true }) }
 const service = new Proxy({}, { get: () => noop })
 const actions = new Proxy({}, { get: () => noop })
 const packs = new Proxy({}, { get: () => noop })
@@ -95,7 +142,7 @@ export function registeredImplementedRoutes() {
 	registerAiRoutes(router, { jobs: { insert: noop } })
 	registerAiRuntimeRoutes(router, { getDomain: () => service })
 	registerAboutRoutes(router, { about: { info: noop }, jobs: { insert: noop } })
-	registerSettingsRoutes({ router, store: { read: noop, patch: () => ({ version: 0, changedPaths: [] }) } })
+	registerSettingsRoutes({ router, store: { read: noop, patch: () => ({ version: 0, changedPaths: [] }) }, commands: settingsCommandNoop })
 	registerActionRoutes(router, { actions })
 	registerPetPackRoutes(router, { packs })
 	registerCatalogRoutes(router, { catalog, jobs: { insert: noop } })

@@ -399,11 +399,14 @@ test('ai talk store exports redacted trace diagnostics without raw message or me
     behaviorDecisions: [
       {
         id: 1,
-        timestamp: '2026-06-20T00:00:00.000Z',
+        timestamp: 'PRIVATE_TIMESTAMP_SENTINEL',
         matched: true,
         type: 'playAction',
-        reason: 'matched provider actionId',
+        reason: 'matched provider actionId PRIVATE_REASON_SENTINEL',
         actionId: 'wave',
+        providerReason: 'PRIVATE_PROVIDER_REASON_SENTINEL',
+        inputSummary: 'PRIVATE_INPUT_SUMMARY_SENTINEL',
+        blockedReason: 'PRIVATE_BLOCKED_REASON_SENTINEL',
         replay: { reply: 'raw behavior replay text' }
       }
     ]
@@ -415,10 +418,22 @@ test('ai talk store exports redacted trace diagnostics without raw message or me
   assert.equal(exported.conversations[0].messages[0].contentChars, 'secret chat phrase sk-cpa-raw-message'.length)
   assert.equal(exported.memories[0].textChars, 'User likes trace-safe exports.'.length)
   assert.equal(exported.behaviorDecisions[0].replayRedacted, true)
+  assert.equal(exported.behaviorDecisions[0].timestamp, '')
+  assert.equal('reason' in exported.behaviorDecisions[0], false)
+  assert.equal('ruleId' in exported.behaviorDecisions[0], false)
+  assert.equal('actionId' in exported.behaviorDecisions[0], false)
+  assert.equal('intent' in exported.behaviorDecisions[0], false)
+  assert.equal('providerReason' in exported.behaviorDecisions[0], false)
+  assert.equal('inputSummary' in exported.behaviorDecisions[0], false)
+  assert.equal('blockedReason' in exported.behaviorDecisions[0], false)
   assert.equal(raw.includes('secret chat phrase'), false)
   assert.equal(raw.includes('assistant raw reply'), false)
   assert.equal(raw.includes('User likes trace-safe exports.'), false)
   assert.equal(raw.includes('raw behavior replay text'), false)
+  assert.equal(raw.includes('PRIVATE_REASON_SENTINEL'), false)
+  assert.equal(raw.includes('PRIVATE_PROVIDER_REASON_SENTINEL'), false)
+  assert.equal(raw.includes('PRIVATE_INPUT_SUMMARY_SENTINEL'), false)
+  assert.equal(raw.includes('PRIVATE_BLOCKED_REASON_SENTINEL'), false)
 })
 
 test('ai talk store can filter trace diagnostics by pet pack and conversation id', () => {

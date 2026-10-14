@@ -15,15 +15,20 @@ function tempDir(prefix) {
 test("T46 image route enqueues without awaiting generation", async () => {
 	const { registerAiRoutes } = await import("../../services/backend/routes/ai.js")
 	let handler
-	registerAiRoutes({ post: (_path, next) => { handler = next } }, {
-		jobs: { insert: (input) => ({ id: input.id }) },
+	const inserted = []
+	const router = { post: (_path, next) => { handler = next }, get() {}, patch() {}, put() {}, delete() {} }
+	registerAiRoutes(router, {
+		jobs: { insert: (input) => { inserted.push(input); return { id: input.id } } },
 	})
 	const response = { writableEnded: false, writeHead(status) { this.status = status }, end(value) { this.body = JSON.parse(value) } }
 	const started = performance.now()
-	await handler({ body: { prompt: "a cat", output: { dataDir: "/tmp/openpet", dataRelativeDir: "images" } }, requestId: "t46", startedAt: started, res: response })
+	const input = { prompt: "a cat", output: { dataDir: "/tmp/openpet", dataRelativeDir: "images" } }
+	await handler({ body: input, requestId: "t46", startedAt: started, res: response })
 	assert.equal(response.status, 202)
 	assert.match(response.body.data.jobId, /^image-generate:/)
 	assert.ok(performance.now() - started < 3_000)
+	assert.deepEqual(inserted[0].input, { redacted: true, summary: "Image generation input withheld" })
+	assert.deepEqual(inserted[0].privateInput, input)
 })
 
 test("T46 image handler makes finalization the cancellation boundary", async () => {
@@ -40,6 +45,111 @@ test("T46 image handler makes finalization the cancellation boundary", async () 
 	assert.deepEqual(result, { ok: true })
 	assert.equal(finalized, true)
 	assert.equal(committed, true)
+})
+
+test("T46 image dispatcher executes transient input while the Job stays redacted", { timeout: 15_000 }, async () => {
+	const [{ createImageJobHandlers }, { createRunner }, { createJobDispatcher }, { createQueue }, { createJobsRepository }, { migrate }, { openDatabase }] = await Promise.all([
+		import("../../services/backend/jobs/handlers/index.js"),
+		import("../../services/backend/jobs/runner.js"),
+		import("../../services/backend/jobs/dispatcher.js"),
+		import("../../services/backend/jobs/queue.js"),
+		import("../../services/backend/store/repositories/jobs.js"),
+		import("../../services/backend/store/migrate.js"),
+		import("../../services/backend/store/db.js"),
+	])
+	const db = await openDatabase({ file: ":memory:" })
+	migrate({ db })
+	const repo = createJobsRepository({ db })
+	const queue = createQueue({ repo, tickMs: 60_000 })
+	const privateInputs = new Map()
+	const seen = []
+	const runner = createRunner({
+		repo,
+		queue,
+		handlers: createImageJobHandlers({ ai: {
+			prepareGeneratedImage: async (input) => { seen.push(input); return { result: { outputs: [] }, tmpDir: "/tmp/job", destination: input.output } },
+			commitGeneratedImage: async (prepared) => prepared.result,
+		} }),
+		takePrivateInput: (jobId) => { const input = privateInputs.get(jobId); privateInputs.delete(jobId); return input },
+		forgetPrivateInput: (jobId) => privateInputs.delete(jobId),
+	})
+	const dispatch = createJobDispatcher({
+		queue, runner, privateInputs,
+		logger: { error: (_message, error) => { throw new Error(String(error?.error)) } },
+	})
+	const input = { prompt: "private prompt", output: { dataDir: "/private/data", dataRelativeDir: "runs/image" } }
+	try {
+		const job = dispatch({ id: "image-transient-dispatch", kind: "image.generate", input: { redacted: true, summary: "Image generation input withheld" }, privateInput: input })
+		for (let attempt = 0; attempt < 100 && repo.byId(job.id).status !== "succeeded"; attempt += 1) await new Promise((resolve) => setImmediate(resolve))
+		assert.equal(repo.byId(job.id).status, "succeeded")
+		assert.deepEqual(seen, [input])
+		assert.deepEqual(repo.byId(job.id).input, { redacted: true, summary: "Image generation input withheld" })
+		assert.equal(privateInputs.has(job.id), false)
+	} finally {
+		await runner.shutdown()
+		queue.stop()
+		db.close()
+	}
+})
+
+test("T46 image handler rejects redacted input without private retry data", async () => {
+	const { run } = await import("../../services/backend/jobs/handlers/image-generate.js")
+	await assert.rejects(
+		() => run({ redacted: true }, { ai: {}, signal: new AbortController().signal }),
+		(error) => error.code === "CONFLICT" && error.status === 409 && error.retryable === false,
+	)
+})
+
+test("T46 image Job cancellation aborts its in-flight Provider request", async () => {
+	const dataDir = tempDir("openpet-t46-cancel-data-")
+	const tmpDir = tempDir("openpet-t46-cancel-tmp-")
+	const referencePath = path.join(dataDir, "reference.png")
+	fs.writeFileSync(referencePath, "reference-image")
+	let requestSignal
+	let resolveRequestStarted
+	const requestStarted = new Promise((resolve) => { resolveRequestStarted = resolve })
+	const ai = createAiService({
+		settings: {
+			read: () => ({ version: 1, values: { models: { imageGeneration: {
+				provider: "openai-compatible",
+				baseUrl: "http://127.0.0.1:8317/v1",
+				model: "gpt-image-1",
+				apiKeyRef: "secret:model.image.openai.apiKey",
+				timeoutMs: 1000,
+				maxConcurrentJobs: 1,
+			} } } }),
+			patch: () => ({}),
+		},
+		secrets: { get: (id) => id === "openai" ? "sk-image-test" : "" },
+		fetchImpl: async (_url, options) => {
+			requestSignal = options.signal
+			resolveRequestStarted()
+			return await new Promise((_resolve, reject) => {
+				options.signal.addEventListener("abort", () => {
+					const error = new Error("Provider request aborted")
+					error.name = "AbortError"
+					error.code = "ABORT_ERR"
+					reject(error)
+				}, { once: true })
+			})
+		},
+	})
+	const controller = new AbortController()
+	const operation = ai.prepareGeneratedImage({
+		prompt: "keep the same character identity",
+		referenceImages: [{ path: referencePath, fileName: "reference.png", relativePath: "reference.png" }],
+		output: { dataDir, dataRelativeDir: "runs/canceled" },
+		constraints: { width: 1024, height: 1024, transparent: true },
+	}, { signal: controller.signal, tmpDir })
+	try {
+		await requestStarted
+		controller.abort()
+		await assert.rejects(operation, (error) => error.name === "AbortError")
+		assert.equal(requestSignal.aborted, true)
+	} finally {
+		fs.rmSync(dataDir, { recursive: true, force: true })
+		fs.rmSync(tmpDir, { recursive: true, force: true })
+	}
 })
 
 test("T46 runner publishes image progress as SSE-compatible job events", async () => {

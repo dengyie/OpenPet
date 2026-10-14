@@ -1,5 +1,7 @@
 # 06 · 迁移路线图、测试门禁与风险登记
 
+> **状态：历史迁移路线图。** M0–M5 的阶段、工期和任务表是设计期执行参考，不能作为当前完成度或当前任务队列。当前实现事实、优先级和门禁以 [`09-repo-state.md`](./09-repo-state.md)、[`../TODO.md`](../TODO.md)、[`../superpowers/plans/2026-10-04-openpet-development-plan.md`](../superpowers/plans/2026-10-04-openpet-development-plan.md) 以及仓库脚本的实际输出为准。
+
 > 🗺️ 本篇是执行层:每个里程碑做什么、怎么验收、怎么回滚,以及哪些风险会真的发生。总量约 **12 人周**(含测试与文档) —— 全职单人约 3 个月,业余每周投入 10 小时约 10 个月。
 
 ## 1. 里程碑总览
@@ -302,7 +304,7 @@ AI 与 Creator 可分开回滚。但 `demo-control-center-api.ts` 删除不可�
 | D1 | 后端进程形态 | `utilityProcess` vs `child_process.fork` vs 独立二进制 | ✅ 已验证 | **`fork`**:Electron 42.4.0 / Node 24.16.0 实测 IPC 双向可用,ready +145 ms,不依赖 Electron API |
 | D2 | 后端 HTTP 框架 | 原生 `node:http` vs Hono vs Fastify | ✅ ADR-013 | **原生 `node:http` + 自写约 150 行 router**:method/path 匹配、路径参数解析、middleware 函数数组、统一错误兜底。鉴权、body 上限、访问日志三块直接复用 `local-http-service.js` 的实现经验 |
 | D3 | 密钥加密 | 反向通道每次代理 vs 后端自管密钥文件 | ✅ ADR-010 | Shell 侧 `safeStorage` 解密,经 `init` 消息一次性注入后端内存;两个备选项均被否决(一个多一跳、一个丢钥匙串) |
-| D4 | SQLite 驱动 | `node:sqlite` vs `better-sqlite3` | 🟡 ADR-014 | **`node:sqlite`** 在 Electron 42.4.0 / Node 24.16.0 无需 flag且索引/事务可用;G11 尚须以 file-backed DB 验证 WAL。`store/db.js` 保持可替换 driver 接口 |
+| D4 | SQLite 驱动 | `node:sqlite` vs `better-sqlite3` | ✅ 已验证 | **`node:sqlite`** 在 Electron 42.4.0 / Node 24.16.0 无需 flag；`tests/backend/sqlite-driver.test.js` 已验证 file-backed WAL、默认 pragma、跨连接持久化、部分唯一索引和显式事务。缺口 G11 已关闭；`store/db.js` 保持可替换 driver 接口 |
 | D5 | 前端数据层 | TanStack Query vs 自写 `useResource` | ✅ ADR-015 | **TanStack Query**。四条硬约束:`staleTime: Infinity`、关闭 `refetchOnWindowFocus`、缓存失效只由 SSE 事件触发、`useQuery` 只允许出现在 pane 级 hook 中 |
 | D6 | 契约 schema 工具 | zod vs TypeBox vs 手写 | ✅ ADR-016 | **zod**。schema 是唯一真相源,类型由 `z.infer` 派生;后端请求与响应都校验,前端仅 dev 模式校验,生产构建把 zod tree-shake 掉(前端零体积代价) |
 | D7 | 外部 HTTP/MCP 服务位置 | 后端内嵌 vs 保留现位 | ✅ 已关闭 | **后端内嵌**,与业务服务同进程;**必须继承原对外端口与路径**,否则违反「不改 MCP 对外行为」这条非目标(见 [03 篇 §8](./03-api-contract.md)) |
@@ -335,8 +337,8 @@ AI 与 Creator 可分开回滚。但 `demo-control-center-api.ts` 删除不可�
 
 ## 12. 下一步建议
 
-1. **先跑 §2 的六条 spike**(半天)—— 代码已在 `spike/` 目录就继,跑法与断言见 [07 篇](./07-spike.md)。它会直接给出 D1 与端口时序的答案,也会验证 ADR-010 与 ADR-014 的前提
-2. **技术选型已全部关闭**(D2 → ADR-013、D4 → ADR-014、D5 → ADR-015、D6 → ADR-016、D8 → ADR-017),开工前不需要再讨论选型;只有 D1 与 ADR-014 的前提要靠 spike 第 1、6 条实测确认
+1. **历史记录**：M0 期间应先跑 §2 的六条 spike；完整结果保留在 [07 篇](./07-spike.md)，当前实现事实以仓库测试和 [09 篇](./09-repo-state.md) 为准。
+2. **技术选型已全部关闭**(D1 → fork、D2 → ADR-013、D3 → ADR-010、D4 → ADR-014、D5 → ADR-015、D6 → ADR-016、D7 → 03 篇 §8、D8 → ADR-017)；当前不需要重复验证已关闭的 ADR-014/G11 前提，新增变更应运行对应的 live gates。
 3. **先跑一次 `pack`**,确认当前基线可打包(`docs/project-context.json` 里 `releaseReady: false` 且有 macOS 签名报错待解)
 4. **M0 的第一个 commit 建议只做目录调整**(npm workspaces + 目录搬迁),不改逻辑,方便出问题时 revert
 5. 实现阶段的任务拆解已经做好:M1 的 13 张任务卡见 [10 篇](./10-tasks-m1.md) 与 [11 篇](./11-tasks-m1-http.md),agent 执行规范见 [08 篇](./08-agent-guide.md),入口在 [00 篇](./00-START-HERE.md)

@@ -21,6 +21,33 @@ const createIpcMainStub = () => {
   }
 }
 
+test('Backend Settings commands keep preview and native cursor selection in Shell', async () => {
+  const previews = []
+  const dialogs = []
+  const logs = []
+  const cursor = { id: 'cursor-1', fileName: 'cursor.png' }
+  let selection = { canceled: true, filePaths: [] }
+  const handler = createSettingsCommandHandler({
+    petService: { previewSettings: (settings) => previews.push(settings) },
+    getPetWindow: () => ({ id: 'pet-window' }),
+    cursorAssetService: { importCursor: (filePath) => ({ ...cursor, filePath }) },
+    showOpenDialogForEvent: async (_event, options) => { dialogs.push(options); return selection },
+    sendToPetWindow: (_getPetWindow, channel, payload) => logs.push({ channel, payload }),
+    recordAppLog: (entry) => logs.push(entry),
+  })
+
+  assert.deepEqual(await handler({ operation: 'preview-scale', payload: { scale: 1.25 } }), { scale: 1.25 })
+  assert.deepEqual(previews, [{ scale: 1.25 }])
+  assert.equal(logs.some((entry) => entry.payload?.scale === 1.25 && entry.channel === IPC.SETTINGS_CHANGED), true)
+  await assert.rejects(handler({ operation: 'preview-scale', payload: { scale: 5 } }), { code: 'VALIDATION_FAILED' })
+  assert.deepEqual(await handler({ operation: 'import-cursor', payload: {} }), { canceled: true })
+  assert.deepEqual(dialogs[0].filters, [{ name: 'Cursor Images', extensions: ['png', 'webp'] }])
+
+  selection = { canceled: false, filePaths: ['/tmp/cursor.png'] }
+  assert.deepEqual(await handler({ operation: 'import-cursor', payload: {} }), { canceled: false, cursor: { ...cursor, filePath: '/tmp/cursor.png' } })
+  await assert.rejects(handler({ operation: 'import-cursor', payload: { sourcePath: '/tmp/untrusted.png' } }), { code: 'VALIDATION_FAILED' })
+})
+
 const createRequiredServices = ({
   ipcMainService,
   petService,

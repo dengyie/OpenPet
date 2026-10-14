@@ -162,6 +162,8 @@ export interface AiBehaviorConfig {
   decisions: AiBehaviorDecision[]
 }
 
+export type AiBehaviorConfigSaveRequest = Pick<AiBehaviorConfig, 'enabled' | 'useTools' | 'cooldownMs' | 'rules'>
+
 export interface AiMemoryConfig {
   enabled: boolean
 }
@@ -636,6 +638,9 @@ export interface LocalHttpConfigViewState {
   port: number
   token: string
   logs: ServiceLogEntry[]
+  backendMode?: 'local' | 'remote'
+  sshAlias?: string
+  backendPort?: number
 }
 
 export interface LocalHttpRuntimeViewState {
@@ -1004,7 +1009,7 @@ export interface PetPackInspectionResult {
   valid?: boolean
   errors?: string[]
   warnings?: string[]
-  pack?: PetPackSummary
+  pack?: Omit<PetPackSummary, 'rootPath'> | null
 }
 
 export interface PetPackMutationResult {
@@ -3154,7 +3159,8 @@ export interface AiConnectionTestResult {
   reply?: string
   code?: string
   message?: string
-  modelsProbe?: 'ok' | 'unavailable' | 'failed' | 'timed_out'
+  modelsProbe?: 'ok' | 'unavailable' | 'failed' | 'timed_out' | 'rate_limited' | 'provider_unavailable'
+  modelsProbeMessage?: string
   availableModels?: string[]
   currentModelDiscovered?: boolean
 }
@@ -3778,6 +3784,9 @@ export interface ControlCenterApi {
   checkImageGenerationHealth: (payload?: ImageGenerationHealthCheckRequest) => Promise<ImageGenerationHealthCheckResult>
   discoverImageGenerationModels: () => Promise<ProviderModelDiscoveryResult>
   getAiConversation: (conversationId: string) => Promise<ChatMessage[]>
+  listAiConversations?: (filters?: { entrypoint?: string; petPackId?: string }) => Promise<{ conversations: Array<Record<string, unknown>> }>
+  getAiConversationView?: (conversationId: string) => Promise<Record<string, unknown>>
+  deleteAiConversation?: (conversationId: string) => Promise<{ deleted: boolean; conversationId: string }>
   chat: (payload: AiChatRequest) => Promise<AiChatResponse>
   exportAiTalkTraceDiagnostics: (filters?: AiTalkTraceDiagnosticsFilters) => Promise<string>
   getPetChatState: () => Promise<PetChatStateViewState>
@@ -3785,7 +3794,7 @@ export interface ControlCenterApi {
   openPetChatWindow: () => Promise<PetChatStateViewState>
   sendPetChatMessage: (payload: AiChatRequest) => Promise<AiChatResponse>
   getAiBehavior: () => Promise<AiBehaviorConfig>
-  saveAiBehavior: (config: AiBehaviorConfig) => Promise<AiBehaviorConfig>
+  saveAiBehavior: (config: AiBehaviorConfigSaveRequest) => Promise<AiBehaviorConfig>
   dryRunAiBehavior: (payload: AiBehaviorDryRunRequest) => Promise<AiBehaviorResult>
   replayAiBehaviorDecision: (decisionId: number) => Promise<AiBehaviorResult>
   exportAiBehaviorDiagnostics: () => Promise<string>

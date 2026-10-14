@@ -42,6 +42,86 @@ test('sprite processor splits exact cells and applies one sheet-level scale', as
   assert.equal(gifMetadata.pages, 4)
 })
 
+test('sprite processor normalizes a same-aspect provider sheet to the declared canvas', async () => {
+  const dir = createTempDir()
+  const inputPath = path.join(dir, 'provider-sheet.png')
+  const svg = `<svg width="1254" height="1254" xmlns="http://www.w3.org/2000/svg">
+    <rect x="120" y="140" width="100" height="280" fill="#cc3344"/>
+    <rect x="540" y="140" width="100" height="280" fill="#cc3344"/>
+    <rect x="960" y="140" width="100" height="280" fill="#cc3344"/>
+    <rect x="120" y="770" width="100" height="280" fill="#cc3344"/>
+    <rect x="540" y="770" width="100" height="280" fill="#cc3344"/>
+    <rect x="960" y="770" width="100" height="280" fill="#cc3344"/>
+  </svg>`
+  await sharp(Buffer.from(svg)).png().toFile(inputPath)
+
+  const result = await processSpriteSheet({
+    inputPath,
+    outputDir: path.join(dir, 'processed'),
+    layout: getSpriteLayout(6),
+    profile: { characterClass: 'grounded-compact-character' }
+  })
+
+  assert.deepEqual(result.metrics.sourceDimensions, { width: 1254, height: 1254 })
+  assert.equal(result.metrics.normalizedToCanvas, true)
+  assert.deepEqual(result.metrics.canvas, { width: 1024, height: 1024 })
+  assert.equal(result.frames.length, 6)
+})
+
+test('sprite processor supports a null profile before the idle profile is established', async () => {
+  const dir = createTempDir()
+  const inputPath = path.join(dir, 'idle-sheet.png')
+  const svg = `<svg width="1024" height="1024" xmlns="http://www.w3.org/2000/svg">
+    <rect x="120" y="140" width="100" height="280" fill="#cc3344"/>
+    <rect x="450" y="140" width="100" height="280" fill="#cc3344"/>
+    <rect x="780" y="140" width="100" height="280" fill="#cc3344"/>
+    <rect x="120" y="650" width="100" height="280" fill="#cc3344"/>
+    <rect x="450" y="650" width="100" height="280" fill="#cc3344"/>
+    <rect x="780" y="650" width="100" height="280" fill="#cc3344"/>
+  </svg>`
+  await sharp(Buffer.from(svg)).png().toFile(inputPath)
+
+  const result = await processSpriteSheet({
+    inputPath,
+    outputDir: path.join(dir, 'processed'),
+    layout: getSpriteLayout(6),
+    profile: null
+  })
+
+  assert.equal(result.frames.length, 6)
+  assert.equal(result.metrics.frames.every((frame) => Number.isFinite(frame.appliedScale)), true)
+})
+
+test('sprite processor removes an opaque black atlas background before measuring each frame and unused cell', async () => {
+  const dir = createTempDir()
+  const inputPath = path.join(dir, 'black-background-sheet.png')
+  const svg = `<svg width="1024" height="1024" xmlns="http://www.w3.org/2000/svg">
+    <rect width="1024" height="1024" fill="#000000"/>
+    <rect x="120" y="120" width="100" height="200" fill="#e8a34b"/>
+    <rect x="460" y="120" width="100" height="200" fill="#e8a34b"/>
+    <rect x="800" y="120" width="100" height="200" fill="#e8a34b"/>
+    <rect x="120" y="620" width="100" height="200" fill="#e8a34b"/>
+    <rect x="460" y="620" width="100" height="200" fill="#e8a34b"/>
+  </svg>`
+  await sharp(Buffer.from(svg)).png().toFile(inputPath)
+
+  const result = await processSpriteSheet({
+    inputPath,
+    outputDir: path.join(dir, 'processed'),
+    layout: getSpriteLayout(5),
+    profile: { characterClass: 'grounded-compact-character', runtimeStandingHeightPx: 92 }
+  })
+
+  for (const frame of result.frames) {
+    const { data, info } = await sharp(frame.path).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+    const alphaAt = (x, y) => data[((y * info.width) + x) * info.channels + 3]
+    const visiblePixels = Array.from({ length: info.width * info.height }, (_, pixel) => data[pixel * info.channels + 3])
+      .filter((alpha) => alpha > 8).length
+    assert.equal(alphaAt(20, 30), 0, `frame ${frame.index} retained the atlas background`)
+    assert.ok(visiblePixels > 0, `frame ${frame.index} lost the character`)
+  }
+})
+
 test('sprite processor rejects visible pixels in declared unused cells', async () => {
   const dir = createTempDir()
   const inputPath = path.join(dir, 'raw-sheet.png')

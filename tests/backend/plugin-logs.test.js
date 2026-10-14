@@ -139,6 +139,34 @@ test("T30 lists and clears logs through the plugin domain", async () => {
 	}
 })
 
+test("T30 applies level and text filters before returning plugin logs", async () => {
+	const { db, service } = await createHarness()
+	try {
+		service.appendLog({ pluginId: "demo", message: "network ready", at: 1 })
+		service.appendLog({ pluginId: "demo", level: "error", message: "network failed", at: 2 })
+		service.appendLog({ pluginId: "demo", level: "warn", message: "cache warning", at: 3 })
+		await service.flushLogs()
+		assert.deepEqual(service.getLogs("demo", { level: "error" }).map((entry) => entry.message), ["network failed"])
+		assert.deepEqual(service.getLogs("demo", { query: "READY" }).map((entry) => entry.message), ["network ready"])
+		assert.deepEqual(service.getLogs("demo", { page: 2, pageSize: 1 }).map((entry) => entry.message), ["network failed"])
+	} finally {
+		await service.closeLogs()
+		db.close()
+	}
+})
+
+test("T30 exports plugin logs as valid CSV when messages contain quotes and commas", async () => {
+	const { db, service } = await createHarness()
+	try {
+		service.appendLog({ pluginId: "demo", message: 'quote "here", comma', at: 1 })
+		await service.flushLogs()
+		assert.equal(service.exportLogs({ pluginId: "demo", format: "csv" }), 'id,pluginId,level,message,at\n1,demo,info,"quote ""here"", comma",1')
+	} finally {
+		await service.closeLogs()
+		db.close()
+	}
+})
+
 test("T30 plugin.log bursts stay behind the T11 buffer and report dropped events", async () => {
 	const hub = createEventHub({ heartbeatMs: 60_000 })
 	let drain

@@ -965,6 +965,147 @@ test('non-Creator plugins can generate images without mutating Creator Studio ha
   assert.equal(ownerWarning.message.includes('attacker.example.test'), false)
 })
 
+test('Creator Studio Hatch planning receives bridge cancellation after the HTTP client disconnects', async () => {
+  const spawned = []
+  const child = createFakeServiceProcess()
+  let resolvePlan
+  const planPending = new Promise((resolve) => { resolvePlan = resolve })
+  let planSignal
+  let planCalled = false
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'openpet.creator-studio': true } }
+    }),
+    petService: createBridgeAwarePetService(),
+    hatchPetAgentService: {
+      planSprite: async ({ signal }) => {
+        planCalled = true
+        planSignal = signal
+        signal?.addEventListener('abort', () => resolvePlan({ canceled: true }), { once: true })
+        return planPending
+      }
+    },
+    officialPlugins: [],
+    pluginDirs: [path.resolve(__dirname, '../../examples/plugins')],
+    spawnCommandProcess: (file, args, options) => {
+      spawned.push({ file, args, options })
+      return child
+    }
+  })
+
+  let commandRun
+  let responseStatus = null
+  let requestError = null
+  try {
+    commandRun = service.runCommand('openpet.creator-studio', 'create-run', { petName: 'Bridge Pet', prompt: 'pet' })
+    await waitFor(() => spawned.length === 1)
+    const target = new URL(`${spawned[0].options.env.OPENPET_BRIDGE_URL}/creator/hatch-pet/plan`)
+    const request = http.request({
+      protocol: target.protocol,
+      hostname: target.hostname,
+      port: target.port,
+      path: target.pathname,
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${spawned[0].options.env.OPENPET_BRIDGE_TOKEN}`,
+        'Content-Type': 'application/json'
+      }
+    }, (response) => {
+      responseStatus = response.statusCode
+      response.resume()
+    })
+    request.on('error', (error) => { requestError = error })
+    request.write(JSON.stringify({ runId: 'bridge-cancel', userIntent: 'pet' }))
+    request.end()
+    await waitFor(() => planCalled || responseStatus !== null || requestError)
+    assert.equal(planCalled, true, `Hatch plan bridge did not dispatch (status ${responseStatus}, error ${requestError?.code || 'none'})`)
+    request.destroy()
+    await new Promise((resolve) => setTimeout(resolve, 30))
+
+    assert.equal(planSignal?.aborted, true)
+  } finally {
+    resolvePlan?.({ canceled: true })
+    child.stdout.write('{"ok":true}\n')
+    child.emit('exit', 0, null)
+    await commandRun?.catch(() => {})
+  }
+})
+
+test('Creator Studio Hatch evaluation receives bridge cancellation after the HTTP client disconnects', async () => {
+  const spawned = []
+  const child = createFakeServiceProcess()
+  let resolveEvaluation
+  const evaluationPending = new Promise((resolve) => { resolveEvaluation = resolve })
+  let evaluationSignal
+  let evaluationCalled = false
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'openpet.creator-studio': true } }
+    }),
+    petService: createBridgeAwarePetService(),
+    hatchPetAgentService: {
+      evaluateSprite: async ({ signal }) => {
+        evaluationCalled = true
+        evaluationSignal = signal
+        signal?.addEventListener('abort', () => resolveEvaluation({ canceled: true }), { once: true })
+        return evaluationPending
+      }
+    },
+    officialPlugins: [],
+    pluginDirs: [path.resolve(__dirname, '../../examples/plugins')],
+    spawnCommandProcess: (file, args, options) => {
+      spawned.push({ file, args, options })
+      return child
+    }
+  })
+
+  let commandRun
+  let responseStatus = null
+  let requestError = null
+  try {
+    commandRun = service.runCommand('openpet.creator-studio', 'create-run', { petName: 'Bridge Pet', prompt: 'pet' })
+    await waitFor(() => spawned.length === 1)
+    const boardRelativePath = 'runs/bridge-cancel/review-board.png'
+    const boardPath = path.join(service.getPluginCreatorDataDir('openpet.creator-studio'), boardRelativePath)
+    fs.mkdirSync(path.dirname(boardPath), { recursive: true })
+    fs.writeFileSync(boardPath, 'review-board')
+    const target = new URL(`${spawned[0].options.env.OPENPET_BRIDGE_URL}/creator/hatch-pet/evaluate`)
+    const request = http.request({
+      protocol: target.protocol,
+      hostname: target.hostname,
+      port: target.port,
+      path: target.pathname,
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${spawned[0].options.env.OPENPET_BRIDGE_TOKEN}`,
+        'Content-Type': 'application/json'
+      }
+    }, (response) => {
+      responseStatus = response.statusCode
+      response.resume()
+    })
+    request.on('error', (error) => { requestError = error })
+    request.write(JSON.stringify({
+      runId: 'bridge-cancel',
+      scope: 'canonical',
+      board: { relativePath: boardRelativePath, sha256: 'a'.repeat(64), regions: [{ regionId: 'source' }] },
+      qa: { ok: true, failures: [], metrics: {} }
+    }))
+    request.end()
+    await waitFor(() => evaluationCalled || responseStatus !== null || requestError)
+    assert.equal(evaluationCalled, true, `Hatch evaluate bridge did not dispatch (status ${responseStatus}, error ${requestError?.code || 'none'})`)
+    request.destroy()
+    await new Promise((resolve) => setTimeout(resolve, 30))
+
+    assert.equal(evaluationSignal?.aborted, true)
+  } finally {
+    resolveEvaluation?.({ canceled: true })
+    child.stdout.write('{"ok":true}\n')
+    child.emit('exit', 0, null)
+    await commandRun?.catch(() => {})
+  }
+})
+
 test('declaration-only creator pack manifest bridge reads validates and applies active pack metadata', async () => {
   const spawned = []
   const child = createFakeServiceProcess()

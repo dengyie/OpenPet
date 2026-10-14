@@ -2,6 +2,7 @@
 
 const { spawnSidecar: defaultSpawnSidecar, stopSidecar: defaultStopSidecar } = require("./spawn")
 const { createMessageHandler: defaultCreateMessageHandler } = require("./message-handler")
+const { connectRemoteBackend: defaultConnectRemoteBackend } = require("./remote-backend")
 
 function safeLog(logger, level, message, fields) {
 	try {
@@ -61,10 +62,12 @@ function createSidecarRuntimeCoordinator(options = {}) {
 	const spawnSidecar = options.spawnSidecar || defaultSpawnSidecar
 	const stopSidecar = options.stopSidecar || defaultStopSidecar
 	const createMessageHandler = options.createMessageHandler || defaultCreateMessageHandler
+	const connectRemoteBackend = options.connectRemoteBackend || defaultConnectRemoteBackend
 	const pidLedger = options.pidLedger || null
 	const listeners = new Set()
 	let state = { status: "stopped", backend: null, reason: null }
 	let child = null
+	let transportClose = null
 	let startPromise = null
 	let stopPromise = null
 	let generation = 0
@@ -114,7 +117,99 @@ function createSidecarRuntimeCoordinator(options = {}) {
 				let messageHandler = null
 				let exitedBeforeReady = false
 				let earlyExitReason = null
+				const remoteBackend = typeof options.getRemoteBackend === "function" ? options.getRemoteBackend() : options.remoteBackend
+				if (remoteBackend && typeof connectRemoteBackend === "function") {
+					let remoteTransport = null
+					const handlerOptions = {
+						dialog: options.dialog,
+						petService: options.petService,
+						secretService: options.secretService,
+						logger: options.logger,
+						onNotify: options.onNotify,
+						onBadge: options.onBadge,
+						onDashboard: options.onDashboard,
+						onSettingsChanged: options.onSettingsChanged,
+						onSettingsApplyRequest: options.onSettingsApplyRequest,
+						onSettingsCommandRequest: options.onSettingsCommandRequest,
+						onCatalogRequest: options.onCatalogRequest,
+						onPetPackRequest: options.onPetPackRequest,
+						onAiTalkRequest: options.onAiTalkRequest,
+						onActionsRequest: options.onActionsRequest,
+						productionService: options.productionService,
+					}
+					messageHandler = createMessageHandler({ ...handlerOptions, send: (message) => remoteTransport?.child?.send?.(message) })
+					remoteTransport = await connectRemoteBackend({
+						...remoteBackend,
+						providerKeys: initBody.providerKeys || {},
+						legacyToken: initBody.legacyToken || null,
+						localHttpConfig: initBody.localHttpConfig,
+						appInfo: initBody.appInfo,
+						onMessage: async (raw) => {
+							const pending = backendPending.get(raw?.id)
+							if (pending) {
+								backendPending.delete(raw.id)
+								clearTimeout(pending.timer)
+								const validationError = validatePendingResponse(raw, pending.responseType)
+								if (validationError) pending.reject(new Error(validationError))
+								else pending.resolve(raw)
+								return raw
+							}
+							const replyTypes = new Set(["pet.command.request", "plugin.production.request", "dialog.request", "settings.apply.request", "settings.command.request", "secrets.persist.request", "catalog.request", "pet-packs.request", "ai.talk.request", "actions.request"])
+							if (!replyTypes.has(raw?.body?.type)) {
+								await messageHandler.handle(raw)
+								return undefined
+							}
+							return new Promise((resolve) => {
+								const timer = setTimeout(() => resolve(undefined), 65_000)
+								const wrappedSend = (message) => {
+									if (message?.id === raw.id) {
+										clearTimeout(timer)
+										resolve(message)
+										return
+									}
+									return remoteTransport?.child?.send?.(message)
+								}
+								void createMessageHandler({ ...handlerOptions, send: wrappedSend }).handle(raw).catch(() => resolve(undefined))
+							})
+						},
+						onExit(code) {
+							exitedBeforeReady = true
+							earlyExitReason = code == null ? "REMOTE_SSH_EXITED" : `REMOTE_SSH_EXIT_${code}`
+							if (currentGeneration !== generation || state.status === "stopped") return
+							child = null
+							transportClose = null
+							rejectBackendPending("remote Backend exited")
+							degrade(earlyExitReason, currentGeneration)
+						},
+					})
+					if (exitedBeforeReady) {
+						await remoteTransport.close?.()
+						return null
+					}
+					if (currentGeneration !== generation) {
+						await remoteTransport.close?.()
+						return null
+					}
+					child = remoteTransport.child
+					transportClose = remoteTransport.close
+					const pid = Number(remoteTransport.child?.pid || remoteTransport.pid) || 0
+					if (pid > 0) {
+						try {
+						pidLedger?.register?.(pid, {
+								startedAt: Date.now() - (Number(remoteTransport.startupMs) || 0),
+								processName: remoteTransport.processName || "ssh",
+							})
+						} catch (error) {
+							safeLog(options.logger, "warn", "remote Backend PID ledger register failed", { pid, error: String(error) })
+						}
+					}
+					const backend = { baseUrl: remoteTransport.baseUrl, sessionToken: remoteTransport.sessionToken }
+					publish({ status: "ready", backend, reason: null })
+					await options.onReady?.(backend)
+					return backend
+				}
 				const result = await spawnSidecar({
+					app: options.app,
 					initBody,
 					logger: options.logger,
 					onMessage(raw) {
@@ -154,6 +249,7 @@ function createSidecarRuntimeCoordinator(options = {}) {
 					return null
 				}
 				child = result.child
+				transportClose = null
 				// The fork handle is authoritative; the ready envelope PID is metadata
 				// supplied by the child and must not redirect ledger ownership.
 				const pid = Number(result.child?.pid || result.pid) || 0
@@ -175,10 +271,11 @@ function createSidecarRuntimeCoordinator(options = {}) {
 					send: (message) => child?.send?.(message),
 					onNotify: options.onNotify,
 					onBadge: options.onBadge,
-						onDashboard: options.onDashboard,
+					onDashboard: options.onDashboard,
 					productionService: options.productionService,
 					onSettingsChanged: options.onSettingsChanged,
 					onSettingsApplyRequest: options.onSettingsApplyRequest,
+					onSettingsCommandRequest: options.onSettingsCommandRequest,
 					onCatalogRequest: options.onCatalogRequest,
 					onPetPackRequest: options.onPetPackRequest,
 						onActionsRequest: options.onActionsRequest,
@@ -214,7 +311,8 @@ function createSidecarRuntimeCoordinator(options = {}) {
 		stopPromise = (async () => {
 			await pendingStart?.catch(() => {})
 			if (currentChild) {
-				await stopSidecar(currentChild)
+				if (transportClose) await transportClose()
+				else await stopSidecar(currentChild)
 				if (currentPid > 0) {
 					try {
 						pidLedger?.unregister?.(currentPid)

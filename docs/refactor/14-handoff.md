@@ -92,7 +92,7 @@ ls packages/contracts/dist
 - TS 报错八成来自 zod 的大版本:先 `npm ls zod` 确认装的是 `^4`。**不要改契约来迁就编译器。**
 - `dist` 结构与 `main` 不一致时,**改 `main` 不要改目录结构**,并在 PR 里说明。
 
-**结论写回** 09 篇 §4 仅记录 E2 的构建证据;**缺口 G1 仍保持 ⏳**,因为 `dist/` 未入库且尚未进入打包/CI 门禁。若改了 `package.json`,同步 09 篇 §2.10。
+**结论写回** 09 篇 §4 记录 E2 的构建证据。缺口 G1 已关闭：`build:contracts` 已进入 pack/dist 与 CI 门禁，`asarUnpack` 已覆盖 contracts 运行时依赖。若改了 `package.json`,同步 09 篇 §2.10。
 
 > 这张卡不阻塞门禁:`check:api-contract` 读的是 `packages/contracts/src/*.ts`,不是 `dist`。TS 侧在 `dist` 生成前也可以走 `@openpet/contracts/src/*`。它阻塞的是**任何 import 这个包的 T 卡**。
 
@@ -239,7 +239,7 @@ OK  换端口后旧 baseUrl 零请求 (xxms)
 
 **不绿怎么办**(指第 2 条之外的红)07 篇 §8 第 3 行:首屏改为只渲染骨架、不发请求,等 `onBackendChanged` 后再挂载数据组件 —— 05 篇 §2.2 的排队方案作废,改成门控渲染。
 
-**结论写回** 07 篇 §7 第 **3** 行,写「3/4,第 2 条按预期红」。修复归属 05 篇 §2.2 的 `apps/control-center/src/api/transport.ts`(第一个请求入队时就起定时器,到期把整个队列以 `BACKEND_UNAVAILABLE` 清算)—— 那是 **T20**(12 篇)的活,**去确认那张卡里写了定时清扫,没写就补上再动手**。
+**结论写回** 07 篇 §7 第 **3** 行,写「3/4,第 2 条按预期红」。修复归属 05 篇 §2.2 的当前 `src/control-center/src/api/transport.ts`(第一个请求入队时就起定时器,到期把整个队列以 `BACKEND_UNAVAILABLE` 清算)—— 那是 **T20**(12 篇)的历史任务。
 
 ### E8 · spike 4 —— sidecar 里拿不到 safeStorage(ADR-010)
 
@@ -264,11 +264,11 @@ ELECTRON_RUN_AS_NODE=1 npx electron spike/04-safe-storage/probe.js
 
 **结论写回** 07 篇 §7 第 **4** 行,**两半都填**:sidecar 侧的探针结果 + E4 记下的 Shell 侧 `isEncryptionAvailable`。然后按 07 篇 §9 **删除** `spike/04-safe-storage/probe.js`,结论写进 ADR-010 的「实测依据」。
 
-### E9 · 三条门禁跑绿并贴回 PR
+### E9 · 历史三条基础门禁记录
 
-**目标** 门禁脚本我只能让它**存在**,不能让它**跑绿**。第一次真实执行在这里。
+**状态** 这是 M0 的历史执行卡，不是当前唯一门禁流程。当前执行顺序见 `docs/development-workflow.md` 和 `docs/refactor/00-START-HERE.md`。
 
-**前置** E1。(`check:api-contract` 读 `src/*.ts`,不依赖 E2。)
+**前置** E1。历史版本的 `check:api-contract` 读取 `src/*.ts`;当前命令依赖先构建 `packages/contracts/dist`。
 
 ```bash
 npm run check:node          # 语法
@@ -276,11 +276,11 @@ npm run test:backend        # 单测:state-machine 的 9 条合法边
 npm run check:api-contract  # 契约与 03 篇对账
 ```
 
-**期望输出** 三条退出码 0。`check:api-contract` 会打印六项对账 + 03 篇 §3 的算术重算,末尾固定一句「改契约与改文档必须同时进行 —— 见 docs/refactor/03-api-contract.md §9。」
+**历史期望** 三条基础命令退出码 0。当前 `check:api-contract` 已扩展为 10 项硬对账，并由 `build:contracts`、`check:channel-retirement`、`check:docs-drift` 组成完整文档/契约门禁。
 
-它还会打印 **2 条 `todo`**(路由表对账、通道盘点)—— 那是 **G9,不算红**,M1 起硬化。
+当前 check:api-contract 已硬化路由、registry、文档和 IPC 盘点；缺少 packages/contracts/dist 时先运行 npm run build:contracts。不要把旧版本的 todo 输出当作当前门禁行为。
 
-**判定** ✅ 三条全 0。❌ 任何一条非 0。
+**历史判定** ✅ 三条全 0。当前判定必须以完整门禁矩阵为准。
 
 **不绿怎么办**
 
@@ -337,7 +337,7 @@ E5 spike 2 port    ✅ ready 送达 +<N>ms(首行 +<N>ms / listen +<N>ms)
 E6 spike 5 pack    <✅/❌> R20 是否命中:<结论>
 E7 spike 3 gate    ✅ 3/4,第 2 条按预期红
 E8 spike 4 secret  ✅ sidecar 拿不到 safeStorage,ADR-010 保留
-E9 门禁            ✅ 三条全绿(2 条 todo = G9,不算红)
+E9 门禁            ✅ 旧基线三条命令均为 0；当前门禁还应运行 build:contracts、check:channel-retirement 和 check:docs-drift，并记录 check:api-contract 的 10 项硬对账。
 
 推翻的决策:<无 / ADR-0xx → ...>
 新发现的缺口:<无 / G11: ...>
@@ -358,7 +358,7 @@ E9 门禁            ✅ 三条全绿(2 条 todo = G9,不算红)
 
 ## 5. 这一篇顺手记下的文档债
 
-E1–E10 已完成。下面逐行保留原债务位置,写清已完成结果与仍未关闭的后续项;权威实测值仍只在 [07 篇](./07-spike.md) §7。
+E1–E10 已完成。下面逐行保留原债务位置,写清已完成结果与仍需确认的后续项;权威实测值仍只在 [07 篇](./07-spike.md) §7。
 
 | # | 位置 | 问题 | 危险度 |
 | --- | --- | --- | --- |
@@ -366,9 +366,9 @@ E1–E10 已完成。下面逐行保留原债务位置,写清已完成结果与�
 | 2 | 07 篇 §5 步骤 1 与 `spike/README.md`「第 5 条」步骤 1 | **已完成**:`build.files` 已含 `apps/**/*`、`services/**/*`、`packages/**/*`;E6 正式方案为 `asarUnpack` + unpacked resolver | 已关闭 |
 | 3 | `spike/README.md` 的结果记录表 | **已完成**:重复表已改为指向 07 篇 §7 的单一结果源 | 已关闭 |
 | 4 | `spike/README.md`「与 07 篇的两处偏差(需要同步回文档)」 | **已完成**:偏差已同步进 07 篇 §0 与 §3,旧说明已移除 | 已关闭 |
-| 5 | 缺口 G1:`build:contracts` 未进入构建/CI | **仍未关闭**:由 T34 补显式打包与构建门禁 | #41 §5 卡面,#41 §4 进度 |
-| 6 | 缺口 G11:file-backed WAL 未验证 | **仍未关闭**:由 T35 复验并补 `tests/backend/sqlite-driver.test.js` | #41 §5 卡面,#41 §4 进度 |
-| 7 | `check:api-contract`、`check:docs-drift`、`build:contracts` 未显式进入 CI | **仍未关闭**:由 T36 增加显式 CI 门禁 | #41 §5 卡面,#41 §4 进度 |
+| 5 | 缺口 G1:`build:contracts` 未进入构建/CI | **已关闭**：`build:contracts` 已进入 pack/dist 与 CI，当前门禁可执行 | 09 篇 §4、`.github/workflows/ci.yml` |
+| 6 | 缺口 G11:file-backed WAL 未验证 | **已关闭**：`tests/backend/sqlite-driver.test.js` 已验证 file-backed WAL、pragma 与跨连接持久化 | 09 篇 §4、`tests/backend/sqlite-driver.test.js` |
+| 7 | `check:api-contract`、`check:docs-drift`、`build:contracts` 未显式进入 CI | **已关闭**：CI 已显式执行三项命令，当前文档门禁另含 channel-retirement | `.github/workflows/ci.yml` |
 
 > 这是 G3 那条教训的复现:**同一个事实在仓库里出现第二次,就开始漂。** 命令表、结果表都应该只有一份。
 
@@ -386,7 +386,7 @@ E1–E10 已完成。下面逐行保留原债务位置,写清已完成结果与�
 | 两张纯单测卡(`message-schema.test.js`:信封往返 + 6 种失败原因 + 版本不匹配;`middleware.test.js`:`ApiError` 状态映射 / 常量时间比较 / 1 MB 中途截断 / 环形缓冲) | 计划 T36–T37 |
 | §5 登记的四条文档债 | 下次动那几个文件时 |
 
-**G2**(`BACKEND_TO_SHELL_TYPES` 8 项、契约 9 项,少 `dialog.request`)已经有主:**T12**,见 11 篇。T18/T19 强依赖它。
+**G2（历史记录）**(当时 `BACKEND_TO_SHELL_TYPES` 8 项、契约 9 项,少 `dialog.request`)已由 **T12** 补齐；当前反向通道数量以契约、消息 schema 和门禁为准。T18/T19 的历史依赖关系保留用于审计。
 
 ---
 
@@ -395,4 +395,4 @@ E1–E10 已完成。下面逐行保留原债务位置,写清已完成结果与�
 | 版本 | 日期 | 变更 |
 | --- | --- | --- |
 | v1.0 | 2026-08-15 | 首版:E1–E10 十张真机执行卡、回写协议(07 篇 §7 为唯一权威结果表)、四条文档债登记、文档侧待办归属 |
-| v1.1 | 2026-08-16 | 回填 E1–E10 结果;基线改为 `main`;E6 采用 `asarUnpack`;§5 改为当前结果与剩余 G1/G11/E7 文档债 |
+| v1.1 | 2026-08-16 | 回填 E1–E10 结果；基线改为 `main`；E6 采用 `asarUnpack`；§5 改为当前结果与剩余 G1/E7 文档债（G11 后续已由 file-backed WAL 测试关闭） |

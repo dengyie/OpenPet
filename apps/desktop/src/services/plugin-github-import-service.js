@@ -67,6 +67,14 @@ const validateRepositoryUrl = (repositoryUrl) => {
   }
 }
 
+// GitHub repository names are case-insensitive for identity. Keep this
+// canonicalization next to URL validation so HTTP routes, Jobs, and the
+// legacy Shell importer cannot derive different lock keys for the same repo.
+const githubRepositoryResourceKey = (repositoryUrl) => {
+  const { owner, repo } = validateRepositoryUrl(repositoryUrl)
+  return `github:${owner.toLowerCase()}/${repo.toLowerCase()}`
+}
+
 const extractArchiveToTemp = ({ archivePath, tempRoot, limits }) => zipArchiveUtils.extractZipToTemp(archivePath, {
   subject: 'Plugin package',
   folderSubject: 'Plugin',
@@ -203,5 +211,6 @@ const createPluginGithubImportService = ({
 
 module.exports = {
   createPluginGithubImportService,
-  validateRepositoryUrl
+  validateRepositoryUrl,
+  githubRepositoryResourceKey
 }

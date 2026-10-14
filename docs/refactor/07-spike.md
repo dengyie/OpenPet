@@ -1,5 +1,7 @@
 # 07 · M0 Spike 代码骨架与验证清单
 
+> **状态：历史 spike 记录 + 后续验证索引。** 本文保留当时的探针输出和故意失败样例，不能单独证明当前实现状态；后续验证以仓库测试、`npm run check:api-contract` 和 [09 篇](./09-repo-state.md) 为准。
+
 > 🧪 **目的** 用半天时间,把六个「写文档时无法确定、写错了会返工一整个里程碑」的假设变成实测结论。**这是 M0 的第 0 步,在写任何产品代码之前完成。**
 
 ## 0. 放在哪、怎么跑
@@ -197,7 +199,7 @@ function send(backend, pathname, init = {}) {
 | 排队期间发出 60 个请求 | 前 50 入队,后 10 立即拒绝 | ✅ |
 | 后端换端口(第二次 `onBackendChanged`) | 新请求打到新 baseUrl,旧 baseUrl 零请求 | ✅ |
 
-> ❌ **第 2 条当前不成立,这是 spike 要暴露的缺口。** 上面那版 `transport.js` 只在**新请求进来时**才比对 `MAX_WAIT_MS`;后端永不就绪的情况下不会再有触发点,已经入队的 Promise 因此永远不结算 —— 「不泄漏未结算的 Promise」这句话是假的。修复归属 [05 篇](./05-frontend.md) §2.2 的 `apps/control-center/src/api/transport.ts`:需要在第一个请求入队时起一个定时器,到期把整个队列以 `BACKEND_UNAVAILABLE` 清算掉。这里故意保留原状,让 `run.js` 真的红一条。
+> ❌ **第 2 条是历史 spike 的故意失败样例,不是当前目录或当前实现结论。** 上面那版 `transport.js` 只在**新请求进来时**才比对 `MAX_WAIT_MS`;后端永不就绪的情况下不会再有触发点,已经入队的 Promise 因此永远不结算。修复归属当前 `src/control-center/src/api/transport.ts`:需要在第一个请求入队时起一个定时器,到期把整个队列以 `BACKEND_UNAVAILABLE` 清算掉。
 
 ## 4. sidecar 里拿不到 safeStorage(ADR-010)
 
@@ -329,7 +331,7 @@ console.log("NODE_SQLITE_OK", db.prepare("SELECT count(*) AS n FROM jobs").get()
 | 3 | 后端未就绪时前端请求可排队后冲刷 | 并发 5 个全部 200 | 3/4:延迟并发成功 3043 ms;第 2 条 11006 ms 后仍 leaked;上限 26 ms;换端口 4 ms | ✅ 第 2 条按预期红;T20 负责定时清扫 | F11 |
 | 4 | sidecar 拿不到 `safeStorage` | require 失败或无该导出 | sidecar:`requireOk=true`,`typeofExport="string"`,`hasSafeStorage=false`;Shell:`isEncryptionAvailable=true` | ✅ ADR-010 保留:Shell 解密后经 `init` 注入 | ADR-010 |
 | 5 | asar 内脚本可被 fork | 打包后 sidecar 正常启动 | 初始 app.asar 路径 fork 为 `spawn ENOTDIR`;改为 `asarUnpack` + unpacked resolver 后,已打包 Electron 收到 ready(`startupMs=5`)并 clean exit 0。`isPackaged=true`;`appPath=.../Resources/app.asar`;`resourcesPath=.../Resources`;sidecar `__dirname=.../Resources/app.asar.unpacked/services/backend` | ✅ R20 命中后已缓解;后端以 unpacked 明文文件运行 | ADR-004 / R10 |
-| 6 | `node:sqlite` 可用且支持 WAL 与部分索引 | 四项能力全部通过 | 模块无需 flag;部分唯一索引与显式事务通过;`:memory:` probe 返回 `journal_mode='memory'`,未能证明 file-backed WAL | 🟡 驱动可用,但新增 G11:以 file-backed DB 验证 WAL 后才能关闭 ADR-014 的完整前提 | ADR-014 / R18 |
+| 6 | `node:sqlite` 可用且支持 WAL 与部分索引 | 四项能力全部通过 | **历史 spike**：模块无需 flag；部分唯一索引与显式事务通过；`:memory:` probe 只能返回 `journal_mode='memory'`，因此当时未证明 file-backed WAL。后续 `tests/backend/sqlite-driver.test.js` 已用 file-backed DB 验证 WAL、默认 pragma 和跨连接持久化 | ✅ 驱动与 file-backed WAL 均已验证，缺口 G11 已关闭 | ADR-014 / R18 / G11 |
 
 ## 8. 不绿的时候改什么
 
@@ -349,7 +351,7 @@ console.log("NODE_SQLITE_OK", db.prepare("SELECT count(*) AS n FROM jobs").get()
 | `01/shell.js` | 转正为 `apps/desktop/src/sidecar/spawn.js` |
 | `01/sidecar.js` 的信封校验 | 转正为 `services/backend/bridge/message-schema.js` |
 | `02/sidecar-http.js` | 转正为 `services/backend/index.js` 的 bootstrap 段 |
-| `03/transport.js` | 转正为 `apps/control-center/src/api/transport.ts` 的排队部分;`run.js` 变成 `test:degraded` 的第一个用例 |
+| `03/transport.js` | 转正为 `src/control-center/src/api/transport.ts` 的排队部分;`run.js` 变成 `test:degraded` 的第一个用例 |
 | `04/probe.js` | 删除,结论写进 ADR-010 的「实测依据」 |
 | `05/resolve-sidecar-path.js` | 转正为 `spawn.js` 的路径解析函数 |
 | `06/probe-sqlite.js` | 转正为 `tests/backend/sqlite-driver.test.js`,长期守住驱动能力 |

@@ -92,12 +92,13 @@ export function sendList(ctx, items, options = {}) {
 
 export function sendError(ctx, error) {
 	const apiError = error instanceof ApiError ? error : new ApiError("INTERNAL", "后端内部错误", { cause: error })
+	if (apiError.code === "RATE_LIMITED") ctx.res.setHeader("retry-after", "1")
 	writeJson(ctx, apiError.status, {
 		ok: false,
 		error: {
 			code: apiError.code,
 			message: apiError.message,
-			details: apiError.details,
+			...(apiError.details === null ? {} : { details: apiError.details }),
 			retryable: apiError.retryable,
 			requestId: ctx.requestId,
 		},

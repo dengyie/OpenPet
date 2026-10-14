@@ -43,7 +43,7 @@ async function startBackend(userDataDir) {
     child.once("error", reject)
     child.once("exit", (code, signal) => reject(new Error(`backend exited ${code}/${signal}: ${stderr}`)))
   })
-  child.send({ v: 1, id: `init-${process.pid}-${Date.now()}`, at: Date.now(), body: { type: "init", userDataDir, secrets: {}, legacyToken: null } })
+  child.send({ v: 1, id: `init-${process.pid}-${Date.now()}`, at: Date.now(), body: { type: "init", userDataDir, providerKeys: {}, legacyToken: null, localHttpConfig: { enabled: false, host: "127.0.0.1", port: 0 } } })
   const info = await ready
   return { child, info, baseUrl: `http://127.0.0.1:${info.port}/api/v1`, token: info.sessionToken }
 }

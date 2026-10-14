@@ -84,6 +84,28 @@ describe("T32 shared backend client", () => {
 		}
 	})
 
+	it("sends plugin log filters accepted by the per-plugin route", async () => {
+		const calls = []
+		configureBackendClient({
+			getBackend: () => ({ baseUrl: "http://127.0.0.1:4321/api/v1", sessionToken: "session-token" }),
+			fetchImpl: async (url) => {
+				calls.push(String(url))
+				return success({ items: [], total: 0, cursor: null })
+			},
+		})
+
+		assert.deepEqual(await pluginHttpApi.logs("demo", {
+			pluginId: "demo",
+			level: "",
+			query: "",
+			page: 1,
+			pageSize: 1000,
+		}), { items: [], total: 0, cursor: null })
+		const url = new URL(calls[0])
+		assert.equal(url.pathname, "/api/v1/plugins/demo/logs")
+		assert.deepEqual([...url.searchParams.entries()], [["page", "1"], ["pageSize", "1000"]])
+	})
+
 	it("does not retry non-idempotent Job writes after a transport failure", async () => {
 		let attempts = 0
 		configureBackendClient({

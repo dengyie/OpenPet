@@ -18,7 +18,7 @@ before(async () => {
 	;({ recoverJobs } = await import("../../services/backend/jobs/recovery.js"))
 })
 
-function makeJob(id, kind = "image.generate") {
+function makeJob(id, kind = "creator.workflow") {
 	return { id, kind, input: { redacted: true }, resourceKey: null }
 }
 
@@ -108,6 +108,65 @@ describe("Job 启动恢复", () => {
 				assert.equal(job.status, "interrupted")
 				assert.equal(job.error.code, "BACKEND_RESTARTED")
 				assert.equal(job.error.retryable, true)
+				assert.equal(job.input.redacted, true)
+			}
+		})
+	})
+
+	it("redacted image generation Jobs cannot survive restart or resume", async () => {
+		await withRepository((repo) => {
+			for (const [id, running] of [["running-image", true], ["queued-image", false]]) {
+				repo.insert({ id, kind: "image.generate", input: { prompt: "private" }, resourceKey: null })
+				if (running) repo.transition(id, "running")
+			}
+			const result = recoverJobs({ repo })
+			assert.deepEqual(result.interrupted.sort(), ["queued-image", "running-image"])
+			assert.deepEqual(result.requeued, [])
+			for (const id of ["running-image", "queued-image"]) {
+				const job = repo.byId(id)
+				assert.equal(job.status, "interrupted")
+				assert.equal(job.input.redacted, true)
+			}
+		})
+	})
+
+	it("Actions import Jobs cannot be replayed after restart without their Shell selection", async () => {
+		await withRepository((repo) => {
+			for (const [id, running] of [["running-actions-import", true], ["queued-actions-import", false]]) {
+				repo.insert({
+					id,
+					kind: "actions.import-frames",
+					input: { selectionId: "selection-private-id", path: "/Users/private/frames" },
+					resourceKey: `actions:${id}`,
+				})
+				if (running) repo.transition(id, "running")
+			}
+
+			const result = recoverJobs({ repo })
+			assert.deepEqual(result.interrupted.sort(), ["queued-actions-import", "running-actions-import"])
+			assert.deepEqual(result.requeued, [])
+			for (const id of ["queued-actions-import", "running-actions-import"]) {
+				const job = repo.byId(id)
+				assert.equal(job.status, "interrupted")
+				assert.equal(job.error.code, "BACKEND_RESTARTED")
+				assert.equal(job.input.redacted, true)
+			}
+		})
+	})
+
+	it("redacted plugin installs cannot be replayed after restart", async () => {
+		await withRepository((repo) => {
+			for (const [id, kind] of [["queued-install", "plugin.install"], ["running-github", "plugin.install.github"]]) {
+				repo.insert({ id, kind, input: { path: "/private/source", repositoryUrl: "https://github.com/openpet/demo" } })
+				if (id === "running-github") repo.transition(id, "running")
+			}
+			const result = recoverJobs({ repo })
+			assert.deepEqual(result.interrupted.sort(), ["queued-install", "running-github"])
+			assert.deepEqual(result.requeued, [])
+			for (const id of ["queued-install", "running-github"]) {
+				const job = repo.byId(id)
+				assert.equal(job.status, "interrupted")
+				assert.equal(job.error.code, "BACKEND_RESTARTED")
 				assert.equal(job.input.redacted, true)
 			}
 		})

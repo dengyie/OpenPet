@@ -1,8 +1,16 @@
 # 02 · 目标架构、进程职责与安全设计
 
+> **状态：目标架构 + 当前实现对照。** 本文中的 Shell/Backend 边界是目标约束；
+> 已落地的调用链以 `main.js` → `createOpenPetRuntime()` →
+> `createSidecarRuntimeCoordinator()` → `spawnSidecar()` →
+> `services/backend/index.js` 为准。未进入 `services/backend/routes/registry.js`
+> 的路由仍属于目标或 blocked 能力。
+
 > 🧩 本篇定义目标形态、进程职责边界、目录结构、启停时序、降级策略与安全模型。任何代码改动前应先对齐本篇。
 
 ## 1. 目标架构
+
+> 下方 `apps/desktop`、`apps/control-center` 和 workspace 目录树是目标 monorepo 形态，不是当前 checkout 的完整目录清单。当前 Electron 入口仍是根目录 `main.js`，sidecar 生命周期代码已在 `apps/desktop/src/sidecar/`，Control Center 仍在 `src/control-center/`；不要因为目标树存在就创建或移动这些目录。
 
 不做「Web 后端」,做 **本地 sidecar 服务**。三个进程,三种职责,两种通信介质。
 
@@ -150,12 +158,15 @@ openpet/
 ```text
 1. Shell: 单实例锁检查
 2. Shell: configureUserDataPath
-3. Shell: 生成 sessionToken = randomBytes(32)   ← 仅驻内存
+3. Shell: 读取 userData、legacy MCP token、provider keys 和 app metadata，
+         通过 init 消息注入 Backend；Backend 在 `services/backend/index.js`
+         内生成仅驻内存的 sessionToken，并在 ready 元数据中回报给 Shell
 4. Shell: fork services/backend/index.js
-         传入 { userDataPath, sessionToken, logLevel } via env + first message
+         传入 `{ userDataDir, providerKeys, legacyToken, localHttpConfig, appInfo }`
+         via the first message
 5. Backend: 初始化 SQLite(WAL) → 跑 migration
 6. Backend: 监听 127.0.0.1:0(随机端口)
-7. Backend: 回报 { ready: true, port } → Shell
+7. Backend: 回报带同一版本信封的 `{ type: "ready", port, apiVersion: "v1", pid, sessionToken, startupMs }` → Shell; Shell 严格校验后才发布 ready
 8. Shell: 创建宠物窗口(不等后端,保证宠物秒开)
 9. Shell: 收到第 7 步 ready 后,才通过 preload 注入 { baseUrl, sessionToken }
          在此之前 getBackend() 返回 null —— 这是正常初始态,不是错误
@@ -172,11 +183,11 @@ openpet/
 ### 4.2 关闭
 
 ```text
-1. Shell: before-quit → 发送 { type: 'shutdown', graceMs: 5000 }
+1. Shell: before-quit → 发送严格的 `{ type: 'shutdown' }` envelope；Shell 本地 `stopSidecar({ graceMs })` 只控制等待预算，不把 `graceMs` 传给 Backend
 2. Backend: 停接新请求,标记 running Job 为 interrupted 并落盘
 3. Backend: 按 service-process-tree 逐层终止插件子进程
 4. Backend: 关闭 SQLite(checkpoint) → process.exit(0)
-5. Shell: 超过 graceMs 未退 → SIGTERM → 再 2s → SIGKILL
+5. Shell: 超过本地 `graceMs` 未退 → SIGTERM → 再 2s → SIGKILL
 6. Shell: 销毁窗口 → 退出
 ```
 
@@ -284,10 +295,10 @@ sidecar 不可用时,**宠物必须继续正常走动**。
 | --- | --- | --- |
 | `build.files` 白名单 | 已包含 `services/**/*` 与 `packages/**/*` | 后续目录调整须同步白名单并重新验证 `npm run pack` |
 | asar | ESM sidecar 以 `app.asar` 路径 fork 会因 `cwd` 为 asar 内目录而 `spawn ENOTDIR` | `services/backend/**` 置于 `asarUnpack`;打包时入口为 `resources/app.asar.unpacked/services/backend/index.js`。实测:`isPackaged=true`,`appPath=resources/app.asar`,`resourcesPath=resources`,`__dirname=resources/app.asar.unpacked/services/backend`;已收到 ready 并 clean exit |
-| SQLite | ADR-014 已定为 `node:sqlite`,不引 `better-sqlite3`,避开 native 重建与二次公证 | Electron 42.4.0 / Node 24.16.0 中模块无需 flag,部分索引与事务通过;`:memory:` 不能验证 WAL,须由 G11 以 file-backed DB 补验 |
+| SQLite | ADR-014 已定为 `node:sqlite`,不引 `better-sqlite3`,避开 native 重建与二次公证 | Electron 42.4.0 / Node 24.16.0 中模块无需 flag；file-backed DB 已验证 WAL、默认 pragma、跨连接持久化、部分索引与事务；缺口 G11 已关闭 |
 | macOS 签名 | 现有已有「code has no resources」故障 | 不在本期解决;但新增目录不得引入新的未签名二进制 |
 | 启动时间 | +fork 开销约 80–150 ms | 宠物窗口不等待后端,用户无感 |
 | 安装包体积 | 不变(复用内置 Node) | — |
 | 升级迁移 | 首次启动需跑 JSON → SQLite 迁移 | 带备份与回滚,详见 [04 篇](./04-subsystems.md) |
 
-> 📌 **`node:sqlite` 的模块前提已由 E3 证实。** Electron 42.4.0 / Node 24.16.0 下无需 flag,模块、部分唯一索引与显式事务均通过;但 `:memory:` 探针返回 `journal_mode='memory'`,WAL 仍未验证,遗留缺口 G11 归 T35(卡面 [#41 §5](https://github.com/dengyie/OpenPet/issues/41),进度 [#41 §4](https://github.com/dengyie/OpenPet/issues/41))。实测见 [07 篇](./07-spike.md) §7 第 6 行。
+> 📌 **`node:sqlite` 的模块前提与 file-backed WAL 已完成验证。** Electron 42.4.0 / Node 24.16.0 下无需 flag；`tests/backend/sqlite-driver.test.js` 已覆盖 file-backed `journal_mode='wal'`、默认 pragma、跨连接持久化、部分唯一索引和显式事务。缺口 G11 已关闭，当前结果见 [09 篇](./09-repo-state.md) §4 与 [07 篇](./07-spike.md) §7 第 6 行。

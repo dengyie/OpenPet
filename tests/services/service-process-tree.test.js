@@ -86,6 +86,63 @@ test('service process tree signals posix descendants before the root pid', () =>
   ])
 })
 
+test('service process tree treats an exited descendant as already stopped', () => {
+  const signals = []
+  const tree = createServiceProcessTree({
+    platform: 'linux',
+    execFileSyncImpl: () => `
+      100 1
+      200 100
+      300 100
+    `,
+    killProcessImpl: (pid, signal) => {
+      signals.push({ pid, signal })
+      if (pid === 200) {
+        const error = new Error('process already exited')
+        error.code = 'ESRCH'
+        throw error
+      }
+      return true
+    }
+  })
+
+  assert.equal(tree.signalServiceProcessTree(100, 'SIGTERM'), true)
+  assert.deepEqual(signals, [
+    { pid: 200, signal: 'SIGTERM' },
+    { pid: 300, signal: 'SIGTERM' },
+    { pid: 100, signal: 'SIGTERM' }
+  ])
+})
+
+test('service process tree treats an exited root as already stopped', () => {
+  const tree = createServiceProcessTree({
+    platform: 'linux',
+    execFileSyncImpl: () => '100 1\n',
+    killProcessImpl: (pid) => {
+      assert.equal(pid, 100)
+      const error = new Error('process already exited')
+      error.code = 'ESRCH'
+      throw error
+    }
+  })
+
+  assert.equal(tree.signalServiceProcessTree(100), false)
+})
+
+test('service process tree propagates non-ESRCH signal errors', () => {
+  const permissionError = Object.assign(new Error('operation not permitted'), { code: 'EPERM' })
+  const tree = createServiceProcessTree({
+    platform: 'linux',
+    execFileSyncImpl: () => '100 1\n',
+    killProcessImpl: () => { throw permissionError }
+  })
+
+  assert.throws(
+    () => tree.signalServiceProcessTree(100),
+    (error) => error === permissionError
+  )
+})
+
 test('service process tree uses taskkill for windows force-stop', () => {
   const calls = []
   const tree = createServiceProcessTree({

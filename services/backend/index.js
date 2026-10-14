@@ -24,11 +24,13 @@ import {
 	loopbackOnly,
 	requestId,
 } from "./http/middleware.js"
+import { ApiError } from "./http/middleware.js"
 import { createShellClient } from "./bridge/shell-client.js"
 import { createPluginRuntimeServer } from "./bridge/plugin-runtime-server.js"
 import { createPluginCommandServer } from "./bridge/plugin-command-server.js"
 import { createProviderKeyStore } from "./secrets/provider-keys.js"
 import { createSettingsStore } from "./domains/settings.js"
+import { createSettingsCommands } from "./domains/settings-commands.js"
 import { createAboutService } from "./domains/about.js"
 import { createLocalHttpManager } from "./domains/local-http.js"
 import { createPetPackService } from "./domains/pet-packs.js"
@@ -53,6 +55,7 @@ import { registerJobRoutes } from "./routes/jobs.js"
 import { registerPluginRoutes } from "./routes/plugins.js"
 import { registerAiSecretRoutes } from "./routes/ai.js"
 import { registerAiRoutes } from "./routes/ai.js"
+import { registerAiTalkRoutes } from "./routes/ai.js"
 import { createAiService } from "./domains/ai/image-generation.js"
 import { createAiDomain } from "./domains/ai/core.js"
 import { registerAiRuntimeRoutes } from "./routes/ai-runtime.js"
@@ -157,7 +160,7 @@ if (typeof process.send !== "function") {
 }
 
 const shell = createShellClient({
-	send: (envelope) => process.send(envelope),
+	send: (envelope, callback) => process.send(envelope, callback),
 	exit: (code) => process.exit(code),
 	logger,
 })
@@ -230,6 +233,11 @@ runtime.userDataDir = initEnvelope.body.userDataDir ?? null
 runtime.legacyToken = initEnvelope.body.legacyToken ?? null
 runtime.appInfo = initEnvelope.body.appInfo ?? {}
 const legacyLocalHttpConfig = initEnvelope.body.localHttpConfig ?? { enabled: false, host: "127.0.0.1", port: 0 }
+const requestedHttpPort = initEnvelope.body.httpPort ?? 0
+if (!Number.isInteger(requestedHttpPort) || requestedHttpPort < 0 || requestedHttpPort > 65_535) {
+	logger.error("init 中的 Backend HTTP 端口无效", { code: "INVALID_HTTP_PORT" })
+	process.exit(EXIT_INIT_TIMEOUT)
+}
 
 const accessLogs = createAccessLogBuffer({ max: 200 })
 const router = createRouter({ basePath: "/api/v1" })
@@ -277,6 +285,7 @@ const settingsMutationAuthority = createSettingsMutationAuthority({ store: runti
 registerSettingsRoutes({
 	router,
 	store: runtimeSettingsStore,
+	commands: createSettingsCommands({ shell }),
 	mutationCoordinator: settingsMutationCoordinator,
 	mutationAuthority: settingsMutationAuthority,
 	awaitHostApply: async ({ paths, version }) => {
@@ -327,7 +336,31 @@ registerAiRuntimeRoutes(router, {
 registerAiRoutes(router, { jobs: { insert: (input) => {
 		if (!runtime.enqueueJob) throw new Error("Job service unavailable")
 		return runtime.enqueueJob(input)
-	} } })
+	} }, ai: {
+		getConfig: (...args) => {
+			if (!runtime.ai?.getConfig) throw new ApiError("BACKEND_UNAVAILABLE", "Image AI service unavailable")
+			return runtime.ai.getConfig(...args)
+		},
+		saveConfig: (...args) => {
+			if (!runtime.ai?.saveConfig) throw new ApiError("BACKEND_UNAVAILABLE", "Image AI service unavailable")
+			return runtime.ai.saveConfig(...args)
+		},
+		saveProviderApiKey: (...args) => {
+			if (!runtime.ai?.saveProviderApiKey) throw new ApiError("BACKEND_UNAVAILABLE", "Image AI service unavailable")
+			return runtime.ai.saveProviderApiKey(...args)
+		},
+		clearProviderApiKey: (...args) => {
+			if (!runtime.ai?.clearProviderApiKey) throw new ApiError("BACKEND_UNAVAILABLE", "Image AI service unavailable")
+			return runtime.ai.clearProviderApiKey(...args)
+		},
+	} })
+runtime.aiTalk = createAiTalkService({ shell })
+registerAiTalkRoutes(router, {
+	 talk: runtime.aiTalk,
+	 jobs: { insert: (input) => runtime.enqueueJob?.(input) },
+	 emit: (name, payload) => eventHub.publish(name, payload),
+	logger,
+})
 runtime.catalog = createCatalogService({
 	root: join(dirname(fileURLToPath(import.meta.url)), "../.."),
 	db: runtime.db,
@@ -342,6 +375,7 @@ registerCatalogRoutes(router, {
 runtime.petPacks = createPetPackService({
 	shell,
 	jobs: { insert: (input) => runtime.enqueueJob?.(input) },
+	logger,
 })
 registerPetPackRoutes(router, { packs: runtime.petPacks })
 runtime.actions = createActionService({
@@ -384,6 +418,7 @@ await initializeBackendRuntime({
 		createJobsRepository,
 		createLogsRepository,
 		recoverJobs: (options) => recoverJobs({ ...options, requeueRecovered: false }),
+		emit: (name, payload) => eventHub.publish(name, payload),
 		initializePlugins: () => {
 			let runtimeBridgeServer
 			const processLedger = createProcessLedger({ userDataDir: runtime.userDataDir, logger })
@@ -436,7 +471,19 @@ await initializeBackendRuntime({
 			})
 		},
 	},
-	bind: () => new Promise((resolve) => server.listen(0, "127.0.0.1", resolve)),
+	bind: () => new Promise((resolve, reject) => {
+		const onError = (error) => {
+			server.removeListener("listening", onListening)
+			reject(error)
+		}
+		const onListening = () => {
+			server.removeListener("error", onError)
+			resolve()
+		}
+		server.once("error", onError)
+		server.once("listening", onListening)
+		server.listen(requestedHttpPort, "127.0.0.1")
+	}),
 })
 
 if (!runtime.degraded && runtime.jobs) {
@@ -463,6 +510,12 @@ if (!runtime.degraded && runtime.jobs) {
 		logger,
 		emit: (name, payload) => eventHub.publish(name, payload),
 		tmpRoot: runtime.tmpDir ?? join(runtime.userDataDir, "backend", "tmp"),
+		takePrivateInput: (jobId) => {
+			const value = privateInputs.get(jobId)
+			privateInputs.delete(jobId)
+			return value
+		},
+		forgetPrivateInput: (jobId) => privateInputs.delete(jobId),
 		handlers: {
 			"about.check-updates": async ({ report }) => { report({ phase: "checking", percent: 25 }); return runtime.about.checkUpdates() },
 			"catalog.install": async ({ job, report, signal, finalize }) => {
@@ -487,6 +540,7 @@ if (!runtime.degraded && runtime.jobs) {
 		runner: runtime.runner,
 		publish: (name, payload) => eventHub.publish(name, payload),
 		logger,
+		privateInputs,
 	})
 	// Recovery already persisted queued jobs. Enqueue by id so the queue does
 	// not attempt to insert an existing SQLite row a second time.

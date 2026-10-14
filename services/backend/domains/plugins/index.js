@@ -36,6 +36,11 @@ function installError(error) {
 	return new ApiError("INTERNAL", "Plugin installation failed", { cause: error })
 }
 
+function escapeCsvCell(value) {
+	const cell = String(value ?? "")
+	return /[",\n\r]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell
+}
+
 export function createPluginService({ db, jobs, logs, bridge, commandServer, dialog, root, userDataDir, settings, mutationAuthority, logger, now = Date.now, emit, processLedger: injectedProcessLedger, processRuntime: injectedProcessRuntime, runtimeBridgeServer, logWriter: injectedLogWriter } = {}) {
 	if (typeof root !== "string" || !path.isAbsolute(root)) throw new TypeError("plugin root must be absolute")
 	const settingsStore = settings ?? createSettingsStore({ file: path.join(userDataDir, "backend", "settings.json"), logger })
@@ -99,7 +104,7 @@ export function createPluginService({ db, jobs, logs, bridge, commandServer, dia
 		const requested = String(filters.format || "json").toLowerCase()
 		const entries = filters.pluginId ? getLogs(filters.pluginId, filters) : []
 		if (requested === "csv") {
-			return ["id,pluginId,level,message,at", ...entries.map((entry) => [entry.id, entry.pluginId, entry.level, entry.message, entry.at].map((value) => JSON.stringify(value ?? "")).join(","))].join("\n")
+			return ["id,pluginId,level,message,at", ...entries.map((entry) => [entry.id, entry.pluginId, entry.level, entry.message, entry.at].map(escapeCsvCell).join(","))].join("\n")
 		}
 		return JSON.stringify(entries)
 	}
@@ -129,7 +134,19 @@ export function createPluginService({ db, jobs, logs, bridge, commandServer, dia
 	}
 	const productionRequest = (operation, payload) => {
 		if (typeof bridge?.request !== "function") throw new ApiError("BACKEND_UNAVAILABLE", "Plugin production service is unavailable")
-		return bridge.request({ type: "plugin.production.request", operation, ...payload })
+		return Promise.resolve(bridge.request({ type: "plugin.production.request", operation, ...payload })).then((reply) => {
+			const body = reply?.body ?? reply
+			if (body?.type !== "plugin.production.result") {
+				throw new ApiError("INTERNAL", "Invalid plugin production response")
+			}
+			if (body.requestId !== reply?.id) {
+				throw new ApiError("INTERNAL", "Plugin production response correlation failed")
+			}
+			if (body.ok !== true) {
+				throw new ApiError("BACKEND_UNAVAILABLE", body.error || "Plugin production service failed")
+			}
+			return body.result
+		})
 	}
 	const clearStorage = (id) => productionRequest("storage.clear", { pluginId: id })
 

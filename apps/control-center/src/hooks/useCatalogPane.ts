@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { catalogApi, resolveCatalogInstallJob } from '../features/catalog/api.ts'
 import { cloneCatalog, defaultCatalog } from '../lib/defaults.ts'
 import { messageFromError } from '../lib/errors.ts'
 import { useJob } from './useJob.ts'
+import { useSse } from './useSse.ts'
 import type {
   CatalogBlocklistEntry,
   CatalogInstallSelection,
@@ -21,33 +22,51 @@ export function useCatalogPane() {
   const [selection, setSelection] = useState<CatalogInstallSelection | null>(null)
   const [blocklistDraft, setBlocklistDraft] = useState<CatalogBlocklistEntry>({ type: 'pluginId', value: '' })
   const { job: installJob } = useJob(installJobId)
+  const catalogEvents = useSse(['catalog'])
+  const lastCatalogEventIdRef = useRef<string | null>(null)
+  const catalogRefreshSequenceRef = useRef(0)
+
+  const commitCatalog = useCallback((nextCatalog: CatalogState) => {
+    catalogRefreshSequenceRef.current += 1
+    setCatalog(cloneCatalog(nextCatalog))
+  }, [])
 
   const refreshCatalog = useCallback(async () => {
+    const sequence = ++catalogRefreshSequenceRef.current
     const nextCatalog = cloneCatalog(await catalogApi.list())
-    setCatalog(nextCatalog)
+    if (sequence === catalogRefreshSequenceRef.current) setCatalog(nextCatalog)
     return nextCatalog
   }, [])
 
   useEffect(() => {
     let mounted = true
-    catalogApi.list().then((loadedCatalog) => {
-      if (!mounted) return
-      setCatalog(cloneCatalog(loadedCatalog))
-      setLoading(false)
+    refreshCatalog().then(() => {
+      if (mounted) setLoading(false)
     }).catch((error) => {
       if (!mounted) return
       setStatus(messageFromError(error, 'Catalog 加载失败'))
       setLoading(false)
     })
     return () => { mounted = false }
-  }, [])
+  }, [refreshCatalog])
+
+  useEffect(() => {
+    if (catalogEvents.lastEventName !== 'catalog.refreshed' || !catalogEvents.lastEventId) return
+    if (catalogEvents.lastEventId === lastCatalogEventIdRef.current) return
+    lastCatalogEventIdRef.current = catalogEvents.lastEventId
+    let mounted = true
+    refreshCatalog().catch((error) => {
+      if (mounted) setStatus(messageFromError(error, 'Catalog 事件刷新失败'))
+    })
+    return () => { mounted = false }
+  }, [catalogEvents.lastEventId, catalogEvents.lastEventName, refreshCatalog])
 
   useEffect(() => {
     if (!installing || !installJobId || !installJob || installJob.jobId !== installJobId) return
     const resolved = resolveCatalogInstallJob(installJob)
     if (resolved.kind === 'pending') return
     if (resolved.kind === 'succeeded') {
-      setCatalog(cloneCatalog(resolved.result.catalog))
+      commitCatalog(resolved.result.catalog)
       setSelection(null)
       setStatus(selection?.kind === 'pet-pack' ? 'Pet pack 已安装' : '插件已安装，默认保持停用')
     } else {
@@ -56,7 +75,7 @@ export function useCatalogPane() {
     }
     setInstalling(false)
     setInstallJobId(null)
-  }, [installJob, installJobId, installing, refreshCatalog, selection?.kind])
+  }, [commitCatalog, installJob, installJobId, installing, refreshCatalog, selection?.kind])
 
   const onPrepareInstall = async (kind: CatalogItemKind, itemId: string) => {
     if (installing || preparing) return
@@ -93,7 +112,7 @@ export function useCatalogPane() {
     try {
       const started = await catalogApi.install(selected.selectionId)
       if ('result' in started) {
-        setCatalog(cloneCatalog(started.result.catalog))
+        commitCatalog(started.result.catalog)
         setSelection(null)
         setStatus(selected.kind === 'plugin' ? '插件已安装，默认保持停用' : 'Pet pack 已安装')
         setInstalling(false)
@@ -113,7 +132,7 @@ export function useCatalogPane() {
     setStatus('')
     try {
       const result = await catalogApi.addBlocklistEntry(blocklistDraft)
-      setCatalog(cloneCatalog(result.catalog))
+      commitCatalog(result.catalog)
       setBlocklistDraft({ ...blocklistDraft, value: '' })
       setStatus('Blocklist 已更新')
     } catch (error) {
@@ -126,7 +145,7 @@ export function useCatalogPane() {
     setStatus('')
     try {
       const result = await catalogApi.removeBlocklistEntry({ type, value })
-      setCatalog(cloneCatalog(result.catalog))
+      commitCatalog(result.catalog)
       setStatus('Blocklist 已移除')
     } catch (error) {
       setStatus(messageFromError(error, 'Blocklist 移除失败'))

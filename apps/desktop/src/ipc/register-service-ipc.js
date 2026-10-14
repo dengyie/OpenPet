@@ -40,6 +40,22 @@ const registerServiceIpc = ({
     return createServiceStatusView(config, runtime)
   }
 
+  const getSidecarServiceConfig = (config) => ({
+    enabled: Boolean(config.enabled),
+    host: config.host,
+    port: config.port,
+    token: config.token
+  })
+
+  const backendTargetChanged = (current, next) => {
+    const currentMode = current?.backendMode === 'remote' ? 'remote' : 'local'
+    if (currentMode !== next.backendMode) return true
+    return next.backendMode === 'remote' && (
+      (current?.sshAlias || 'gz-cvm') !== next.sshAlias
+      || (Number(current?.backendPort) || 48330) !== next.backendPort
+    )
+  }
+
   const getServiceStatusView = () => sidecarConfigured
     ? createSidecarStatusView()
     : createServiceStatusView(petService.getSettings().localHttp, localHttpService.getStatus())
@@ -84,9 +100,31 @@ const registerServiceIpc = ({
   ipcMainService.handle(IPC.SERVICE_SAVE_CONFIG, async (_event, config) => {
     const currentSettings = petService.getSettings()
     const nextConfig = normalizeLocalHttpConfig(currentSettings.localHttp, config)
+    nextConfig.backendMode = nextConfig.backendMode === 'remote' ? 'remote' : 'local'
+    nextConfig.sshAlias = typeof nextConfig.sshAlias === 'string' && nextConfig.sshAlias.trim()
+      ? nextConfig.sshAlias.trim()
+      : currentSettings.localHttp?.sshAlias || 'gz-cvm'
+    if (nextConfig.backendMode === 'remote') validateAlias(nextConfig.sshAlias)
+    const configuredBackendPort = nextConfig.backendPort === undefined || nextConfig.backendPort === null || nextConfig.backendPort === ''
+      ? currentSettings.localHttp?.backendPort || 48330
+      : Number(nextConfig.backendPort)
+    const validBackendPort = Number.isInteger(configuredBackendPort) && configuredBackendPort >= 1 && configuredBackendPort <= 65535
+    if (nextConfig.backendMode === 'remote' && !validBackendPort) {
+      throw new TypeError('remote Backend host port must be between 1 and 65535')
+    }
+    nextConfig.backendPort = validBackendPort ? configuredBackendPort : 48330
     let runtime
     if (sidecarConfigured) {
-      await requestSidecar('/service/config', 'PUT', nextConfig)
+      const coordinatorState = sidecarRuntimeCoordinator.getState?.()
+      const reconnectingUnavailableBackend = coordinatorState && coordinatorState.status !== 'ready'
+      if (backendTargetChanged(currentSettings.localHttp, nextConfig) || reconnectingUnavailableBackend) {
+        const savedSettings = petService.saveSettings({ ...currentSettings, localHttp: nextConfig })
+        await sidecarRuntimeCoordinator.stop()
+        await sidecarRuntimeCoordinator.start()
+        runtime = await requestSidecar('/service/status')
+        return createServiceStatusView(savedSettings.localHttp, runtime)
+      }
+      await requestSidecar('/service/config', 'PUT', getSidecarServiceConfig(nextConfig))
       runtime = await requestSidecar('/service/status')
     } else {
       runtime = nextConfig.enabled ? await localHttpService.start(nextConfig) : await localHttpService.stop()

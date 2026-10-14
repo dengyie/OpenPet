@@ -1,4 +1,4 @@
-import { EVENT_SETTINGS_CHANGED, SETTINGS_CANONICAL_PATHS, SETTINGS_TRUSTED_PATHS, settingsPatchRequestSchema } from "@openpet/contracts"
+import { EVENT_SETTINGS_CHANGED, SETTINGS_CANONICAL_PATHS, SETTINGS_TRUSTED_PATHS, settingsCursorImportResultSchema, settingsPatchRequestSchema, settingsPreviewScaleRequestSchema, settingsPreviewScaleResponseSchema, settingsSchemaResponseSchema } from "@openpet/contracts"
 
 import { ApiError, sendSuccess } from "../http/middleware.js"
 
@@ -10,14 +10,16 @@ const SETTINGS_ROUTES = Object.freeze([
 	["GET", "/settings/schema"],
 ])
 
+export const SETTINGS_SCHEMA = Object.freeze({
+	version: 1,
+	writablePaths: SETTINGS_CANONICAL_PATHS.filter((path) => !SETTINGS_TRUSTED_PATHS.includes(path)),
+	trustedPaths: [...SETTINGS_TRUSTED_PATHS],
+	scalePreview: { min: 0.5, max: 1.5, step: 0.01 },
+	cursorImport: { extensions: ["png", "webp"], maxBytes: 512_000 },
+})
+
 function label(method, routePath) {
 	return method + " " + routePath
-}
-
-function unavailableHandler(routeLabel) {
-	return () => {
-		throw new ApiError("BACKEND_UNAVAILABLE", routeLabel + " 尚未接入对应业务域")
-	}
 }
 
 function sanitizeValues(value, key = "") {
@@ -141,7 +143,7 @@ export function createSettingsMutationAuthority({ store, coordinator } = {}) {
 	}
 }
 
-export function registerSettingsRoutes({ router, store, emit, awaitHostApply, mutationCoordinator, mutationAuthority, handlers = {} } = {}) {
+export function registerSettingsRoutes({ router, store, emit, awaitHostApply, mutationCoordinator, mutationAuthority, commands, handlers = {} } = {}) {
 	if (!router || typeof router.register !== "function") throw new TypeError("registerSettingsRoutes 需要 router")
 	if (!store || typeof store.read !== "function" || typeof store.patch !== "function") {
 		throw new TypeError("registerSettingsRoutes 需要 settings store")
@@ -201,13 +203,32 @@ export function registerSettingsRoutes({ router, store, emit, awaitHostApply, mu
 			})
 			return run
 		},
+		[label("POST", "/settings/cursor/import")]: async (ctx) => {
+			if (ctx.body !== undefined && (ctx.body === null || typeof ctx.body !== "object" || Array.isArray(ctx.body) || Object.keys(ctx.body).length > 0)) {
+				throw new ApiError("VALIDATION_FAILED", "指针导入不接受请求字段")
+			}
+			if (typeof commands?.importCursor !== "function") throw new ApiError("BACKEND_UNAVAILABLE", "指针导入不可用")
+			const parsed = settingsCursorImportResultSchema.safeParse(await commands.importCursor())
+			if (!parsed.success) throw new ApiError("INTERNAL", "Shell 指针导入结果无效")
+			sendSuccess(ctx, parsed.data)
+		},
+		[label("POST", "/settings/preview-scale")]: async (ctx) => {
+			const parsed = settingsPreviewScaleRequestSchema.safeParse(ctx.body)
+			if (!parsed.success) throw new ApiError("VALIDATION_FAILED", "缩放预览参数无效", { details: { issues: parsed.error.issues } })
+			if (typeof commands?.previewScale !== "function") throw new ApiError("BACKEND_UNAVAILABLE", "缩放预览不可用")
+			const response = settingsPreviewScaleResponseSchema.safeParse(await commands.previewScale(parsed.data.scale))
+			if (!response.success) throw new ApiError("INTERNAL", "Shell 缩放预览结果无效")
+			sendSuccess(ctx, response.data)
+		},
+		[label("GET", "/settings/schema")]: (ctx) => {
+			const parsed = settingsSchemaResponseSchema.safeParse(SETTINGS_SCHEMA)
+			if (!parsed.success) throw new ApiError("INTERNAL", "Settings schema is invalid")
+			sendSuccess(ctx, parsed.data)
+		},
 		...handlers,
 	}
 
-	for (const [method, routePath] of SETTINGS_ROUTES) {
-		const routeLabel = label(method, routePath)
-		router.register(method, routePath, routeHandlers[routeLabel] ?? unavailableHandler(routeLabel))
-	}
+	for (const [method, routePath] of SETTINGS_ROUTES) router.register(method, routePath, routeHandlers[label(method, routePath)])
 
 	return { routes: SETTINGS_ROUTES.map(([method, routePath]) => label(method, routePath)), mutationCoordinator: coordinator }
 }

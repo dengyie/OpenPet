@@ -331,54 +331,56 @@ const createChecks = (docsRoot, { projectContext, context }) => {
     {
       id: 'todo-keeps-real-blocker-truth',
       description: 'TODO should keep the remaining blocker language explicit about real/manual-required gaps.',
-      run: () => /fresh passing evidence/i.test(todo) &&
-        /real signed Windows artifact plus observed smoke evidence/i.test(todo) &&
+      run: () => /self-signed artifacts on their target operating systems/i.test(todo) &&
+        /locally generated self-signed Windows certificate/i.test(todo) &&
         /observed packaged-app behavior/i.test(todo) &&
         /actual external compatible package source/i.test(todo) &&
-        /real configured packaged provider session/i.test(todo),
+        /real configured packaged provider session/i.test(todo) &&
+        /Self-Signed Distribution Policy[\s\S]*Adapt packaging, CI, and release evidence to self-managed signing[\s\S]*Validate the self-signed artifacts on their target operating systems[\s\S]*Replace the legacy `--require-signed` and notarization-based closure gates/i.test(todo),
       failure: 'docs/TODO.md no longer keeps the current TODO blocker truth explicit about manual-required and real external gaps.'
     },
     {
       id: 'todo-keeps-current-release-closure-paths',
       description: 'TODO should keep the current closure, packaged runtime, Windows smoke, and desktop picker evidence paths explicit.',
       run: () =>
-        /docs\/release-evidence\/signed-release-closure\/2026-07-06T16-46-49Z-v1\.0\.1-rc\.3-authenticated-closure-archive-rerun\//i.test(todo) &&
-        /docs\/release-evidence\/packaged-runtime\/2026-07-06T17-00-00Z-darwin-arm64-authenticated-artifact\//i.test(todo) &&
-        /docs\/release-evidence\/windows-smoke\/2026-07-06T16-46-49Z-v1\.0\.1-rc\.3-authenticated-artifact-archive-rerun\//i.test(todo) &&
-        /docs\/release-evidence\/desktop-picker\/2026-07-06T16-46-49Z-win32-x64-authenticated-artifact-archive-rerun\//i.test(todo),
+        /release-evidence\/signed-release-closure\/2026-07-06T16-46-49Z/i.test(todo) &&
+        /release-evidence\/packaged-runtime\/2026-07-06T17-00-00Z-darwin-arm64-authenticated-artifact/i.test(todo) &&
+        /release-evidence\/windows-smoke\/2026-07-06T16-46-49Z-v1\.0\.1-rc\.3-authenticated-artifact-archive-rerun/i.test(todo) &&
+        /release-evidence\/desktop-picker\/2026-07-06T16-46-49Z-win32-x64-authenticated-artifact-archive-rerun/i.test(todo),
       failure: 'docs/TODO.md no longer keeps the current release closure and supporting evidence paths explicit.'
     },
     {
       id: 'handoff-keeps-real-priority-gaps',
-      description: 'HANDOFF current priorities should stay anchored to real/manual-required release and ecosystem gaps.',
+      description: 'HANDOFF should scope demo work separately from deferred real/manual-required release gaps.',
       run: () =>
-        /Produce passing macOS release evidence/i.test(handoff) &&
-        /Collect real signed Windows smoke evidence/i.test(handoff) &&
-        /Collect packaged native picker evidence from real app runs/i.test(handoff) &&
+        /current delivery target is a demo[\s\S]*local unsigned package[\s\S]*Future macOS and Windows packages will use self-managed signing only/i.test(handoff) &&
+        /Update package\/CI\/evidence tooling so self-signed artifacts can be produced and validated without paid signing secrets/i.test(handoff) &&
         /real compatible package/i.test(handoff),
-      failure: 'docs/HANDOFF.md no longer keeps the current priority gaps anchored to real/manual-required work.'
+      failure: 'docs/HANDOFF.md no longer separates demo priorities from deferred public distribution evidence.'
     },
     {
       id: 'todo-architecture-keeps-current-release-blocker-summary',
       description: 'openpet-current-todo-architecture should keep the current closure rerun and blocker wording aligned with the archived truth.',
       run: () =>
-        /docs\/release-evidence\/signed-release-closure\/2026-07-06T16-46-49Z-v1\.0\.1-rc\.3-authenticated-closure-archive-rerun\//i.test(todoArchitecture) &&
-        /docs\/release-evidence\/packaged-runtime\/2026-07-06T17-00-00Z-darwin-arm64-authenticated-artifact\//i.test(todoArchitecture) &&
-        /macOS codesign\/notarization\/Gatekeeper classify as `fail`/i.test(todoArchitecture) &&
-        /Windows smoke remains unsigned\/pending/i.test(todoArchitecture) &&
-        /desktop-picker archives remain archived but not signed-ready/i.test(todoArchitecture),
-      failure: 'docs/openpet-current-todo-architecture.md no longer keeps the current release blocker summary aligned with the archived closure truth.'
+        /(?:docs\/|\.\/)?release-evidence\/signed-release-closure\/2026-07-06T16-46-49Z-v1\.0\.1-rc\.3-authenticated-closure-archive-rerun\//i.test(todoArchitecture) &&
+        /(?:docs\/|\.\/)?release-evidence\/packaged-runtime\/2026-07-06T17-00-00Z-darwin-arm64-authenticated-artifact\//i.test(todoArchitecture) &&
+        /historical signed release closure[\s\S]*remains `?not-ready`? under the previous paid-signing policy/i.test(todoArchitecture) &&
+        /macOS codesign\/notarization\/Gatekeeper classify as `?fail`?/i.test(todoArchitecture) &&
+        /Windows smoke is unsigned\/pending/i.test(todoArchitecture) &&
+        /not the current release policy/i.test(todoArchitecture),
+      failure: 'docs/openpet-current-todo-architecture.md no longer distinguishes the archived paid-signing result from current self-managed policy.'
     },
     {
       id: 'maintainer-summaries-keep-real-gap-language',
       description: 'Development and status summaries should keep real/manual-required gap language explicit.',
       run: () =>
-        /real passing macOS closure path/i.test(developmentSummary) &&
-        /real signed Windows artifacts/i.test(developmentSummary) &&
+        /self-managed macOS and Windows signing/i.test(developmentSummary) &&
+        /signature integrity and runtime behavior/i.test(developmentSummary) &&
         /compatible third-party package path/i.test(developmentSummary) &&
-        /Real passing macOS evidence must still be archived/i.test(projectStatusReview) &&
-        /Real signed Windows smoke evidence must exist/i.test(projectStatusReview) &&
-        /Packaged native picker evidence still needs real archived runs/i.test(projectStatusReview) &&
+        /Adapt macOS packaging\/evidence to self-managed signing without notarization/i.test(projectStatusReview) &&
+        /locally generated self-signed certificate/i.test(projectStatusReview) &&
+        /(?:docs\/|\.\/)release-evidence\/desktop-picker\/2026-10-08T21-01-48Z-darwin-arm64[\s\S]*8\/9[\s\S]*plugin-install-disabled[\s\S]*pending/i.test(developmentSummary) &&
+        /11\/14[\s\S]*docs\/release-evidence\/desktop-picker\/2026-10-08T21-01-48Z-darwin-arm64[\s\S]*8\/9[\s\S]*plugin-install-disabled[\s\S]*pending/i.test(projectStatusReview) &&
         /compatible third-party package path/i.test(projectStatusReview),
       failure: 'docs/development-summary.md or docs/project-status-review.md no longer keep the current real/manual-required gap language explicit.'
     },
@@ -402,8 +404,8 @@ const createChecks = (docsRoot, { projectContext, context }) => {
     },
     {
       id: 'release-checklist-keeps-current-macos-top-table-wording',
-      description: 'release-checklist should keep the current macOS top-table wording aligned with failing signed readiness truth.',
-      run: () => /\| macOS \| Public assets and imported workflow evidence currently fail signed readiness \| macOS-first release track; official artifacts still need passing signed\/notarized evidence \|/i.test(releaseChecklist),
+      description: 'release-checklist should keep the current macOS top-table wording aligned with self-managed signing policy.',
+      run: () => /\| macOS \| Current demo package is unsigned; self-managed signing workflow adaptation remains open \| Use ad-hoc\/local signing; no notarization or Gatekeeper-trust claim \|/i.test(releaseChecklist),
       failure: 'docs/release-checklist.md no longer keeps the current macOS top-table wording.'
     },
     {

@@ -11,7 +11,7 @@ const { getQualityFirstQualityProfile } = require('../../examples/plugins/creato
 
 const validDecision = (decision = 'generate-identity') => ({ schemaVersion: 1, decision, scope: {}, reasonCodes: ['ready'], confidence: 0.8 })
 
-const createHarness = ({ enabled = true, configMode = 'follow-chat', requireIdentityReviewBeforeActions = false, completions = [], secret = 'sk-host-owned', dataDir: suppliedDataDir = '', budgets = {} } = {}) => {
+const createHarness = ({ enabled = true, configMode = 'follow-chat', requireIdentityReviewBeforeActions = false, completions = [], completeStructuredTool = null, secret = 'sk-host-owned', dataDir: suppliedDataDir = '', budgets = {} } = {}) => {
   let settings = { ai: { provider: 'openai-compatible', baseUrl: 'https://chat.test/v1', model: 'chat-model', apiKeyRef: 'ai.default', conversations: { untouched: [{ role: 'user', content: 'keep' }] }, memory: { enabled: true }, behavior: { enabled: true }, hatchPet: { enabled, configMode, provider: 'openai-compatible', baseUrl: 'https://dedicated.test/v1', model: 'planner', apiKeyRef: 'wrong-ref', requireIdentityReviewBeforeActions, budgets } } }
   const calls = []
   const logs = []
@@ -19,7 +19,7 @@ const createHarness = ({ enabled = true, configMode = 'follow-chat', requireIden
   const queue = [...completions]
   let secretReads = 0
   const service = createHatchPetAgentService({
-    aiService: { completeStructuredTool: async (request) => { calls.push(request); const next = queue.shift(); if (next instanceof Error) throw next; return next } },
+    aiService: { completeStructuredTool: async (request) => { calls.push(request); if (completeStructuredTool) return completeStructuredTool(request); const next = queue.shift(); if (next instanceof Error) throw next; return next } },
     settingsService: { get: () => settings, update: (updater) => { settings = updater(settings); return settings } },
     secretService: { getSecretValue: () => { secretReads += 1; return secret }, setSecret: () => {}, deleteSecret: () => {} },
     pluginService: { getPluginCreatorDataDir: () => dataDir },
@@ -141,6 +141,28 @@ test('shadow planning is stateless text-only and preserves ordinary chat state',
   assert.equal(JSON.stringify(h.getSettings().ai), before)
 })
 
+test('cancelRun aborts active shadow provider work and records canceled run state', async () => {
+  let providerSignal
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-hatch-cancel-'))
+  const h = createHarness({ dataDir, completeStructuredTool: (request) => {
+    providerSignal = request.signal
+    return new Promise((_resolve, reject) => {
+      request.signal.addEventListener('abort', () => {
+        const error = new Error('aborted')
+        error.name = 'AbortError'
+        reject(error)
+      }, { once: true })
+    })
+  } })
+  const pending = h.service.createShadowDecision({ runId: 'run-cancel', mode: 'full-pet', stage: 'planning' })
+  while (!providerSignal) await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(h.service.cancelRun('run-cancel'), true)
+  await assert.rejects(pending, (error) => error.name === 'AbortError')
+  assert.equal(providerSignal.aborted, true)
+  assert.equal(h.service.cancelRun('run-cancel'), false)
+  assert.equal(h.service.getRunStatus('run-cancel').state.status, 'canceled')
+})
+
 for (const invalid of [
   { name: 'missing or differently named required tool', first: new Error('AI provider did not return required tool call: hatch_pet_decision') },
   { name: 'malformed or non-object arguments', first: new Error('AI provider returned invalid tool arguments for hatch_pet_decision') },
@@ -200,6 +222,39 @@ test('sprite evaluation uses one local review board and records a code-owned gat
   assert.equal(fs.existsSync(path.join(h.dataDir, result.evidenceRelativePath)), true)
 })
 
+test('sprite evaluation accepts a safe realpath alias to a local review board', async (t) => {
+  if (process.platform === 'win32') return t.skip('directory symlink behavior requires elevated Windows privileges')
+  const completion = {
+    arguments: { schemaVersion: 1, recommendation: 'pass', confidence: 0.95, scores: { identity: 96, silhouette: 94, smallScale: 90, completeness: 98, style: 92, overall: 94 }, defects: [] },
+    provider: 'openai-compatible',
+    model: 'chat-model',
+    elapsedMs: 10
+  }
+  const h = createHarness({ completions: [completion] })
+  const boardPath = path.join(h.dataDir, 'board.png')
+  const aliasPath = path.join(os.tmpdir(), path.basename(h.dataDir), 'board.png')
+  await sharp({ create: { width: 8, height: 8, channels: 4, background: '#fff' } }).png().toFile(boardPath)
+  const aliasRoot = path.join(os.tmpdir(), `${path.basename(h.dataDir)}-alias`)
+  fs.symlinkSync(h.dataDir, aliasRoot, 'dir')
+  t.after(() => {
+    fs.rmSync(aliasRoot, { recursive: true, force: true })
+    fs.rmSync(h.dataDir, { recursive: true, force: true })
+  })
+
+  const result = await h.service.evaluateSprite({
+    runId: 'run-evaluate-realpath-alias',
+    scope: 'canonical',
+    board: { path: path.join(aliasRoot, path.basename(boardPath)), sha256: 'a'.repeat(64), regions: [{ regionId: 'source', role: 'source-identity' }, { regionId: 'candidate-1', role: 'canonical-candidate' }] },
+    qa: { ok: true, failures: [], metrics: {} },
+    profile: getQualityFirstQualityProfile(),
+    budgetLedger: createBudgetLedger({ startedAtMs: Date.now() })
+  })
+
+  assert.equal(result.gate.ok, true)
+  assert.equal(h.calls.length, 1)
+  assert.equal(h.calls[0].messages.some((message) => message.content.includes(aliasPath)), false)
+})
+
 test('sprite evaluation retries one same-model timeout and preserves the request contract', async () => {
   const timeout = Object.assign(new Error('AI provider request timed out'), { name: 'TimeoutError' })
   const valid = {
@@ -226,6 +281,40 @@ test('sprite evaluation retries one same-model timeout and preserves the request
   assert.equal(result.budgetLedger.usage.evaluatorCalls, 2)
   assert.deepEqual(h.calls[1], h.calls[0])
   assert.equal(h.logs.some((entry) => entry.event === 'hatch-pet.evaluation.retrying' && entry.details?.runId === 'run-timeout-retry-evaluation'), true)
+})
+
+test('sprite evaluation propagates cancellation to the provider without retrying', async () => {
+  let providerSignal
+  const controller = new AbortController()
+  const h = createHarness({ completeStructuredTool: (request) => {
+    providerSignal = request.signal
+    return new Promise((_resolve, reject) => {
+      request.signal.addEventListener('abort', () => {
+        const error = new Error('aborted')
+        error.name = 'AbortError'
+        reject(error)
+      }, { once: true })
+    })
+  } })
+  const boardPath = path.join(h.dataDir, 'board.png')
+  await sharp({ create: { width: 8, height: 8, channels: 4, background: '#fff' } }).png().toFile(boardPath)
+
+  const pending = h.service.evaluateSprite({
+    runId: 'run-evaluation-cancel',
+    scope: 'canonical',
+    board: { path: boardPath, sha256: 'a'.repeat(64), regions: [{ regionId: 'source' }, { regionId: 'candidate-1' }] },
+    qa: { ok: true, failures: [], metrics: {} },
+    profile: getQualityFirstQualityProfile(),
+    budgetLedger: createBudgetLedger({ startedAtMs: Date.now() }),
+    signal: controller.signal
+  })
+  while (!providerSignal) await new Promise((resolve) => setImmediate(resolve))
+  controller.abort()
+
+  await assert.rejects(pending, (error) => error.name === 'AbortError')
+  assert.equal(providerSignal.aborted, true)
+  assert.equal(h.calls.length, 1)
+  assert.equal(h.logs.some((entry) => entry.event === 'hatch-pet.evaluation.retrying'), false)
 })
 
 test('sprite evaluation respects a one-attempt artifact budget for transient failures', async () => {
@@ -419,6 +508,35 @@ test('sprite planning returns only registered morphology, presets, and bounded e
   const serialized = JSON.stringify(h.calls[0])
   assert.equal(serialized.includes('framePoses'), false)
   assert.equal(serialized.includes('threshold'), false)
+  assert.equal(JSON.parse(h.calls[0].messages[1].content).registeredActionPresets.running, 'working-six-phase-v1')
+})
+
+test('sprite planning propagates cancellation to the provider without repair', async () => {
+  let providerSignal
+  const controller = new AbortController()
+  const h = createHarness({ completeStructuredTool: (request) => {
+    providerSignal = request.signal
+    return new Promise((_resolve, reject) => {
+      request.signal.addEventListener('abort', () => {
+        const error = new Error('aborted')
+        error.name = 'AbortError'
+        reject(error)
+      }, { once: true })
+    })
+  } })
+
+  const pending = h.service.planSprite({
+    runId: 'run-plan-cancel',
+    userIntent: 'pet',
+    budgetLedger: createBudgetLedger({ startedAtMs: Date.now() }),
+    signal: controller.signal
+  })
+  while (!providerSignal) await new Promise((resolve) => setImmediate(resolve))
+  controller.abort()
+
+  await assert.rejects(pending, (error) => error.name === 'AbortError')
+  assert.equal(providerSignal.aborted, true)
+  assert.equal(h.calls.length, 1)
 })
 
 test('sprite planning exposes an explicit identity-review pause to the Creator runtime', async () => {
@@ -450,6 +568,32 @@ test('sprite planning repairs one invalid proposal and rejects free-form or mism
   assert.equal(h.calls.length, 2)
   assert.equal(result.budgetLedger.usage.plannerCalls, 2)
   assert.match(h.calls[1].messages[0].content, /previous sprite plan was invalid/i)
+})
+
+test('sprite planning gives the provider the exact action-to-preset mapping and repairs a cross-wired running preset', async () => {
+  const invalid = validSpritePlanProposal()
+  invalid.actions = invalid.actions.map((action) => action.actionId === 'running'
+    ? { ...action, motionPresetId: 'running-right-gait-v1' }
+    : action)
+  const h = createHarness({ completions: [
+    { arguments: invalid, provider: 'p', model: 'm', elapsedMs: 1 },
+    { arguments: validSpritePlanProposal(), provider: 'p', model: 'm', elapsedMs: 1 }
+  ] })
+
+  const result = await h.service.planSprite({ runId: 'run-plan-running-preset', userIntent: 'full pet' })
+
+  assert.equal(result.proposal.actions.find((action) => action.actionId === 'running').motionPresetId, 'working-six-phase-v1')
+  assert.deepEqual(JSON.parse(h.calls[0].messages[1].content).registeredActionPresets, {
+    idle: 'idle-subtle-loop-v1',
+    'running-right': 'running-right-gait-v1',
+    waving: 'waving-four-phase-v1',
+    jumping: 'jumping-five-phase-v1',
+    failed: 'failed-eight-phase-v1',
+    waiting: 'waiting-six-phase-v1',
+    running: 'working-six-phase-v1',
+    review: 'review-six-phase-v1'
+  })
+  assert.match(h.calls[1].messages[0].content, /motionPresetId for running must be working-six-phase-v1/i)
 })
 
 test('sprite planning persists host-owned budget usage across separate bridge calls', async () => {

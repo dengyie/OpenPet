@@ -1,5 +1,7 @@
 # 11 · M1 任务卡:HTTP、SSE、Shell 侧
 
+> **状态：历史任务卡。** T09–T13 的接口数量、缺口和验收顺序来自 2026-08 的迁移计划；当前路由注册、实现状态和门禁以 [03 篇](./03-api-contract.md)、[09 篇](./09-repo-state.md) 与 `npm run check:api-contract` 为准。
+
 > v1.1 · 2026-08-16 · 基线分支 `main`
 
 **前置**:[08 篇 执行手册](./08-agent-guide.md)、[09 篇 仓库现状](./09-repo-state.md)。
@@ -30,7 +32,7 @@
 - settings 路径组装与 store 注入归 T09;T10 只消费注入后的 `store`,不得自行拼路径或重新实现 T03。
 - **降级模式**:第 3 步抛 `MIGRATION_REQUIRED` 时**不要退出进程**。置 `runtime.degraded = true`,继续绑端口,但除 `/health` 与 `/service/*` 以外的路由一律返 `503 MIGRATION_REQUIRED`,并向 Shell 发 `degraded` 消息。理由:用户降版后应用必须能启动到能看见提示的程度,直接退出只会得到一个打不开的应用。
 - 开库失败(包括 `NODE_SQLITE_UNAVAILABLE`)同样进降级模式,不要静默继续。
-- 路由按 03 篇 §4.1 注册全 **10 条**。已知两个坑:`/health` **需鉴权**(未带 token 返 401,不是 204);§4.1 只映射了 7 个 `SERVICE_*` 通道中的 6 个,`PUT /service/config` 是缺口 —— 先按文档实现 6 个,第 7 个写进 PR 备注并追加到 09 篇 §4。
+- **历史计划基线**要求按当时的 03 篇 §4.1 注册 10 条；`/health` 需鉴权(未带 token 返 401)。当时记录的 `PUT /service/config` 缺口已由 T16 落地，当前实际数量和路径必须以 `routes/registry.js` 与 `check:api-contract` 对账，不能继续按本卡的旧计数实现。
 - 每小时定时器调 T04 的 `cleanup()`;定时器要 `unref()`,否则 sidecar 退不了。
 
 **验收** `tests/backend/health-routes.test.js`:断言 `router.routes()` 恰好覆盖 §4.1 列举的路径(这是把门禁那两项 `todo` 硬化的第一步,见 08 篇 §5);`degraded = true` 时业务路由返 503 而 `/health` 仍可用;无 token 访 `/health` 返 401。
@@ -77,7 +79,7 @@
 
 **改** `services/backend/bridge/message-schema.js`、`services/backend/bridge/shell-client.js` · **依赖** 无
 
-**背景**:契约 `backendToShellSchema` 有 **9** 类消息,而后端 `BACKEND_TO_SHELL_TYPES` 只有 **8** 类,少 `dialog.request`。后果是后端根本没法请 Shell 弹文件/目录选择框,而插件安装、导入帧、宠物包导入都需要它。
+**背景（历史 T12 缺口，已落地）**:当时契约 `backendToShellSchema` 有 9 类消息,而后端 `BACKEND_TO_SHELL_TYPES` 只有 8 类,少 `dialog.request`。该缺口已由 T12 补齐；当前数量和能力以 `packages/contracts/src/bridge.ts`、`services/backend/bridge/message-schema.js` 与 `check:api-contract` 为准。
 
 **必须:**
 
@@ -88,7 +90,7 @@
 
 **验收** `tests/backend/bridge-dialog.test.js`:白名单长度为 9 且包含 `dialog.request`;往返拿到同一 `id`;假 `now` 推过 60 s → `PROVIDER_TIMEOUT`/504;`paths: null` 正常返回。
 
-**不要**:不要顺手改 `SHELL_TO_BACKEND_TYPES`(它的 6 类与契约已一致);不要把对话框逻辑写进后端(弹框是 Shell 的事)。
+**不要**:不要顺手改当前已对账的其它消息类型;不要把对话框逻辑写进后端(弹框是 Shell 的事)。
 
 ---
 
@@ -115,7 +117,7 @@
 
 ## 完成 M1 的判定
 
-T01–T13 全部合入基线后,下面三条必须全绿:
+T01–T13 的历史 M1 判定使用下面三条基础门禁；当前提交必须按变更等级执行完整门禁（至少包含 contracts、channel-retirement、docs-drift，以及受影响的 backend/core/UI 测试）：
 
 ```bash
 npm run check:node
