@@ -27,13 +27,28 @@ test('backend host installer rejects environment overrides for privileged filesy
 
 test('backend host installer prepares and validates the staged release before switching the active app', () => {
   const installer = fs.readFileSync(installerPath, 'utf8')
-  const dependencyInstall = installer.indexOf('"$NODE_ROOT/bin/npm" ci')
-  const contractBuild = installer.indexOf('"$NODE_ROOT/bin/npm" --workspace @openpet/contracts run build')
+  const dependencyInstall = installer.indexOf('"$node_candidate/bin/npm" ci')
+  const contractBuild = installer.indexOf('"$node_candidate/bin/npm" --workspace @openpet/contracts run build')
   const appSwitch = installer.indexOf('mv "$APP_ROOT" "$previous_app"')
 
   assert.ok(dependencyInstall >= 0 && contractBuild >= 0 && appSwitch >= 0)
   assert.ok(dependencyInstall < contractBuild, 'dependencies must install before contract build')
   assert.ok(contractBuild < appSwitch, 'the existing app must remain in place until staging validates')
-  assert.match(installer, /if ! mv "\$APP_ROOT\.new" "\$APP_ROOT"; then[\s\S]*mv "\$previous_app" "\$APP_ROOT"/)
-  assert.match(installer, /if ! systemctl daemon-reload[\s\S]*mv "\$previous_app" "\$APP_ROOT"/)
+  assert.match(installer, /if ! mv "\$app_stage" "\$APP_ROOT"; then[\s\S]*exit 1/)
+  assert.match(installer, /restore_application_and_node\(\)[\s\S]*mv "\$previous_app" "\$APP_ROOT"/)
+  assert.match(installer, /rollback_deployment\(\)[\s\S]*restore_application_and_node[\s\S]*restore_service_unit/)
+  assert.match(installer, /cleanup_install\(\)[\s\S]*rollback_deployment/)
+  assert.match(installer, /trap cleanup_install EXIT/)
+  assert.match(installer, /if ! install -m 0644 deploy\/openpet-backend-host\.service[\s\S]*exit 1/)
+})
+
+test('backend host installer isolates privileged downloads and restores the service unit on rollback', () => {
+  const installer = fs.readFileSync(installerPath, 'utf8')
+
+  assert.match(installer, /mktemp -d \/tmp\/openpet-install\./)
+  assert.match(installer, /node_tar="\$work_dir\/node\.tar\.xz"/)
+  assert.doesNotMatch(installer, /node_tar=\/tmp\/openpet-node-/)
+  assert.match(installer, /if \[\[ -e "\$snapshot_unit" \]\]; then[\s\S]*cp -a "\$snapshot_unit" "\$unit_path"/)
+  assert.match(installer, /systemctl disable --now "\$SERVICE_NAME"[\s\S]*rm -f "\$unit_path"/)
+  assert.match(installer, /restore_service_unit\(\)[\s\S]*systemctl daemon-reload/)
 })
