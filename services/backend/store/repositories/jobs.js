@@ -14,7 +14,10 @@ function asJson(value) {
 }
 
 function persistedInput(kind, input) {
-  if (typeof kind === "string" && kind.startsWith("plugin.")) {
+	if (input && typeof input === "object" && input.redacted === true && typeof input.summary === "string") {
+		return { redacted: true, summary: input.summary.slice(0, 512) }
+	}
+	if (typeof kind === "string" && kind.startsWith("plugin.")) {
     return {
       redacted: true,
       summary: kind === "plugin.command" && input && typeof input === "object"

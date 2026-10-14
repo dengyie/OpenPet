@@ -370,8 +370,8 @@ export function accessLog({ buffer, logger, appendHttp } = {}) {
 		const record = () => {
 			if (recorded) return
 			recorded = true
-			ctx.res.off("finish", record)
-			ctx.res.off("close", record)
+			ctx.res.off?.("finish", record)
+			ctx.res.off?.("close", record)
 			const at = Date.now()
 			const entry = {
 				at: new Date(at).toISOString(),
@@ -390,8 +390,19 @@ export function accessLog({ buffer, logger, appendHttp } = {}) {
 			}
 			if (entry.status >= 500) logger?.warn?.("请求以 5xx 结束", entry)
 		}
-		ctx.res.once("finish", record)
-		ctx.res.once("close", record)
-		await next()
+		if (typeof ctx.res.once === "function") {
+			ctx.res.once("finish", record)
+			ctx.res.once("close", record)
+			await next()
+			return
+		}
+		// Small response doubles used by unit callers do not implement the
+		// Node response lifecycle. Record after the middleware chain so the
+		// same DTO contract remains testable without a real HTTP server.
+		try {
+			await next()
+		} finally {
+			record()
+		}
 	}
 }

@@ -55,7 +55,6 @@ import { registerJobRoutes } from "./routes/jobs.js"
 import { registerPluginRoutes } from "./routes/plugins.js"
 import { registerAiSecretRoutes } from "./routes/ai.js"
 import { registerAiRoutes } from "./routes/ai.js"
-import { registerAiTalkRoutes } from "./routes/ai.js"
 import { createAiService } from "./domains/ai/image-generation.js"
 import { createAiDomain } from "./domains/ai/core.js"
 import { registerAiRuntimeRoutes } from "./routes/ai-runtime.js"
@@ -66,7 +65,7 @@ import { migrate } from "./store/migrate.js"
 import { migrateFromJson, needsJsonImport } from "./store/migrate-from-json.js"
 import { createJobsRepository } from "./store/repositories/jobs.js"
 import { createLogsRepository } from "./store/repositories/logs.js"
-import { createPluginJobHandlers, createImageJobHandlers } from "./jobs/handlers/index.js"
+import { createPluginJobHandlers, createImageJobHandlers, createHatchJobHandlers } from "./jobs/handlers/index.js"
 import { createCreatorDomain } from "./domains/creator/index.js"
 import { createCreatorJobHandlers } from "./jobs/handlers/creator.js"
 import { registerCreatorRoutes } from "./routes/creator.js"
@@ -175,6 +174,8 @@ const initPromise = shell.waitFor("init", { timeoutMs: INIT_TIMEOUT_MS })
 
 deliver = (raw) => shell.receive(raw)
 for (const raw of inbox.splice(0)) shell.receive(raw)
+
+const privateInputs = new Map()
 
 const runtime = {
 	sessionToken: randomBytes(32).toString("hex"),
@@ -330,6 +331,13 @@ const aiHostRequest = async (operation, payload = {}) => {
 }
 registerAiRuntimeRoutes(router, {
 	getDomain: () => runtime.aiChat,
+	getImageDomain: () => runtime.ai,
+	shell,
+	secrets: runtime.secrets,
+	jobs: { insert: (input) => {
+		if (!runtime.enqueueJob) throw new ApiError("BACKEND_UNAVAILABLE", "Job service unavailable")
+		return runtime.enqueueJob(input)
+	} },
 	present: (result, context) => aiHostRequest("present", { result, context }),
 	getActions: async () => (await aiHostRequest("context")).actions,
 })
@@ -354,13 +362,6 @@ registerAiRoutes(router, { jobs: { insert: (input) => {
 			return runtime.ai.clearProviderApiKey(...args)
 		},
 	} })
-runtime.aiTalk = createAiTalkService({ shell })
-registerAiTalkRoutes(router, {
-	 talk: runtime.aiTalk,
-	 jobs: { insert: (input) => runtime.enqueueJob?.(input) },
-	 emit: (name, payload) => eventHub.publish(name, payload),
-	logger,
-})
 runtime.catalog = createCatalogService({
 	root: join(dirname(fileURLToPath(import.meta.url)), "../.."),
 	db: runtime.db,
@@ -382,6 +383,7 @@ runtime.actions = createActionService({
 	shell,
 	jobs: { insert: (input) => runtime.enqueueJob?.(input) },
 	emit: (name, payload) => eventHub.publish(name, payload),
+	logger,
 })
 registerActionRoutes(router, { actions: runtime.actions })
 
@@ -516,6 +518,11 @@ if (!runtime.degraded && runtime.jobs) {
 			return value
 		},
 		forgetPrivateInput: (jobId) => privateInputs.delete(jobId),
+		onQueuedCancel: async (job, privateInput) => {
+			if (job.kind === "actions.import-frames" && typeof privateInput?.selectionId === "string") {
+				await runtime.actions.clearSelection({ selectionId: privateInput.selectionId })
+			}
+		},
 		handlers: {
 			"about.check-updates": async ({ report }) => { report({ phase: "checking", percent: 25 }); return runtime.about.checkUpdates() },
 			"catalog.install": async ({ job, report, signal, finalize }) => {
@@ -525,13 +532,14 @@ if (!runtime.degraded && runtime.jobs) {
 			},
 			"pet-pack.import": async ({ job, report, signal, finalize }) => runtime.petPacks.runImport({ ...job.input, signal, report, finalize }),
 			"pet-pack.export": async ({ job, report, signal, finalize }) => runtime.petPacks.runExport({ ...job.input, signal, report, finalize }),
-			"actions.import-frames": async ({ job, report, signal, finalize }) => runtime.actions.runImportFrames({ ...job.input, signal, report, finalize }),
+			"actions.import-frames": async ({ job, privateInput, report, signal, finalize }) => runtime.actions.runImportFrames({ ...(privateInput ?? job.input), signal, report, finalize }),
 			...createPluginJobHandlers({
 				db: runtime.db,
 				plugins: runtime.plugins,
 				logger,
 			}),
 				...createImageJobHandlers({ ai: runtime.ai }),
+				...createHatchJobHandlers({ shell, logger }),
 				...createCreatorJobHandlers({ creator: runtime.creator }),
 			},
 	})

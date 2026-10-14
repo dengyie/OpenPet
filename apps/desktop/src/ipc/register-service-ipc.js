@@ -1,4 +1,5 @@
 const { IPC } = require('../shared/ipc-channels')
+const { validateAlias } = require('../sidecar/remote-backend')
 
 const registerServiceIpc = ({
   ipcMainService,

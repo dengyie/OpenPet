@@ -349,7 +349,7 @@ test("hatch Job cancellation forwards a typed stop request and cannot finish suc
 					assert.equal(payload.runId, "run-cancel")
 					markStart()
 					await startReleased
-					return { status: "shadow-recorded", decision: null }
+					return { status: "shadow-recorded", code: "ok", message: "recorded", decision: null }
 				}
 				if (operation === "hatch.stop") {
 					assert.equal(payload.runId, "run-cancel")
@@ -410,7 +410,7 @@ test("hatch Job stop failures remain observable while cancellation settles", { t
 					assert.equal(payload.runId, "run-stop-failure")
 					markStart()
 					await startReleased
-					return { status: "shadow-recorded", decision: null }
+					return { status: "shadow-recorded", code: "ok", message: "recorded", decision: null }
 				}
 				if (operation === "hatch.stop") {
 					assert.equal(payload.runId, "run-stop-failure")
@@ -711,15 +711,15 @@ test("Actions import Jobs clear retained Shell selections on success and typed f
 	}
 })
 
-test("canceling a queued Actions import clears its retained Shell selection without dispatching import", { timeout: 15_000 }, async () => {
+	test("canceling a queued Actions import clears its retained Shell selection without dispatching import", { timeout: 15_000 }, async () => {
 	const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-actions-queued-cancel-"))
 	let backend = null
 	let releaseImports = () => {}
 	const importsReleased = new Promise((resolve) => { releaseImports = resolve })
-	let startedCount = 0
-	let markStarted = () => {}
-	const importsStarted = new Promise((resolve) => { markStarted = resolve })
-	const operations = []
+		let startedCount = 0
+		let markStarted = () => {}
+		const exportsStarted = new Promise((resolve) => { markStarted = resolve })
+		const operations = []
 	try {
 		backend = await spawnSidecar({
 			entry: path.join(repoRoot, "services/backend/index.js"),
@@ -728,6 +728,14 @@ test("canceling a queued Actions import clears its retained Shell selection with
 		})
 		const shellHandler = createMessageHandler({
 			send: (envelope) => backend.child.send(envelope),
+			onPetPackRequest: async ({ operation, payload }) => {
+				assert.equal(operation, "export")
+				assert.match(payload.packId, /^queue-blocker-/)
+				startedCount += 1
+				if (startedCount === 2) markStarted()
+				await importsReleased
+				return { fileName: `${payload.packId}.openpet-pet.zip` }
+			},
 			onActionsRequest: async ({ operation, payload }) => {
 				operations.push({ operation, payload })
 				if (operation === "clear-selection") return { ok: true }
@@ -739,19 +747,24 @@ test("canceling a queued Actions import clears its retained Shell selection with
 			},
 		})
 		backend.child.on("message", (envelope) => {
-			if (envelope?.body?.type === "actions.request") void shellHandler.handle(envelope)
+			if (["actions.request", "pet-packs.request"].includes(envelope?.body?.type)) void shellHandler.handle(envelope)
 		})
 		const headers = { authorization: `Bearer ${backend.sessionToken}`, "content-type": "application/json" }
-		const enqueue = async (selectionId, actionId) => {
+		const enqueueActionImport = async (selectionId, actionId) => {
 			const response = await fetch(`${backend.baseUrl}/actions/frames/import`, { method: "POST", headers, body: JSON.stringify({ selectionId, actionId }) })
 			assert.equal(response.status, 202)
 			return (await response.json()).data.jobId
 		}
+		const enqueuePackExport = async (packId) => {
+			const response = await fetch(`${backend.baseUrl}/pet-packs/${packId}/export`, { method: "POST", headers, body: "{}" })
+			assert.equal(response.status, 202)
+			return (await response.json()).data.jobId
+		}
 
-		const firstId = await enqueue("selection-running-one", "wave-one")
-		const secondId = await enqueue("selection-running-two", "wave-two")
-		await importsStarted
-		const queuedId = await enqueue("selection-canceled", "wave-three")
+		const firstId = await enqueuePackExport("queue-blocker-one")
+		const secondId = await enqueuePackExport("queue-blocker-two")
+		await exportsStarted
+		const queuedId = await enqueueActionImport("selection-canceled", "wave-three")
 		const queued = (await (await fetch(`${backend.baseUrl}/jobs/${encodeURIComponent(queuedId)}`, { headers })).json()).data
 		assert.equal(queued.status, "queued")
 		assert.deepEqual(queued.input, { redacted: true, summary: "Action frame import input withheld" })

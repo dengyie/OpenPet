@@ -57,6 +57,8 @@ export const AI_TALK_ROUTES = Object.freeze([
 	"GET /ai/images/models",
 ])
 
+const PROVIDER_KEY_IDS = new Set(["ai.default", "ai.vision"])
+
 const AI_QUERY_FIELDS = new Map([
 	["GET /ai/conversations", ["entrypoint", "petPackId"]],
 	["GET /ai/traces", ["conversationId"]],
@@ -72,6 +74,20 @@ function apiKey(body) {
 
 function maskedProviderKey(value) {
 	return { configured: true, maskedTail: value.length > 4 ? "…" + value.slice(-4) : "…" }
+}
+
+function providerKeyView(result, fallback) {
+	return {
+		configured: result?.configured === true,
+		maskedTail: typeof result?.maskedTail === "string" ? result.maskedTail : maskedProviderKey(fallback).maskedTail,
+	}
+}
+
+function providerKeyId(value) {
+	if (typeof value !== "string" || !PROVIDER_KEY_IDS.has(value)) {
+		throw new ApiError("VALIDATION_FAILED", "Provider id is not supported", { details: { field: "providerId" } })
+	}
+	return value
 }
 
 async function persistProviderKey(operation) {
@@ -104,15 +120,16 @@ export function registerAiSecretRoutes(router, { secrets, onChanged } = {}) {
 	}
 	const register = (method, path, handler) => registerAiRoute(router, method, path, handler)
 
-	router.put("/ai/providers/:id/key", async (ctx) => {
-		const result = await secrets.set(ctx.params.id, apiKey(ctx.body))
+	register("put", "/ai/providers/:id/key", async (ctx) => {
+		const value = apiKey(ctx.body)
+		const result = await persistProviderKey(() => secrets.set(providerKeyId(ctx.params.id), value))
 		onChanged?.()
-		return sendSuccess(ctx, result)
+		return sendSuccess(ctx, providerKeyView(result, value))
 	})
-	router.delete("/ai/providers/:id/key", async (ctx) => {
-		const result = await secrets.clear(ctx.params.id)
+	register("delete", "/ai/providers/:id/key", async (ctx) => {
+		await persistProviderKey(() => secrets.clear(providerKeyId(ctx.params.id)))
 		onChanged?.()
-		return sendSuccess(ctx, result)
+		return sendSuccess(ctx, { configured: false, maskedTail: "" })
 	})
 }
 
@@ -256,12 +273,12 @@ function behaviorDecisionId(value) {
 	return id
 }
 
-function hatchRunId(value) {
+export function validateHatchRunId(value) {
 	if (typeof value !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value)) throw new ApiError("VALIDATION_FAILED", "runId is invalid")
 	return value
 }
 
-function hatchConfig(value) {
+export function validateHatchConfig(value) {
 	const config = bodyObject(value)
 	const fields = new Set(["enabled", "configMode", "provider", "baseUrl", "model", "requireIdentityReviewBeforeActions", "budgets"])
 	if (Object.keys(config).some((key) => !fields.has(key))) throw new ApiError("VALIDATION_FAILED", "Hatch config contains unsupported fields")
@@ -277,6 +294,30 @@ function hatchConfig(value) {
 		}
 	}
 	return structuredClone(config)
+}
+
+export function validateHatchStart(value) {
+	const body = bodyObject(value)
+	exactBodyKeys(body, ["runId", "mode", "userIntent", "stage", "scope", "workflowEvidence"])
+	const runId = validateHatchRunId(body.runId)
+	if (body.mode !== undefined && !["single-action", "full-pet"].includes(body.mode)) throw new ApiError("VALIDATION_FAILED", "mode is invalid")
+	if (body.stage !== undefined && (typeof body.stage !== "string" || body.stage.length > 80)) throw new ApiError("VALIDATION_FAILED", "stage is invalid")
+	if (body.userIntent !== undefined && (typeof body.userIntent !== "string" || body.userIntent.length > 2000)) throw new ApiError("VALIDATION_FAILED", "userIntent is invalid")
+	const scope = body.scope === undefined ? {} : bodyObject(body.scope)
+	if (Object.keys(scope).some((key) => key !== "actionId") || (scope.actionId !== undefined && (typeof scope.actionId !== "string" || scope.actionId.length > 80))) throw new ApiError("VALIDATION_FAILED", "scope is invalid")
+	const evidence = body.workflowEvidence === undefined ? {} : bodyObject(body.workflowEvidence)
+	const provider = evidence.provider === undefined ? {} : bodyObject(evidence.provider)
+	if (Object.keys(evidence).some((key) => key !== "provider") || Object.keys(provider).some((key) => !["ready", "code", "message", "provider", "model"].includes(key))) throw new ApiError("VALIDATION_FAILED", "workflowEvidence is invalid")
+	if (provider.ready !== undefined && typeof provider.ready !== "boolean") throw new ApiError("VALIDATION_FAILED", "workflowEvidence.provider.ready is invalid")
+	for (const key of ["code", "message", "provider", "model"]) if (provider[key] !== undefined && (typeof provider[key] !== "string" || provider[key].length > (key === "message" ? 240 : 160))) throw new ApiError("VALIDATION_FAILED", "workflowEvidence.provider." + key + " is invalid")
+	return {
+		runId,
+		...(body.mode === undefined ? {} : { mode: body.mode }),
+		...(body.userIntent === undefined ? {} : { userIntent: body.userIntent }),
+		...(body.stage === undefined ? {} : { stage: body.stage }),
+		scope: structuredClone(scope),
+		workflowEvidence: { provider: structuredClone(provider) },
+	}
 }
 
 export function registerAiTalkRoutes(router, { talk, jobs, emit, logger } = {}) {
@@ -457,7 +498,7 @@ export function registerAiTalkRoutes(router, { talk, jobs, emit, logger } = {}) 
 	register("patch", "/ai/hatch/config", async (ctx) => {
 		const body = bodyObject(ctx.body)
 		exactBodyKeys(body, ["config"])
-		return sendSuccess(ctx, await talk.saveHatchConfig(hatchConfig(body.config)))
+		return sendSuccess(ctx, await talk.saveHatchConfig(validateHatchConfig(body.config)))
 	})
 	register("put", "/ai/hatch/key", async (ctx) => {
 		const body = bodyObject(ctx.body)
@@ -474,24 +515,11 @@ export function registerAiTalkRoutes(router, { talk, jobs, emit, logger } = {}) 
 		if (ctx.body !== null && ctx.body !== undefined) exactBodyKeys(bodyObject(ctx.body), [])
 		return sendSuccess(ctx, await talk.checkHatchCapability())
 	})
-	register("get", "/ai/hatch/runs/:runId", async (ctx) => sendSuccess(ctx, await talk.getHatchRunStatus(hatchRunId(ctx.params.runId))))
+	register("get", "/ai/hatch/runs/:runId", async (ctx) => sendSuccess(ctx, await talk.getHatchRunStatus(validateHatchRunId(ctx.params.runId))))
 	register("post", "/ai/hatch/start", async (ctx) => {
-		const body = bodyObject(ctx.body)
 		if (!jobs?.insert) throw new ApiError("BACKEND_UNAVAILABLE", "Hatch Job service unavailable")
-		exactBodyKeys(body, ["runId", "mode", "userIntent", "stage", "scope", "workflowEvidence"])
-		if (typeof body.runId !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(body.runId)) throw new ApiError("VALIDATION_FAILED", "runId is invalid")
-		if (body.mode !== undefined && !["single-action", "full-pet"].includes(body.mode)) throw new ApiError("VALIDATION_FAILED", "mode is invalid")
-		if (body.stage !== undefined && (typeof body.stage !== "string" || body.stage.length > 80)) throw new ApiError("VALIDATION_FAILED", "stage is invalid")
-		if (body.userIntent !== undefined && (typeof body.userIntent !== "string" || body.userIntent.length > 2000)) throw new ApiError("VALIDATION_FAILED", "userIntent is invalid")
-		const scope = body.scope === undefined ? {} : bodyObject(body.scope)
-		if (Object.keys(scope).some((key) => key !== "actionId") || (scope.actionId !== undefined && (typeof scope.actionId !== "string" || scope.actionId.length > 80))) throw new ApiError("VALIDATION_FAILED", "scope is invalid")
-		const evidence = body.workflowEvidence === undefined ? {} : bodyObject(body.workflowEvidence)
-		const provider = evidence.provider === undefined ? {} : bodyObject(evidence.provider)
-		if (Object.keys(evidence).some((key) => key !== "provider") || Object.keys(provider).some((key) => !["ready", "code", "message", "provider", "model"].includes(key))) throw new ApiError("VALIDATION_FAILED", "workflowEvidence is invalid")
-		if (provider.ready !== undefined && typeof provider.ready !== "boolean") throw new ApiError("VALIDATION_FAILED", "workflowEvidence.provider.ready is invalid")
-		for (const key of ["code", "message", "provider", "model"]) if (provider[key] !== undefined && (typeof provider[key] !== "string" || provider[key].length > (key === "message" ? 240 : 160))) throw new ApiError("VALIDATION_FAILED", "workflowEvidence.provider." + key + " is invalid")
-		const input = { runId: body.runId, ...(body.mode === undefined ? {} : { mode: body.mode }), ...(body.userIntent === undefined ? {} : { userIntent: body.userIntent }), ...(body.stage === undefined ? {} : { stage: body.stage }), scope: structuredClone(scope), workflowEvidence: { provider: structuredClone(provider) } }
-		const job = jobs.insert({ id: "hatch-start:" + randomUUID(), kind: "hatch.run", resourceKey: "hatch:" + body.runId, input })
+		const input = validateHatchStart(ctx.body)
+		const job = jobs.insert({ id: "hatch-start:" + randomUUID(), kind: "hatch.run", resourceKey: "hatch:" + input.runId, input })
 		return sendSuccess(ctx, { jobId: job.id }, 202)
 	})
 	register("get", "/ai/hatch/budget", async (ctx) => {

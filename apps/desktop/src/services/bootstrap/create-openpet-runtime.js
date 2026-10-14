@@ -114,6 +114,9 @@ const createOpenPetRuntime = ({
     },
     handleActionsRequest: async () => {
       throw Object.assign(new Error('Shell Actions authority is not ready'), { code: 'BACKEND_UNAVAILABLE' })
+    },
+    handleAiTalkRequest: async () => {
+      throw Object.assign(new Error('Shell AI authority is not ready'), { code: 'BACKEND_UNAVAILABLE' })
     }
   }
 
@@ -147,6 +150,7 @@ const createOpenPetRuntime = ({
       return actionsSidecarBridge.handle(request)
     },
     onPetPackRequest: (request) => ipcRuntimeHelpers.handlePetPackRequest(request),
+    onAiTalkRequest: (request) => ipcRuntimeHelpers.handleAiTalkRequest(request),
     onCreatorRequest: async ({ operation, payload = {} }) => {
       switch (operation) {
         case 'pick-reference': {

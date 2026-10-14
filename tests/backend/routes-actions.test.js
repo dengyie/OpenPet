@@ -64,10 +64,11 @@ test("Actions HTTP preserves opaque selections and queues import before any host
 	assert.equal(response.status, 202)
 	assert.deepEqual(response.body.data, { jobId: "queued-import" })
 	assert.deepEqual(ctx.requests.map(({ operation, payload }) => ({ operation, payload })), [
-		{ operation: "reinspect", payload: { selectionId: "native-selection", actionId: "jump" } },
+		{ operation: "reinspect-frames", payload: { selectionId: "native-selection", actionId: "jump" } },
 		{ operation: "clear-selection", payload: { selectionId: "native-selection" } },
 	])
-	assert.deepEqual(ctx.queued[0].input, { selectionId: "native-selection", actionId: "jump", label: "Jump" })
+	assert.deepEqual(ctx.queued[0].input, { redacted: true, summary: "Action frame import input withheld" })
+	assert.deepEqual(ctx.queued[0].privateInput, { selectionId: "native-selection", actionId: "jump", label: "Jump" })
 	assert.deepEqual(ctx.events, [])
 	const invalid = await ctx.request("/actions/frames/import", "POST", { path: "/renderer/path", actionId: "jump" })
 	assert.equal(invalid.status, 400)
@@ -77,13 +78,13 @@ test("Actions HTTP preserves opaque selections and queues import before any host
 test("Actions HTTP forwards proposal and rule inputs with the host response intact", async (t) => {
 	const ctx = await fixture(t)
 	for (const [method, route, body, operation, payload] of [
-		["POST", "/actions/triggers/preview", { actionId: "wave" }, "preview-proposal", { actionId: "wave" }],
-		["POST", "/actions/triggers/proposals", { actionId: "wave" }, "submit-proposal", { actionId: "wave" }],
+		["POST", "/actions/triggers/preview", { actionId: "wave", type: "manual" }, "preview-proposal", { actionId: "wave", type: "manual" }],
+		["POST", "/actions/triggers/proposals", { actionId: "wave", type: "manual" }, "submit-proposal", { actionId: "wave", type: "manual" }],
 		["POST", "/actions/triggers/proposals/p1/accept", {}, "accept-proposal", { proposalId: "p1" }],
 		["POST", "/actions/triggers/proposals/p1/reject", { reason: "Rejected" }, "reject-proposal", { proposalId: "p1", reason: "Rejected" }],
 		["PATCH", "/actions/triggers/rules/r1", { status: "disabled" }, "update-rule", { ruleId: "r1", status: "disabled" }],
 		["DELETE", "/actions/triggers/rules/r1", undefined, "delete-rule", { ruleId: "r1" }],
-		["DELETE", "/actions/wave", undefined, "remove", { actionId: "wave" }],
+		["DELETE", "/actions/wave", undefined, "delete-action", { actionId: "wave" }],
 	]) {
 		const response = await ctx.request(route, method, body)
 		assert.equal(response.status, 200, route)

@@ -1,6 +1,8 @@
 import { createRequire } from "node:module"
 import { randomUUID } from "node:crypto"
 import { ApiError, sendSuccess } from "../http/middleware.js"
+import { requestShellAiTalk } from "../bridge/ai-talk-request.js"
+import { validateHatchConfig, validateHatchRunId, validateHatchStart } from "./ai.js"
 import { streamAiChat } from "./ai-stream.js"
 
 const require = createRequire(import.meta.url)
@@ -8,7 +10,10 @@ const { createAiConfigView, createAiPersonaProfileView, createAiPersonaDraftView
 
 export const AI_RUNTIME_ROUTES = Object.freeze([
   "GET /ai/state", "GET /ai/config", "PATCH /ai/config",
-  "GET /ai/hatch/config", "PATCH /ai/hatch/config",
+  "GET /ai/hatch/agents", "GET /ai/hatch/config", "PATCH /ai/hatch/config",
+  "PUT /ai/hatch/key", "DELETE /ai/hatch/key", "POST /ai/hatch/capability",
+  "GET /ai/hatch/runs/:runId", "POST /ai/hatch/start", "GET /ai/hatch/budget",
+  "GET /ai/images/health", "GET /ai/images/models",
   "POST /ai/providers/:id/test", "GET /ai/providers/:id/models",
   "GET /ai/persona", "PUT /ai/persona", "POST /ai/persona/draft",
   "GET /ai/memories", "POST /ai/memories", "DELETE /ai/memories", "DELETE /ai/memories/:id",
@@ -33,21 +38,61 @@ function capability(id) {
   throw new ApiError("NOT_FOUND", "AI provider capability not found")
 }
 
-export function registerAiRuntimeRoutes(router, { getDomain, present, getActions = async () => [] } = {}) {
+export function registerAiRuntimeRoutes(router, { getDomain, getImageDomain, shell, secrets, jobs, present, getActions = async () => [] } = {}) {
   const domain = () => {
     const ai = getDomain?.()
     if (!ai) throw new ApiError("BACKEND_UNAVAILABLE", "AI backend is unavailable")
     return ai
   }
   const talk = async (ctx, method, args = [], view = (value) => value) => sendSuccess(ctx, view(await domain().invokeTalk(method, ...args)))
+  const imageDomain = () => {
+    const image = getImageDomain?.()
+    if (!image) throw new ApiError("BACKEND_UNAVAILABLE", "Image AI backend is unavailable")
+    return image
+  }
+  const hostAi = (operation, payload = {}, timeoutMs = 60_000) => requestShellAiTalk(shell, operation, payload, { timeoutMs })
   router.get("/ai/state", async (ctx) => { const ai = domain(); await ai.requirePack(); sendSuccess(ctx, ai.snapshot()) })
   router.get("/ai/config", (ctx) => sendSuccess(ctx, createAiConfigView(domain().provider.getConfig())))
   router.patch("/ai/config", (ctx) => sendSuccess(ctx, createAiConfigView(domain().saveConfig(object(ctx.body)))))
+  router.get("/ai/hatch/agents", async (ctx) => sendSuccess(ctx, await hostAi("hatch.agents")))
   router.get("/ai/hatch/config", (ctx) => sendSuccess(ctx, domain().getHatchConfig()))
   router.patch("/ai/hatch/config", (ctx) => {
+    const body = object(ctx.body)
+    if (Object.keys(body).some((key) => key !== "config")) throw new ApiError("VALIDATION_FAILED", "Hatch config request contains unsupported fields")
     const ai = domain()
-    ai.saveConfig({ hatchPet: object(ctx.body) })
+    ai.saveConfig({ hatchPet: validateHatchConfig(body.config) })
     sendSuccess(ctx, ai.getHatchConfig())
+  })
+  router.put("/ai/hatch/key", async (ctx) => {
+    const body = object(ctx.body)
+    if (Object.keys(body).some((key) => key !== "apiKey") || typeof body.apiKey !== "string" || !body.apiKey.trim() || body.apiKey.length > 4096) {
+      throw new ApiError("VALIDATION_FAILED", "apiKey is invalid")
+    }
+    const result = await secrets?.set?.("ai.hatch-pet", body.apiKey)
+    if (!result) throw new ApiError("BACKEND_UNAVAILABLE", "Hatch API key storage is unavailable")
+    domain().publishSnapshot()
+    return sendSuccess(ctx, { apiKeyRef: "ai.hatch-pet", hasApiKey: result.configured === true, updatedAt: new Date().toISOString() })
+  })
+  router.delete("/ai/hatch/key", async (ctx) => {
+    const result = await secrets?.clear?.("ai.hatch-pet")
+    if (!result) throw new ApiError("BACKEND_UNAVAILABLE", "Hatch API key storage is unavailable")
+    domain().publishSnapshot()
+    return sendSuccess(ctx, { apiKeyRef: "ai.hatch-pet", hasApiKey: false, updatedAt: new Date().toISOString() })
+  })
+  router.post("/ai/hatch/capability", async (ctx) => {
+    if (ctx.body !== null && ctx.body !== undefined && Object.keys(object(ctx.body)).length) throw new ApiError("VALIDATION_FAILED", "Hatch capability request must be empty")
+    return sendSuccess(ctx, await hostAi("hatch.capability.check"))
+  })
+  router.get("/ai/hatch/runs/:runId", async (ctx) => sendSuccess(ctx, await hostAi("hatch.run.status", { runId: validateHatchRunId(ctx.params.runId) })))
+  router.post("/ai/hatch/start", async (ctx) => {
+    if (!jobs?.insert) throw new ApiError("BACKEND_UNAVAILABLE", "Hatch Job service unavailable")
+    const input = validateHatchStart(ctx.body)
+    const job = jobs.insert({ id: "hatch-start:" + randomUUID(), kind: "hatch.run", resourceKey: "hatch:" + input.runId, input })
+    return sendSuccess(ctx, { jobId: job.id }, 202)
+  })
+  router.get("/ai/hatch/budget", async (ctx) => {
+    if (ctx.hasDuplicateQueryKeys || Object.keys(ctx.query || {}).some((key) => key !== "runId")) throw new ApiError("VALIDATION_FAILED", "Hatch budget query is invalid")
+    return sendSuccess(ctx, await hostAi("hatch.budget", { runId: validateHatchRunId(ctx.query?.runId) }))
   })
   router.post("/ai/providers/:id/test", async (ctx) => {
     if (capability(ctx.params.id) !== "chat") throw new ApiError("VALIDATION_FAILED", "Connection test is available for chat")
@@ -131,4 +176,6 @@ export function registerAiRuntimeRoutes(router, { getDomain, present, getActions
     try { sendSuccess(ctx, await domain().complete(object(ctx.body), { signal: controller.signal })) }
     finally { ctx.res.removeListener("close", abort) }
   })
+  router.get("/ai/images/health", async (ctx) => sendSuccess(ctx, await imageDomain().checkHealth({})))
+  router.get("/ai/images/models", async (ctx) => sendSuccess(ctx, await imageDomain().discoverModels({})))
 }

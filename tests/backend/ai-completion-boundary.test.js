@@ -55,7 +55,7 @@ test('HTTP completions reject caller-owned provider routing before invoking any 
 
 test('Hatch completions resolve the latest configuration and its canonical secret in the backend', async (t) => {
   const { send, calls, patches } = await setup(t)
-  const config = await send('/ai/hatch/config', { configMode: 'override', baseUrl: 'https://hatch.example/v1', provider: 'openai-compatible', model: 'hatch-model' }, 'PATCH')
+  const config = await send('/ai/hatch/config', { config: { configMode: 'override', baseUrl: 'https://hatch.example/v1', provider: 'openai-compatible', model: 'hatch-model' } }, 'PATCH')
   assert.equal(config.status, 200)
   assert.equal(patches.length, 1)
   const response = await send('/ai/completions', { method: 'completeStructuredTool', capability: 'hatch-pet', request })

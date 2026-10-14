@@ -125,6 +125,7 @@ export function createRunner({
 	tmpRoot = null,
 	takePrivateInput = () => undefined,
 	forgetPrivateInput = () => false,
+	onQueuedCancel = async () => {},
 } = {}) {
 	if (!repo || !queue || typeof queue.next !== "function" || typeof repo.byId !== "function") {
 		throw new ApiError("INTERNAL", "Job runner 需要 repository 与 queue")
@@ -166,7 +167,8 @@ export function createRunner({
 		if (typeof handler !== "function") {
 			forgetPrivateInput(job.id)
 			const error = new ApiError("INTERNAL", "Job handler 不存在", { details: { kind: job.kind } })
-			repo.finish(job.id, { status: "failed", error: jobError(error) })
+			const failed = repo.finish(job.id, { status: "failed", error: jobError(error) })
+			emit?.("job.failed", failed)
 			const nextJob = queue.release(job.id)
 			if (nextJob) void execute(nextJob).catch((nextError) => {
 				logger?.error?.("后续 Job 执行失败", { jobId: nextJob.id, error: String(nextError) })
@@ -285,8 +287,16 @@ export function createRunner({
 		if (current.status === "canceled") return current
 		if (current.status === "queued") {
 			const canceled = queue.cancel(jobId)
-			forgetPrivateInput(jobId)
-			if (canceled?.status === "canceled") emit?.("job.canceled", canceled)
+			if (canceled?.status === "canceled") {
+				const privateInput = takePrivateInput(jobId)
+				forgetPrivateInput(jobId)
+				try {
+					await onQueuedCancel(canceled, privateInput)
+				} catch (error) {
+					logger?.warn?.("清理已取消 Job 的临时资源失败", { jobId, error: String(error) })
+				}
+				emit?.("job.canceled", canceled)
+			}
 			return canceled
 		}
 		const record = active.get(jobId)

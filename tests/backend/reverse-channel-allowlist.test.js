@@ -1,8 +1,6 @@
 "use strict"
 
 const assert = require("node:assert/strict")
-const fs = require("node:fs")
-const path = require("node:path")
 const { describe, it } = require("node:test")
 
 const {
@@ -11,8 +9,6 @@ const {
 } = require("../../apps/desktop/src/sidecar/message-handler.js")
 
 const EXPECTED_BACKEND_TO_SHELL_TYPES = [
-	"actions.request",
-	"creator.request",
 	"pet.command.request",
 	"plugin.production.request",
 	"pet.say",
@@ -31,8 +27,11 @@ const EXPECTED_BACKEND_TO_SHELL_TYPES = [
 	"secrets.persist.request",
 	"catalog.request",
 	"pet-packs.request",
+	"creator.request",
 	"ai.state",
 	"ai.host.request",
+	"ai.talk.request",
+	"actions.request",
 ]
 
 function envelope(type, body = {}) {
@@ -44,27 +43,19 @@ function envelope(type, body = {}) {
 	}
 }
 
-function contractBackendToShellTypes() {
-	const source = fs.readFileSync(path.join(__dirname, "../../packages/contracts/src/bridge.ts"), "utf8")
-	const start = source.indexOf("export const backendToShellSchema")
-	const end = source.indexOf("export type BackendToShell", start)
-	assert.notEqual(start, -1, "backendToShellSchema must exist in packages/contracts")
-	assert.notEqual(end, -1, "BackendToShell type must follow backendToShellSchema")
-	const schema = source.slice(start, end)
-	const types = [...schema.matchAll(/type: z\.literal\("([^"]+)"\)/g)].map((match) => match[1])
-	if (schema.includes("petPackBackendRequestSchema")) types.splice(types.indexOf("catalog.request") + 1, 0, "pet-packs.request")
-	if (schema.includes("settingsCommandBackendRequestSchema")) types.splice(types.indexOf("settings.apply.request") + 1, 0, "settings.command.request")
-	return types
+async function contractBackendToShellTypes() {
+	const { backendToShellSchema } = await import("@openpet/contracts")
+	return backendToShellSchema.options.map((option) => option.shape.type.value)
 }
 
 	describe("T28 reverse-channel allowlist", () => {
-	it("keeps the Backend and Shell allowlists exactly aligned with the 20 contract types", async () => {
+	it("keeps the Backend and Shell allowlists exactly aligned with the contract types", async () => {
 		const backendSchema = await import("../../services/backend/bridge/message-schema.js")
 
-		assert.deepEqual(contractBackendToShellTypes(), EXPECTED_BACKEND_TO_SHELL_TYPES)
+		assert.deepEqual(await contractBackendToShellTypes(), EXPECTED_BACKEND_TO_SHELL_TYPES)
 		assert.deepEqual(backendSchema.BACKEND_TO_SHELL_TYPES, EXPECTED_BACKEND_TO_SHELL_TYPES)
 		assert.deepEqual(SHELL_BACKEND_TO_SHELL_TYPES, EXPECTED_BACKEND_TO_SHELL_TYPES)
-		assert.equal(new Set(SHELL_BACKEND_TO_SHELL_TYPES).size, 20)
+		assert.equal(new Set(SHELL_BACKEND_TO_SHELL_TYPES).size, 23)
 	})
 
 	it("drops malformed and non-allowlisted envelopes and logs each rejection", async () => {
@@ -319,11 +310,11 @@ function contractBackendToShellTypes() {
 			send: (reply) => replies.push(reply),
 			onActionsRequest: async (request) => { requests.push(request); return { actions: [{ id: "idle" }] } },
 		})
-		assert.equal(await handler.handle(envelope("actions.request", { request: { operation: "get", payload: {} } })), true)
+		assert.equal(await handler.handle(envelope("actions.request", { operation: "get", payload: {} })), true)
 		assert.deepEqual(requests, [{ operation: "get", payload: {} }])
 		assert.equal(replies[0].id, "test-actions.request")
 		assert.deepEqual(replies[0].body, { type: "actions.result", operation: "get", ok: true, result: { actions: [{ id: "idle" }] } })
-		assert.equal(await handler.handle(envelope("actions.request", { request: { operation: "get", payload: { path: "/tmp/owned" } } })), false)
+		assert.equal(await handler.handle(envelope("actions.request", { operation: "get", payload: { path: "/tmp/owned" } })), false)
 	})
 
 		it("answers validated AI talk requests with correlated structured results", async () => {

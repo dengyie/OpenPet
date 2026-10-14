@@ -278,8 +278,9 @@ function createSidecarRuntimeCoordinator(options = {}) {
 					onSettingsCommandRequest: options.onSettingsCommandRequest,
 					onCatalogRequest: options.onCatalogRequest,
 					onPetPackRequest: options.onPetPackRequest,
-						onActionsRequest: options.onActionsRequest,
-						onCreatorRequest: options.onCreatorRequest,
+					onActionsRequest: options.onActionsRequest,
+					onCreatorRequest: options.onCreatorRequest,
+					onAiTalkRequest: options.onAiTalkRequest,
 					onAiState: options.onAiState,
 					onAiHostRequest: options.onAiHostRequest,
 					})

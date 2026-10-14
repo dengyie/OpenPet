@@ -154,7 +154,7 @@ describe("Job runner · finalizing and cancellation", () => {
 		})
 	})
 
-	it("keeps duplicate cancellation idempotent if the first request crosses into finalizing", async () => {
+	it("keeps duplicate cancellation idempotent and suppresses late progress", async () => {
 		const started = deferred()
 		const enterFinalizing = deferred()
 		const release = deferred()
@@ -172,7 +172,8 @@ describe("Job runner · finalizing and cancellation", () => {
 			await started.promise
 			const first = runner.cancel("cancel-phase-race")
 			enterFinalizing.resolve()
-			await eventually(() => repo.byId("cancel-phase-race").progress?.phase === "finalizing")
+			await new Promise((resolve) => setImmediate(resolve))
+			assert.equal(repo.byId("cancel-phase-race").progress?.phase ?? null, null)
 			const second = runner.cancel("cancel-phase-race")
 			release.resolve()
 
@@ -441,8 +442,9 @@ describe('Job runner · ownership and late completion', () => {
     } }, async ({ queue, repo, runner }) => {
       enqueue(queue, 'late-result', 'image.generate')
       const running = runner.run()
-      await runner.cancel('late-result')
+      const cancel = runner.cancel('late-result')
       gate.resolve()
+      await cancel
       await running
       assert.equal(writes, 0)
       assert.equal(repo.byId('late-result').status, 'canceled')

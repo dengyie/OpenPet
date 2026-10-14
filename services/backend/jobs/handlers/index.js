@@ -3,6 +3,7 @@ import * as pluginInstallGithub from "./plugin-install-github.js"
 import * as pluginCommand from "./plugin-command.js"
 import * as pluginSyncBundled from "./plugin-sync-bundled.js"
 import * as imageGenerate from "./image-generate.js"
+import { createHatchJobHandlers } from "./hatch.js"
 import { createCreatorJobHandlers } from "./creator.js"
 
 export const PLUGIN_JOB_HANDLERS = Object.freeze([
@@ -38,5 +39,7 @@ export function createImageJobHandlers({ ai } = {}) {
 		finalize: runnerContext.finalize,
 	}) }
 }
+
+export { createHatchJobHandlers }
 
 export { createCreatorJobHandlers }

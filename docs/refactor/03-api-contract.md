@@ -210,8 +210,8 @@
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/ai/config` | 不含密钥明文 |
 | GET | `/ai/state` | 当前宠物的只读配置、人设和会话快照 |
+| GET | `/ai/config` | 不含密钥明文 |
 | PATCH | `/ai/config` | 部分更新 |
 | PUT | `/ai/providers/{id}/key` | **只写**,返 `{ configured, maskedTail }` |
 | DELETE | `/ai/providers/{id}/key` | 清除 |
@@ -219,13 +219,12 @@
 | GET | `/ai/providers/{id}/models` | 模型目录 |
 | GET · PUT | `/ai/persona` | 人设 |
 | POST | `/ai/persona/draft` | 生成人设草稿 |
-| GET · POST · DELETE | `/ai/memories` · `/{id}` | 记忆 |
-| DELETE | `/ai/memories` | 清空当前宠物记忆 |
+| GET · POST · DELETE | `/ai/memories` | 记忆与清空当前宠物记忆 |
+| DELETE | `/ai/memories/{id}` | 删除单条记忆 |
 | POST | `/ai/chat` | **SSE 流式**(`Accept: text/event-stream`) |
 | POST | `/ai/chat/{id}/cancel` | 取消活动或排队的对话请求 |
 | GET · DELETE | `/ai/conversations` · `/{id}` | 对话 |
 | GET | `/ai/conversations/{id}` | 指定会话消息 |
-| POST | `/ai/talk/start` · `/ai/talk/stop` | 主动搭话 |
 | GET · POST | `/ai/behavior/rules` | 行为规则列表与创建 |
 | PATCH · DELETE | `/ai/behavior/rules/{id}` | 行为规则更新与删除 |
 | GET · PATCH | `/ai/behavior` | 行为配置 |
@@ -234,13 +233,18 @@
 | POST | `/ai/behavior/replay` | 决策重放 |
 | POST | `/ai/behavior/diagnostics` | 导出行为诊断 |
 | DELETE | `/ai/behavior/decisions` | 清空行为决策 |
-| GET · POST | `/ai/traces` · `/ai/traces/export` | 诊断 |
+| GET | `/ai/traces` | 诊断 |
+| POST | `/ai/traces/export` | 导出诊断 |
 | POST | `/ai/traces/diagnostics` | 导出筛选后的 AI 诊断 |
 | POST | `/ai/utterances` | 记录 PetService 已呈现的话语 |
 | POST | `/ai/entrypoints/chat` | 插件等入口的对话 |
 | POST | `/ai/completions` | 后端按能力解析配置；拒绝调用方 configOverride、密钥引用与 signal 字段 |
+| GET | `/ai/hatch/agents` | 孵化 Agent 目录 |
 | GET · PATCH | `/ai/hatch/config` | 孵化设置与有效模型；固定 ai.hatch-pet 密钥引用 |
-| GET · POST | `/ai/hatch/agents` · `/ai/hatch/start` | 孵化 → **Job** |
+| PUT · DELETE | `/ai/hatch/key` | 孵化 Provider API Key 的写入与清除 |
+| POST | `/ai/hatch/capability` | 孵化能力检查 |
+| GET | `/ai/hatch/runs/{runId}` | 查询孵化运行状态 |
+| POST | `/ai/hatch/start` | 孵化 → **Job** |
 | GET | `/ai/hatch/budget` | 预算账本 |
 | POST | `/ai/images/generate` | → **Job**(265s) |
 | GET · PATCH | `/ai/images/config` | 图片 Provider 脱敏配置读写（已注册；不接受 `apiKeyRef` 等 owner 字段） |

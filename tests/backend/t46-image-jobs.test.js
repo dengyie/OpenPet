@@ -199,15 +199,20 @@ test("T42 Actions import uses the real domain and locks cancellation before the 
 		const queue = createQueue({ repo, tickMs: 60_000 })
 		const events = []
 		const calls = []
+		const privateInputs = new Map()
 		const { createActionService } = await import("../../services/backend/domains/actions.js")
 		const actions = createActionService({
-			jobs: repo,
+			jobs: { insert: (input) => {
+				const { privateInput, ...jobInput } = input
+				privateInputs.set(jobInput.id, privateInput)
+				return repo.insert(jobInput)
+			} },
 			emit: (name, payload) => events.push({ name, payload }),
 			shell: { request: async ({ operation, payload }) => {
 				const current = repo.activeByResourceKey("actions:import")
 				assert.equal(current.progress.phase, "finalizing")
 				await assert.rejects(() => runner.cancel(current.id), (error) => error.code === "JOB_NOT_CANCELABLE" && error.status === 423)
-				calls.push(payload)
+				if (operation === "import-frames") calls.push(payload)
 				return { body: { type: "actions.result", operation, ok: true, result: { ok: true, result: { importedAction: { id: payload.actionId } }, animations: { actions: [{ id: payload.actionId }] } } } }
 			} },
 		})
@@ -216,8 +221,13 @@ test("T42 Actions import uses the real domain and locks cancellation before the 
 			queue,
 			progress: ({ onEmit }) => ({ report: onEmit, flush: () => {}, reset: () => {} }),
 			emit: (name, payload) => events.push({ name, payload }),
+			takePrivateInput: (jobId) => {
+				const value = privateInputs.get(jobId)
+				privateInputs.delete(jobId)
+				return value
+			},
 			handlers: {
-				"actions.import-frames": ({ job, report, signal, finalize }) => actions.runImportFrames({ ...job.input, report, signal, finalize }),
+				"actions.import-frames": ({ job, privateInput, report, signal, finalize }) => actions.runImportFrames({ ...(privateInput ?? job.input), report, signal, finalize }),
 			},
 		})
 		const { jobId } = actions.importFrames({ selectionId: "native-selection", actionId: "wave", label: "Wave" })

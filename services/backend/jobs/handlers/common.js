@@ -2,7 +2,7 @@ import { ApiError } from "../../http/middleware.js"
 import { createRequire } from "node:module"
 
 const require = createRequire(import.meta.url)
-const { githubRepositoryResourceKey, validateRepositoryUrl } = require("../../../../src/main/services/plugin-github-import-service.js")
+const { githubRepositoryResourceKey, validateRepositoryUrl } = require("../../../../apps/desktop/src/services/plugin-github-import-service.js")
 
 export function requirePluginMethod(plugins, name) {
 	if (typeof plugins?.[name] !== "function") {

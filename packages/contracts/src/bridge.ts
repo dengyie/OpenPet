@@ -61,13 +61,67 @@ export const ACTIONS_BRIDGE_OPERATIONS = [
 ] as const
 export type ActionsBridgeOperation = (typeof ACTIONS_BRIDGE_OPERATIONS)[number]
 
-const actionsBridgePayload = z.record(z.string(), z.unknown())
-
-export const actionsRequestSchema = z.object({
-  operation: z.enum(ACTIONS_BRIDGE_OPERATIONS),
-  payload: actionsBridgePayload,
+const actionBridgeId = z.string().min(1).max(256)
+const actionBridgePath = z.string().min(1).max(4096)
+const actionBridgeProposalFields = {
+  actionId: actionBridgeId,
+  type: z.enum(["manual", "click", "random", "state", "event", "unbound"]),
+  binding: z.string().max(80).optional(),
+  id: actionBridgeId.optional(),
+  sourcePluginId: z.string().max(160).optional(),
+  sourceRunId: z.string().max(160).optional(),
+  sourceCommandId: z.string().max(160).optional(),
+  message: z.string().max(1000).optional(),
+  notes: z.string().max(1000).optional(),
+  ruleSpec: z.record(z.string(), z.unknown()).optional(),
+}
+const actionProposalPayload = z.object(actionBridgeProposalFields).strict()
+const actionRequest = (operation: (typeof ACTIONS_BRIDGE_OPERATIONS)[number], payload: z.ZodTypeAny) => z.object({
+  type: z.literal("actions.request"),
+  operation: z.literal(operation),
+  payload,
 }).strict()
+
+export const actionsRequestSchema = z.discriminatedUnion("operation", [
+  actionRequest("get", z.object({}).strict()),
+  actionRequest("save-config", z.object({
+    defaultAction: actionBridgeId.optional(),
+    clickAction: actionBridgeId.optional(),
+    actions: z.array(z.record(z.string(), z.unknown())).optional(),
+    triggerProposal: z.record(z.string(), z.unknown()).optional(),
+  }).strict()),
+  actionRequest("preview-proposal", actionProposalPayload),
+  actionRequest("submit-proposal", actionProposalPayload),
+  actionRequest("accept-proposal", z.object({ proposalId: actionBridgeId }).strict()),
+  actionRequest("reject-proposal", z.object({ proposalId: actionBridgeId, reason: z.string().max(1000).optional() }).strict()),
+  actionRequest("update-rule", z.object({
+    ruleId: actionBridgeId,
+    status: z.string().max(80).optional(),
+    ruleSpec: z.record(z.string(), z.unknown()).optional(),
+  }).strict().superRefine((payload, ctx) => {
+    if (payload.status === undefined && payload.ruleSpec === undefined) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "status or ruleSpec is required" })
+  })),
+  actionRequest("delete-rule", z.object({ ruleId: actionBridgeId }).strict()),
+  actionRequest("inspect-frames", z.object({ path: actionBridgePath.optional(), actionId: actionBridgeId.optional() }).strict()),
+  actionRequest("reinspect-frames", z.object({ selectionId: actionBridgeId, actionId: actionBridgeId.optional() }).strict()),
+  actionRequest("clear-selection", z.object({ selectionId: actionBridgeId }).strict()),
+  actionRequest("import-frames", z.object({
+    selectionId: actionBridgeId.optional(),
+    path: actionBridgePath.optional(),
+    actionId: actionBridgeId,
+    label: z.string().max(256).optional(),
+  }).strict().superRefine((payload, ctx) => {
+    if (Object.hasOwn(payload, "selectionId") === Object.hasOwn(payload, "path")) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "exactly one of selectionId or path is required" })
+  })),
+  actionRequest("delete-action", z.object({ actionId: actionBridgeId }).strict()),
+])
 export type ActionsBridgeRequest = z.infer<typeof actionsRequestSchema>
+
+export const CREATOR_BRIDGE_OPERATIONS = [
+  "pick-reference", "bind-reference", "delete-reference", "get-state", "get-last-run", "asset-preview",
+  "generate-character", "generate-action", "run-workflow", "evaluate-sprite", "retry-action", "retry-identity",
+  "accept-identity", "accept-action-candidate", "export-recovery", "import-actions",
+] as const
 
 export const PET_PACK_BRIDGE_OPERATIONS = [
   "list",
@@ -587,7 +641,7 @@ export const backendToShellSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("pet.say"), text: z.string(), durationMs: z.number().int().positive().optional() }),
   z.object({ type: z.literal("pet.playAction"), actionId: z.string(), loop: z.boolean().optional() }),
   z.object({ type: z.literal("pet.event"), name: z.string(), payload: z.unknown().optional() }),
-  z.object({ type: z.literal("window.openPluginDashboard"), pluginId: z.string() }).strict(),
+  z.object({ type: z.literal("window.openPluginDashboard"), pluginId: z.string() }).passthrough(),
   z.object({ type: z.literal("notify"), level: z.enum(["info", "warn", "error"]), message: z.string() }),
   z.object({ type: z.literal("tray.setBadge"), count: z.number().int().nonnegative() }),
   z.object({
@@ -608,6 +662,17 @@ export const backendToShellSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("secrets.persist.request"), providerId: z.string().min(1), value: z.string().min(1).nullable() }).strict(),
   z.object({ type: z.literal("catalog.request"), request: catalogRequestSchema }).strict(),
   petPackBackendRequestSchema,
+  z.object({ type: z.literal("creator.request"), operation: z.enum(CREATOR_BRIDGE_OPERATIONS), payload: z.record(z.string(), z.unknown()) }).strict(),
+  z.object({ type: z.literal("ai.state"), snapshot: z.record(z.string(), z.unknown()) }).strict(),
+  z.object({
+    type: z.literal("ai.host.request"),
+    operation: z.enum(["context", "present"]),
+    payload: z.record(z.string(), z.unknown()),
+  }).strict().superRefine((request, ctx) => {
+    const allowed = request.operation === "context" ? [] : ["result", "context"]
+    if (Object.keys(request.payload).some((key) => !allowed.includes(key))) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["payload"], message: "AI host payload contains unsupported fields" })
+    if (request.operation === "present" && !Object.hasOwn(request.payload, "result")) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["payload", "result"], message: "result is required" })
+  }),
   z.object({
     type: z.literal("ai.talk.request"),
     operation: z.enum(AI_TALK_OPERATIONS),
@@ -619,8 +684,12 @@ export const backendToShellSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("actions.request"),
-    request: actionsRequestSchema,
-  }).strict(),
+    operation: z.enum(ACTIONS_BRIDGE_OPERATIONS),
+    payload: z.record(z.string(), z.unknown()),
+  }).strict().superRefine((request, ctx) => {
+    const parsed = actionsRequestSchema.safeParse(request)
+    if (!parsed.success) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["payload"], message: "Actions payload does not match its operation" })
+  }),
 ])
 export type BackendToShell = Exclude<z.infer<typeof backendToShellSchema>, { type: "pet-packs.request" }> | PetPackBackendRequest
 

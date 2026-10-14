@@ -9,6 +9,20 @@ const CREATOR_OPERATIONS = new Set([
 	"generate-character", "generate-action", "run-workflow", "evaluate-sprite", "retry-action", "retry-identity",
 	"accept-identity", "accept-action-candidate", "export-recovery", "import-actions",
 ])
+const PLUGIN_PRODUCTION_REQUEST_FIELDS = Object.freeze({
+	setup: ["pluginId", "setupId"],
+	"service.start": ["pluginId", "serviceId"],
+	"service.stop": ["pluginId", "serviceId"],
+	"service.health": ["pluginId", "serviceId"],
+	"service.health-policy": ["pluginId", "serviceId", "policy"],
+	"storage.clear": ["pluginId"],
+	"secret.state": [],
+	"secret.save": ["token"],
+	"secret.clear": [],
+	"secret.qq.save": ["credentials"],
+	"secret.qq.clear": [],
+	"creator.default-flow": ["prompt"],
+})
 
 function exactKeys(value, keys) {
 	const actual = Object.keys(value).sort()
@@ -70,21 +84,6 @@ function normalizeCatalogRequest(value) {
 	}
 }
 
-function normalizeActionsRequest(value) {
-	if (!isPlainObject(value) || !ACTIONS_OPERATIONS.includes(value.operation) || !isPlainObject(value.payload)) return null
-	const allowed = ACTIONS_REQUEST_FIELDS[value.operation]
-	if (Object.keys(value.payload).some((key) => !allowed.includes(key))) return null
-	if (ACTIONS_REQUIRED_FIELDS[value.operation].some((key) => !Object.hasOwn(value.payload, key))) return null
-	for (const key of ["actionId", "proposalId", "ruleId", "selectionId", "path", "label", "reason", "defaultAction", "clickAction"]) {
-		if (Object.hasOwn(value.payload, key) && typeof value.payload[key] !== "string") return null
-	}
-	if (Object.hasOwn(value.payload, "actions") && !Array.isArray(value.payload.actions)) return null
-	if (Object.hasOwn(value.payload, "triggerProposal") && !isPlainObject(value.payload.triggerProposal)) return null
-	if (Object.hasOwn(value.payload, "ruleSpec") && !isPlainObject(value.payload.ruleSpec)) return null
-	if (Object.hasOwn(value.payload, "status") && typeof value.payload.status !== "string") return null
-	return { operation: value.operation, payload: structuredClone(value.payload) }
-}
-
 const PET_PACK_PAYLOAD_FIELDS = Object.freeze({
 	list: [],
 	manifest: ["packId"],
@@ -121,8 +120,6 @@ function normalizePetPackRequest(operation, payload) {
 // A backend message is untrusted input at this boundary: only these explicitly
 // capabilities may reach Electron/PetService.
 const BACKEND_TO_SHELL_TYPES = Object.freeze([
-	"actions.request",
-	"creator.request",
 	"pet.command.request",
 	"plugin.production.request",
 	"pet.say",
@@ -141,8 +138,11 @@ const BACKEND_TO_SHELL_TYPES = Object.freeze([
 	"secrets.persist.request",
 	"catalog.request",
 	"pet-packs.request",
+	"creator.request",
 	"ai.state",
 	"ai.host.request",
+	"ai.talk.request",
+	"actions.request",
 ])
 
 const PET_PACK_OPERATIONS = Object.freeze([
@@ -295,6 +295,7 @@ const AI_PERSONA_FIELDS = new Set([
 	"relationshipToUser", "actionStyle", "boundaries",
 ])
 let contractErrorCodesPromise = null
+let backendEnvelopeContractPromise = null
 let aiTalkResultContractPromise = null
 let aiBehaviorDryRunPayloadSchemaPromise = null
 let aiBehaviorRuleSchemaPromise = null
@@ -333,6 +334,15 @@ async function validateAiTalkSuccessResult(operation, result) {
 	try {
 		const parseAiTalkResult = await aiTalkResultContractPromise
 		return parseAiTalkResult(operation, result).success
+	} catch {
+		return false
+	}
+}
+
+async function validateBackendEnvelope(envelope) {
+	backendEnvelopeContractPromise ??= import("@openpet/contracts").then(({ backendToShellSchema }) => backendToShellSchema)
+	try {
+		return (await backendEnvelopeContractPromise).safeParse(envelope.body).success
 	} catch {
 		return false
 	}
@@ -526,24 +536,22 @@ function parseEnvelope(raw) {
 			normalizedBody = { type: body.type, request }
 			break
 		}
-		case "actions.request": {
-			const request = normalizeActionsRequest(body.request)
-			if (!exactKeys(body, ["type", "request"]) || !request) return fail("bad-body", "actions.request")
-			normalizedBody = { type: body.type, request }
-			break
-		}
 	}
 
 	return { ok: true, envelope: { v: raw.v, id: raw.id, at: raw.at, body: normalizedBody } }
 }
 
-function createMessageHandler({ dialog, petService, secretService, logger, send, onNotify, onBadge, onDashboard, onSettingsChanged, onSettingsApplyRequest, onCatalogRequest, onPetPackRequest, onActionsRequest, onCreatorRequest, onAiState, onAiHostRequest, productionService } = {}) {
+function createMessageHandler({ dialog, petService, secretService, logger, send, onNotify, onBadge, onDashboard, onSettingsChanged, onSettingsApplyRequest, onSettingsCommandRequest, onCatalogRequest, onPetPackRequest, onActionsRequest, onCreatorRequest, onAiTalkRequest, onAiState, onAiHostRequest, productionService } = {}) {
 	if (typeof send !== "function") throw new TypeError("createMessageHandler 需要 send")
 
 	async function handle(raw) {
 		const parsed = parseEnvelope(raw)
 		if (!parsed.ok) {
 			log(logger, "warn", "丢弃无效的 sidecar 消息", { reason: parsed.reason, detail: parsed.detail })
+			return false
+		}
+		if (!await validateBackendEnvelope(parsed.envelope)) {
+			log(logger, "warn", "丢弃不符合反向通道契约的 Backend 消息", { type: parsed.envelope.body.type })
 			return false
 		}
 		const { body } = parsed.envelope
@@ -613,11 +621,25 @@ function createMessageHandler({ dialog, petService, secretService, logger, send,
 						responseBody = { type: "actions.result", operation: body.operation, ok: true, result }
 					} catch (error) {
 						responseBody = { type: "actions.result", operation: body.operation, ok: false, error: {
-							code: await normalizePetPackErrorCode(error?.code),
+							code: await normalizeActionsErrorCode(error),
 							message: sanitizeLogText(error?.message || String(error)),
 						} }
 					}
 					send({ v: BRIDGE_PROTOCOL_VERSION, id: raw.id, at: Date.now(), body: responseBody })
+					return true
+				}
+				case "ai.talk.request": {
+					let response
+					try {
+						if (typeof onAiTalkRequest !== "function") throw Object.assign(new Error("Shell AI Talk authority unavailable"), { code: "BACKEND_UNAVAILABLE" })
+						const result = await onAiTalkRequest({ operation: body.operation, payload: structuredClone(body.payload) })
+						if (!await validateAiTalkSuccessResult(body.operation, result)) throw Object.assign(new Error("Shell AI Talk response is invalid"), { code: "INTERNAL" })
+						response = { ok: true, result }
+					} catch (error) {
+						const code = await normalizeAiTalkErrorCode(error)
+						response = { ok: false, error: { code, message: normalizeAiTalkErrorMessage(error, code) } }
+					}
+					send({ v: BRIDGE_PROTOCOL_VERSION, id: raw.id, at: Date.now(), body: { type: "ai.talk.result", operation: body.operation, ...response } })
 					return true
 				}
 				case "creator.request": {
@@ -774,23 +796,6 @@ function createMessageHandler({ dialog, petService, secretService, logger, send,
 						response = { ok: true, result: await onCatalogRequest(body.request) }
 					} catch (error) { response = { ok: false, error: error?.message || String(error) } }
 					send({ v: BRIDGE_PROTOCOL_VERSION, id: raw.id, at: Date.now(), body: { type: "catalog.result", ...response } })
-					return true
-				}
-				case "actions.request": {
-					let response
-					try {
-						if (typeof onActionsRequest !== "function") throw new Error("Shell Actions service unavailable")
-						response = { ok: true, result: await onActionsRequest(body.request) }
-					} catch (error) {
-						response = {
-							ok: false,
-							error: {
-								code: await normalizeActionsErrorCode(error),
-								message: sanitizeLogText(error?.message || String(error)),
-							},
-						}
-					}
-					send({ v: BRIDGE_PROTOCOL_VERSION, id: raw.id, at: Date.now(), body: { type: "actions.result", operation: body.request.operation, ...response } })
 					return true
 				}
 				case "dialog.request": {

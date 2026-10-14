@@ -100,7 +100,7 @@ function createAiSidecarProxy({ getBackend, getActivePetPackId, fetchImpl = glob
       if (!snapshot?.hatchConfig) throw new Error('AI backend configuration is unavailable')
       return clone(snapshot.hatchConfig)
     },
-    saveConfig: (input) => mutate('/ai/hatch/config', input, 'PATCH'),
+    saveConfig: (input) => mutate('/ai/hatch/config', { config: input }, 'PATCH'),
     saveApiKey: async (apiKey) => {
       const result = await mutate('/ai/providers/ai.hatch-pet/key', { apiKey }, 'PUT')
       return { apiKeyRef: 'ai.hatch-pet', hasApiKey: result.configured, updatedAt: new Date().toISOString() }

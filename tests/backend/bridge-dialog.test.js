@@ -24,13 +24,13 @@ function resultEnvelope(id, paths) {
 }
 
 describe("dialog.request bridge", () => {
-	it("backend whitelist contains exactly the 20 contract message types", () => {
-		assert.equal(bridge.BACKEND_TO_SHELL_TYPES.length, 20)
-		assert.equal(new Set(bridge.BACKEND_TO_SHELL_TYPES).size, 20)
+	it("backend whitelist contains exactly the contract message types", () => {
+		assert.equal(bridge.BACKEND_TO_SHELL_TYPES.length, 23)
+		assert.equal(new Set(bridge.BACKEND_TO_SHELL_TYPES).size, 23)
 		assert.equal(bridge.BACKEND_TO_SHELL_TYPES.includes("dialog.request"), true)
 		assert.equal(bridge.BACKEND_TO_SHELL_TYPES.includes("catalog.request"), true)
 		assert.equal(bridge.BACKEND_TO_SHELL_TYPES.includes("pet-packs.request"), true)
-		assert.equal(bridge.SHELL_TO_BACKEND_TYPES.length, 16, "settings, secrets, Catalog, Pet Pack, Creator, Actions, AI and pet command host results are part of the bridge contract")
+		assert.equal(bridge.SHELL_TO_BACKEND_TYPES.length, 17, "settings, secrets, Catalog, Pet Pack, Creator, Actions, AI and pet command host results are part of the bridge contract")
 	})
 
 	it("request and dialog.result correlate with the same envelope id", async () => {
@@ -38,7 +38,7 @@ describe("dialog.request bridge", () => {
 		const client = shellClient.createShellClient({ send: (envelope) => sent.push(envelope) })
 
 		const responsePromise = client.request({ type: "dialog.request", mode: "directory" })
-		assert.equal(sent.length, 1)
+		assert.equal(sent.length, 1, "a correlated request must be sent once")
 		assert.equal(sent[0].body.requestId, sent[0].id)
 		assert.equal(sent[0].body.mode, "directory")
 
@@ -245,7 +245,7 @@ describe("dialog.request bridge", () => {
 			value: "provider-secret",
 		}, { id: sent[0].id }))
 
-		await assert.rejects(responsePromise, /unexpected fields/)
+		await assert.rejects(responsePromise, /unexpected fields|bridge contract/)
 		client.dispose()
 	})
 
