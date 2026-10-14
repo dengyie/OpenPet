@@ -41,7 +41,7 @@ scripts/check-api-contract.mjs          ✅ M0 门禁
 tests/backend/state-machine.test.js     ✅ 测试样板
 ```
 
-根 `package.json` 已开启 workspaces(`apps/*`、`services/*`、`packages/*`),`check:node` 已覆盖 `apps` 与 `services`。backend 当前由 12 组 routes 文件装配 133 条实际 method/path；`routes/registry.js` 是硬对账注册表，不是第二套业务实现。
+根 `package.json` 已开启 workspaces(`apps/*`、`services/*`、`packages/*`),`check:node` 已覆盖 `apps` 与 `services`。backend 当前由 12 组 routes 文件装配 133 条已注册路由、146 条文档路由行；`routes/registry.js` 是硬对账注册表，不是第二套业务实现。
 
 **当前 backend 已完成启动、迁移、Job 恢复/调度和 HTTP 业务路由注册。** 所有当前运行期表均已有明确 owner；AI traces 与 HTTP access logs 的归属见 §2.6 与缺口 G13。
 

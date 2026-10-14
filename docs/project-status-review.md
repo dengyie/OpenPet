@@ -1,11 +1,13 @@
 # OpenPet Project Status Review
 
-> Last updated: 2026-09-12
+> Last updated: 2026-10-15
 > Branch: `main`
 
 This is the compact product and release snapshot. Use [`TODO.md`](./TODO.md) for the active queue and `docs/release-evidence/` for archived proof.
 
-The current engineering baseline is a Shell plus Backend sidecar migration. The executable path is `main.js` -> `createOpenPetRuntime()` -> `createSidecarRuntimeCoordinator()` -> `spawnSidecar()` -> `services/backend/index.js`; current contract checks report 140 IPC channels, 120 registered REST routes, and 119 documented target/implemented rows. This migration status is separate from the release-evidence status below.
+The current engineering baseline is a Shell plus Backend sidecar migration. The executable path is `main.js` -> `createOpenPetRuntime()` -> `createSidecarRuntimeCoordinator()` -> `spawnSidecar()` -> `services/backend/index.js`; current checks report 87 IPC channels, 133 registered REST routes, and 146 documented route rows. This migration status is separate from the release-evidence status below.
+
+Latest code-only verification (2026-10-15): Backend **424/424**, Tools **683/683**, changed Settings/AI/Pet Pack suites **68/68**, typecheck/syntax, contracts and route/channel gates, docs drift, and the Control Center production build pass. `test:core` reports **2180 passed, 26 browser-launch failures, and 1 skipped** because the pinned Playwright Chromium headless shell is absent. No Electron or desktop UI acceptance was performed.
 
 ## Executive Summary
 
@@ -19,7 +21,7 @@ Current common provider presets such as OpenRouter and Together remain endpoint 
 
 The archived closure records `not-ready` for official desktop, macOS, and Windows claims under its previous paid-signing workflow. It remains a historical finding; current acceptance uses self-managed signatures, integrity checks, and target-OS runtime evidence without requiring platform trust.
 
-Agent Awareness now has a fresh real local smoke archive at `docs/release-evidence/agent-awareness-local-smoke/2026-09-11T20-05-34-688Z/`. It records 19 sanitized sessions and 134 events with automated redaction checks passing; dashboard usefulness and pet speech/noise still require human desktop acceptance.
+Agent Awareness has a real local smoke archive at `docs/release-evidence/agent-awareness-local-smoke/2026-10-08T22-40-35-815Z/`. It records 19 sanitized sessions and 515 events with automated redaction checks passing; dashboard usefulness and pet speech/noise still require human desktop acceptance.
 
 ## Release Truth
 

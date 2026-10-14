@@ -1,5 +1,4 @@
-import { z } from 'zod'
-import { aiBehaviorConfigPatchSchema, aiBehaviorDryRunPayloadSchema } from '@openpet/contracts'
+import * as v from 'valibot'
 
 import { backendClient, backendTransport } from '../../api/backend-client.ts'
 import type { ApiClient } from '../../api/client.ts'
@@ -27,141 +26,158 @@ import type {
   ProviderModelDiscoveryResult,
 } from '@openpet/shared/src/openpet-contracts.ts'
 
-type AiBehaviorDryRunPayload = z.input<typeof aiBehaviorDryRunPayloadSchema>
-
-const personaSchema = z.object({
-  name: z.string(),
-  identity: z.string(),
-  tone: z.string(),
-  coreTraits: z.array(z.string()),
-  speakingStyle: z.string(),
-  relationshipToUser: z.string(),
-  actionStyle: z.string(),
-  boundaries: z.array(z.string()),
+const nonNegativeInteger = () => v.pipe(v.number(), v.finite(), v.integer(), v.minValue(0))
+const positiveString = () => v.pipe(v.string(), v.minLength(1))
+const personaSchema = v.object({
+  name: v.string(), identity: v.string(), tone: v.string(), coreTraits: v.array(v.string()),
+  speakingStyle: v.string(), relationshipToUser: v.string(), actionStyle: v.string(), boundaries: v.array(v.string()),
 })
-const personaOverrideSchema = z.object({
-  name: z.string().optional(),
-  identity: z.string().optional(),
-  tone: z.string().optional(),
-  coreTraits: z.array(z.string()).optional(),
-  speakingStyle: z.string().optional(),
-  relationshipToUser: z.string().optional(),
-  actionStyle: z.string().optional(),
-  boundaries: z.array(z.string()).optional(),
-}).strict()
-const personaSaveSchema = z.object({ override: personaOverrideSchema }).strict()
-const personaDraftSchema = z.object({ instruction: z.string().max(2000) }).strict()
-const personaProfileSchema = z.object({
-  petPackId: z.string(), petPackDisplayName: z.string(),
-  packPersona: personaSchema, overridePersona: personaOverrideSchema, effectivePersona: personaSchema,
-  compiledPersonaPrompt: z.string(), compiledSystemPrompt: z.string(),
+const personaOverrideSchema = v.strictObject({
+  name: v.optional(v.string()), identity: v.optional(v.string()), tone: v.optional(v.string()),
+  coreTraits: v.optional(v.array(v.string())), speakingStyle: v.optional(v.string()),
+  relationshipToUser: v.optional(v.string()), actionStyle: v.optional(v.string()), boundaries: v.optional(v.array(v.string())),
 })
-const personaDraftResponseSchema = z.object({
-  petPackId: z.string(), petPackDisplayName: z.string(), draftPersona: personaOverrideSchema, compiledPersonaPrompt: z.string(),
+const personaSaveSchema = v.strictObject({ override: personaOverrideSchema })
+const personaDraftSchema = v.strictObject({ instruction: v.pipe(v.string(), v.maxLength(2000)) })
+const personaProfileSchema = v.object({
+  petPackId: v.string(), petPackDisplayName: v.string(), packPersona: personaSchema,
+  overridePersona: personaOverrideSchema, effectivePersona: personaSchema,
+  compiledPersonaPrompt: v.string(), compiledSystemPrompt: v.string(),
 })
-const memoryItemSchema = z.object({
-  id: z.string(), scope: z.enum(['global', 'petPack']), petPackId: z.string(), text: z.string(), tags: z.array(z.string()),
-  confidence: z.number(), importance: z.number(), sourceConversationId: z.string(), sourceMessageIds: z.array(z.string()),
-  createdAt: z.string(), updatedAt: z.string(), lastUsedAt: z.string(), lastEvidenceAt: z.string(), useCount: z.number().int(),
-  status: z.enum(['active', 'superseded', 'deleted']), supersedes: z.string(), reason: z.string(),
+const personaDraftResponseSchema = v.object({
+  petPackId: v.string(), petPackDisplayName: v.string(), draftPersona: personaOverrideSchema, compiledPersonaPrompt: v.string(),
 })
-const memoryProfileSchema = z.object({
-  petPackId: z.string(), petPackDisplayName: z.string(), globalMemories: z.array(memoryItemSchema),
-  petPackMemories: z.array(memoryItemSchema),
-  recentJobs: z.array(z.object({
-    id: z.string(), petPackId: z.string(), conversationId: z.string(), status: z.string(), createdAt: z.string(),
-    updatedAt: z.string(), errorCode: z.string(), appliedCount: z.number().int(), filteredCount: z.number().int(),
+const memoryItemSchema = v.object({
+  id: v.string(), scope: v.picklist(['global', 'petPack']), petPackId: v.string(), text: v.string(), tags: v.array(v.string()),
+  confidence: v.pipe(v.number(), v.finite()), importance: v.pipe(v.number(), v.finite()), sourceConversationId: v.string(), sourceMessageIds: v.array(v.string()),
+  createdAt: v.string(), updatedAt: v.string(), lastUsedAt: v.string(), lastEvidenceAt: v.string(), useCount: v.pipe(v.number(), v.finite(), v.integer()),
+  status: v.picklist(['active', 'superseded', 'deleted']), supersedes: v.string(), reason: v.string(),
+})
+const memoryProfileSchema = v.object({
+  petPackId: v.string(), petPackDisplayName: v.string(), globalMemories: v.array(memoryItemSchema), petPackMemories: v.array(memoryItemSchema),
+  recentJobs: v.array(v.object({
+    id: v.string(), petPackId: v.string(), conversationId: v.string(), status: v.string(), createdAt: v.string(),
+    updatedAt: v.string(), errorCode: v.string(), appliedCount: v.pipe(v.number(), v.finite(), v.integer()), filteredCount: v.pipe(v.number(), v.finite(), v.integer()),
   })),
 })
-const modelCatalogSchema = z.object({ cacheKey: z.string(), models: z.array(z.string()), fetchedAt: z.string(), source: z.enum(['none', 'saved']) })
-const behaviorSchema = z.object({ enabled: z.boolean(), useTools: z.boolean(), cooldownMs: z.number().int().nonnegative(), rules: z.array(z.unknown()), decisions: z.array(z.unknown()) }).passthrough()
-const visionSchema = z.object({
-  mode: z.enum(['follow-chat', 'override']), provider: z.string(), baseUrl: z.string(), model: z.string(), apiKeyRef: z.string(),
-  hasApiKey: z.boolean(), modelCatalog: modelCatalogSchema, effectiveProvider: z.string(), effectiveBaseUrl: z.string(),
-  effectiveModel: z.string(), effectiveHasApiKey: z.boolean(),
-}).passthrough()
-const aiConfigSchema = z.object({
-  enabled: z.boolean(), provider: z.string(), baseUrl: z.string(), model: z.string(), apiKeyRef: z.string(), systemPrompt: z.string(),
-  memory: z.object({ enabled: z.boolean() }), behavior: behaviorSchema, vision: visionSchema, hasApiKey: z.boolean(), modelCatalog: modelCatalogSchema,
-}).passthrough()
-const aiConfigPatchSchema = z.object({ config: z.object({
-  enabled: z.boolean().optional(), provider: z.string().optional(), baseUrl: z.string().optional(), model: z.string().optional(),
-  systemPrompt: z.string().optional(), memory: z.object({ enabled: z.boolean() }).strict().optional(),
-  vision: z.object({ mode: z.enum(['follow-chat', 'override']).optional(), provider: z.string().optional(), baseUrl: z.string().optional(), model: z.string().optional() }).strict().optional(),
-}).strict() }).strict() as unknown as z.ZodType<{ config: AiConfigSaveRequest }>
-const connectionTestSchema = z.object({
-  ok: z.boolean(), provider: z.string(), baseUrl: z.string(), model: z.string(), hasApiKey: z.boolean(), elapsedMs: z.number().nonnegative(),
-  reply: z.string().optional(), code: z.string().optional(), message: z.string().optional(),
-  modelsProbe: z.enum(['ok', 'unavailable', 'failed', 'timed_out', 'rate_limited', 'provider_unavailable']).optional(), modelsProbeMessage: z.string().max(240).optional(), availableModels: z.array(z.string()).optional(), currentModelDiscovered: z.boolean().optional(),
-}).passthrough()
-const discoverySchema = z.object({ ok: z.boolean(), provider: z.string(), baseUrl: z.string(), model: z.string(), hasApiKey: z.boolean(), models: z.array(z.string()), code: z.string(), message: z.string() }).passthrough()
-const keyResultSchema = z.object({ configured: z.boolean(), maskedTail: z.string() }).passthrough()
-const imageModelCatalogSchema = z.object({ cacheKey: z.string(), models: z.array(z.string()), fetchedAt: z.string(), source: z.enum(['none', 'saved']) }).strict()
-const imageConfigSchema = z.object({
-  provider: z.string(), baseUrl: z.string(), model: z.string(), apiKeyRef: z.string(), organization: z.string(), project: z.string(),
-  timeoutMs: z.number().int().nonnegative(), maxConcurrentJobs: z.number().int().nonnegative(), hasApiKey: z.boolean(),
-  apiKeyPreview: z.string(), apiKeyLabel: z.string(), modelCatalog: imageModelCatalogSchema,
-}).strict()
-const imageConfigPatchSchema = z.object({ config: z.object({
-  provider: z.enum(['openai-compatible', 'openai']).optional(), baseUrl: z.string().max(2000).optional(), model: z.string().max(2000).optional(),
-  organization: z.string().max(2000).optional(), project: z.string().max(2000).optional(),
-  timeoutMs: z.number().int().min(1000).max(300000).optional(), maxConcurrentJobs: z.number().int().min(1).max(8).optional(),
-}).strict() }).strict() as unknown as z.ZodType<{ config: ImageGenerationConfigSaveRequest }>
-const imageKeyResultSchema = z.object({ apiKeyRef: z.string(), hasApiKey: z.boolean(), apiKeyPreview: z.string() }).strict()
-const emptySchema = z.object({}).strict()
-const unknownObjectSchema = z.record(z.string(), z.unknown())
-const behaviorConfigSchema = z.object({
-  enabled: z.boolean(), useTools: z.boolean(), cooldownMs: z.number().int().nonnegative(),
-  rules: z.array(z.unknown()), decisions: z.array(z.unknown()),
-}).strict()
-const behaviorResultSchema = z.object({ matched: z.boolean(), reason: z.string() }).passthrough()
-const hatchConfigSchema = z.record(z.string(), z.unknown())
-const hatchConfigSaveSchema = z.object({
-  enabled: z.boolean().optional(),
-  configMode: z.enum(['follow-chat', 'override']).optional(),
-  provider: z.string().optional(),
-  baseUrl: z.string().optional(),
-  model: z.string().optional(),
-  requireIdentityReviewBeforeActions: z.boolean().optional(),
-  budgets: z.object({
-    maxIdentityRegenerations: z.number().optional(),
-    maxActionAttemptsPerAction: z.number().optional(),
-    maxEvaluationAttemptsPerArtifact: z.number().optional(),
-    maxProviderCalls: z.number().optional(),
-    maxElapsedMs: z.number().optional(),
-    maxEstimatedCost: z.number().nullable().optional(),
-  }).strict().optional(),
-}).strict()
-const hatchConfigPatchSchema = z.object({ config: hatchConfigSaveSchema }).strict() as unknown as z.ZodType<{ config: HatchPetAgentConfigSaveRequest }>
-const hatchKeyResultSchema = z.object({ apiKeyRef: z.string(), hasApiKey: z.boolean(), updatedAt: z.string().optional() }).strict()
-const hatchCapabilitySchema = z.object({ ok: z.boolean(), code: z.string(), message: z.string(), provider: z.string(), model: z.string(), elapsedMs: z.number().nonnegative() }).passthrough()
-const hatchRunStatusSchema = z.record(z.string(), z.unknown())
-const behaviorDiagnosticsSchema = z.object({ content: z.string() }).strict()
-const behaviorDecisionListSchema = z.array(z.unknown())
-const chatResponseSchema = z.object({
-  conversationId: z.string().min(1),
-  reply: z.string(),
-  messages: z.array(z.record(z.string(), z.unknown())).optional(),
-  bubble: z.record(z.string(), z.unknown()).optional(),
-  bubbleSegments: z.array(z.string()).optional(),
-  behaviorIntent: z.unknown().optional(),
-  behavior: z.record(z.string(), z.unknown()).optional(),
-  state: z.record(z.string(), z.unknown()).optional(),
-  action: z.object({ actionId: z.string().optional(), label: z.string().optional(), error: z.string().optional() }).strict().optional(),
-  requestId: z.string().optional(),
-  providerLatencyMs: z.number().nonnegative().optional(),
-  canceled: z.boolean().optional(),
-  partialReply: z.string().optional(),
-}).strict()
-const conversationListSchema = z.object({ conversations: z.array(unknownObjectSchema) }).strict()
-const chatPayloadSchema = z.object({
-  message: z.string().min(1).max(4000), conversationId: z.string().optional(),
-  entrypoint: z.string().optional(), requestId: z.string().optional(),
-}).strict()
-const traceExportSchema = z.string()
-const jobAcceptedSchema = z.object({ jobId: z.string().min(1) }).strict()
+const modelCatalogSchema = v.object({ cacheKey: v.string(), models: v.array(v.string()), fetchedAt: v.string(), source: v.picklist(['none', 'saved']) })
+const behaviorSchema = v.objectWithRest({ enabled: v.boolean(), useTools: v.boolean(), cooldownMs: nonNegativeInteger(), rules: v.array(v.unknown()), decisions: v.array(v.unknown()) }, v.unknown())
+const visionSchema = v.objectWithRest({
+  mode: v.picklist(['follow-chat', 'override']), provider: v.string(), baseUrl: v.string(), model: v.string(), apiKeyRef: v.string(),
+  hasApiKey: v.boolean(), modelCatalog: modelCatalogSchema, effectiveProvider: v.string(), effectiveBaseUrl: v.string(),
+  effectiveModel: v.string(), effectiveHasApiKey: v.boolean(),
+}, v.unknown())
+const aiConfigSchema = v.objectWithRest({
+  enabled: v.boolean(), provider: v.string(), baseUrl: v.string(), model: v.string(), apiKeyRef: v.string(), systemPrompt: v.string(),
+  memory: v.object({ enabled: v.boolean() }), behavior: behaviorSchema, vision: visionSchema, hasApiKey: v.boolean(), modelCatalog: modelCatalogSchema,
+}, v.unknown())
+const aiConfigPatchSchema = v.strictObject({ config: v.strictObject({
+  enabled: v.optional(v.boolean()), provider: v.optional(v.string()), baseUrl: v.optional(v.string()), model: v.optional(v.string()),
+  systemPrompt: v.optional(v.string()), memory: v.optional(v.strictObject({ enabled: v.boolean() })),
+  vision: v.optional(v.strictObject({ mode: v.optional(v.picklist(['follow-chat', 'override'])), provider: v.optional(v.string()), baseUrl: v.optional(v.string()), model: v.optional(v.string()) })),
+}) }) as v.GenericSchema<{ config: AiConfigSaveRequest }>
+const connectionTestSchema = v.objectWithRest({
+  ok: v.boolean(), provider: v.string(), baseUrl: v.string(), model: v.string(), hasApiKey: v.boolean(), elapsedMs: v.pipe(v.number(), v.finite(), v.minValue(0)),
+  reply: v.optional(v.string()), code: v.optional(v.string()), message: v.optional(v.string()),
+  modelsProbe: v.optional(v.picklist(['ok', 'unavailable', 'failed', 'timed_out', 'rate_limited', 'provider_unavailable'])),
+  modelsProbeMessage: v.optional(v.pipe(v.string(), v.maxLength(240))), availableModels: v.optional(v.array(v.string())), currentModelDiscovered: v.optional(v.boolean()),
+}, v.unknown())
+const discoverySchema = v.objectWithRest({ ok: v.boolean(), provider: v.string(), baseUrl: v.string(), model: v.string(), hasApiKey: v.boolean(), models: v.array(v.string()), code: v.string(), message: v.string() }, v.unknown())
+const keyResultSchema = v.objectWithRest({ configured: v.boolean(), maskedTail: v.string() }, v.unknown())
+const imageModelCatalogSchema = v.strictObject({ cacheKey: v.string(), models: v.array(v.string()), fetchedAt: v.string(), source: v.picklist(['none', 'saved']) })
+const imageConfigSchema = v.strictObject({
+  provider: v.string(), baseUrl: v.string(), model: v.string(), apiKeyRef: v.string(), organization: v.string(), project: v.string(),
+  timeoutMs: nonNegativeInteger(), maxConcurrentJobs: nonNegativeInteger(), hasApiKey: v.boolean(),
+  apiKeyPreview: v.string(), apiKeyLabel: v.string(), modelCatalog: imageModelCatalogSchema,
+})
+const imageConfigPatchSchema = v.strictObject({ config: v.strictObject({
+  provider: v.optional(v.picklist(['openai-compatible', 'openai'])), baseUrl: v.optional(v.pipe(v.string(), v.maxLength(2000))), model: v.optional(v.pipe(v.string(), v.maxLength(2000))),
+  organization: v.optional(v.pipe(v.string(), v.maxLength(2000))), project: v.optional(v.pipe(v.string(), v.maxLength(2000))),
+  timeoutMs: v.optional(v.pipe(v.number(), v.finite(), v.integer(), v.minValue(1000), v.maxValue(300000))),
+  maxConcurrentJobs: v.optional(v.pipe(v.number(), v.finite(), v.integer(), v.minValue(1), v.maxValue(8))),
+}) }) as v.GenericSchema<{ config: ImageGenerationConfigSaveRequest }>
+const imageKeyResultSchema = v.strictObject({ apiKeyRef: v.string(), hasApiKey: v.boolean(), apiKeyPreview: v.string() })
+const emptySchema = v.strictObject({})
+const unknownObjectSchema = v.record(v.string(), v.unknown())
+const behaviorConfigSchema = v.strictObject({ enabled: v.boolean(), useTools: v.boolean(), cooldownMs: nonNegativeInteger(), rules: v.array(v.unknown()), decisions: v.array(v.unknown()) })
+const behaviorResultSchema = v.objectWithRest({ matched: v.boolean(), reason: v.string() }, v.unknown())
+const hatchConfigSchema = v.record(v.string(), v.unknown())
+const hatchConfigSaveSchema = v.strictObject({
+  enabled: v.optional(v.boolean()), configMode: v.optional(v.picklist(['follow-chat', 'override'])), provider: v.optional(v.string()),
+  baseUrl: v.optional(v.string()), model: v.optional(v.string()), requireIdentityReviewBeforeActions: v.optional(v.boolean()),
+  budgets: v.optional(v.strictObject({
+    maxIdentityRegenerations: v.optional(v.pipe(v.number(), v.finite())), maxActionAttemptsPerAction: v.optional(v.pipe(v.number(), v.finite())),
+    maxEvaluationAttemptsPerArtifact: v.optional(v.pipe(v.number(), v.finite())), maxProviderCalls: v.optional(v.pipe(v.number(), v.finite())),
+    maxElapsedMs: v.optional(v.pipe(v.number(), v.finite())), maxEstimatedCost: v.optional(v.nullable(v.pipe(v.number(), v.finite()))),
+  })),
+})
+const hatchConfigPatchSchema = v.strictObject({ config: hatchConfigSaveSchema }) as v.GenericSchema<{ config: HatchPetAgentConfigSaveRequest }>
+const hatchKeyResultSchema = v.strictObject({ apiKeyRef: v.string(), hasApiKey: v.boolean(), updatedAt: v.optional(v.string()) })
+const hatchCapabilitySchema = v.objectWithRest({ ok: v.boolean(), code: v.string(), message: v.string(), provider: v.string(), model: v.string(), elapsedMs: v.pipe(v.number(), v.finite(), v.minValue(0)) }, v.unknown())
+const hatchRunStatusSchema = v.record(v.string(), v.unknown())
+const behaviorDiagnosticsSchema = v.strictObject({ content: v.string() })
+const behaviorDecisionListSchema = v.array(v.unknown())
+const chatResponseSchema = v.strictObject({
+  conversationId: positiveString(), reply: v.string(), messages: v.optional(v.array(unknownObjectSchema)), bubble: v.optional(unknownObjectSchema),
+  bubbleSegments: v.optional(v.array(v.string())), behaviorIntent: v.optional(v.unknown()), behavior: v.optional(unknownObjectSchema), state: v.optional(unknownObjectSchema),
+  action: v.optional(v.strictObject({ actionId: v.optional(v.string()), label: v.optional(v.string()), error: v.optional(v.string()) })),
+  requestId: v.optional(v.string()), providerLatencyMs: v.optional(v.pipe(v.number(), v.finite(), v.minValue(0))),
+  canceled: v.optional(v.boolean()), partialReply: v.optional(v.string()),
+})
+const chatProgressSchema = v.strictObject({
+  requestId: v.optional(v.string()), conversationId: v.optional(v.string()), petPackId: v.optional(v.string()),
+  entrypoint: v.optional(v.string()), status: v.optional(v.string()), partialReply: v.optional(v.string()),
+  partialReplyChars: v.optional(nonNegativeInteger()), chunkCount: v.optional(nonNegativeInteger()),
+  canCancel: v.optional(v.boolean()), errorMessage: v.optional(v.string()),
+})
+const chatDoneEnvelopeSchema = v.strictObject({ ok: v.literal(true), data: chatResponseSchema, requestId: positiveString() })
+const chatErrorEnvelopeSchema = v.strictObject({
+  ok: v.literal(false), requestId: positiveString(), error: v.strictObject({ code: v.string(), message: v.string() }),
+})
+const conversationListSchema = v.strictObject({ conversations: v.array(unknownObjectSchema) })
+const chatPayloadSchema = v.strictObject({
+  message: v.pipe(v.string(), v.minLength(1), v.maxLength(4000)), conversationId: v.optional(v.string()),
+  entrypoint: v.optional(v.string()), requestId: v.optional(v.string()),
+})
+const traceExportSchema = v.string()
+const jobAcceptedSchema = v.strictObject({ jobId: positiveString() })
 
-type AiChatPayload = z.infer<typeof chatPayloadSchema>
+const boundedBehaviorId = () => v.pipe(v.string(), v.maxLength(120))
+const boundedBehaviorText = () => v.pipe(v.string(), v.maxLength(500))
+const behaviorIntentSchema = v.strictObject({
+  label: v.optional(boundedBehaviorId()), kind: v.optional(boundedBehaviorId()), actionId: v.optional(boundedBehaviorId()),
+  bubbleText: v.optional(boundedBehaviorText()), reason: v.optional(v.pipe(v.string(), v.maxLength(240))),
+  displayMode: v.optional(v.picklist(['none', 'bubble', 'action', 'event'])), intent: v.optional(boundedBehaviorId()),
+  confidence: v.optional(v.pipe(v.number(), v.finite(), v.minValue(0), v.maxValue(1))),
+})
+const behaviorRuleConditionSchema = v.strictObject({
+  intent: v.optional(boundedBehaviorId()), minConfidence: v.optional(v.pipe(v.number(), v.finite(), v.minValue(0), v.maxValue(1))),
+  contains: v.optional(v.pipe(v.array(boundedBehaviorText()), v.maxLength(20))), actionKind: v.optional(boundedBehaviorId()),
+})
+const behaviorRuleActionSchema = v.strictObject({
+  type: v.optional(v.picklist(['say', 'playAction', 'setEvent'])), text: v.optional(boundedBehaviorText()),
+  actionId: v.optional(boundedBehaviorId()), event: v.optional(boundedBehaviorId()), message: v.optional(boundedBehaviorText()),
+})
+const behaviorRuleSchema = v.strictObject({
+  id: v.optional(boundedBehaviorId()), enabled: v.optional(v.boolean()),
+  priority: v.optional(v.pipe(v.number(), v.finite(), v.minValue(-10000), v.maxValue(10000))),
+  when: v.optional(behaviorRuleConditionSchema), then: v.optional(behaviorRuleActionSchema),
+})
+const aiBehaviorConfigPatchSchema = v.strictObject({
+  enabled: v.optional(v.boolean()), useTools: v.optional(v.boolean()),
+  cooldownMs: v.optional(v.pipe(v.number(), v.finite(), v.integer(), v.minValue(0))),
+  rules: v.optional(v.pipe(v.array(behaviorRuleSchema), v.maxLength(50))),
+})
+const aiBehaviorDryRunPayloadSchema = v.strictObject({
+  reply: v.pipe(v.string(), v.maxLength(4000)), behaviorIntent: v.optional(v.nullable(behaviorIntentSchema)),
+  rules: v.optional(v.pipe(v.array(behaviorRuleSchema), v.maxLength(50))),
+})
+const apiKeySchema = v.strictObject({ apiKey: v.pipe(v.string(), v.minLength(1)) })
+const hatchApiKeySchema = v.strictObject({ apiKey: v.pipe(v.string(), v.minLength(1), v.maxLength(4096)) })
+const traceExportRequestSchema = v.strictObject({ filters: v.strictObject({ petPackId: v.optional(v.string()), conversationId: v.optional(v.string()) }) })
+
+type AiBehaviorDryRunPayload = v.InferInput<typeof aiBehaviorDryRunPayloadSchema>
+type AiChatPayload = v.InferInput<typeof chatPayloadSchema>
 type ChatSseHandlers = { onDelta?: (delta: string) => void; signal?: AbortSignal }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -178,7 +194,7 @@ async function postChat(payload: AiChatPayload, { onDelta, signal }: ChatSseHand
       'x-client': 'control-center',
       'x-request-id': 'ai_' + crypto.randomUUID(),
     },
-    body: JSON.stringify(chatPayloadSchema.parse(payload)),
+    body: JSON.stringify(v.parse(chatPayloadSchema, payload)),
     signal: signal || AbortSignal.timeout(60_000),
   })
   if (!response.ok || !response.body) {
@@ -194,6 +210,7 @@ async function postChat(payload: AiChatPayload, { onDelta, signal }: ChatSseHand
   let pending = ''
   let result: Record<string, unknown> | null = null
   let streamFailed = false
+  let previousPartialReply = ''
   const consumeFrame = (frame: string) => {
     const lines = frame.split(/\r?\n/)
     const event = lines.find((line) => line.startsWith('event:'))?.slice(6).trim()
@@ -210,19 +227,43 @@ async function postChat(payload: AiChatPayload, { onDelta, signal }: ChatSseHand
     }
     if (!isRecord(value)) throw new Error(`AI chat stream contains an invalid ${event} payload`)
     if (event === 'ai.chat-delta') {
-      if (Object.keys(value).some((key) => key !== 'conversationId' && key !== 'delta') || typeof value.conversationId !== 'string' || !value.conversationId.trim() || typeof value.delta !== 'string') {
+      if (typeof value.delta === 'string' && typeof value.conversationId === 'string' && value.conversationId.trim()
+        && Object.keys(value).every((key) => key === 'conversationId' || key === 'delta')) {
+        onDelta?.(value.delta)
+        return
+      }
+      const progress = v.safeParse(chatProgressSchema, value)
+      if (!progress.success || (progress.output.conversationId !== undefined && !progress.output.conversationId.trim())) {
         throw new Error('AI chat stream contains an invalid delta')
       }
-      onDelta?.(value.delta)
+      const partialReply = progress.output.partialReply || ''
+      if (partialReply) {
+        const delta = partialReply.startsWith(previousPartialReply)
+          ? partialReply.slice(previousPartialReply.length)
+          : partialReply
+        if (delta) onDelta?.(delta)
+        previousPartialReply = partialReply
+      }
       return
     }
     if (event === 'ai.chat-done') {
-      const parsed = chatResponseSchema.safeParse(value)
-      if (!parsed.success) {
+      const envelope = v.safeParse(chatDoneEnvelopeSchema, value)
+      if (envelope.success) {
+        result = envelope.output.data
+        return
+      }
+      const direct = v.safeParse(chatResponseSchema, value)
+      if (direct.success) {
+        result = direct.output
+        return
+      }
+      const failure = v.safeParse(chatErrorEnvelopeSchema, value)
+      if (failure.success) {
+        throw new Error(failure.output.error.message || 'AI chat request failed')
+      }
+      {
         throw new Error('AI chat stream contains an invalid terminal response')
       }
-      result = parsed.data
-      return
     }
     throw new Error(`AI chat stream contains an unsupported event: ${event}`)
   }
@@ -256,7 +297,7 @@ export function createAiTalkHttpApi(client: ApiClient = backendClient) {
       method: 'PATCH', path: '/ai/images/config', requestSchema: imageConfigPatchSchema, body: { config }, responseSchema: imageConfigSchema, retry: false,
     }) as Promise<ImageGenerationConfigViewState>,
     saveImageApiKey: (apiKey: string) => client.request({
-      method: 'PUT', path: '/ai/images/key', requestSchema: z.object({ apiKey: z.string().min(1) }).strict(), body: { apiKey }, responseSchema: imageKeyResultSchema, retry: false,
+      method: 'PUT', path: '/ai/images/key', requestSchema: apiKeySchema, body: { apiKey }, responseSchema: imageKeyResultSchema, retry: false,
     }) as Promise<ImageGenerationSaveApiKeyResult>,
     clearImageApiKey: () => client.request({ method: 'DELETE', path: '/ai/images/key', responseSchema: imageKeyResultSchema, retry: false }) as Promise<ImageGenerationSaveApiKeyResult>,
     getConfig: () => client.request({ method: 'GET', path: '/ai/config', responseSchema: aiConfigSchema }) as Promise<AiConfigViewState>,
@@ -264,7 +305,7 @@ export function createAiTalkHttpApi(client: ApiClient = backendClient) {
     testProvider: () => client.request({ method: 'POST', path: '/ai/providers/chat/test', requestSchema: emptySchema, body: {}, responseSchema: connectionTestSchema, retry: false, timeoutMs: 60_000 }) as Promise<AiConnectionTestResult>,
     discoverModels: (provider: 'chat' | 'vision' = 'chat') => client.request({ method: 'GET', path: `/ai/providers/${provider}/models`, responseSchema: discoverySchema }),
     saveApiKey: async (providerId: 'ai.default' | 'ai.vision', apiKey: string): Promise<AiSaveApiKeyResult> => {
-      const result = await client.request({ method: 'PUT', path: `/ai/providers/${providerId}/key`, requestSchema: z.object({ apiKey: z.string().min(1) }).strict(), body: { apiKey }, responseSchema: keyResultSchema, retry: false })
+      const result = await client.request({ method: 'PUT', path: `/ai/providers/${providerId}/key`, requestSchema: apiKeySchema, body: { apiKey }, responseSchema: keyResultSchema, retry: false })
       return { apiKeyRef: providerId, hasApiKey: result.configured }
     },
     clearApiKey: async (providerId: 'ai.default' | 'ai.vision'): Promise<AiSaveApiKeyResult> => {
@@ -299,7 +340,7 @@ export function createAiTalkHttpApi(client: ApiClient = backendClient) {
     getBehavior: () => client.request({ method: 'GET', path: '/ai/behavior', responseSchema: behaviorConfigSchema }) as unknown as Promise<AiBehaviorConfig>,
     saveBehavior: (config: Pick<AiBehaviorConfig, 'enabled' | 'useTools' | 'cooldownMs' | 'rules'>) => client.request({
       method: 'PATCH', path: '/ai/behavior',
-      requestSchema: z.object({ config: aiBehaviorConfigPatchSchema }).strict() as unknown as z.ZodType<{ config: Pick<AiBehaviorConfig, 'enabled' | 'useTools' | 'cooldownMs' | 'rules'> }>,
+      requestSchema: v.strictObject({ config: aiBehaviorConfigPatchSchema }) as v.GenericSchema<{ config: Pick<AiBehaviorConfig, 'enabled' | 'useTools' | 'cooldownMs' | 'rules'> }>,
       body: { config }, responseSchema: behaviorConfigSchema, retry: false,
     }) as unknown as Promise<AiBehaviorConfig>,
     dryRunBehavior: (input: AiBehaviorDryRunPayload) => client.request({
@@ -321,7 +362,7 @@ export function createAiTalkHttpApi(client: ApiClient = backendClient) {
       method: 'GET', path: `/ai/traces?conversationId=${encodeURIComponent(conversationId)}`, responseSchema: unknownObjectSchema,
     }) as unknown as Promise<AiTalkTraceSummaryViewState>,
     exportTrace: (filters: { petPackId?: string; conversationId?: string } = {}) => client.request({
-      method: 'POST', path: '/ai/traces/export', requestSchema: z.object({ filters: z.object({ petPackId: z.string().optional(), conversationId: z.string().optional() }).strict() }).strict(),
+      method: 'POST', path: '/ai/traces/export', requestSchema: traceExportRequestSchema,
       body: { filters }, responseSchema: traceExportSchema, retry: false, timeoutMs: 60_000,
     }),
     getHatchAgents: () => client.request({ method: 'GET', path: '/ai/hatch/agents', responseSchema: unknownObjectSchema, retry: false, timeoutMs: 60_000 }),
@@ -331,7 +372,7 @@ export function createAiTalkHttpApi(client: ApiClient = backendClient) {
       requestSchema: hatchConfigPatchSchema, body: { config }, responseSchema: hatchConfigSchema, retry: false,
     }) as unknown as Promise<HatchPetAgentConfigView>,
     saveHatchApiKey: (apiKey: string) => client.request({
-      method: 'PUT', path: '/ai/hatch/key', requestSchema: z.object({ apiKey: z.string().min(1).max(4096) }).strict(),
+      method: 'PUT', path: '/ai/hatch/key', requestSchema: hatchApiKeySchema,
       body: { apiKey }, responseSchema: hatchKeyResultSchema, retry: false,
     }),
     clearHatchApiKey: () => client.request({ method: 'DELETE', path: '/ai/hatch/key', responseSchema: hatchKeyResultSchema, retry: false }),

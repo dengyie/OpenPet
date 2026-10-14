@@ -36,9 +36,9 @@ test('Chinese development guide reflects the current Shell/sidecar/backend owner
     'services/backend/routes/registry.js',
     'packages/contracts/',
     'settings-persistence-queue.js',
-    '140 个 IPC',
-    '120 个已注册 REST 路由',
-    '119 个 API 文档行',
+    '87 个 IPC',
+    '133 个已注册 REST 路由',
+    '146 个 API 文档路由行',
     '方法级矩阵'
   ]) assert.ok(guide.includes(token), token)
   assert.match(guide, /迁移仍在进行中，`src\/main\/` 不是历史目录/)
@@ -61,7 +61,7 @@ test('live maintainer docs expose the current migration slice and gate prerequis
   assert.match(context.currentFacts.join('\n'), /Job cancellation and recovery/)
   assert.match(context.currentFacts.join('\n'), /build:contracts/)
 
-  assert.match(todo, /140 IPC channels[\s\S]*120 registered REST routes[\s\S]*119 documented/)
+  assert.match(todo, /87 current IPC channels[\s\S]*133 registered REST routes[\s\S]*146 documented route rows/)
   assert.match(handoff, /Provider credentials are Shell-owned[\s\S]*in-memory copy/)
   assert.ok(context.validation.commands.includes('npm run build:contracts'))
   assert.ok(context.validation.commands.includes('npm run check:api-contract'))
@@ -72,24 +72,23 @@ test('migration docs distinguish registered routes from target and blocked rows'
   const repoState = read('docs/refactor/09-repo-state.md')
   const plan = read('docs/superpowers/plans/2026-10-04-openpet-development-plan.md')
 
-  assert.match(api, /120 条已注册路由.*119 条路由行/)
+  assert.match(api, /133 条已注册路由.*146 条路由行/)
   assert.match(api, /settings\/cursor\/import.*原生选择器和文件导入由 Shell 持有/)
   assert.match(api, /settings\/preview-scale.*验证 0.5–1.5 缩放值/)
   assert.match(api, /settings\/schema.*返回版本化可写路径/)
   assert.match(api, /五条 Settings 路由均已注册/)
-  assert.match(api, /未进入 registry 的路由属于目标或 blocked 能力/)
-  assert.match(repoState, /120 条已注册路由、119 条文档路由行/)
-  assert.match(plan, /140 IPC \(45 retained Shell \+ 95 migration\)/)
-  assert.match(plan, /120\/119 registered\/documented REST rows/)
+  assert.match(api, /Creator routes are registered in the runtime registry/)
+  assert.match(repoState, /133 条已注册路由、146 条文档路由行/)
+  assert.match(plan, /87 current IPC channels, 133 registered REST routes, 146 documented route rows/)
   assert.match(plan, /Task 6 status: no candidate is safe to delete/)
 })
 
-test('API docs do not present unregistered Creator routes as shipped', () => {
+test('API docs describe the registered Creator route module and Job-backed operations', () => {
   const api = read('docs/refactor/03-api-contract.md')
-  assert.match(api, /Creator Studio[\s\S]*当前状态：未装配/)
-  assert.match(api, /\/creator\/sprites\/evaluate.*blocked：未装配/)
-  assert.match(api, /\/creator\/workflows\/\{id\}\/run.*目标：Job；未装配/)
-  assert.doesNotMatch(api, /\/creator\/sprites\/evaluate.*✅/)
+  assert.match(api, /Creator routes are registered in the runtime registry/)
+  assert.match(api, /\/creator\/sprites\/evaluate.*sprite\.evaluate/)
+  assert.match(api, /\/creator\/workflows\/\{id\}\/run.*creator\.workflow/)
+  assert.doesNotMatch(api, /\/creator\/sprites\/evaluate.*未装配/)
 })
 
 test('handoff and architecture docs keep closed infrastructure gaps closed', () => {
@@ -103,12 +102,12 @@ test('handoff and architecture docs keep closed infrastructure gaps closed', () 
   assert.doesNotMatch(handoff, /缺口 G1.*仍保持 ⏳/)
 })
 
-test('API docs do not present unregistered Creator routes as shipped', () => {
+test('API docs describe Creator route availability without overstating provider acceptance', () => {
   const api = read('docs/refactor/03-api-contract.md')
-  assert.match(api, /Creator Studio[\s\S]*当前状态：未装配/)
-  assert.match(api, /\/creator\/sprites\/evaluate.*blocked：未装配/)
-  assert.match(api, /\/creator\/workflows\/\{id\}\/run.*目标：Job；未装配/)
-  assert.doesNotMatch(api, /\/creator\/sprites\/evaluate.*✅/)
+  assert.match(api, /Creator routes are registered in the runtime registry/)
+  assert.match(api, /route registration does not claim real provider or account acceptance/i)
+  assert.match(api, /\/creator\/sprites\/evaluate.*sprite\.evaluate/)
+  assert.match(api, /\/creator\/workflows\/\{id\}\/run.*creator\.workflow/)
 })
 
 test('handoff and architecture docs keep closed infrastructure gaps closed', () => {
@@ -193,12 +192,12 @@ test('AI migration docs keep shipped facades, remaining IPC, and partial status 
   const api = read('docs/refactor/03-api-contract.md')
   const ledger = read('docs/refactor/15-channel-retirement.md')
   assert.match(plan, /AI pane state without overwriting the PetService main conversation snapshot/)
-  assert.match(plan, /Current status \| \*\*partial\*\*[\s\S]*Remaining AI legacy IPC is chat-window state/)
+  assert.match(plan, /Current status \| \*\*partial\*\*[\s\S]*Remaining AI-specific compatibility IPC is image-generation configuration and Hatch capability\/run status/)
   assert.match(api, /当前 AI 目标路由均已进入运行时 registry。Control Center 运行时已将配置、密钥、Persona、Memory、聊天、对话、Trace、行为配置\/规则\/dry-run\/replay\/export\/clear 及图片配置\/密钥\/健康\/模型探测接入 Backend/)
-  assert.match(ledger, /\| Current cutover \| 82 \|/)
-  assert.match(ledger, /\| Current blocked \| 18 \|/)
-  assert.match(ledger, /\| `hatch-pet-agent:save-config` \| `cutover:ai` \|/)
-  assert.match(ledger, /\| `ai-behavior:replay-decision` \| `cutover:ai` \|/)
+  assert.match(ledger, /\| Current cutover \| 31 \|/)
+  assert.match(ledger, /\| Current blocked \| 15 \|/)
+  assert.match(ledger, /\| `hatch-pet-agent:save-config` \| `retired` \|/)
+  assert.match(ledger, /\| `ai-behavior:replay-decision` \| `retired` \|/)
 })
 
 test('development plan locks the plugin install transient-input and resource-lock boundary', () => {
@@ -339,7 +338,7 @@ test('Catalog API contract documents mutation event payload and boundaries', () 
 
 test('Catalog implementation and review record the current event/cache behavior', () => {
   const catalog = read('services/backend/domains/catalog.js')
-  const pane = read('src/control-center/src/hooks/useCatalogPane.ts')
+  const pane = read('apps/control-center/src/hooks/useCatalogPane.ts')
   const review = read('docs/reviews/2026-10-04-development-docs-review.md')
   assert.match(catalog, /const publishCatalogRefresh = \(result\)/)
   assert.match(catalog, /const installSelection = async \(selectionId\) => publishCatalogRefresh/)

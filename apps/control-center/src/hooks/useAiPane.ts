@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { controlCenterAPI as api } from '../api/control-center-api.ts'
 import { aiHttpApi } from '../features/ai/api.ts'
+import { aiTalkApi } from '../features/ai/talk-api.ts'
 import { nextPetPackActivationEventId } from '../features/pet-packs/api.ts'
 import { useSse } from './useSse.ts'
 import {
@@ -564,7 +565,7 @@ export function useAiPane(activeTab = 'ai') {
       aiHttpApi.getAiConfig(),
       aiHttpApi.getAiPersonaProfile(),
       aiHttpApi.getAiMemoryProfile(),
-      api.getImageGenerationConfig(),
+      aiTalkApi.getImageConfig(),
       aiHttpApi.getHatchPetAgentConfig(),
       api.getPetChatState(),
       aiHttpApi.getAiBehavior()
@@ -1299,7 +1300,7 @@ export function useAiPane(activeTab = 'ai') {
     setChatting(true)
     setChatStatus('')
     try {
-      const result = await aiHttpApi.sendPetChatMessage({ message, entrypoint: 'control-center' })
+      const result = await aiTalkApi.chat({ message, conversationId, entrypoint: 'control-center' })
       const fallbackMessages: ChatMessage[] = Array.isArray(result.messages)
         ? cloneChatMessages(result.messages)
         : [...nextMessages, { role: 'assistant', content: result.reply }]

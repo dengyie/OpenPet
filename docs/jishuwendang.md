@@ -1,7 +1,7 @@
 # OpenPet 开发文档
 
-> 最后更新：2026-10-05
-> 当前代码基线：`4b6a1ac2`；运行时与文档门禁数字以 `npm run build:contracts`、`npm run check:api-contract` 和 `npm run check:docs-drift` 的新鲜输出为准。
+> 最后更新：2026-10-15
+> 当前代码基线：Shell/Backend sidecar 迁移；运行时与文档门禁数字以 `npm run build:contracts`、`npm run check:api-contract` 和 `npm run check:docs-drift` 的新鲜输出为准。
 > 角色：OpenPet 的中文主开发文档，负责解释代码结构、开发流程、测试策略和当前工程边界。
 
 ## 1. 这份文档负责什么
@@ -52,12 +52,13 @@ npm run check:syntax
 - `npm run test:control-center`：Control Center Playwright 用例。
 - `npm run check:syntax`：`node --check` + `tsc --noEmit` + `vite build`。
 
-本轮新鲜证据应以命令输出为准：Actions vertical slice focused tests 为 38 项通过，
-文档与 channel-retirement focused tests 为 33 项通过；`npm run test:tools`、完整
-Backend glob、`npm test` 和 Control Center Playwright 必须在本机重新执行后才能写入
-通过数字。此前的 31/664 等数字属于旧快照，不再作为当前基线。若完整 Backend 因
-既有 `plugins-domain` 清理用例的 `kill ESRCH` 竞态失败，或 Playwright 因缺少匹配的
-Chromium 无法启动，必须记录实际失败原因，不能把未执行或环境阻塞的证据写成通过。
+2026-10-15 代码级验证：Backend **424/424**，Tools **683/683**，Settings/AI/Pet Pack
+相关回归 **68/68**；`check:syntax`、contracts build、API/channel reconciliation、docs
+drift 与 Control Center production build 通过。`test:core` 为 **2180 通过、26 失败、1
+跳过**；26 项均因缺少仓库固定版本的 Playwright Chromium headless shell 而无法启动。
+本轮没有安装浏览器、启动 Electron 或做真机 UI 验收；浏览器用例留给 CI。此前的
+31/664 等数字属于旧快照，不再作为当前基线。写入验证数字时必须记录实际失败原因，
+不能把未执行或环境阻塞的 UI 证据写成通过。
 
 迁移或文档变更还必须按顺序运行：
 
@@ -69,9 +70,9 @@ npm run check:docs-drift
 ```
 
 `build:contracts` 是 API 合同门禁的前置步骤；`check:api-contract` 当前只承认
-`routes/registry.js` 中实际注册的路由。当前基线为 140 个 IPC（45 个保留 Shell、
-95 个迁移台账）、120 个已注册 REST 路由、119 个 API 文档行、21 个 SSE 事件、8 个
-topic、17 个 Job kind 和 6 个 Job status。完整测试若受本机 Playwright 浏览器缺失
+`routes/registry.js` 中实际注册的路由。当前基线为 87 个 IPC（81 个直接注册、6 个
+事件-only；退役台账为 41 keep、31 cutover、15 blocked）、133 个已注册 REST 路由、146 个 API 文档路由行、
+21 个 SSE 事件、8 个 topic、17 个 Job kind 和 6 个 Job status。完整测试若受本机 Playwright 浏览器缺失
 影响，必须如实记录失败原因，不能把未执行的 UI 证据写成通过。
 
 ### 资源生成

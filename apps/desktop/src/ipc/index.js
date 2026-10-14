@@ -964,7 +964,8 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     refreshAiState: () => petChatFacade.refreshPetPackScopedChatState({ reason: 'ai-backend-state' }),
     handlePetPackRequest,
     handleActionsRequest: actionsSidecarBridge.handle,
-    handleAiTalkRequest
+    handleAiTalkRequest,
+    handleSettingsCommand
   }
 }
 

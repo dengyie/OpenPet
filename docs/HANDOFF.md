@@ -1,6 +1,6 @@
 # OpenPet Handoff
 
-> Last updated: 2026-09-12
+> Last updated: 2026-10-15
 > Canonical active queue: [`TODO.md`](./TODO.md)
 > Branch: `main`
 
@@ -17,12 +17,12 @@ This file is the compact maintainer continuation note. Historical phase-level de
 
 ## Current State
 
-> Verification note (2026-10-09): older entries below that say Chromium is missing, or that Core/Control Center browser checks are blocked, describe prior checkpoints. The repository-pinned Chromium revision was installed in an isolated temporary cache and the current Core, Control Center, and full Node gates passed; see the dated continuation in the migration plan.
+> Verification note (2026-10-15): code-only validation did not launch Electron or install a browser. `test:core` reports 2180 passed, 26 failed at Playwright browser launch because the pinned Chromium headless shell is absent, and 1 skipped; `test:tools` passes 683/683. Backend passes 424/424, the changed Settings/AI/Pet Pack focused suites pass 68/68, and typecheck, syntax, contracts, route/channel reconciliation, docs drift, and Control Center production build pass. CI remains the browser-regression gate.
 
 - OpenPet is an Electron desktop pet platform with a React Control Center, pet packs, AI configuration, local extensions, and loopback-only local HTTP/MCP.
 - The current target is an unsigned/self-signed demo. Do not buy paid signing/notarization. The Guangzhou Backend host is active over EasyTier `ssh gz-cvm`; see [`deployment/openpet-mesh-backend.md`](./deployment/openpet-mesh-backend.md) and its sanitized smoke record.
 - The current Shell/Backend migration path is `main.js` -> `createOpenPetRuntime()` -> `createSidecarRuntimeCoordinator()` -> `spawnSidecar()` -> `services/backend/index.js`; the migration is active and `src/main/` remains a live Shell boundary.
-- The current executable baseline is 140 IPC channels, 120 registered REST routes, 119 documented target/implemented rows, 21 SSE events, 8 topics, 17 Job kinds, and 6 Job statuses. The Settings cursor import, scale preview, and schema routes now have Backend HTTP callers; native picker and host effects remain Shell-owned. Run `npm run build:contracts` before `npm run check:api-contract`.
+- The current executable baseline is 87 IPC channels (81 direct registrations and 6 event-only; 41 keep, 31 cutover, 15 blocked), 133 registered REST routes, 146 documented route rows, 21 SSE events, 8 topics, 17 Job kinds, and 6 Job statuses. Settings cursor import and scale preview travel over a strict Backend route and typed Shell reverse bridge; the native picker and host effects remain Shell-owned. Run `npm run build:contracts` before `npm run check:api-contract`.
 - 2026-10-09 Pet Pack picker source cutover: Control Center requests `POST /pet-packs/validate` with `{ operation: "pick" }`; the Shell owns the native picker, strips the selected path, and returns an opaque selection ID. HTTP import accepts only that ID; validate/export reject renderer path bodies. A real Backend HTTP -> Sidecar reverse-channel accept/cancel/path-injection smoke now passes as part of the focused picker suite (**92/92**). The compatibility IPC remains pending reachability proof.
 - 2026-10-09 Settings continuation: contract build, API reconciliation (**120/119**), channel retirement (**140 current, 81 cutover, 18 blocked, 0 dead**), Settings/reverse-channel/UI focused tests (**83/83**), Backend (**402/402**), Tools (**672/672**), `test:all` (**3240 passed, 1 skipped**), `check:syntax`, docs drift, and `git diff --check` pass. `POST /settings/cursor/import`, `POST /settings/preview-scale`, and `GET /settings/schema` are registered; Shell still owns native picker and host effects. The PickerSmoke disabled-install observation remains pending because the current UI was no longer at the review page; no plugin was installed.
 - Fresh 2026-10-09 Node/gate verification: `npm run test:all` passes **3240** with **1 skipped**; test:core:all passes (**2161 passed, 1 skipped**); Backend **402/402**; Tools **672/672**; Resilience **3/3**; contracts/API reconciliation (**140 IPC, 120/119 REST**); channel retirement (**140 current, 81 cutover, 18 blocked, 0 dead**); `check:syntax`, docs drift, and `git diff --check` pass. Control Center Playwright (**77/77**) last passed on 2026-10-08 using the isolated `/tmp/openpet-playwright-20261008` browser cache.

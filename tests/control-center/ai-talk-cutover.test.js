@@ -188,6 +188,42 @@ test("AI chat SSE parser rejects malformed deltas and events after the terminal 
 	}
 })
 
+test("AI chat SSE parser accepts backend progress states and wrapped terminal results", async () => {
+	const { configureBackendClient } = await import("../../apps/control-center/src/api/backend-client.ts")
+	const { aiTalkApi } = await import("../../apps/control-center/src/features/ai/talk-api.ts")
+	const body = [
+		"event: ai.chat-delta\ndata: {\"requestId\":\"r1\",\"conversationId\":\"control-center:cat:main\",\"status\":\"streaming\",\"partialReply\":\"hel\",\"chunkCount\":1}\n\n",
+		"event: ai.chat-delta\ndata: {\"requestId\":\"r1\",\"conversationId\":\"control-center:cat:main\",\"status\":\"streaming\",\"partialReply\":\"hello\",\"chunkCount\":2}\n\n",
+		"event: ai.chat-done\ndata: {\"ok\":true,\"requestId\":\"r1\",\"data\":{\"conversationId\":\"control-center:cat:main\",\"reply\":\"hello\"}}\n\n",
+	].join("")
+	try {
+		configureBackendClient({
+			getBackend: () => ({ baseUrl: "http://127.0.0.1:4000/api/v1", sessionToken: "t".repeat(32) }),
+			fetchImpl: async () => new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } }),
+		})
+		const deltas = []
+		const result = await aiTalkApi.chat({ message: "hello" }, { onDelta: (delta) => deltas.push(delta) })
+		assert.deepEqual(deltas, ["hel", "lo"])
+		assert.equal(result.reply, "hello")
+	} finally {
+		configureBackendClient({ getBackend: () => null })
+	}
+})
+
+test("AI chat SSE parser surfaces redacted backend terminal errors", async () => {
+	const { configureBackendClient } = await import("../../apps/control-center/src/api/backend-client.ts")
+	const { aiTalkApi } = await import("../../apps/control-center/src/features/ai/talk-api.ts")
+	try {
+		configureBackendClient({
+			getBackend: () => ({ baseUrl: "http://127.0.0.1:4000/api/v1", sessionToken: "t".repeat(32) }),
+			fetchImpl: async () => new Response("event: ai.chat-done\ndata: {\"ok\":false,\"requestId\":\"r1\",\"error\":{\"code\":\"INTERNAL\",\"message\":\"AI request failed\"}}\n\n", { status: 200, headers: { "content-type": "text/event-stream" } }),
+		})
+		await assert.rejects(() => aiTalkApi.chat({ message: "hello" }), /AI request failed/)
+	} finally {
+		configureBackendClient({ getBackend: () => null })
+	}
+})
+
 test("AI chat SSE parser cancels its reader when an invalid frame follows the terminal event", async () => {
 	const { configureBackendClient } = await import("../../apps/control-center/src/api/backend-client.ts")
 	const { aiTalkApi } = await import("../../apps/control-center/src/features/ai/talk-api.ts")

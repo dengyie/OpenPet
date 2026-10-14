@@ -2,12 +2,17 @@ import {
   settingsEnvelopeSchema,
   settingsPatchRequestSchema,
   settingsPatchResponseSchema,
+  settingsCursorImportResultSchema,
+  settingsPreviewScaleRequestSchema,
+  settingsPreviewScaleResponseSchema,
+  settingsSchemaResponseSchema,
 } from '../../../../desktop/src/shared/browser-contracts.ts'
-import type * as v from 'valibot'
+import * as v from 'valibot'
 
 import type { ApiClient } from '../../api/client.ts'
 import { cloneSettings, defaultSettings } from '../../lib/defaults.ts'
-import type { ControlCenterSettings } from '@openpet/shared/src/openpet-contracts.ts'
+import type { ControlCenterSettings, CustomCursorRecord } from '@openpet/shared/src/openpet-contracts.ts'
+import { SYSTEM_CURSOR_PREVIEW_URL } from '@openpet/shared/src/cursor-library.ts'
 
 export type SettingsSnapshot = v.InferOutput<typeof settingsEnvelopeSchema>
 export type SettingsPatch = v.InferOutput<typeof settingsPatchRequestSchema>
@@ -26,6 +31,9 @@ export function shouldAcceptSettingsSnapshot({ requestSequence, latestRequestSeq
 type SettingsApi = {
   get: () => Promise<SettingsSnapshot>
   patch: (body: SettingsPatch) => Promise<v.InferOutput<typeof settingsPatchResponseSchema>>
+  previewScale: (scale: number, options?: { keepalive?: boolean }) => Promise<v.InferOutput<typeof settingsPreviewScaleResponseSchema>>
+  importCursor: () => Promise<v.InferOutput<typeof settingsCursorImportResultSchema>>
+  schema: () => Promise<v.InferOutput<typeof settingsSchemaResponseSchema>>
 }
 
 const has = (value: object, key: string) => Object.prototype.hasOwnProperty.call(value, key)
@@ -245,7 +253,7 @@ export function createSettingsApi(client: ApiClient, fallback: SettingsApi = dem
         body,
       })
     },
-    previewScale(scale: number, options: { keepalive?: boolean } = {}): Promise<z.infer<typeof settingsPreviewScaleResponseSchema>> {
+    previewScale(scale: number, options: { keepalive?: boolean } = {}): Promise<v.InferOutput<typeof settingsPreviewScaleResponseSchema>> {
       if (useDemoFallback()) return fallback.previewScale(scale, options)
       return client.request({
         method: 'POST',
@@ -256,17 +264,17 @@ export function createSettingsApi(client: ApiClient, fallback: SettingsApi = dem
         keepalive: options.keepalive,
       })
     },
-    importCursor(): Promise<z.infer<typeof settingsCursorImportResultSchema>> {
+    importCursor(): Promise<v.InferOutput<typeof settingsCursorImportResultSchema>> {
       if (useDemoFallback()) return fallback.importCursor()
       return client.request({
         method: 'POST',
         path: '/settings/cursor/import',
-        requestSchema: z.object({}).strict(),
+        requestSchema: v.strictObject({}),
         responseSchema: settingsCursorImportResultSchema,
         body: {},
       })
     },
-    schema(): Promise<z.infer<typeof settingsSchemaResponseSchema>> {
+    schema(): Promise<v.InferOutput<typeof settingsSchemaResponseSchema>> {
       if (useDemoFallback()) return fallback.schema()
       return client.request({
         method: 'GET',

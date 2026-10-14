@@ -40,7 +40,9 @@ export function createPluginHttpApi(client: ApiClient = backendClient) {
         restart: (pluginId: string) => request('POST', `/plugins/${encodeURIComponent(pluginId)}/restart`, {}),
         status: (pluginId: string) => request('GET', `/plugins/${encodeURIComponent(pluginId)}/status`),
         logs: (pluginId: string, query: Record<string, unknown> = {}) => {
-            const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value != null).map(([key, value]) => [key, String(value)]));
+            const params = new URLSearchParams(Object.entries(query)
+                .filter(([key, value]) => key !== 'pluginId' && value != null && value !== '')
+                .map(([key, value]) => [key, String(value)]));
             return request('GET', `/plugins/${encodeURIComponent(pluginId)}/logs${params.size ? `?${params}` : ''}`);
         },
         clearLogsFor: (pluginId: string) => request('DELETE', `/plugins/${encodeURIComponent(pluginId)}/logs`),
@@ -167,10 +169,15 @@ export const pluginHttpApi: PluginApi = {
         ? controlCenterAPI.runCreatorStudioDefaultFlow(prompt)
         : pluginHttpApiTransport.creatorFlow(prompt),
     imSecret: (operation, token, credentials) => {
-        if (operation === 'state')
-            return controlCenterAPI.getImGatewaySecretState();
-        if (operation === 'save')
-            return controlCenterAPI.saveImGatewayTelegramBotToken(token || '');
+        if (operation === 'state' || operation === 'save' || operation === 'clear') {
+            return usePluginDemoApi()
+                ? operation === 'state'
+                    ? controlCenterAPI.getImGatewaySecretState()
+                    : operation === 'save'
+                        ? controlCenterAPI.saveImGatewayTelegramBotToken(token || '')
+                        : controlCenterAPI.clearImGatewayTelegramBotToken()
+                : pluginHttpApiTransport.imSecret(operation, token, credentials);
+        }
         if (operation === 'save-wecom')
             return controlCenterAPI.saveImGatewayWecomCredentials(credentials || { corpSecret: '', token: '', encodingAesKey: '' });
         if (operation === 'clear-wecom')
@@ -179,7 +186,7 @@ export const pluginHttpApi: PluginApi = {
     },
     imQqCredentials: (operation, credentials) => {
         if (operation === 'state')
-            return controlCenterAPI.getImGatewaySecretState();
+            return usePluginDemoApi() ? controlCenterAPI.getImGatewaySecretState() : pluginHttpApiTransport.imQqCredentials(operation, credentials);
         if (operation === 'save')
             return controlCenterAPI.saveImGatewayQqOfficialCredentials(credentials || { appId: '', clientSecret: '' });
         return controlCenterAPI.clearImGatewayQqOfficialCredentials();

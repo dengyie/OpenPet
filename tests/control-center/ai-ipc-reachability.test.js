@@ -8,10 +8,10 @@ const { test } = require("node:test")
 const ROOT = path.resolve(__dirname, "../..")
 const read = (relativePath) => fs.readFileSync(path.join(ROOT, relativePath), "utf8")
 
-// These channels have HTTP/SSE callers, but remain registered until a later
-// change proves that preload, tests, and packaged sources no longer need the
-// compatibility bridge. Keep this list aligned with the AI ledger rows.
-const MIGRATED_AI_CHANNELS = [
+// Business-facing AI IPC was removed after the Backend HTTP/SSE cutover.
+// Native Hatch and image configuration capabilities remain tracked separately
+// in the channel-retirement ledger.
+const RETIRED_AI_CHANNELS = [
   ["AI_GET_CONFIG", "getAiConfig"],
   ["AI_SAVE_CONFIG", "saveAiConfig"],
   ["AI_SAVE_API_KEY", "saveAiApiKey"],
@@ -28,18 +28,6 @@ const MIGRATED_AI_CHANNELS = [
   ["AI_CLEAR_PET_PACK_MEMORIES", "clearAiPetPackMemories"],
   ["AI_TALK_GET_TRACE_SUMMARY", "getAiTalkTraceSummary"],
   ["AI_TALK_EXPORT_TRACE", "exportAiTalkTrace"],
-  ["HATCH_PET_AGENT_GET_CONFIG", "getHatchPetAgentConfig"],
-  ["HATCH_PET_AGENT_SAVE_CONFIG", "saveHatchPetAgentConfig"],
-  ["HATCH_PET_AGENT_SAVE_API_KEY", "saveHatchPetAgentApiKey"],
-  ["HATCH_PET_AGENT_CLEAR_API_KEY", "clearHatchPetAgentApiKey"],
-  ["HATCH_PET_AGENT_CHECK_CAPABILITY", "checkHatchPetAgentCapability"],
-  ["HATCH_PET_AGENT_GET_RUN_STATUS", "getHatchPetAgentRunStatus"],
-  ["IMAGE_GENERATION_GET_CONFIG", "getImageGenerationConfig"],
-  ["IMAGE_GENERATION_SAVE_CONFIG", "saveImageGenerationConfig"],
-  ["IMAGE_GENERATION_SAVE_API_KEY", "saveImageGenerationApiKey"],
-  ["IMAGE_GENERATION_CLEAR_API_KEY", "clearImageGenerationApiKey"],
-  ["IMAGE_GENERATION_CHECK_HEALTH", "checkImageGenerationHealth"],
-  ["IMAGE_GENERATION_DISCOVER_MODELS", "discoverImageGenerationModels"],
   ["AI_GET_CONVERSATION", "getAiConversation"],
   ["AI_CHAT", "chat"],
   ["AI_EXPORT_TRACE_DIAGNOSTICS", "exportAiTalkTraceDiagnostics"],
@@ -51,27 +39,26 @@ const MIGRATED_AI_CHANNELS = [
   ["AI_BEHAVIOR_CLEAR_DECISIONS", "clearAiBehaviorDecisions"],
 ]
 
-test("AI migration keeps compatibility IPC reachable in preload, registrar, and packaging", () => {
+test("retired AI business IPC stays absent after the Backend cutover", () => {
   const shared = read("apps/desktop/src/shared/ipc-channels.ts")
   const preload = read("apps/desktop/control-center-preload.js")
   const registrar = read("apps/desktop/src/ipc/register-ai-ipc.js")
-  const packageJson = JSON.parse(read("package.json"))
 
-  for (const [constant, exposedMethod] of MIGRATED_AI_CHANNELS) {
-    assert.match(shared, new RegExp(`\\b${constant}:`), `${constant} must remain in the shared channel list`)
-    assert.match(preload, new RegExp(`\\b${constant}:`), `${constant} must remain in preload`)
-    assert.match(preload, new RegExp(`\\b${exposedMethod}:`), `${exposedMethod} must remain exposed for compatibility`)
-    assert.match(registrar, new RegExp(`ipcMainService\\.(?:handle|on)\\(IPC\\.${constant}\\b`), `${constant} must remain registered`)
+  for (const [constant, exposedMethod] of RETIRED_AI_CHANNELS) {
+    assert.doesNotMatch(shared, new RegExp(`\\b${constant}:`), `${constant} must stay retired`)
+    assert.doesNotMatch(preload, new RegExp(`\\b${constant}:`), `${constant} must stay retired in preload`)
+    assert.doesNotMatch(preload, new RegExp(`^\\s*${exposedMethod}\\s*:`, "m"), `${exposedMethod} must stay retired`)
+    assert.doesNotMatch(registrar, new RegExp(`IPC\\.${constant}\\b`), `${constant} must not be registered`)
   }
 
-  assert.ok(packageJson.build.files.includes("apps/desktop/control-center-preload.js"))
-  assert.ok(packageJson.build.files.includes("apps/**/*"))
+  assert.match(preload, /getImageGenerationConfig:.*IPC\.IMAGE_GENERATION_GET_CONFIG/)
+  assert.match(preload, /getHatchPetAgentRunStatus:.*IPC\.HATCH_PET_AGENT_GET_RUN_STATUS/)
 })
 
 test("AI Control Center callers use HTTP facade; native chat window IPC is the only exception", () => {
   const hook = read("apps/control-center/src/hooks/useAiPane.ts")
   const talkApi = read("apps/control-center/src/features/ai/talk-api.ts")
-  const legacyApiMethods = new Set(MIGRATED_AI_CHANNELS.map(([, method]) => method))
+  const legacyApiMethods = new Set(RETIRED_AI_CHANNELS.map(([, method]) => method))
   const calls = [...hook.matchAll(/\bapi\.([A-Za-z0-9_]+)\s*\(/g)].map((match) => match[1])
   const unexpected = calls.filter((method) => legacyApiMethods.has(method))
   assert.deepEqual(unexpected, [], `AI pane still calls migrated preload methods: ${unexpected.join(", ")}`)
@@ -83,10 +70,9 @@ test("AI Control Center callers use HTTP facade; native chat window IPC is the o
   assert.doesNotMatch(talkApi, /controlCenterAPI\.?(?:getAi|saveAi|chat|dryRunAiBehavior)/)
 })
 
-test("AI IPC tests are explicit compatibility coverage, not Control Center production callers", () => {
+test("AI IPC tests cover only retained host capabilities after business IPC retirement", () => {
   const ipcTests = read("tests/main/ipc-plugin-install.test.js") + read("tests/main/ipc-registration-groups.test.js")
-  assert.match(ipcTests, /AI_CHAT/)
-  assert.match(ipcTests, /AI_BEHAVIOR_GET/)
-  assert.match(ipcTests, /HATCH_PET_AGENT_GET_CONFIG/)
+  assert.doesNotMatch(ipcTests, /AI_CHAT|AI_BEHAVIOR_GET/)
+  assert.match(ipcTests, /HATCH_PET_AGENT_CHECK_CAPABILITY/)
   assert.match(ipcTests, /IMAGE_GENERATION_GET_CONFIG/)
 })

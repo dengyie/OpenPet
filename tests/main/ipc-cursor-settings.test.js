@@ -3,6 +3,7 @@ const assert = require('node:assert/strict')
 
 const { IPC } = require('../../apps/desktop/src/shared/ipc-channels')
 const { registerIpcHandlers } = require('../../apps/desktop/src/ipc')
+const { createSettingsCommandHandler } = require('../../apps/desktop/src/ipc/register-settings-ipc')
 const { registerCursorRepair } = require('../../apps/desktop/src/services/bootstrap/startup-side-effects')
 const { createSettingsHostEffect } = require('../../apps/desktop/src/services/settings-host-effects')
 

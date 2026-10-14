@@ -16,8 +16,8 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 | Current direct registrations | 81 |
 | Current event-only channels | 6 |
 | Current keep | 41 |
-| Current cutover | 29 |
-| Current blocked | 17 |
+| Current cutover | 31 |
+| Current blocked | 15 |
 | Current dead | 0 |
 | Historical retired | 71 |
 
@@ -63,8 +63,8 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 | `settings:open` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/register-system-ipc.js` | Window/native IPC remains the intended boundary | — |
 | `settings:get` | `retired` | `GET /settings` | `apps/desktop/src/ipc/register-settings-ipc.js` | Control Center reads the versioned, redacted Backend envelope through HTTP | 13a419a66eb2b42781fc2a79d193499fc6b99916 |
 | `settings:save` | `retired` | `PATCH /settings` | `apps/desktop/src/ipc/register-settings-ipc.js` | Control Center writes canonical point-path patches through Backend optimistic locking; trusted Shell effects are applied from Backend snapshots | 13a419a66eb2b42781fc2a79d193499fc6b99916 |
-| `settings:import-cursor` | `blocked:T41` | `POST /settings/cursor/import` — unavailable fallback | `apps/desktop/src/ipc/register-settings-ipc.js` | Route registration receives no handler from the backend composition root, so it returns `BACKEND_UNAVAILABLE`; T41 must bridge the host dialog and cursor importer | — |
-| `settings:preview-scale` | `blocked:T41` | `POST /settings/preview-scale` — unavailable fallback | `apps/desktop/src/ipc/register-settings-ipc.js` | Route registration receives no handler from the backend composition root, so it returns `BACKEND_UNAVAILABLE`; T41 must bridge the host preview side effect | — |
+| `settings:import-cursor` | `cutover:settings` | `POST /settings/cursor/import` | `apps/desktop/src/ipc/register-settings-ipc.js` | Backend sends a path-free `settings.command.request`; Shell owns the native picker and cursor asset import | — |
+| `settings:preview-scale` | `cutover:settings` | `POST /settings/preview-scale` | `apps/desktop/src/ipc/register-settings-ipc.js` | Backend sends the validated scale through the reverse channel; Shell applies the preview effect | — |
 | `settings:close` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/register-settings-ipc.js` | Window/native IPC remains the intended boundary | — |
 | `settings:changed` | `blocked:T41` | `SSE settings.changed` — renderer/bootstrap parity pending | `apps/desktop/control-center-preload.js` | SSE only publishes changed paths and version after backend PATCH; IPC still synchronizes pet-renderer settings and multiplexes backend bootstrap updates, which T41 must replace before retirement | — |
 | `actions:get` | `retired` | `GET /actions` | `apps/desktop/src/ipc/index.js` | Control Center reads the active Shell action view through Backend HTTP | 36bf913c |

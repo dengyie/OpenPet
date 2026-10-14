@@ -87,6 +87,7 @@ test('project-context indexes the archived provider smoke evidence and current s
       'utf-8'
     )
   )
+  const agentAwarenessDiagnostics = agentAwarenessEvidence.health.diagnostics
 
   assert.match(
     context.updated,
@@ -137,7 +138,7 @@ test('project-context indexes the archived provider smoke evidence and current s
   assert.match(
     facts,
     new RegExp(
-      `run-agent-awareness-local-smoke[\\s\\S]*manualAcceptanceTemplate[\\s\\S]*docs/release-evidence/agent-awareness-local-smoke/${latestAgentAwarenessSession}/[\\s\\S]*19 sanitized sessions[\\s\\S]*134 events`,
+      `run-agent-awareness-local-smoke[\\s\\S]*manualAcceptanceTemplate[\\s\\S]*docs/release-evidence/agent-awareness-local-smoke/${latestAgentAwarenessSession}/[\\s\\S]*${agentAwarenessDiagnostics.retainedSessionSummaryCount} sanitized sessions[\\s\\S]*${agentAwarenessDiagnostics.totalEvents} events`,
       'i'
     ),
     'project-context.json should describe the agent-awareness smoke entrypoint and archived evidence path'

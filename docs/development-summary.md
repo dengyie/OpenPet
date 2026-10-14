@@ -1,9 +1,11 @@
 # OpenPet Development Summary
 
-> Last updated: 2026-09-12
+> Last updated: 2026-10-15
 > Branch: `main`
 
 This is the compact engineering snapshot for the current repository state. Use [`TODO.md`](./TODO.md) for active work, and use `docs/phases/` plus `docs/reviews/` for detailed implementation history.
+
+The 2026-10-15 code-only continuation passes Backend **424/424**, Tools **683/683**, and changed Settings/AI/Pet Pack regression suites **68/68**. Typecheck, syntax, contract reconciliation, docs drift, and the Control Center production build pass. `test:core` has **26 browser-launch failures** because the pinned Chromium headless shell is unavailable; no Electron or desktop UI acceptance was performed.
 
 ## Platform Baseline
 

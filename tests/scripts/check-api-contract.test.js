@@ -30,6 +30,7 @@ const fixtureFiles = [
 	'services/backend/routes/jobs.js',
 	'services/backend/routes/plugins.js',
 	'services/backend/routes/creator.js',
+	'services/backend/bridge/ai-talk-request.js',
 	'services/backend/jobs/state-machine.js',
 	'services/backend/jobs/handlers/common.js',
 	'services/backend/http/router.js',
@@ -37,10 +38,10 @@ const fixtureFiles = [
 	'apps/desktop/src/shared/ipc-channels.ts',
 	'apps/desktop/src/shared/ipc-channels.js',
 	'scripts/api-contract-route-parser.mjs',
-	'scripts/check-api-contract.mjs'
-	,'src/main/services/plugin-github-import-service.js'
-	,'src/main/services/bounded-response-body.js'
-	,'src/main/services/zip-archive-utils.js'
+	'scripts/check-api-contract.mjs',
+	'apps/desktop/src/services/plugin-github-import-service.js',
+	'apps/desktop/src/services/bounded-response-body.js',
+	'apps/desktop/src/services/zip-archive-utils.js'
 ]
 
 const createFixture = (t) => {
@@ -108,21 +109,22 @@ test('CLI rejects route registration and registry omissions', (t) => {
 })
 
 test('CLI requires every registered route to appear in the API contract', (t) => {
-	const fixtureRoot = createFixture(t)
-	const docPath = path.join(fixtureRoot, 'docs/refactor/03-api-contract.md')
+	const missingDocRoot = createFixture(t)
+	const docPath = path.join(missingDocRoot, 'docs/refactor/03-api-contract.md')
 	const doc = fs.readFileSync(docPath, 'utf8')
 	assert.match(doc, /token\/revoke-sessions/)
 	fs.writeFileSync(docPath, doc.replace(/\| POST \| `\/service\/token\/revoke-sessions` \|[^\n]*\n/, ''))
-	const result = spawnSync(process.execPath, [path.join(fixtureRoot, 'scripts/check-api-contract.mjs')], { cwd: fixtureRoot, encoding: 'utf8' })
-	assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`)
-	assert.match(result.stdout, /实际路由、注册表与 §4 精确对账\(133\/127 行\)/)
+	const missingDoc = spawnSync(process.execPath, [path.join(missingDocRoot, 'scripts/check-api-contract.mjs')], { cwd: missingDocRoot, encoding: 'utf8' })
+	assert.equal(missingDoc.status, 1)
+	assert.match(missingDoc.stderr, /已实现路由有、§4 无 -> POST \/service\/token\/revoke-sessions/)
 
-	const registryPath = path.join(fixtureRoot, 'services/backend/routes/registry.js')
+	const missingRegistryRoot = createFixture(t)
+	const registryPath = path.join(missingRegistryRoot, 'services/backend/routes/registry.js')
 	const registry = fs.readFileSync(registryPath, 'utf8')
 	fs.writeFileSync(registryPath, registry.replace('\t"POST /service/token/revoke-sessions",\n', ''))
-	const missing = spawnSync(process.execPath, [path.join(fixtureRoot, 'scripts/check-api-contract.mjs')], { cwd: fixtureRoot, encoding: 'utf8' })
-	assert.equal(missing.status, 1)
-	assert.match(missing.stderr, /注册表|实际已注册/)
+	const missingRegistry = spawnSync(process.execPath, [path.join(missingRegistryRoot, 'scripts/check-api-contract.mjs')], { cwd: missingRegistryRoot, encoding: 'utf8' })
+	assert.equal(missingRegistry.status, 1)
+	assert.match(missingRegistry.stderr, /实际已注册、注册表无 -> POST \/service\/token\/revoke-sessions/)
 })
 
 test('route parser expands compact method/path cells without cross-pairing paths', async () => {

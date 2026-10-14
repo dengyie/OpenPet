@@ -2,6 +2,8 @@
 
 > 🔌 本篇是前后端并行开发的唯一依据。契约未定稿前不得开始写业务代码。当前 87 个 IPC 通道的去向已在本篇逐域定义。
 
+当前运行时注册基线为 **133 条已注册路由、146 条路由行**；§4 的未注册行会明确标为目标或 blocked。
+
 ## 1. 协议基础
 
 | 项 | 值 |
@@ -283,7 +285,7 @@ AI HTTP 路由逐条拒绝未声明的 query 字段和重复 query key。Provide
 
 ### 4.8 Creator Studio
 
-> **当前状态：未装配。** 本节保留 Creator Studio 的目标映射，但当前 `services/backend/routes/registry.js` 没有注册 Creator 路由，`services/backend/index.js` 也没有装配对应的 Creator route module。以下条目不能作为可调用接口；未进入 registry 的行只表示目标或 blocked 能力。
+> Creator routes are registered in the runtime registry through `services/backend/routes/creator.js` and `services/backend/index.js`. Route registration does not claim real provider or account acceptance. Generation, evaluation, workflow, and import operations enqueue Jobs; runtime execution still depends on the Creator domain and its host/provider dependencies.
 
 | 方法 | 路径 | Job |
 | --- | --- | --- |
@@ -291,13 +293,13 @@ AI HTTP 路由逐条拒绝未声明的 query 字段和重复 query key。Provide
 | POST · PATCH · DELETE | `/creator/flows` · `/{id}` | |
 | GET | `/creator/state` | Creator Studio 状态快照 |
 | GET | `/creator/last-run` | 最近一次 Creator 运行摘要 |
-| POST | `/creator/characters/generate` | ✅ 265s |
-| POST | `/creator/sprites/generate` | ✅ |
-| POST | `/creator/sprites/evaluate` | ✅ |
+| POST | `/creator/characters/generate` | Job `creator.character` |
+| POST | `/creator/sprites/generate` | Job `sprite.generate` |
+| POST | `/creator/sprites/evaluate` | Job `sprite.evaluate` |
 | GET · POST · DELETE | `/creator/references` | |
-| POST | `/creator/workflows/{id}/run` | 目标：Job；未装配 |
+| POST | `/creator/workflows/{id}/run` | Job `creator.workflow` |
 | GET | `/creator/workflows/{id}/artifacts` | |
-| POST | `/creator/export` | ✅ |
+| POST | `/creator/export` | Job `creator.export` |
 | GET | `/creator/assets/preview` | |
 | POST | `/creator/runs/{id}/retry-action` | ✅ |
 | POST | `/creator/runs/{id}/retry-identity` | ✅ |
@@ -335,7 +337,7 @@ AI HTTP 路由逐条拒绝未声明的 query 字段和重复 query key。Provide
 
 ### 4.11 当前实现注册表（T39）
 
-`services/backend/routes/registry.js` 是当前已实现 REST 路由的可执行登记表；它与各 `register*Routes` 的运行时注册结果均为 **133 条 method/path**。`check:api-contract` 会展开 §4.1–§4.10 的紧凑方法/路径单元格，并按规范化参数路径逐条比较这 133 条，而不是只比较总数。§4 的其余目标路由仍保留在契约表中，待对应域实现后加入登记表。
+`services/backend/routes/registry.js` 是当前已实现 REST 路由的可执行登记表；它与各 `register*Routes` 的运行时注册结果均为 **133 条 method/path**。§4 当前列出 **146 条文档路由行**，包括目标或 blocked 行。`check:api-contract` 会展开 §4.1–§4.10 的紧凑方法/路径单元格，并按规范化参数路径逐条比较这 133 条，而不是只比较总数。§4 的其余目标路由仍保留在契约表中，待对应域实现后加入登记表。
 
 SSE 不属于上述 REST 登记子集，但仍是 API 路由的一部分：
 

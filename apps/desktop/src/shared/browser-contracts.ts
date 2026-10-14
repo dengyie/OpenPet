@@ -335,6 +335,42 @@ export const settingsChangedSchema = v.object({
     version: v.pipe(v.pipe(v.number(), v.integer()), v.minValue(0)),
 });
 export type SettingsChanged = v.InferOutput<typeof settingsChangedSchema>;
+export const settingsPreviewScaleRequestSchema = v.strictObject({
+    scale: v.pipe(v.pipe(v.pipe(v.number(), v.finite()), v.minValue(0.5)), v.maxValue(1.5)),
+});
+export const settingsPreviewScaleResponseSchema = v.strictObject({
+    scale: v.pipe(v.pipe(v.pipe(v.number(), v.finite()), v.minValue(0.5)), v.maxValue(1.5)),
+});
+const cursorImportSchema = v.strictObject({
+    id: v.pipe(v.string(), v.minLength(1)),
+    type: v.literal("custom"),
+    source: v.literal("uploaded"),
+    name: v.string(),
+    enabled: v.boolean(),
+    assetPath: v.pipe(v.string(), v.minLength(1)),
+    assetUrl: v.pipe(v.string(), v.minLength(1)),
+    fileName: v.string(),
+    width: v.pipe(v.pipe(v.number(), v.finite()), v.minValue(0)),
+    height: v.pipe(v.pipe(v.number(), v.finite()), v.minValue(0)),
+    byteSize: v.pipe(v.pipe(v.number(), v.integer()), v.minValue(0)),
+    hotspotX: v.pipe(v.pipe(v.number(), v.finite()), v.minValue(0)),
+    hotspotY: v.pipe(v.pipe(v.number(), v.finite()), v.minValue(0)),
+    createdAt: v.string(),
+});
+export const settingsCursorImportResultSchema = v.union([
+    v.strictObject({ canceled: v.literal(true) }),
+    v.strictObject({
+        canceled: v.literal(false),
+        cursor: cursorImportSchema,
+    }),
+]);
+export const settingsSchemaResponseSchema = v.strictObject({
+    version: v.literal(1),
+    writablePaths: v.array(v.string()),
+    trustedPaths: v.array(v.string()),
+    scalePreview: v.strictObject({ min: v.number(), max: v.number(), step: v.number() }),
+    cursorImport: v.strictObject({ extensions: v.array(v.string()), maxBytes: v.pipe(v.pipe(v.number(), v.integer()), v.minValue(1)) }),
+});
 /** 密钥类字段的对外形状:任何响应体都不得含明文 */
 export const secretStatusSchema = v.object({
     configured: v.boolean(),
