@@ -440,8 +440,8 @@ export function createBackendHost(options = {}) {
 			if (!configuredPassword && config.webPasswordFile && existsSync(config.webPasswordFile)) {
 				try { configuredPassword = (await readFile(config.webPasswordFile, "utf8")).trim() } catch {}
 			}
-			if (!configuredPassword || !session?.ready || session.closing) {
-				sendJson(response, 503, { ok: false, error: "web control is not configured or Backend session is offline" })
+			if (!configuredPassword) {
+				sendJson(response, 503, { ok: false, error: "web control is not configured" })
 				return true
 			}
 			if (Object.keys(body ?? {}).length !== 1 || password.length > 4096 || !safeEqual(password, configuredPassword)) {
@@ -543,20 +543,23 @@ export function createBackendHost(options = {}) {
 
 	async function handleProxy(request, response, pathname, search) {
 		const active = session
-		if (!active || !active.ready || active.closing) {
-			sendJson(response, 401, { ok: false, error: "unauthorized" })
-			return
-		}
 		const bearer = readBearer(request)
 		const webTokenExpiry = webTokens.get(bearer)
 		const isWebToken = Number.isFinite(webTokenExpiry) && webTokenExpiry > Date.now()
 		if (Number.isFinite(webTokenExpiry) && !isWebToken) webTokens.delete(bearer)
-		if (!safeEqual(bearer, active.ready.sessionToken) && !isWebToken) {
-			sendJson(response, 401, { ok: false, error: "unauthorized" })
-			return
-		}
 		if (isWebToken && !isWebProxyRouteAllowed(request.method, pathname)) {
 			sendJson(response, 403, { ok: false, error: "web token is not allowed to access this Backend route" })
+			return
+		}
+		if (!active || !active.ready || active.closing) {
+			sendJson(response, isWebToken ? 503 : 401, {
+				ok: false,
+				error: isWebToken ? "Backend session is offline" : "unauthorized",
+			})
+			return
+		}
+		if (!safeEqual(bearer, active.ready.sessionToken) && !isWebToken) {
+			sendJson(response, 401, { ok: false, error: "unauthorized" })
 			return
 		}
 		touch(active)

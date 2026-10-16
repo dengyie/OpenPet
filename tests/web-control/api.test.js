@@ -31,6 +31,21 @@ test('web API keeps its login token in memory and sends it only to authenticated
   assert.equal(calls[3].options.headers.has('authorization'), false)
 })
 
+test('web API explains when its desktop Backend session is offline', async () => {
+  const { createWebApi } = await apiModule
+  const api = createWebApi({
+    fetchImpl: async (url) => url === '/__openpet/web/login'
+      ? jsonResponse({ token: 'memory-only-token' })
+      : new Response(JSON.stringify({ ok: false, error: 'Backend session is offline' }), {
+        status: 503,
+        headers: { 'content-type': 'application/json' }
+      })
+  })
+
+  await api.login('web-password')
+  await assert.rejects(api.health(), /桌面 Shell 尚未连接/)
+})
+
 test('web API encodes Creator asset preview parameters and hash-bound approval inputs', async () => {
   const calls = []
   const fetchImpl = async (url, options = {}) => {

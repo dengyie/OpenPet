@@ -1,6 +1,13 @@
 export function createWebApi({ fetchImpl = globalThis.fetch } = {}) {
   let token = ''
 
+  const errorMessage = (payload, status) => {
+    const message = payload?.error?.message || payload?.error
+    if (message === 'Backend session is offline') return '桌面 Shell 尚未连接。请在 OpenPet 桌面端连接远程 Backend，再刷新此页。'
+    if (message === 'web control is not configured') return '网页控制尚未配置，请联系管理员。'
+    return message || `请求失败 (${status})`
+  }
+
   const request = async (path, init = {}) => {
     const headers = new Headers(init.headers)
     headers.set('accept', 'application/json')
@@ -8,7 +15,7 @@ export function createWebApi({ fetchImpl = globalThis.fetch } = {}) {
     if (token) headers.set('authorization', `Bearer ${token}`)
     const response = await fetchImpl(path, { ...init, headers })
     const payload = await response.json().catch(() => ({}))
-    if (!response.ok) throw new Error(payload?.error?.message || payload?.error || `请求失败 (${response.status})`)
+    if (!response.ok) throw new Error(errorMessage(payload, response.status))
     return payload?.data ?? payload
   }
 
@@ -21,7 +28,7 @@ export function createWebApi({ fetchImpl = globalThis.fetch } = {}) {
         body: JSON.stringify({ password })
       })
       const payload = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(payload?.error || '登录失败')
+      if (!response.ok) throw new Error(errorMessage(payload, response.status))
       if (typeof payload?.data?.token !== 'string' || !payload.data.token) throw new Error('Web 登录响应缺少令牌')
       token = payload.data.token
       return payload.data

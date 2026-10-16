@@ -45,6 +45,16 @@ ssh gz-cvm 'curl --fail http://127.0.0.1:48330/__openpet/health'
 
 `/__openpet/health` 只证明 host 存活；业务 `/api/v1/health` 必须在 authenticated session 建立后，通过 SSH `-L` 检查。缺少 token 的业务请求应返回 `401`。
 
+### 网页控制台的 session 状态
+
+网页密码配置与桌面 Backend session 是两个独立条件。即使桌面 Shell 尚未连接，已配置密码仍可登录 `https://openpet.mangoqwq.com`，以便查看控制台的离线状态；此时 Web token 调用允许的业务路由返回 `503 Backend session is offline`，而不是伪装成未配置或未认证。未带 token 仍返回 `401`，不在网页白名单内的 Web token 路由仍返回 `403`。上传、生成、恢复和导入按钮会在桌面 Shell 离线时禁用。
+
+### 2026-10-17 网页离线登录修复
+
+- 根因：`POST /__openpet/web/login` 在校验密码前要求活动桌面 session，导致密码已配置但 host 为 `idle` 时错误返回 `503 web control is not configured or Backend session is offline`。
+- 修复：登录只依赖网页密码配置；Host proxy 对已认证 Web token 明确返回 `503 Backend session is offline`，未认证请求仍为 `401`，并保持白名单路由检查。
+- 回归：`host-web-control` 与 Web API 离线状态测试通过；Backend **428/428**、`check:syntax`、Control Center/Web Control production build 通过。未启动 Electron 或桌面 UI。
+
 ## 当前未覆盖
 
 - 不在工作机启动 Electron；不做 macOS/Windows 签名验收，桌面包继续使用自签名开发流程。

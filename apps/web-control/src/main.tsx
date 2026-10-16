@@ -325,10 +325,10 @@ function App() {
         <label>形象与风格描述<textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="橘金色的小狐狸，明亮像素风，正面站立，透明背景" rows={4} maxLength={8000} /></label>
         <label>参考图<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { setFile(event.target.files?.[0] || null); setReference(null) }} /></label>
         <div className="row upload-row">
-          <button className="secondary" disabled={!file || busy || active} onClick={() => void upload().catch((reason) => setMessage(reason instanceof Error ? reason.message : '参考图上传失败'))}>上传并验证</button>
+          <button className="secondary" disabled={!shellReady || !file || busy || active} onClick={() => void upload().catch((reason) => setMessage(reason instanceof Error ? reason.message : '参考图上传失败'))}>上传并验证</button>
           <span className="muted">{reference?.fileName || (file ? file.name : '单张正面图 · 最大 1.1 MB')}</span>
         </div>
-        <button className="primary wide" disabled={busy || active || !name.trim() || !prompt.trim() || !reference?.referenceToken} onClick={generate}>提交宠物生成</button>
+        <button className="primary wide" disabled={!shellReady || busy || active || !name.trim() || !prompt.trim() || !reference?.referenceToken} onClick={generate}>提交宠物生成</button>
         <p className="footnote">生成前会经过 Provider 与 Creator 可用性检查。没有参考图时不会提交任务。</p>
       </article>
 
@@ -416,7 +416,7 @@ function App() {
 
     {qualityFirst?.phase === 'recovery-required' && currentRun?.runId ? <section className="panel recovery-panel">
       <div><span className="step-number">03</span><h2>需要恢复处理</h2><p>Backend 保留了生成资产；导出恢复包会让桌面 Shell 校验并整理这些文件。</p></div>
-      <button className="secondary" disabled={busy || active} onClick={() => schedule(api.exportRecovery(currentRun.runId), '恢复包导出任务已提交。')}>导出恢复包</button>
+      <button className="secondary" disabled={busy || active || !shellReady} onClick={() => schedule(api.exportRecovery(currentRun.runId), '恢复包导出任务已提交。')}>导出恢复包</button>
     </section> : null}
 
     {currentRun?.runId && ['review-required', 'preview-ready', 'import-failed'].includes(String(currentRun.state)) ? <section className="panel import-panel">

@@ -118,3 +118,39 @@ test('web control serves static assets only from the configured root and authent
   assert.equal((await request(ctx.address, '/__openpet/web/logout', { method: 'POST', headers: { authorization: `Bearer ${webToken}` } })).status, 200)
   assert.equal((await request(ctx.address, '/api/v1/health', { headers: { authorization: `Bearer ${webToken}` } })).status, 401)
 })
+
+test('configured web login remains available while the desktop Backend session is offline', async (t) => {
+  const ctx = await fixture()
+  t.after(async () => {
+    await ctx.host.close()
+    await new Promise((resolve) => ctx.upstream.close(resolve))
+    fs.rmSync(ctx.root, { recursive: true, force: true })
+  })
+
+  const wrong = await request(ctx.address, '/__openpet/web/login', {
+    method: 'POST',
+    body: { password: 'wrong-password' }
+  })
+  assert.equal(wrong.status, 401)
+
+  const login = await request(ctx.address, '/__openpet/web/login', {
+    method: 'POST',
+    body: { password: 'mesh-password' }
+  })
+  assert.equal(login.status, 200)
+  const webToken = JSON.parse(login.body).data.token
+
+  const offline = await request(ctx.address, '/api/v1/health', {
+    headers: { authorization: `Bearer ${webToken}` }
+  })
+  assert.equal(offline.status, 503)
+  assert.deepEqual(JSON.parse(offline.body), {
+    ok: false,
+    error: 'Backend session is offline'
+  })
+
+  const forbidden = await request(ctx.address, '/api/v1/plugins', {
+    headers: { authorization: `Bearer ${webToken}` }
+  })
+  assert.equal(forbidden.status, 403)
+})

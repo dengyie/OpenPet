@@ -1,6 +1,6 @@
 # OpenPet TODO
 
-> Last updated: 2026-10-15
+> Last updated: 2026-10-17
 > Purpose: this is the single active maintainer work queue.
 
 Use this file for open work and priority changes. Keep phase docs, reviews, and old roadmap files as background only; do not split active planning across multiple TODO documents again.
@@ -8,6 +8,7 @@ Use this file for open work and priority changes. Keep phase docs, reviews, and 
 ## Current Shell/Backend Migration
 
 The Guangzhou mesh Backend is deployed and running under `openpet-backend-host.service`; the desktop Service pane can switch between local and remote mode. The fresh 2026-10-11 SSH smoke verifies authenticated API health, unauthenticated rejection, and reverse-bridge request/reply without launching Electron or generating with a model. Implementation and the one remaining host unit-test gap are tracked in [`superpowers/plans/2026-10-11-openpet-mesh-backend.md`](./superpowers/plans/2026-10-11-openpet-mesh-backend.md); deployment evidence is in [`release-evidence/remote-backend/2026-10-11-mesh-smoke.md`](./release-evidence/remote-backend/2026-10-11-mesh-smoke.md). Remote HTTP/MCP endpoints remain CVM loopback services; local third-party MCP access needs a separate SSH forward.
+The web control console now separates password configuration from desktop-session readiness: a configured password can log in while the host is `idle`, while authenticated business calls return `503 Backend session is offline` and Shell-dependent controls stay disabled until the desktop Shell connects. Regression coverage is in `tests/backend/host-web-control.test.js` and `tests/web-control/api.test.js`.
 
 Distribution policy: OpenPet will use self-managed signing only. Do not purchase Apple Developer signing/notarization, Windows code-signing certificates, or a third-party signing service. The macOS path may use ad-hoc or a locally controlled identity; Windows may use a locally generated self-signed certificate. These signatures do not establish Apple notarization, Gatekeeper trust, Windows publisher reputation, or SmartScreen trust. Keep install warnings and any manual trust steps explicit. The current demo can use the existing unsigned local package while the release workflow is adapted to this policy.
 
