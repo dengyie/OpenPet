@@ -36,6 +36,13 @@
 - 运行记录（不含 token/key）：[`remote-backend/2026-10-11-mesh-smoke.md`](../release-evidence/remote-backend/2026-10-11-mesh-smoke.md)。
 - Unit 不启用 `MemoryDenyWriteExecute=true`：Node/V8 JIT 在该限制下会 `SIGTRAP`，服务无法启动；其余文件系统、账户和 capability 限制仍保留。
 
+### 2026-10-17 离线网页登录修复部署
+
+- Revision：`e09b4257`；GitHub CI [38947695151](https://github.com/dengyie/OpenPet/actions/runs/38947695151) 全绿。
+- 安装归档 SHA-256：`0677ce698858beb7cb105c0b8fcbf1cd079265f24d3d883ca0c34c9b7910a5e1`。
+- CVM 安装快照：`/var/backups/openpet/20261016T182529Z-2783749`。
+- 部署后 `openpet-backend-host.service` active，host health 为 `{"ok":true,"status":"idle","apiVersion":"v1"}`；网页首页 200，错误密码 401，正确密码登录 200，idle session 下业务请求 503。Nginx 监听仍为 `10.144.144.8:80/443` 与 `127.0.0.1:80`。
+
 ## 只读检查
 
 ```bash
