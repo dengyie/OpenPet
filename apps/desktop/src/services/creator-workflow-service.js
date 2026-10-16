@@ -2430,6 +2430,13 @@ const createCreatorWorkflowService = ({
     return creatorReferenceService.approveSourcePath(sourcePath)
   }
 
+  const approveReferenceSourceBuffer = ({ data, fileName, mimeType } = {}) => {
+    if (!creatorReferenceService?.approveSourceBuffer) {
+      throw new Error('Creator reference upload is not available')
+    }
+    return creatorReferenceService.approveSourceBuffer({ data, fileName, mimeType })
+  }
+
   const bindReference = async ({ targetType, targetId, referenceToken }) => {
     const result = await creatorReferenceService.bindReference({ targetType, targetId, referenceToken })
     return {
@@ -4024,6 +4031,7 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
 
   return {
     approveReferenceSourcePath,
+    approveReferenceSourceBuffer,
     getState,
     getLastRun,
     getAssetPreview,

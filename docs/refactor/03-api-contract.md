@@ -297,6 +297,7 @@ AI HTTP 路由逐条拒绝未声明的 query 字段和重复 query key。Provide
 | POST | `/creator/sprites/generate` | Job `sprite.generate` |
 | POST | `/creator/sprites/evaluate` | Job `sprite.evaluate` |
 | GET · POST · DELETE | `/creator/references` | |
+| POST | `/creator/references/upload` | Shell-owned image upload and one-use reference token |
 | POST | `/creator/workflows/{id}/run` | Job `creator.workflow` |
 | GET | `/creator/workflows/{id}/artifacts` | |
 | POST | `/creator/export` | Job `creator.export` |

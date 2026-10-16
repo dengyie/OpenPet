@@ -109,6 +109,7 @@ const createHealthCoordinationFixture = ({
   }
   const commandCalls = []
   const referenceBindCalls = []
+  const referenceApprovalCalls = []
   const service = createCreatorWorkflowService({
     pluginService: {
       listPlugins: () => [createPluginView()],
@@ -125,6 +126,10 @@ const createHealthCoordinationFixture = ({
     },
     creatorReferenceService: {
       getReference: () => reference,
+      approveSourceBuffer: (payload) => {
+        referenceApprovalCalls.push(payload)
+        return { referenceToken: 'approved-upload-token', fileName: 'upload.png' }
+      },
       bindReference: async (payload) => {
         referenceBindCalls.push(payload)
         return { replaced: false, reference }
@@ -134,8 +139,19 @@ const createHealthCoordinationFixture = ({
     hatchPetAgentService,
     nowMs
   })
-  return { service, commandCalls, referenceBindCalls }
+  return { service, commandCalls, referenceBindCalls, referenceApprovalCalls }
 }
+
+test('Creator workflow service forwards browser-upload bytes to the Shell-owned reference service', () => {
+  const harness = createHealthCoordinationFixture()
+  const upload = { data: Buffer.from('png-bytes'), fileName: 'upload.png', mimeType: 'image/png' }
+
+  assert.deepEqual(harness.service.approveReferenceSourceBuffer(upload), {
+    referenceToken: 'approved-upload-token',
+    fileName: 'upload.png'
+  })
+  assert.deepEqual(harness.referenceApprovalCalls, [upload])
+})
 
 const createFixedWorkflowHarness = ({ createShadowDecision } = {}) => {
   const commandCalls = []

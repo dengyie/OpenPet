@@ -165,6 +165,17 @@ const createOpenPetRuntime = ({
           const approved = creatorWorkflowService.approveReferenceSourcePath(selected.filePaths[0])
           return { canceled: false, referenceToken: approved.referenceToken, fileName: approved.fileName }
         }
+        case 'upload-reference': {
+          const encoded = String(payload.dataBase64 || '')
+          const fileName = String(payload.fileName || 'reference.png')
+          const mimeType = String(payload.mimeType || '')
+          if (!/^image\/(png|jpeg|webp)$/i.test(mimeType)) throw Object.assign(new Error('Only PNG, JPEG, and WebP references are supported'), { code: 'VALIDATION_FAILED' })
+          if (!/^[A-Za-z0-9+/=]+$/.test(encoded) || encoded.length > 1_500_000) throw Object.assign(new Error('Reference upload is invalid or too large'), { code: 'VALIDATION_FAILED' })
+          const data = Buffer.from(encoded, 'base64')
+          if (!data.length || data.length > 1_100_000) throw Object.assign(new Error('Reference upload is invalid or too large'), { code: 'VALIDATION_FAILED' })
+          const approved = creatorWorkflowService.approveReferenceSourceBuffer({ data, fileName, mimeType })
+          return { canceled: false, referenceToken: approved.referenceToken, fileName: approved.fileName }
+        }
         case 'bind-reference':
           return creatorWorkflowService.bindReference({
             targetType: payload.targetType,

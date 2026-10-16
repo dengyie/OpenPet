@@ -1,8 +1,9 @@
 import { fork as nodeFork } from "node:child_process"
 import { createServer } from "node:http"
-import { mkdir, realpath } from "node:fs/promises"
+import { mkdir, realpath, readFile } from "node:fs/promises"
+import { existsSync } from "node:fs"
 import { randomBytes, timingSafeEqual } from "node:crypto"
-import { join, resolve } from "node:path"
+import { extname, join, resolve, relative, sep } from "node:path"
 import { pathToFileURL } from "node:url"
 import { backendToShellEnvelopeSchema, shellToBackendEnvelopeSchema } from "@openpet/contracts"
 
@@ -13,8 +14,10 @@ const DEFAULT_BRIDGE_PORT = 48_331
 const DEFAULT_BACKEND_PORT = 48_332
 const DEFAULT_STARTUP_TIMEOUT_MS = 20_000
 const DEFAULT_SESSION_TTL_MS = 30_000
+const DEFAULT_WEB_TOKEN_TTL_MS = 4 * 60 * 60 * 1_000
 const MAX_REQUEST_BYTES = 2 * 1024 * 1024
 const MAX_SESSION_BYTES = 1024 * 1024
+const MAX_WEB_LOGIN_BYTES = 16 * 1024
 const REQUEST_TYPES = new Set([
 	"pet.command.request", "plugin.production.request", "dialog.request",
 	"settings.apply.request", "settings.command.request", "secrets.persist.request",
@@ -42,6 +45,52 @@ function sendJson(response, status, value) {
 		"x-content-type-options": "nosniff",
 	})
 	response.end(body)
+}
+
+function contentType(filePath) {
+	return {
+		".html": "text/html; charset=utf-8",
+		".css": "text/css; charset=utf-8",
+		".js": "text/javascript; charset=utf-8",
+		".json": "application/json; charset=utf-8",
+		".svg": "image/svg+xml",
+		".png": "image/png",
+		".jpg": "image/jpeg",
+		".jpeg": "image/jpeg",
+		".webp": "image/webp",
+		".ico": "image/x-icon",
+	}[extname(filePath).toLowerCase()] || "application/octet-stream"
+}
+
+function safeStaticPath(root, pathname) {
+	let decoded
+	try { decoded = decodeURIComponent(pathname) } catch { return null }
+	const requested = decoded === "/" ? "index.html" : decoded.replace(/^\/+/, "")
+	if (!requested || requested.split("/").includes("..") || requested.includes("\\") || requested.includes("\0")) return null
+	const rootPath = resolve(root)
+	const candidate = resolve(rootPath, requested)
+	const rel = relative(rootPath, candidate)
+	if (rel === ".." || rel.startsWith(`..${sep}`) || candidate !== rootPath && !candidate.startsWith(`${rootPath}${sep}`)) return null
+	return candidate
+}
+
+function isWebProxyRouteAllowed(method, pathname) {
+	const requestMethod = String(method || "GET").toUpperCase()
+	let decodedPathname
+	try { decodedPathname = decodeURIComponent(pathname) } catch { return false }
+	if (requestMethod === "GET" && new Set([
+		"/api/v1/health",
+		"/api/v1/creator/state",
+		"/api/v1/creator/last-run",
+		"/api/v1/creator/assets/preview",
+	]).has(decodedPathname)) return true
+	if (requestMethod === "GET" && /^\/api\/v1\/jobs\/[A-Za-z0-9._:-]{1,256}$/.test(decodedPathname)) return true
+	if (requestMethod === "POST" && new Set([
+		"/api/v1/creator/references/upload",
+		"/api/v1/creator/characters/generate",
+		"/api/v1/creator/export",
+	]).has(decodedPathname)) return true
+	return requestMethod === "POST" && /^\/api\/v1\/creator\/runs\/[A-Za-z0-9_-]{1,128}\/(?:retry-action|retry-identity|accept-identity|accept-action-candidate|import-actions)$/.test(decodedPathname)
 }
 
 async function readJson(request, limit) {
@@ -72,6 +121,8 @@ function validateHostOptions(options) {
 	const backendPort = options.backendPort ?? DEFAULT_BACKEND_PORT
 	const dataDir = resolve(options.dataDir ?? "/var/lib/openpet")
 	const entry = resolve(options.entry ?? new URL("./index.js", import.meta.url).pathname)
+	const webRoot = resolve(options.webRoot ?? join(options.rootDir ?? join(entry, "..", "..", ".."), "dist", "web-control"))
+	const webPasswordFile = options.webPasswordFile ? resolve(options.webPasswordFile) : ""
 	if (bindHost !== DEFAULT_BIND_HOST) throw new TypeError("remote Backend host must bind to 127.0.0.1")
 	for (const [name, value] of [["port", port], ["bridgePort", bridgePort], ["backendPort", backendPort]]) {
 		const minimum = name === "port" ? 0 : 1
@@ -89,6 +140,10 @@ function validateHostOptions(options) {
 		startupTimeoutMs: options.startupTimeoutMs ?? DEFAULT_STARTUP_TIMEOUT_MS,
 		sessionTtlMs: options.sessionTtlMs ?? DEFAULT_SESSION_TTL_MS,
 		bridgeRequestTimeoutMs: options.bridgeRequestTimeoutMs ?? 65_000,
+		webRoot,
+		webPasswordFile,
+		webPassword: typeof options.webPassword === "string" ? options.webPassword : "",
+		webTokenTtlMs: options.webTokenTtlMs ?? DEFAULT_WEB_TOKEN_TTL_MS,
 		fork: options.fork ?? nodeFork,
 		fetchImpl: options.fetchImpl ?? globalThis.fetch,
 		logger: options.logger ?? null,
@@ -102,6 +157,7 @@ export function createBackendHost(options = {}) {
 	let session = null
 	let closing = false
 	let idleTimer = null
+	const webTokens = new Map()
 
 	function log(level, message, fields = {}) {
 		try {
@@ -157,6 +213,7 @@ export function createBackendHost(options = {}) {
 		clearTimeout(idleTimer)
 		failPending(active, "remote Backend session ended")
 		session = null
+		webTokens.clear()
 		await stopChild(active.child)
 		log("info", "remote Backend session stopped", { reason })
 	}
@@ -372,9 +429,55 @@ export function createBackendHost(options = {}) {
 			sendJson(response, result.status, result.value)
 			return true
 		}
+		if (request.method === "POST" && pathname === "/__openpet/web/login") {
+			let body
+			try { body = await readJson(request, MAX_WEB_LOGIN_BYTES) } catch (error) {
+				sendJson(response, error.statusCode || 400, { ok: false, error: error.message })
+				return true
+			}
+			const password = typeof body?.password === "string" ? body.password : ""
+			let configuredPassword = config.webPassword
+			if (!configuredPassword && config.webPasswordFile && existsSync(config.webPasswordFile)) {
+				try { configuredPassword = (await readFile(config.webPasswordFile, "utf8")).trim() } catch {}
+			}
+			if (!configuredPassword || !session?.ready || session.closing) {
+				sendJson(response, 503, { ok: false, error: "web control is not configured or Backend session is offline" })
+				return true
+			}
+			if (Object.keys(body ?? {}).length !== 1 || password.length > 4096 || !safeEqual(password, configuredPassword)) {
+				sendJson(response, 401, { ok: false, error: "invalid web password" })
+				return true
+			}
+			for (const [issuedToken, expiresAt] of webTokens) if (expiresAt <= Date.now()) webTokens.delete(issuedToken)
+			if (webTokens.size >= 8) {
+				sendJson(response, 429, { ok: false, error: "too many active web sessions" })
+				return true
+			}
+			const token = randomBytes(32).toString("hex")
+			const expiresAt = Date.now() + config.webTokenTtlMs
+			webTokens.set(token, expiresAt)
+			sendJson(response, 200, { ok: true, data: { token, expiresAt } })
+			return true
+		}
+		if (request.method === "POST" && pathname === "/__openpet/web/logout") {
+			const token = readBearer(request)
+			if (token) webTokens.delete(token)
+			sendJson(response, 200, { ok: true })
+			return true
+		}
+		if (!pathname.startsWith("/__openpet/")) return false
 		const active = session
-		if (!active || !safeEqual(readBearer(request), active.ready?.sessionToken)) {
+		const bearer = readBearer(request)
+		const webTokenExpiry = webTokens.get(bearer)
+		const isWebToken = Number.isFinite(webTokenExpiry) && webTokenExpiry > Date.now()
+		if (Number.isFinite(webTokenExpiry) && !isWebToken) webTokens.delete(bearer)
+		const isSessionToken = Boolean(active && safeEqual(bearer, active.ready?.sessionToken))
+		if (!active || (!isSessionToken && !isWebToken)) {
 			sendJson(response, 401, { ok: false, error: "unauthorized" })
+			return true
+		}
+		if (isWebToken && pathname !== "/__openpet/heartbeat") {
+			sendJson(response, 403, { ok: false, error: "web token cannot control the desktop session" })
 			return true
 		}
 		touch(active)
@@ -441,19 +544,27 @@ export function createBackendHost(options = {}) {
 	async function handleProxy(request, response, pathname, search) {
 		const active = session
 		if (!active || !active.ready || active.closing) {
-			sendJson(response, 503, { ok: false, error: "remote Backend session is not ready" })
+			sendJson(response, 401, { ok: false, error: "unauthorized" })
 			return
 		}
 		const bearer = readBearer(request)
-		if (!safeEqual(bearer, active.ready.sessionToken)) {
+		const webTokenExpiry = webTokens.get(bearer)
+		const isWebToken = Number.isFinite(webTokenExpiry) && webTokenExpiry > Date.now()
+		if (Number.isFinite(webTokenExpiry) && !isWebToken) webTokens.delete(bearer)
+		if (!safeEqual(bearer, active.ready.sessionToken) && !isWebToken) {
 			sendJson(response, 401, { ok: false, error: "unauthorized" })
+			return
+		}
+		if (isWebToken && !isWebProxyRouteAllowed(request.method, pathname)) {
+			sendJson(response, 403, { ok: false, error: "web token is not allowed to access this Backend route" })
 			return
 		}
 		touch(active)
 		const headers = new Headers()
 		for (const [name, value] of Object.entries(request.headers)) {
-			if (typeof value === "string" && !["host", "connection", "content-length", "transfer-encoding"].includes(name.toLowerCase())) headers.set(name, value)
+			if (typeof value === "string" && !["host", "connection", "content-length", "transfer-encoding", "authorization"].includes(name.toLowerCase())) headers.set(name, value)
 		}
+		headers.set("authorization", `Bearer ${active.ready.sessionToken}`)
 		let body
 		if (!new Set(["GET", "HEAD"]).has(request.method || "GET")) {
 			try {
@@ -483,6 +594,37 @@ export function createBackendHost(options = {}) {
 		}
 	}
 
+	async function handleStatic(request, response, pathname) {
+		if (!new Set(["GET", "HEAD"]).has(request.method || "GET")) return false
+		let filePath = safeStaticPath(config.webRoot, pathname)
+		if (!filePath) { sendJson(response, 404, { ok: false, error: "not found" }); return true }
+		if (!existsSync(filePath) && !extname(filePath)) filePath = safeStaticPath(config.webRoot, "/index.html")
+		if (!filePath || !existsSync(filePath)) { sendJson(response, 404, { ok: false, error: "web control assets are unavailable" }); return true }
+		try {
+			const [rootRealPath, assetRealPath] = await Promise.all([realpath(config.webRoot), realpath(filePath)])
+			const assetRelativePath = relative(rootRealPath, assetRealPath)
+			if (assetRelativePath === ".." || assetRelativePath.startsWith(`..${sep}`) || assetRelativePath.startsWith(sep)) {
+				sendJson(response, 404, { ok: false, error: "not found" })
+				return true
+			}
+			const body = await readFile(assetRealPath)
+			response.writeHead(200, {
+				"content-type": contentType(assetRealPath),
+				"cache-control": extname(assetRealPath).toLowerCase() === ".html" ? "no-store" : "public, max-age=300",
+				"x-content-type-options": "nosniff",
+				"x-frame-options": "DENY",
+				"referrer-policy": "no-referrer",
+				"content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+				"content-length": body.byteLength,
+			})
+			if (request.method !== "HEAD") response.end(body)
+			else response.end()
+		} catch {
+			sendJson(response, 404, { ok: false, error: "web control asset is unavailable" })
+		}
+		return true
+	}
+
 	async function handle(request, response) {
 		if (request.socket.remoteAddress !== "127.0.0.1" && request.socket.remoteAddress !== "::ffff:127.0.0.1") {
 			sendJson(response, 403, { ok: false, error: "loopback clients only" })
@@ -490,7 +632,18 @@ export function createBackendHost(options = {}) {
 		}
 		const url = new URL(request.url ?? "/", "http://127.0.0.1")
 		try {
+			if (url.pathname === "/" || url.pathname.startsWith("/assets/") || url.pathname.startsWith("/web-control/")) {
+				if (await handleStatic(request, response, url.pathname)) return
+			}
 			if (await handleControl(request, response, url.pathname)) return
+			if (url.pathname.startsWith("/__openpet/")) {
+				sendJson(response, 404, { ok: false, error: "not found" })
+				return
+			}
+			if (!url.pathname.startsWith("/api/v1/")) {
+				sendJson(response, 404, { ok: false, error: "not found" })
+				return
+			}
 			await handleProxy(request, response, url.pathname, url.search)
 		} catch (error) {
 			if (!response.headersSent) sendJson(response, 500, { ok: false, error: "remote Backend host error" })
@@ -532,6 +685,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
 		port: Number(process.env.OPENPET_HOST_PORT ?? DEFAULT_PORT),
 		bridgePort: Number(process.env.OPENPET_BRIDGE_PORT ?? DEFAULT_BRIDGE_PORT),
 		backendPort: Number(process.env.OPENPET_BACKEND_PORT ?? DEFAULT_BACKEND_PORT),
+		webPassword: process.env.OPENPET_WEB_CONTROL_PASSWORD ?? "",
 		logger: console,
 	})
 	host.listen().then(({ host: bindHost, port }) => {

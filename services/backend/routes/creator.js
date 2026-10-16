@@ -11,6 +11,7 @@ export const CREATOR_ROUTES = Object.freeze([
 	"DELETE /creator/flows/:id",
 	"GET /creator/references",
 	"POST /creator/references",
+	"POST /creator/references/upload",
 	"DELETE /creator/references",
 	"POST /creator/characters/generate",
 	"POST /creator/sprites/generate",
@@ -68,6 +69,7 @@ export function registerCreatorRoutes(router, { creator } = {}) {
 
 	router.get("/creator/references", (ctx) => sendList(ctx, creator.listReferences()))
 	router.post("/creator/references", async (ctx) => sendSuccess(ctx, await creator.bindReference(object(ctx.body))))
+	router.post("/creator/references/upload", async (ctx) => sendSuccess(ctx, await creator.uploadReference(object(ctx.body))))
 	router.delete("/creator/references", async (ctx) => sendSuccess(ctx, await creator.deleteReference({
 		targetType: ctx.query.targetType,
 		targetId: ctx.query.targetId,

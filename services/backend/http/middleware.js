@@ -36,6 +36,7 @@ export const RETRYABLE_ERROR_CODES = Object.freeze(
 )
 
 export const MAX_BODY_BYTES = 1024 * 1024
+export const CREATOR_REFERENCE_UPLOAD_BODY_LIMIT_BYTES = 1_600_000
 export const DEFAULT_MAX_ACCESS_LOGS = 200
 
 const KNOWN_CLIENTS = Object.freeze(new Set(["control-center", "pet-window", "mcp"]))
@@ -338,6 +339,14 @@ export function jsonBody({ maxBytes = MAX_BODY_BYTES } = {}) {
 
 		await next()
 	}
+}
+
+export function backendJsonBody() {
+	return (ctx, next) => jsonBody({
+		maxBytes: ctx.routePath === "/creator/references/upload"
+			? CREATOR_REFERENCE_UPLOAD_BODY_LIMIT_BYTES
+			: MAX_BODY_BYTES,
+	})(ctx, next)
 }
 
 /** 环形缓冲,供 POST /service/diagnostics 读取最近的访问记录。 */

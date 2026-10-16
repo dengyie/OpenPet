@@ -18,6 +18,8 @@
     "dev:control-center": "vite --config apps/control-center/vite.config.js --host 127.0.0.1",
     "build:system-cursor": "node scripts/build-macos-system-cursor-helper.js",
     "build:control-center": "npm run build:browser-contracts && vite build --config apps/control-center/vite.config.js",
+    "build:web-control": "vite build --config apps/web-control/vite.config.js",
+    "configure:web-control": "bash scripts/configure-openpet-web-control.sh",
     "build:browser-contracts": "node scripts/build-browser-contracts.mjs",
     "check:browser-contracts": "node scripts/build-browser-contracts.mjs --check",
     "build:contracts": "npm --workspace @openpet/contracts run build && npm --workspace @openpet/shared run build",

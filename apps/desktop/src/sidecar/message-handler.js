@@ -5,7 +5,7 @@ const { sanitizeLogText } = require("../services/log-safety")
 const BRIDGE_PROTOCOL_VERSION = 1
 const CATALOG_BLOCKLIST_TYPES = new Set(["pluginId", "packId", "sha256"])
 const CREATOR_OPERATIONS = new Set([
-	"pick-reference", "bind-reference", "get-state", "get-last-run", "asset-preview",
+	"pick-reference", "upload-reference", "bind-reference", "get-state", "get-last-run", "asset-preview",
 	"generate-character", "generate-action", "run-workflow", "evaluate-sprite", "retry-action", "retry-identity",
 	"accept-identity", "accept-action-candidate", "export-recovery", "import-actions",
 ])

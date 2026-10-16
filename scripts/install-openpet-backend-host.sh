@@ -69,6 +69,7 @@ chown -R root:root "$app_stage"; chmod -R a=rX,u+w "$app_stage"
 cd "$app_stage"
 "$node_candidate/bin/npm" ci --ignore-scripts --no-audit --no-fund
 "$node_candidate/bin/npm" --workspace @openpet/contracts run build
+"$node_candidate/bin/npm" run build:web-control
 
 previous_app="${APP_ROOT}.previous.${timestamp}"
 previous_node="${NODE_ROOT}.previous.${timestamp}"

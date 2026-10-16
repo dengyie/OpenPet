@@ -8,6 +8,7 @@ const MAX_NAME = 160
 const MAX_PROMPT = 8_000
 const CREATOR_OPERATION_SET = new Set([
 	"pick-reference",
+	"upload-reference",
 	"bind-reference",
 	"delete-reference",
 	"get-state",
@@ -270,6 +271,19 @@ export function createCreatorDomain({ db, shell, enqueueJob, emit, owner = "desk
 		}
 		return { ok: true, replaced: Boolean(existing), reference: publicReference(db.prepare("SELECT * FROM creator_references WHERE owner = ? AND id = ?").get(owner, id)) }
 	}
+	const uploadReference = async (input = {}) => {
+		object(input)
+		const targetType = safeId(input.targetType || "pet-pack", "targetType")
+		const targetId = safeId(input.targetId || `web-${randomUUID()}`, "targetId")
+		const fileName = text(input.fileName || "reference.png", "fileName", { max: 256 })
+		const mimeType = text(input.mimeType || "", "mimeType", { max: 80 })
+		const dataBase64 = text(input.dataBase64 || "", "dataBase64", { max: 1_500_000 })
+		if (!/^image\/(png|jpeg|webp)$/i.test(mimeType) || !/^[A-Za-z0-9+/=]+$/.test(dataBase64)) {
+			throw new ApiError("VALIDATION_FAILED", "Reference upload type or encoding is invalid")
+		}
+		const result = await authority("upload-reference", { targetType, targetId, fileName, mimeType, dataBase64 })
+		return { ok: true, targetType, targetId, referenceToken: result.referenceToken, fileName: result.fileName }
+	}
 	const deleteReference = async (input = {}) => {
 		object(input)
 		const targetType = safeId(input.targetType, "targetType")
@@ -343,7 +357,7 @@ export function createCreatorDomain({ db, shell, enqueueJob, emit, owner = "desk
 	}
 
 	return {
-		listFlows, createFlow, updateFlow, deleteFlow,
+		listFlows, createFlow, updateFlow, deleteFlow, uploadReference,
 		listReferences, bindReference, deleteReference,
 		getState, getLastRun, getAssetPreview, artifacts, recordArtifacts,
 		enqueueCharacter: (input) => enqueue("creator.character", input, "creator:character"),

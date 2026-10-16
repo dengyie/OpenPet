@@ -13,6 +13,8 @@ Environment=OPENPET_DATA_DIR=/var/lib/openpet
 Environment=OPENPET_HOST_PORT=48330
 Environment=OPENPET_BRIDGE_PORT=48331
 Environment=OPENPET_BACKEND_PORT=48332
+Environment=OPENPET_WEB_ROOT=/opt/openpet/app/dist/web-control
+EnvironmentFile=-/etc/openpet/web-control.env
 ExecStart=/opt/openpet/node/bin/node /opt/openpet/app/services/backend/host.js
 Restart=on-failure
 RestartSec=3

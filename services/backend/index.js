@@ -20,7 +20,7 @@ import {
 	cors,
 	createAccessLogBuffer,
 	errorBoundary,
-	jsonBody,
+	backendJsonBody,
 	loopbackOnly,
 	requestId,
 } from "./http/middleware.js"
@@ -260,7 +260,7 @@ router.use(
 		getSessionToken: () => runtime.sessionToken,
 	}),
 )
-router.use(jsonBody())
+router.use(backendJsonBody())
 
 // 03 篇 §4.1。注意 /health 也在 bearerAuth 之后 —— 未鉴权一律 401,不设例外。
 registerHealthRoutes({

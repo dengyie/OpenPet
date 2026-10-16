@@ -118,7 +118,7 @@ export const actionsRequestSchema = z.discriminatedUnion("operation", [
 export type ActionsBridgeRequest = z.infer<typeof actionsRequestSchema>
 
 export const CREATOR_BRIDGE_OPERATIONS = [
-  "pick-reference", "bind-reference", "delete-reference", "get-state", "get-last-run", "asset-preview",
+  "pick-reference", "upload-reference", "bind-reference", "delete-reference", "get-state", "get-last-run", "asset-preview",
   "generate-character", "generate-action", "run-workflow", "evaluate-sprite", "retry-action", "retry-identity",
   "accept-identity", "accept-action-candidate", "export-recovery", "import-actions",
 ] as const

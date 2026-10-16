@@ -1,6 +1,12 @@
 # `@openpet/backend`
 
-OpenPet 的本地后端 sidecar。由 Shell(Electron 主进程)通过 `child_process.fork` 启动,只监听回环地址。
+OpenPet 的后端 sidecar。桌面 Shell 通过 `child_process.fork` 启动；广州 host 也会以远端会话方式 fork 它，子进程和 host 都只监听回环地址。
+
+## Mesh Web Control
+
+`services/backend/host.js` 可托管 `dist/web-control` 静态前端，并用内存中的网页登录令牌代理 `/api/v1/*`。网页登录令牌不会写入磁盘，Backend session 结束后全部失效。Host 本身仍必须绑定 `127.0.0.1:48330`；由广州 CVM 上仅绑定 EasyTier 地址的 Nginx 负责 HTTPS 入口。
+
+Web 控制台只能编排现有 Creator Backend 会话。Provider keys、参考图 authority、桌面 PetService 和最终 pet-pack import 仍由在线 OpenPet Shell 持有；Shell 离线时网页只能显示不可用状态。
 
 契约以 [`docs/refactor/03-api-contract.md`](../../docs/refactor/03-api-contract.md) 为准,架构以 [`docs/refactor/02-architecture.md`](../../docs/refactor/02-architecture.md) 为准。
 
