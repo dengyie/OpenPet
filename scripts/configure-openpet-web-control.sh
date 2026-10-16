@@ -90,9 +90,28 @@ fi
 
 # The TencentOS package uses conf.d, and its stock default site would listen on
 # wildcard interfaces. Preserve that package file, but keep it out of Nginx's
-# *.conf include so the only web listeners are the explicit mesh addresses.
+# *.conf include so the only non-loopback web listeners are the explicit mesh
+# addresses.
 if [[ -f /etc/nginx/conf.d/default.conf ]]; then
   mv /etc/nginx/conf.d/default.conf /etc/nginx/conf.d/default.conf.openpet-disabled
+fi
+
+# TencentOS packages its default HTTP server in nginx.conf rather than
+# conf.d/default.conf. Keep that vendor page available only on loopback.
+NGINX_MAIN_CONFIG=/etc/nginx/nginx.conf
+if [[ -f "$NGINX_MAIN_CONFIG" ]] \
+  && grep -Fq '/usr/share/nginx/html;' "$NGINX_MAIN_CONFIG" \
+  && grep -Fq 'include /etc/nginx/default.d/*.conf;' "$NGINX_MAIN_CONFIG" \
+  && grep -Eq '^[[:space:]]*listen[[:space:]]+80;[[:space:]]*$' "$NGINX_MAIN_CONFIG" \
+  && grep -Eq '^[[:space:]]*listen[[:space:]]+\[::\]:80;[[:space:]]*$' "$NGINX_MAIN_CONFIG"; then
+  NGINX_MAIN_BACKUP=/etc/nginx/nginx.conf.openpet-pre-mesh
+  if [[ ! -e "$NGINX_MAIN_BACKUP" ]]; then
+    cp -a "$NGINX_MAIN_CONFIG" "$NGINX_MAIN_BACKUP"
+  fi
+  sed -i \
+    -e '/^[[:space:]]*server[[:space:]]*{/,/^    }$/ { /^[[:space:]]*listen[[:space:]][[:space:]]*80;[[:space:]]*$/s/80;/127.0.0.1:80;/; }' \
+    -e '/^[[:space:]]*server[[:space:]]*{/,/^    }$/ { /^[[:space:]]*listen[[:space:]][[:space:]]*\[::\]:80;[[:space:]]*$/s|^[[:space:]]*listen.*$|        # IPv6 wildcard listener disabled for OpenPet mesh-only web control|; }' \
+    "$NGINX_MAIN_CONFIG"
 fi
 
 sed -e "s|OPENPET_DOMAIN|$DOMAIN|g" -e "s|MESH_IP|$MESH_IP|g" \
@@ -114,7 +133,7 @@ if [[ -z "$listeners" ]]; then
   exit 1
 fi
 while IFS= read -r listener; do
-  [[ "$listener" == "$MESH_IP:80" || "$listener" == "$MESH_IP:443" ]] || {
+  [[ "$listener" == "$MESH_IP:80" || "$listener" == "$MESH_IP:443" || "$listener" == "127.0.0.1:80" ]] || {
     echo "unexpected Nginx listener outside the mesh bind: $listener" >&2
     systemctl stop nginx
     exit 1
