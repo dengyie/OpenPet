@@ -287,6 +287,7 @@ export function createPluginService({ db, jobs, logs, bridge, commandServer, dia
 		creatorDefaultFlow: (_id, prompt) => productionRequest("creator.default-flow", { prompt }),
 		clearInstallSelection: installer.clearPendingSelection,
 		command: lifecycle.command,
+		runCreatorBackendCommand: lifecycle.runCreatorBackendCommand,
 		dispatchCommand: commandServer?.dispatch,
 		appendLog,
 		flushLogs: logWriter.flush,

@@ -9,7 +9,7 @@ import { createServer } from "node:http"
 import { randomBytes } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { createRequire } from "node:module"
-import { dirname, join } from "node:path"
+import { dirname, join, relative, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 import { EVENT_BACKEND_SHUTTING_DOWN, EVENT_PET_PACK_ACTIVATED, SETTINGS_CANONICAL_PATHS, SETTINGS_TRUSTED_PATHS } from "@openpet/contracts"
 
@@ -71,6 +71,8 @@ import { createCreatorJobHandlers } from "./jobs/handlers/creator.js"
 import { registerCreatorRoutes } from "./routes/creator.js"
 const require = createRequire(import.meta.url)
 const { normalizeNetworkRequest, requestPluginNetwork } = require("../../apps/desktop/src/services/plugin-network-client.js")
+const { createHatchPetAgentService } = require("../../apps/desktop/src/services/hatch-pet-agent-service.js")
+const fs = require("node:fs")
 
 const packageJson = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../package.json"), "utf8"))
 
@@ -205,6 +207,35 @@ const runtime = {
 	enqueueJob: null,
 	ai: null,
 	creator: null,
+	hatchAgent: null,
+}
+
+function containedFile(root, candidate, label) {
+	const realRoot = fs.realpathSync.native(resolve(root))
+	const target = resolve(candidate)
+	if (!fs.existsSync(target) || !fs.statSync(target).isFile()) throw new ApiError("VALIDATION_FAILED", `${label} is missing`)
+	const realTarget = fs.realpathSync.native(target)
+	const rel = relative(realRoot, realTarget)
+	if (!rel || rel.startsWith("..") || rel.split(sep)[0] === ".." || resolve(realRoot, rel) !== realTarget) {
+		throw new ApiError("PERMISSION_DENIED", `${label} must stay inside the plugin data directory`)
+	}
+	return realTarget
+}
+
+function containedRelative(root, value, label) {
+	const raw = String(value || "").trim().replaceAll("\\", "/")
+	if (!raw || raw.startsWith("/") || raw.split("/").includes("..") || /^[A-Za-z]:\//.test(raw)) {
+		throw new ApiError("VALIDATION_FAILED", `${label} is invalid`)
+	}
+	const rootPath = resolve(root)
+	const target = resolve(rootPath, raw)
+	const rel = relative(rootPath, target)
+	if (!rel || rel.startsWith("..") || pathIsOutside(rootPath, target)) throw new ApiError("PERMISSION_DENIED", `${label} must stay inside the plugin data directory`)
+	return raw
+}
+
+function pathIsOutside(root, target) {
+	return target !== root && !target.startsWith(`${root}${sep}`)
 }
 
 const initEnvelope = await initPromise.catch((error) => {
@@ -424,6 +455,69 @@ await initializeBackendRuntime({
 		initializePlugins: () => {
 			let runtimeBridgeServer
 			const processLedger = createProcessLedger({ userDataDir: runtime.userDataDir, logger })
+			const creatorDataDir = (pluginId) => {
+				if (!runtime.plugins?.runtimeDirs) throw new ApiError("BACKEND_UNAVAILABLE", "Creator plugin data directory is unavailable")
+				return runtime.plugins.runtimeDirs(pluginId).dataDir
+			}
+			const hatchAgent = () => {
+				if (runtime.hatchAgent) return runtime.hatchAgent
+				if (!runtime.aiChat || !runtime.settings || !runtime.secrets) throw new ApiError("BACKEND_UNAVAILABLE", "Hatch-pet AI service is unavailable")
+				runtime.hatchAgent = createHatchPetAgentService({
+					aiService: {
+						completeStructuredTool: ({ signal, configOverride: _ignored, ...request } = {}) => runtime.aiChat.complete({ method: "completeStructuredTool", capability: "hatch-pet", request }, { signal }),
+					},
+					configuration: {
+						getAiConfig: () => runtime.settings.read().values.ai || {},
+						getConfig: () => runtime.aiChat.getHatchConfig(),
+						saveConfig: (config) => { runtime.aiChat.saveConfig({ hatchPet: config }); return runtime.aiChat.getHatchConfig() },
+						saveApiKey: async (value) => { const result = await runtime.secrets.set("ai.hatch-pet", value); runtime.aiChat.publishSnapshot(); return { apiKeyRef: "ai.hatch-pet", hasApiKey: result.configured === true, updatedAt: new Date().toISOString() } },
+						clearApiKey: async () => { await runtime.secrets.clear("ai.hatch-pet"); runtime.aiChat.publishSnapshot(); return { apiKeyRef: "ai.hatch-pet", hasApiKey: false, updatedAt: new Date().toISOString() } },
+					},
+					pluginService: { getPluginCreatorDataDir: creatorDataDir },
+					appLogService: { record: (entry) => logger?.[entry.level || "info"]?.(entry.message, entry.details) },
+				})
+				return runtime.hatchAgent
+			}
+			const creatorBridge = {
+				modelSettings: (pluginId) => {
+					if (!runtime.ai?.getConfig) throw new ApiError("BACKEND_UNAVAILABLE", "Image model settings are unavailable")
+					const config = runtime.ai.getConfig()
+					return { ok: true, config: { provider: config.provider, baseUrl: config.baseUrl, model: config.model, organization: config.organization, project: config.project, timeoutMs: config.timeoutMs, maxConcurrentJobs: config.maxConcurrentJobs, hasApiKey: config.hasApiKey, modelCatalog: config.modelCatalog, creatorWorkflowModelPolicy: config.creatorWorkflowModelPolicy } }
+				},
+				modelHealthCheck: (_pluginId, { signal } = {}) => runtime.ai.checkHealth({ signal }),
+				modelImageGenerate: async (pluginId, payload = {}, { signal } = {}) => {
+					if (!runtime.ai?.generateImage) throw new ApiError("BACKEND_UNAVAILABLE", "Image model generation is unavailable")
+					const dataDir = creatorDataDir(pluginId)
+					const output = payload.output && typeof payload.output === "object" ? payload.output : {}
+					const dataRelativeDir = containedRelative(dataDir, output.dataRelativeDir, "Creator image output")
+					const referenceImages = Array.isArray(payload.referenceImages) ? payload.referenceImages.map((reference) => ({
+						...reference,
+						path: containedFile(dataDir, reference?.path, "Creator reference image"),
+					})) : []
+					return runtime.ai.generateImage({
+						...payload,
+						provider: undefined,
+						baseUrl: undefined,
+						apiKeyRef: undefined,
+						model: undefined,
+						referenceImages,
+						referenceDataDir: dataDir,
+						output: { dataDir, dataRelativeDir },
+						signal,
+					})
+				},
+				hatchPetPlan: async (_pluginId, payload, { signal } = {}) => hatchAgent().planSprite({ runId: String(payload?.runId || ""), userIntent: String(payload?.userIntent || ""), signal }),
+				hatchPetEvaluate: async (pluginId, payload, { signal } = {}) => {
+					const dataDir = creatorDataDir(pluginId)
+					const board = payload?.board && typeof payload.board === "object" ? payload.board : {}
+					const boardPath = containedFile(dataDir, resolve(dataDir, String(board.relativePath || "")), "Creator review board")
+					return hatchAgent().evaluateSprite({
+						runId: String(payload?.runId || ""), scope: String(payload?.scope || ""),
+						board: { path: boardPath, relativePath: String(board.relativePath || ""), sha256: String(board.sha256 || ""), regions: Array.isArray(board.regions) ? board.regions : [] },
+						qa: payload?.qa && typeof payload.qa === "object" ? payload.qa : {}, signal,
+					})
+				},
+			}
 			const pluginFacade = {
 				get: (id) => runtime.plugins?.get?.(id),
 				definition: (id) => runtime.plugins?.definition?.(id),
@@ -437,6 +531,7 @@ await initializeBackendRuntime({
 					shell,
 					plugins: pluginFacade,
 					settings: runtime.settings,
+					creator: creatorBridge,
 				jobs: { insert: (input) => runtime.enqueueJob(input) },
 				logs: { appendPlugin: (entry) => runtime.plugins.appendLog(entry) },
 				network: {
@@ -502,7 +597,10 @@ if (!runtime.degraded && runtime.jobs) {
 		runtime.creator = createCreatorDomain({
 		db: runtime.db,
 		shell,
+		ai: runtime.ai,
 		enqueueJob: (input) => runtime.enqueueJob?.(input),
+		runPluginCommand: (command, payload, context = {}) => runtime.plugins?.runCreatorBackendCommand?.(command, payload, context),
+		creatorDataDir: (pluginId) => runtime.plugins?.runtimeDirs?.(pluginId)?.dataDir,
 		emit: (name, payload) => eventHub.publish(name, payload),
 		logger,
 	})

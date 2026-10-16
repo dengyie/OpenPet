@@ -2,7 +2,7 @@
 
 > 🔌 本篇是前后端并行开发的唯一依据。契约未定稿前不得开始写业务代码。当前 87 个 IPC 通道的去向已在本篇逐域定义。
 
-当前运行时注册基线为 **133 条已注册路由、146 条路由行**；§4 的未注册行会明确标为目标或 blocked。
+当前运行时注册基线为 **136 条已注册路由、149 条契约路由行**；§4 的未注册行会明确标为目标或 blocked。
 
 ## 1. 协议基础
 
@@ -249,6 +249,8 @@
 | POST | `/ai/hatch/start` | 孵化 → **Job** |
 | GET | `/ai/hatch/budget` | 预算账本 |
 | POST | `/ai/images/generate` | → **Job**(265s) |
+| POST | `/ai/images/web-generate` | 网页图片生成 → **Job**；参考图只接受受限 Base64，输出固定到 `creator-web/` |
+| GET | `/ai/images/preview` | 受控预览 `creator-web/` 下的 Backend 生成图片 |
 | GET · PATCH | `/ai/images/config` | 图片 Provider 脱敏配置读写（已注册；不接受 `apiKeyRef` 等 owner 字段） |
 | PUT · DELETE | `/ai/images/key` | 图片 API Key 写入/清除；Shell 持久化成功后才返回，仅包含引用和脱敏预览 |
 | GET | `/ai/images/health` | provider 健康 |
@@ -256,7 +258,7 @@
 
 AI HTTP 路由逐条拒绝未声明的 query 字段和重复 query key。Provider key 响应由 HTTP 边界生成固定的脱敏 DTO；密钥值只用于等待 Shell 持久化和计算末尾掩码，不序列化 secret store 的返回对象。
 
-当前 AI 目标路由均已进入运行时 registry。Control Center 运行时已将配置、密钥、Persona、Memory、聊天、对话、Trace、行为配置/规则/dry-run/replay/export/clear 及图片配置/密钥/健康/模型探测接入 Backend；图片生成仍通过 `image.generate` Job，Hatch 启动仍需在 Job runner 中完成 Shell 侧最终副作用验证。Hatch 配置、密钥、capability、run 状态和 Behavior 诊断已通过同一 typed AI reverse channel 接入，旧 IPC 仅保留兼容入口。
+当前 AI 目标路由均已进入运行时 registry。Control Center 运行时已将配置、密钥、Persona、Memory、聊天、对话、Trace、行为配置/规则/dry-run/replay/export/clear 及图片配置/密钥/健康/模型探测接入 Backend；桌面图片生成与网页图片生成均通过 `image.generate` Job，网页结果固定存放在 `creator-web/` 并由 preview 路由受控读取。Hatch 启动仍需在 Job runner 中完成 Shell 侧最终副作用验证。Hatch 配置、密钥、capability、run 状态和 Behavior 诊断已通过同一 typed AI reverse channel 接入，旧 IPC 仅保留兼容入口。
 
 ### 4.7 插件
 
@@ -285,7 +287,7 @@ AI HTTP 路由逐条拒绝未声明的 query 字段和重复 query key。Provide
 
 ### 4.8 Creator Studio
 
-> Creator routes are registered in the runtime registry through `services/backend/routes/creator.js` and `services/backend/index.js`. Route registration does not claim real provider or account acceptance. Generation, evaluation, workflow, and import operations enqueue Jobs; runtime execution still depends on the Creator domain and its host/provider dependencies.
+> Creator routes are registered in the runtime registry through `services/backend/routes/creator.js` and `services/backend/index.js`. Route registration does not claim real provider or account acceptance. Web requests with `backend: "web"` enqueue the full quality-first Creator flow on Backend, including generated identity image, mandatory identity review, action generation/QA, retries, recovery evidence, and reviewable package. Desktop Shell remains the authority for importing and activating a pet into the local library.
 
 | 方法 | 路径 | Job |
 | --- | --- | --- |
@@ -338,7 +340,7 @@ AI HTTP 路由逐条拒绝未声明的 query 字段和重复 query key。Provide
 
 ### 4.11 当前实现注册表（T39）
 
-`services/backend/routes/registry.js` 是当前已实现 REST 路由的可执行登记表；它与各 `register*Routes` 的运行时注册结果均为 **133 条 method/path**。§4 当前列出 **146 条文档路由行**，包括目标或 blocked 行。`check:api-contract` 会展开 §4.1–§4.10 的紧凑方法/路径单元格，并按规范化参数路径逐条比较这 133 条，而不是只比较总数。§4 的其余目标路由仍保留在契约表中，待对应域实现后加入登记表。
+`services/backend/routes/registry.js` 是当前已实现 REST 路由的可执行登记表；它与各 `register*Routes` 的运行时注册结果均为 **136 条 method/path**。§4 当前列出 **149 条契约路由行**，包括目标或 blocked 行。`check:api-contract` 会展开 §4.1–§4.10 的紧凑方法/路径单元格，并按规范化参数路径逐条比较这 136 条，而不是只比较总数。§4 的其余目标路由仍保留在契约表中，待对应域实现后加入登记表。
 
 SSE 不属于上述 REST 登记子集，但仍是 API 路由的一部分：
 
@@ -346,7 +348,7 @@ SSE 不属于上述 REST 登记子集，但仍是 API 路由的一部分：
 | --- | --- | --- | --- |
 | GET | `/events` | `services/backend/routes/events.js` + `services/backend/events/hub.js` | SSE 订阅；事件名、topic 与 §5 目录逐项对账 |
 
-`GET /api/v1/events` 不计入 §4.1–§4.10 的 133 条 REST registry 对账，也不计入 §3 IPC 通道数。
+`GET /api/v1/events` 不计入 §4.1–§4.10 的 136 条 REST registry 对账，也不计入 §3 IPC 通道数。
 
 ## 5. SSE 事件规范
 

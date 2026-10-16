@@ -9,6 +9,8 @@ export const AI_SECRET_ROUTES = Object.freeze([
 
 export const AI_ROUTES = Object.freeze([
 	"POST /ai/images/generate",
+	"POST /ai/images/web-generate",
+	"GET /ai/images/preview",
 	"GET /ai/images/config",
 	"PATCH /ai/images/config",
 	"PUT /ai/images/key",
@@ -60,6 +62,7 @@ export const AI_TALK_ROUTES = Object.freeze([
 const PROVIDER_KEY_IDS = new Set(["ai.default", "ai.vision"])
 
 const AI_QUERY_FIELDS = new Map([
+	["GET /ai/images/preview", ["relativePath"]],
 	["GET /ai/conversations", ["entrypoint", "petPackId"]],
 	["GET /ai/traces", ["conversationId"]],
 	["GET /ai/hatch/budget", ["runId"]],
@@ -164,13 +167,34 @@ export function registerAiRoutes(router, { jobs, ai, secrets } = {}) {
 		if (containsCredential(input)) {
 			throw new ApiError("VALIDATION_FAILED", "Image generation credentials are host-managed")
 		}
+		const id = `image-generate:${randomUUID()}`
 		const job = jobs.insert({
-			id: `image-generate:${randomUUID()}`,
+			id,
 			kind: "image.generate",
 			input: { redacted: true, summary: "Image generation input withheld" },
 			privateInput: input,
 		})
 		return sendSuccess(ctx, { jobId: job.id }, 202)
+	})
+	register("post", "/ai/images/web-generate", (ctx) => {
+		if (!jobs?.insert) throw new ApiError("BACKEND_UNAVAILABLE", "Job service unavailable")
+		if (typeof ai?.createWebImageInput !== "function") throw new ApiError("BACKEND_UNAVAILABLE", "Web image generation is unavailable")
+		const input = ctx.body
+		if (!input || typeof input !== "object" || Array.isArray(input)) throw new ApiError("VALIDATION_FAILED", "Image generation input is required")
+		if (containsCredential(input)) throw new ApiError("VALIDATION_FAILED", "Image generation credentials are host-managed")
+		const id = `image-generate:${randomUUID()}`
+		const privateInput = ai.createWebImageInput(input, id)
+		const job = jobs.insert({
+			id,
+			kind: "image.generate",
+			input: { redacted: true, summary: "Web image generation input withheld" },
+			privateInput,
+		})
+		return sendSuccess(ctx, { jobId: job.id }, 202)
+	})
+	register("get", "/ai/images/preview", (ctx) => {
+		if (typeof ai?.previewGeneratedImage !== "function") throw new ApiError("BACKEND_UNAVAILABLE", "Image preview service unavailable")
+		return sendSuccess(ctx, ai.previewGeneratedImage(ctx.query.relativePath))
 	})
 	register("get", "/ai/images/config", async (ctx) => sendSuccess(ctx, await requireImageAi(ai).getConfig()))
 	register("patch", "/ai/images/config", async (ctx) => {

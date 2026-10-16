@@ -4065,5 +4065,7 @@ module.exports = {
   EDITABLE_TARGET_ID,
   EDITABLE_TARGET_NAME,
   EDITABLE_TARGET_TYPE,
+  createFullPetTask,
+  readCreatorWorkflowDiagnostics: readWorkflowDiagnostics,
   createCreatorWorkflowService
 }

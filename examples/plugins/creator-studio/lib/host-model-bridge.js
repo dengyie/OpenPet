@@ -3052,11 +3052,25 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
     runId: run.runId,
     userIntent: run.input?.originalPrompt || run.input?.prompt || ''
   })
+  const plannerActions = Array.isArray(planResult.proposal?.actions) ? planResult.proposal.actions : []
+  const backendFullPetActions = run?.creatorExecution === 'backend' &&
+    run?.generationTask?.mode === 'full-pet' &&
+    Array.isArray(run.generationTask.actions)
+    ? run.generationTask.actions
+        .map((action) => String(action?.actionId || '').trim())
+        .filter((actionId) => actionId && actionId !== 'running-left')
+    : null
+  const selectedPlanActions = backendFullPetActions
+    ? (() => {
+        const plannedById = new Map(plannerActions.map((action) => [String(action?.actionId || '').trim(), action]))
+        return backendFullPetActions.map((actionId) => plannedById.get(actionId) || { actionId })
+      })()
+    : plannerActions
   const plan = planOverride || createSpriteAssetPlan({
     version: 1,
     revision: 1,
     character: { assetClass: planResult.proposal.assetClass },
-    actions: planResult.proposal.actions,
+    actions: selectedPlanActions,
     qualityProfile: { id: 'pet-generation-default-v2', sourceDatasetId: '' }
   })
   const planRelativePath = `runs/${run.runId}/sprite-plan.json`
@@ -3646,7 +3660,11 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
   return {
     plan,
     planResult,
-    requireIdentityReviewBeforeActions: planResult.requireIdentityReviewBeforeActions === true,
+    // Web Backend runs always pause for an explicit identity choice before any
+    // action generation. Desktop runs retain the planner's normal policy.
+    requireIdentityReviewBeforeActions: run?.creatorExecution === 'backend'
+      ? true
+      : planResult.requireIdentityReviewBeforeActions === true,
     orchestrator,
     sourceReference,
     planRelativePath,

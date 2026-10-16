@@ -4,7 +4,7 @@
 
 **Goal:** Add a browser control panel for the existing OpenPet Creator workflow, serve it from the Guangzhou Backend host through a private mesh-only HTTPS domain, and preserve the existing desktop bridge and secret boundaries.
 
-**Architecture:** The Backend host will serve a separately built web app and exchange a short-lived browser token for the active Backend session token. The browser will use existing Creator and Jobs APIs; reference images will be uploaded through a bounded, validated Shell bridge operation. The domain will terminate HTTPS on the CVM's EasyTier address, while the Backend host remains loopback-only behind Nginx.
+**Architecture:** The Backend host serves a separately built web app and exchanges a short-lived browser token for the active Backend session token. The browser submits bounded reference image bytes to the Backend Creator Job, where the official Creator Studio plugin generates and reviews the full pet. The active desktop session supplies Provider keys and Shell bridge; local pet-library import and activation remain Shell-owned. The domain terminates HTTPS on the CVM's EasyTier address, while the Backend host remains loopback-only behind Nginx.
 
 **Tech Stack:** Node.js native HTTP, React, Vite, existing OpenPet contracts, Nginx, Cloudflare DNS-01 certificate issuance, EasyTier mesh.
 
@@ -14,7 +14,7 @@
 - Bind the public-facing Nginx listener only to EasyTier `10.144.144.8`.
 - Do not expose the Backend or web control to the public Internet or modify cloud security groups.
 - Do not store Provider keys, Shell bridge tokens, session tokens, or web login passwords in Git or Obsidian documentation.
-- Keep Creator orchestration and native pet import behind the existing Shell authority; report that the web workflow requires the desktop Shell bridge to be online.
+- Execute explicit web-mode Creator orchestration in the official Backend plugin; keep Provider keys session-scoped and native pet import/activation behind the existing Shell authority.
 - Do not modify `cat_anime/` or add adapters under `examples/plugins/im-gateway/`.
 - Do not launch Electron or perform workstation UI acceptance.
 
@@ -29,7 +29,7 @@
 - Modify: `deploy/openpet-backend-host.service`
 
 **Interfaces:**
-- `POST /__openpet/web/login` accepts `{ password }` and returns a random, short-lived web token only when the configured password matches and a Backend session is active.
+- `POST /__openpet/web/login` accepts `{ password }` and returns a random, short-lived web token only when the configured password matches. Business proxy requests still require an active Backend session.
 - Same-origin `/api/v1/*` requests may authenticate with the web token; the host substitutes the active child session token before proxying.
 - `GET /` and static asset paths serve only files contained beneath `dist/web-control`.
 - Web tokens are memory-only, expire after four hours, and are revoked when the Backend session ends.
@@ -75,7 +75,7 @@
 
 **Interfaces:**
 - The app logs in through `POST /__openpet/web/login`, keeps the returned token in memory, and sends it as `Authorization: Bearer` for Backend requests.
-- The UI exposes reference upload, new pet generation, job progress, latest Creator run details, identity/action decisions supported by existing Creator routes, retries, and recovery export.
+- The UI exposes Backend full-pet generation from a browser reference, job progress, latest Backend Creator run details, identity/action decisions, retries, recovery verification, and the Shell-owned import/activation handoff.
 - The UI clearly reports when the remote desktop Shell bridge is offline and keeps Provider secrets out of browser persistence and request logs.
 
 - [x] Add the Vite build target with output `dist/web-control` and a root `build:web-control` script.

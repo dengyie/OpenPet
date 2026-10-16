@@ -7,6 +7,7 @@ const path = require('node:path')
 const {
   GENERATION_COMMAND_TERMINATED_REASON,
   createRun,
+  materializeBackendReferenceForRun,
   appendRunLog,
   readRunLogs,
   readRun,
@@ -16,6 +17,51 @@ const {
 } = require('../../examples/plugins/creator-studio/lib/run-store')
 
 const makeDataDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-run-store-'))
+
+test('web-created Creator runs retain the Backend execution owner for later review commands', () => {
+  const dataDir = makeDataDir()
+  const run = createRun({
+    dataDir,
+    input: {
+      petName: 'Backend Fox',
+      backend: 'provider',
+      creatorExecution: 'backend',
+      generationTask: {
+        mode: 'full-pet',
+        pipeline: 'quality-first-v1',
+        actions: [{ actionId: 'idle', name: 'Idle', motionPrompt: 'idle', frameCount: 1, transparentBackground: true }],
+        questions: []
+      }
+    }
+  })
+
+  assert.equal(run.creatorExecution, 'backend')
+  assert.equal(readRun({ dataDir, runId: run.runId }).creatorExecution, 'backend')
+})
+
+test('Backend Creator materializes the incoming reference into the run and removes the temporary copy', () => {
+  const dataDir = makeDataDir()
+  const incomingRelativePath = 'incoming/web-123e4567-e89b-12d3-a456-426614174000.png'
+  const incoming = path.join(dataDir, incomingRelativePath)
+  fs.mkdirSync(path.dirname(incoming), { recursive: true })
+  const bytes = Buffer.from('backend-reference')
+  fs.writeFileSync(incoming, bytes)
+  const contentHash = require('crypto').createHash('sha256').update(bytes).digest('hex')
+  const run = createRun({
+    dataDir,
+    input: {
+      petName: 'Backend Fox',
+      backend: 'provider',
+      creatorExecution: 'backend',
+      referenceImage: { relativePath: incomingRelativePath, fileName: 'fox.png', contentHash }
+    }
+  })
+  const materialized = materializeBackendReferenceForRun({ dataDir, run })
+  assert.equal(fs.existsSync(incoming), false)
+  assert.equal(materialized.input.referenceImage.relativePath, `runs/${run.runId}/inputs/references/reference.png`)
+  assert.equal(fs.existsSync(path.join(dataDir, materialized.input.referenceImage.relativePath)), true)
+  assert.equal(fs.existsSync(path.join(dataDir, materialized.input.referenceImage.metadataRelativePath)), true)
+})
 
 test('stale generating run recovery preserves evidence and enables retries', () => {
   const dataDir = makeDataDir()

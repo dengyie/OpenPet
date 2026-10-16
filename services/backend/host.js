@@ -80,13 +80,14 @@ function isWebProxyRouteAllowed(method, pathname) {
 	try { decodedPathname = decodeURIComponent(pathname) } catch { return false }
 	if (requestMethod === "GET" && new Set([
 		"/api/v1/health",
+		"/api/v1/ai/images/preview",
 		"/api/v1/creator/state",
 		"/api/v1/creator/last-run",
 		"/api/v1/creator/assets/preview",
 	]).has(decodedPathname)) return true
 	if (requestMethod === "GET" && /^\/api\/v1\/jobs\/[A-Za-z0-9._:-]{1,256}$/.test(decodedPathname)) return true
 	if (requestMethod === "POST" && new Set([
-		"/api/v1/creator/references/upload",
+		"/api/v1/ai/images/web-generate",
 		"/api/v1/creator/characters/generate",
 		"/api/v1/creator/export",
 	]).has(decodedPathname)) return true

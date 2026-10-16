@@ -100,6 +100,8 @@ test('web control serves static assets only from the configured root and authent
   const job = await request(ctx.address, '/api/v1/jobs/creator.character%3Aabc-123', { headers: { authorization: `Bearer ${webToken}` } })
   assert.equal(job.status, 200)
   for (const pathname of [
+    '/api/v1/ai/images/web-generate',
+    '/api/v1/creator/export',
     '/api/v1/creator/runs/run-1/retry-identity',
     '/api/v1/creator/runs/run-1/retry-action',
     '/api/v1/creator/runs/run-1/accept-action-candidate'
@@ -109,6 +111,10 @@ test('web control serves static assets only from the configured root and authent
     })
     assert.equal(allowed.status, 200, pathname)
   }
+  const preview = await request(ctx.address, '/api/v1/ai/images/preview?relativePath=creator-web%2Fruns%2Fjob-1%2F0001.png', {
+    headers: { authorization: `Bearer ${webToken}` }
+  })
+  assert.equal(preview.status, 200)
   const forbiddenRoute = await request(ctx.address, '/api/v1/plugins', { headers: { authorization: `Bearer ${webToken}` } })
   assert.equal(forbiddenRoute.status, 403)
   const forbiddenMethod = await request(ctx.address, '/api/v1/health', { method: 'POST', headers: { authorization: `Bearer ${webToken}` }, body: {} })

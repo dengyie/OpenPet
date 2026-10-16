@@ -1,11 +1,75 @@
 import fs from "node:fs"
-import { randomUUID } from "node:crypto"
-import { join, relative, resolve, dirname, sep } from "node:path"
+import { createHash, randomUUID } from "node:crypto"
+import { extname, join, relative, resolve, dirname, sep } from "node:path"
 import { createRequire } from "node:module"
 import { ApiError } from "../../http/middleware.js"
 
 const require = createRequire(import.meta.url)
 const { createImageGenerationModelService } = require("../../../../apps/desktop/src/services/image-generation-model-service.js")
+
+const WEB_IMAGE_ROOT = "creator-web"
+const MAX_WEB_REFERENCE_BYTES = 1_100_000
+const MAX_WEB_PREVIEW_BYTES = 4 * 1024 * 1024
+const WEB_JOB_ID = /^[A-Za-z0-9][A-Za-z0-9:_-]{0,160}$/
+const WEB_IMAGE_OUTPUT_PATH = /^creator-web\/runs\/image-generate:[0-9a-f-]{36}\/([A-Za-z0-9][A-Za-z0-9._-]{0,100}\.(?:png|jpe?g|webp))$/i
+const WEB_REFERENCE_MIME = new Map([
+	["image/png", { extension: "png", signature: (bytes) => bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) }],
+	["image/jpeg", { extension: "jpg", signature: (bytes) => bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff }],
+	["image/webp", { extension: "webp", signature: (bytes) => bytes.length >= 12 && bytes.subarray(0, 4).toString("ascii") === "RIFF" && bytes.subarray(8, 12).toString("ascii") === "WEBP" }],
+])
+
+function normalizeWebBase64(value) {
+	const encoded = typeof value === "string" ? value.trim() : ""
+	if (!encoded || encoded.length > 1_500_000 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) {
+		throw new ApiError("VALIDATION_FAILED", "Reference image encoding is invalid")
+	}
+	const bytes = Buffer.from(encoded, "base64")
+	if (!bytes.length || bytes.byteLength > MAX_WEB_REFERENCE_BYTES) throw new ApiError("VALIDATION_FAILED", "Reference image is too large")
+	return bytes
+}
+
+function normalizeWebReference(value) {
+	if (!value || typeof value !== "object" || Array.isArray(value)) throw new ApiError("VALIDATION_FAILED", "referenceImage must be an object")
+	if (Object.keys(value).some((key) => !["mimeType", "dataBase64", "fileName"].includes(key))) throw new ApiError("VALIDATION_FAILED", "referenceImage contains unsupported fields")
+	const mimeType = typeof value.mimeType === "string" ? value.mimeType.trim().toLowerCase() : ""
+	const descriptor = WEB_REFERENCE_MIME.get(mimeType)
+	if (!descriptor) throw new ApiError("VALIDATION_FAILED", "Reference image type is unsupported")
+	const bytes = normalizeWebBase64(value.dataBase64)
+	if (!descriptor.signature(bytes)) throw new ApiError("VALIDATION_FAILED", "Reference image bytes do not match mimeType")
+	return { mimeType, extension: descriptor.extension, bytes }
+}
+
+function safeWebJobId(value) {
+	const normalized = String(value || "").trim()
+	if (!WEB_JOB_ID.test(normalized)) throw new ApiError("VALIDATION_FAILED", "Image Job id is invalid")
+	return normalized
+}
+
+function safeWebRelativePath(value) {
+	const normalized = typeof value === "string" ? value.trim().replaceAll("\\", "/") : ""
+	if (!normalized || normalized.startsWith("/") || normalized.includes("\0") || normalized.split("/").includes("..") || !normalized.startsWith(`${WEB_IMAGE_ROOT}/`)) {
+		throw new ApiError("VALIDATION_FAILED", "Image preview path is invalid")
+	}
+	return normalized
+}
+
+function imageMimeType(filePath) {
+	const extension = extname(filePath).toLowerCase()
+	return ({ ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp" })[extension] || ""
+}
+
+function resolveWebImageRoot(userDataDir) {
+	const rootPath = resolve(userDataDir)
+	if (!fs.existsSync(rootPath)) throw new ApiError("NOT_FOUND", "Generated image not found")
+	const root = fs.realpathSync.native(rootPath)
+	const webRoot = resolve(root, WEB_IMAGE_ROOT)
+	if (!fs.existsSync(webRoot)) throw new ApiError("NOT_FOUND", "Generated image not found")
+	if (fs.lstatSync(webRoot).isSymbolicLink() || !fs.statSync(webRoot).isDirectory()) {
+		throw new ApiError("PERMISSION_DENIED", "Generated image storage path is invalid")
+	}
+	assertRealContained(root, webRoot, "Generated image storage path is invalid")
+	return fs.realpathSync.native(webRoot)
+}
 
 function settingsAdapter(settings) {
 	let pending = Promise.resolve()
@@ -166,20 +230,103 @@ export function createAiService({ settings, secrets, fetchImpl, logger, userData
 		keyMutations = operation.queue
 		return operation.result
 	}
+	const createWebImageInput = (input = {}, jobId) => {
+		if (!input || typeof input !== "object" || Array.isArray(input)) throw new ApiError("VALIDATION_FAILED", "Image generation input is required")
+		if (!userDataDir) throw new ApiError("BACKEND_UNAVAILABLE", "Image generation storage is unavailable")
+		const id = safeWebJobId(jobId)
+		if (input.output !== undefined) throw new ApiError("VALIDATION_FAILED", "Browser image requests cannot provide an output directory")
+		if (input.referenceImages !== undefined) throw new ApiError("VALIDATION_FAILED", "Browser image requests cannot provide filesystem references")
+		if (Object.keys(input).some((key) => !["prompt", "referenceImage"].includes(key))) {
+			throw new ApiError("VALIDATION_FAILED", "Browser image request contains unsupported fields")
+		}
+		if (typeof input.prompt !== "string" || !input.prompt.trim() || input.prompt.length > 8_000) {
+			throw new ApiError("VALIDATION_FAILED", "Image prompt must be a non-empty string of at most 8000 characters")
+		}
+		if (input.referenceImage === undefined) throw new ApiError("VALIDATION_FAILED", "Reference image is required")
+		const referenceImage = normalizeWebReference(input.referenceImage)
+		return {
+			prompt: input.prompt.trim(),
+			referenceImage: {
+				mimeType: referenceImage.mimeType,
+				dataBase64: input.referenceImage.dataBase64.trim(),
+				...(typeof input.referenceImage.fileName === "string" ? { fileName: input.referenceImage.fileName.slice(0, 256) } : {}),
+			},
+			output: {
+				dataDir: resolve(String(userDataDir || "")),
+				dataRelativeDir: join(WEB_IMAGE_ROOT, "runs", id),
+			},
+		}
+	}
 
 	async function prepareGeneratedImage(input, { signal, progress, tmpDir } = {}) {
 		if (!tmpDir) throw new Error("Job temporary directory is unavailable")
 		progress?.({ phase: "generating", percent: 20 })
 		if (signal?.aborted) throw signal.reason ?? new Error("Job canceled")
 		const output = input?.output
+		let referenceImages = input?.referenceImages
+		let referenceDataDir = input?.referenceDataDir || output?.dataDir
+		if (input?.referenceImage !== undefined) {
+			const reference = normalizeWebReference(input.referenceImage)
+			const referenceFileName = `reference.${reference.extension}`
+			const referencePath = resolve(tmpDir, referenceFileName)
+			assertContained(tmpDir, referencePath, "Reference image path is invalid")
+			fs.writeFileSync(referencePath, reference.bytes, { mode: 0o600 })
+			referenceImages = [{ path: referencePath, fileName: referenceFileName, relativePath: referenceFileName }]
+			referenceDataDir = tmpDir
+		}
 		const prepared = await provider.generateImage({
 			...input,
+			...(referenceImages === undefined ? {} : { referenceImages }),
 			signal,
-			referenceDataDir: output?.dataDir,
+			referenceDataDir,
 			output: { ...output, dataDir: tmpDir, dataRelativeDir: "outputs" },
 		})
 		progress?.({ phase: "generated", percent: 90 })
 		return { result: prepared, tmpDir, destination: output }
+	}
+
+	function previewGeneratedImage(relativePath) {
+		if (!userDataDir) throw new ApiError("BACKEND_UNAVAILABLE", "Image preview storage is unavailable")
+		const normalized = safeWebRelativePath(relativePath)
+		const root = fs.realpathSync.native(resolve(userDataDir))
+		const webRoot = resolveWebImageRoot(userDataDir)
+		const candidate = resolve(root, normalized)
+		assertRealContained(webRoot, candidate, "Image preview path is invalid")
+		if (!fs.existsSync(candidate) || fs.lstatSync(candidate).isSymbolicLink() || !fs.statSync(candidate).isFile()) throw new ApiError("NOT_FOUND", "Generated image not found")
+		const mimeType = imageMimeType(candidate)
+		if (!mimeType) throw new ApiError("VALIDATION_FAILED", "Generated image type is unsupported")
+		const bytes = fs.readFileSync(candidate)
+		if (bytes.byteLength > MAX_WEB_PREVIEW_BYTES) throw new ApiError("CONFLICT", "Generated image is too large to preview")
+		return {
+			relativePath: normalized,
+			mimeType,
+			previewDataUrl: `data:${mimeType};base64,${bytes.toString("base64")}`,
+		}
+	}
+
+	function readWebGeneratedReference(relativePath, expectedSha256) {
+		if (!userDataDir) throw new ApiError("BACKEND_UNAVAILABLE", "Image preview storage is unavailable")
+		const normalized = safeWebRelativePath(relativePath)
+		const match = normalized.match(WEB_IMAGE_OUTPUT_PATH)
+		if (!match || !/^[a-f0-9]{64}$/i.test(String(expectedSha256 || ""))) {
+			throw new ApiError("VALIDATION_FAILED", "Generated image reference is invalid")
+		}
+		const root = fs.realpathSync.native(resolve(userDataDir))
+		const webRoot = resolveWebImageRoot(userDataDir)
+		const candidate = resolve(root, normalized)
+		assertRealContained(webRoot, candidate, "Generated image reference path is invalid")
+		if (!fs.existsSync(candidate) || !fs.statSync(candidate).isFile() || fs.lstatSync(candidate).isSymbolicLink()) {
+			throw new ApiError("NOT_FOUND", "Generated image not found")
+		}
+		const mimeType = imageMimeType(candidate)
+		const descriptor = WEB_REFERENCE_MIME.get(mimeType)
+		const bytes = fs.readFileSync(candidate)
+		if (!descriptor || bytes.byteLength > MAX_WEB_PREVIEW_BYTES || !descriptor.signature(bytes)) {
+			throw new ApiError("VALIDATION_FAILED", "Generated image reference is unsupported")
+		}
+		const sha256 = createHash("sha256").update(bytes).digest("hex")
+		if (sha256 !== String(expectedSha256).toLowerCase()) throw new ApiError("CONFLICT", "Generated image changed after preview")
+		return { relativePath: normalized, mimeType, extension: descriptor.extension, fileName: match[1], sha256, bytes }
 	}
 
 	async function commitGeneratedImage(prepared) {
@@ -219,8 +366,15 @@ export function createAiService({ settings, secrets, fetchImpl, logger, userData
 			try { fs.rmSync(stageDir, { recursive: true, force: true }) } catch {}
 			throw error
 		}
-		return prepared.result
+		if (!String(relativeDir).startsWith(`${WEB_IMAGE_ROOT}/`)) return prepared.result
+		const result = structuredClone(prepared.result)
+		result.outputs = (Array.isArray(result.outputs) ? result.outputs : []).map((output) => {
+			const relativeOutput = String(output.dataRelativePath || "").replaceAll("\\", "/")
+			const name = relativeOutput.startsWith("outputs/") ? relativeOutput.slice("outputs/".length) : relativeOutput
+			return { ...output, dataRelativePath: join(relativeDir, name).replaceAll("\\", "/") }
+		})
+		return result
 	}
 
-	return { ...provider, getConfig, saveConfig, saveProviderApiKey, clearProviderApiKey, prepareGeneratedImage, commitGeneratedImage }
+	return { ...provider, getConfig, saveConfig, saveProviderApiKey, clearProviderApiKey, createWebImageInput, prepareGeneratedImage, commitGeneratedImage, previewGeneratedImage, readWebGeneratedReference }
 }

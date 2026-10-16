@@ -1,6 +1,12 @@
 import { createHash, randomUUID } from "node:crypto"
+import fs from "node:fs"
+import { createRequire } from "node:module"
+import path from "node:path"
 
 import { ApiError } from "../../http/middleware.js"
+
+const require = createRequire(import.meta.url)
+const { createFullPetTask, readCreatorWorkflowDiagnostics } = require("../../../../apps/desktop/src/services/creator-workflow-service.js")
 
 const SAFE_ID = /^[a-zA-Z0-9][a-zA-Z0-9:_-]{0,127}$/
 const SAFE_PATH = /^[^\\/][^\0]*$/
@@ -146,7 +152,7 @@ function publicArtifact(row) {
 function normalizeJobInput(kind, input) {
 	const source = object(input, "job input")
 	const base = { operation: source.operation || kind, flowId: source.flowId || "" }
-	for (const key of ["characterName", "stylePrompt", "actionName", "motionPrompt", "runId", "actionId", "candidateId", "sha256", "qualityOverride", "acknowledgedWarningCodes", "activate", "relativePath"]) {
+	for (const key of ["backend", "characterName", "stylePrompt", "actionName", "motionPrompt", "runId", "actionId", "candidateId", "sha256", "qualityOverride", "acknowledgedWarningCodes", "activate", "relativePath"]) {
 		if (source[key] !== undefined) base[key] = redact(source[key], key)
 	}
 	return redact(base)
@@ -156,14 +162,17 @@ export function redactCreatorValue(value) {
 	return redact(value)
 }
 
-export function createCreatorDomain({ db, shell, enqueueJob, emit, owner = "desktop", now = Date.now, logger } = {}) {
+export function createCreatorDomain({ db, shell, ai, enqueueJob, runPluginCommand, creatorDataDir, emit, owner = "desktop", now = Date.now, logger } = {}) {
 	if (!db || typeof db.prepare !== "function") throw new ApiError("INTERNAL", "Creator domain 需要数据库 driver")
-	if (typeof shell?.request !== "function") throw new ApiError("BACKEND_UNAVAILABLE", "Creator Shell bridge unavailable")
+	if (typeof shell?.request !== "function" && typeof ai?.prepareGeneratedImage !== "function" && !(typeof runPluginCommand === "function" && typeof creatorDataDir === "function")) {
+		throw new ApiError("BACKEND_UNAVAILABLE", "Creator authority unavailable")
+	}
 	if (!SAFE_ID.test(owner)) throw new ApiError("VALIDATION_FAILED", "Creator owner is invalid")
 
 	const privateInputs = new Map()
 	const authority = async (operation, payload = {}) => {
 		if (!CREATOR_OPERATION_SET.has(operation)) throw new ApiError("VALIDATION_FAILED", "Unsupported Creator operation")
+		if (typeof shell?.request !== "function") throw new ApiError("BACKEND_UNAVAILABLE", "Creator Shell authority unavailable")
 		let reply
 		try {
 			reply = await shell.request(
@@ -184,20 +193,44 @@ export function createCreatorDomain({ db, shell, enqueueJob, emit, owner = "desk
 
 	const byId = (id) => db.prepare("SELECT * FROM creator_flows WHERE owner = ? AND id = ?").get(owner, id)
 	const runById = (id) => db.prepare("SELECT * FROM creator_runs WHERE owner = ? AND id = ?").get(owner, id)
+	const latestRun = () => db.prepare("SELECT * FROM creator_runs WHERE owner = ? ORDER BY updated_at DESC, id ASC LIMIT 1").get(owner)
+	const latestBackendRun = () => db.prepare("SELECT * FROM creator_runs WHERE owner = ? ORDER BY updated_at DESC, id ASC").all(owner).find((row) => backendRunState(row)?.creatorExecution === "backend") || null
+	const runDiagnostics = (runId) => {
+		if (typeof creatorDataDir !== "function") return null
+		try { return readCreatorWorkflowDiagnostics({ pluginDataDir: creatorDataDir("openpet.creator-studio"), runId }) } catch { return null }
+	}
+	const creatorPublicRun = (row) => {
+		if (!row) return null
+		const run = publicRun(row)
+		const state = run.state && typeof run.state === "object" ? run.state : {}
+		const diagnostics = runDiagnostics(run.id)
+		return {
+			...run,
+			diagnostics,
+			state: { ...state, runId: state.runId || run.id, diagnostics },
+		}
+	}
+	const backendRunState = (row) => row ? parseJson(row.state_json) : null
+	const isBackendRun = (runId) => {
+		const id = String(runId || "").trim()
+		return Boolean(id && backendRunState(runById(id))?.creatorExecution === "backend")
+	}
 	const saveRun = (value = {}, flowId = null) => {
 		const input = object(value, "run")
 		const id = safeId(input.runId || input.id, "runId")
 		const timestamp = now()
 		const current = runById(id)
-		const state = redact(input)
+		const mode = text(input.mode || current?.mode || input.generationTask?.mode || "unknown", "mode", { max: 80 })
+		const previousState = current ? backendRunState(current) : {}
+		const state = redact({ ...previousState, ...input })
 		if (current) {
 			db.prepare("UPDATE creator_runs SET flow_id = ?, mode = ?, status = ?, state_json = ?, updated_at = ? WHERE owner = ? AND id = ?")
-				.run(flowId || current.flow_id || null, text(input.mode || current.mode || "", "mode", { max: 80, optional: true }), text(input.status || current.status || "unknown", "status", { max: 80, optional: true }) || "unknown", JSON.stringify(state), timestamp, owner, id)
+				.run(flowId || current.flow_id || null, mode, text(input.status || current.status || "unknown", "status", { max: 80 }) || "unknown", JSON.stringify(state), timestamp, owner, id)
 		} else {
 			db.prepare("INSERT INTO creator_runs (id, owner, flow_id, mode, status, state_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-				.run(id, owner, flowId || null, text(input.mode || "", "mode", { max: 80, optional: true }), text(input.status || "unknown", "status", { max: 80, optional: true }) || "unknown", JSON.stringify(state), timestamp, timestamp)
+				.run(id, owner, flowId || null, mode, text(input.status || "unknown", "status", { max: 80 }), JSON.stringify(state), timestamp, timestamp)
 		}
-		return publicRun(runById(id))
+		return creatorPublicRun(runById(id))
 	}
 
 	const syncResult = (result, flowId = null) => {
@@ -309,13 +342,219 @@ export function createCreatorDomain({ db, shell, enqueueJob, emit, owner = "desk
 	const getJobInput = (jobId, fallback) => privateInputs.get(jobId) || fallback || null
 	const forgetJobInput = (jobId) => privateInputs.delete(jobId)
 
-	const getState = async () => syncResult(await authority("get-state"))
-	const getLastRun = async () => syncResult(await authority("get-last-run"))
+	const getState = async () => {
+		if (typeof shell?.request === "function") {
+			const desktopState = syncResult(await authority("get-state"))
+			const backendRun = latestBackendRun()
+			if (backendRun) return {
+				...desktopState,
+				lastRun: creatorPublicRun(backendRun),
+				backendLastRun: creatorPublicRun(backendRun),
+				backend: true,
+				diagnostics: runDiagnostics(backendRun.id),
+			}
+			return desktopState
+		}
+		const run = latestRun()
+		const backendRun = latestBackendRun()
+		return { ok: true, backend: true, lastRun: creatorPublicRun(run), backendLastRun: creatorPublicRun(backendRun), diagnostics: backendRun ? runDiagnostics(backendRun.id) : run ? runDiagnostics(run.id) : null, dashboard: { available: false, reason: "desktop-shell-offline" } }
+	}
+	const getLastRun = async () => {
+		if (typeof shell?.request === "function") {
+			const desktopLastRun = syncResult(await authority("get-last-run"))
+			const backendRun = latestBackendRun()
+			if (backendRun) return { ...desktopLastRun, run: creatorPublicRun(backendRun), backendLastRun: creatorPublicRun(backendRun), diagnostics: runDiagnostics(backendRun.id) }
+			return desktopLastRun
+		}
+		const run = latestRun()
+		const backendRun = latestBackendRun()
+		return { ok: true, run: creatorPublicRun(run), backendLastRun: creatorPublicRun(backendRun), diagnostics: backendRun ? runDiagnostics(backendRun.id) : run ? runDiagnostics(run.id) : null }
+	}
 	const getAssetPreview = async (input = {}) => {
 		object(input)
+		if (typeof shell?.request !== "function" && String(input.relativePath || "").startsWith("creator-web/")) {
+			if (typeof ai?.previewGeneratedImage !== "function") throw new ApiError("BACKEND_UNAVAILABLE", "Creator image preview unavailable")
+			return ai.previewGeneratedImage(safePath(input.relativePath))
+		}
+		if (typeof shell?.request !== "function" && typeof creatorDataDir === "function") {
+			const root = fs.realpathSync.native(path.resolve(creatorDataDir("openpet.creator-studio")))
+			const relativePath = safePath(input.relativePath)
+			const target = path.resolve(root, relativePath)
+			const relativeToRoot = path.relative(root, target)
+			const runId = safeId(input.runId, "runId")
+			const runPrefix = `runs/${runId}/`
+			if (!relativeToRoot || relativeToRoot.startsWith("..") || path.isAbsolute(relativeToRoot) || !relativePath.startsWith(runPrefix)) {
+				throw new ApiError("VALIDATION_FAILED", "Creator asset preview path is invalid")
+			}
+			if (!fs.existsSync(target) || !fs.statSync(target).isFile()) throw new ApiError("NOT_FOUND", "Creator asset not found")
+			const realTarget = fs.realpathSync.native(target)
+			const realRun = fs.realpathSync.native(path.resolve(root, "runs", runId))
+			const realRelative = path.relative(realRun, realTarget)
+			if (!realRelative || realRelative.startsWith("..") || path.isAbsolute(realRelative)) throw new ApiError("PERMISSION_DENIED", "Creator asset preview escaped its run directory")
+			const mimeType = ({ ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif" })[path.extname(target).toLowerCase()]
+			if (!mimeType) throw new ApiError("VALIDATION_FAILED", "Creator asset type is unsupported")
+			const bytes = fs.readFileSync(realTarget)
+			if (bytes.byteLength > 4 * 1024 * 1024) throw new ApiError("CONFLICT", "Creator asset is too large to preview")
+			return { runId: safeId(input.runId, "runId"), relativePath, mimeType, previewDataUrl: `data:${mimeType};base64,${bytes.toString("base64")}` }
+		}
 		return authority("asset-preview", { runId: safeId(input.runId, "runId"), relativePath: safePath(input.relativePath) })
 	}
+	const creatorCommand = async (command, payload, ctx = {}) => {
+		if (typeof runPluginCommand !== "function") throw new ApiError("BACKEND_UNAVAILABLE", "Creator Studio Backend command runner is unavailable")
+		const result = await runPluginCommand(command, payload, { signal: ctx.signal, tmpDir: ctx.tmpDir, registerProcess: ctx.registerProcess })
+		const commandResult = result?.result || result
+		if (!commandResult?.run && command !== "export-bundle") throw new ApiError("INTERNAL", "Creator Studio command returned no run")
+		return commandResult
+	}
+	const reportBackendCreatorProgress = (runId, ctx = {}) => {
+		const diagnostics = runDiagnostics(runId)
+		const progress = diagnostics?.progress
+		const qualityFirst = progress?.qualityFirst
+		const phase = String(progress?.phaseLabel || progress?.phase || diagnostics?.currentStep || "generating").slice(0, 120)
+		const completedActions = Object.values(qualityFirst?.actionResults || {}).filter((action) => action?.ok === true).length
+		let percent = Math.max(10, Number(progress?.runStatus === "awaiting_identity_review" ? 30 : 0))
+		if (["generating-idle", "generating-actions", "ready_for_review", "recovery-required"].includes(String(qualityFirst?.phase || ""))) {
+			percent = qualityFirst.phase === "ready_for_review" || qualityFirst.phase === "recovery-required"
+				? 98
+				: Math.min(90, 30 + Math.round(completedActions / 8 * 60))
+		} else if (qualityFirst?.phase === "identity-generation-failed") {
+			percent = 95
+		}
+		ctx.report?.({ phase, percent })
+	}
+	const runBackendCreatorCommandWithProgress = async (command, payload, ctx = {}) => {
+		const runId = safeId(payload.runId, "runId")
+		const reportProgress = () => reportBackendCreatorProgress(runId, ctx)
+		reportProgress()
+		const progressTimer = setInterval(reportProgress, 1_500)
+		progressTimer.unref?.()
+		try {
+			return await creatorCommand(command, payload, ctx)
+		} finally {
+			clearInterval(progressTimer)
+		}
+	}
+	const materializeBackendReference = (input) => {
+		if (typeof creatorDataDir !== "function") throw new ApiError("BACKEND_UNAVAILABLE", "Creator plugin data directory is unavailable")
+		if (input?.referenceImage && input?.generatedImage) throw new ApiError("VALIDATION_FAILED", "Choose either an uploaded or Backend-generated reference image")
+		let source
+		let mimeType
+		let extension
+		let bytes
+		if (input?.generatedImage && typeof input.generatedImage === "object" && !Array.isArray(input.generatedImage)) {
+			if (typeof ai?.readWebGeneratedReference !== "function") throw new ApiError("BACKEND_UNAVAILABLE", "Backend-generated image handoff is unavailable")
+			const verifiedImage = ai.readWebGeneratedReference(input.generatedImage.relativePath, input.generatedImage.sha256)
+			mimeType = verifiedImage.mimeType
+			extension = verifiedImage.extension
+			bytes = verifiedImage.bytes
+			source = { fileName: verifiedImage.fileName }
+		} else {
+			source = input?.referenceImage
+			if (!source || typeof source !== "object" || Array.isArray(source)) throw new ApiError("VALIDATION_FAILED", "referenceImage is required for Backend Creator generation")
+			mimeType = String(source.mimeType || "").trim().toLowerCase()
+			extension = ({ "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" })[mimeType]
+			const encoded = String(source.dataBase64 || "").trim()
+			if (!extension || !encoded || encoded.length > 1_500_000 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) throw new ApiError("VALIDATION_FAILED", "Backend reference image is invalid")
+			bytes = Buffer.from(encoded, "base64")
+			const valid = extension === "png"
+				? bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+				: extension === "jpg" ? bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+					: bytes.subarray(0, 4).toString("ascii") === "RIFF" && bytes.subarray(8, 12).toString("ascii") === "WEBP"
+			if (!bytes.length || bytes.byteLength > 1_100_000 || !valid) throw new ApiError("VALIDATION_FAILED", "Backend reference image bytes do not match mimeType")
+		}
+		const dataDir = fs.realpathSync.native(path.resolve(creatorDataDir("openpet.creator-studio")))
+		const incomingDir = path.resolve(dataDir, "incoming")
+		if (fs.existsSync(incomingDir)) {
+			if (fs.lstatSync(incomingDir).isSymbolicLink() || !fs.statSync(incomingDir).isDirectory()) {
+				throw new ApiError("PERMISSION_DENIED", "Creator reference staging directory is invalid")
+			}
+		} else {
+			fs.mkdirSync(incomingDir, { mode: 0o700 })
+		}
+		if (fs.realpathSync.native(incomingDir) !== incomingDir) throw new ApiError("PERMISSION_DENIED", "Creator reference staging directory is invalid")
+		const fileName = `web-${randomUUID()}.${extension}`
+		const relativePath = `incoming/${fileName}`
+		const target = path.resolve(incomingDir, fileName)
+		if (path.dirname(target) !== incomingDir) throw new ApiError("PERMISSION_DENIED", "Creator reference path is invalid")
+		fs.writeFileSync(target, bytes, { mode: 0o600, flag: "wx" })
+		return { relativePath, fileName: String(source.fileName || `reference.${extension}`).slice(0, 256), contentHash: createHash("sha256").update(bytes).digest("hex"), width: 0, height: 0 }
+	}
+	const runBackendCreatorWorkflow = async (input, ctx = {}) => {
+		const characterName = text(input.characterName || "OpenPet", "characterName", { max: MAX_NAME })
+		const stylePrompt = text(input.stylePrompt || input.prompt || "Preserve the reference as a full-body animated OpenPet character.", "stylePrompt", { max: MAX_PROMPT })
+		const runReference = materializeBackendReference(input)
+		ctx.report?.({ phase: "drafting", percent: 5 })
+		let created
+		try {
+			created = await creatorCommand("create-run", {
+				petName: characterName,
+				prompt: stylePrompt,
+				originalPrompt: stylePrompt,
+				backend: "provider",
+				creatorExecution: "backend",
+				referenceImage: runReference,
+				generationTask: createFullPetTask({ characterName, stylePrompt })
+			}, ctx)
+		} catch (error) {
+			try {
+				const dataRoot = path.resolve(creatorDataDir("openpet.creator-studio"))
+				const incomingPath = path.resolve(dataRoot, runReference.relativePath)
+				const incomingRelative = path.relative(dataRoot, incomingPath).replace(/\\/g, "/")
+				if (incomingRelative.startsWith("incoming/web-") && !incomingRelative.split("/").includes("..")) {
+					fs.rmSync(incomingPath, { force: true })
+				}
+			} catch {}
+			throw error
+		}
+		const runId = safeId(created.run.runId, "runId")
+		saveRun(created.run, input.flowId || null)
+		ctx.report?.({ phase: "generating-identity", percent: 10 })
+		const generated = await runBackendCreatorCommandWithProgress("run-step", { runId }, ctx)
+		const finish = () => {
+			saveRun(generated.run, input.flowId || null)
+			const run = creatorPublicRun(runById(runId))
+			return { message: generated.message || `Creator Studio generated ${runId}`, run, diagnostics: runDiagnostics(runId) }
+		}
+		return ctx.finalize ? await ctx.finalize(finish) : finish()
+	}
+	const runBackendImageCharacter = async (input, ctx = {}) => {
+		if (typeof ai?.prepareGeneratedImage !== "function" || typeof ai?.commitGeneratedImage !== "function" || typeof ai?.createWebImageInput !== "function") {
+			throw new ApiError("BACKEND_UNAVAILABLE", "Backend Creator image generation is unavailable")
+		}
+		const runId = safeId(input.runId || `creator-run-${randomUUID()}`, "runId")
+		const characterName = text(input.characterName || "OpenPet", "characterName", { max: MAX_NAME })
+		const stylePrompt = text(input.stylePrompt || input.prompt || "", "stylePrompt", { max: MAX_PROMPT })
+		if (!input.referenceImage || typeof input.referenceImage !== "object") throw new ApiError("VALIDATION_FAILED", "referenceImage is required for Backend Creator generation")
+		ctx.report?.({ phase: "preparing", percent: 5 })
+		const stagedInput = ai.createWebImageInput({ prompt: stylePrompt, referenceImage: input.referenceImage }, runId)
+		stagedInput.output = { ...stagedInput.output, dataRelativeDir: `creator-web/runs/${runId}/images` }
+		const prepared = await ai.prepareGeneratedImage(stagedInput, {
+			signal: ctx.signal,
+			progress: (frame) => ctx.report?.(frame),
+			tmpDir: ctx.tmpDir,
+		})
+		if (ctx.signal?.aborted) throw ctx.signal.reason ?? new Error("Job canceled")
+		const commit = async () => {
+			const generatedImage = await ai.commitGeneratedImage(prepared)
+			const run = saveRun({
+				runId,
+				mode: "web-image",
+				status: "ready_for_review",
+				currentStep: "review",
+				reviewStatus: "pending",
+				characterName,
+				stylePrompt,
+				generatedImage,
+			}, input.flowId || null)
+			return { message: `Backend generated image for ${runId}`, run, generatedImage }
+		}
+		return ctx.finalize ? ctx.finalize(commit) : commit()
+	}
 	const runCharacter = async (input, ctx = {}) => {
+		if (["web", "backend"].includes(String(input?.backend || "").trim().toLowerCase())) {
+			if (typeof runPluginCommand === "function" && typeof creatorDataDir === "function") return runBackendCreatorWorkflow(input, ctx)
+			return runBackendImageCharacter(input, ctx)
+		}
 		ctx.report?.({ phase: "preparing", percent: 5 })
 		const result = await authority("generate-character", input)
 		ctx.report?.({ phase: "generating", percent: 65 })
@@ -330,11 +569,87 @@ export function createCreatorDomain({ db, shell, enqueueJob, emit, owner = "desk
 	const runWorkflow = async (input, ctx = {}) => {
 		ctx.report?.({ phase: "running", percent: 10 })
 		const operation = input.operation || "generate-action"
+		const backendOwnedRun = isBackendRun(input.runId)
+		if (backendOwnedRun && operation === "import-actions") {
+			if (typeof shell?.request !== "function") throw new ApiError("BACKEND_UNAVAILABLE", "Importing generated actions requires the desktop Shell")
+			const result = await authority(operation, input)
+			return ctx.finalize ? ctx.finalize(() => syncResult(result, input.flowId || null)) : syncResult(result, input.flowId || null)
+		}
+		if ((backendOwnedRun || typeof shell?.request !== "function") && typeof runPluginCommand === "function") {
+			const commandByOperation = { "accept-identity": "accept-identity", "accept-action-candidate": "accept-action-candidate", "retry-action": "retry-action", "retry-identity": "retry-identity" }
+			const command = commandByOperation[operation]
+			if (!command) throw new ApiError("BACKEND_UNAVAILABLE", "This Creator step requires the desktop Shell")
+			const result = await runBackendCreatorCommandWithProgress(command, input, ctx)
+			const finish = () => {
+				const run = saveRun(result.run, input.flowId || null)
+				return { ...result, run, diagnostics: runDiagnostics(run.runId) }
+			}
+			return ctx.finalize ? await ctx.finalize(finish) : finish()
+		}
 		const result = await authority(operation, input)
 		ctx.report?.({ phase: "running", percent: 75 })
 		return ctx.finalize ? ctx.finalize(() => syncResult(result, input.flowId || null)) : syncResult(result, input.flowId || null)
 	}
 	const runExport = async (input, ctx = {}) => {
+		const runId = safeId(input.runId, "runId")
+		if (isBackendRun(runId) && typeof creatorDataDir === "function") {
+			ctx.report?.({ phase: "verifying-recovery", percent: 25 })
+			const verify = () => {
+				try {
+					if (typeof creatorDataDir !== "function") throw new Error("Creator data directory unavailable")
+					const root = fs.realpathSync.native(path.resolve(creatorDataDir("openpet.creator-studio")))
+					const runDir = path.resolve(root, "runs", runId)
+					const relativeToRoot = path.relative(root, runDir)
+					if (!relativeToRoot || relativeToRoot.startsWith("..") || path.isAbsolute(relativeToRoot) || fs.lstatSync(runDir).isSymbolicLink()) {
+						throw new Error("Creator run directory is invalid")
+					}
+					const realRunDir = fs.realpathSync.native(runDir)
+					const runRelative = path.relative(root, realRunDir)
+					if (!runRelative.startsWith(`runs/${runId}/`) && runRelative !== `runs/${runId}`) throw new Error("Creator run directory escaped its data root")
+					const persistedRun = JSON.parse(fs.readFileSync(path.join(realRunDir, "run.json"), "utf8"))
+					const relativePath = safePath(persistedRun?.qualityFirst?.recovery?.relativePath)
+					const expectedHash = String(persistedRun?.qualityFirst?.recovery?.sha256 || "").toLowerCase()
+					if (!relativePath.startsWith(`runs/${runId}/`) || !/^[a-f0-9]{64}$/.test(expectedHash)) {
+						throw new Error("Creator recovery bundle metadata is invalid")
+					}
+					const bundlePath = path.resolve(root, relativePath)
+					const bundleRelative = path.relative(realRunDir, bundlePath)
+					if (!bundleRelative || bundleRelative.startsWith("..") || path.isAbsolute(bundleRelative) || fs.lstatSync(bundlePath).isSymbolicLink()) {
+						throw new Error("Creator recovery bundle escaped its run")
+					}
+					const realBundlePath = fs.realpathSync.native(bundlePath)
+					const realBundleRelative = path.relative(realRunDir, realBundlePath)
+					if (!realBundleRelative || realBundleRelative.startsWith("..") || path.isAbsolute(realBundleRelative)) {
+						throw new Error("Creator recovery bundle escaped its run")
+					}
+					const bytes = fs.readFileSync(realBundlePath)
+					const sha256 = createHash("sha256").update(bytes).digest("hex")
+					if (sha256 !== expectedHash) throw new Error("Creator recovery bundle hash mismatch")
+					return {
+						ok: true,
+						code: "recovery_bundle_ready",
+						message: "Creator recovery bundle verified and retained in the Backend run",
+						runId,
+						relativePath,
+						sha256,
+						byteSize: bytes.byteLength,
+					}
+				} catch {
+					return {
+						ok: false,
+						code: "recovery_bundle_unavailable",
+						message: "Creator recovery bundle could not be verified",
+						runId,
+						relativePath: "",
+						sha256: "",
+						byteSize: 0,
+					}
+				}
+			}
+			const result = ctx.finalize ? await ctx.finalize(verify) : verify()
+			return { ...result, run: creatorPublicRun(runById(runId)), diagnostics: runDiagnostics(runId) }
+		}
+		if (typeof shell?.request !== "function") throw new ApiError("BACKEND_UNAVAILABLE", "Creator export requires the desktop Shell")
 		ctx.report?.({ phase: "exporting", percent: 25 })
 		const result = await authority("export-recovery", { runId: safeId(input.runId, "runId") })
 		return ctx.finalize ? ctx.finalize(() => syncResult(result, null)) : syncResult(result, null)

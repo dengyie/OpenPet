@@ -87,3 +87,56 @@ test('web API exposes hash-bound action decisions and retry controls', async () 
     acknowledgedWarningCodes: ['action_candidate_diversity_insufficient']
   })
 })
+
+test('web API submits image generation and previews a generated output', async () => {
+  const calls = []
+  const fetchImpl = async (url, options = {}) => {
+    calls.push({ url, options })
+    return url.includes('/preview')
+      ? jsonResponse({ previewDataUrl: 'data:image/png;base64,AA==' })
+      : jsonResponse({ jobId: 'image-generate:1' }, 202)
+  }
+  const { createWebApi } = await apiModule
+  const api = createWebApi({ fetchImpl })
+  await api.generateImage({ prompt: 'a small fox' })
+  await api.imagePreview('creator-web/runs/image-generate:1/0001.png')
+  assert.equal(calls[0].url, '/api/v1/ai/images/web-generate')
+  assert.deepEqual(JSON.parse(calls[0].options.body), { prompt: 'a small fox' })
+  const previewUrl = new URL(calls[1].url, 'https://openpet.mesh')
+  assert.equal(previewUrl.searchParams.get('relativePath'), 'creator-web/runs/image-generate:1/0001.png')
+})
+
+test('web API continues Creator generation from a Backend artifact without uploading its image bytes', async () => {
+  const calls = []
+  const fetchImpl = async (url, options = {}) => {
+    calls.push({ url, options })
+    return jsonResponse({ jobId: 'creator.character:1' }, 202)
+  }
+  const { createWebApi } = await apiModule
+  const api = createWebApi({ fetchImpl })
+  const generatedImage = { relativePath: 'creator-web/runs/image-generate:1/0001.png', sha256: 'a'.repeat(64) }
+  await api.generate({ backend: 'web', characterName: 'Mango Fox', stylePrompt: 'orange fox', generatedImage })
+  assert.equal(calls[0].url, '/api/v1/creator/characters/generate')
+  assert.deepEqual(JSON.parse(calls[0].options.body), {
+    backend: 'web', characterName: 'Mango Fox', stylePrompt: 'orange fox', generatedImage
+  })
+})
+
+test('Creator run normalization supports flat Shell views and nested Backend publicRun state', async () => {
+  const { normalizeCreatorRun } = await apiModule
+  const qualityFirst = { phase: 'awaiting_identity_review', identityReview: { status: 'pending', candidates: [{ candidateId: 'canonical-1' }] } }
+  const backend = normalizeCreatorRun({
+    id: 'run-backend',
+    status: 'awaiting_identity_review',
+    state: { runId: 'run-backend', status: 'awaiting_identity_review', creatorExecution: 'backend' }
+  }, { progress: { qualityFirst } })
+  assert.equal(backend.runId, 'run-backend')
+  assert.equal(backend.workflowState, 'awaiting_identity_review')
+  assert.equal(backend.creatorExecution, 'backend')
+  assert.equal(backend.qualityFirst, qualityFirst)
+
+  const desktop = normalizeCreatorRun({ runId: 'run-desktop', state: 'review-required', diagnostics: { progress: { qualityFirst } } })
+  assert.equal(desktop.runId, 'run-desktop')
+  assert.equal(desktop.workflowState, 'review-required')
+  assert.equal(desktop.qualityFirst, qualityFirst)
+})

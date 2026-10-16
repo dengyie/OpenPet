@@ -1,3 +1,22 @@
+export function normalizeCreatorRun(raw, fallbackDiagnostics = null) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const nested = raw.state && typeof raw.state === 'object' && !Array.isArray(raw.state) ? raw.state : {}
+  const diagnostics = raw.diagnostics || nested.diagnostics || fallbackDiagnostics || null
+  const progress = diagnostics?.progress || nested.progress || raw.progress || null
+  const qualityFirst = progress?.qualityFirst || nested.qualityFirst || raw.qualityFirst || null
+  return {
+    ...nested,
+    ...raw,
+    runId: String(raw.runId || nested.runId || raw.id || '').trim(),
+    workflowState: typeof raw.state === 'string'
+      ? raw.state
+      : String(raw.workflowState || nested.status || raw.status || nested.backendStatus?.state || '').trim(),
+    diagnostics,
+    progress,
+    qualityFirst
+  }
+}
+
 export function createWebApi({ fetchImpl = globalThis.fetch } = {}) {
   let token = ''
 
@@ -42,7 +61,12 @@ export function createWebApi({ fetchImpl = globalThis.fetch } = {}) {
     creatorState: () => request('/api/v1/creator/state'),
     uploadReference: (body) => request('/api/v1/creator/references/upload', { method: 'POST', body: JSON.stringify(body) }),
     generate: (body) => request('/api/v1/creator/characters/generate', { method: 'POST', body: JSON.stringify(body) }),
+    generateImage: (body) => request('/api/v1/ai/images/web-generate', { method: 'POST', body: JSON.stringify(body) }),
     job: (jobId) => request(`/api/v1/jobs/${encodeURIComponent(jobId)}`),
+    imagePreview: (relativePath) => {
+      const query = new URLSearchParams({ relativePath })
+      return request(`/api/v1/ai/images/preview?${query.toString()}`)
+    },
     assetPreview: (runId, relativePath) => {
       const query = new URLSearchParams({ runId, relativePath })
       return request(`/api/v1/creator/assets/preview?${query.toString()}`)
