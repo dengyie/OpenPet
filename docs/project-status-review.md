@@ -1,11 +1,11 @@
 # OpenPet Project Status Review
 
-> Last updated: 2026-10-15
+> Last updated: 2026-10-17
 > Branch: `main`
 
 This is the compact product and release snapshot. Use [`TODO.md`](./TODO.md) for the active queue and `docs/release-evidence/` for archived proof.
 
-The current engineering baseline is a Shell plus Backend sidecar migration. The executable path is `main.js` -> `createOpenPetRuntime()` -> `createSidecarRuntimeCoordinator()` -> `spawnSidecar()` -> `services/backend/index.js`; current checks report 87 IPC channels, 133 registered REST routes, and 146 documented route rows. This migration status is separate from the release-evidence status below.
+The current engineering baseline is a Shell plus Backend sidecar migration. The executable path is `main.js` -> `createOpenPetRuntime()` -> `createSidecarRuntimeCoordinator()` -> `spawnSidecar()` -> `services/backend/index.js`; the current API contract check reconciles 87 IPC channels, 136 registered REST routes, and 149 documented route rows. This migration status is separate from the release-evidence status below.
 
 Latest code-only verification (2026-10-15): Backend **424/424**, Tools **683/683**, changed Settings/AI/Pet Pack suites **68/68**, typecheck/syntax, contracts and route/channel gates, docs drift, and the Control Center production build pass. `test:core` reports **2180 passed, 26 browser-launch failures, and 1 skipped** because the pinned Playwright Chromium headless shell is absent. No Electron or desktop UI acceptance was performed.
 

@@ -41,7 +41,7 @@ scripts/check-api-contract.mjs          ✅ M0 门禁
 tests/backend/state-machine.test.js     ✅ 测试样板
 ```
 
-根 `package.json` 已开启 workspaces(`apps/*`、`services/*`、`packages/*`),`check:node` 已覆盖 `apps` 与 `services`。backend 当前由 12 组 routes 文件装配 133 条已注册路由、146 条文档路由行；`routes/registry.js` 是硬对账注册表，不是第二套业务实现。
+根 `package.json` 已开启 workspaces(`apps/*`、`services/*`、`packages/*`),`check:node` 已覆盖 `apps` 与 `services`。backend 当前由 12 组 routes 文件装配 136 条已注册路由、149 条文档路由行；`routes/registry.js` 是硬对账注册表，不是第二套业务实现。
 
 **当前 backend 已完成启动、迁移、Job 恢复/调度和 HTTP 业务路由注册。** 所有当前运行期表均已有明确 owner；AI traces 与 HTTP access logs 的归属见 §2.6 与缺口 G13。
 
@@ -276,7 +276,7 @@ countByStatus(status?)                     // → number | { [status]: number }
 | --- | --- |
 | 迁移与仓储 | ~~`store/migrate.js`、`store/repositories/*.js`、`store/migrate-from-json.js`~~ ✅ T01/T02/T14/T47 已落地；`logs.js` 与 `conversations.js` 分别承担 HTTP access logs、插件 logs 与 AI-owned traces |
 | Job 引擎 | ~~`jobs/queue.js`、`jobs/runner.js`、`jobs/progress.js`、`jobs/recovery.js`、`jobs/handlers/*.js`~~ ✅ T05–T08/T31 已落地 |
-| HTTP | ~~`routes/*.js`、`domains/*.js`、SSE 推送~~ ✅ T09–T33 已落地；当前注册表实际 133 条 method/path |
+| HTTP | ~~`routes/*.js`、`domains/*.js`、SSE 推送~~ ✅ T09–T33 已落地；当前注册表实际 136 条 method/path |
 | 密钥 | ~~`secrets/*.js`~~ ✅ T44 `1433b299` 已落地，只写边界与脱敏摘要 |
 | 反向通道 | ~~`dialog.request` 补齐、`apps/desktop/src/sidecar/message-handler.js`、`orphan-cleanup.js`、`domains/plugins/process-ledger.js`(T29)~~ ✅ T12/T13/T29 已落地 |
 | 兼容层 | ~~`mcp/*.js`、`/api/pet/*` 与 `/mcp`~~ ✅ T45 `7bdf4f77` 已迁入同一 sidecar 的独立监听器，默认关闭 |
@@ -302,7 +302,7 @@ countByStatus(status?)                     // → number | { [status]: number }
 | 缺口 G6 | ✅ | M0 六条 spike 结果未回填 | E3–E8 已全部实测并回填;唯一权威结果见 [07 篇](./07-spike.md) §7(证据: `bbfdb096d8a224f513eea5160cf000281f487161`) |
 | 缺口 G7 | ✅ | 04 篇 §2.6 的 ⚠️ 待补登记 注记已过期 | 已关闭:注记改为「已补登(v1.3)」,并说明 `system` topic 现列四个事件、已纳入 `check:api-contract` 的 `EVENT_NAMES` 对账范围(证据: `e38940dbd8466712f6c499631e9e5ee9f4250959`) |
 | 缺口 G8 | ✅ | 06 篇 §9 风险表缺 R20 | 已关闭:R20 已补入风险登记册,并同步收紧 §2 spike 第 5 条的判定标准(证据: `6248d2366435ee765799bdf581c8b6ae22a526e4`) |
-| 缺口 G9 | ✅ | 路由表与 IPC 通道盘点门禁已硬化 | `check:api-contract` 对账 `routes/registry.js`、实际 `router.routes()`、03 篇 §4 与 TS/JS IPC 清单;当前为 133 条实际 method/path、87 条通道（T47/T48 迁移证据：`6dc7e9f0`、`5d164d84`） |
+| 缺口 G9 | ✅ | 路由表与 IPC 通道盘点门禁已硬化 | `check:api-contract` 对账 `routes/registry.js`、实际 `router.routes()`、03 篇 §4 与 TS/JS IPC 清单;当前为 136 条实际 method/path、87 条通道（T47/T48 迁移证据：`6dc7e9f0`、`5d164d84`） |
 | 缺口 G10 | ✅ | `tests/backend/state-machine.test.js` 有一处 `it()` 标题笔误 | E9 已改为「6 个状态,17 个 kind」(证据: `bbfdb096d8a224f513eea5160cf000281f487161`) |
 | 缺口 G11 | ✅ | E3 的 `:memory:` SQLite 探针不证明 WAL | T35 已由 file-backed `tests/backend/sqlite-driver.test.js` 复验 WAL、四项默认 pragma 与跨连接持久化(证据: `08c24e1c364e9ca6a59f57bc6544cb447aa0b565`) |
 | 缺口 G12 | ✅ | 03 篇 §3 盘点 7 个 `SERVICE_*` 写通道,§4.1 已有对应入口 | T16 已补齐并实现服务配置写入端点 `PUT /service/config`,同时同步契约表(实现证据: `4480c4b5749d2ed242716732e45573ffc1a3131a`;契约/注册表证据: `4faa07df0244e9ce8bb53501589eaee4e50ac0b9`) |

@@ -37,8 +37,8 @@ test('Chinese development guide reflects the current Shell/sidecar/backend owner
     'packages/contracts/',
     'settings-persistence-queue.js',
     '87 个 IPC',
-    '133 个已注册 REST 路由',
-    '146 个 API 文档路由行',
+    '136 个已注册 REST 路由',
+    '149 个 API 文档路由行',
     '方法级矩阵'
   ]) assert.ok(guide.includes(token), token)
   assert.match(guide, /迁移仍在进行中，`src\/main\/` 不是历史目录/)
@@ -61,7 +61,7 @@ test('live maintainer docs expose the current migration slice and gate prerequis
   assert.match(context.currentFacts.join('\n'), /Job cancellation and recovery/)
   assert.match(context.currentFacts.join('\n'), /build:contracts/)
 
-  assert.match(todo, /87 current IPC channels[\s\S]*133 registered REST routes[\s\S]*146 documented route rows/)
+  assert.match(todo, /87 current IPC channels[\s\S]*136 registered REST routes[\s\S]*149 documented route rows/)
   assert.match(handoff, /Provider credentials are Shell-owned[\s\S]*in-memory copy/)
   assert.ok(context.validation.commands.includes('npm run build:contracts'))
   assert.ok(context.validation.commands.includes('npm run check:api-contract'))
@@ -72,14 +72,14 @@ test('migration docs distinguish registered routes from target and blocked rows'
   const repoState = read('docs/refactor/09-repo-state.md')
   const plan = read('docs/superpowers/plans/2026-10-04-openpet-development-plan.md')
 
-  assert.match(api, /133 条已注册路由.*146 条路由行/)
+  assert.match(api, /136 条已注册路由.*149 条(?:契约)?路由行/)
   assert.match(api, /settings\/cursor\/import.*原生选择器和文件导入由 Shell 持有/)
   assert.match(api, /settings\/preview-scale.*验证 0.5–1.5 缩放值/)
   assert.match(api, /settings\/schema.*返回版本化可写路径/)
   assert.match(api, /五条 Settings 路由均已注册/)
   assert.match(api, /Creator routes are registered in the runtime registry/)
-  assert.match(repoState, /133 条已注册路由、146 条文档路由行/)
-  assert.match(plan, /87 current IPC channels, 133 registered REST routes, 146 documented route rows/)
+  assert.match(repoState, /136 条已注册路由、149 条文档路由行/)
+  assert.match(plan, /87 current IPC channels, 136 registered REST routes, 149 documented route rows/)
   assert.match(plan, /Task 6 status: no candidate is safe to delete/)
 })
 
