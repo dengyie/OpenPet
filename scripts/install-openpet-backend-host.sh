@@ -22,8 +22,11 @@ if [[ -z "$RELEASE_ARCHIVE" || ! -f "$RELEASE_ARCHIVE" ]]; then echo "RELEASE_AR
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 snapshot_dir=/var/backups/openpet/${timestamp}
 mkdir -p "$snapshot_dir"
+copy_tree_without_reflink() {
+  cp --reflink=never -a "$@"
+}
 for path in "$APP_ROOT" "$NODE_ROOT" "$DATA_ROOT" "/etc/systemd/system/$SERVICE_NAME"; do
-  if [[ -e "$path" ]]; then cp -a "$path" "$snapshot_dir/"; fi
+  if [[ -e "$path" ]]; then copy_tree_without_reflink "$path" "$snapshot_dir/"; fi
 done
 
 install -d -m 0755 "$(dirname "$APP_ROOT")" "$NODE_ROOT" "$DATA_ROOT"
@@ -101,7 +104,7 @@ restore_service_unit() {
   local failed=0
   if [[ -e "$snapshot_unit" ]]; then
     rm -f "$unit_path" || failed=1
-    cp -a "$snapshot_unit" "$unit_path" || failed=1
+    copy_tree_without_reflink "$snapshot_unit" "$unit_path" || failed=1
   else
     systemctl disable --now "$SERVICE_NAME" || true
     rm -f "$unit_path" || failed=1
