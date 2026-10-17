@@ -79,6 +79,15 @@ ssh gz-cvm 'curl --fail http://127.0.0.1:48330/__openpet/health'
 - 桌面包继续自签名，不做付费签名；此项仅记录项目发行边界，不要求签名配置。
 - Fresh verification：Backend/Host/Web/Creator 定向检查 **77/77**、Backend 全套 **438/438**、API 契约硬对账 **10/10**、`npm run check:node`、`npm run typecheck`、`npm run build:web-control`、`npm run check:docs-drift` 与 `git diff --check` 通过。恢复校验路径先以新增回归确认失败，再完成修复。全量浏览器测试仍受本机缺少 Playwright Chromium 影响；没有启动 Electron 或调用真实 Provider。
 
+### 2026-10-18 Review 修复与线上部署
+
+- Revision：`ec202338683ffeea6f2fabebac1157e1d1172372`；GitHub CI [39047824410](https://github.com/dengyie/OpenPet/actions/runs/39047824410) 全绿。
+- 修复内容：图片 JSON 入口统一允许 1.6 MB 请求体，Creator/Sprite 私有 Job 输入在成功、失败、取消和排队超时后清理；部署安装器改用 `cp --reflink=never -a`，兼容当前 CVM XFS 的快照复制行为。
+- source archive SHA-256：`a24b27df110753f962cdf676fe2f021407adefc3b5a1c4f2bdecbfd1d5d3b2d8`；安装快照：`/var/backups/openpet/20261017T161347Z-3077177`。
+- 部署初次尝试因 XFS `FICLONE` 返回 `ENOSPC` 中止，应用和服务未切换；修复安装器后重试成功。服务 `active`，host health `200` / `status=idle`，`host.js` SHA-256 `49f9884b47a256dcb0d580901bd5f19223ef1dd4f5387c56c2e7eb2e592e83b1`，仅监听 `127.0.0.1:48330`。
+- VPS smoke：HTTPS 首页 `200`、未认证 API `401`、正确网页密码登录 `200`、注销 `200`；idle session 下认证 `/api/v1/health` 与图片生成入口均为预期 `503 Backend session is offline`。约 1.47 MB 图片 JSON 已穿过 HTTPS/Nginx（Nginx `2m`）到达 Backend，未创建 Job、调用真实 Provider、Telegram 凭据或启动 Electron。
+- 本次代码验证：Backend `439/439`、Tools `683/683`、安装器回归 `3/3`、`check:syntax` 和部署归档排除项检查通过。
+
 ## 当前未覆盖
 
 - 不在工作机启动 Electron；不做 macOS/Windows 签名验收，桌面包继续使用自签名开发流程。
