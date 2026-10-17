@@ -24,6 +24,14 @@ function context(runnerContext, creator) {
 	}
 }
 
+async function runWithPrivateInputCleanup(runnerContext, creator, operation) {
+	try {
+		return await operation()
+	} finally {
+		creator?.forgetJobInput?.(runnerContext.job.id)
+	}
+}
+
 export const CHARACTER_KIND = "creator.character"
 export const WORKFLOW_KIND = "creator.workflow"
 export const EXPORT_KIND = "creator.export"
@@ -33,10 +41,10 @@ export const SPRITE_EVALUATE_KIND = "sprite.evaluate"
 export function createCreatorJobHandlers({ creator } = {}) {
 	if (!creator) throw new TypeError("Creator domain is required")
 	return {
-		[CHARACTER_KIND]: async (runnerContext) => creator.runCharacter(inputFor(creator, runnerContext.job), context(runnerContext, creator)),
-		[WORKFLOW_KIND]: async (runnerContext) => creator.runWorkflow(inputFor(creator, runnerContext.job), context(runnerContext, creator)),
-		[EXPORT_KIND]: async (runnerContext) => creator.runExport(inputFor(creator, runnerContext.job), context(runnerContext, creator)),
-		[SPRITE_GENERATE_KIND]: async (runnerContext) => creator.runAction(inputFor(creator, runnerContext.job), context(runnerContext, creator)),
-		[SPRITE_EVALUATE_KIND]: async (runnerContext) => creator.runWorkflow(inputFor(creator, runnerContext.job), context(runnerContext, creator)),
+		[CHARACTER_KIND]: async (runnerContext) => runWithPrivateInputCleanup(runnerContext, creator, () => creator.runCharacter(inputFor(creator, runnerContext.job), context(runnerContext, creator))),
+		[WORKFLOW_KIND]: async (runnerContext) => runWithPrivateInputCleanup(runnerContext, creator, () => creator.runWorkflow(inputFor(creator, runnerContext.job), context(runnerContext, creator))),
+		[EXPORT_KIND]: async (runnerContext) => runWithPrivateInputCleanup(runnerContext, creator, () => creator.runExport(inputFor(creator, runnerContext.job), context(runnerContext, creator))),
+		[SPRITE_GENERATE_KIND]: async (runnerContext) => runWithPrivateInputCleanup(runnerContext, creator, () => creator.runAction(inputFor(creator, runnerContext.job), context(runnerContext, creator))),
+		[SPRITE_EVALUATE_KIND]: async (runnerContext) => runWithPrivateInputCleanup(runnerContext, creator, () => creator.runWorkflow(inputFor(creator, runnerContext.job), context(runnerContext, creator))),
 	}
 }

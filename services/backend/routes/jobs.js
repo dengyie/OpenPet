@@ -58,7 +58,7 @@ function publicJob(job) {
 	}
 }
 
-export function registerJobRoutes(router, { jobs, runner, dispatcher } = {}) {
+export function registerJobRoutes(router, { jobs, runner, dispatcher, canRetryJob } = {}) {
 	if (!jobs?.byId) throw new TypeError("jobs repository required")
 	router.get("/jobs", (ctx) => {
 		const status = ctx.query.status
@@ -87,6 +87,11 @@ export function registerJobRoutes(router, { jobs, runner, dispatcher } = {}) {
 		if (!dispatcher?.resume) throw new ApiError("BACKEND_UNAVAILABLE", "Job dispatcher unavailable")
 		const current = jobs.byId(ctx.params.id)
 		if (!current) throw new ApiError("NOT_FOUND", "Job 不存在", { details: { jobId: ctx.params.id } })
+		if (typeof canRetryJob === "function" && !canRetryJob(current)) {
+			throw new ApiError("CONFLICT", "Creator Job input has been cleared; use the Creator retry action to submit a new Job", {
+				details: { jobId: current.id, kind: current.kind },
+			})
+		}
 		assertRetry(current)
 		jobs.transition(current.id, "queued")
 		const job = dispatcher.resume(current.id)

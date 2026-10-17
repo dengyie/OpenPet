@@ -80,16 +80,18 @@ describe("Job queue · scheduling", () => {
 	})
 
 	it("cancels queued jobs and leaves running cancellation to the runner", async () => {
+		const terminal = []
 		await withQueue(({ repo, queue }) => {
 			queue.enqueue(job("cancel-queued"))
 			assert.equal(queue.cancel("cancel-queued").status, "canceled")
 			assert.equal(queue.stats().queued, 0)
+			assert.deepEqual(terminal, ["cancel-queued"])
 
 			queue.enqueue(job("cancel-running"))
 			queue.next()
 			assert.throws(() => queue.cancel("cancel-running"), (error) => error.code === "JOB_NOT_CANCELABLE" && error.status === 423)
 			assert.equal(repo.byId("cancel-running").status, "running")
-		})
+		}, { onJobTerminal: (current) => terminal.push(current.id) })
 	})
 
 	it("accepts a new job object once without re-inserting it", async () => {

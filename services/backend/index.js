@@ -593,7 +593,15 @@ if (!runtime.degraded && runtime.jobs) {
 		fetchImpl: globalThis.fetch, logger,
 	})
 		runtime.ai = createAiService({ settings: runtime.settings, secrets: runtime.secrets, fetchImpl: globalThis.fetch, logger, userDataDir: runtime.userDataDir })
-		runtime.queue = createQueue({ repo: runtime.jobs, logger })
+		runtime.queue = createQueue({
+			repo: runtime.jobs,
+			logger,
+			onJobTerminal: (job) => {
+				if (job?.kind?.startsWith("creator.") || job?.kind?.startsWith("sprite.")) {
+					runtime.creator?.forgetJobInput?.(job.id)
+				}
+			},
+		})
 		runtime.creator = createCreatorDomain({
 		db: runtime.db,
 		shell,
@@ -660,7 +668,12 @@ if (!runtime.degraded && runtime.jobs) {
 	runtime.enqueueJob = () => { throw new Error("Job service unavailable") }
 }
 
-registerJobRoutes(router, { jobs: runtime.jobs ?? { byId: () => null }, runner: runtime.runner, dispatcher: runtime.enqueueJob })
+registerJobRoutes(router, {
+	jobs: runtime.jobs ?? { byId: () => null },
+	runner: runtime.runner,
+	dispatcher: runtime.enqueueJob,
+	canRetryJob: (job) => !(job?.kind?.startsWith("creator.") || job?.kind?.startsWith("sprite.")) || Boolean(runtime.creator?.getJobInput?.(job.id, null)),
+})
 if (runtime.creator) registerCreatorRoutes(router, { creator: runtime.creator })
 // Plugin domain initializes after the HTTP listener is assembled. Keep route
 // handlers bound to the current runtime service instead of the initial null.

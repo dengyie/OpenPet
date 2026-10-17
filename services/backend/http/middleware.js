@@ -36,8 +36,13 @@ export const RETRYABLE_ERROR_CODES = Object.freeze(
 )
 
 export const MAX_BODY_BYTES = 1024 * 1024
-export const CREATOR_REFERENCE_UPLOAD_BODY_LIMIT_BYTES = 1_600_000
+export const EXPANDED_JSON_BODY_LIMIT_BYTES = 1_600_000
 export const DEFAULT_MAX_ACCESS_LOGS = 200
+const EXPANDED_JSON_BODY_ROUTES = new Set([
+	"/creator/references/upload",
+	"/creator/characters/generate",
+	"/ai/images/web-generate",
+])
 
 const KNOWN_CLIENTS = Object.freeze(new Set(["control-center", "pet-window", "mcp"]))
 const LOOPBACK_HOSTS = Object.freeze(new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]))
@@ -343,8 +348,8 @@ export function jsonBody({ maxBytes = MAX_BODY_BYTES } = {}) {
 
 export function backendJsonBody() {
 	return (ctx, next) => jsonBody({
-		maxBytes: ctx.routePath === "/creator/references/upload"
-			? CREATOR_REFERENCE_UPLOAD_BODY_LIMIT_BYTES
+		maxBytes: EXPANDED_JSON_BODY_ROUTES.has(ctx.routePath)
+			? EXPANDED_JSON_BODY_LIMIT_BYTES
 			: MAX_BODY_BYTES,
 	})(ctx, next)
 }
