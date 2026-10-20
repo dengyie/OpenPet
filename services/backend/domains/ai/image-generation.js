@@ -236,21 +236,27 @@ export function createAiService({ settings, secrets, fetchImpl, logger, userData
 		const id = safeWebJobId(jobId)
 		if (input.output !== undefined) throw new ApiError("VALIDATION_FAILED", "Browser image requests cannot provide an output directory")
 		if (input.referenceImages !== undefined) throw new ApiError("VALIDATION_FAILED", "Browser image requests cannot provide filesystem references")
-		if (Object.keys(input).some((key) => !["prompt", "referenceImage"].includes(key))) {
+		if (Object.keys(input).some((key) => !["prompt", "referenceImage", "candidateCount"].includes(key))) {
 			throw new ApiError("VALIDATION_FAILED", "Browser image request contains unsupported fields")
 		}
 		if (typeof input.prompt !== "string" || !input.prompt.trim() || input.prompt.length > 8_000) {
 			throw new ApiError("VALIDATION_FAILED", "Image prompt must be a non-empty string of at most 8000 characters")
 		}
-		if (input.referenceImage === undefined) throw new ApiError("VALIDATION_FAILED", "Reference image is required")
-		const referenceImage = normalizeWebReference(input.referenceImage)
+		const outputCount = input.candidateCount === undefined ? 1 : input.candidateCount
+		if (!Number.isInteger(outputCount) || outputCount < 1 || outputCount > 3) {
+			throw new ApiError("VALIDATION_FAILED", "candidateCount must be an integer from 1 to 3")
+		}
+		const referenceImage = input.referenceImage === undefined ? null : normalizeWebReference(input.referenceImage)
 		return {
 			prompt: input.prompt.trim(),
-			referenceImage: {
+			textToImage: referenceImage === null,
+			outputCount,
+			constraints: { width: 1024, height: 1024, transparent: false },
+			...(referenceImage ? { referenceImage: {
 				mimeType: referenceImage.mimeType,
 				dataBase64: input.referenceImage.dataBase64.trim(),
 				...(typeof input.referenceImage.fileName === "string" ? { fileName: input.referenceImage.fileName.slice(0, 256) } : {}),
-			},
+			} } : {}),
 			output: {
 				dataDir: resolve(String(userDataDir || "")),
 				dataRelativeDir: join(WEB_IMAGE_ROOT, "runs", id),

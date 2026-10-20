@@ -38,6 +38,7 @@ const DEFAULT_CONFIG = {
 const PROVIDER_GENERATION_TIMEOUT_MS = 120000
 const DEFAULT_GPT_IMAGE_2_QUALITY = 'high'
 const REQUESTED_PROVIDER_OUTPUT_COUNT = 1
+const MAX_PROVIDER_OUTPUT_COUNT = 3
 const VERIFIED_CREATOR_WORKFLOW_IMAGE_MODELS = Object.freeze(['gpt-image-2', 'gpt-image-1', 'gpt-image-1.5'])
 const DIRECT_TRANSPARENT_IMAGE_MODELS = new Set(['gpt-image-1', 'gpt-image-1.5'])
 const MAX_PROVIDER_IMAGE_URL_REDIRECTS = 3
@@ -722,7 +723,7 @@ const appendMultipartFilePart = (buffers, boundary, name, referenceImage) => {
   buffers.push(Buffer.from('\r\n'))
 }
 
-const buildProviderEditMultipartRequest = ({ model, prompt, constraints, referenceImages = [] }) => {
+const buildProviderEditMultipartRequest = ({ model, prompt, constraints, referenceImages = [], outputCount = REQUESTED_PROVIDER_OUTPUT_COUNT }) => {
   assertExactlyOneReferenceImage(referenceImages)
   const boundary = createMultipartBoundary()
   const buffers = []
@@ -732,7 +733,7 @@ const buildProviderEditMultipartRequest = ({ model, prompt, constraints, referen
   appendMultipartTextPart(buffers, boundary, 'model', model)
   appendMultipartTextPart(buffers, boundary, 'prompt', prompt)
   appendMultipartTextPart(buffers, boundary, 'size', `${constraints.width}x${constraints.height}`)
-  appendMultipartTextPart(buffers, boundary, 'n', REQUESTED_PROVIDER_OUTPUT_COUNT)
+  appendMultipartTextPart(buffers, boundary, 'n', outputCount)
   if (quality) appendMultipartTextPart(buffers, boundary, 'quality', quality)
   if (!isGptImage2Model(model)) {
     appendMultipartTextPart(buffers, boundary, 'background', backgroundMode)
@@ -747,6 +748,28 @@ const buildProviderEditMultipartRequest = ({ model, prompt, constraints, referen
       'Content-Length': String(body.byteLength)
     }
   }
+}
+
+const buildProviderGenerationJsonRequest = ({ model, prompt, constraints, outputCount }) => {
+  const quality = getProviderImageQuality({ model, constraints })
+  const body = {
+    model,
+    prompt,
+    n: outputCount,
+    size: `${constraints.width}x${constraints.height}`,
+    ...(quality ? { quality } : {})
+  }
+  return {
+    body: JSON.stringify(body),
+    headers: { 'Content-Type': 'application/json' }
+  }
+}
+
+const normalizeProviderOutputCount = (value) => {
+  if (!Number.isInteger(value) || value < 1 || value > MAX_PROVIDER_OUTPUT_COUNT) {
+    throw new Error(`Image outputCount must be an integer from 1 to ${MAX_PROVIDER_OUTPUT_COUNT}`)
+  }
+  return value
 }
 
 const getProviderGenerationBackgroundMode = ({ model, constraints }) => {
@@ -921,13 +944,15 @@ const createConditioningSummary = ({
   referenceImages = [],
   constraints,
   model,
-  promptCompiler = null
+  promptCompiler = null,
+  textToImage = false,
+  outputCount = REQUESTED_PROVIDER_OUTPUT_COUNT
 }) => ({
-  mode: 'image-edit',
+  mode: textToImage ? 'text-to-image' : 'image-edit',
   endpoint,
   referenceImageCount: referenceImages.length,
-  multipartImageField: 'image',
-  requestedOutputCount: REQUESTED_PROVIDER_OUTPUT_COUNT,
+  ...(!textToImage ? { multipartImageField: 'image' } : {}),
+  requestedOutputCount: outputCount,
   requestedTransparent: Boolean(constraints?.transparent),
   size: `${constraints?.width || 0}x${constraints?.height || 0}`,
   quality: getProviderImageQuality({ model, constraints }),
@@ -1594,8 +1619,11 @@ const createImageGenerationModelService = ({
     }
   }
 
-  const generateProviderImage = async ({ config, prompt, promptCompiler = null, targetDir, relativeDir, constraints, requestId, timeoutMs: timeoutOverrideMs, referenceImages = [], traceContext = null, signal }) => {
-    assertExactlyOneReferenceImage(referenceImages)
+  const generateProviderImage = async ({ config, prompt, promptCompiler = null, targetDir, relativeDir, constraints, requestId, timeoutMs: timeoutOverrideMs, referenceImages = [], textToImage = false, outputCount = REQUESTED_PROVIDER_OUTPUT_COUNT, traceContext = null, signal }) => {
+    const requestedOutputCount = normalizeProviderOutputCount(outputCount)
+    if (textToImage ? referenceImages.length !== 0 : referenceImages.length !== 1) {
+      throw new Error(textToImage ? 'Text-to-image requests cannot contain reference images' : 'Image edits require exactly one reference image')
+    }
     const normalizedTraceContext = normalizeImageTraceContext(traceContext)
     const recordProviderLog = (entry) => recordLog({
       ...entry,
@@ -1610,16 +1638,18 @@ const createImageGenerationModelService = ({
     const baseUrl = assertProviderBaseUrl(runtimeConfig.baseUrl, 'Image Provider')
     const providerStartMs = nowMs()
     const timeoutMs = normalizeTimeoutMs(timeoutOverrideMs, getProviderTimeoutMs(runtimeConfig))
-    const backgroundMode = getProviderGenerationBackgroundMode({ model: runtimeConfig.model, constraints })
+    const backgroundMode = textToImage ? 'omitted' : getProviderGenerationBackgroundMode({ model: runtimeConfig.model, constraints })
     const normalizedReferenceImages = referenceImages
-    const endpoint = '/images/edits'
+    const endpoint = textToImage ? '/images/generations' : '/images/edits'
     const quality = getProviderImageQuality({ model: runtimeConfig.model, constraints })
     const conditioning = createConditioningSummary({
       endpoint,
       referenceImages: normalizedReferenceImages,
       constraints,
       model: runtimeConfig.model,
-      promptCompiler
+      promptCompiler,
+      textToImage,
+      outputCount: requestedOutputCount
     })
     recordProviderLog({
       level: 'info',
@@ -1647,8 +1677,8 @@ const createImageGenerationModelService = ({
         endpoint,
         requestMode: conditioning.mode,
         referenceImageCount: normalizedReferenceImages.length,
-        multipartImageField: 'image',
-        requestedOutputCount: REQUESTED_PROVIDER_OUTPUT_COUNT,
+        ...(!textToImage ? { multipartImageField: 'image' } : {}),
+        requestedOutputCount,
         timeoutMs
       }
     })
@@ -1689,16 +1719,13 @@ const createImageGenerationModelService = ({
     while (requestAttempt < 2) {
       requestAttempt += 1
       try {
-        const multipartRequest = buildProviderEditMultipartRequest({
-          model: runtimeConfig.model,
-          prompt,
-          constraints,
-          referenceImages: normalizedReferenceImages
-        })
-        const requestBody = multipartRequest.body
+        const providerRequest = textToImage
+          ? buildProviderGenerationJsonRequest({ model: runtimeConfig.model, prompt, constraints, outputCount: requestedOutputCount })
+          : buildProviderEditMultipartRequest({ model: runtimeConfig.model, prompt, constraints, referenceImages: normalizedReferenceImages, outputCount: requestedOutputCount })
+        const requestBody = providerRequest.body
         const headers = {
           Authorization: `Bearer ${apiKey}`,
-          ...multipartRequest.headers
+          ...providerRequest.headers
         }
         const providerResponse = await fetchWithTimeout({
           fetchImpl,
@@ -1881,7 +1908,7 @@ const createImageGenerationModelService = ({
     const outputPaths = []
     try {
       const decodedImages = []
-      for (const item of items) {
+      for (const item of items.slice(0, requestedOutputCount)) {
         if (String(item?.b64_json || '').trim()) {
           decodedImages.push(decodeRequiredBase64Image({
             value: item.b64_json,
@@ -2019,8 +2046,11 @@ const createImageGenerationModelService = ({
       signal,
       traceContext,
       referenceImages = [],
-      referenceDataDir
+      referenceDataDir,
+      textToImage = false,
+      outputCount = REQUESTED_PROVIDER_OUTPUT_COUNT
     } = request
+    const requestedOutputCount = normalizeProviderOutputCount(outputCount)
     const normalizedTraceContext = normalizeImageTraceContext(traceContext)
     const recordRequestLog = (entry) => recordLog({
       ...entry,
@@ -2036,11 +2066,19 @@ const createImageGenerationModelService = ({
       error.code = 'image_model_configuration_changed'
       throw error
     }
-    assertExactlyOneReferenceImage(referenceImages)
-    const normalizedReferenceImages = normalizeReferenceImages(referenceImages, {
-      dataDir: referenceDataDir || output?.dataDir
-    })
-    assertExactlyOneReferenceImage(normalizedReferenceImages)
+    let normalizedReferenceImages
+    if (textToImage === true) {
+      if (!Array.isArray(referenceImages) || referenceImages.length !== 0) {
+        throw new Error('Text-to-image requests cannot contain reference images')
+      }
+      normalizedReferenceImages = []
+    } else {
+      assertExactlyOneReferenceImage(referenceImages)
+      normalizedReferenceImages = normalizeReferenceImages(referenceImages, {
+        dataDir: referenceDataDir || output?.dataDir
+      })
+      assertExactlyOneReferenceImage(normalizedReferenceImages)
+    }
     const variants = normalizeProviderPromptVariants({
       variants: promptVariants,
       prompt,
@@ -2093,8 +2131,8 @@ const createImageGenerationModelService = ({
         height: primaryVariant.constraints.height,
         requestedTransparent: Boolean(primaryVariant.constraints.transparent),
         referenceImageCount: normalizedReferenceImages.length,
-        multipartImageField: 'image',
-        requestedOutputCount: REQUESTED_PROVIDER_OUTPUT_COUNT
+        ...(textToImage === true ? {} : { multipartImageField: 'image' }),
+        requestedOutputCount
       }
     })
 
@@ -2121,6 +2159,8 @@ const createImageGenerationModelService = ({
             requestId,
             timeoutMs: remainingTimeoutMs,
             referenceImages: normalizedReferenceImages,
+            textToImage: textToImage === true,
+            outputCount: requestedOutputCount,
             traceContext: normalizedTraceContext,
             signal
           })

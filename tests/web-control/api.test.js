@@ -98,10 +98,10 @@ test('web API submits image generation and previews a generated output', async (
   }
   const { createWebApi } = await apiModule
   const api = createWebApi({ fetchImpl })
-  await api.generateImage({ prompt: 'a small fox' })
+  await api.generateImage({ prompt: 'a small fox', candidateCount: 3 })
   await api.imagePreview('creator-web/runs/image-generate:1/0001.png')
   assert.equal(calls[0].url, '/api/v1/ai/images/web-generate')
-  assert.deepEqual(JSON.parse(calls[0].options.body), { prompt: 'a small fox' })
+  assert.deepEqual(JSON.parse(calls[0].options.body), { prompt: 'a small fox', candidateCount: 3 })
   const previewUrl = new URL(calls[1].url, 'https://openpet.mesh')
   assert.equal(previewUrl.searchParams.get('relativePath'), 'creator-web/runs/image-generate:1/0001.png')
 })
