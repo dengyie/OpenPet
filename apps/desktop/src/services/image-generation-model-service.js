@@ -5,6 +5,11 @@ const { sanitizeLogText } = require('./log-safety')
 const { readBoundedResponseBuffer } = require('./bounded-response-body')
 const { normalizeProviderResponseLimits } = require('./provider-response-limits')
 const {
+  assertResolvedAddressesSafe,
+  connectPinnedHttps,
+  isPrivateAddress
+} = require('./plugin-network-client')
+const {
   createSavedProviderModelCatalog,
   getScopedProviderModelCatalog,
   uniqueModelIds
@@ -35,6 +40,7 @@ const DEFAULT_GPT_IMAGE_2_QUALITY = 'high'
 const REQUESTED_PROVIDER_OUTPUT_COUNT = 1
 const VERIFIED_CREATOR_WORKFLOW_IMAGE_MODELS = Object.freeze(['gpt-image-2', 'gpt-image-1', 'gpt-image-1.5'])
 const DIRECT_TRANSPARENT_IMAGE_MODELS = new Set(['gpt-image-1', 'gpt-image-1.5'])
+const MAX_PROVIDER_IMAGE_URL_REDIRECTS = 3
 const SAFE_TRACE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9:_-]{0,127}$/
 
 const normalizeImageModelCapabilityKey = (value) => String(value || '').trim().toLowerCase()
@@ -217,10 +223,127 @@ const decodeRequiredBase64Image = ({ value, fieldName, maxBytes = Infinity }) =>
   return bytes
 }
 
+const parseProviderImageUrl = (value) => {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  let parsed
+  try {
+    parsed = new URL(raw)
+  } catch (_) {
+    throw new Error('Image Provider returned an invalid image URL')
+  }
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password) {
+    throw new Error('Image Provider returned an invalid image URL')
+  }
+  return parsed.toString()
+}
+
+const isPublicImageAddress = (address) => {
+  if (isPrivateAddress(address)) return false
+  const normalized = String(address || '').replace(/^\[|]$/g, '')
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(normalized)) {
+    const octets = normalized.split('.').map(Number)
+    const ranges = [
+      [[0, 0, 0, 0], 8],
+      [[192, 0, 0, 0], 24],
+      [[192, 0, 2, 0], 24],
+      [[192, 88, 99, 0], 24],
+      [[198, 18, 0, 0], 15],
+      [[198, 51, 100, 0], 24],
+      [[203, 0, 113, 0], 24]
+    ]
+    for (const [network, prefixLength] of ranges) {
+      const fullOctets = Math.floor(prefixLength / 8)
+      const partialBits = prefixLength % 8
+      if (octets.slice(0, fullOctets).every((octet, index) => octet === network[index])) {
+        if (!partialBits || (octets[fullOctets] >> (8 - partialBits)) === (network[fullOctets] >> (8 - partialBits))) return false
+      }
+    }
+    return true
+  }
+  const firstWord = Number.parseInt(normalized.split(':')[0], 16)
+  if (!Number.isInteger(firstWord) || firstWord < 0x2000 || firstWord > 0x3fff) return false
+  const secondWord = Number.parseInt(normalized.split(':')[1] || '0', 16)
+  if (firstWord === 0x2001 && (secondWord <= 0x01ff || secondWord === 0x0db8)) return false
+  if (firstWord === 0x2002 || (firstWord === 0x3fff && secondWord <= 0x0fff)) return false
+  return true
+}
+
+const fetchProviderImageUrl = async ({ url, signal, resolveAddress, connect }) => {
+  let currentUrl = new URL(url)
+  for (let redirectCount = 0; redirectCount <= MAX_PROVIDER_IMAGE_URL_REDIRECTS; redirectCount += 1) {
+    if (currentUrl.protocol !== 'https:' || currentUrl.username || currentUrl.password) {
+      throw new Error('Image Provider returned an unsafe image URL')
+    }
+    const addresses = await assertResolvedAddressesSafe(currentUrl.hostname, resolveAddress)
+    if (signal?.aborted) throw signal.reason || new Error('Image URL download aborted')
+    const nonPublicAddresses = addresses
+      .map(({ address }) => String(address || '').slice(0, 64))
+      .filter((address) => !isPublicImageAddress(address))
+    if (nonPublicAddresses.length) {
+      const host = currentUrl.hostname.slice(0, 253)
+      throw new Error(`Image Provider image URL host ${host} resolves to a non-public address (${nonPublicAddresses.join(', ')})`)
+    }
+    const selected = addresses[0]
+    const response = await connect({
+      url: currentUrl.toString(),
+      request: { method: 'GET', headers: {} },
+      address: selected.address,
+      family: selected.family,
+      servername: currentUrl.hostname,
+      hostHeader: currentUrl.host,
+      port: Number(currentUrl.port) || 443,
+      signal
+    })
+    const location = response.headers?.get?.('location') || ''
+    if (![301, 302, 303, 307, 308].includes(Number(response.status)) || !location) return response
+    cancelProviderResponseBody(response)
+    if (redirectCount === MAX_PROVIDER_IMAGE_URL_REDIRECTS) throw new Error('Image Provider image URL exceeded the redirect limit')
+    currentUrl = new URL(location, currentUrl)
+  }
+  throw new Error('Image Provider image URL exceeded the redirect limit')
+}
+
+const downloadProviderImageUrl = async ({ url, timeoutMs, signal, maxBytes, resolveAddress, connect }) => {
+  const response = await fetchWithTimeout({
+    fetchImpl: (_url, options) => fetchProviderImageUrl({
+      url,
+      signal: options.signal,
+      resolveAddress,
+      connect
+    }),
+    url,
+    timeoutMs,
+    timeoutMessage: `Image Provider image URL download timed out after ${timeoutMs}ms`,
+    signal,
+    options: { method: 'GET' },
+    consumeResponse: async (nextResponse, controller) => {
+      if (!nextResponse?.ok) {
+        cancelProviderResponseBody(nextResponse)
+        throw new Error(`Image Provider image URL returned HTTP ${nextResponse?.status || 'error'}`)
+      }
+      return readBoundedResponseBuffer(nextResponse, {
+        maxBytes,
+        sizeErrorMessage: 'Image Provider image URL exceeded the configured byte limit',
+        controller
+      })
+    }
+  })
+  return Buffer.isBuffer(response) ? response : Buffer.from(response)
+}
+
 const isAbortError = (error) => (
   error?.name === 'AbortError' ||
   error?.code === 'ABORT_ERR'
 )
+
+const createAbortError = (reason) => {
+  if (reason instanceof Error) return reason
+  const error = new Error('Image generation request was canceled')
+  error.name = 'AbortError'
+  error.code = 'ABORT_ERR'
+  return error
+}
 
 const TRANSIENT_PROVIDER_TRANSPORT_CODES = new Set([
   'ECONNABORTED',
@@ -293,29 +416,54 @@ const fetchWithTimeout = async ({
   options = {},
   timeoutMs,
   timeoutMessage,
+  signal,
   consumeResponse = async (response) => response
 }) => {
+  if (signal?.aborted) throw createAbortError(signal.reason)
   const controller = new AbortController()
   const effectiveTimeoutMs = normalizeTimeoutMs(timeoutMs, PROVIDER_GENERATION_TIMEOUT_MS)
   let timeoutHandle = null
+  let externalAbortListener = null
+  let rejectExternalAbort = null
+  let timedOut = false
+  if (signal) {
+    externalAbortListener = () => {
+      const error = createAbortError(signal.reason)
+      controller.abort(error)
+      rejectExternalAbort(error)
+    }
+    signal.addEventListener('abort', externalAbortListener, { once: true })
+  }
   try {
-    return await Promise.race([
-      (async () => {
-        const response = await fetchImpl(url, {
-          ...options,
-          signal: controller.signal
-        })
-        return await consumeResponse(response, controller)
-      })(),
-      new Promise((_, reject) => {
+    const aborted = signal
+      ? new Promise((_, reject) => { rejectExternalAbort = reject })
+      : null
+    const request = (async () => {
+      const response = await fetchImpl(url, {
+        ...options,
+        signal: controller.signal
+      })
+      return await consumeResponse(response, controller)
+    })()
+    const timed = new Promise((_, reject) => {
         timeoutHandle = setTimeout(() => {
+          timedOut = true
           controller.abort(new Error(timeoutMessage))
           reject(new Error(timeoutMessage))
         }, effectiveTimeoutMs)
-      })
-    ])
+    })
+    const pending = signal
+      ? [request, timed, aborted]
+      : [request, timed]
+    return await Promise.race(pending)
   } catch (error) {
     if (error?.code === 'provider_response_too_large') throw error
+    if (signal?.aborted) throw createAbortError(signal.reason)
+    if (timedOut) {
+      const timeoutError = new Error(timeoutMessage)
+      timeoutError.code = 'provider_timeout'
+      throw timeoutError
+    }
     if (isAbortError(error) || controller.signal.aborted) {
       const timeoutError = new Error(timeoutMessage)
       timeoutError.code = 'provider_timeout'
@@ -324,6 +472,7 @@ const fetchWithTimeout = async ({
     throw error
   } finally {
     if (timeoutHandle) clearTimeout(timeoutHandle)
+    if (externalAbortListener) signal.removeEventListener('abort', externalAbortListener)
   }
 }
 
@@ -406,6 +555,20 @@ const extractProviderBusinessError = (body) => {
 }
 
 const isOptionalModelsProbeStatus = (status) => [404, 405, 501].includes(Number(status))
+
+const classifyImageProviderHttpFailure = (status) => {
+  const normalizedStatus = Number(status)
+  if (normalizedStatus === 401 || normalizedStatus === 403) {
+    return {
+      code: 'auth_failed',
+      message: 'Image Provider rejected the API key'
+    }
+  }
+  return {
+    code: 'provider_unhealthy',
+    message: `Image Provider responded with HTTP ${status}`
+  }
+}
 
 const extractDiscoveredModels = (body, { secrets = [] } = {}) => {
   const source = Array.isArray(body?.data)
@@ -785,13 +948,16 @@ const createImageGenerationModelService = ({
   settingsService,
   secretService,
   fetchImpl = globalThis.fetch,
+  resolveImageUrlAddress,
+  connectImageUrl = connectPinnedHttps,
   now = () => new Date(),
   nowMs = () => Date.now(),
   appLogService,
   idFactory = () => crypto.randomUUID(),
   providerGenerationTimeoutMs,
   cloudGenerationTimeoutMs,
-  providerResponseLimits = {}
+  providerResponseLimits = {},
+  awaitPersistence = false
 } = {}) => {
   if (!settingsService) throw new Error('settingsService is required')
   if (!secretService) throw new Error('secretService is required')
@@ -859,7 +1025,8 @@ const createImageGenerationModelService = ({
     }
   }
 
-  const acquireProviderJobSlot = async ({ config, requestId }) => {
+  const acquireProviderJobSlot = async ({ config, requestId, signal }) => {
+    if (signal?.aborted) throw createAbortError(signal.reason)
     const maxConcurrentJobs = getMaxConcurrentJobs(config)
     if (!queuedProviderJobs.length && activeProviderJobs < maxConcurrentJobs) {
       activeProviderJobs += 1
@@ -881,10 +1048,12 @@ const createImageGenerationModelService = ({
       }
     })
 
-    return await new Promise((resolve) => {
-      queuedProviderJobs.push({
+    return await new Promise((resolve, reject) => {
+      const queued = {
         maxConcurrentJobs,
+        abortListener: null,
         resolve: (release) => {
+          if (queued.abortListener) signal?.removeEventListener('abort', queued.abortListener)
           recordLog({
             level: 'info',
             event: 'imageGeneration.provider.queue.acquired',
@@ -901,20 +1070,31 @@ const createImageGenerationModelService = ({
           })
           resolve(release)
         }
-      })
+      }
+      if (signal) {
+        queued.abortListener = () => {
+          const index = queuedProviderJobs.indexOf(queued)
+          if (index !== -1) queuedProviderJobs.splice(index, 1)
+          signal.removeEventListener('abort', queued.abortListener)
+          reject(createAbortError(signal.reason))
+        }
+        signal.addEventListener('abort', queued.abortListener, { once: true })
+      }
+      queuedProviderJobs.push(queued)
       drainProviderQueue()
     })
   }
 
   const saveStoredConfig = (config) => {
     const settings = settingsService.get()
-    settingsService.save({
+    const saved = settingsService.save({
       ...settings,
       models: {
         ...(isPlainObject(settings.models) ? settings.models : {}),
         imageGeneration: config
       }
     })
+    return awaitPersistence ? Promise.resolve(saved) : saved
   }
 
   const persistModelCatalog = (config, models) => {
@@ -927,11 +1107,11 @@ const createImageGenerationModelService = ({
       secrets: [secretService.getSecretValue(config.apiKeyRef)]
     })
     const current = getStoredImageGenerationState()
-    saveStoredConfig({
+    const saved = saveStoredConfig({
       ...toPersistedConfig(current),
       modelCatalog: nextCatalog
     })
-    return nextCatalog
+    return awaitPersistence ? Promise.resolve(saved).then(() => nextCatalog) : nextCatalog
   }
 
   const getConfig = () => {
@@ -996,26 +1176,29 @@ const createImageGenerationModelService = ({
     })
     next.modelCatalog = currentState.modelCatalog
     next.baseUrl = assertProviderBaseUrl(next.baseUrl)
-    saveStoredConfig(next)
-    healthCacheRevision += 1
-    recordLog({
-      scope: 'image-generation-settings',
-      level: 'info',
-      event: 'imageGeneration.settings.saved',
-      message: 'Image Provider settings saved',
-      details: {
-        ...createProviderOperationDetails({
-          capability: 'image',
-          operation: 'save-config',
-          config: next,
-          configSource: 'image',
-          requestId,
-          outcome: 'completed'
-        }),
-        ...getConfigLogDetails(next)
-      }
-    })
-    return getConfig()
+    const saved = saveStoredConfig(next)
+    const complete = () => {
+      healthCacheRevision += 1
+      recordLog({
+        scope: 'image-generation-settings',
+        level: 'info',
+        event: 'imageGeneration.settings.saved',
+        message: 'Image Provider settings saved',
+        details: {
+          ...createProviderOperationDetails({
+            capability: 'image',
+            operation: 'save-config',
+            config: next,
+            configSource: 'image',
+            requestId,
+            outcome: 'completed'
+          }),
+          ...getConfigLogDetails(next)
+        }
+      })
+      return getConfig()
+    }
+    return awaitPersistence ? Promise.resolve(saved).then(complete) : complete()
   }
 
   const saveProviderApiKey = (apiKey) => {
@@ -1023,66 +1206,72 @@ const createImageGenerationModelService = ({
     const requestId = idFactory()
     const value = String(apiKey || '').trim()
     if (!value) throw new Error('Image Provider API Key 不能为空')
-    secretService.setSecret({
+    const savedSecret = secretService.setSecret({
       id: config.apiKeyRef,
       value,
       label: 'Image API Key'
     })
-    healthCacheRevision += 1
-    recordLog({
-      scope: 'image-generation-settings',
-      level: 'info',
-      event: 'imageGeneration.settings.api-key.saved',
-      message: 'Image Provider API key saved',
-      details: {
-        ...createProviderOperationDetails({
-          capability: 'image',
-          operation: 'save-secret',
-          config,
-          configSource: 'image',
-          requestId,
-          outcome: 'completed'
-        }),
-        ...getConfigLogDetails(config),
-        apiKeyRef: config.apiKeyRef
+    const complete = () => {
+      healthCacheRevision += 1
+      recordLog({
+        scope: 'image-generation-settings',
+        level: 'info',
+        event: 'imageGeneration.settings.api-key.saved',
+        message: 'Image Provider API key saved',
+        details: {
+          ...createProviderOperationDetails({
+            capability: 'image',
+            operation: 'save-secret',
+            config,
+            configSource: 'image',
+            requestId,
+            outcome: 'completed'
+          }),
+          ...getConfigLogDetails(config),
+          apiKeyRef: config.apiKeyRef
+        }
+      })
+      const saved = getConfig()
+      return {
+        apiKeyRef: saved.apiKeyRef,
+        hasApiKey: saved.hasApiKey,
+        apiKeyPreview: saved.apiKeyPreview
       }
-    })
-    const saved = getConfig()
-    return {
-      apiKeyRef: saved.apiKeyRef,
-      hasApiKey: saved.hasApiKey,
-      apiKeyPreview: saved.apiKeyPreview
     }
+    return awaitPersistence ? Promise.resolve(savedSecret).then(complete) : complete()
   }
 
   const clearProviderApiKey = () => {
     const config = getStoredConfig()
     const requestId = idFactory()
-    secretService.deleteSecret(config.apiKeyRef)
-    healthCacheRevision += 1
-    recordLog({
-      scope: 'image-generation-settings',
-      level: 'info',
-      event: 'imageGeneration.settings.api-key.cleared',
-      message: 'Image Provider API key cleared',
-      details: {
-        ...createProviderOperationDetails({
-          capability: 'image',
-          operation: 'clear-secret',
-          config,
-          configSource: 'image',
-          requestId,
-          outcome: 'completed'
-        }),
-        ...getConfigLogDetails(config),
-        apiKeyRef: config.apiKeyRef
+    const deletedSecret = secretService.deleteSecret(config.apiKeyRef)
+    const complete = () => {
+      healthCacheRevision += 1
+      recordLog({
+        scope: 'image-generation-settings',
+        level: 'info',
+        event: 'imageGeneration.settings.api-key.cleared',
+        message: 'Image Provider API key cleared',
+        details: {
+          ...createProviderOperationDetails({
+            capability: 'image',
+            operation: 'clear-secret',
+            config,
+            configSource: 'image',
+            requestId,
+            outcome: 'completed'
+          }),
+          ...getConfigLogDetails(config),
+          apiKeyRef: config.apiKeyRef
+        }
+      })
+      return {
+        apiKeyRef: config.apiKeyRef,
+        hasApiKey: false,
+        apiKeyPreview: ''
       }
-    })
-    return {
-      apiKeyRef: config.apiKeyRef,
-      hasApiKey: false,
-      apiKeyPreview: ''
     }
+    return awaitPersistence ? Promise.resolve(deletedSecret).then(complete) : complete()
   }
 
   const checkHealth = async (options = {}) => {
@@ -1178,12 +1367,13 @@ const createImageGenerationModelService = ({
             { status, modelsProbe: 'unavailable' }
           )
         }
+        const classifiedError = classifyImageProviderHttpFailure(status)
         return completeHealth(
           {
             ok: false,
             provider: config.provider,
-            code: 'provider_unhealthy',
-            message: `Image Provider responded with HTTP ${status}`,
+            code: classifiedError.code,
+            message: classifiedError.message,
             modelsProbe: 'failed',
             availableModels: [],
             currentModelDiscovered: false
@@ -1191,7 +1381,7 @@ const createImageGenerationModelService = ({
           { status, modelsProbe: 'failed' }
         )
       }
-      if (!bodyParsed) {
+      if (!bodyParsed || !isPlainObject(body) || (!Array.isArray(body.data) && !Array.isArray(body.models))) {
         // 响应体不可解析：探针视为不可用，保留已保存的模型目录，
         // 否则一次坏响应会把用户已发现的模型清空。
         return completeHealth(
@@ -1199,7 +1389,7 @@ const createImageGenerationModelService = ({
             ok: true,
             provider: config.provider,
             code: 'provider_reachable_models_unavailable',
-            message: 'Image Provider is reachable, but the optional /models probe returned an unreadable response',
+            message: 'Image Provider is reachable, but the optional /models probe returned an unreadable or invalid response',
             modelsProbe: 'unavailable',
             availableModels: [],
             currentModelDiscovered: false
@@ -1208,7 +1398,7 @@ const createImageGenerationModelService = ({
         )
       }
       const availableModels = extractDiscoveredModels(body, { secrets: [apiKey] })
-      persistModelCatalog(runtimeConfig, availableModels)
+      await persistModelCatalog(runtimeConfig, availableModels)
       return completeHealth(
         {
           ok: true,
@@ -1348,18 +1538,19 @@ const createImageGenerationModelService = ({
             { status, modelsProbe: 'unavailable' }
           )
         }
+        const classifiedError = classifyImageProviderHttpFailure(status)
         return completeDiscovery(
           {
             ok: false,
             ...baseResult,
             models: [],
-            code: 'provider_unhealthy',
-            message: `Image Provider responded with HTTP ${status}`
+            code: classifiedError.code,
+            message: classifiedError.message
           },
           { status, modelsProbe: 'failed' }
         )
       }
-      if (!bodyParsed) {
+      if (!bodyParsed || !isPlainObject(body) || (!Array.isArray(body.data) && !Array.isArray(body.models))) {
         // 同 checkHealth：解析失败不覆盖已保存的模型目录。
         return completeDiscovery(
           {
@@ -1367,13 +1558,13 @@ const createImageGenerationModelService = ({
             ...baseResult,
             models: [],
             code: 'provider_reachable_models_unavailable',
-            message: 'Image Provider is reachable, but the optional /models probe returned an unreadable response'
+            message: 'Image Provider is reachable, but the optional /models probe returned an unreadable or invalid response'
           },
           { status, modelsProbe: 'unavailable' }
         )
       }
       const discoveredModels = extractDiscoveredModels(body, { secrets: [apiKey] })
-      persistModelCatalog(runtimeConfig, discoveredModels)
+      await persistModelCatalog(runtimeConfig, discoveredModels)
       return completeDiscovery(
         {
           ok: true,
@@ -1403,7 +1594,7 @@ const createImageGenerationModelService = ({
     }
   }
 
-  const generateProviderImage = async ({ config, prompt, promptCompiler = null, targetDir, relativeDir, constraints, requestId, timeoutMs: timeoutOverrideMs, referenceImages = [], traceContext = null }) => {
+  const generateProviderImage = async ({ config, prompt, promptCompiler = null, targetDir, relativeDir, constraints, requestId, timeoutMs: timeoutOverrideMs, referenceImages = [], traceContext = null, signal }) => {
     assertExactlyOneReferenceImage(referenceImages)
     const normalizedTraceContext = normalizeImageTraceContext(traceContext)
     const recordProviderLog = (entry) => recordLog({
@@ -1514,6 +1705,7 @@ const createImageGenerationModelService = ({
           url: `${baseUrl}${endpoint}`,
           timeoutMs: Math.max(1, requestDeadlineMs - Date.now()),
           timeoutMessage: `Image Provider generation timed out after ${timeoutMs}ms`,
+          signal,
           options: {
             method: 'POST',
             headers,
@@ -1529,6 +1721,7 @@ const createImageGenerationModelService = ({
         response = providerResponse.response
         responseBody = providerResponse.body
       } catch (error) {
+        if (signal?.aborted) throw createAbortError(signal.reason)
         if (error?.code === 'provider_response_too_large') {
           const providerError = new Error('Image Provider response exceeded the configured byte limit')
           providerError.code = 'provider_response_too_large'
@@ -1584,6 +1777,7 @@ const createImageGenerationModelService = ({
       // 非重试的失败响应同样要释放响应体，否则连接会一直挂在这里泄漏。
       cancelProviderResponseBody(response)
       const status = response?.status || 'error'
+      const classifiedError = classifyImageProviderHttpFailure(status)
       const errorMessage = 'Image Provider returned an error response'
       recordProviderLog({
         level: 'error',
@@ -1607,12 +1801,14 @@ const createImageGenerationModelService = ({
           endpoint,
           requestMode: conditioning.mode,
           referenceImageCount: normalizedReferenceImages.length,
-          errorCode: 'provider_http_error',
+          errorCode: classifiedError.code === 'auth_failed' ? classifiedError.code : 'provider_http_error',
           errorMessage: sanitizeLogText(errorMessage, { maxChars: 240 })
         }
       })
-      const providerError = new Error(`Image Provider generation failed with HTTP ${status}`)
-      providerError.code = 'provider_http_error'
+      const providerError = new Error(classifiedError.code === 'auth_failed'
+        ? classifiedError.message
+        : `Image Provider generation failed with HTTP ${status}`)
+      providerError.code = classifiedError.code === 'auth_failed' ? classifiedError.code : 'provider_http_error'
       providerError.httpStatus = Number(response?.status) || 0
       throw providerError
     }
@@ -1684,11 +1880,27 @@ const createImageGenerationModelService = ({
     let outputs
     const outputPaths = []
     try {
-      const decodedImages = items.map((item) => decodeRequiredBase64Image({
-        value: item?.b64_json,
-        fieldName: 'b64_json',
-        maxBytes: responseLimits.imageBytes
-      }))
+      const decodedImages = []
+      for (const item of items) {
+        if (String(item?.b64_json || '').trim()) {
+          decodedImages.push(decodeRequiredBase64Image({
+            value: item.b64_json,
+            fieldName: 'b64_json',
+            maxBytes: responseLimits.imageBytes
+          }))
+          continue
+        }
+        const imageUrl = parseProviderImageUrl(item?.url)
+        if (!imageUrl) throw new Error('Image Provider returned an output with missing image bytes (b64_json or url)')
+        decodedImages.push(await downloadProviderImageUrl({
+          url: imageUrl,
+          timeoutMs: Math.max(1, requestDeadlineMs - Date.now()),
+          signal,
+          maxBytes: responseLimits.imageBytes,
+          resolveAddress: resolveImageUrlAddress,
+          connect: connectImageUrl
+        }))
+      }
       outputs = decodedImages.map((bytes, index) => {
         const { outputPath, fileName } = writeOutputPng({ targetDir, index: index + 1, bytes })
         outputPaths.push(outputPath)
@@ -1804,6 +2016,7 @@ const createImageGenerationModelService = ({
       output,
       constraints,
       timeoutMs,
+      signal,
       traceContext,
       referenceImages = [],
       referenceDataDir
@@ -1887,7 +2100,7 @@ const createImageGenerationModelService = ({
 
     let releaseProviderJobSlot = null
     try {
-      releaseProviderJobSlot = await acquireProviderJobSlot({ config, requestId })
+      releaseProviderJobSlot = await acquireProviderJobSlot({ config, requestId, signal })
       const totalTimeoutMs = normalizeTimeoutMs(timeoutMs, getProviderTimeoutMs(config))
       const deadlineMs = Date.now() + totalTimeoutMs
       const modelAttempts = []
@@ -1908,7 +2121,8 @@ const createImageGenerationModelService = ({
             requestId,
             timeoutMs: remainingTimeoutMs,
             referenceImages: normalizedReferenceImages,
-            traceContext: normalizedTraceContext
+            traceContext: normalizedTraceContext,
+            signal
           })
           modelAttempts.push(createProviderModelAttempt({
             model: variant.model,
@@ -1920,6 +2134,7 @@ const createImageGenerationModelService = ({
           }))
           break
         } catch (error) {
+          if (signal?.aborted) throw createAbortError(signal.reason)
           modelAttempts.push(createProviderModelAttempt({
             model: variant.model,
             ok: false,

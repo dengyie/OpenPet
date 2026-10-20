@@ -134,7 +134,7 @@ export function usePetSettingsPane() {
         currentScale: settings.scale,
         originalScale: originalRef.current.scale
       })) return
-      api.previewScale(originalRef.current.scale)
+      void settingsHttpApi.previewScale(originalRef.current.scale, { keepalive: true }).catch(() => {})
     }
     window.addEventListener('beforeunload', restorePreview)
     return () => window.removeEventListener('beforeunload', restorePreview)
@@ -197,7 +197,11 @@ export function usePetSettingsPane() {
     })
     setSettings(nextSettings)
     if (status) setStatus('')
-    if (previewScale) api.previewScale(nextSettings.scale)
+    if (previewScale) {
+      void settingsHttpApi.previewScale(nextSettings.scale).catch((error) => {
+        setStatus(messageFromError(error, '缩放预览失败'))
+      })
+    }
   }
 
   const onChangeCursorScope = async (scope: ControlCenterSettings['customCursorScope']) => {
@@ -234,7 +238,9 @@ export function usePetSettingsPane() {
     const restoredSettings = cloneSettings(originalRef.current)
     setSettings(restoredSettings)
     setStatus('')
-    api.previewScale(restoredSettings.scale)
+    void settingsHttpApi.previewScale(restoredSettings.scale).catch((error) => {
+      setStatus(messageFromError(error, '缩放预览失败'))
+    })
   }
 
   const onSelectCursor = async (cursorId: string) => {
@@ -261,7 +267,7 @@ export function usePetSettingsPane() {
   const onImportCursor = async () => {
     const previousSettings = settings
     try {
-      const result = await api.importCursor()
+      const result = await settingsHttpApi.importCursor()
       if (result.canceled || !result.cursor) return
       const nextCustomCursors = normalizeCustomCursorRecords([
         ...settings.customCursors.filter((cursor) => cursor.id !== result.cursor?.id),

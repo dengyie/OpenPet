@@ -92,6 +92,21 @@ const createServiceProcessTree = ({
     const rootPid = normalizePositivePid(pid)
     if (!rootPid) return false
 
+    // A process can exit between the process-table snapshot and process.kill.
+    // Treat that race as an already-completed stop, while preserving all other
+    // errors so callers still see permission and platform failures.
+    let signaled = false
+    const killIfPresent = (targetPid) => {
+      try {
+        killProcessImpl(targetPid, signal)
+        signaled = true
+      } catch (error) {
+        if (error?.code === 'ESRCH') return false
+        throw error
+      }
+      return true
+    }
+
     if (platform === 'win32') {
       const args = ['/PID', String(rootPid), '/T']
       if (signal === 'SIGKILL') args.push('/F')
@@ -104,10 +119,10 @@ const createServiceProcessTree = ({
 
     const descendants = listServiceDescendantPids(rootPid)
     for (const descendantPid of descendants) {
-      killProcessImpl(descendantPid, signal)
+      killIfPresent(descendantPid)
     }
-    killProcessImpl(rootPid, signal)
-    return true
+    killIfPresent(rootPid)
+    return signaled
   }
 
   return { listServiceDescendantPids, signalServiceProcessTree }

@@ -17,6 +17,7 @@ function inputFor(creator, job) {
 function context(runnerContext, creator) {
 	return {
 		signal: runnerContext.signal,
+		tmpDir: runnerContext.tmpDir,
 		report: runnerContext.report,
 		finalize: runnerContext.finalize,
 		creator,

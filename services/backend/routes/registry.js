@@ -10,16 +10,15 @@ export const IMPLEMENTED_API_ROUTES = Object.freeze([
 	"GET /service/config",
 	"PUT /service/config",
 	"POST /service/diagnostics",
-	"PUT /ai/providers/:id/key",
-	"DELETE /ai/providers/:id/key",
-	"POST /ai/images/generate",
-	"GET /about",
-	"POST /about/check-updates",
 	"GET /settings",
 	"PATCH /settings",
 	"POST /settings/cursor/import",
 	"POST /settings/preview-scale",
 	"GET /settings/schema",
+	...AI_SECRET_ROUTES,
+	...AI_ROUTES,
+	"GET /about",
+	"POST /about/check-updates",
 	"GET /actions",
 	"POST /actions/frames/inspect",
 	"POST /actions/frames/reinspect",
@@ -80,6 +79,7 @@ export const IMPLEMENTED_API_ROUTES = Object.freeze([
 ])
 
 const noop = () => ({})
+const settingsCommandNoop = { previewScale: async (scale) => ({ scale }), importCursor: async () => ({ canceled: true }) }
 const service = new Proxy({}, { get: () => noop })
 const actions = new Proxy({}, { get: () => noop })
 const packs = new Proxy({}, { get: () => noop })
@@ -95,7 +95,7 @@ export function registeredImplementedRoutes() {
 	registerAiRoutes(router, { jobs: { insert: noop } })
 	registerAiRuntimeRoutes(router, { getDomain: () => service })
 	registerAboutRoutes(router, { about: { info: noop }, jobs: { insert: noop } })
-	registerSettingsRoutes({ router, store: { read: noop, patch: () => ({ version: 0, changedPaths: [] }) } })
+	registerSettingsRoutes({ router, store: { read: noop, patch: () => ({ version: 0, changedPaths: [] }) }, commands: settingsCommandNoop })
 	registerActionRoutes(router, { actions })
 	registerPetPackRoutes(router, { packs })
 	registerCatalogRoutes(router, { catalog, jobs: { insert: noop } })
@@ -114,6 +114,6 @@ import { registerPetPackRoutes } from "./pet-packs.js"
 import { registerServiceRoutes } from "./service.js"
 import { registerSettingsRoutes } from "./settings.js"
 import { registerPluginRoutes } from "./plugins.js"
-import { registerAiSecretRoutes, registerAiRoutes } from "./ai.js"
+import { AI_ROUTES, AI_SECRET_ROUTES, registerAiSecretRoutes, registerAiRoutes } from "./ai.js"
 import { AI_RUNTIME_ROUTES, registerAiRuntimeRoutes } from "./ai-runtime.js"
 import { CREATOR_ROUTES, registerCreatorRoutes } from "./creator.js"

@@ -1,4 +1,8 @@
-# 01 · 现状盘点与问题诊断
+# 01 · 历史现状盘点与问题诊断
+
+> **状态：历史快照，不作为当前代码事实。** 本文的体积、文件数量、IPC
+> 盘点和调用链来自早期基线。当前实现请以 [`09-repo-state.md`](./09-repo-state.md)、
+> `services/backend/`、`apps/desktop/src/sidecar/` 和 `npm run check:api-contract` 为准。
 
 > 🔍 本篇是分离方案的事实基础。所有体积数据均来自 `dengyie/OpenPet@c56a3f1`(main / v1.0.1-rc.3)真实读取,非估算。
 

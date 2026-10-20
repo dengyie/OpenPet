@@ -1,6 +1,12 @@
 # `@openpet/backend`
 
-OpenPet 的本地后端 sidecar。由 Shell(Electron 主进程)通过 `child_process.fork` 启动,只监听回环地址。
+OpenPet 的后端 sidecar。桌面 Shell 通过 `child_process.fork` 启动；广州 host 也会以远端会话方式 fork 它，子进程和 host 都只监听回环地址。
+
+## Mesh Web Control
+
+`services/backend/host.js` 可托管 `dist/web-control` 静态前端，并用内存中的网页登录令牌代理 `/api/v1/*`。网页登录令牌不会写入磁盘，Backend session 结束后全部失效。Host 本身仍必须绑定 `127.0.0.1:48330`；由广州 CVM 上仅绑定 EasyTier 地址的 Nginx 负责 HTTPS 入口。
+
+Web 控制台只能编排现有 Creator Backend 会话。Provider keys、参考图 authority、桌面 PetService 和最终 pet-pack import 仍由在线 OpenPet Shell 持有；Shell 离线时网页只能显示不可用状态。
 
 契约以 [`docs/refactor/03-api-contract.md`](../../docs/refactor/03-api-contract.md) 为准,架构以 [`docs/refactor/02-architecture.md`](../../docs/refactor/02-architecture.md) 为准。
 
@@ -34,7 +40,13 @@ OpenPet 的本地后端 sidecar。由 Shell(Electron 主进程)通过 `child_pro
 import { fork } from "node:child_process"
 const child = fork("services/backend/index.js", [], { stdio: ["ignore", "inherit", "inherit", "ipc"], serialization: "advanced" })
 child.on("message", (m) => console.log("<-", JSON.stringify(m)))
-child.send({ v: 1, id: "host-1", at: Date.now(), body: { type: "init", secrets: {}, userDataDir: "/tmp/openpet-dev" } })
+child.send({ v: 1, id: "host-1", at: Date.now(), body: {
+  type: "init",
+  userDataDir: "/tmp/openpet-dev",
+  providerKeys: {},
+  legacyToken: null,
+  localHttpConfig: { enabled: false, host: "127.0.0.1", port: 0 },
+} })
 ```
 
 拿到 `ready` 里的 `port` 与 `sessionToken` 之后:
@@ -45,19 +57,19 @@ curl -sS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:$PORT/api/v1/health
 
 未带 token 会返回 `401 UNAUTHORIZED` —— 03 篇 §8 的「不设例外」包括 `/health`。
 
-## 已知待验证风险
+## 已知边界与待验证风险
 
-### ESM 与 asar(尚未登记进 06 篇风险表)
+### ESM 与 asar(已登记并已缓解)
 
-ADR-004 让 sidecar 作为同 asar 内的 Node 脚本运行,而本包是 ESM(`"type": "module"`)。Electron 对 asar 的补丁主要覆盖 `fs` 与 CJS `require`,**ESM loader 从 `app.asar` 内解析入口这条路径没有被 spike 5 覆盖**。
+ADR-004 让 sidecar 作为同 asar 内的 Node 脚本运行,而本包是 ESM(`"type": "module"`)。历史 spike 曾命中 `spawn ENOTDIR`;当前打包配置已将 `services/backend/**` 加入 `asarUnpack`,并由 Shell resolver 从 unpacked 路径启动。打包或 Electron 版本变化时仍需重跑 packaged sidecar ready smoke。
 
-- 影响面:打包后 sidecar 起不来,开发态无法复现。
-- 判定:跑 spike 5 时额外确认一次打包产物里 sidecar 能 `ready`,而不只是确认路径解析成功。
-- 退路(两条,都不动业务代码):把 `services/backend/**` 加入 `build.asarUnpack`;或把本包降为 CJS。
+- 影响面:若 `asarUnpack`、resolver 或构建白名单回退,打包后 sidecar 可能起不来。
+- 判定:跑 packaged runtime smoke,确认产物中的 sidecar 能 `ready` 且 clean exit,而不只是确认路径解析成功。
+- 退路:保留当前 unpacked resolver；只有正式回归失败时才评估把本包降为 CJS。
 
 ### `ERROR_HTTP_STATUS` 目前有两份
 
-`http/middleware.js` 里的 `GENERIC_ERROR_HTTP_STATUS` 与 `packages/contracts/src/envelope.ts` 里的同名常量重复。原因是本包还没接入根 `workspaces`(等 spike 5 绿),现在 import 不到 `@openpet/contracts`。
+`http/middleware.js` 里的 `GENERIC_ERROR_HTTP_STATUS` 与 `packages/contracts/src/envelope.ts` 里的同名常量仍各有一份。workspace 已接入；后续应以契约包为源并补门禁对账，当前不要再复制第三处。
 
 为了不让两份漂移,这里只定义 13 个通用错误码的状态映射;**8 个专用业务码不在这里出现**,抛出方必须显式传 `status`。接入 workspaces 后本文件改为 re-export,并给 `check:api-contract` 加一条对账。
 
@@ -67,4 +79,4 @@ ADR-004 让 sidecar 作为同 asar 内的 Node 脚本运行,而本包是 ESM(`"t
 
 ## 还没有的东西
 
-`routes/`、`domains/`、`jobs/` 与 `store/migrations/` 已承载当前 sidecar 实现；当前由 11 组 route 模块注册 68 条实际 method/path，并完成 SQLite 迁移、Job 恢复/调度与 settings/About 等已交付域。`secrets/` 与 `mcp/` 仍按 T44/T45 依赖推进，不要根据本 README 发明空壳实现。完整接口与缺口以 `docs/refactor/09-repo-state.md` 和 Issue #41 为准。
+`routes/`、`domains/`、`jobs/` 与 `store/migrations/` 已承载当前 sidecar 实现；当前 route registry 注册 104 条实际 method/path，并完成 SQLite 迁移、Job 恢复/调度与 settings/About/AI Talk 等已交付域。完整接口与目标/blocked 缺口以 `docs/refactor/03-api-contract.md`、`docs/refactor/09-repo-state.md` 和 `npm run check:api-contract` 为准。不要根据本 README 发明未注册的空壳实现。

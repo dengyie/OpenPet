@@ -1,5 +1,6 @@
 const fs = require('fs')
 const path = require('path')
+const crypto = require('crypto')
 const { normalizeGenerationTask } = require('./generation-task')
 const { FIXTURE_BACKEND, normalizeCreatorBackend } = require('./backend-mode')
 const {
@@ -190,6 +191,7 @@ const createRun = ({ dataDir, input = {}, now = () => new Date().toISOString() }
       ? (generationTask.questions.length > 0 ? 'needs_input' : 'ready_for_confirmation')
       : 'not_started',
     backend,
+    ...(input.creatorExecution ? { creatorExecution: String(input.creatorExecution) } : {}),
     modelProvider: input.modelProvider || backend,
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -198,6 +200,17 @@ const createRun = ({ dataDir, input = {}, now = () => new Date().toISOString() }
       petName,
       prompt: String(input.prompt || ''),
       backend,
+      ...(input.referenceImage && typeof input.referenceImage === 'object' && !Array.isArray(input.referenceImage)
+        ? {
+            referenceImage: {
+              relativePath: String(input.referenceImage.relativePath || '').replace(/\\/g, '/'),
+              fileName: String(input.referenceImage.fileName || 'reference.png'),
+              contentHash: String(input.referenceImage.contentHash || input.referenceImage.sha256 || '').toLowerCase(),
+              width: Math.max(0, Number(input.referenceImage.width) || 0),
+              height: Math.max(0, Number(input.referenceImage.height) || 0)
+            }
+          }
+        : {}),
       ...(originalPrompt ? { originalPrompt } : {})
     },
     ...(generationTask ? { generationTask } : {}),
@@ -224,6 +237,57 @@ const createRun = ({ dataDir, input = {}, now = () => new Date().toISOString() }
   if (generationTask) writeJsonAtomic(path.join(runDir, 'inputs', 'generation-task.json'), generationTask)
   if (originalPrompt) fs.writeFileSync(path.join(runDir, 'inputs', 'original-prompt.txt'), `${originalPrompt}\n`)
   return run
+}
+
+const materializeBackendReferenceForRun = ({ dataDir, run } = {}) => {
+  if (!dataDir || !isRunRecord(run, run?.runId) || run.creatorExecution !== 'backend') return run
+  const reference = run.input?.referenceImage
+  if (!reference || typeof reference !== 'object') throw new Error('Backend Creator run requires a reference image')
+  const relativePath = String(reference.relativePath || '').replace(/\\/g, '/')
+  if (!/^incoming\/web-[a-f0-9-]+\.(?:png|jpg|webp)$/i.test(relativePath)) throw new Error('Backend Creator temporary reference path is invalid')
+  const dataRoot = fs.realpathSync.native(path.resolve(dataDir))
+  const sourcePath = path.resolve(dataRoot, relativePath)
+  const sourceRelative = path.relative(dataRoot, sourcePath)
+  if (!sourceRelative || sourceRelative.startsWith('..') || path.isAbsolute(sourceRelative) || !fs.existsSync(sourcePath) || !fs.lstatSync(sourcePath).isFile() || fs.lstatSync(sourcePath).isSymbolicLink()) {
+    throw new Error('Backend Creator temporary reference is missing or escaped its data directory')
+  }
+  const realSource = fs.realpathSync.native(sourcePath)
+  const realRelative = path.relative(dataRoot, realSource)
+  if (!realRelative || realRelative.startsWith('..') || path.isAbsolute(realRelative)) throw new Error('Backend Creator temporary reference escaped its data directory')
+  const bytes = fs.readFileSync(realSource)
+  const actualHash = crypto.createHash('sha256').update(bytes).digest('hex')
+  if (reference.contentHash && String(reference.contentHash).toLowerCase() !== actualHash) throw new Error('Backend Creator temporary reference hash does not match')
+  const extension = path.extname(relativePath).toLowerCase()
+  const runRelativePath = `runs/${run.runId}/inputs/references/reference${extension}`
+  const target = path.resolve(dataRoot, runRelativePath)
+  fs.mkdirSync(path.dirname(target), { recursive: true })
+  fs.writeFileSync(target, bytes, { mode: 0o600 })
+  const next = {
+    ...run,
+    input: {
+      ...run.input,
+      referenceImage: {
+        ...reference,
+        relativePath: runRelativePath,
+        contentHash: actualHash,
+        metadataRelativePath: `runs/${run.runId}/inputs/references/reference.json`
+      }
+    }
+  }
+  writeRun({ dataDir: dataRoot, run: next })
+  writeJsonAtomic(path.join(dataRoot, 'runs', run.runId, 'inputs', 'references', 'reference.json'), {
+    fileName: String(reference.fileName || path.basename(relativePath)).slice(0, 256),
+    originalFileName: String(reference.fileName || path.basename(relativePath)).slice(0, 256),
+    relativePath: runRelativePath,
+    copiedFileName: path.basename(runRelativePath),
+    width: Math.max(0, Number(reference.width) || 0),
+    height: Math.max(0, Number(reference.height) || 0),
+    contentHash: actualHash
+  })
+  const configPath = path.join(dataRoot, runRelativePath.replace(/inputs\/references\/reference\.(?:png|jpg|webp)$/i, 'inputs/config.json'))
+  writeJsonAtomic(configPath, next.input)
+  fs.unlinkSync(realSource)
+  return next
 }
 
 const readRun = ({ dataDir, runId, now = () => new Date().toISOString() }) => {
@@ -472,6 +536,7 @@ module.exports = {
   createGenerationLease,
   createGenerationLeaseHeartbeat,
   createRun,
+  materializeBackendReferenceForRun,
   failGeneratingRunAfterCommandTermination,
   GENERATION_COMMAND_TERMINATED_REASON,
   getRunDir,

@@ -19,6 +19,28 @@ const EXIT_CODE_VERSION_MISMATCH = 78
 const MAX_VERSION_MISMATCH_RELAUNCHES = 2
 const BRIDGE_PROTOCOL_VERSION = 1
 
+function exactKeys(value, keys) {
+	const actual = Object.keys(value).sort()
+	const expected = [...keys].sort()
+	return actual.length === expected.length && actual.every((key, index) => key === expected[index])
+}
+
+function validateReady(raw) {
+	if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return "ready envelope is not an object"
+	if (!exactKeys(raw, ["v", "id", "at", "body"])) return "ready envelope has unexpected fields"
+	if (typeof raw.id !== "string" || raw.id.length === 0) return "ready envelope has an invalid id"
+	if (!Number.isInteger(raw.at) || raw.at <= 0) return "ready envelope has an invalid timestamp"
+	const body = raw.body
+	if (body === null || typeof body !== "object" || Array.isArray(body) || body.type !== "ready") return "sidecar did not send ready"
+	if (!exactKeys(body, ["type", "port", "apiVersion", "pid", "sessionToken", "startupMs"])) return "ready has unexpected fields"
+	if (!Number.isInteger(body.port) || body.port <= 0 || body.port > 65535) return "ready has an invalid port"
+	if (body.apiVersion !== "v1") return "ready has an invalid apiVersion"
+	if (!Number.isInteger(body.pid) || body.pid <= 0) return "ready has an invalid pid"
+	if (typeof body.sessionToken !== "string" || body.sessionToken.length < 32) return "ready has an invalid sessionToken"
+	if (!Number.isInteger(body.startupMs) || body.startupMs < 0) return "ready has an invalid startupMs"
+	return null
+}
+
 /**
  * ESM resolves the entry and its dependency graph from the unpacked tree.
  * Keep package.json's asarUnpack list aligned with backend runtime imports.
@@ -36,9 +58,10 @@ function resolveSidecarEntry(app) {
 function launch(options) {
 	const entry = options.entry
 	const logger = options.logger
+	const forkImpl = options.forkImpl || fork
 
 	return new Promise((resolve, reject) => {
-		const child = fork(entry, [], {
+		const child = forkImpl(entry, [], {
 			cwd: path.dirname(entry),
 			// ELECTRON_RUN_AS_NODE=1:让 Electron 二进制以纯 Node 模式跑这个脚本,
 			// 不开 GPU、不建窗口、不加载 Electron 的内置模块。
@@ -90,6 +113,14 @@ function launch(options) {
 
 			const body = raw.body
 			if (!settled && body && body.type === "ready") {
+				const validationError = validateReady(raw)
+				if (validationError) {
+					const error = new Error("SIDECAR_MALFORMED_READY: " + validationError)
+					error.code = "SIDECAR_MALFORMED_READY"
+					child.kill("SIGKILL")
+					finish(reject, error)
+					return
+				}
 				finish(resolve, { child: child, ready: body })
 				return
 			}
@@ -113,12 +144,20 @@ function launch(options) {
 
 		// init 先行:后端拿到 init 才绑端口。理由见 services/backend/README.md。
 		// ADR-010:providerKeys 在这里一次性注入,Shell 是唯一能调 safeStorage 的一侧。
-		child.send({
-			v: BRIDGE_PROTOCOL_VERSION,
-			id: "shell-init-1",
-			at: Date.now(),
-			body: Object.assign({ type: "init" }, options.initBody || {}),
-		})
+		try {
+			child.send({
+				v: BRIDGE_PROTOCOL_VERSION,
+				id: "shell-init-1",
+				at: Date.now(),
+				body: Object.assign({ type: "init" }, options.initBody || {}),
+			}, (error) => {
+				if (!error || settled) return
+				child.kill("SIGKILL")
+				finish(reject, error)
+			})
+		} catch (error) {
+			finish(reject, error)
+		}
 	})
 }
 
@@ -194,22 +233,38 @@ async function spawnSidecar(options) {
  * 对应 04 篇 §1.4 的孤儿进程问题(R2) —— 完整的 pids.json 清理在 M3。
  */
 function stopSidecar(child, options) {
-	const graceMs = (options && options.graceMs) || SHUTDOWN_GRACE_MS
+	const graceMs = options?.graceMs ?? SHUTDOWN_GRACE_MS
 	return new Promise((resolve) => {
 		if (!child || child.exitCode !== null || child.killed) {
 			resolve("already-stopped")
 			return
 		}
 
-		const timer = setTimeout(() => {
-			child.kill("SIGKILL")
-			resolve("killed")
-		}, graceMs)
+		let settled = false
+		let timer
+		const finish = (status) => {
+			if (settled) return
+			settled = true
+			clearTimeout(timer)
+			resolve(status)
+		}
+		const forceKill = () => {
+			if (settled) return
+			try {
+				child.kill("SIGKILL")
+			} catch (error) {
+				// A child that is already exiting can reject the force signal;
+				// shutdown still needs a bounded, settled outcome.
+			} finally {
+				finish("killed")
+			}
+		}
+
+		timer = setTimeout(forceKill, graceMs)
 		if (timer.unref) timer.unref()
 
 		child.once("exit", () => {
-			clearTimeout(timer)
-			resolve("exited")
+			finish("exited")
 		})
 
 		try {
@@ -218,14 +273,19 @@ function stopSidecar(child, options) {
 				id: "shell-shutdown-1",
 				at: Date.now(),
 				body: { type: "shutdown" },
+			}, (error) => {
+				if (error) forceKill()
 			})
 		} catch (error) {
-			// 通道已断,直接等超时路径 SIGKILL。
+			// 通道已断,不再等待宽限期。
+			forceKill()
 		}
 	})
 }
 
 module.exports = {
+	validateReady,
+	launch,
 	spawnSidecar: spawnSidecar,
 	stopSidecar: stopSidecar,
 	resolveSidecarEntry: resolveSidecarEntry,

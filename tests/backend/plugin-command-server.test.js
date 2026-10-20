@@ -949,6 +949,40 @@ test("T27 executes a supported command in the backend even when the plugin also 
 	await lifecycle.stop("mixed-demo")
 })
 
+test("Creator Studio backend commands require the bundled plugin, enablement, approval, and command allowlist", async () => {
+	const { createPluginLifecycle } = await import("../../services/backend/domains/plugins/lifecycle.js")
+	const definition = {
+		mainPath: "",
+		manifest: {
+			id: "openpet.creator-studio",
+			permissions: ["model:image-generate"],
+			entries: { commands: [{ id: "create-run", command: "node command.js" }], services: [{ id: "studio", command: "node service.js" }] },
+		},
+	}
+	let enabled = true
+	let approved = true
+	const calls = []
+	const lifecycle = createPluginLifecycle({
+		registry: {
+			definition: () => definition,
+			get: () => ({ id: "openpet.creator-studio", enabled }),
+			requiresNative: () => true,
+			isNativeApproved: () => approved,
+			setEnabled: (_id, value) => { enabled = value },
+		},
+		commandServer: { execute: async (...args) => { calls.push(args); return { ok: true } } },
+	})
+	assert.equal(typeof lifecycle.runCreatorBackendCommand, "function")
+	assert.deepEqual(await lifecycle.runCreatorBackendCommand("create-run", { petName: "Fox" }, { signal: "signal" }), { ok: true })
+	assert.deepEqual(calls, [["openpet.creator-studio", "create-run", { petName: "Fox" }, { signal: "signal" }]])
+	await assert.rejects(lifecycle.runCreatorBackendCommand("import-approved-pet", {}), { code: "PERMISSION_DENIED" })
+	approved = false
+	await assert.rejects(lifecycle.runCreatorBackendCommand("create-run", {}), { code: "PLUGIN_NATIVE_NOT_APPROVED" })
+	approved = true
+	enabled = false
+	await assert.rejects(lifecycle.runCreatorBackendCommand("create-run", {}), { code: "CONFLICT" })
+})
+
 test("T27 route to Job handler executes in the backend and cancellation removes the real child process", { timeout: 8_000 }, async () => {
 	const [
 		{ createPluginCommandServer },

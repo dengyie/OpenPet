@@ -1,7 +1,7 @@
 # OpenPet 开发文档
 
-> 最后更新：2026-07-05
-> 当前版本：`v1.0.1-rc.3`
+> 最后更新：2026-10-17
+> 当前代码基线：Shell/Backend sidecar 迁移；运行时与文档门禁数字以 `npm run build:contracts`、`npm run check:api-contract` 和 `npm run check:docs-drift` 的新鲜输出为准。
 > 角色：OpenPet 的中文主开发文档，负责解释代码结构、开发流程、测试策略和当前工程边界。
 
 ## 1. 这份文档负责什么
@@ -52,6 +52,29 @@ npm run check:syntax
 - `npm run test:control-center`：Control Center Playwright 用例。
 - `npm run check:syntax`：`node --check` + `tsc --noEmit` + `vite build`。
 
+2026-10-15 代码级验证：Backend **424/424**，Tools **683/683**，Settings/AI/Pet Pack
+相关回归 **68/68**；`check:syntax`、contracts build、API/channel reconciliation、docs
+drift 与 Control Center production build 通过。`test:core` 为 **2180 通过、26 失败、1
+跳过**；26 项均因缺少仓库固定版本的 Playwright Chromium headless shell 而无法启动。
+本轮没有安装浏览器、启动 Electron 或做真机 UI 验收；浏览器用例留给 CI。此前的
+31/664 等数字属于旧快照，不再作为当前基线。写入验证数字时必须记录实际失败原因，
+不能把未执行或环境阻塞的 UI 证据写成通过。
+
+迁移或文档变更还必须按顺序运行：
+
+```bash
+npm run build:contracts
+npm run check:api-contract
+npm run check:channel-retirement
+npm run check:docs-drift
+```
+
+`build:contracts` 是 API 合同门禁的前置步骤；`check:api-contract` 当前只承认
+`routes/registry.js` 中实际注册的路由。当前基线为 87 个 IPC（81 个直接注册、6 个
+事件-only；退役台账为 41 keep、31 cutover、15 blocked）、136 个已注册 REST 路由、149 个 API 文档路由行、
+21 个 SSE 事件、8 个 topic、17 个 Job kind 和 6 个 Job status。完整测试若受本机 Playwright 浏览器缺失
+影响，必须如实记录失败原因，不能把未执行的 UI 证据写成通过。
+
 ### 资源生成
 
 ```bash
@@ -63,47 +86,47 @@ npm run generate-sprites
 
 ## 3. 架构总览
 
-OpenPet 现在不是单窗口 demo，而是一个分层的桌面宠物平台：
+OpenPet 现在是一个由 Electron Shell、Backend sidecar 和 Control Center 组成的桌面宠物平台。迁移仍在进行中，`src/main/` 不是历史目录；它继续持有窗口、PetService、原生 picker、密钥和生命周期等 Shell authority。
 
 ```text
 main.js
-  -> service assembly
-  -> ipc registration
-  -> pet window / control center / chat surfaces
+  -> createOpenPetRuntime()
+  -> createSidecarRuntimeCoordinator()
+  -> spawnSidecar()
+  -> services/backend/index.js
 
-src/main/services/
-  EventBus
-    -> SettingsService
-    -> ActionService
-    -> PetPackService
-    -> PetService
-    -> AiService / AiTalkService / ImageGenerationModelService
-    -> PluginService / PluginInstallService / PluginGithubImportService
-    -> LocalHttpService / McpTransportService
+Electron Shell (`src/main/`)
+  -> windows / preload / PetService / native dialogs
+  -> settings host effects / secrets / pet-pack authority
+  -> sidecar reverse-channel message handling
 
-src/control-center/
+Backend sidecar (`services/backend/`)
+  -> HTTP router and routes/registry.js
+  -> domain services / SQLite / Jobs / SSE
+  -> plugin and image-generation handlers
+
+Shared contracts (`packages/contracts/`)
+  -> bridge envelopes / API envelopes / event and Job schemas
+
+Control Center (`src/control-center/`)
   React + Vite
   Pet / Actions / AI / Plugins / Catalog / Service / About
-
-src/main/pet-pack/
-  manifest schema + loader + importer
-
-src/main/plugins/
-  plugin manifest policy + official plugins + compatibility helpers
 ```
 
 ### 核心边界
 
 | 边界 | 主要文件 | 负责内容 | 不该做什么 |
 | --- | --- | --- | --- |
-| 应用组装 | `main.js` | service 依赖装配、生命周期、窗口初始化 | 不堆业务规则 |
-| 宠物状态 | `src/main/services/pet-service.js` | 宠物动作、说话、事件、运行时状态 | 不绕过它直接改 renderer 状态 |
-| 动作与包 | `action-service.js` `action-import-service.js` `pet-pack-service.js` | 动作配置、帧导入、pet pack 切换和导入 | 不把素材写入权限交给插件 |
-| AI 与对话 | `ai-service.js` `ai-talk-service.js` `ai-talk-store.js` | Provider 调用、会话、记忆、诊断 | 不把密钥放到 renderer |
-| 图像生成 | `image-generation-model-service.js` | Creator Studio 图像 Provider、输出写入 | 不把 Provider 凭证给插件 |
-| 插件宿主 | `plugin-service.js` `plugin-install-service.js` | 插件发现、启停、命令、bridge、creator-tools | 不允许未受控 Node/Electron 访问 |
-| 本地服务 | `local-http-service.js` `mcp-transport-service.js` | loopback HTTP / MCP | 不默认暴露公网服务 |
-| 控制中心 | `src/control-center/src/` | 所有用户可操作配置界面 | 不偷存主进程机密 |
+| Shell 组装与生命周期 | `main.js`、`src/main/bootstrap/create-openpet-runtime.js`、`apps/desktop/src/sidecar/*` | 依赖装配、窗口、sidecar 启停、反向通道 | 不把 Backend 域逻辑复制到 renderer 或 route |
+| Backend 组合根 | `services/backend/index.js`、`services/backend/routes/registry.js` | route/domain/Job/SSE 装配与运行时绑定 | 不绕过 registry 把目标路由当作已实现 |
+| 宠物状态 | `src/main/services/pet-service.js` | 动作播放、说话、事件和运行时状态 | 不绕过它直接改 renderer 状态 |
+| 设置 | `services/backend/domains/settings.js`、`services/backend/routes/settings.js`、`src/main/settings-sidecar-bridge.js` | Backend canonical 写入；Shell host effects 与 FIFO deferred persistence | 不让多个进程直接写同一 settings 文件 |
+| 动作与素材 | `src/control-center/src/features/actions/api.ts`、`src/control-center/src/hooks/useActionsPane.ts`、`services/backend/domains/actions.js`、`services/backend/routes/actions.js`、`src/main/actions-sidecar-bridge.js`、`src/main/services/action-import-service.js` | HTTP/Job 负责动作请求与终态；`actions.request` 反向通道把 ActionService、素材导入、PetService 动画刷新和 trigger runtime 留在 Shell；selection 由 Shell 持有并有 TTL | 不在 Backend 直接写 `cat_anime/animations.json`，不在 route 执行 native side effect；旧 Actions IPC/preload 仍待退役验收 |
+| Pet packs | `services/backend/domains/pet-packs.js`、`services/backend/routes/pet-packs.js`、`src/main/services/pet-pack-service.js` | HTTP/Job 编排；Shell 负责 picker、资产和激活副作用 | 不在 Backend 伪造 native path/激活动作 |
+| AI 与图像 | `services/backend/routes/ai.js`、`services/backend/domains/ai/image-generation.js`、`src/main/services/ai-service.js` | 当前 Backend 只注册 AI key 与 image Job；聊天/人设等仍按实际 caller 走 Shell 旧边界 | 不把目标 AI 路由当成当前接口，不把密钥交给 renderer |
+| 插件宿主 | `services/backend/domains/plugins/index.js`、`services/backend/routes/plugins.js`、`src/main/services/plugin-service.js` | 安装、启停、Job、typed production bridge、日志和权限 | 不允许未受控 Node/Electron 访问；secret 只能由 Shell 持有 |
+| 本地服务 | `services/backend/routes/service.js`、`src/main/services/local-http-service.js`、`src/main/services/mcp-transport-service.js` | loopback HTTP / MCP | 不默认暴露公网服务 |
+| 控制中心 | `src/control-center/src/` | HTTP caller、SSE/Job 状态和用户操作 | 不复制 Backend/PetService 业务状态 |
 
 ## 4. 必须保持的工程约束
 
@@ -129,10 +152,24 @@ control-center-preload.js
 src/main/
   ipc.js
   window.js
+  bootstrap/
+  settings-sidecar-bridge.js
+  settings-persistence-queue.js
   services/
   plugins/
   pet-pack/
   pet-chat/
+
+apps/desktop/src/sidecar/
+
+services/backend/
+  routes/
+  domains/
+  jobs/
+  bridge/
+  events/
+
+packages/contracts/
 
 src/control-center/src/
   api/
@@ -169,14 +206,11 @@ docs/
 - 宠物窗口负责渲染，不负责保存真状态。
 - 动作配置来源于当前 active pet pack。
 - 导入动作时，宿主负责校验帧数、像素约束、精灵图生成和配置写入。
-- 触发提案现在已经有完整宿主闭环：
-  - 可提交到 `triggerProposalInbox`
-  - 可持久化
-  - 可在 Actions pane 审核
-  - `click` 可直接应用到 `clickAction`
-  - `manual` / `unbound` 只做确认
-  - Creator Studio 已批准导入的动作会把生成的 `triggerProposal` 自动入队
-  - `random` / `state` / `event` 仍然缺 durable host schema/editor
+- 当前 Backend `createActionService` 只做参数校验、Job 入队、`shell.request()` 和结构化结果映射；Shell `createActionsSidecarBridge` 调用真实 ActionService/actionImportService，并在成功写入后刷新 PetService 动画与 trigger runtime。
+- `POST /actions/frames/import` 返回 `202 { jobId }`；`useActionsPane.onImport()` 通过 `useJob` 等待 `succeeded/failed/canceled/interrupted` 终态，malformed succeeded result 也会显式报错。
+- `inspect-frames` 的 native directory picker 和 selection TTL 属于 Shell；clear/import/expiry 都会释放 selection timer。旧 IPC/preload 仍保留，直到 channel-retirement 和 renderer reachability 证据允许删除。
+- proposal/rule 的 HTTP 语义已经接到 Shell authority；Task 5 仍需补全其它域的同等 vertical slice，不能因此标记为全量完成。
+- `random` / `state` / `event` 仍然缺 durable host schema/editor。
 
 ### 6.2 AI 与聊天
 
@@ -228,11 +262,12 @@ docs/
 
 当前文档层面已经明确的工程缺口只有这些高优先项：
 
-1. `random` / `state` / `event` 触发规则还没有宿主持久化 schema 与编辑器。
-2. Windows 仍未达到真实签名与真实 smoke evidence 意义上的 release-ready。
-3. Creator Studio 的生成现状和剩余质量工作统一维护在 [`pet-character-generation.md`](./pet-character-generation.md)。
-4. Creator Studio 的用户流仍偏命令驱动，Dashboard-first 体验还需要继续收敛。
-5. 气泡聊天与桌面聊天的最终主次关系还需要继续产品化收口。
+1. Task 5 只有 Catalog install 完成了完整 route → domain → Job → reverse channel → Shell → UI vertical slice；Settings、Actions、Pet packs、Plugins、AI/images 的方法级矩阵和剩余验收见 `docs/superpowers/plans/2026-10-04-openpet-development-plan.md`。
+2. 当前 `Idempotency-Key` 由 Control Center client 自动附带，Backend 只允许/透传 header，没有通用服务端去重或结果缓存；没有单独证据的写操作不能宣称幂等。
+3. `random` / `state` / `event` 触发规则还没有宿主持久化 schema 与编辑器。
+4. Windows 的历史归档未通过旧的正式签名门槛；当前策略改为自签名，不购买证书或公证。Windows 目标系统安装与运行 smoke 仍待验证，自签名不得表述为 SmartScreen 或发行者可信。
+5. Creator Studio 的生成现状和剩余质量工作统一维护在 [`pet-character-generation.md`](./pet-character-generation.md)；其部分能力仍通过插件 native boundary 运行。
+6. Creator Studio 的用户流仍偏命令驱动，Dashboard-first 体验还需要继续收敛；气泡聊天与桌面聊天的最终主次关系还需要继续产品化收口。
 
 这份文档不维护长期愿景列表；更完整的待办请看 `docs/openpet-current-todo-architecture.md`。
 

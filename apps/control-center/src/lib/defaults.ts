@@ -271,7 +271,10 @@ export const defaultServiceStatus = {
     host: '127.0.0.1',
     port: 0,
     token: '',
-    logs: []
+    logs: [],
+    backendMode: 'local',
+    sshAlias: 'gz-cvm',
+    backendPort: 48330
   },
   runtime: {
     enabled: false,

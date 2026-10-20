@@ -18,8 +18,10 @@ The goal is to keep a small set of live operating docs current and treat the res
 | Machine-readable project facts | [`project-context.json`](./project-context.json) |
 | Compact engineering snapshot | [`development-summary.md`](./development-summary.md) |
 | Compact product and release snapshot | [`project-status-review.md`](./project-status-review.md) |
+| Current Shell/Backend migration development plan | [`superpowers/plans/2026-10-04-openpet-development-plan.md`](./superpowers/plans/2026-10-04-openpet-development-plan.md) |
+| Guangzhou mesh Backend deployment | [`deployment/openpet-mesh-backend.md`](./deployment/openpet-mesh-backend.md) |
 
-Use the live docs above for current truth. Phase, review, and old Superpowers plan/spec files are audit records unless this map explicitly lists them as active runbooks.
+Use the live docs above for current truth. Phase, review, and old Superpowers plan/spec files are audit records unless this map explicitly lists them as active runbooks. The 2026-10-04 migration plan is the current method-level implementation guide for Shell/Backend work; it does not replace `TODO.md` as the active queue.
 
 ## Product Areas
 

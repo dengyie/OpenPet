@@ -47,4 +47,23 @@ describe("backend Job 编排", () => {
 		assert.equal(errors.length, 1)
 		assert.equal(errors[0][1].jobId, "one")
 	})
+
+	it("cleans transient input when runner rejects synchronously during drain", async () => {
+		const { createJobDispatcher } = await import("../../services/backend/jobs/dispatcher.js")
+		const privateInputs = new Map([["sync-failure", { path: "/private/plugin" }]])
+		const errors = []
+		let pending = { id: "sync-failure", status: "running" }
+		const dispatch = createJobDispatcher({
+			privateInputs,
+			queue: {
+				enqueue() { return { id: "created", status: "queued" } },
+				next() { const value = pending; pending = null; return value },
+			},
+			runner: { run() { throw new Error("runner closed") } },
+			logger: { error(message, fields) { errors.push([message, fields]) } },
+		})
+		dispatch({ id: "created" })
+		assert.equal(privateInputs.has("sync-failure"), false)
+		assert.equal(errors.length, 1)
+	})
 })

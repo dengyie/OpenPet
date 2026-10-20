@@ -18,9 +18,11 @@ export function checksumOf(sql) {
 	return createHash("sha256").update(sql, "utf8").digest("hex")
 }
 
-export function listMigrationFiles() {
-	const migrations = readdirSync(MIGRATIONS_DIR, { withFileTypes: true })
-		.filter((entry) => entry.isFile() && entry.name.endsWith(".sql"))
+export function listMigrationFiles(directory = MIGRATIONS_DIR) {
+	const migrations = readdirSync(directory, { withFileTypes: true })
+		// macOS may add AppleDouble files (for example ._001_init.sql) when
+		// copying a source tree to an archive. They are metadata, not migrations.
+		.filter((entry) => entry.isFile() && !entry.name.startsWith(".") && entry.name.endsWith(".sql"))
 		.map((entry) => {
 			const match = entry.name.match(MIGRATION_FILE_PATTERN)
 			if (!match) {
@@ -30,7 +32,7 @@ export function listMigrationFiles() {
 			}
 
 			const version = Number.parseInt(match[1], 10)
-			const path = join(MIGRATIONS_DIR, entry.name)
+			const path = join(directory, entry.name)
 			const sql = readFileSync(path, "utf8")
 			return { version, file: entry.name, path, sql, checksum: checksumOf(sql) }
 		})

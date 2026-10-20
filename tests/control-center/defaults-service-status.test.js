@@ -25,7 +25,10 @@ test('cloneServiceStatus normalizes config logs through cloneServiceLogs', async
           method: 'GET',
           statusCode: 'oops'
         }
-      ]
+      ],
+      backendMode: 'local',
+      sshAlias: 'gz-cvm',
+      backendPort: 48330
     },
     runtime: {
       enabled: true,
@@ -50,7 +53,10 @@ test('cloneServiceStatus normalizes config logs through cloneServiceLogs', async
           remoteAddress: '127.0.0.1',
           error: ''
         }
-      ]
+      ],
+      backendMode: 'local',
+      sshAlias: 'gz-cvm',
+      backendPort: 48330
     },
     runtime: {
       enabled: true,

@@ -1443,7 +1443,16 @@ test('ai talk service exports redacted diagnostics with provider and behavior li
   await service.chat({ message: 'trace raw user prompt' })
   const exported = JSON.parse(service.exportTraceDiagnostics({
     behaviorDecisions: [
-      { id: 3, timestamp: '2026-06-20T00:00:00.000Z', matched: true, reason: 'matched provider actionId', actionId: 'wave', replay: { reply: 'raw replay' } }
+      {
+        id: 3,
+        timestamp: '2026-06-20T00:00:00.000Z',
+        matched: true,
+        reason: 'PRIVATE_REASON_SENTINEL',
+        providerReason: 'PRIVATE_PROVIDER_SENTINEL',
+        inputSummary: 'PRIVATE_SUMMARY_SENTINEL',
+        actionId: 'wave',
+        replay: { reply: 'raw replay' }
+      }
     ]
   }))
   const raw = JSON.stringify(exported)
@@ -1455,9 +1464,15 @@ test('ai talk service exports redacted diagnostics with provider and behavior li
   assert.equal(exported.conversations[0].petPackId, 'legacy-cat')
   assert.equal(exported.behaviorDecisions[0].id, 3)
   assert.equal(exported.behaviorDecisions[0].replayRedacted, true)
+  assert.equal('reason' in exported.behaviorDecisions[0], false)
+  assert.equal('providerReason' in exported.behaviorDecisions[0], false)
+  assert.equal('inputSummary' in exported.behaviorDecisions[0], false)
   assert.equal(raw.includes('trace raw user prompt'), false)
   assert.equal(raw.includes('trace raw assistant reply'), false)
   assert.equal(raw.includes('raw replay'), false)
+  assert.equal(raw.includes('PRIVATE_REASON_SENTINEL'), false)
+  assert.equal(raw.includes('PRIVATE_PROVIDER_SENTINEL'), false)
+  assert.equal(raw.includes('PRIVATE_SUMMARY_SENTINEL'), false)
 })
 
 test('ai talk service forwards trace diagnostic filters to the store export', () => {

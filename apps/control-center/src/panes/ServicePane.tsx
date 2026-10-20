@@ -40,17 +40,22 @@ const formatLogTime = (timestamp: string) => {
 export function ServicePane({ serviceStatus, logs, logsPage, status, saving, onChange, onSave, onRotateToken, onRevokeMcpSessions, onRefreshLogs, onPrevLogsPage, onNextLogsPage, onExportLogs, onClearLogs }: ServicePaneProps) {
   const config = serviceStatus.config
   const runtime = serviceStatus.runtime
+  const isRemoteBackend = config.backendMode === 'remote'
   const endpoint = runtime.enabled && runtime.port
-    ? `http://${runtime.host}:${runtime.port}/api/status`
+    ? isRemoteBackend
+      ? `广州服务器 127.0.0.1:${runtime.port}/api/status（需 SSH 转发）`
+      : `http://${runtime.host}:${runtime.port}/api/status`
     : '未启动'
   const mcpEndpoint = runtime.enabled && runtime.port
-    ? `http://${runtime.host}:${runtime.port}/mcp`
+    ? isRemoteBackend
+      ? `广州服务器 127.0.0.1:${runtime.port}/mcp（需 SSH 转发）`
+      : `http://${runtime.host}:${runtime.port}/mcp`
     : '未启动'
 
   return (
     <PaneScaffold
       title="Service"
-      description="本机 HTTP API"
+      description="Backend 连接和本地回环 HTTP API"
       actions={
         <>
           <Button variant="ghost" onClick={onRotateToken} disabled={saving}>轮换令牌</Button>
@@ -62,6 +67,18 @@ export function ServicePane({ serviceStatus, logs, logsPage, status, saving, onC
         <FieldRow label="HTTP API" note={runtime.enabled ? '运行中' : '未启动'}>
           <Toggle ariaLabel="Enable HTTP API" checked={config.enabled} onChange={(enabled) => onChange({ enabled })} />
         </FieldRow>
+
+        <label className="field-row">
+          <span className="field-label">Backend 运行位置</span>
+          <select className="text-input" value={config.backendMode || 'local'} onChange={(event) => onChange({ backendMode: event.target.value as 'local' | 'remote' })}>
+            <option value="local">本机</option>
+            <option value="remote">广州服务器（EasyTier）</option>
+          </select>
+        </label>
+        {config.backendMode === 'remote' ? <>
+          <label className="field-row"><span className="field-label">SSH alias</span><input className="text-input" value={config.sshAlias || 'gz-cvm'} onChange={(event) => onChange({ sshAlias: event.target.value })} /></label>
+          <label className="field-row"><span className="field-label">远端 host 端口</span><input className="text-input" type="number" min="1" max="65535" value={config.backendPort || 48330} onChange={(event) => onChange({ backendPort: Number(event.target.value) })} /></label>
+        </> : null}
 
         <FieldRow label="监听地址" note="固定为本机回环地址">
           <input className="text-input" value="127.0.0.1" disabled />
@@ -79,9 +96,9 @@ export function ServicePane({ serviceStatus, logs, logsPage, status, saving, onC
           />
         </label>
 
-        <ReadonlyRow label="当前端点" value={endpoint} mono />
+        <ReadonlyRow label={isRemoteBackend ? '远端回环端点' : '当前端点'} value={endpoint} mono />
         <ReadonlyRow label="访问令牌" value={config.token || '启用服务后生成'} mono />
-        <ReadonlyRow label="MCP" value={mcpEndpoint} mono />
+        <ReadonlyRow label={isRemoteBackend ? '远端 MCP' : 'MCP'} value={mcpEndpoint} mono />
 
         <div className="readonly-row">
           <span>MCP Sessions</span>

@@ -9,7 +9,7 @@ import { createServer } from "node:http"
 import { randomBytes } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { createRequire } from "node:module"
-import { dirname, join } from "node:path"
+import { dirname, join, relative, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 import { EVENT_BACKEND_SHUTTING_DOWN, EVENT_PET_PACK_ACTIVATED, SETTINGS_CANONICAL_PATHS, SETTINGS_TRUSTED_PATHS } from "@openpet/contracts"
 
@@ -20,15 +20,17 @@ import {
 	cors,
 	createAccessLogBuffer,
 	errorBoundary,
-	jsonBody,
+	backendJsonBody,
 	loopbackOnly,
 	requestId,
 } from "./http/middleware.js"
+import { ApiError } from "./http/middleware.js"
 import { createShellClient } from "./bridge/shell-client.js"
 import { createPluginRuntimeServer } from "./bridge/plugin-runtime-server.js"
 import { createPluginCommandServer } from "./bridge/plugin-command-server.js"
 import { createProviderKeyStore } from "./secrets/provider-keys.js"
 import { createSettingsStore } from "./domains/settings.js"
+import { createSettingsCommands } from "./domains/settings-commands.js"
 import { createAboutService } from "./domains/about.js"
 import { createLocalHttpManager } from "./domains/local-http.js"
 import { createPetPackService } from "./domains/pet-packs.js"
@@ -63,12 +65,14 @@ import { migrate } from "./store/migrate.js"
 import { migrateFromJson, needsJsonImport } from "./store/migrate-from-json.js"
 import { createJobsRepository } from "./store/repositories/jobs.js"
 import { createLogsRepository } from "./store/repositories/logs.js"
-import { createPluginJobHandlers, createImageJobHandlers } from "./jobs/handlers/index.js"
+import { createPluginJobHandlers, createImageJobHandlers, createHatchJobHandlers } from "./jobs/handlers/index.js"
 import { createCreatorDomain } from "./domains/creator/index.js"
 import { createCreatorJobHandlers } from "./jobs/handlers/creator.js"
 import { registerCreatorRoutes } from "./routes/creator.js"
 const require = createRequire(import.meta.url)
 const { normalizeNetworkRequest, requestPluginNetwork } = require("../../apps/desktop/src/services/plugin-network-client.js")
+const { createHatchPetAgentService } = require("../../apps/desktop/src/services/hatch-pet-agent-service.js")
+const fs = require("node:fs")
 
 const packageJson = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../package.json"), "utf8"))
 
@@ -157,7 +161,7 @@ if (typeof process.send !== "function") {
 }
 
 const shell = createShellClient({
-	send: (envelope) => process.send(envelope),
+	send: (envelope, callback) => process.send(envelope, callback),
 	exit: (code) => process.exit(code),
 	logger,
 })
@@ -172,6 +176,8 @@ const initPromise = shell.waitFor("init", { timeoutMs: INIT_TIMEOUT_MS })
 
 deliver = (raw) => shell.receive(raw)
 for (const raw of inbox.splice(0)) shell.receive(raw)
+
+const privateInputs = new Map()
 
 const runtime = {
 	sessionToken: randomBytes(32).toString("hex"),
@@ -201,6 +207,35 @@ const runtime = {
 	enqueueJob: null,
 	ai: null,
 	creator: null,
+	hatchAgent: null,
+}
+
+function containedFile(root, candidate, label) {
+	const realRoot = fs.realpathSync.native(resolve(root))
+	const target = resolve(candidate)
+	if (!fs.existsSync(target) || !fs.statSync(target).isFile()) throw new ApiError("VALIDATION_FAILED", `${label} is missing`)
+	const realTarget = fs.realpathSync.native(target)
+	const rel = relative(realRoot, realTarget)
+	if (!rel || rel.startsWith("..") || rel.split(sep)[0] === ".." || resolve(realRoot, rel) !== realTarget) {
+		throw new ApiError("PERMISSION_DENIED", `${label} must stay inside the plugin data directory`)
+	}
+	return realTarget
+}
+
+function containedRelative(root, value, label) {
+	const raw = String(value || "").trim().replaceAll("\\", "/")
+	if (!raw || raw.startsWith("/") || raw.split("/").includes("..") || /^[A-Za-z]:\//.test(raw)) {
+		throw new ApiError("VALIDATION_FAILED", `${label} is invalid`)
+	}
+	const rootPath = resolve(root)
+	const target = resolve(rootPath, raw)
+	const rel = relative(rootPath, target)
+	if (!rel || rel.startsWith("..") || pathIsOutside(rootPath, target)) throw new ApiError("PERMISSION_DENIED", `${label} must stay inside the plugin data directory`)
+	return raw
+}
+
+function pathIsOutside(root, target) {
+	return target !== root && !target.startsWith(`${root}${sep}`)
 }
 
 const initEnvelope = await initPromise.catch((error) => {
@@ -230,6 +265,11 @@ runtime.userDataDir = initEnvelope.body.userDataDir ?? null
 runtime.legacyToken = initEnvelope.body.legacyToken ?? null
 runtime.appInfo = initEnvelope.body.appInfo ?? {}
 const legacyLocalHttpConfig = initEnvelope.body.localHttpConfig ?? { enabled: false, host: "127.0.0.1", port: 0 }
+const requestedHttpPort = initEnvelope.body.httpPort ?? 0
+if (!Number.isInteger(requestedHttpPort) || requestedHttpPort < 0 || requestedHttpPort > 65_535) {
+	logger.error("init 中的 Backend HTTP 端口无效", { code: "INVALID_HTTP_PORT" })
+	process.exit(EXIT_INIT_TIMEOUT)
+}
 
 const accessLogs = createAccessLogBuffer({ max: 200 })
 const router = createRouter({ basePath: "/api/v1" })
@@ -251,7 +291,7 @@ router.use(
 		getSessionToken: () => runtime.sessionToken,
 	}),
 )
-router.use(jsonBody())
+router.use(backendJsonBody())
 
 // 03 篇 §4.1。注意 /health 也在 bearerAuth 之后 —— 未鉴权一律 401,不设例外。
 registerHealthRoutes({
@@ -277,6 +317,7 @@ const settingsMutationAuthority = createSettingsMutationAuthority({ store: runti
 registerSettingsRoutes({
 	router,
 	store: runtimeSettingsStore,
+	commands: createSettingsCommands({ shell }),
 	mutationCoordinator: settingsMutationCoordinator,
 	mutationAuthority: settingsMutationAuthority,
 	awaitHostApply: async ({ paths, version }) => {
@@ -321,13 +362,37 @@ const aiHostRequest = async (operation, payload = {}) => {
 }
 registerAiRuntimeRoutes(router, {
 	getDomain: () => runtime.aiChat,
+	getImageDomain: () => runtime.ai,
+	shell,
+	secrets: runtime.secrets,
+	jobs: { insert: (input) => {
+		if (!runtime.enqueueJob) throw new ApiError("BACKEND_UNAVAILABLE", "Job service unavailable")
+		return runtime.enqueueJob(input)
+	} },
 	present: (result, context) => aiHostRequest("present", { result, context }),
 	getActions: async () => (await aiHostRequest("context")).actions,
 })
 registerAiRoutes(router, { jobs: { insert: (input) => {
 		if (!runtime.enqueueJob) throw new Error("Job service unavailable")
 		return runtime.enqueueJob(input)
-	} } })
+	} }, ai: {
+		getConfig: (...args) => {
+			if (!runtime.ai?.getConfig) throw new ApiError("BACKEND_UNAVAILABLE", "Image AI service unavailable")
+			return runtime.ai.getConfig(...args)
+		},
+		saveConfig: (...args) => {
+			if (!runtime.ai?.saveConfig) throw new ApiError("BACKEND_UNAVAILABLE", "Image AI service unavailable")
+			return runtime.ai.saveConfig(...args)
+		},
+		saveProviderApiKey: (...args) => {
+			if (!runtime.ai?.saveProviderApiKey) throw new ApiError("BACKEND_UNAVAILABLE", "Image AI service unavailable")
+			return runtime.ai.saveProviderApiKey(...args)
+		},
+		clearProviderApiKey: (...args) => {
+			if (!runtime.ai?.clearProviderApiKey) throw new ApiError("BACKEND_UNAVAILABLE", "Image AI service unavailable")
+			return runtime.ai.clearProviderApiKey(...args)
+		},
+	} })
 runtime.catalog = createCatalogService({
 	root: join(dirname(fileURLToPath(import.meta.url)), "../.."),
 	db: runtime.db,
@@ -342,12 +407,14 @@ registerCatalogRoutes(router, {
 runtime.petPacks = createPetPackService({
 	shell,
 	jobs: { insert: (input) => runtime.enqueueJob?.(input) },
+	logger,
 })
 registerPetPackRoutes(router, { packs: runtime.petPacks })
 runtime.actions = createActionService({
 	shell,
 	jobs: { insert: (input) => runtime.enqueueJob?.(input) },
 	emit: (name, payload) => eventHub.publish(name, payload),
+	logger,
 })
 registerActionRoutes(router, { actions: runtime.actions })
 
@@ -384,9 +451,73 @@ await initializeBackendRuntime({
 		createJobsRepository,
 		createLogsRepository,
 		recoverJobs: (options) => recoverJobs({ ...options, requeueRecovered: false }),
+		emit: (name, payload) => eventHub.publish(name, payload),
 		initializePlugins: () => {
 			let runtimeBridgeServer
 			const processLedger = createProcessLedger({ userDataDir: runtime.userDataDir, logger })
+			const creatorDataDir = (pluginId) => {
+				if (!runtime.plugins?.runtimeDirs) throw new ApiError("BACKEND_UNAVAILABLE", "Creator plugin data directory is unavailable")
+				return runtime.plugins.runtimeDirs(pluginId).dataDir
+			}
+			const hatchAgent = () => {
+				if (runtime.hatchAgent) return runtime.hatchAgent
+				if (!runtime.aiChat || !runtime.settings || !runtime.secrets) throw new ApiError("BACKEND_UNAVAILABLE", "Hatch-pet AI service is unavailable")
+				runtime.hatchAgent = createHatchPetAgentService({
+					aiService: {
+						completeStructuredTool: ({ signal, configOverride: _ignored, ...request } = {}) => runtime.aiChat.complete({ method: "completeStructuredTool", capability: "hatch-pet", request }, { signal }),
+					},
+					configuration: {
+						getAiConfig: () => runtime.settings.read().values.ai || {},
+						getConfig: () => runtime.aiChat.getHatchConfig(),
+						saveConfig: (config) => { runtime.aiChat.saveConfig({ hatchPet: config }); return runtime.aiChat.getHatchConfig() },
+						saveApiKey: async (value) => { const result = await runtime.secrets.set("ai.hatch-pet", value); runtime.aiChat.publishSnapshot(); return { apiKeyRef: "ai.hatch-pet", hasApiKey: result.configured === true, updatedAt: new Date().toISOString() } },
+						clearApiKey: async () => { await runtime.secrets.clear("ai.hatch-pet"); runtime.aiChat.publishSnapshot(); return { apiKeyRef: "ai.hatch-pet", hasApiKey: false, updatedAt: new Date().toISOString() } },
+					},
+					pluginService: { getPluginCreatorDataDir: creatorDataDir },
+					appLogService: { record: (entry) => logger?.[entry.level || "info"]?.(entry.message, entry.details) },
+				})
+				return runtime.hatchAgent
+			}
+			const creatorBridge = {
+				modelSettings: (pluginId) => {
+					if (!runtime.ai?.getConfig) throw new ApiError("BACKEND_UNAVAILABLE", "Image model settings are unavailable")
+					const config = runtime.ai.getConfig()
+					return { ok: true, config: { provider: config.provider, baseUrl: config.baseUrl, model: config.model, organization: config.organization, project: config.project, timeoutMs: config.timeoutMs, maxConcurrentJobs: config.maxConcurrentJobs, hasApiKey: config.hasApiKey, modelCatalog: config.modelCatalog, creatorWorkflowModelPolicy: config.creatorWorkflowModelPolicy } }
+				},
+				modelHealthCheck: (_pluginId, { signal } = {}) => runtime.ai.checkHealth({ signal }),
+				modelImageGenerate: async (pluginId, payload = {}, { signal } = {}) => {
+					if (!runtime.ai?.generateImage) throw new ApiError("BACKEND_UNAVAILABLE", "Image model generation is unavailable")
+					const dataDir = creatorDataDir(pluginId)
+					const output = payload.output && typeof payload.output === "object" ? payload.output : {}
+					const dataRelativeDir = containedRelative(dataDir, output.dataRelativeDir, "Creator image output")
+					const referenceImages = Array.isArray(payload.referenceImages) ? payload.referenceImages.map((reference) => ({
+						...reference,
+						path: containedFile(dataDir, reference?.path, "Creator reference image"),
+					})) : []
+					return runtime.ai.generateImage({
+						...payload,
+						provider: undefined,
+						baseUrl: undefined,
+						apiKeyRef: undefined,
+						model: undefined,
+						referenceImages,
+						referenceDataDir: dataDir,
+						output: { dataDir, dataRelativeDir },
+						signal,
+					})
+				},
+				hatchPetPlan: async (_pluginId, payload, { signal } = {}) => hatchAgent().planSprite({ runId: String(payload?.runId || ""), userIntent: String(payload?.userIntent || ""), signal }),
+				hatchPetEvaluate: async (pluginId, payload, { signal } = {}) => {
+					const dataDir = creatorDataDir(pluginId)
+					const board = payload?.board && typeof payload.board === "object" ? payload.board : {}
+					const boardPath = containedFile(dataDir, resolve(dataDir, String(board.relativePath || "")), "Creator review board")
+					return hatchAgent().evaluateSprite({
+						runId: String(payload?.runId || ""), scope: String(payload?.scope || ""),
+						board: { path: boardPath, relativePath: String(board.relativePath || ""), sha256: String(board.sha256 || ""), regions: Array.isArray(board.regions) ? board.regions : [] },
+						qa: payload?.qa && typeof payload.qa === "object" ? payload.qa : {}, signal,
+					})
+				},
+			}
 			const pluginFacade = {
 				get: (id) => runtime.plugins?.get?.(id),
 				definition: (id) => runtime.plugins?.definition?.(id),
@@ -400,6 +531,7 @@ await initializeBackendRuntime({
 					shell,
 					plugins: pluginFacade,
 					settings: runtime.settings,
+					creator: creatorBridge,
 				jobs: { insert: (input) => runtime.enqueueJob(input) },
 				logs: { appendPlugin: (entry) => runtime.plugins.appendLog(entry) },
 				network: {
@@ -436,7 +568,19 @@ await initializeBackendRuntime({
 			})
 		},
 	},
-	bind: () => new Promise((resolve) => server.listen(0, "127.0.0.1", resolve)),
+	bind: () => new Promise((resolve, reject) => {
+		const onError = (error) => {
+			server.removeListener("listening", onListening)
+			reject(error)
+		}
+		const onListening = () => {
+			server.removeListener("error", onError)
+			resolve()
+		}
+		server.once("error", onError)
+		server.once("listening", onListening)
+		server.listen(requestedHttpPort, "127.0.0.1")
+	}),
 })
 
 if (!runtime.degraded && runtime.jobs) {
@@ -449,11 +593,22 @@ if (!runtime.degraded && runtime.jobs) {
 		fetchImpl: globalThis.fetch, logger,
 	})
 		runtime.ai = createAiService({ settings: runtime.settings, secrets: runtime.secrets, fetchImpl: globalThis.fetch, logger, userDataDir: runtime.userDataDir })
-		runtime.queue = createQueue({ repo: runtime.jobs, logger })
+		runtime.queue = createQueue({
+			repo: runtime.jobs,
+			logger,
+			onJobTerminal: (job) => {
+				if (job?.kind?.startsWith("creator.") || job?.kind?.startsWith("sprite.")) {
+					runtime.creator?.forgetJobInput?.(job.id)
+				}
+			},
+		})
 		runtime.creator = createCreatorDomain({
 		db: runtime.db,
 		shell,
+		ai: runtime.ai,
 		enqueueJob: (input) => runtime.enqueueJob?.(input),
+		runPluginCommand: (command, payload, context = {}) => runtime.plugins?.runCreatorBackendCommand?.(command, payload, context),
+		creatorDataDir: (pluginId) => runtime.plugins?.runtimeDirs?.(pluginId)?.dataDir,
 		emit: (name, payload) => eventHub.publish(name, payload),
 		logger,
 	})
@@ -463,6 +618,20 @@ if (!runtime.degraded && runtime.jobs) {
 		logger,
 		emit: (name, payload) => eventHub.publish(name, payload),
 		tmpRoot: runtime.tmpDir ?? join(runtime.userDataDir, "backend", "tmp"),
+		takePrivateInput: (jobId) => {
+			const value = privateInputs.get(jobId)
+			privateInputs.delete(jobId)
+			return value
+		},
+		forgetPrivateInput: (jobId) => {
+			privateInputs.delete(jobId)
+			runtime.creator?.forgetJobInput?.(jobId)
+		},
+		onQueuedCancel: async (job, privateInput) => {
+			if (job.kind === "actions.import-frames" && typeof privateInput?.selectionId === "string") {
+				await runtime.actions.clearSelection({ selectionId: privateInput.selectionId })
+			}
+		},
 		handlers: {
 			"about.check-updates": async ({ report }) => { report({ phase: "checking", percent: 25 }); return runtime.about.checkUpdates() },
 			"catalog.install": async ({ job, report, signal, finalize }) => {
@@ -472,13 +641,14 @@ if (!runtime.degraded && runtime.jobs) {
 			},
 			"pet-pack.import": async ({ job, report, signal, finalize }) => runtime.petPacks.runImport({ ...job.input, signal, report, finalize }),
 			"pet-pack.export": async ({ job, report, signal, finalize }) => runtime.petPacks.runExport({ ...job.input, signal, report, finalize }),
-			"actions.import-frames": async ({ job, report, signal, finalize }) => runtime.actions.runImportFrames({ ...job.input, signal, report, finalize }),
+			"actions.import-frames": async ({ job, privateInput, report, signal, finalize }) => runtime.actions.runImportFrames({ ...(privateInput ?? job.input), signal, report, finalize }),
 			...createPluginJobHandlers({
 				db: runtime.db,
 				plugins: runtime.plugins,
 				logger,
 			}),
 				...createImageJobHandlers({ ai: runtime.ai }),
+				...createHatchJobHandlers({ shell, logger }),
 				...createCreatorJobHandlers({ creator: runtime.creator }),
 			},
 	})
@@ -487,6 +657,7 @@ if (!runtime.degraded && runtime.jobs) {
 		runner: runtime.runner,
 		publish: (name, payload) => eventHub.publish(name, payload),
 		logger,
+		privateInputs,
 	})
 	// Recovery already persisted queued jobs. Enqueue by id so the queue does
 	// not attempt to insert an existing SQLite row a second time.
@@ -500,7 +671,12 @@ if (!runtime.degraded && runtime.jobs) {
 	runtime.enqueueJob = () => { throw new Error("Job service unavailable") }
 }
 
-registerJobRoutes(router, { jobs: runtime.jobs ?? { byId: () => null }, runner: runtime.runner, dispatcher: runtime.enqueueJob })
+registerJobRoutes(router, {
+	jobs: runtime.jobs ?? { byId: () => null },
+	runner: runtime.runner,
+	dispatcher: runtime.enqueueJob,
+	canRetryJob: (job) => !(job?.kind?.startsWith("creator.") || job?.kind?.startsWith("sprite.")) || Boolean(runtime.creator?.getJobInput?.(job.id, null)),
+})
 if (runtime.creator) registerCreatorRoutes(router, { creator: runtime.creator })
 // Plugin domain initializes after the HTTP listener is assembled. Keep route
 // handlers bound to the current runtime service instead of the initial null.

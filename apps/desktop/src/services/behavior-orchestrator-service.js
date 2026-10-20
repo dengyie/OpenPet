@@ -136,9 +136,16 @@ const createStoredDecision = (payload, decision) => {
 }
 
 const redactDecisionForExport = (decision) => {
-  const { replay: _replay, ...safeDecision } = normalizeDecision(decision)
+  const safeDecision = normalizeDecision(decision)
+  const timestamp = Date.parse(safeDecision.timestamp)
   return {
-    ...safeDecision,
+    id: safeDecision.id,
+    timestamp: Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : '',
+    matched: safeDecision.matched,
+    type: ['say', 'playAction', 'setEvent'].includes(safeDecision.type) ? safeDecision.type : '',
+    displayMode: safeDecision.displayMode,
+    cooldown: safeDecision.cooldown,
+    fallback: safeDecision.fallback,
     replayRedacted: true
   }
 }

@@ -2,6 +2,8 @@
 
 > 🔌 本篇是前后端并行开发的唯一依据。契约未定稿前不得开始写业务代码。当前 87 个 IPC 通道的去向已在本篇逐域定义。
 
+当前运行时注册基线为 **136 条已注册路由、149 条契约路由行**；§4 的未注册行会明确标为目标或 blocked。
+
 ## 1. 协议基础
 
 | 项 | 值 |
@@ -13,7 +15,7 @@
 | 推送 | SSE,`GET /api/v1/events` |
 | 反向调用 | Node `child_process` fork 消息通道(不过 HTTP) |
 | 版本策略 | 路径内嵌 `v1`;破坏性变更 → `v2` 并行一个大版本 |
-| 幂等 | 所有写操作支持可选 `Idempotency-Key` 头 |
+| 幂等 | Control Center 写请求会自动附带可选 `Idempotency-Key`；服务端是否去重必须按端点确认 |
 
 ### 1.1 请求头约定
 
@@ -22,20 +24,32 @@
 | `Authorization` | 是 | `Bearer <sessionToken>` |
 | `Content-Type` | 写操作时是 | `application/json` |
 | `X-Request-Id` | 否 | 前端可传,不传则后端生成 |
-| `Idempotency-Key` | 否 | 对安装/导入/生成类强烈建议传 |
+| `Idempotency-Key` | 否 | client 会为写请求生成；Backend 当前只允许/透传 header，未提供通用去重或结果缓存 |
 | `X-Client` | 否 | `control-center` / `pet-window` / `mcp` |
 
 ### 1.2 端口发现与就绪门禁
 
 后端用 `listen(0)` 由系统分配端口,因此 **Base URL 在后端启动完成前根本不存在**。前端必须走下面的门禁,不得假设端口已知:
 
-1. Shell fork sidecar,sidecar 绑定端口成功后发 `ready` 消息(含 `port`、`apiVersion`、`pid`)。
-2. Shell 收到 `ready` 后,才把 `port` 与 `sessionToken` 注入渲染进程(`openpetShell.getBackend()`)。
+1. Shell 先 fork sidecar 并发送 `init`; Backend 完成初始化、监听回环端口后发 `ready` 消息(含 `port`、`apiVersion: "v1"`、`pid`、`sessionToken`、`startupMs`)。Shell 对信封 id、时间戳和 ready 字段做严格校验。
+2. Shell 收到完整 `ready` 后,才把 `port` 与 `sessionToken` 注入渲染进程(`openpetShell.getBackend()`)。
 3. 渲染进程首帧时 `getBackend()` 返回 `null`,这是**正常初始态,不是错误**。
 4. api client 在 `null` 状态下把请求排队(上限 50 条 / 10 秒),收到 `onBackendChanged` 后统一冲刷。
 5. 超过 10 秒仍未就绪 → 进入降级 UI,停止排队并丢弃队列。
 
 > ⚠️ **这是每次冷启动都会发生的竞态,不是低概率风险。** Control Center 窗口的渲染速度快于 sidecar 的端口绑定,若前端直接发请求必然拿到空端口。排队 + 门禁是强制要求,不是优化项。
+
+### 1.3 幂等边界（当前实现）
+
+`src/control-center/src/api/client.ts` 会为写请求自动生成 `Idempotency-Key`；
+`services/backend/http/middleware.js` 只负责允许和透传该 header。当前 Backend
+没有通用的幂等键存储、请求去重或结果重放机制，因此不能据此宣称所有写操作
+在服务端具备幂等保障。
+
+只有 endpoint 自己实现并测试了去重语义，才可以在该 endpoint 的文档中写“幂等”。
+安装、导入、生成和会触发 Shell/native side effect 的 Job 创建调用默认使用
+`retry: false`，避免在没有服务端去重时自动重发导致重复执行。`Idempotency-Key`
+仍可用于日志关联和未来按 endpoint 增量实现去重，但它本身不是重复执行保护。
 
 ## 2. 统一响应包装
 
@@ -126,6 +140,7 @@
 | GET | `/service/status` | `SERVICE_GET_STATUS` | 含端口、enabled、内存、活跃 Job 数 |
 | POST | `/service/enable` | `SERVICE_SET_ENABLED` | 开关对外 MCP/HTTP |
 | POST | `/service/token/rotate` | `SERVICE_ROTATE_TOKEN` | 仅轮换 MCP token |
+| POST | `/service/token/revoke-sessions` | `SERVICE_REVOKE_MCP_SESSIONS` | 撤销当前全部 MCP session,不轮换 token |
 | GET | `/service/logs` | `SERVICE_GET_LOGS` | 分页,从 SQLite 读 |
 | DELETE | `/service/logs` | `SERVICE_CLEAR_LOGS` | 清空 |
 | GET | `/service/config` | `SERVICE_GET_CONFIG` | 不返回 token 明文 |
@@ -142,11 +157,11 @@
 | --- | --- | --- | --- |
 | GET | `/settings` | — | 全量读,已脱敏 |
 | PATCH | `/settings` | — | **改为部分更新**,带 `ifVersion` 乐观锁 |
-| POST | `/settings/cursor/import` | `SETTINGS_IMPORT_CURSOR` | 传路径(弹框在 Shell) |
-| POST | `/settings/preview-scale` | `SETTINGS_PREVIEW_SCALE` | 预览 |
-| GET | `/settings/schema` | 新增 | 前端动态渲染用 |
+| POST | `/settings/cursor/import` | `SETTINGS_IMPORT_CURSOR` | Backend 仅发起无路径 Shell 命令；原生选择器和文件导入由 Shell 持有，结果使用固定 DTO 校验 |
+| POST | `/settings/preview-scale` | `SETTINGS_PREVIEW_SCALE` | 验证 0.5–1.5 缩放值后经 Shell 预览，不写入持久设置 |
+| GET | `/settings/schema` | 新增 | 返回版本化可写路径、可信路径、缩放边界和光标导入约束 |
 
-> 🔑 **关键变更:`SETTINGS_SAVE` 不得直译为 `PUT /settings`。** 现状是全量读-改-写,在多进程下会丢写。必须改为 `PATCH` + 版本号乐观锁,冲突返 `409 CONFLICT`。
+> 五条 Settings 路由均已注册。持久写入使用 PATCH + 版本号乐观锁，冲突返回 409 CONFLICT；预览不持久化，导入不接受客户端路径。
 
 ### 4.3 宠物(仅读 + 反向驱动)
 
@@ -189,16 +204,16 @@
 | DELETE | `/pet-packs/{id}` | `pet-packs:remove`（T42 退休） |
 | POST | `/pet-packs/{id}/export` | `pet-packs:export`（T42 退休） → **Job** |
 | GET | `/pet-packs/{id}/manifest` | `pet-packs:list`（T42 退休） |
-| POST | `/pet-packs/validate` | `pet-packs:clear-selection`（T42 退休） |
+| POST | `/pet-packs/validate` | `pet-packs:inspect-directory`（cutover；Shell 原生选择器）/ `pet-packs:clear-selection`（T42 退休） |
 
-本表 7 条路由；Pet Pack 的 9 个历史通道中仅 `pet-packs:inspect-directory` 留在 IPC，其余 8 个已在 T42 同一提交退休。`pet-packs:active-changed` 与 `control-center:active-pet-pack-changed` 是事件通道，迁移后由 SSE `pet.pack-activated` 承担。
+本表 7 条路由。`POST /pet-packs/validate` 仅接受 `{ operation: "pick" }` 或 `{ operation: "clear-selection", selectionId }`；选择路径由 Shell 原生对话框持有，HTTP 不接受 renderer 提交的本地路径。Pet Pack 的 9 个历史通道中，`pet-packs:inspect-directory` 已有 HTTP cutover，但兼容 IPC 暂留待可达性证明；其余 8 个已在 T42 同一提交退休。`pet-packs:active-changed` 与 `control-center:active-pet-pack-changed` 是事件通道，迁移后由 SSE `pet.pack-activated` 承担。
 
 ### 4.6 AI
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/ai/config` | 不含密钥明文 |
 | GET | `/ai/state` | 当前宠物的只读配置、人设和会话快照 |
+| GET | `/ai/config` | 不含密钥明文 |
 | PATCH | `/ai/config` | 部分更新 |
 | PUT | `/ai/providers/{id}/key` | **只写**,返 `{ configured, maskedTail }` |
 | DELETE | `/ai/providers/{id}/key` | 清除 |
@@ -206,13 +221,12 @@
 | GET | `/ai/providers/{id}/models` | 模型目录 |
 | GET · PUT | `/ai/persona` | 人设 |
 | POST | `/ai/persona/draft` | 生成人设草稿 |
-| GET · POST · DELETE | `/ai/memories` · `/{id}` | 记忆 |
-| DELETE | `/ai/memories` | 清空当前宠物记忆 |
+| GET · POST · DELETE | `/ai/memories` | 记忆与清空当前宠物记忆 |
+| DELETE | `/ai/memories/{id}` | 删除单条记忆 |
 | POST | `/ai/chat` | **SSE 流式**(`Accept: text/event-stream`) |
 | POST | `/ai/chat/{id}/cancel` | 取消活动或排队的对话请求 |
 | GET · DELETE | `/ai/conversations` · `/{id}` | 对话 |
 | GET | `/ai/conversations/{id}` | 指定会话消息 |
-| POST | `/ai/talk/start` · `/ai/talk/stop` | 主动搭话 |
 | GET · POST | `/ai/behavior/rules` | 行为规则列表与创建 |
 | PATCH · DELETE | `/ai/behavior/rules/{id}` | 行为规则更新与删除 |
 | GET · PATCH | `/ai/behavior` | 行为配置 |
@@ -221,17 +235,30 @@
 | POST | `/ai/behavior/replay` | 决策重放 |
 | POST | `/ai/behavior/diagnostics` | 导出行为诊断 |
 | DELETE | `/ai/behavior/decisions` | 清空行为决策 |
-| GET · POST | `/ai/traces` · `/ai/traces/export` | 诊断 |
+| GET | `/ai/traces` | 诊断 |
+| POST | `/ai/traces/export` | 导出诊断 |
 | POST | `/ai/traces/diagnostics` | 导出筛选后的 AI 诊断 |
 | POST | `/ai/utterances` | 记录 PetService 已呈现的话语 |
 | POST | `/ai/entrypoints/chat` | 插件等入口的对话 |
 | POST | `/ai/completions` | 后端按能力解析配置；拒绝调用方 configOverride、密钥引用与 signal 字段 |
+| GET | `/ai/hatch/agents` | 孵化 Agent 目录 |
 | GET · PATCH | `/ai/hatch/config` | 孵化设置与有效模型；固定 ai.hatch-pet 密钥引用 |
-| GET · POST | `/ai/hatch/agents` · `/ai/hatch/start` | 孵化 → **Job** |
+| PUT · DELETE | `/ai/hatch/key` | 孵化 Provider API Key 的写入与清除 |
+| POST | `/ai/hatch/capability` | 孵化能力检查 |
+| GET | `/ai/hatch/runs/{runId}` | 查询孵化运行状态 |
+| POST | `/ai/hatch/start` | 孵化 → **Job** |
 | GET | `/ai/hatch/budget` | 预算账本 |
 | POST | `/ai/images/generate` | → **Job**(265s) |
+| POST | `/ai/images/web-generate` | 网页图片生成 → **Job**；参考图只接受受限 Base64，输出固定到 `creator-web/` |
+| GET | `/ai/images/preview` | 受控预览 `creator-web/` 下的 Backend 生成图片 |
+| GET · PATCH | `/ai/images/config` | 图片 Provider 脱敏配置读写（已注册；不接受 `apiKeyRef` 等 owner 字段） |
+| PUT · DELETE | `/ai/images/key` | 图片 API Key 写入/清除；Shell 持久化成功后才返回，仅包含引用和脱敏预览 |
 | GET | `/ai/images/health` | provider 健康 |
 | GET | `/ai/images/models` | 图像模型目录 |
+
+AI HTTP 路由逐条拒绝未声明的 query 字段和重复 query key。Provider key 响应由 HTTP 边界生成固定的脱敏 DTO；密钥值只用于等待 Shell 持久化和计算末尾掩码，不序列化 secret store 的返回对象。
+
+当前 AI 目标路由均已进入运行时 registry。Control Center 运行时已将配置、密钥、Persona、Memory、聊天、对话、Trace、行为配置/规则/dry-run/replay/export/clear 及图片配置/密钥/健康/模型探测接入 Backend；桌面图片生成与网页图片生成均通过 `image.generate` Job，网页结果固定存放在 `creator-web/` 并由 preview 路由受控读取。Hatch 启动仍需在 Job runner 中完成 Shell 侧最终副作用验证。Hatch 配置、密钥、capability、run 状态和 Behavior 诊断已通过同一 typed AI reverse channel 接入，旧 IPC 仅保留兼容入口。
 
 ### 4.7 插件
 
@@ -260,19 +287,22 @@
 
 ### 4.8 Creator Studio
 
+> Creator routes are registered in the runtime registry through `services/backend/routes/creator.js` and `services/backend/index.js`. Route registration does not claim real provider or account acceptance. Web requests with `backend: "web"` enqueue the full quality-first Creator flow on Backend, including generated identity image, mandatory identity review, action generation/QA, retries, recovery evidence, and reviewable package. Desktop Shell remains the authority for importing and activating a pet into the local library.
+
 | 方法 | 路径 | Job |
 | --- | --- | --- |
 | GET | `/creator/flows` | |
 | POST · PATCH · DELETE | `/creator/flows` · `/{id}` | |
 | GET | `/creator/state` | Creator Studio 状态快照 |
 | GET | `/creator/last-run` | 最近一次 Creator 运行摘要 |
-| POST | `/creator/characters/generate` | ✅ 265s |
-| POST | `/creator/sprites/generate` | ✅ |
-| POST | `/creator/sprites/evaluate` | ✅ |
+| POST | `/creator/characters/generate` | Job `creator.character` |
+| POST | `/creator/sprites/generate` | Job `sprite.generate` |
+| POST | `/creator/sprites/evaluate` | Job `sprite.evaluate` |
 | GET · POST · DELETE | `/creator/references` | |
-| POST | `/creator/workflows/{id}/run` | ✅ |
+| POST | `/creator/references/upload` | Shell-owned image upload and one-use reference token |
+| POST | `/creator/workflows/{id}/run` | Job `creator.workflow` |
 | GET | `/creator/workflows/{id}/artifacts` | |
-| POST | `/creator/export` | ✅ |
+| POST | `/creator/export` | Job `creator.export` |
 | GET | `/creator/assets/preview` | |
 | POST | `/creator/runs/{id}/retry-action` | ✅ |
 | POST | `/creator/runs/{id}/retry-identity` | ✅ |
@@ -310,7 +340,7 @@
 
 ### 4.11 当前实现注册表（T39）
 
-`services/backend/routes/registry.js` 是当前已实现 REST 路由的可执行登记表；它与各 `register*Routes` 的运行时注册结果均为 **133 条 method/path**。`check:api-contract` 会展开 §4.1–§4.10 的紧凑方法/路径单元格，并按规范化参数路径逐条比较这 133 条，而不是只比较总数。§4 的其余目标路由仍保留在契约表中，待对应域实现后加入登记表。
+`services/backend/routes/registry.js` 是当前已实现 REST 路由的可执行登记表；它与各 `register*Routes` 的运行时注册结果均为 **136 条 method/path**。§4 当前列出 **149 条契约路由行**，包括目标或 blocked 行。`check:api-contract` 会展开 §4.1–§4.10 的紧凑方法/路径单元格，并按规范化参数路径逐条比较这 136 条，而不是只比较总数。§4 的其余目标路由仍保留在契约表中，待对应域实现后加入登记表。
 
 SSE 不属于上述 REST 登记子集，但仍是 API 路由的一部分：
 
@@ -318,7 +348,7 @@ SSE 不属于上述 REST 登记子集，但仍是 API 路由的一部分：
 | --- | --- | --- | --- |
 | GET | `/events` | `services/backend/routes/events.js` + `services/backend/events/hub.js` | SSE 订阅；事件名、topic 与 §5 目录逐项对账 |
 
-`GET /api/v1/events` 不计入 §4.1–§4.10 的 133 条 REST registry 对账，也不计入 §3 IPC 通道数。
+`GET /api/v1/events` 不计入 §4.1–§4.10 的 136 条 REST registry 对账，也不计入 §3 IPC 通道数。
 
 ## 5. SSE 事件规范
 
@@ -350,7 +380,7 @@ data: {"jobId":"job_01H...","kind":"image.generate","phase":"rendering","percent
 | `ai` | `ai.chat-delta` · `ai.chat-done` · `ai.talk-utterance` | `conversationId`、`delta` |
 | `pet` | `pet.pack-activated` · `pet.actions-changed` | 前端据此失效缓存 |
 | `settings` | `settings.changed` | `paths: string[]`(只告知变更路径) |
-| `catalog` | `catalog.refreshed` | |
+| `catalog` | `catalog.refreshed` | `{ updatedAt: string, at: number }`；`refresh()` 成功读取后，以及 `installSelection()`、`addBlocklistEntry()`、`removeBlocklistEntry()` 成功完成并通过 Shell response 校验且存在有效 `result.catalog` 后发布。缺少 Catalog 快照的成功 mutation 按 `INTERNAL` 失败且不发布。`prepareInstall()`、`clearSelection()` 只改变选择 bookkeeping，不发布；该事件只表示 Catalog 可重新读取，不替代 `job.succeeded`/`job.failed` 的安装结果。 |
 | `logs` | `log.appended` | 默认不订阅,仅日志面板开启 |
 | `system` | `backend.shutting-down` · `backend.degraded` | 前端切降级 UI |
 | `system` | `system.jobs-recovered` | `{ interrupted: string[], requeued: string[] }` —— 后端重启后的 Job 恢复结果(见 [04 篇 §2.6](./04-subsystems.md))。前端收到后必须失效任务列表缓存,并对 `interrupted` 里的项提示可重试 |
@@ -424,11 +454,15 @@ type BackendToShell =
   | { type: "window.openPluginDashboard"; pluginId: string; url: string }
   | { type: "notify"; level: "info"|"warn"|"error"; message: string }
   | { type: "tray.setBadge"; count: number }
-  | { type: "ready"; port: number; apiVersion: "v1"; pid: number }
+  | { type: "ready"; port: number; apiVersion: "v1"; pid: number; sessionToken: string; startupMs: number }
   | { type: "degraded"; reason: string }
   | { type: "settings.changed"; paths: string[]; version: number }
   | { type: "settings.apply.request"; paths: string[]; version: number; values?: Record<string, unknown> }
   | { type: "settings.persist.result"; version: number; ok: boolean; changedPaths: string[]; error?: string; errorCode?: string }
+  | { type: "catalog.request"; request: CatalogBridgeRequest }
+  | { type: "pet-packs.request"; operation: string; payload: Record<string, unknown> }
+  | { type: "actions.request"; request: { operation: string; payload: Record<string, unknown> } }
+  | { type: "ai.talk.request"; operation: string; payload: Record<string, unknown> }
 
 type ShellToBackend =
   | { type: "ai.host.result"; operation: "context" | "present"; ok: boolean; result?: unknown; error?: string }
@@ -440,6 +474,12 @@ type ShellToBackend =
   | { type: "power.suspend" | "power.resume" }
   | { type: "settings.apply.result"; version: number; ok: boolean; error?: string }
   | { type: "settings.persist.request"; ifVersion: number; patch: Record<string, unknown> }
+  | { type: "plugin.production.result"; requestId: string; ok: true; result: unknown }
+  | { type: "plugin.production.result"; requestId: string; ok: false; error: string }
+  | { type: "catalog.result"; ok: boolean; result?: unknown; error?: string }
+  | { type: "pet-packs.result"; operation: string; ok: boolean; result?: unknown; error?: { code: string; message: string } }
+  | { type: "actions.result"; operation: string; ok: boolean; result?: unknown; error?: { code: string; message: string } }
+  | { type: "ai.talk.result"; operation: string; ok: boolean; result?: AiTalkOperationResult; error?: { code: string; message: string } }
 ```
 
 `ActionsBridgeOperation` 与 `ErrorCode` 引用 `@openpet/contracts` 的单一契约。Actions 回复必须匹配请求的 envelope id、消息类型和 operation；成功必须含 result，失败必须含结构化错误。未知操作和额外请求字段在进入 Shell 服务前拒绝。

@@ -1,0 +1,90 @@
+{
+  "platform": "darwin",
+  "arch": "arm64",
+  "generatedAt": "2026-10-08T21:02:19.751Z",
+  "source": "scripts/create-desktop-picker-smoke-report.js",
+  "environment": {
+    "osRelease": "25.6.0",
+    "machine": "mangodeMacBook-Air.local",
+    "runner": "",
+    "evidence": ""
+  },
+  "artifact": {
+    "version": "1.0.1",
+    "releaseDir": "release",
+    "appPath": "mac-arm64/OpenPet.app",
+    "installer": "",
+    "zip": "",
+    "latestYml": "",
+    "files": [
+      {
+        "name": "mac-arm64/OpenPet.app",
+        "size": 96
+      }
+    ],
+    "signed": false,
+    "signatureStatus": "Unknown",
+    "signatureEvidence": "/Users/mango/.codex/worktrees/openpet-docs-review-20261004/release/mac-arm64/OpenPet.app: code has no resources but signature indicates they must be present"
+  },
+  "fixture": {
+    "pluginPackage": "fixtures/openpet.plugin.picker-smoke.openpet-plugin.zip",
+    "frameFolder": "Use a folder containing ordered transparent PNG frames.",
+    "petPack": "fixtures/picker-smoke-pet.openpet-pet.zip"
+  },
+  "checks": [
+    {
+      "id": "packaged-launch",
+      "status": "pass",
+      "evidence": "Launched unsigned macOS arm64 OpenPet.app from release/mac-arm64/OpenPet.app; pet window rendered with the visible sprite.",
+      "notes": "Observed packaged app launch in the isolated profile /tmp/openpet-demo-picker-followup-20261009."
+    },
+    {
+      "id": "control-center-open",
+      "status": "pass",
+      "evidence": "Opened Control Center from the packaged pet context menu; Pet, Actions, AI, Plugins, Catalog, Service, and About tabs rendered.",
+      "notes": "Observed in the packaged app."
+    },
+    {
+      "id": "plugin-picker-cancel",
+      "status": "pass",
+      "evidence": "Opened Install plugin, invoked the native macOS package picker, and canceled it; no pending plugin selection or install state remained.",
+      "notes": "Observed in the packaged app."
+    },
+    {
+      "id": "plugin-picker-zip-review",
+      "status": "pass",
+      "evidence": "Selected the valid picker-smoke .openpet-plugin.zip; the review surface opened with package metadata and the install decision, then the flow was canceled without installing it.",
+      "notes": "Observed valid package review in the packaged app."
+    },
+    {
+      "id": "plugin-install-disabled",
+      "status": "pending",
+      "evidence": "Not run: installing the reviewed local package requires a separate confirmation; no plugin package was installed.",
+      "notes": "Keep pending until the user explicitly confirms the install action."
+    },
+    {
+      "id": "invalid-package-feedback",
+      "status": "pass",
+      "evidence": "Selected invalid.openpet-plugin.zip; the packaged app visibly reported: Plugin package must contain plugin.json. Existing installed plugins remained unchanged.",
+      "notes": "Observed invalid package feedback in the packaged app."
+    },
+    {
+      "id": "action-frame-picker-cancel",
+      "status": "pass",
+      "evidence": "Opened the Actions frame-folder picker and canceled it; the action list and pending import state remained unchanged.",
+      "notes": "Observed in the packaged app."
+    },
+    {
+      "id": "pet-pack-picker-cancel",
+      "status": "pass",
+      "evidence": "Opened the Pet Pack picker and canceled it; the active pack remained legacy-cat and no extra import was started by cancel.",
+      "notes": "Observed in the packaged app."
+    },
+    {
+      "id": "state-after-picker-smoke",
+      "status": "pass",
+      "evidence": "After the picker checks, the imported Picker Smoke Pet remained installed while legacy-cat stayed active; the three bundled plugins stayed enabled; Service showed HTTP API off, endpoint not started, and port 0. After rebuilding with the reload bootstrap fix, refreshing Control Center preserved these states.",
+      "notes": "Observed before and after renderer refresh in the isolated profile."
+    }
+  ]
+}

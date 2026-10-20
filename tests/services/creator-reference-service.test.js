@@ -275,6 +275,51 @@ test('creator reference service consumes approval tokens after the first bind so
   }), /not approved/i)
 })
 
+test('creator reference upload stays available until binding finishes and removes its temporary file afterwards', async () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-reference-upload-'))
+  const referenceRoot = path.join(tempRoot, 'references')
+  const imagePath = path.join(tempRoot, 'upload.png')
+  await createReferenceImage(imagePath, { width: 48, height: 36 })
+
+  const service = createCreatorReferenceService({
+    settingsService: createSettingsService(),
+    referenceRoot,
+    now: () => '2026-10-16T00:00:00.000Z'
+  })
+  const approval = service.approveSourceBuffer({ data: fs.readFileSync(imagePath), fileName: 'web-upload.png' })
+  const uploadedFiles = fs.readdirSync(path.join(referenceRoot, '.uploads'))
+
+  assert.equal(uploadedFiles.length, 1)
+  const temporaryPath = path.join(referenceRoot, '.uploads', uploadedFiles[0])
+  assert.ok(fs.existsSync(temporaryPath))
+  assert.match(temporaryPath, /web-upload\.png$/)
+
+  const result = await service.bindReference({
+    targetType: 'pet-pack',
+    targetId: 'web-upload',
+    referenceToken: approval.referenceToken
+  })
+
+  assert.ok(fs.existsSync(result.reference.assetPath))
+  assert.deepEqual(fs.readdirSync(path.join(referenceRoot, '.uploads')), [])
+})
+
+test('creator reference upload rejects a declared MIME type that disagrees with its image bytes', async () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-reference-mime-'))
+  const imagePath = path.join(tempRoot, 'upload.png')
+  await createReferenceImage(imagePath)
+  const service = createCreatorReferenceService({
+    settingsService: createSettingsService(),
+    referenceRoot: path.join(tempRoot, 'references')
+  })
+
+  assert.throws(() => service.approveSourceBuffer({
+    data: fs.readFileSync(imagePath),
+    fileName: 'upload.png',
+    mimeType: 'image/jpeg'
+  }), /MIME type does not match image bytes/i)
+})
+
 test('creator reference service flags likely collage or multi-view inputs as unsupported for the default path', async () => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-reference-multiview-'))
   const sourcePath = path.join(tempRoot, 'overview.png')

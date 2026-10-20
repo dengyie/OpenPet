@@ -1,5 +1,5 @@
 import { createServer } from "node:http"
-import { timingSafeEqual } from "node:crypto"
+import { randomUUID, timingSafeEqual } from "node:crypto"
 import { createRequire } from "node:module"
 
 import { ApiError, MAX_BODY_BYTES } from "../http/middleware.js"
@@ -20,6 +20,11 @@ const CAPABILITIES = Object.freeze([
 	"settings:read",
 	"logs:write",
 	"network:fetch",
+	"creator:model-settings",
+	"creator:model-health-check",
+	"creator:model-image-generate",
+	"creator:hatch-pet-plan",
+	"creator:hatch-pet-evaluate",
 ])
 const PERMISSION_FOR_CAPABILITY = Object.freeze({
 	"pet:say": "pet:say",
@@ -30,6 +35,11 @@ const PERMISSION_FOR_CAPABILITY = Object.freeze({
 	"settings:read": "settings:read",
 	"logs:write": "logs:write",
 	"network:fetch": "network",
+	"creator:model-settings": "model:image-generate",
+	"creator:model-health-check": "model:image-generate",
+	"creator:model-image-generate": "model:image-generate",
+	"creator:hatch-pet-plan": "model:image-generate",
+	"creator:hatch-pet-evaluate": "model:image-generate",
 })
 
 function isRecord(value) {
@@ -95,7 +105,7 @@ function publicHeaders(headers) {
 	return Object.fromEntries(headers.entries())
 }
 
-export function createPluginRuntimeServer({ shell, plugins, settings, jobs, network, logs, logger, now = Date.now } = {}) {
+export function createPluginRuntimeServer({ shell, plugins, settings, jobs, network, logs, creator, logger, now = Date.now } = {}) {
 	if (!plugins || typeof plugins.get !== "function") throw new TypeError("plugin runtime server requires plugins")
 	let server = null
 	let starting = null
@@ -158,13 +168,26 @@ export function createPluginRuntimeServer({ shell, plugins, settings, jobs, netw
 				return requireMethod(plugins, "submitTriggerProposal", "Plugin trigger proposal service is unavailable")(pluginId, body)
 			case "model:image-generate": {
 				const insert = requireMethod(jobs, "insert", "Image Job service is unavailable")
+				const input = { pluginId, ...structuredClone(body) }
 				const job = insert({
+				id: `image-generate:${randomUUID()}`,
 					kind: "image.generate",
-					input: { pluginId, ...structuredClone(body) },
+					input: { redacted: true, summary: "Image generation input withheld" },
+					privateInput: input,
 					resourceKey: `plugin:${pluginId}`,
 				})
 				return { jobId: job.id }
 			}
+			case "creator:model-settings":
+				return requireMethod(creator, "modelSettings", "Creator model settings are unavailable")(pluginId)
+			case "creator:model-health-check":
+				return { ok: true, result: await requireMethod(creator, "modelHealthCheck", "Creator model health check is unavailable")(pluginId, { signal }) }
+			case "creator:model-image-generate":
+				return { ok: true, result: await requireMethod(creator, "modelImageGenerate", "Creator model image generation is unavailable")(pluginId, body, { signal }) }
+			case "creator:hatch-pet-plan":
+				return { ok: true, result: await requireMethod(creator, "hatchPetPlan", "Creator hatch-pet planning is unavailable")(pluginId, body, { signal }) }
+			case "creator:hatch-pet-evaluate":
+				return { ok: true, result: await requireMethod(creator, "hatchPetEvaluate", "Creator hatch-pet evaluation is unavailable")(pluginId, body, { signal }) }
 			case "settings:read":
 				return requireMethod(settings, "read", "Settings service is unavailable")()
 			case "logs:write": {
@@ -236,6 +259,11 @@ export function createPluginRuntimeServer({ shell, plugins, settings, jobs, netw
 				"/settings/read": "settings:read",
 				"/logs/write": "logs:write",
 				"/network/fetch": "network:fetch",
+				"/creator/model-settings": "creator:model-settings",
+				"/creator/model-health-check": "creator:model-health-check",
+				"/creator/model-image-generate": "creator:model-image-generate",
+				"/creator/hatch-pet/plan": "creator:hatch-pet-plan",
+				"/creator/hatch-pet/evaluate": "creator:hatch-pet-evaluate",
 			}[pathname]
 			const headerCapability = String(request.headers[CAPABILITY_HEADER] ?? "")
 			// Legacy paths are fixed aliases. Do not let a caller rewrite the

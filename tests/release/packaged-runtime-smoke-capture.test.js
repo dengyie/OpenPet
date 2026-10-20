@@ -41,6 +41,13 @@ const markDesktopPickerReportReady = (report) => ({
   }))
 })
 
+const markDesktopPickerReportPartial = (report, pendingCheckId = 'plugin-install-disabled') => ({
+  ...report,
+  checks: report.checks.map((check) => check.id === pendingCheckId
+    ? { ...check, status: 'pending', evidence: 'Not observed', notes: 'Requires separate confirmation.' }
+    : { ...check, status: 'pass', evidence: 'Verified ' + check.id + ' in packaged app', notes: '' })
+})
+
 const createBubbleChatEvidence = (text = 'smoke', screenshotPath = '/tmp/evidence/screenshots/runtime-bubble.png') => ({
   visible: true,
   hasWindow: true,
@@ -343,9 +350,70 @@ test('loadDesktopPickerSmokeReport rejects missing or pending picker reports', (
     now: () => new Date('2026-06-16T04:00:00.000Z')
   })
   const pendingPath = path.join(tempDir, 'pending-picker.json')
-  fs.writeFileSync(pendingPath, JSON.stringify(pendingReport, null, 2))
+  const partialReport = markDesktopPickerReportPartial(pendingReport)
+  fs.writeFileSync(pendingPath, JSON.stringify(partialReport, null, 2))
 
   assert.throws(() => loadDesktopPickerSmokeReport(pendingPath), /not ready/)
+  const partial = loadDesktopPickerSmokeReport(pendingPath, fs, { allowPending: true })
+  assert.equal(partial.validation.ok, true)
+  assert.equal(partial.validation.summary.passed, 8)
+  assert.throws(() => loadDesktopPickerSmokeReport(pendingPath, fs, {
+    allowPending: true,
+    expectedReport: {
+      platform: 'win32',
+      arch: 'x64',
+      artifact: { version: '1.0.1', releaseDir: 'release', appPath: 'win-x64/OpenPet.exe' }
+    }
+  }), /does not match packaged runtime artifact/)
+})
+
+test('partial picker evidence only passes runtime checks covered by passing picker observations', () => {
+  const pickerReport = markDesktopPickerReportPartial(createDesktopPickerSmokeReport({
+    releaseDir: createReleaseDir(),
+    platform: 'darwin',
+    arch: 'arm64',
+    allowAnyPlatform: true,
+    execFile: () => 'code object is not signed at all',
+    now: () => new Date('2026-06-16T04:30:00.000Z')
+  }))
+  const runtimeEvidence = createRuntimeCheckEvidence({
+    sessionId: 'session-partial-picker-map',
+    appPath: '/tmp/release/mac-arm64/OpenPet.app',
+    state: {
+      launch: { ok: true, pid: 9876 },
+      window: { ok: true, visible: true, transparent: true, bounds: { width: 300, height: 300 } },
+      renderer: {
+        ok: true,
+        bodyBackground: 'transparent',
+        htmlBackground: 'transparent',
+        transparentBackground: true,
+        sprite: { visible: true, width: 128, height: 128, backgroundImage: 'url(file:///sprite.png)' },
+        legacyInlineBubble: { present: true, visible: false, text: '' },
+        bubbleChat: createBubbleChatEvidence(),
+        action: { requested: 'idle', current: 'idle', advanced: true }
+      },
+      packs: ['legacy-cat', 'doro', 'duodong', 'chispa'].map((id) => ({ id, ok: true, actionCount: 1, spriteVisible: true })),
+      finalState: { ok: true, activePackId: 'legacy-cat' }
+    }
+  })
+
+  const mapped = applyDesktopPickerEvidence(runtimeEvidence, {
+    absolutePath: '/tmp/desktop-picker-smoke-report.json',
+    safePath: 'desktop-picker-smoke-report.json',
+    report: pickerReport
+  })
+  const merged = mergeRuntimeEvidenceIntoReport(createBaseReport(), mapped)
+  const checks = Object.fromEntries(merged.checks.map((check) => [check.id, check]))
+
+  assert.equal(checks['plugin-picker-evidence-linked'].status, 'pass')
+  assert.match(checks['plugin-picker-evidence-linked'].evidence, /plugin-picker-cancel/)
+  assert.match(checks['plugin-picker-evidence-linked'].evidence, /plugin-picker-zip-review/)
+  assert.doesNotMatch(checks['plugin-picker-evidence-linked'].evidence, /plugin-install-disabled/)
+  assert.equal(checks['pet-picker-evidence-linked'].status, 'pass')
+  assert.match(checks['pet-picker-evidence-linked'].evidence, /state-after-picker-smoke/)
+  assert.equal(checks['invalid-package-feedback'].status, 'pass')
+  assert.equal(validateReport(merged).ok, true)
+  assert.equal(pickerReport.checks.find((check) => check.id === 'plugin-install-disabled').status, 'pending')
 })
 
 test('applyDesktopPickerEvidence maps ready picker checks to runtime evidence', () => {

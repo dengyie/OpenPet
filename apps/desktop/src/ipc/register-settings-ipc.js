@@ -1,17 +1,28 @@
 const { IPC } = require('../shared/ipc-channels')
-const registerSettingsIpc = ({
-  ipcMainService,
+
+const validationError = (message) => Object.assign(new Error(message), { code: 'VALIDATION_FAILED' })
+
+const createSettingsCommandHandler = ({
   petService,
   getPetWindow,
-  browserWindowService,
   cursorAssetService,
   showOpenDialogForEvent,
   sendToPetWindow,
-  createPetRendererSettings,
   recordAppLog
-}) => {
-  ipcMainService.handle(IPC.SETTINGS_IMPORT_CURSOR, async (event) => {
-    if (!cursorAssetService?.importCursor) throw new Error('Cursor asset import is not available')
+}) => async ({ operation, payload = {}, event = null } = {}) => {
+  if (operation === 'preview-scale') {
+    if (!payload || Object.keys(payload).length !== 1 || typeof payload.scale !== 'number' || !Number.isFinite(payload.scale) || payload.scale < 0.5 || payload.scale > 1.5) {
+      throw validationError('Settings preview scale is invalid')
+    }
+    const result = { scale: payload.scale }
+    petService.previewSettings(result)
+    sendToPetWindow(getPetWindow, IPC.SETTINGS_CHANGED, result)
+    return result
+  }
+
+  if (operation === 'import-cursor') {
+    if (!payload || Object.keys(payload).length !== 0) throw validationError('Cursor import payload is invalid')
+    if (!cursorAssetService?.importCursor) throw Object.assign(new Error('Cursor asset import is not available'), { code: 'BACKEND_UNAVAILABLE' })
     recordAppLog({
       scope: 'settings',
       level: 'info',
@@ -25,7 +36,7 @@ const registerSettingsIpc = ({
         properties: ['openFile'],
         filters: [{ name: 'Cursor Images', extensions: ['png', 'webp'] }]
       })
-      if (selected.canceled || !selected.filePaths[0]) {
+      if (selected?.canceled || !selected?.filePaths?.[0]) {
         recordAppLog({
           scope: 'settings',
           level: 'info',
@@ -58,11 +69,31 @@ const registerSettingsIpc = ({
       })
       throw error
     }
+  }
+
+  throw validationError('Unsupported Settings command')
+}
+
+const registerSettingsIpc = ({
+  ipcMainService,
+  petService,
+  getPetWindow,
+  browserWindowService,
+  cursorAssetService,
+  showOpenDialogForEvent,
+  sendToPetWindow,
+  createPetRendererSettings,
+  recordAppLog
+}) => {
+  const handleCommand = createSettingsCommandHandler({
+    petService, getPetWindow, cursorAssetService, showOpenDialogForEvent, sendToPetWindow, recordAppLog
+  })
+  ipcMainService.handle(IPC.SETTINGS_IMPORT_CURSOR, async (event) => {
+    return handleCommand({ operation: 'import-cursor', payload: {}, event })
   })
 
   ipcMainService.on(IPC.SETTINGS_PREVIEW_SCALE, (_event, scale) => {
-    petService.previewSettings({ scale })
-    sendToPetWindow(getPetWindow, IPC.SETTINGS_CHANGED, { scale })
+    void handleCommand({ operation: 'preview-scale', payload: { scale } }).catch(() => {})
   })
 
   ipcMainService.on(IPC.SETTINGS_CLOSE, (_event) => {
@@ -75,6 +106,8 @@ const registerSettingsIpc = ({
       win.close()
     }
   })
+
+  return handleCommand
 }
 
-module.exports = { registerSettingsIpc }
+module.exports = { createSettingsCommandHandler, registerSettingsIpc }

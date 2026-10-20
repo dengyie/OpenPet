@@ -885,8 +885,11 @@ const runMenuCommand = (payload) => {
 // 监听主进程推送的设置变更，同步到渲染状态
 window.petAPI.onSettingsChanged((s) => {
   if (s.scale != null) {
-    state.scale = normalizePetScale(s.scale)
-    freezeActionForScalePreview()
+    const nextScale = normalizePetScale(s.scale)
+    if (nextScale !== state.scale) {
+      state.scale = nextScale
+      freezeActionForScalePreview()
+    }
   }
   if (s.walkSpeed != null) state.walkSpeed = s.walkSpeed
   if (s.walkDuration != null) state.walkDuration = s.walkDuration

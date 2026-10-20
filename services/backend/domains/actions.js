@@ -16,7 +16,7 @@ function object(value = {}) {
 	return value
 }
 
-export function createActionService({ shell, jobs, emit, now = Date.now } = {}) {
+export function createActionService({ shell, jobs, emit, logger, now = Date.now } = {}) {
 	if (typeof shell?.request !== "function") throw new TypeError("Shell Actions bridge required")
 
 	const authority = async (operation, payload = {}) => {
@@ -61,29 +61,55 @@ export function createActionService({ shell, jobs, emit, now = Date.now } = {}) 
 		const job = jobs.insert({
 			id: `actions-import:${randomUUID()}`,
 			kind: "actions.import-frames",
-			input: payload,
+			input: { redacted: true, summary: "Action frame import input withheld" },
+			privateInput: payload,
 			resourceKey: "actions:import",
 		})
 		return { jobId: job.id }
 	}
 	const runImportFrames = async ({ selectionId, actionId, label, signal, report, finalize } = {}) => {
-		if (signal?.aborted) throw signal.reason ?? new ApiError("CONFLICT", "Action import canceled")
+		if (typeof selectionId !== "string" || typeof actionId !== "string") {
+			throw new ApiError("CONFLICT", "Action frame selection is no longer available", { retryable: false })
+		}
 		if (typeof finalize !== "function") throw new ApiError("INTERNAL", "Action import requires a finalization boundary")
 		const payload = { ...selection({ selectionId, actionId }), actionId: requiredString(actionId, "actionId"), ...(label === undefined ? {} : { label }) }
-		report?.({ phase: "importing", percent: 10, message: "Preparing action import" })
-		// The host writes active-pack assets. Lock cancellation before dispatch.
-		return finalize(() => mutate("import", payload))
+		let result
+		let failure = null
+		try {
+			if (signal?.aborted) throw signal.reason ?? new ApiError("CONFLICT", "Action import canceled")
+			report?.({ phase: "importing", percent: 10, message: "Preparing action import" })
+			// The host writes active-pack assets. Lock cancellation before dispatch.
+			result = await finalize(() => mutate("import-frames", payload))
+		} catch (error) {
+			failure = error
+		}
+		try {
+			await authority("clear-selection", { selectionId })
+		} catch (cleanupError) {
+			logger?.warn?.("Actions frame selection cleanup failed", {
+				operation: "import-frames",
+				selectionId,
+				errorCode: cleanupError?.code ?? "INTERNAL",
+			})
+			if (failure) {
+				const primaryError = failure instanceof Error ? failure : new Error(String(failure), { cause: failure })
+				primaryError.cleanupError = cleanupError
+				throw primaryError
+			}
+		}
+		if (failure) throw failure
+		return result
 	}
 	return {
 		list,
 		get: list,
-		inspect: (input = {}) => authority("inspect", object(input)),
-		reinspect: (input = {}) => authority("reinspect", selection(object(input))),
+		inspect: (input = {}) => authority("inspect-frames", object(input)),
+		reinspect: (input = {}) => authority("reinspect-frames", selection(object(input))),
 		clearSelection: (input = {}) => authority("clear-selection", selection(object(input))),
 		importFrames,
 		runImportFrames,
 		updateConfig: (input = {}) => mutate("save-config", object(input)),
-		remove: (actionId) => mutate("remove", { actionId: requiredString(actionId, "actionId") }),
+		remove: (actionId) => mutate("delete-action", { actionId: requiredString(actionId, "actionId") }),
 		previewProposal: (input = {}) => authority("preview-proposal", object(input)),
 		submitProposal: (input = {}) => mutate("submit-proposal", object(input)),
 		acceptProposal: (proposalId) => mutate("accept-proposal", { proposalId: requiredString(proposalId, "proposalId") }),

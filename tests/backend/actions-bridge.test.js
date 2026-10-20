@@ -10,7 +10,7 @@ test("Actions replies remain bound to the request operation and result shape", a
 	const { createShellClient } = await import("../../services/backend/bridge/shell-client.js")
 	const cases = [
 		[{ type: "dialog.result", requestId: "actions-1", paths: null }, /unexpected Shell response type/],
-		[{ type: "actions.result", operation: "remove", ok: true, result: {} }, /unexpected.*operation/i],
+		[{ type: "actions.result", operation: "delete-action", ok: true, result: {} }, /unexpected.*operation/i],
 		[{ type: "actions.result", operation: "get", ok: true }, /no result/],
 		[{ type: "actions.result", operation: "get", ok: "yes", result: {} }, /invalid ok/],
 		[{ type: "actions.result", operation: "get", ok: false, error: "not structured" }, /structured error/],
@@ -56,7 +56,7 @@ test("Shell Actions errors retain domain codes and redact provider credentials",
 		send: (response) => sent.push(response),
 		onActionsRequest: () => { throw Object.assign(new Error("request failed apiKey=" + secret), { code: "CONFLICT" }) },
 	})
-	await handler.handle(envelope({ type: "actions.request", operation: "import", payload: { selectionId: "opaque", actionId: "wave" } }))
+	await handler.handle(envelope({ type: "actions.request", operation: "import-frames", payload: { selectionId: "opaque", actionId: "wave" } }))
 	assert.equal(sent[0].body.ok, false)
 	assert.equal(sent[0].body.error.code, "CONFLICT")
 	assert.equal(JSON.stringify(sent).includes(secret), false)

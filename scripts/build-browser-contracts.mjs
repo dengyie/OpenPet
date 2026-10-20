@@ -37,6 +37,9 @@ export function translateSchemas(source, fileName = 'schemas.ts') {
           const converted = ts.visitNode(receiver, visit)
           return call(method === 'strict' ? 'strictObject' : 'looseObject', converted.arguments)
         }
+        if (method === 'finite') {
+          return call('pipe', [ts.visitNode(receiver, visit), call('finite', [])])
+        }
         if (['min', 'max', 'int', 'positive', 'nonnegative'].includes(method)) {
           const constraint = ({ min: numberSchema(receiver) ? 'minValue' : 'minLength', max: numberSchema(receiver) ? 'maxValue' : 'maxLength', int: 'integer', positive: 'minValue', nonnegative: 'minValue' })[method]
           const constraintArgs = method === 'positive' ? [f.createNumericLiteral(1)] : method === 'nonnegative' ? [f.createNumericLiteral(0)] : args

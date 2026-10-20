@@ -30,6 +30,78 @@ describe("T17 catalog", () => {
 		assert.deepEqual(events, [contracts.EVENT_CATALOG_REFRESHED])
 	})
 
+	it("emits catalog.refreshed only after catalog mutations, not selection bookkeeping", async () => {
+		const [{ createCatalogService }, contracts] = await Promise.all([
+			import("../../services/backend/domains/catalog.js"),
+			import("@openpet/contracts"),
+		])
+		const events = []
+		const snapshot = { updatedAt: "2026-09-05T00:00:00.000Z", plugins: [], petPacks: [] }
+		const catalog = createCatalogService({
+			root: process.cwd(),
+			emit: (name, payload) => events.push({ name, payload }),
+			shell: {
+				request: async ({ request }) => ({
+					body: {
+						type: "catalog.result",
+						ok: true,
+						result: request.operation === "addBlocklistEntry"
+							? { catalog: snapshot, blocklist: { pluginIds: ["blocked.plugin"] } }
+							: { catalog: snapshot, blocklist: { pluginIds: [] } },
+					},
+				}),
+			},
+		})
+
+		await catalog.prepareInstall({ kind: "plugin", itemId: "focus-timer" }).catch(() => {})
+		await catalog.clearSelection("selection-1")
+		await catalog.installSelection("selection-1")
+		await catalog.addBlocklistEntry({ type: "pluginId", value: "blocked.plugin" })
+		await catalog.removeBlocklistEntry({ type: "pluginId", value: "blocked.plugin" })
+
+		assert.deepEqual(events.map(({ name }) => name), [
+			contracts.EVENT_CATALOG_REFRESHED,
+			contracts.EVENT_CATALOG_REFRESHED,
+			contracts.EVENT_CATALOG_REFRESHED,
+		])
+		assert.deepEqual(events[0].payload, { updatedAt: snapshot.updatedAt, at: events[0].payload.at })
+		assert.equal(Number.isInteger(events[0].payload.at), true)
+	})
+
+	it("rejects a successful mutation without a Catalog snapshot and emits no refresh event", async () => {
+		const { createCatalogService } = await import("../../services/backend/domains/catalog.js")
+		const events = []
+		const catalog = createCatalogService({
+			root: process.cwd(),
+			emit: (name) => events.push(name),
+			shell: {
+				request: async () => ({ body: { type: "catalog.result", ok: true, result: { blocklist: {} } } }),
+			},
+		})
+
+		await assert.rejects(
+			catalog.addBlocklistEntry({ type: "pluginId", value: "blocked.plugin" }),
+			(error) => error?.code === "INTERNAL",
+		)
+		assert.deepEqual(events, [])
+	})
+
+	it("maps a Shell Catalog outage to BACKEND_UNAVAILABLE without publishing a refresh event", async () => {
+		const { createCatalogService } = await import("../../services/backend/domains/catalog.js")
+		const events = []
+		const catalog = createCatalogService({
+			root: process.cwd(),
+			emit: (name) => events.push(name),
+			shell: { request: async () => { throw new Error("sidecar disconnected") } },
+		})
+
+		await assert.rejects(
+			catalog.refresh(),
+			(error) => error?.code === "BACKEND_UNAVAILABLE" && error.status === 503,
+		)
+		assert.deepEqual(events, [])
+	})
+
 	it("maps prepare, clear, blocklist and reviewed install requests without replacing the Shell selection", async () => {
 		const [{ createRouter }, middleware, { registerCatalogRoutes }] = await Promise.all([
 			import("../../services/backend/http/router.js"),
@@ -83,5 +155,44 @@ describe("T17 catalog", () => {
 		assert.deepEqual(inserted[0].input, { selectionId: "selection-1" })
 		assert.equal(inserted[0].resourceKey, "catalog-selection:selection-1")
 		assert.match(inserted[0].id, /^catalog-install:[0-9a-f-]{36}$/)
+	})
+
+	it("rejects a duplicate catalog selection Job through the real resourceKey constraint", async () => {
+		const [{ createRouter }, middleware, { registerCatalogRoutes }, { createJobsRepository }, { createQueue }, { migrate }, { openDatabase }] = await Promise.all([
+			import("../../services/backend/http/router.js"),
+			import("../../services/backend/http/middleware.js"),
+			import("../../services/backend/routes/catalog.js"),
+			import("../../services/backend/store/repositories/jobs.js"),
+			import("../../services/backend/jobs/queue.js"),
+			import("../../services/backend/store/migrate.js"),
+			import("../../services/backend/store/db.js"),
+		])
+		const db = await openDatabase({ file: ":memory:" })
+		migrate({ db })
+		const repo = createJobsRepository({ db })
+		const queue = createQueue({ repo, tickMs: 60_000 })
+		const router = createRouter({ basePath: "/api/v1" })
+		router.use(middleware.requestId())
+		router.use(middleware.errorBoundary())
+		router.use(middleware.jsonBody())
+		registerCatalogRoutes(router, {
+			catalog: { list: async () => ({ plugins: [], petPacks: [] }) },
+			jobs: { insert: (input) => queue.enqueue(input) },
+		})
+		const server = createServer((req, res) => void router.handle(req, res))
+		await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve))
+		try {
+			const url = `http://127.0.0.1:${server.address().port}/api/v1/catalog/install`
+			const headers = { "content-type": "application/json" }
+			const first = await fetch(url, { method: "POST", headers, body: JSON.stringify({ selectionId: "selection-1" }) })
+			const second = await fetch(url, { method: "POST", headers, body: JSON.stringify({ selectionId: "selection-1" }) })
+			assert.equal(first.status, 202)
+			assert.equal(second.status, 423)
+			assert.equal((await second.json()).error.code, "LOCKED")
+		} finally {
+			queue.stop()
+			await new Promise((resolve) => server.close(resolve))
+			db.close()
+		}
 	})
 })

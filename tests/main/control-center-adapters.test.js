@@ -530,7 +530,10 @@ test('createServiceStatusView normalizes local HTTP config and runtime for Contr
       enabled: 1,
       port: '4317',
       token: 'secret-token',
-      logs: [{ id: '1', timestamp: 'now', method: 'GET', path: '/api/status', statusCode: 200, authorized: true, remoteAddress: '127.0.0.1', error: '' }]
+      logs: [{ id: '1', timestamp: 'now', method: 'GET', path: '/api/status', statusCode: 200, authorized: true, remoteAddress: '127.0.0.1', error: '' }],
+      backendMode: 'remote',
+      sshAlias: 'gz-cvm',
+      backendPort: '48331'
     },
     {
       enabled: true,
@@ -546,7 +549,10 @@ test('createServiceStatusView normalizes local HTTP config and runtime for Contr
       host: '127.0.0.1',
       port: 4317,
       token: 'secret-token',
-      logs: [{ id: '1', timestamp: 'now', method: 'GET', path: '/api/status', statusCode: 200, authorized: true, remoteAddress: '127.0.0.1', error: '' }]
+      logs: [{ id: '1', timestamp: 'now', method: 'GET', path: '/api/status', statusCode: 200, authorized: true, remoteAddress: '127.0.0.1', error: '' }],
+      backendMode: 'remote',
+      sshAlias: 'gz-cvm',
+      backendPort: 48331
     },
     runtime: {
       enabled: true,
@@ -582,7 +588,10 @@ test('createLocalHttpConfigView normalizes service logs to the shared log-entry 
         statusCode: 'oops'
       },
       'bad-log-entry'
-    ]
+    ],
+    backendMode: 'local',
+    sshAlias: 'gz-cvm',
+    backendPort: 48330
   }), {
     enabled: true,
     host: '127.0.0.1',
@@ -609,7 +618,10 @@ test('createLocalHttpConfigView normalizes service logs to the shared log-entry 
         remoteAddress: '',
         error: ''
       }
-    ]
+    ],
+    backendMode: 'local',
+    sshAlias: 'gz-cvm',
+    backendPort: 48330
   })
 })
 
@@ -619,7 +631,10 @@ test('local HTTP view adapters provide stable defaults for missing fields', () =
     host: '127.0.0.1',
     port: 0,
     token: '',
-    logs: []
+    logs: [],
+    backendMode: 'local',
+    sshAlias: 'gz-cvm',
+    backendPort: 48330
   })
   assert.deepEqual(createLocalHttpRuntimeView(), {
     enabled: false,

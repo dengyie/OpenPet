@@ -779,7 +779,10 @@ test('service:get-status returns Control Center service status shape', async () 
       host: '127.0.0.1',
       port: 4317,
       token: 'demo-token',
-      logs: []
+      logs: [],
+      backendMode: 'local',
+      sshAlias: 'gz-cvm',
+      backendPort: 48330
     },
     runtime: {
       enabled: true,
@@ -2543,6 +2546,133 @@ test('pet-packs:inspect-directory opens native folder or zip picker and delegate
   assert.deepEqual(dialogCalls[0].filters[0], { name: 'Pet Pack Package', extensions: ['zip'] })
 })
 
+test('pet-packs:inspect-directory returns cancellation without inspecting a source', async () => {
+  const ipcMain = createIpcMainStub()
+  let inspectCalls = 0
+
+  registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: { listPlugins: () => [] },
+      dialogService: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] })
+      }
+    }),
+    petPackService: {
+      listPacks: () => [],
+      inspectPackSource: () => {
+        inspectCalls += 1
+        throw new Error('canceled picker must not inspect a source')
+      },
+      clearPendingSelection: () => ({ ok: true }),
+      importPack: () => ({ ok: true }),
+      setActivePack: () => ({ ok: true }),
+      removePack: () => ({ ok: true })
+    },
+    ipcMainService: ipcMain
+  })
+
+  const result = await ipcMain.handlers.get(IPC.PET_PACKS_INSPECT_DIRECTORY)()
+
+  assert.deepEqual(result, { canceled: true })
+  assert.equal(inspectCalls, 0)
+})
+
+test('Pet Pack HTTP picker bridge returns an opaque selection without the selected path', async () => {
+  const ipcMain = createIpcMainStub()
+  const selectedPath = path.join(os.tmpdir(), 'private-location', 'demo-pack')
+  const packRoot = path.join(selectedPath, 'pack')
+  const dialogCalls = []
+  const inspectedPaths = []
+  const runtime = registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: { listPlugins: () => [] },
+      dialogService: { showOpenDialog: async (options) => {
+        dialogCalls.push(options)
+        return { canceled: false, filePaths: [selectedPath] }
+      } }
+    }),
+    petPackService: {
+      listPacks: () => [],
+      inspectPackSource: (sourcePath) => {
+        inspectedPaths.push(sourcePath)
+        return {
+          selectionId: 'opaque-selection',
+          folderName: 'demo-pack',
+          valid: true,
+          errors: [],
+          warnings: [],
+          pack: { id: 'demo-pack', displayName: 'Demo Pack', rootPath: packRoot }
+        }
+      },
+      clearPendingSelection: () => ({ ok: true }),
+      importPack: () => ({ ok: true }),
+      setActivePack: () => ({ ok: true }),
+      removePack: () => ({ ok: true })
+    },
+    ipcMainService: ipcMain
+  })
+
+  const result = await runtime.handlePetPackRequest({ operation: 'pick', payload: {} })
+
+  assert.deepEqual(inspectedPaths, [selectedPath])
+  assert.deepEqual(dialogCalls[0].properties, ['openFile', 'openDirectory'])
+  assert.deepEqual(result, {
+    canceled: false,
+    selectionId: 'opaque-selection',
+    folderName: 'demo-pack',
+    valid: true,
+    errors: [],
+    warnings: [],
+    pack: { id: 'demo-pack', displayName: 'Demo Pack' }
+  })
+  assert.equal(JSON.stringify(result).includes(selectedPath), false)
+  assert.equal(JSON.stringify(result).includes(packRoot), false)
+})
+
+test('Pet Pack HTTP picker bridge returns cancellation without inspecting a source', async () => {
+  const ipcMain = createIpcMainStub()
+  let inspectCalls = 0
+  const runtime = registerIpcHandlers({
+    ...createRequiredServices({
+      pluginInstallService: {
+        inspectPluginPackage: () => ({}),
+        clearPendingSelection: () => ({ ok: true }),
+        installPlugin: () => ({ ok: true }),
+        updatePlugin: () => ({ ok: true }),
+        uninstallPlugin: () => ({ ok: true })
+      },
+      pluginService: { listPlugins: () => [] },
+      dialogService: { showOpenDialog: async () => ({ canceled: true, filePaths: [] }) }
+    }),
+    petPackService: {
+      listPacks: () => [],
+      inspectPackSource: () => { inspectCalls += 1; throw new Error('canceled picker must not inspect a source') },
+      clearPendingSelection: () => ({ ok: true }),
+      importPack: () => ({ ok: true }),
+      setActivePack: () => ({ ok: true }),
+      removePack: () => ({ ok: true })
+    },
+    ipcMainService: ipcMain
+  })
+
+  assert.deepEqual(await runtime.handlePetPackRequest({ operation: 'pick', payload: {} }), { canceled: true })
+  assert.equal(inspectCalls, 0)
+})
+
 test('Shell Pet Pack mutation bridge broadcasts active pack refresh to backend SSE and chat surfaces', async () => {
   const ipcMain = createIpcMainStub()
   const legacyPack = {
@@ -2628,6 +2758,8 @@ test('Shell Pet Pack mutation bridge broadcasts active pack refresh to backend S
   const petChatStateChanges = []
   const bubbleRefreshCalls = []
   const backendNotifications = []
+  let animationReloads = 0
+  let triggerRefreshes = 0
   let currentPetPacks = { activePackId: 'legacy-cat', packs: [legacyPack] }
   const services = createRequiredServices({
     pluginInstallService: {
@@ -2649,8 +2781,9 @@ test('Shell Pet Pack mutation bridge broadcasts active pack refresh to backend S
       ...services.petService,
       getAnimations: () => animations,
       getPreviewAnimations: () => animations,
-      reloadAnimations: () => animations
+      reloadAnimations: () => { animationReloads += 1; return animations }
     },
+    triggerRuleRuntimeService: { refresh: () => { triggerRefreshes += 1 } },
     getPetWindow: () => ({
       isDestroyed: () => false,
       webContents: {
@@ -2746,22 +2879,21 @@ test('Shell Pet Pack mutation bridge broadcasts active pack refresh to backend S
     ['set-active', 'doro'],
     ['remove', 'doro']
   ])
-  assert.equal(petWindowMessages.length, 2)
+  assert.equal(petWindowMessages.length, 1)
   assert.equal(petWindowMessages[0][0], IPC.PET_ANIMATIONS_CHANGED)
-  assert.equal(petWindowMessages[1][0], IPC.PET_ANIMATIONS_CHANGED)
+  assert.equal(animationReloads, 1)
+  assert.equal(triggerRefreshes, 1)
   assert.deepEqual(backendNotifications.map(({ type, payload }) => [type, payload.activePackId, payload.petChatState.petPack.id]), [
-    ['pet.pack-activated', 'doro', 'doro'],
     ['pet.pack-activated', 'doro', 'doro'],
     ['pet.pack-activated', 'legacy-cat', 'legacy-cat']
   ])
-  assert.deepEqual(petChatStateChanges.map((state) => state.petPack.id), ['doro', 'doro', 'legacy-cat'])
+  assert.deepEqual(petChatStateChanges.map((state) => state.petPack.id), ['doro', 'legacy-cat'])
   assert.deepEqual(bubbleRefreshCalls.map((call) => ({
     reason: call.reason,
     noticeItems: call.noticeItems,
     firstMessage: call.conversationMessages[0]?.content
   })), [
     { reason: 'active-pet-pack-changed:pet-pack.import', noticeItems: [], firstMessage: 'hello from doro' },
-    { reason: 'active-pet-pack-changed:pet-pack.activate', noticeItems: [], firstMessage: 'hello from doro' },
     { reason: 'active-pet-pack-changed:pet-pack.remove', noticeItems: [], firstMessage: 'hello from legacy-cat' }
   ])
 })

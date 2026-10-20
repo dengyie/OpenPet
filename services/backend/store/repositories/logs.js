@@ -3,6 +3,7 @@ import { ApiError } from "../../http/middleware.js"
 export const HTTP_LOG_RETENTION_MS = 7 * 24 * 60 * 60 * 1_000
 export const HTTP_LOG_MAX_ROWS = 10_000
 export const PLUGIN_LOG_MAX_PER_PLUGIN = 5_000
+const PLUGIN_LOG_LEVELS = new Set(["info", "warn", "error"])
 
 function assertDb(db) {
 	if (!db || typeof db.prepare !== "function" || typeof db.transaction !== "function") {
@@ -70,11 +71,41 @@ export function createLogsRepository({ db, now = Date.now } = {}) {
 		})
 	}
 
-	const listPlugin = ({ pluginId, limit = 200, before } = {}) => {
+	const listPlugin = ({ pluginId, limit, page = 1, pageSize, before, level, query } = {}) => {
 		if (typeof pluginId !== "string" || pluginId.length === 0) throw new ApiError("VALIDATION_FAILED", "pluginId 不能为空")
-		const boundedLimit = Math.max(1, Math.min(PLUGIN_LOG_MAX_PER_PLUGIN, Math.trunc(Number(limit) || 200)))
-		if (before === undefined) return db.prepare("SELECT id, plugin_id AS pluginId, level, message, at FROM plugin_logs WHERE plugin_id = ? ORDER BY at DESC, id DESC LIMIT ?").all(pluginId, boundedLimit)
-		return db.prepare("SELECT id, plugin_id AS pluginId, level, message, at FROM plugin_logs WHERE plugin_id = ? AND at < ? ORDER BY at DESC, id DESC LIMIT ?").all(pluginId, Number(before), boundedLimit)
+		if (level !== undefined && (typeof level !== "string" || !PLUGIN_LOG_LEVELS.has(level))) {
+			throw new ApiError("VALIDATION_FAILED", "日志级别无效")
+		}
+		if (query !== undefined && (typeof query !== "string" || query.length > 200)) {
+			throw new ApiError("VALIDATION_FAILED", "日志查询条件无效")
+		}
+		const requestedLimit = pageSize ?? limit ?? 200
+		const boundedLimit = Math.max(1, Math.min(PLUGIN_LOG_MAX_PER_PLUGIN, Math.trunc(Number(requestedLimit) || 200)))
+		const normalizedPage = Math.trunc(Number(page) || 1)
+		if (!Number.isSafeInteger(normalizedPage) || normalizedPage < 1) throw new ApiError("VALIDATION_FAILED", "日志页码无效")
+		const offset = (normalizedPage - 1) * boundedLimit
+		if (!Number.isSafeInteger(offset)) throw new ApiError("VALIDATION_FAILED", "日志页码超出范围")
+		const clauses = ["plugin_id = ?"]
+		const parameters = [pluginId]
+		if (level !== undefined) {
+			clauses.push("level = ?")
+			parameters.push(level)
+		}
+		if (query !== undefined && query.length > 0) {
+			const escaped = query.toLowerCase().replace(/[\\%_]/g, "\\$&")
+			clauses.push("(LOWER(plugin_id) LIKE ? ESCAPE '\\' OR LOWER(message) LIKE ? ESCAPE '\\')")
+			parameters.push(`%${escaped}%`, `%${escaped}%`)
+		}
+		if (before !== undefined) {
+			if (!Number.isFinite(Number(before))) throw new ApiError("VALIDATION_FAILED", "日志游标无效")
+			clauses.push("at < ?")
+			parameters.push(Number(before))
+		}
+		if (before !== undefined && normalizedPage > 1) throw new ApiError("VALIDATION_FAILED", "日志游标不能与页码同时使用")
+		parameters.push(boundedLimit)
+		if (before === undefined) parameters.push(offset)
+		const pagination = before === undefined ? "LIMIT ? OFFSET ?" : "LIMIT ?"
+		return db.prepare(`SELECT id, plugin_id AS pluginId, level, message, at FROM plugin_logs WHERE ${clauses.join(" AND ")} ORDER BY at DESC, id DESC ${pagination}`).all(...parameters)
 	}
 
 	const cleanup = ({ at = now() } = {}) => {

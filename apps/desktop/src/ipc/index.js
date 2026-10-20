@@ -677,7 +677,7 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     }
   })
 
-  registerSettingsIpc({
+  const handleSettingsCommand = registerSettingsIpc({
     ipcMainService,
     petService,
     getPetWindow,
@@ -732,6 +732,27 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
           return petPackService.listPacks()
         case 'manifest':
           return petPackService.getPackManifest(payload.packId)
+        case 'pick': {
+          const selected = await showOpenDialogForEvent(null, {
+            title: '选择 Pet Pack 文件夹或 Codex Pet 包',
+            properties: ['openFile', 'openDirectory'],
+            filters: [{ name: 'Pet Pack Package', extensions: ['zip'] }]
+          })
+          if (selected?.canceled || !selected?.filePaths?.[0]) return { canceled: true }
+          const inspection = await petPackService.inspectPackSource(selected.filePaths[0])
+          const pack = inspection.pack
+            ? Object.fromEntries(Object.entries(inspection.pack).filter(([key]) => key !== 'rootPath'))
+            : inspection.pack
+          return {
+            canceled: false,
+            selectionId: inspection.selectionId,
+            folderName: inspection.folderName,
+            valid: inspection.valid,
+            errors: inspection.errors,
+            warnings: inspection.warnings,
+            pack
+          }
+        }
         case 'validate':
           return petPackService.inspectPackSource(payload.sourcePath)
         case 'clear-selection':
@@ -776,15 +797,20 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
           return { canceled: false, ...await petPackService.exportPack(payload.packId, outputDir) }
         }
         case 'activate': {
+          const previousActivePackId = petPackService.listPacks()?.activePackId || ''
           const result = petPackService.setActivePack(payload.packId)
-          const animations = reloadAndSendAnimations(getPetWindow, petService)
-          refreshTriggerRuleRuntime()
+          const petPacks = petPackService.listPacks()
+          const activePackChanged = previousActivePackId !== petPacks?.activePackId
+          const animations = activePackChanged
+            ? reloadAndSendAnimations(getPetWindow, petService)
+            : petService.getPreviewAnimations()
+          if (activePackChanged) refreshTriggerRuleRuntime()
           const mutationResult = createPetPackMutationResult(
             result,
-            petPackService.listPacks(),
+            petPacks,
             createActionsViewState(petService, triggerRuleRuntimeService, animations)
           )
-          petChatFacade.broadcastActivePetPackChanged({ source: 'pet-pack.activate', payload: mutationResult })
+          if (activePackChanged) petChatFacade.broadcastActivePetPackChanged({ source: 'pet-pack.activate', payload: mutationResult })
           return mutationResult
         }
         case 'remove': {
@@ -801,6 +827,83 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
       }
     } catch (error) {
       throw classifyPetPackError(error, operation)
+    }
+  }
+
+  const handleAiTalkRequest = async ({ operation, payload = {} } = {}) => {
+    switch (operation) {
+      case 'config.get': return createAiConfigView(aiService.getConfig())
+      case 'config.save': return createAiConfigView(aiService.saveConfig(payload.config))
+      case 'provider.test': {
+        if (payload.providerId !== 'chat') throw Object.assign(new Error('Unsupported AI provider capability'), { code: 'VALIDATION_FAILED' })
+        return aiService.testConnection()
+      }
+      case 'provider.models': {
+        if (payload.providerId === 'chat') return aiService.discoverModels()
+        if (payload.providerId === 'vision') return aiService.discoverVisionModels()
+        throw Object.assign(new Error('Unsupported AI provider capability'), { code: 'VALIDATION_FAILED' })
+      }
+      case 'persona.get': return createAiPersonaProfileView(await aiTalkService.getPersonaProfile())
+      case 'persona.save': return createAiPersonaProfileView(await aiTalkService.savePersonaOverride(payload.override))
+      case 'persona.draft': return createAiPersonaDraftView(await aiTalkService.generatePersonaDraft(payload))
+      case 'memory.list': return createAiMemoryProfileView(await aiTalkService.getMemoryProfile())
+      case 'memory.create': return createAiMemoryProfileView(await aiTalkService.createMemory(payload.memory))
+      case 'memory.delete': return createAiMemoryProfileView(await aiTalkService.deleteMemory(payload.memoryId))
+      case 'memory.clear-pet-pack': return createAiMemoryProfileView(await aiTalkService.clearPetPackMemories())
+      case 'chat':
+      case 'talk.start': return runAiChatRequest(payload, {
+        source: 'control-center',
+        entrypoint: payload.entrypoint || 'control-center'
+      })
+      case 'talk.stop': return aiTalkService.cancelRequest({ requestId: payload.requestId, reason: 'backend-request' })
+      case 'conversation.list': return aiTalkService.listConversations(payload)
+      case 'conversation.get': return { conversationId: payload.conversationId, messages: aiTalkService.getConversation(payload.conversationId) }
+      case 'conversation.delete': return aiTalkService.deleteConversation(payload.conversationId)
+      case 'behavior.get': return behaviorOrchestratorService.getConfig()
+      case 'behavior.save': return behaviorOrchestratorService.saveConfig(payload.config)
+      case 'behavior.dry-run': return behaviorOrchestratorService.dryRun({
+        reply: payload.reply,
+        behaviorIntent: payload.behaviorIntent,
+        behavior: { rules: payload.rules },
+        actions: petService.getAnimations()?.actions || []
+      })
+      case 'behavior.rule.create': {
+        const current = behaviorOrchestratorService.getConfig()
+        return behaviorOrchestratorService.saveConfig({ rules: [...(current.rules || []), payload.rule] })
+      }
+      case 'behavior.rule.update': {
+        const current = behaviorOrchestratorService.getConfig()
+        return behaviorOrchestratorService.saveConfig({ rules: (current.rules || []).map((rule) => rule.id === payload.ruleId ? { ...rule, ...payload.patch, id: rule.id } : rule) })
+      }
+      case 'behavior.rule.delete': {
+        const current = behaviorOrchestratorService.getConfig()
+        return behaviorOrchestratorService.saveConfig({ rules: (current.rules || []).filter((rule) => rule.id !== payload.ruleId) })
+      }
+      case 'behavior.decision.replay': return behaviorOrchestratorService.replayDecision({
+        decisionId: payload.decisionId,
+        actions: petService.getAnimations()?.actions || []
+      })
+      case 'behavior.diagnostics.export': return behaviorOrchestratorService.exportDiagnostics()
+      case 'behavior.decisions.clear': return behaviorOrchestratorService.clearDecisions()
+      case 'trace.get': return aiTalkService.getLatestTraceSummary({ conversationId: payload.conversationId })
+      case 'trace.export': return aiTalkService.exportTraceDiagnostics({ filters: payload.filters, behaviorDecisions: behaviorOrchestratorService.getConfig()?.decisions || [] })
+      case 'hatch.agents': return {
+        config: hatchPetAgentService.getConfig(),
+        readiness: hatchPetAgentService.getGenerationReadiness?.() || null,
+        capability: await hatchPetAgentService.checkGenerationCapability?.() || null
+      }
+      case 'hatch.config.get': return hatchPetAgentService.getConfig()
+      case 'hatch.config.save': return hatchPetAgentService.saveConfig(payload.config)
+      case 'hatch.key.save': return hatchPetAgentService.saveApiKey(payload.apiKey)
+      case 'hatch.key.clear': return hatchPetAgentService.clearApiKey()
+      case 'hatch.capability.check': return hatchPetAgentService.checkCapability()
+      case 'hatch.run.status': return hatchPetAgentService.getRunStatus(payload.runId)
+      case 'hatch.start': return hatchPetAgentService.createShadowDecision(payload)
+      case 'hatch.stop': return { canceled: Boolean(hatchPetAgentService.cancelRun?.(payload.runId)) }
+      case 'hatch.budget': return hatchPetAgentService.getBudget?.(payload.runId) || { runId: payload.runId, budget: null }
+      case 'image.health': return imageGenerationModelService.checkHealth(payload.options || {})
+      case 'image.models': return imageGenerationModelService.discoverModels(payload.options || {})
+      default: throw Object.assign(new Error('Unsupported AI talk operation'), { code: 'VALIDATION_FAILED' })
     }
   }
   registerAiIpc({
@@ -860,7 +963,9 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     presentAiChatResult,
     refreshAiState: () => petChatFacade.refreshPetPackScopedChatState({ reason: 'ai-backend-state' }),
     handlePetPackRequest,
-    handleActionsRequest: actionsSidecarBridge.handle
+    handleActionsRequest: actionsSidecarBridge.handle,
+    handleAiTalkRequest,
+    handleSettingsCommand
   }
 }
 

@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-08T21:19:55.311Z",
+  "evidenceType": "ai-provider-smoke",
+  "claimBoundary": "OpenPet development gateway model discovery and chat completion smoke only; image generation was not executed.",
+  "provider": "openai-compatible",
+  "baseUrl": "https://api.mangoqwq.com/v1",
+  "chatModel": "gpt-5.5",
+  "imageModel": "gpt-image-2",
+  "includeImage": false,
+  "secret": {
+    "apiKeyConfigured": true
+  },
+  "checks": [
+    {
+      "id": "models",
+      "status": "pass",
+      "statusCode": 200,
+      "elapsedMs": 978,
+      "discoveredModelCount": 182,
+      "containsChatModel": true,
+      "containsImageModel": true,
+      "models": [
+        "DeepSeek-V4-Flash",
+        "DeepSeek-V4-Flash-0731",
+        "DeepSeek-V4-Flash-Vision-Exp",
+        "DeepSeek-V4-Pro",
+        "DeepSeek-V4.1-Flash",
+        "Deepseek-v4-flash",
+        "GLM-5.2",
+        "GLM-5.3",
+        "GLM-5.3-Flash",
+        "MiniMax-M3",
+        "Nano Banana 2 Lite",
+        "Nano Banana Pro",
+        "Qwen3.8-Flash",
+        "Qwen3Guard-Gen-0.6B",
+        "Security-semantic-filtering",
+        "Space-Bunny",
+        "Spark-TTS-0.5B",
+        "ZhipuAI/GLM-5.2",
+        "claude-fable-5",
+        "claude-fable-5-1"
+      ],
+      "message": "selected models are present or image check is disabled"
+    },
+    {
+      "id": "chat-completions",
+      "status": "fail",
+      "statusCode": 404,
+      "elapsedMs": 9946,
+      "message": "Application not found"
+    },
+    {
+      "id": "image-generations",
+      "status": "skipped",
+      "message": "image generation is opt-in; pass --include-image to run this potentially billable check"
+    }
+  ],
+  "ok": false
+}

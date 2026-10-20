@@ -80,16 +80,18 @@ describe("Job queue · scheduling", () => {
 	})
 
 	it("cancels queued jobs and leaves running cancellation to the runner", async () => {
+		const terminal = []
 		await withQueue(({ repo, queue }) => {
 			queue.enqueue(job("cancel-queued"))
 			assert.equal(queue.cancel("cancel-queued").status, "canceled")
 			assert.equal(queue.stats().queued, 0)
+			assert.deepEqual(terminal, ["cancel-queued"])
 
 			queue.enqueue(job("cancel-running"))
 			queue.next()
 			assert.throws(() => queue.cancel("cancel-running"), (error) => error.code === "JOB_NOT_CANCELABLE" && error.status === 423)
 			assert.equal(repo.byId("cancel-running").status, "running")
-		})
+		}, { onJobTerminal: (current) => terminal.push(current.id) })
 	})
 
 	it("accepts a new job object once without re-inserting it", async () => {
@@ -113,6 +115,7 @@ describe("Job queue · scheduling", () => {
 describe("Job queue · timeout", () => {
 	it("expires an idle queued job when the timer check advances", async () => {
 		let currentTime = 0
+		const terminal = []
 		await withQueue(({ repo, queue }) => {
 			queue.enqueue(job("timeout-job"))
 			currentTime = 101
@@ -121,6 +124,7 @@ describe("Job queue · timeout", () => {
 			currentTime = 1_001
 			assert.equal(queue.expire().length, 1)
 			assert.equal(repo.byId("timeout-job").status, "canceled")
-		}, { now: () => currentTime, queueTimeoutMs: 1_000, tickMs: 50 })
+		}, { now: () => currentTime, queueTimeoutMs: 1_000, tickMs: 50, onJobTerminal: (job) => terminal.push(job.id) })
+		assert.deepEqual(terminal, ["timeout-job"])
 	})
 })

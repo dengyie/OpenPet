@@ -82,19 +82,31 @@ describe("T42 Catalog cutover boundary", () => {
 			const requests = []
 			const backendCatalog = createCatalogService({
 				root,
-				shell: {
-					request: async (body) => {
-						requests.push(body.request)
-						return { body: { type: "catalog.result", ok: true, result: { ok: true } } }
-					},
+						shell: {
+							request: async (body) => {
+								requests.push(body.request)
+								const result = ["installSelection", "addBlocklistEntry", "removeBlocklistEntry"].includes(body.request.operation)
+									? { ok: true, catalog: { plugins: [], petPacks: [], updatedAt: "2026-09-05T00:00:00.000Z" } }
+									: { ok: true }
+								return { body: { type: "catalog.result", ok: true, result } }
+							},
 				},
 			})
 
 			assert.deepEqual(await backendCatalog.prepareInstall({ kind: "plugin", itemId: "demo.plugin" }), { ok: true })
-			assert.deepEqual(await backendCatalog.installSelection("selection-1"), { ok: true })
+				assert.deepEqual(await backendCatalog.installSelection("selection-1"), {
+					ok: true,
+					catalog: { plugins: [], petPacks: [], updatedAt: "2026-09-05T00:00:00.000Z" },
+				})
 			assert.deepEqual(await backendCatalog.clearSelection("selection-1"), { ok: true })
-			assert.deepEqual(await backendCatalog.addBlocklistEntry({ type: "pluginId", value: "demo.plugin" }), { ok: true })
-			assert.deepEqual(await backendCatalog.removeBlocklistEntry({ type: "pluginId", value: "demo.plugin" }), { ok: true })
+				assert.deepEqual(await backendCatalog.addBlocklistEntry({ type: "pluginId", value: "demo.plugin" }), {
+					ok: true,
+					catalog: { plugins: [], petPacks: [], updatedAt: "2026-09-05T00:00:00.000Z" },
+				})
+				assert.deepEqual(await backendCatalog.removeBlocklistEntry({ type: "pluginId", value: "demo.plugin" }), {
+					ok: true,
+					catalog: { plugins: [], petPacks: [], updatedAt: "2026-09-05T00:00:00.000Z" },
+				})
 			assert.deepEqual(requests, [
 				{ operation: "prepareInstall", kind: "plugin", itemId: "demo.plugin" },
 				{ operation: "installSelection", selectionId: "selection-1" },
@@ -183,6 +195,11 @@ describe("T42 Catalog cutover boundary", () => {
 			assert.doesNotMatch(hook, new RegExp(`api\\.${method}\\(`), method)
 		}
 		assert.match(hook, /catalogApi\./)
+		assert.match(hook, /useSse\(\['catalog'\]\)/)
+			assert.match(hook, /catalog\.refreshed/)
+			assert.match(hook, /refreshCatalog\(\)/)
+			assert.match(hook, /catalogRefreshSequenceRef/)
+		assert.match(hook, /catalogRefreshSequenceRef/)
 	})
 
 	it("locks selection-changing Catalog controls while an install Job is active", () => {

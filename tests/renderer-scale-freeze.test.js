@@ -120,6 +120,17 @@ test('scale changes freeze the pet on the default action instead of continuing a
   assert.equal([...activeTimers.values()].includes(100), false)
 })
 
+test('repeated settings with the same scale keep the current action playing', async () => {
+  const { activeTimers, callbacks, logs } = await createRendererHarness()
+
+  callbacks.action({ actionId: 'waving' })
+  callbacks.settings({ scale: 1 })
+
+  const actionEvents = logs.filter((entry) => entry.event === 'pet.action.changed')
+  assert.equal(actionEvents.at(-1).details.nextAction, 'waving')
+  assert.equal([...activeTimers.values()].includes(100), true)
+})
+
 test('scale preview sends one viewport resize after freezing to the default action', async () => {
   const { callbacks, viewportCalls } = await createRendererHarness()
 

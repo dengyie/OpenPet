@@ -1024,7 +1024,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
         result
       }
     },
-    creatorHatchPetPlan: async (payload = {}) => {
+    creatorHatchPetPlan: async (payload = {}, { signal = null } = {}) => {
       assertPermission(plugin.manifest, 'model:image-generate')
       if (plugin.manifest.id !== CREATOR_STUDIO_PLUGIN_ID) throw new Error(`Plugin ${plugin.manifest.id} does not have Creator Studio hatch-pet planning ownership`)
       if (!effectiveHatchPetAgentService?.planSprite) throw new Error('Creator hatch-pet planning is not available')
@@ -1033,11 +1033,12 @@ const createPluginService = ({ settingsService, petService, actionService, actio
         ok: true,
         result: await effectiveHatchPetAgentService.planSprite({
           runId: String(payload.runId || ''),
-          userIntent: String(payload.userIntent || '')
+          userIntent: String(payload.userIntent || ''),
+          signal
         })
       }
     },
-    creatorHatchPetEvaluate: async (payload = {}) => {
+    creatorHatchPetEvaluate: async (payload = {}, { signal = null } = {}) => {
       assertPermission(plugin.manifest, 'model:image-generate')
       if (plugin.manifest.id !== CREATOR_STUDIO_PLUGIN_ID) throw new Error(`Plugin ${plugin.manifest.id} does not have Creator Studio hatch-pet evaluation ownership`)
       if (!effectiveHatchPetAgentService?.evaluateSprite) throw new Error('Creator hatch-pet evaluation is not available')
@@ -1056,7 +1057,8 @@ const createPluginService = ({ settingsService, petService, actionService, actio
             sha256: String(board.sha256 || ''),
             regions: Array.isArray(board.regions) ? board.regions : []
           },
-          qa: payload.qa && typeof payload.qa === 'object' ? payload.qa : {}
+          qa: payload.qa && typeof payload.qa === 'object' ? payload.qa : {},
+          signal
         })
       }
     }

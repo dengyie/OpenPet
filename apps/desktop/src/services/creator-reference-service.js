@@ -10,6 +10,7 @@ const DEFAULT_PATH_MIN_ASPECT_RATIO = 0.5
 const DEFAULT_PATH_MAX_ASPECT_RATIO = 1.9
 const UNSUPPORTED_DEFAULT_PATH_REFERENCE_CODE = 'unsupported_multi_view_reference'
 const UNSUPPORTED_DEFAULT_PATH_REFERENCE_MESSAGE = '默认一键生成暂只支持单张干净正面图，请改用一张清晰的正面图，不要使用拼图、三视图或多视图合成图。'
+const APPROVED_REFERENCE_TTL_MS = 15 * 60 * 1000
 
 const normalizeTargetType = (value) => {
   const normalized = String(value || '').trim()
@@ -46,6 +47,14 @@ const createSafeFileName = (value, fallback = 'reference.png') => {
   const safeBaseName = sanitizeFileSegment(baseName) || sanitizeFileSegment(fallbackBaseName) || 'reference'
   const safeExtension = sanitizeFileSegment(extension.replace(/^\./, ''))
   return safeExtension ? `${safeBaseName}.${safeExtension}` : safeBaseName
+}
+
+const detectImageMimeType = (data) => {
+  if (!Buffer.isBuffer(data)) return ''
+  if (data.length >= 8 && data.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png'
+  if (data.length >= 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) return 'image/jpeg'
+  if (data.length >= 12 && data.toString('ascii', 0, 4) === 'RIFF' && data.toString('ascii', 8, 12) === 'WEBP') return 'image/webp'
+  return ''
 }
 
 const readSettingsReferences = (settingsService) => {
@@ -226,13 +235,22 @@ const createCreatorReferenceService = ({
 
   const normalizeReferenceToken = (value) => String(value || '').trim()
 
-  const approveSourcePath = (sourcePath) => {
+  const approveSourcePath = (sourcePath, { cleanup = false } = {}) => {
     const resolvedSourcePath = normalizeSourcePath(sourcePath)
     if (!resolvedSourcePath) {
       throw new Error('Creator reference source image is required')
     }
     const referenceToken = crypto.randomUUID()
-    approvedReferenceTokens.set(referenceToken, resolvedSourcePath)
+    const approved = { sourcePath: resolvedSourcePath, cleanup, timer: null }
+    approved.timer = setTimeout(() => {
+      if (approvedReferenceTokens.get(referenceToken) !== approved) return
+      approvedReferenceTokens.delete(referenceToken)
+      if (approved.cleanup) {
+        try { fs.rmSync(approved.sourcePath, { force: true }) } catch (_) {}
+      }
+    }, APPROVED_REFERENCE_TTL_MS)
+    approved.timer.unref?.()
+    approvedReferenceTokens.set(referenceToken, approved)
     return {
       referenceToken,
       fileName: path.basename(resolvedSourcePath)
@@ -282,18 +300,44 @@ const createCreatorReferenceService = ({
     if (!normalizedReferenceToken) {
       throw new Error('Creator reference source image was not approved by the main picker')
     }
-    const resolvedSourcePath = approvedReferenceTokens.get(normalizedReferenceToken) || ''
+    const approved = approvedReferenceTokens.get(normalizedReferenceToken)
     approvedReferenceTokens.delete(normalizedReferenceToken)
+    const resolvedSourcePath = approved?.sourcePath || ''
     if (!resolvedSourcePath) {
       throw new Error('Creator reference source image was not approved by the main picker')
     }
-    return resolvedSourcePath
+    clearTimeout(approved.timer)
+    return approved
+  }
+
+  const approveSourceBuffer = ({ data, fileName = 'reference.png', mimeType = '' } = {}) => {
+    if (!Buffer.isBuffer(data) || data.length === 0) throw new Error('Creator reference image data is required')
+    const detectedMimeType = detectImageMimeType(data)
+    if (!detectedMimeType) throw new Error('Creator reference image bytes are not a supported PNG, JPEG, or WebP image')
+    if (mimeType && String(mimeType).toLowerCase() !== detectedMimeType) {
+      throw new Error('Creator reference MIME type does not match image bytes')
+    }
+    const extension = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp' }[detectedMimeType]
+    const safeName = createSafeFileName(fileName, `reference${extension}`)
+    const safeBaseName = path.parse(safeName).name || 'reference'
+    const tempDir = path.join(referenceRoot, '.uploads')
+    ensureDirectory(tempDir)
+    const tempPath = path.join(tempDir, `${crypto.randomUUID()}-${safeBaseName}${extension}`)
+    fs.writeFileSync(tempPath, data, { mode: 0o600 })
+    try {
+      return approveSourcePath(tempPath, { cleanup: true })
+    } catch (error) {
+      fs.rmSync(tempPath, { force: true })
+      throw error
+    }
   }
 
   const bindReference = async ({ targetType, targetId, referenceToken }) => {
     const normalizedTargetType = normalizeTargetType(targetType)
     const normalizedTargetId = normalizeTargetId(targetId)
-    const resolvedSourcePath = consumeApprovedSourcePath(referenceToken)
+    const approved = consumeApprovedSourcePath(referenceToken)
+    const resolvedSourcePath = approved.sourcePath
+    try {
     if (!resolvedSourcePath || !fs.existsSync(resolvedSourcePath)) {
       throw new Error('Creator reference source image does not exist')
     }
@@ -337,6 +381,11 @@ const createCreatorReferenceService = ({
       replaced: Boolean(previous),
       reference: createView(record)
     }
+    } finally {
+      if (approved.cleanup) {
+        try { fs.rmSync(resolvedSourcePath, { force: true }) } catch (_) {}
+      }
+    }
   }
 
   const inspectApprovedSource = async ({ referenceToken }) => {
@@ -344,7 +393,8 @@ const createCreatorReferenceService = ({
     if (!normalizedReferenceToken) {
       throw new Error('Creator reference source image was not approved by the main picker')
     }
-    const resolvedSourcePath = approvedReferenceTokens.get(normalizedReferenceToken) || ''
+    const approved = approvedReferenceTokens.get(normalizedReferenceToken)
+    const resolvedSourcePath = approved?.sourcePath || ''
     if (!resolvedSourcePath) {
       throw new Error('Creator reference source image was not approved by the main picker')
     }
@@ -431,6 +481,7 @@ const createCreatorReferenceService = ({
 
   return {
     approveSourcePath,
+    approveSourceBuffer,
     getReference,
     bindReference,
     deleteReference,

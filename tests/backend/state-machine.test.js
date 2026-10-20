@@ -206,6 +206,10 @@ describe("状态机 · 重试预算", () => {
 		assert.equal(sm.canRetry({ status: "succeeded", kind: "image.generate", attempt: 1 }), false)
 		assert.equal(sm.canRetry({ status: "running", kind: "image.generate", attempt: 1 }), false)
 		assert.equal(sm.canRetry({ status: "interrupted", kind: "plugin.command", input: { redacted: true }, attempt: 1, maxAttempts: 2 }), false)
+		assert.equal(sm.canRetry({ status: "interrupted", kind: "plugin.install", input: { redacted: true }, attempt: 1, maxAttempts: 2 }), false)
+		assert.equal(sm.canRetry({ status: "failed", kind: "plugin.install.github", input: { redacted: true }, attempt: 1, maxAttempts: 2 }), false)
+		assert.equal(sm.canRetry({ status: "failed", kind: "image.generate", input: { redacted: true }, attempt: 1, maxAttempts: 2 }), false)
+		assert.equal(sm.canRetry({ status: "failed", kind: "actions.import-frames", input: { redacted: true }, attempt: 1, maxAttempts: 2 }), false)
 		// 显式 maxAttempts 覆盖 kind 默认值。
 		assert.equal(
 			sm.canRetry({ status: "failed", kind: "creator.export", attempt: 1, maxAttempts: 3 }),

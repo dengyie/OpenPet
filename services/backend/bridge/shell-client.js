@@ -5,7 +5,7 @@
 // shell.js 的行为一致(它用 id:"1" 回了 init),因此不新增 replyTo 字段 ——
 // 信封形状是冻结的契约面,能不动就不动。
 
-import { ERROR_CODES } from "@openpet/contracts"
+import { ERROR_CODES, backendToShellSchema, parseAiTalkResult, shellToBackendSchema } from "@openpet/contracts"
 import { ApiError } from "../http/middleware.js"
 import {
 	BACKEND_TO_SHELL_TYPES,
@@ -56,6 +56,7 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 			}
 			if (typeof body.ok !== "boolean") return `${expectedType} has an invalid ok field`
 			if (body.ok && body.error !== undefined) return `successful ${expectedType} must not include an error`
+			if (expectedType === "pet-packs.result" && body.ok && !Object.hasOwn(body, "result")) return "pet-packs.result has no result"
 			if (expectedType === "actions.result" && body.ok && !Object.hasOwn(body, "result")) return "actions.result has no result"
 			if (!body.ok) {
 				if (body.error === null || typeof body.error !== "object" || Array.isArray(body.error)) {
@@ -66,6 +67,18 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 					return `${expectedType} has an invalid error message`
 				}
 			}
+			if (!body.ok && body.result !== undefined) return "failed pet-packs.result must not include result"
+			if (!body.ok && Object.keys(body.error).some((key) => !["code", "message"].includes(key))) return "pet-packs.result has unexpected error fields"
+			if (Object.keys(body).some((key) => !["type", "operation", "ok", "result", "error"].includes(key))) return "pet-packs.result has unexpected fields"
+		}
+		if (expectedType === "settings.command.result") {
+			const body = envelope.body
+			if (body.operation !== expectedOperation) return "unexpected Settings operation: " + String(body.operation)
+			if (typeof body.ok !== "boolean") return "settings.command.result has an invalid ok field"
+			if (body.ok && (body.result === undefined || body.error !== undefined)) return "settings.command.result success shape is invalid"
+			if (!body.ok && (body.result !== undefined || body.error === null || typeof body.error !== "object" || Array.isArray(body.error))) return "settings.command.result failure shape is invalid"
+			if (!body.ok && (!ERROR_CODES.includes(body.error.code) || typeof body.error.message !== "string" || body.error.message.length === 0 || Object.keys(body.error).some((key) => !["code", "message"].includes(key)))) return "settings.command.result error is invalid"
+			if (Object.keys(body).some((key) => !["type", "operation", "ok", "result", "error"].includes(key))) return "settings.command.result has unexpected fields"
 		}
 		if (expectedType === "pet.command.result") {
 			const body = envelope.body
@@ -86,6 +99,9 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 			const hasError = Object.hasOwn(body, "error")
 			if (body.ok && (!hasResult || hasError)) return "Successful Creator result must contain result and no error"
 			if (!body.ok && (!hasError || hasResult || body.error === null || typeof body.error !== "object" || Array.isArray(body.error) || !ERROR_CODES.includes(body.error.code) || typeof body.error.message !== "string" || body.error.message.length === 0)) return "Failed Creator result must contain a structured error and no result"
+		}
+		if (expectedType === "ai.talk.result" && envelope.body.operation !== expectedOperation) {
+			return `unexpected AI talk operation: expected ${expectedOperation}, got ${String(envelope.body.operation)}`
 		}
 		return null
 	}
@@ -109,14 +125,34 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 		}
 
 		const envelope = parsed.envelope
-
 		const awaiting = pending.get(envelope.id)
+		const validationError = awaiting && validateExpectedResponse(envelope, awaiting.expectedType, awaiting.expectedOperation)
+		if (awaiting !== undefined && validationError) {
+			pending.delete(envelope.id)
+			clearTimeout(awaiting.timer)
+			awaiting.reject(awaiting.expectedType === "ai.talk.result"
+				? new ApiError("INTERNAL", "Shell AI talk response is invalid")
+				: new Error(validationError))
+			return
+		}
+		const bodyResult = shellToBackendSchema.safeParse(envelope.body)
+		if (!bodyResult.success) {
+			if (awaiting !== undefined) {
+				pending.delete(envelope.id)
+				clearTimeout(awaiting.timer)
+				awaiting.reject(awaiting.expectedType === "ai.talk.result"
+					? new ApiError("INTERNAL", "Shell AI talk response is invalid")
+					: new Error("Shell response payload does not match the bridge contract"))
+			} else {
+				logger?.warn?.("丢弃不符合反向通道契约的 Shell 消息", { type: envelope.body.type })
+			}
+			return
+		}
+
 		if (awaiting !== undefined) {
 			pending.delete(envelope.id)
 			clearTimeout(awaiting.timer)
-			const validationError = validateExpectedResponse(envelope, awaiting.expectedType, awaiting.expectedOperation)
-			if (validationError) awaiting.reject(new Error(validationError))
-			else awaiting.resolve(envelope)
+			awaiting.resolve(envelope)
 			return
 		}
 
@@ -153,7 +189,10 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 		if (correlateDialogRequest && body.type === "dialog.request") {
 			envelope.body = { ...body, requestId: envelope.id }
 		}
-		send(envelope)
+		if (!backendToShellSchema.safeParse(envelope.body).success) {
+			throw new Error("Backend request payload does not match the bridge contract")
+		}
+		if (!options.deferSend) send(envelope)
 		return envelope
 	}
 
@@ -179,8 +218,8 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 			"ai.host.request": "ai.host.result",
 			"creator.request": "creator.result",
 		})[body?.type] ?? null
-		const expectedOperation = options.expectedOperation ?? (["pet-packs.request", "actions.request", "ai.host.request", "creator.request"].includes(body?.type) ? body.operation : null)
-		const envelope = dispatch(body, true)
+		const expectedOperation = options.expectedOperation ?? (["pet-packs.request", "actions.request", "ai.host.request", "creator.request", "ai.talk.request"].includes(body?.type) ? body.operation : null)
+		const envelope = dispatch(body, true, { deferSend: true })
 		if (envelope === null) return Promise.reject(new Error("shellClient 已销毁"))
 
 		return new Promise((resolve, reject) => {
@@ -197,6 +236,20 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 			}, timeoutMs)
 			timer.unref?.()
 			pending.set(envelope.id, { resolve, reject, timer, expectedType, expectedOperation })
+			try {
+				send(envelope, (error) => {
+					if (!error) return
+					const awaiting = pending.get(envelope.id)
+					if (!awaiting) return
+					pending.delete(envelope.id)
+					clearTimeout(awaiting.timer)
+					awaiting.reject(error)
+				})
+			} catch (error) {
+				pending.delete(envelope.id)
+				clearTimeout(timer)
+				reject(error)
+			}
 		})
 	}
 

@@ -61,9 +61,13 @@ export function useServicePane() {
       const nextStatus = cloneServiceStatus(await api.saveServiceConfig(serviceStatus.config))
       setServiceStatus(nextStatus)
       await loadLogsPage(logsPage.page)
-      setStatus(nextStatus.runtime.enabled ? '本地服务已启动' : '本地服务已停止')
+      if (nextStatus.config.backendMode === 'remote') {
+        setStatus(`广州 Backend 已连接；远端 HTTP API ${nextStatus.runtime.enabled ? '已启动' : '已停止'}`)
+      } else {
+        setStatus(nextStatus.runtime.enabled ? '本地服务已启动' : '本地服务已停止')
+      }
     } catch (error) {
-      setStatus(messageFromError(error, '服务配置保存失败'))
+      setStatus(messageFromError(error, serviceStatus.config.backendMode === 'remote' ? '广州 Backend 连接失败' : '服务配置保存失败'))
     } finally {
       setSaving(false)
     }

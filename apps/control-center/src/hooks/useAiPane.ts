@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { controlCenterAPI as api } from '../api/control-center-api.ts'
 import { aiHttpApi } from '../features/ai/api.ts'
+import { aiTalkApi } from '../features/ai/talk-api.ts'
 import { nextPetPackActivationEventId } from '../features/pet-packs/api.ts'
 import { useSse } from './useSse.ts'
 import {
@@ -153,6 +154,12 @@ const formatConnectionStatus = ({
     .replace(/^AI provider is temporarily unavailable$/, '聊天 Provider 暂时不可用')
     .replace(/^AI provider returned an error response$/, '聊天 Provider 返回了错误响应')
     .replace(/^AI provider connection test succeeded$/, '聊天 Provider 连接测试通过')
+  const localizedProbeMessage = String(result.modelsProbeMessage || '')
+    .replace(/^AI provider model discovery timed out$/, '聊天 Provider 模型列表探测超时')
+    .replace(/^AI provider rate limit exceeded$/, '聊天 Provider 已触发限流')
+    .replace(/^AI provider is temporarily unavailable$/, '聊天 Provider 暂时不可用')
+    .replace(/^AI provider model discovery failed$/, '聊天 Provider 模型列表探测失败')
+    .replace(/^AI provider is reachable, but the optional \/models probe is unavailable$/, '聊天 Provider 可达，但模型列表探测不可用；请手动确认模型名称。')
   if (result.ok && result.modelsProbe === 'ok' && result.currentModelDiscovered === false) {
     const mismatch = `聊天 Provider 可达，但当前保存的聊天 Model 未出现在 /models 返回列表中；请手动确认模型名称或网关映射。`
     return notice ? `${notice} ${mismatch}` : mismatch
@@ -161,12 +168,20 @@ const formatConnectionStatus = ({
     const unavailable = '聊天 Provider 可达，但模型列表探测不可用；请手动确认模型名称。'
     return notice ? `${notice} ${unavailable}` : unavailable
   }
+  if (result.ok && result.modelsProbe === 'rate_limited') {
+    const rateLimited = localizedProbeMessage || '聊天 Provider 已触发限流'
+    return notice ? `${notice} ${rateLimited}` : rateLimited
+  }
+  if (result.ok && result.modelsProbe === 'provider_unavailable') {
+    const unavailable = localizedProbeMessage || '聊天 Provider 暂时不可用'
+    return notice ? `${notice} ${unavailable}` : unavailable
+  }
   if (result.ok && result.modelsProbe === 'timed_out') {
-    const timedOut = '聊天 Provider 可达，但模型列表探测超时。'
+    const timedOut = localizedProbeMessage || '聊天 Provider 可达，但模型列表探测超时。'
     return notice ? `${notice} ${timedOut}` : timedOut
   }
   if (result.ok && result.modelsProbe === 'failed') {
-    const failed = '聊天 Provider 可达，但模型列表探测失败。'
+    const failed = localizedProbeMessage || '聊天 Provider 可达，但模型列表探测失败。'
     return notice ? `${notice} ${failed}` : failed
   }
   const details = result.ok
@@ -196,6 +211,8 @@ const formatImageGenerationHealthStatus = (result: ImageGenerationHealthCheckRes
 
 const formatModelDiscoveryStatus = (label: string, result: ProviderModelDiscoveryResult) => {
   const code = String(result.code || '').trim().toLowerCase()
+  if (code === 'rate_limited') return `${label} Provider 已触发限流：请稍后重试。`
+  if (code === 'provider_unavailable') return `${label} Provider 暂时不可用：请检查 Provider 状态后重试。`
   if (result.ok) {
     if (result.code === 'provider_reachable_models_unavailable') {
       return `${label} 可达，但模型列表探测不可用；请手动填写模型名。`
@@ -206,9 +223,16 @@ const formatModelDiscoveryStatus = (label: string, result: ProviderModelDiscover
     return `${label} 探测完成，但 provider 没有返回可用模型。`
   }
   if (code.includes('timeout')) {
-    return `${label} 模型探测超时：${result.message || result.code || 'unknown error'}`
+    return `${label} 模型探测超时：${result.message === 'AI provider model discovery timed out' ? 'Provider 模型列表探测超时' : result.message || result.code || '未知错误'}`
   }
-  return `${label} 模型探测失败：${result.message || result.code || 'unknown error'}`
+  const message = String(result.message || '')
+    .replace(/^AI provider rate limit exceeded$/, 'Provider 已触发限流')
+    .replace(/^AI provider is temporarily unavailable$/, 'Provider 暂时不可用')
+    .replace(/^AI provider rejected the API key$/, 'Provider 拒绝了当前 API Key')
+    .replace(/^AI provider endpoint or model was not found$/, 'Provider 的接口或模型不存在')
+    .replace(/^AI provider request failed with status (\d+)$/, 'Provider 请求失败，HTTP 状态 $1')
+    .replace(/^AI provider model discovery failed$/, 'Provider 未能返回模型列表')
+  return `${label} 模型探测失败：${message || result.code || '未知错误'}`
 }
 
 const createChatModelDiscoveryFromConnectionTest = (result: AiConnectionTestResult): ProviderModelDiscoveryResult => ({
@@ -224,12 +248,12 @@ const createChatModelDiscoveryFromConnectionTest = (result: AiConnectionTestResu
       ? 'timeout'
       : result.modelsProbe === 'failed'
         ? 'probe_failed'
+        : result.modelsProbe === 'rate_limited'
+          ? 'rate_limited'
+          : result.modelsProbe === 'provider_unavailable'
+            ? 'provider_unavailable'
         : (String(result.code || '').trim() || (result.ok ? 'ok' : 'unknown_error')),
-  message: result.modelsProbe === 'timed_out'
-    ? 'AI provider model discovery timed out'
-    : result.modelsProbe === 'failed'
-      ? 'AI provider model discovery failed'
-      : String(result.message || '').trim()
+  message: String(result.modelsProbeMessage || result.message || '').trim()
 })
 
 const createImageModelDiscoveryFromHealth = (
@@ -353,6 +377,9 @@ export function useAiPane(activeTab = 'ai') {
   const [chatDraft, setChatDraft] = useState('')
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [petChatState, setPetChatState] = useState<PetChatStateViewState>(defaultPetChatState)
+  const [conversations, setConversations] = useState<Array<Record<string, unknown>>>([])
+  const [conversationId, setConversationId] = useState('')
+  const [conversationStatus, setConversationStatus] = useState('')
   const [traceDiagnosticsFilters, setTraceDiagnosticsFilters] = useState<AiTalkTraceDiagnosticsFilters>({})
   const [traceSummary, setTraceSummary] = useState<AiTalkTraceSummaryViewState | null>(null)
   const [chatting, setChatting] = useState(false)
@@ -384,6 +411,7 @@ export function useAiPane(activeTab = 'ai') {
     const nextState = clonePetChatState(state)
     setPetChatState(nextState)
     setChatMessages(nextState.messages)
+    setConversationId(nextState.conversationId || getMainConversationId(nextState.petPack.id) || '')
     return nextState
   }
 
@@ -408,7 +436,7 @@ export function useAiPane(activeTab = 'ai') {
   }
 
   const loadImageGenerationConfig = async ({ preserveDraft = false } = {}) => {
-    const nextConfig = cloneImageGenerationConfig(await api.getImageGenerationConfig())
+    const nextConfig = cloneImageGenerationConfig(await aiTalkApi.getImageConfig())
     setImageGenerationConfig((current) => applySavedImageGenerationConfigState({
       draftConfig: current,
       savedConfig: nextConfig,
@@ -428,6 +456,46 @@ export function useAiPane(activeTab = 'ai') {
     } catch (_) {
       setTraceSummary(null)
       return null
+    }
+  }
+
+  const loadConversations = async (petPackId = memoryProfile.petPackId) => {
+    const result = await aiTalkApi.listConversations({ entrypoint: 'control-center', petPackId })
+    const items = Array.isArray(result?.conversations) ? result.conversations : []
+    setConversations(items)
+    return items
+  }
+
+  const selectConversation = async (nextConversationId: string) => {
+    const normalizedId = String(nextConversationId || '').trim()
+    if (!normalizedId) return
+    setConversationStatus('正在加载会话')
+    try {
+      const result = await aiTalkApi.getConversation(normalizedId)
+      if (!Array.isArray(result.messages)) throw new Error('Conversation response is invalid')
+      setConversationId(normalizedId)
+      const messages = cloneChatMessages(result.messages as ChatMessage[])
+      setChatMessages(messages)
+      void loadAiTalkTraceSummary(normalizedId).catch(() => {})
+      setConversationStatus('会话已加载')
+    } catch (error) {
+      setConversationStatus(messageFromError(error, '会话加载失败'))
+    }
+  }
+
+  const deleteConversation = async (targetConversationId: string) => {
+    const normalizedId = String(targetConversationId || '').trim()
+    if (!normalizedId || normalizedId === petChatState.conversationId) return
+    setConversationStatus('正在删除会话')
+    try {
+      await aiTalkApi.deleteConversation(normalizedId)
+      await loadConversations(petChatState.petPack.id || memoryProfile.petPackId)
+      setConversationId(petChatState.conversationId)
+      setChatMessages(cloneChatMessages(petChatState.messages))
+      void loadAiTalkTraceSummary(petChatState.conversationId).catch(() => {})
+      setConversationStatus('会话已删除')
+    } catch (error) {
+      setConversationStatus(messageFromError(error, '会话删除失败'))
     }
   }
 
@@ -461,6 +529,7 @@ export function useAiPane(activeTab = 'ai') {
     setGeneratedPersonaDraft((current) => (current?.petPackId === nextPersonaProfile.petPackId ? current : null))
     setMemoryProfile(cloneAiMemoryProfile(memory))
     const nextPetChatState = applyPetChatState(state)
+    setConversationId(nextPetChatState.conversationId || getMainConversationId(nextPetChatState.petPack.id) || '')
     setTraceDiagnosticsFilters((current) => {
       const activePetPackId = String(nextPetChatState.petPack.id || nextPersonaProfile.petPackId || '').trim()
       const activeConversationId = String(nextPetChatState.conversationId || `control-center:${activePetPackId}:main`).trim()
@@ -475,6 +544,7 @@ export function useAiPane(activeTab = 'ai') {
     setBehaviorRulesText(JSON.stringify(behaviorConfig.rules || [], null, 2))
     setConfig((current) => ({ ...current, behavior: behaviorConfig }))
     await loadAiTalkTraceSummary(getMainConversationId(nextPetChatState.petPack.id))
+    void loadConversations(nextPetChatState.petPack.id).catch(() => {})
     if (reason === 'active-pet-pack-changed') {
       setStatus(`已切换到 ${nextPersonaProfile.petPackDisplayName || nextPersonaProfile.petPackId} 的 AI 上下文`)
     }
@@ -495,7 +565,7 @@ export function useAiPane(activeTab = 'ai') {
       aiHttpApi.getAiConfig(),
       aiHttpApi.getAiPersonaProfile(),
       aiHttpApi.getAiMemoryProfile(),
-      api.getImageGenerationConfig(),
+      aiTalkApi.getImageConfig(),
       aiHttpApi.getHatchPetAgentConfig(),
       api.getPetChatState(),
       aiHttpApi.getAiBehavior()
@@ -520,6 +590,7 @@ export function useAiPane(activeTab = 'ai') {
       setBehaviorRulesText(JSON.stringify(nextBehavior.rules || [], null, 2))
       setLoading(false)
       void loadAiTalkTraceSummary(getMainConversationId(nextPetChatState.petPack.id))
+      void loadConversations(nextPetChatState.petPack.id).catch(() => {})
     }).catch((error) => {
       if (!mounted) return
       setStatus(messageFromError(error, 'AI 配置加载失败'))
@@ -707,7 +778,7 @@ export function useAiPane(activeTab = 'ai') {
     setHatchPetAgentStatus('检查 Hatch Pet Agent capability 中')
     setHatchPetAgentCapabilityResult(null)
     try {
-      const result = await api.checkHatchPetAgentCapability()
+      const result = await aiTalkApi.checkHatchCapability()
       setHatchPetAgentCapabilityResult(result)
       setHatchPetAgentStatus(result.message || (result.ok ? 'Capability supported' : 'Capability unsupported'))
     } catch (error) {
@@ -729,7 +800,7 @@ export function useAiPane(activeTab = 'ai') {
       const validationError = validateImageProviderConfig(submittedConfig)
       if (validationError) throw new Error(validationError)
       const changedFields = getImageGenerationConfigChanges(submittedConfig, submittedActiveConfig)
-      const savedConfig = cloneImageGenerationConfig(await api.saveImageGenerationConfig(
+      const savedConfig = cloneImageGenerationConfig(await aiTalkApi.saveImageConfig(
         buildImageGenerationConfigSavePayload(submittedConfig, submittedActiveConfig)
       ))
       if (!shouldApplySaveResponse(revision, appliedSaveRevisionRef.current.image)) return
@@ -756,7 +827,12 @@ export function useAiPane(activeTab = 'ai') {
     try {
       const submittedRulesText = behaviorRulesText
       const parsedRules = parseBehaviorRules(submittedRulesText)
-      const submittedBehavior = cloneAiBehavior({ ...behavior, rules: parsedRules })
+      const submittedBehavior = {
+        enabled: behavior.enabled,
+        useTools: behavior.useTools,
+        cooldownMs: behavior.cooldownMs,
+        rules: parsedRules
+      }
       const revision = ++saveRevisionRef.current.behavior
       const savedBehavior = cloneAiBehavior(await aiHttpApi.saveAiBehavior(submittedBehavior))
       if (!shouldApplySaveResponse(revision, appliedSaveRevisionRef.current.behavior)) return
@@ -868,7 +944,7 @@ export function useAiPane(activeTab = 'ai') {
     try {
       const key = imageApiKeyDraft.trim()
       if (!key) throw new Error('图片 API Key 不能为空')
-      const result = await api.saveImageGenerationApiKey(key)
+      const result = await aiTalkApi.saveImageApiKey(key)
       const applyKeyResult = (current: ImageGenerationConfigViewState) => cloneImageGenerationConfig({
         ...current,
         hasApiKey: result.hasApiKey,
@@ -949,7 +1025,7 @@ export function useAiPane(activeTab = 'ai') {
     setImageHealthStatus('')
     setImageHealthResult(null)
     try {
-      const result = await api.clearImageGenerationApiKey()
+      const result = await aiTalkApi.clearImageApiKey()
       const applyKeyResult = (current: ImageGenerationConfigViewState) => cloneImageGenerationConfig({
         ...current,
         hasApiKey: result.hasApiKey,
@@ -983,7 +1059,7 @@ export function useAiPane(activeTab = 'ai') {
     setImageHealthStatus('图片 Provider 健康检查中')
     setImageHealthResult(null)
     try {
-      const result = await api.checkImageGenerationHealth({})
+      const result = await aiTalkApi.checkImageHealth() as ImageGenerationHealthCheckResult
       const nextActiveImageConfig = result.modelsProbe === 'ok'
         ? await loadImageGenerationConfig({ preserveDraft: true })
         : activeImageGenerationConfig
@@ -1058,7 +1134,7 @@ export function useAiPane(activeTab = 'ai') {
     setSaving(true)
     setImageModelDiscoveryStatus('图片模型探测中')
     try {
-      const result = await api.discoverImageGenerationModels()
+      const result = await aiTalkApi.discoverImageModels() as ProviderModelDiscoveryResult
       const nextActiveImageConfig = result.ok && result.code === 'ok'
         ? await loadImageGenerationConfig({ preserveDraft: true })
         : activeImageGenerationConfig
@@ -1220,22 +1296,26 @@ export function useAiPane(activeTab = 'ai') {
     }
     const nextMessages: ChatMessage[] = [...chatMessages, { role: 'user', content: message }]
     setChatMessages(nextMessages)
-    setPetChatState((current) => clonePetChatState({ ...current, messages: nextMessages }))
     setChatDraft('')
     setChatting(true)
     setChatStatus('')
     try {
-      const result = await aiHttpApi.sendPetChatMessage({ message, entrypoint: 'control-center' })
+      const result = await aiTalkApi.chat({ message, conversationId, entrypoint: 'control-center' })
       const fallbackMessages: ChatMessage[] = Array.isArray(result.messages)
         ? cloneChatMessages(result.messages)
         : [...nextMessages, { role: 'assistant', content: result.reply }]
       const nextState = result.state
         ? clonePetChatState(result.state)
         : clonePetChatState({ ...petChatState, messages: fallbackMessages, bubble: result.bubble })
-      setPetChatState(nextState)
-      setChatMessages(nextState.messages.length
-        ? nextState.messages
-        : fallbackMessages)
+      const resolvedConversationId = result.conversationId || conversationId || nextState.conversationId || ''
+      const resolvedMessages = fallbackMessages
+      const isMainConversation = resolvedConversationId === nextState.conversationId
+      setPetChatState(clonePetChatState({
+        ...nextState,
+        ...(isMainConversation ? { conversationId: resolvedConversationId, messages: resolvedMessages } : {})
+      }))
+      setChatMessages(resolvedMessages)
+      setConversationId(resolvedConversationId)
       if (result.action?.actionId) {
         setChatStatus(result.action.error
           ? `动作触发失败：${result.action.error}`
@@ -1243,9 +1323,8 @@ export function useAiPane(activeTab = 'ai') {
       }
       await loadBehavior()
       void loadMemoryProfile().catch(() => {})
-      void loadAiTalkTraceSummary(
-        result.conversationId || getMainConversationId(nextState.petPack.id)
-      ).catch(() => {})
+      void loadAiTalkTraceSummary(resolvedConversationId || getMainConversationId(nextState.petPack.id)).catch(() => {})
+      void loadConversations(nextState.petPack.id).catch(() => {})
     } catch (error) {
       setChatStatus(messageFromError(error, '发送失败'))
     } finally {
@@ -1348,6 +1427,9 @@ export function useAiPane(activeTab = 'ai') {
     chatMessages,
     petChatState,
     traceSummary: traceSummary ? cloneAiTalkTraceSummary(traceSummary) : null,
+    conversations,
+    conversationId,
+    conversationStatus,
     chatting,
     behavior,
     behaviorRulesText,
@@ -1430,6 +1512,14 @@ export function useAiPane(activeTab = 'ai') {
     onDeleteMemory,
     onClearPetPackMemories,
     onSendChat,
+    onRefreshConversations: () => {
+      setConversationStatus('正在刷新会话')
+      void loadConversations(petChatState.petPack.id || memoryProfile.petPackId)
+        .then(() => setConversationStatus('会话列表已刷新'))
+        .catch((error) => setConversationStatus(messageFromError(error, '会话列表刷新失败')))
+    },
+    onSelectConversation: selectConversation,
+    onDeleteConversation: deleteConversation,
     onOpenBubbleChat,
     onOpenDesktopChat
   } satisfies AiPaneProps

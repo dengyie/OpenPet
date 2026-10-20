@@ -8,6 +8,8 @@ const { createDefaultSidecarPidLedger } = require('../../sidecar/orphan-cleanup'
 const { createSettingsSidecarBridge } = require('../settings-sidecar-bridge')
 const { createSettingsHostEffect } = require('../settings-host-effects')
 const { createCatalogSidecarBridge } = require('../catalog-sidecar-bridge')
+const { createActionsSidecarBridge } = require('../actions-sidecar-bridge')
+const { createSettingsPersistenceQueue } = require('../settings-persistence-queue')
 
 const createSidecarLogger = ({ appLogService, safeRecordAppLog }) => Object.fromEntries(
   ['info', 'warn', 'error'].map((level) => [level, (message, details) => {
@@ -93,47 +95,10 @@ const createOpenPetRuntime = ({
   const sidecarLogger = createSidecarLogger({ appLogService, safeRecordAppLog })
   let settingsSidecarBridge = null
   let catalogSidecarBridge = null
+  let actionsSidecarBridge = null
   // Startup repairs can finish before the sidecar has completed its handshake.
   // Keep those authority writes in memory and replay them after hydration so a
   // slow sidecar cannot cause the repaired/fallback value to be lost.
-  const deferredSettingsPersistence = []
-
-  const flushDeferredSettingsPersistence = async () => {
-    while (deferredSettingsPersistence.length > 0) {
-      const input = deferredSettingsPersistence.shift()
-      try {
-        const backend = sidecarRuntimeCoordinator.getBackend?.()
-        if (!backend || !settingsSidecarBridge) {
-          deferredSettingsPersistence.unshift(input)
-          return
-        }
-        const current = petService.getSettings?.() || {}
-        const settings = settingsSidecarBridge.mergeCanonicalSettings(current, input.settings, input.paths)
-        applyCanonicalSettings(settings)
-        const snapshot = await settingsSidecarBridge.fetchSnapshot(backend)
-        await settingsSidecarBridge.persistCanonicalSettings({ ...input, settings, ifVersion: snapshot.version })
-      } catch (error) {
-        deferredSettingsPersistence.unshift(input)
-        safeRecordAppLog(appLogService, {
-          scope: 'settings', level: 'error', actor: 'system', event: 'settings.deferred-persist.failed',
-          message: error?.message || 'Deferred settings persistence failed'
-        })
-        return
-      }
-    }
-  }
-
-  const persistSettingsWhenBackendReady = (input) => {
-    const backend = sidecarRuntimeCoordinator.getBackend?.()
-    if (!backend || !settingsSidecarBridge) {
-      deferredSettingsPersistence.push({ ...input, settings: structuredClone(input.settings), paths: [...(input.paths || [])] })
-      if (sidecarRuntimeCoordinator.getBackend?.()) void flushDeferredSettingsPersistence()
-      return null
-    }
-    return settingsSidecarBridge.fetchSnapshot(backend)
-      .then((snapshot) => settingsSidecarBridge.persistCanonicalSettings({ ...input, ifVersion: snapshot.version }))
-  }
-
   const applyCanonicalSettings = (settings) => {
     if (typeof petService.applySettings === 'function') return petService.applySettings(settings)
     return petService.saveSettings?.(settings)
@@ -141,11 +106,17 @@ const createOpenPetRuntime = ({
 
   let ipcRuntimeHelpers = {
     broadcastActivePetPackChanged: () => {},
+    handleSettingsCommand: async () => {
+      throw Object.assign(new Error('Shell Settings authority is not ready'), { code: 'BACKEND_UNAVAILABLE' })
+    },
     handlePetPackRequest: async () => {
       throw Object.assign(new Error('Shell Pet Pack authority is not ready'), { code: 'BACKEND_UNAVAILABLE' })
     },
     handleActionsRequest: async () => {
       throw Object.assign(new Error('Shell Actions authority is not ready'), { code: 'BACKEND_UNAVAILABLE' })
+    },
+    handleAiTalkRequest: async () => {
+      throw Object.assign(new Error('Shell AI authority is not ready'), { code: 'BACKEND_UNAVAILABLE' })
     }
   }
 
@@ -162,14 +133,24 @@ const createOpenPetRuntime = ({
       return settingsService.save({ ...settings, localHttp: normalized })
     },
     logger: sidecarLogger,
+    getRemoteBackend: () => {
+      const config = settingsService.get()?.localHttp || {}
+      if (config.backendMode !== 'remote') return null
+      return { sshAlias: config.sshAlias || 'gz-cvm', hostPort: Number(config.backendPort) || 48330 }
+    },
     onSettingsChanged: (message) => settingsSidecarBridge?.handle(message),
     onSettingsApplyRequest: (message) => settingsSidecarBridge?.handle(message),
+    onSettingsCommandRequest: (request) => ipcRuntimeHelpers.handleSettingsCommand(request),
     onCatalogRequest: (request) => {
       if (!catalogSidecarBridge) throw new Error('Shell Catalog service unavailable')
       return catalogSidecarBridge.handle(request)
     },
+    onActionsRequest: (request) => {
+      if (!actionsSidecarBridge) throw new Error('Shell Actions service unavailable')
+      return actionsSidecarBridge.handle(request)
+    },
     onPetPackRequest: (request) => ipcRuntimeHelpers.handlePetPackRequest(request),
-    onActionsRequest: (request) => ipcRuntimeHelpers.handleActionsRequest(request),
+    onAiTalkRequest: (request) => ipcRuntimeHelpers.handleAiTalkRequest(request),
     onCreatorRequest: async ({ operation, payload = {} }) => {
       switch (operation) {
         case 'pick-reference': {
@@ -182,6 +163,17 @@ const createOpenPetRuntime = ({
             return { canceled: true, referenceToken: '', fileName: '' }
           }
           const approved = creatorWorkflowService.approveReferenceSourcePath(selected.filePaths[0])
+          return { canceled: false, referenceToken: approved.referenceToken, fileName: approved.fileName }
+        }
+        case 'upload-reference': {
+          const encoded = String(payload.dataBase64 || '')
+          const fileName = String(payload.fileName || 'reference.png')
+          const mimeType = String(payload.mimeType || '')
+          if (!/^image\/(png|jpeg|webp)$/i.test(mimeType)) throw Object.assign(new Error('Only PNG, JPEG, and WebP references are supported'), { code: 'VALIDATION_FAILED' })
+          if (!/^[A-Za-z0-9+/=]+$/.test(encoded) || encoded.length > 1_500_000) throw Object.assign(new Error('Reference upload is invalid or too large'), { code: 'VALIDATION_FAILED' })
+          const data = Buffer.from(encoded, 'base64')
+          if (!data.length || data.length > 1_100_000) throw Object.assign(new Error('Reference upload is invalid or too large'), { code: 'VALIDATION_FAILED' })
+          const approved = creatorWorkflowService.approveReferenceSourceBuffer({ data, fileName, mimeType })
           return { canceled: false, referenceToken: approved.referenceToken, fileName: approved.fileName }
         }
         case 'bind-reference':
@@ -270,18 +262,29 @@ const createOpenPetRuntime = ({
       : createDefaultSidecarPidLedger({ app, logger: sidecarLogger })
   })
 
+  const controlCenterBootstrapWebContents = new WeakSet()
   const createControlCenterWindow = () => {
     const settingsWindow = createSettingsWindow(getPetWindow())
-    const backend = sidecarRuntimeCoordinator.getBackend()
-    if (settingsWindow && !settingsWindow.isDestroyed?.()) {
-      const bootstrap = () => settingsWindow.webContents?.send?.(IPC.SETTINGS_CHANGED, {
-        __openpetBackend: backend,
-        __openpetRuntimeStatus: systemCursorService?.getStatus?.(),
-        __openpetSecretStorageSecurity: secretService?.getSecurityState?.() ?? null
-      })
-      if (settingsWindow.webContents?.isLoading?.() === false) bootstrap()
-      else if (typeof settingsWindow.webContents?.once === 'function') settingsWindow.webContents.once('did-finish-load', bootstrap)
-      else bootstrap()
+    const webContents = settingsWindow?.webContents
+    if (settingsWindow && !settingsWindow.isDestroyed?.() && webContents && !webContents.isDestroyed?.()) {
+      const bootstrap = () => {
+        if (settingsWindow.isDestroyed?.() || webContents.isDestroyed?.()) return
+        webContents.send?.(IPC.SETTINGS_CHANGED, {
+          __openpetBackend: sidecarRuntimeCoordinator.getBackend(),
+          __openpetRuntimeStatus: systemCursorService?.getStatus?.(),
+          __openpetSecretStorageSecurity: secretService?.getSecurityState?.() ?? null
+        })
+      }
+      if (!controlCenterBootstrapWebContents.has(webContents)) {
+        if (typeof webContents.on === 'function') {
+          webContents.on('did-finish-load', bootstrap)
+          controlCenterBootstrapWebContents.add(webContents)
+        } else if (typeof webContents.once === 'function') {
+          webContents.once('did-finish-load', bootstrap)
+          controlCenterBootstrapWebContents.add(webContents)
+        }
+      }
+      if (webContents.isLoading?.() === false) bootstrap()
     }
     return settingsWindow
   }
@@ -319,6 +322,35 @@ const createOpenPetRuntime = ({
     logger: sidecarLogger
   })
 
+  const persistCanonicalInput = async ({ input, applyMergedSettings }) => {
+    const backend = sidecarRuntimeCoordinator.getBackend?.()
+    if (!backend || !settingsSidecarBridge) throw new Error('settings sidecar unavailable')
+    let settings = input.settings
+    if (applyMergedSettings) {
+      const current = petService.getSettings?.() || {}
+      settings = settingsSidecarBridge.mergeCanonicalSettings(current, input.settings, input.paths)
+      applyCanonicalSettings(settings)
+    }
+    const snapshot = await settingsSidecarBridge.fetchSnapshot(backend)
+    return settingsSidecarBridge.persistCanonicalSettings({ ...input, settings, ifVersion: snapshot.version })
+  }
+  const settingsPersistenceQueue = createSettingsPersistenceQueue({
+    isReady: () => Boolean(sidecarRuntimeCoordinator.getBackend?.() && settingsSidecarBridge),
+    persist: (entry) => persistCanonicalInput(entry),
+    onError: (error) => safeRecordAppLog(appLogService, {
+      scope: 'settings', level: 'error', actor: 'system', event: 'settings.deferred-persist.failed',
+      message: error?.message || 'Deferred settings persistence failed'
+    })
+  })
+  const flushDeferredSettingsPersistence = () => settingsPersistenceQueue.flush().catch(() => undefined)
+  const persistSettingsWhenBackendReady = (input, { applyMergedSettings = true } = {}) => {
+    const ready = Boolean(sidecarRuntimeCoordinator.getBackend?.() && settingsSidecarBridge)
+    return settingsPersistenceQueue.enqueue({
+      input: { ...input, settings: structuredClone(input.settings), paths: [...(input.paths || [])] },
+      applyMergedSettings
+    }, { wait: ready })
+  }
+
   sidecarRuntimeCoordinator.onChanged?.((backend) => {
     aiSidecar.reset()
     const settingsWindow = getPetWindow()?.settingsWindow
@@ -336,7 +368,7 @@ const createOpenPetRuntime = ({
     if (currentSettings.customCursorScope !== 'system') return currentSettings
     const fallbackSettings = applyCanonicalSettings({ ...currentSettings, customCursorScope: 'openpet' })
     broadcastCursorSettings(fallbackSettings)
-    await persistSettingsWhenBackendReady({ settings: fallbackSettings, paths: ['customCursorScope'] })
+    await persistSettingsWhenBackendReady({ settings: fallbackSettings, paths: ['customCursorScope'] }, { applyMergedSettings: false })
     return fallbackSettings
   }
 
@@ -435,6 +467,16 @@ const createOpenPetRuntime = ({
       }
     })
   })
+  actionsSidecarBridge = createActionsSidecarBridge({
+    actionService,
+    actionImportService,
+    petService,
+    dialog,
+    getPetWindow,
+    reloadAndSendAnimations,
+    refreshTriggerRuleRuntime: () => triggerRuleRuntimeService?.refresh?.(),
+    getTriggerRuntimeDiagnostics: () => triggerRuleRuntimeService?.getDiagnostics?.() || { currentState: { actionId: '' }, decisions: [] },
+  })
   const hatchPetAgentService = factories.createHatchPetAgentService({
     aiService: aiSidecar.hatchAiService,
     configuration: aiSidecar.hatchConfiguration,
@@ -470,11 +512,10 @@ const createOpenPetRuntime = ({
       const backend = sidecarRuntimeCoordinator.getBackend?.()
       if (!backend) {
         applyCanonicalSettings(settings)
-        await persistSettingsWhenBackendReady({ settings, paths: ['customCursorScope'] })
+        await persistSettingsWhenBackendReady({ settings, paths: ['customCursorScope'] }, { applyMergedSettings: false })
         return settings
       }
-      const snapshot = await settingsSidecarBridge.fetchSnapshot(backend)
-      await settingsSidecarBridge.persistCanonicalSettings({ settings, paths: ['customCursorScope'], ifVersion: snapshot.version })
+      await persistSettingsWhenBackendReady({ settings, paths: ['customCursorScope'] }, { applyMergedSettings: false })
       applyCanonicalSettings(settings)
       return settings
     }

@@ -523,13 +523,24 @@ const renderImageModelDiscovery = (
   }
 
   const normalizedCode = String(result.code || '').trim().toLowerCase()
-  const failureTitle = normalizedCode.includes('timeout') ? '模型列表探测超时' : '模型列表探测失败'
+  const failureTitle = normalizedCode.includes('timeout')
+    ? '模型列表探测超时'
+    : normalizedCode === 'rate_limited'
+      ? 'Provider 已触发限流'
+      : normalizedCode === 'provider_unavailable'
+        ? 'Provider 暂时不可用'
+        : '模型列表探测失败'
+  const failureMessage = String(result.message || '')
+    .replace(/^AI provider rate limit exceeded$/, 'Provider 已触发限流，请稍后重试。')
+    .replace(/^AI provider is temporarily unavailable$/, 'Provider 暂时不可用，请检查 Provider 状态后重试。')
+    .replace(/^AI provider model discovery timed out$/, 'Provider 模型列表探测超时。')
+    .replace(/^AI provider model discovery failed$/, 'Provider 未能返回模型列表。')
 
   return (
     <div className={`provider-feedback ${result.ok ? 'ok' : 'error'}`} data-testid="image-model-discovery">
       <strong>{failureTitle}</strong>
       {hasUnsavedDraft ? <span>当前有未保存的图片草稿；下面的探测状态仍对应已保存配置。</span> : null}
-      <span>{result.message || '本次健康检查没有拿到模型列表。'}</span>
+      <span>{failureMessage || '本次健康检查没有拿到模型列表。'}</span>
     </div>
   )
 }
@@ -609,13 +620,24 @@ const renderChatModelDiscovery = (
   }
 
   const normalizedCode = String(result.code || '').trim().toLowerCase()
-  const failureTitle = normalizedCode.includes('timeout') ? '模型列表探测超时' : '模型列表探测失败'
+  const failureTitle = normalizedCode.includes('timeout')
+    ? '模型列表探测超时'
+    : normalizedCode === 'rate_limited'
+      ? 'Provider 已触发限流'
+      : normalizedCode === 'provider_unavailable'
+        ? 'Provider 暂时不可用'
+        : '模型列表探测失败'
+  const failureMessage = String(result.message || '')
+    .replace(/^AI provider rate limit exceeded$/, 'Provider 已触发限流，请稍后重试。')
+    .replace(/^AI provider is temporarily unavailable$/, 'Provider 暂时不可用，请检查 Provider 状态后重试。')
+    .replace(/^AI provider model discovery timed out$/, 'Provider 模型列表探测超时。')
+    .replace(/^AI provider model discovery failed$/, 'Provider 未能返回模型列表。')
 
   return (
     <div className={`provider-feedback ${result.ok ? 'ok' : 'error'}`} data-testid="chat-model-discovery">
       <strong>{failureTitle}</strong>
       {hasUnsavedDraft ? <span>当前有未保存的{label}草稿；下面的探测状态仍对应已保存配置。</span> : null}
-      <span>{result.message || '本次连接测试没有拿到模型列表。'}</span>
+      <span>{failureMessage || '本次连接测试没有拿到模型列表。'}</span>
     </div>
   )
 }
@@ -788,6 +810,12 @@ export interface AiPaneProps {
   chatMessages: ChatMessage[]
   petChatState: PetChatStateViewState
   traceSummary: AiTalkTraceSummaryViewState | null
+  conversations: Array<Record<string, unknown>>
+  conversationId: string
+  conversationStatus: string
+  onRefreshConversations: () => void | Promise<void>
+  onSelectConversation: (conversationId: string) => void | Promise<void>
+  onDeleteConversation: (conversationId: string) => void | Promise<void>
   chatting: boolean
   behavior: AiBehaviorConfig
   behaviorRulesText: string
@@ -896,6 +924,12 @@ export function AiPane({
   chatMessages,
   petChatState,
   traceSummary,
+  conversations,
+  conversationId,
+  conversationStatus,
+  onRefreshConversations,
+  onSelectConversation,
+  onDeleteConversation,
   chatting,
   behavior,
   behaviorRulesText,
@@ -956,7 +990,7 @@ export function AiPane({
   const hasUnsavedImageProbeInputs = hasUnsavedImageGenerationChanges || hasUnsavedImageApiKeyDraft
   const chatConnectionHasPartialProbeIssue = Boolean(
     connectionTestResult?.ok
-    && ['timed_out', 'failed'].includes(String(connectionTestResult.modelsProbe || ''))
+    && ['timed_out', 'failed', 'rate_limited', 'provider_unavailable'].includes(String(connectionTestResult.modelsProbe || ''))
   )
   const chatModelDiscoverySummary = [
     chatModelDiscoveryStatus,
@@ -2264,6 +2298,37 @@ export function AiPane({
               <span>{petChatState.bubble.text}</span>
             </div>
           ) : null}
+          <div className="readonly-row ai-conversation-toolbar" data-testid="ai-conversation-toolbar">
+            <label className="provider-model-filter">
+              <span className="field-label">当前宠物会话</span>
+              <select
+                className="text-input"
+                aria-label="当前宠物会话"
+                value={conversationId}
+                onChange={(event) => void onSelectConversation(event.target.value)}
+              >
+                <option value={petChatState.conversationId || ''}>主会话</option>
+                {conversations.filter((conversation) => String(conversation.conversationId || '') !== String(petChatState.conversationId || '')).map((conversation) => {
+                  const id = String(conversation.conversationId || '')
+                  const title = String(conversation.title || id || '会话')
+                  const count = Number(conversation.messageCount || 0)
+                  return <option key={id} value={id}>{title} · {count} 条</option>
+                })}
+              </select>
+            </label>
+            <div className="inline-action">
+              <button type="button" className="ghost" onClick={onRefreshConversations} disabled={saving || chatting}>刷新会话</button>
+              <button
+                type="button"
+                className="danger-text"
+                onClick={() => void onDeleteConversation(conversationId)}
+                disabled={saving || chatting || !conversationId || conversationId === petChatState.conversationId}
+              >
+                删除会话
+              </button>
+            </div>
+            {conversationStatus ? <span data-testid="ai-conversation-status" aria-live="polite">{conversationStatus}</span> : null}
+          </div>
           <div className="section" data-testid="ai-trace-summary">
             <div className="readonly-row">
               <strong>当前 Trace</strong>

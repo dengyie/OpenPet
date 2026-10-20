@@ -9,6 +9,13 @@ const { test } = require("node:test")
 const repoRoot = path.resolve(__dirname, "../..")
 const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), "utf8")
 const exists = (relativePath) => fs.existsSync(path.join(repoRoot, relativePath))
+const containsFiles = (relativePath) => {
+  const target = path.join(repoRoot, relativePath)
+  if (!exists(relativePath)) return false
+  return fs.readdirSync(target, { withFileTypes: true }).some((entry) => (
+    entry.isFile() || (entry.isDirectory() && containsFiles(path.join(relativePath, entry.name)))
+  ))
+}
 
 test("desktop and Control Center entrypoints live under their app owners", () => {
   for (const relativePath of [
@@ -33,7 +40,7 @@ test("desktop and Control Center entrypoints live under their app owners", () =>
     "src/control-center",
     "src/shared"
   ]) {
-    assert.equal(exists(relativePath), false, `legacy entrypoint remains: ${relativePath}`)
+    assert.equal(containsFiles(relativePath), false, `legacy source files remain: ${relativePath}`)
   }
 })
 

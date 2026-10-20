@@ -1,5 +1,7 @@
 # 08 · 实现 Agent 执行手册
 
+> 状态：迁移执行参考。当前 live 流程以 ../development-workflow.md、../HANDOFF.md 和 ../TODO.md 为准；本篇不得覆盖当前 HEAD 的 contracts、route registry 或 channel-retirement 门禁。
+
 > v1.1 · 2026-08-16 · 基线分支 `main`
 
 **读者**:领到任务卡去写代码的 agent。
@@ -29,7 +31,7 @@
 
 推论:`tests/` 里测后端模块**必须**在 `before` 钩子里 `await import()`,不能用顶层 `require` 或静态 `import`。照抄 `tests/backend/state-machine.test.js` 的开头。
 
-**H4 不准直接碰 `node:sqlite`。** 一律走 `services/backend/store/db.js` 的 `openDatabase()`。E3 已确认 Electron 42.4.0 / Node 24.16.0 无需 flag,但 G11 仍要求用 file-backed DB 验证 WAL;这个 seam 仍是唯一的逃生口,散落的 `import("node:sqlite")` 会让换驱动变成全仓库改动。
+**H4 不准直接碰 `node:sqlite`。** 一律走 `services/backend/store/db.js` 的 `openDatabase()`。E3 已确认 Electron 42.4.0 / Node 24.16.0 无需 flag，且 `tests/backend/sqlite-driver.test.js` 已用 file-backed DB 验证 WAL；缺口 G11 已关闭。这个 seam 仍是唯一的逃生口，散落的 `import("node:sqlite")` 会让换驱动变成全仓库改动。
 
 **H5 单一写者。** 一份数据只有一个进程能写:settings / secrets / SQLite → Backend;窗口几何 → Shell(`window-state.json`)。要用对方的数据走消息,不要直接读写对方的文件。
 
@@ -37,14 +39,17 @@
 
 **H7 端口和 token 只能从 `ready` 消息拿。** 不许硬编码端口,不许把 sessionToken 写进任何文件或日志。
 
-**H8 每个新模块必须带测试,且不依赖 Electron、不依赖真实 SQLite 文件。** 纯函数直接测,要库就用 `:memory:`。跑法 `npm run test:backend`。做不到说明模块和运行时耦合太紧,先拆再写。
+**H8 每个新模块必须带测试,且不依赖 Electron 或用户真实数据。** 纯函数直接测;SQLite 测试按行为选择 `:memory:` 或隔离的 file-backed 临时库(跨连接/WAL 行为必须用后者验证)。跑法 `npm run test:backend`。做不到说明模块和运行时耦合太紧,先拆再写。
 
-**H9 提交前自己跑三条门禁**,全绿才提交,PR 里贴输出:
+**H9 提交前按变更等级运行门禁**,并在 PR 中贴出实际输出。涉及文档、契约、路由或 IPC 的变更至少运行:
 
 ```bash
+npm run build:contracts
 npm run check:node
 npm run test:backend
 npm run check:api-contract
+npm run check:channel-retirement
+npm run check:docs-drift
 ```
 
 **H10 不要动别人的热点文件。** 见 §6。
@@ -133,7 +138,7 @@ assert.throws(() => fn(), (error) => {
 
 `scripts/check-api-contract.mjs` 用**字符串解析**对账,不 import 任何 TS。所以它对格式有硬要求 —— 改文档或契约时不要「顺手美化」。
 
-对账六项(任一侧多写或漏写都红):SSE 事件名、事件 → topic 归属、topic 清单、Job kind、Job 状态、错误码。此外重算 03 篇 §3 通道表的逐行等式与合计 —— 01 篇曾出现「合计 153」而实际 154,人眼没看出来。
+当前有 10 项硬对账(任一侧多写或漏写都红):SSE 事件名、事件 → topic 归属、topic 清单、Job kind、Job 状态、错误码、§3 通道表算术、实际 router 与 registry、registry 与 03 篇 §4、TS/JS IPC 清单与盘点。旧文档曾出现「合计 153」而实际 154,人眼没看出来。
 
 **格式硬要求:**
 
@@ -147,7 +152,7 @@ assert.throws(() => fn(), (error) => {
 | §3 表 | 必须有「合计」行;单元格里的 `*` 会被剔除,所以加粗不影响 |
 | §2.3 错误码 | 反引号包裹且匹配 `^[A-Z][A-Z0-9_]+$` 才会进对账 |
 
-两项**尚未硬化**(脚本只打印 `todo`),M1 起要变成硬检查:后端实际注册的路由 vs 03 篇 §4 路由表(靠 `router.routes()` 对);`src/shared/ipc-channels.ts` 的通道盘点 vs §3 的 154。
+当前两项已经硬化：check:api-contract 对账后端实际注册路由、registry、03 篇 §4 与 src/shared/ipc-channels.ts；2026-10-09 最近一次对账结果为 120/119 REST 行和 140 个 IPC。先运行 npm run build:contracts 生成 packages/contracts/dist。
 
 ---
 
@@ -185,11 +190,11 @@ assert.throws(() => fn(), (error) => {
 
 完整缺口清单在 09 篇 §4,这里只列最容易踩的几条。
 
-1. **`@openpet/contracts` 的入口还不存在。** `main` 指向 `./dist/index.js`,而 `dist/` 要 `npm run build:contracts` 才生成。TS 侧可以走 `@openpet/contracts/src/*` 直接用源码。
-2. **`package-lock.json` 和 workspaces 还没同步。** 首次 `npm install` 会大面积改动 lockfile,这是正常的,不要 revert。
+1. **`@openpet/contracts` 的 `dist/` 是构建产物。** workspace 和 lockfile 已纳入当前基线;新 worktree 先运行 `npm run build:contracts`,再运行依赖该产物的契约检查。不要把缺少 `dist/` 的环境错误误报成路由未注册。
+2. **不要把历史安装记录当当前安装步骤。** 依赖变更应由 `package-lock.json` 与 `npm install` 的实际 diff 证明;无依赖变更时不要为“同步”而重写 lockfile。
 3. **ESM 入口在 `app.asar` 里可能解析不了(风险 R20)。** E6 已命中并采用 `asarUnpack` + unpacked resolver:`services/backend/**` 位于 `app.asar.unpacked`;后端 JS 可读,不受 asar 完整性保护。不要把 CJS 降级当作默认方案,除非该正式方案回归失败。
 4. **`/health` 需要鉴权,返 401。** 早期草稿写过「免鉴权返 204」,以 03 篇为准。
-5. **反向通道契约必须逐项对账。** 契约 `backendToShellSchema` 与后端 `BACKEND_TO_SHELL_TYPES` 当前均为 12 类消息，包含 `dialog.request` 与 settings apply/persist 类型；`SHELL_TO_BACKEND_TYPES` 当前为 8 类。新增类型必须先更新 `packages/contracts`，再同步后端与桌面校验，不要只改其中一份。
+5. **反向通道契约必须逐项对账。** 契约 `backendToShellSchema` 与后端 `BACKEND_TO_SHELL_TYPES` 当前均为 18 类消息，包含 `dialog.request`、plugin production、settings apply/persist、catalog、pet-pack 与 Actions 类型；`SHELL_TO_BACKEND_TYPES` 当前为 15 类。新增类型必须先更新 `packages/contracts`，再同步后端与桌面校验，不要只改其中一份。Actions/Pet Pack 失败结果必须使用结构化 `{ code, message }`，成功/失败 payload 不能同时存在。
 6. **`ready` 里的 `apiVersion` 是字符串 `"v1"`。** spike 的 `sidecar-http.js` 写的是数字 `1`,那只是探针,契约以 `"v1"` 为准。
 7. **`date +%s%3N` 在 macOS(BSD date)不可用。** 要毫秒时间戳用 `Date.now()`。
 8. **仓库文档混用全半角标点。** 正文括号大多是全角「()」,而逗号冒号是半角。逐字重发文档时照抄,不要规范化 —— 门禁按字符串匹配。

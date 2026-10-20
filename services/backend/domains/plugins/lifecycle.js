@@ -18,8 +18,16 @@ function isDeclarationOnly(definition) {
 	return !definition?.mainPath && (definition?.manifest?.entries?.commands?.length ?? 0) > 0 && (definition?.manifest?.entries?.services?.length ?? 0) === 0
 }
 
-function commandRunsInBackend(definition) {
+function commandRunsInBackend(definition, commandId = "") {
 	if ((definition?.manifest?.entries?.commands?.length ?? 0) === 0) return false
+	if (definition?.manifest?.id === "openpet.creator-studio") {
+		const declared = new Set((definition.manifest.entries.commands ?? []).map((entry) => String(entry?.id || "")))
+		return declared.has(commandId) && new Set([
+			"create-run", "draft-task", "answer-question", "confirm-task", "run-step",
+			"accept-identity", "accept-action-candidate", "retry-action", "retry-identity",
+			"approve-run", "export-bundle"
+		]).has(commandId)
+	}
 	const supported = new Set(PLUGIN_RUNTIME_PERMISSIONS)
 	return (definition.manifest.permissions ?? []).every((permission) => supported.has(permission))
 }
@@ -137,7 +145,7 @@ export function createPluginLifecycle({ registry, bridge, commandServer, process
 			throw new ApiError("CONFLICT", "Plugin is not running", { details: { pluginId: id } })
 		}
 		audit?.("info", "Plugin command requested", { pluginId: id, command: name })
-		if (commandRunsInBackend(definition) && typeof commandServer?.execute === "function") {
+		if (commandRunsInBackend(definition, name) && typeof commandServer?.execute === "function") {
 			return commandServer.execute(id, name, args, context)
 		}
 		return requireBridge(bridge, "command")({
@@ -149,6 +157,22 @@ export function createPluginLifecycle({ registry, bridge, commandServer, process
 			tmpDir: context.tmpDir,
 			registerProcess: context.registerProcess,
 		})
+	}
+	const runCreatorBackendCommand = async (name, args = {}, context = {}) => {
+		const id = "openpet.creator-studio"
+		const definition = registry.definition(id)
+		assertNativeApproval(id, definition)
+		if (definition?.manifest?.id !== id) {
+			throw new ApiError("PERMISSION_DENIED", "Creator Studio bundled plugin is unavailable", { status: 403, details: { pluginId: id } })
+		}
+		if (!registry.get(id).enabled) {
+			throw new ApiError("CONFLICT", "Creator Studio plugin is disabled", { details: { pluginId: id } })
+		}
+		if (!commandRunsInBackend(definition, name) || typeof commandServer?.execute !== "function") {
+			throw new ApiError("PERMISSION_DENIED", "Creator Studio command is not allowed in the Backend", { status: 403, details: { pluginId: id, command: name } })
+		}
+		audit?.("info", "Creator Studio Backend command requested", { pluginId: id, command: name })
+		return commandServer.execute(id, name, args, context)
 	}
 	const setEnabled = (id, enabled) => serialize(id, async () => {
 		registry.get(id)
@@ -176,5 +200,5 @@ export function createPluginLifecycle({ registry, bridge, commandServer, process
 		})
 		return { ok: results.every((result) => result.status === "fulfilled"), results }
 	}
-	return { start, stop, status, command, stopAll, setEnabled, setNativeExecutionApproved }
+	return { start, stop, status, command, runCreatorBackendCommand, stopAll, setEnabled, setNativeExecutionApproved }
 }

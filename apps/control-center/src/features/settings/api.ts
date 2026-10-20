@@ -2,12 +2,17 @@ import {
   settingsEnvelopeSchema,
   settingsPatchRequestSchema,
   settingsPatchResponseSchema,
+  settingsCursorImportResultSchema,
+  settingsPreviewScaleRequestSchema,
+  settingsPreviewScaleResponseSchema,
+  settingsSchemaResponseSchema,
 } from '../../../../desktop/src/shared/browser-contracts.ts'
-import type * as v from 'valibot'
+import * as v from 'valibot'
 
 import type { ApiClient } from '../../api/client.ts'
 import { cloneSettings, defaultSettings } from '../../lib/defaults.ts'
-import type { ControlCenterSettings } from '@openpet/shared/src/openpet-contracts.ts'
+import type { ControlCenterSettings, CustomCursorRecord } from '@openpet/shared/src/openpet-contracts.ts'
+import { SYSTEM_CURSOR_PREVIEW_URL } from '@openpet/shared/src/cursor-library.ts'
 
 export type SettingsSnapshot = v.InferOutput<typeof settingsEnvelopeSchema>
 export type SettingsPatch = v.InferOutput<typeof settingsPatchRequestSchema>
@@ -26,6 +31,9 @@ export function shouldAcceptSettingsSnapshot({ requestSequence, latestRequestSeq
 type SettingsApi = {
   get: () => Promise<SettingsSnapshot>
   patch: (body: SettingsPatch) => Promise<v.InferOutput<typeof settingsPatchResponseSchema>>
+  previewScale: (scale: number, options?: { keepalive?: boolean }) => Promise<v.InferOutput<typeof settingsPreviewScaleResponseSchema>>
+  importCursor: () => Promise<v.InferOutput<typeof settingsCursorImportResultSchema>>
+  schema: () => Promise<v.InferOutput<typeof settingsSchemaResponseSchema>>
 }
 
 const has = (value: object, key: string) => Object.prototype.hasOwnProperty.call(value, key)
@@ -142,6 +150,23 @@ let demoSettingsSnapshot: SettingsSnapshot = {
   values: settingsViewToBackendValues(initialDemoSettings),
 }
 
+const demoCursor = {
+  id: 'demo-cursor',
+  type: 'custom',
+  source: 'uploaded',
+  name: 'demo-cursor',
+  enabled: true,
+  assetPath: '/demo/cursors/demo-cursor.png',
+  assetUrl: SYSTEM_CURSOR_PREVIEW_URL,
+  fileName: 'demo-cursor.png',
+  width: 32,
+  height: 32,
+  byteSize: 2048,
+  hotspotX: 0,
+  hotspotY: 0,
+  createdAt: '2026-06-19T10:00:00.000Z',
+} satisfies CustomCursorRecord & { enabled: boolean }
+
 const demoSettingsApi: SettingsApi = {
   async get() {
     return structuredClone(demoSettingsSnapshot)
@@ -159,6 +184,21 @@ const demoSettingsApi: SettingsApi = {
       version: demoSettingsSnapshot.version,
       changedPaths,
       snapshot: structuredClone(demoSettingsSnapshot.values),
+    }
+  },
+    async previewScale(scale) {
+    return { scale: Math.max(0.5, Math.min(1.5, scale)) }
+  },
+  async importCursor() {
+    return { canceled: false, cursor: structuredClone(demoCursor) }
+  },
+  async schema() {
+    return {
+      version: 1,
+      writablePaths: ['pet.scale', 'scale', 'walkSpeed', 'walkDuration', 'bubbleDuration', 'menuPosition', 'autoStart', 'selectedCursorId', 'customCursor', 'customCursors', 'hiddenCursorIds', 'customCursorScope', 'petBehavior.grounded', 'petBehavior.home.enabled', 'petBehavior.home.radius', 'petBubbleChat.enabled', 'petBubbleChat.autoPopup', 'petBubbleChat.autoHide', 'petBubbleChat.pinOnInteraction'],
+      trustedPaths: ['petBehavior.home.anchor'],
+      scalePreview: { min: 0.5, max: 1.5, step: 0.01 },
+      cursorImport: { extensions: ['png', 'webp'], maxBytes: 512_000 },
     }
   },
 }
@@ -211,6 +251,35 @@ export function createSettingsApi(client: ApiClient, fallback: SettingsApi = dem
         requestSchema: settingsPatchRequestSchema,
         responseSchema: settingsPatchResponseSchema,
         body,
+      })
+    },
+    previewScale(scale: number, options: { keepalive?: boolean } = {}): Promise<v.InferOutput<typeof settingsPreviewScaleResponseSchema>> {
+      if (useDemoFallback()) return fallback.previewScale(scale, options)
+      return client.request({
+        method: 'POST',
+        path: '/settings/preview-scale',
+        requestSchema: settingsPreviewScaleRequestSchema,
+        responseSchema: settingsPreviewScaleResponseSchema,
+        body: { scale },
+        keepalive: options.keepalive,
+      })
+    },
+    importCursor(): Promise<v.InferOutput<typeof settingsCursorImportResultSchema>> {
+      if (useDemoFallback()) return fallback.importCursor()
+      return client.request({
+        method: 'POST',
+        path: '/settings/cursor/import',
+        requestSchema: v.strictObject({}),
+        responseSchema: settingsCursorImportResultSchema,
+        body: {},
+      })
+    },
+    schema(): Promise<v.InferOutput<typeof settingsSchemaResponseSchema>> {
+      if (useDemoFallback()) return fallback.schema()
+      return client.request({
+        method: 'GET',
+        path: '/settings/schema',
+        responseSchema: settingsSchemaResponseSchema,
       })
     },
   }

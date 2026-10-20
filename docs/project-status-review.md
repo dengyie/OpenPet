@@ -1,9 +1,13 @@
 # OpenPet Project Status Review
 
-> Last updated: 2026-09-12
+> Last updated: 2026-10-17
 > Branch: `main`
 
 This is the compact product and release snapshot. Use [`TODO.md`](./TODO.md) for the active queue and `docs/release-evidence/` for archived proof.
+
+The current engineering baseline is a Shell plus Backend sidecar migration. The executable path is `main.js` -> `createOpenPetRuntime()` -> `createSidecarRuntimeCoordinator()` -> `spawnSidecar()` -> `services/backend/index.js`; the current API contract check reconciles 87 IPC channels, 136 registered REST routes, and 149 documented route rows. This migration status is separate from the release-evidence status below.
+
+Latest code-only verification (2026-10-15): Backend **424/424**, Tools **683/683**, changed Settings/AI/Pet Pack suites **68/68**, typecheck/syntax, contracts and route/channel gates, docs drift, and the Control Center production build pass. `test:core` reports **2180 passed, 26 browser-launch failures, and 1 skipped** because the pinned Playwright Chromium headless shell is absent. No Electron or desktop UI acceptance was performed.
 
 ## Executive Summary
 
@@ -13,16 +17,18 @@ Current archived proof also includes real-provider smoke paths for AI gateway ve
 
 The current Pet character-generation authority is [`pet-character-generation.md`](./pet-character-generation.md). The branch has technical atlas packaging/import plus Provider row-generation and QA infrastructure, but those capabilities and archived smoke runs do not prove official-quality production art. The normal input is one clean reference image and each Provider request must carry at most one image attachment. Current orchestration still requests both directional rows; the required target generates `running-right` once and derives `running-left` through the QA-gated `approved-mirror` path.
 
-Current common provider presets such as OpenRouter and Together remain endpoint templates rather than verified integrations; only the OpenPet gateway preset is tied to the archived smoke baseline. The archived signed closure keeps official desktop not-ready, macOS not-ready, and Windows not-ready until signed release evidence replaces the current blockers.
+Current common provider presets such as OpenRouter and Together remain endpoint templates rather than verified integrations; only the OpenPet gateway preset is tied to the archived smoke baseline. The archived signed closure is not-ready under the previous paid-signing policy. OpenPet's current distribution direction is self-managed signing without paid certificates or notarization; release tooling and target-OS evidence still need to be adapted to that policy.
 
-Agent Awareness now has a fresh real local smoke archive at `docs/release-evidence/agent-awareness-local-smoke/2026-09-11T20-05-34-688Z/`. It records 19 sanitized sessions and 134 events with automated redaction checks passing; dashboard usefulness and pet speech/noise still require human desktop acceptance.
+The archived closure records `not-ready` for official desktop, macOS, and Windows claims under its previous paid-signing workflow. It remains a historical finding; current acceptance uses self-managed signatures, integrity checks, and target-OS runtime evidence without requiring platform trust.
+
+Agent Awareness has a real local smoke archive at `docs/release-evidence/agent-awareness-local-smoke/2026-10-08T22-40-35-815Z/`. It records 19 sanitized sessions and 515 events with automated redaction checks passing; dashboard usefulness and pet speech/noise still require human desktop acceptance.
 
 ## Release Truth
 
 | Platform | Current truth | Public wording |
 | --- | --- | --- |
-| macOS | Public assets and imported workflow evidence both currently fail signed readiness. | macOS-first release track |
-| Windows | Tooling exists, but signed artifacts and real smoke archives are still missing. | Not release-ready |
+| macOS | Historical public assets fail the previous signed/notarized gate; current demo package is unsigned and the self-managed path still needs workflow adaptation. | Use ad-hoc/local signing; do not claim notarization or Gatekeeper trust |
+| Windows | Packaging/evidence tooling exists; self-signed packaging and target-OS smoke remain open. | Use a locally generated certificate; do not claim SmartScreen reputation or publisher trust |
 | Linux | Not in current release scope. | No support claim |
 | Mobile | Out of scope. | No support claim |
 
@@ -42,11 +48,9 @@ Agent Awareness now has a fresh real local smoke archive at `docs/release-eviden
 
 ## Main Remaining Gaps
 
-1. Real passing macOS evidence must still be archived through the release evidence flow; the current public `v1.0.1-rc.3` macOS assets and the imported workflow artifact now both archive failing signed-readiness evidence and therefore do not satisfy that gate.
-   The current-parser rerun is archived at `docs/release-evidence/macos-release-evidence-archive/2026-07-06T17-32-13Z-v1.0.1-rc.3-authenticated-artifact-current-parser-rerun/` and classifies codesign, Gatekeeper, and notarization as failures.
-2. Real signed Windows smoke evidence must exist before support claims move; the reconstructed Windows smoke archive only removes bookkeeping gaps and does not replace observed clean-machine validation.
-   The public release metadata snapshot at `docs/release-evidence/release-public-assets/2026-07-06T15-57-51Z-v1.0.1-rc.3-public-release-metadata.json` records the Windows assets as unsigned.
-3. Packaged native picker evidence still needs real archived runs; the historical launched packaged runtime report at `docs/release-evidence/packaged-runtime/2026-06-16T14-52-13-074Z-darwin-arm64/` still shows pending picker-link checks, `plugin-picker-evidence-linked` pending, `pet-picker-evidence-linked` pending, and `invalid-package-feedback` blocked, the current `rc.3` packaged-runtime pending report at `docs/release-evidence/packaged-runtime/2026-07-06T17-00-00Z-darwin-arm64-authenticated-artifact/` leaves every runtime check pending while also recording the current broken signature text, and the reconstructed Windows picker archive remains structure-only.
+1. The release workflow still implements parts of the previous paid-signing policy. Adapt macOS packaging/evidence to self-managed signing without notarization; the archived `v1.0.1-rc.3` parser rerun at `docs/release-evidence/macos-release-evidence-archive/2026-07-06T17-32-13Z-v1.0.1-rc.3-authenticated-artifact-current-parser-rerun/` remains historical and records codesign, Gatekeeper, and notarization failures under that old workflow.
+2. Adapt Windows packaging and evidence to a locally generated self-signed certificate, then run actual Windows installer/runtime smoke. The old public release metadata at `docs/release-evidence/release-public-assets/2026-07-06T15-57-51Z-v1.0.1-rc.3-public-release-metadata.json` records unsigned assets; it does not create a paid-signing requirement.
+3. The latest fresh-build unsigned packaged-runtime smoke at `docs/release-evidence/packaged-runtime/2026-10-09T02-18-20-646Z-darwin-arm64/` passes **11/14** using isolated temporary user data. The three incomplete checks need picker-linked evidence; the 2026-10-08 picker report at `docs/release-evidence/desktop-picker/2026-10-08T21-01-48Z-darwin-arm64/` predates the HTTP picker cutover and remains **8/9**, with `plugin-install-disabled` pending. The earlier 14/14 runtime report is historical for its earlier build. The fresh Backend HTTP/reverse-channel picker smoke passed accept, cancel, and path-injection rejection without opening desktop UI. These unsigned reports do not establish release readiness.
 4. The extension ecosystem still needs a compatible third-party package path backed by evidence rather than intent; the newest GitHub-topic, npm-package, and direct GitHub code-search reruns still found only adjacent or incompatible sources.
 
 ## Reference Docs
@@ -55,4 +59,4 @@ Agent Awareness now has a fresh real local smoke archive at `docs/release-eviden
 - Active queue: [`TODO.md`](./TODO.md)
 - Run/build workflow: [`development-workflow.md`](./development-workflow.md)
 - Release gates: [`desktop-release-design.md`](./desktop-release-design.md), [`release-checklist.md`](./release-checklist.md)
-- Manual-required release prerequisites remain explicit in `docs/release-evidence/signed-release-closure/2026-07-06T16-46-49Z-v1.0.1-rc.3-authenticated-closure-archive-rerun/`: Apple signing/notarization credentials, human review of archived release evidence, and real Windows signed artifact execution.
+- The archived closure at `docs/release-evidence/signed-release-closure/2026-07-06T16-46-49Z-v1.0.1-rc.3-authenticated-closure-archive-rerun/` records prerequisites from the previous policy. Current manual evidence needs are real target-OS runtime/install validation and human review; paid signing credentials and notarization are explicitly out of scope.

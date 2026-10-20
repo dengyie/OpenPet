@@ -1,5 +1,5 @@
 const { runCommand } = require('../lib/command-io')
-const { createRun } = require('../lib/run-store')
+const { createRun, materializeBackendReferenceForRun } = require('../lib/run-store')
 const { draftGenerationTask, shouldDraftGenerationTask } = require('../lib/conversation-wizard')
 
 runCommand(async (context) => {
@@ -14,7 +14,7 @@ runCommand(async (context) => {
         ? { originalPrompt: prompt, generationTask: payload.generationTask }
         : draftGenerationTask({ prompt, context: payload.context || {} }))
     : {}
-  const run = createRun({
+  let run = createRun({
     dataDir: process.env.OPENPET_DATA_DIR,
     input: {
       ...payload,
@@ -23,5 +23,8 @@ runCommand(async (context) => {
       ...(draft.generationTask ? { generationTask: draft.generationTask } : {})
     }
   })
+  if (run.creatorExecution === 'backend') {
+    run = materializeBackendReferenceForRun({ dataDir: process.env.OPENPET_DATA_DIR, run })
+  }
   return { message: `Created run ${run.runId}`, run }
 })

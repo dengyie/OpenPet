@@ -3,7 +3,7 @@ import { EVENT_PET_PACK_ACTIVATED, type Job } from '../../../../desktop/src/shar
 import { backendClient } from '../../api/backend-client.ts';
 import type { ApiClient } from '../../api/client.ts';
 import { controlCenterAPI } from '../../api/control-center-api.ts';
-import type { PetPackExportResult, PetPackMutationResult, PetPacksViewState } from '@openpet/shared/src/openpet-contracts.ts';
+import type { PetPackExportResult, PetPackInspectionResult, PetPackMutationResult, PetPacksViewState } from '@openpet/shared/src/openpet-contracts.ts';
 const blockStatusSchema = v.object({
     blocked: v.boolean(),
     reasons: v.array(v.string()),
@@ -65,6 +65,16 @@ const clearRequestSchema = v.strictObject({
     operation: v.literal('clear-selection'),
     selectionId: v.pipe(v.string(), v.minLength(1)),
 });
+const pickRequestSchema = v.strictObject({ operation: v.literal('pick') });
+const inspectionSchema = v.looseObject({
+    canceled: v.optional(v.boolean()),
+    selectionId: v.optional(v.pipe(v.string(), v.minLength(1))),
+    folderName: v.optional(v.string()),
+    valid: v.optional(v.boolean()),
+    errors: v.optional(v.array(v.string())),
+    warnings: v.optional(v.array(v.string())),
+    pack: v.optional(v.nullable(petPackSummarySchema)),
+});
 export type PetPackJobKind = 'import' | 'export';
 export type PetPackJobStart<T> = {
     jobId: string;
@@ -94,6 +104,17 @@ export function createPetPackHttpApi(client: ApiClient = backendClient) {
     return {
         list(): Promise<PetPacksViewState> {
             return client.request({ method: 'GET', path: '/pet-packs', responseSchema: petPacksSchema }) as Promise<PetPacksViewState>;
+        },
+        inspect(): Promise<PetPackInspectionResult> {
+            return client.request({
+                method: 'POST',
+                path: '/pet-packs/validate',
+                requestSchema: pickRequestSchema,
+                body: { operation: 'pick' },
+                responseSchema: inspectionSchema,
+                timeoutMs: 180_000,
+                retry: false,
+            }) as Promise<PetPackInspectionResult>;
         },
         clearSelection(selectionId: string): Promise<{
             ok: boolean;

@@ -1,12 +1,13 @@
-import { finalizing, operationContext, pluginResourceKey, report, requirePluginMethod } from "./common.js"
+import { finalizing, operationContext, pluginGithubResourceKey, report, requirePluginMethod, resolvePrivatePluginInput } from "./common.js"
 
 export const kind = "plugin.install.github"
 
 export function resourceKey(input) {
-	return pluginResourceKey(input)
+	return pluginGithubResourceKey(input)
 }
 
 export async function run(input = {}, ctx = {}) {
+	input = resolvePrivatePluginInput(input, ctx)
 	report(ctx, { phase: "downloading", percent: 10 })
 	if (typeof ctx.plugins?.inspectGithub !== "function" || typeof ctx.plugins?.commitGithubInstall !== "function") {
 		const installGithub = requirePluginMethod(ctx.plugins, "installGithub")

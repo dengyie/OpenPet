@@ -17,6 +17,12 @@ const {
   getDefaultQualityProfile
 } = require('./pet-generation-quality-profile')
 
+const resolveRowValidationProfile = (qualityProfile) => (
+  qualityProfile?.row && typeof qualityProfile.row === 'object'
+    ? qualityProfile
+    : getDefaultQualityProfile()
+)
+
 const MAX_SOURCE_BYTES = 25 * 1024 * 1024
 const CODEX_ATLAS = {
   columns: 8,
@@ -367,13 +373,14 @@ const analyzeOfficialRowWithStableSlots = async ({
   identityReferenceDescriptor = null,
   qualityProfile = getDefaultQualityProfile()
 }) => {
+  const rowValidationProfile = resolveRowValidationProfile(qualityProfile)
   const initialQa = await analyzeRowFrames({
     actionId: row.id,
     frames,
     sourceKind,
     identityReferenceMeanRgb,
     identityReferenceDescriptor,
-    qualityProfile
+    qualityProfile: rowValidationProfile
   })
   if (initialQa.quality !== FULL_PET_ROW_QUALITY.FAILED) {
     return {
@@ -400,7 +407,7 @@ const analyzeOfficialRowWithStableSlots = async ({
     sourceKind,
     identityReferenceMeanRgb,
     identityReferenceDescriptor,
-    qualityProfile
+    qualityProfile: rowValidationProfile
   })
   return {
     frames: stabilized.frames,
@@ -428,7 +435,8 @@ const buildOfficialAtlasFromRows = async ({
   size,
   entries,
   basicActionAttempts = [],
-  qualityProfile = getDefaultQualityProfile()
+  qualityProfile = getDefaultQualityProfile(),
+  rowValidationProfile = resolveRowValidationProfile(qualityProfile)
 }) => {
   const rowInputs = normalizeOfficialRowsInput(officialRows)
   const rowInputsByActionId = new Map(rowInputs.map((row) => [String(row?.actionId || '').trim(), row]))
@@ -461,7 +469,7 @@ const buildOfficialAtlasFromRows = async ({
       sourceKind,
       identityReferenceMeanRgb: input.identityReferenceMeanRgb || null,
       identityReferenceDescriptor: input.identityReferenceDescriptor || null,
-      qualityProfile
+      qualityProfile: rowValidationProfile
     })
     const qa = rowAnalysis.qa
     if (qa.quality === FULL_PET_ROW_QUALITY.FAILED) {
@@ -510,6 +518,7 @@ const buildOfficialAtlasFromRows = async ({
   writeJson(rowQaPath, {
     ok: true,
     qualityProfile: createQualityProfileEvidence(qualityProfile),
+    rowValidationProfile: createQualityProfileEvidence(rowValidationProfile),
     rows: rowQas.map(sanitizeRowQa)
   })
   writeJson(atlasQaPath, {
@@ -521,6 +530,7 @@ const buildOfficialAtlasFromRows = async ({
     sourceRelativePath,
     sourceRelativePaths: entries.map((entry) => entry.sourceRelativePath),
     qualityProfile: createQualityProfileEvidence(qualityProfile),
+    rowValidationProfile: createQualityProfileEvidence(rowValidationProfile),
     basicActions,
     frame: {
       width: CODEX_ATLAS.cellWidth,
@@ -629,6 +639,7 @@ const buildRealAtlasFromGeneratedImage = async ({
       size,
       entries,
       qualityProfile,
+      rowValidationProfile: resolveRowValidationProfile(qualityProfile),
       basicActionAttempts: Array.isArray(generationResult?.basicActionGeneration?.attempts)
         ? generationResult.basicActionGeneration.attempts
         : []

@@ -6,6 +6,8 @@ This directory is the maintainer entrypoint for archived evidence artifacts.
 
 - Agent awareness smoke: [`agent-awareness-local-smoke/`](./agent-awareness-local-smoke/)
 - AI provider smoke: [`ai-provider-smoke/`](./ai-provider-smoke/)
+- Remote Backend mesh smoke: [`remote-backend/`](./remote-backend/)
+- Telegram account smoke: [`telegram-account-smoke/`](./telegram-account-smoke/)
 - AI Talk smoke: [`ai-talk-local-smoke/`](./ai-talk-local-smoke/)
 - Creator Studio provider smoke: [`creator-studio-provider-smoke/`](./creator-studio-provider-smoke/)
 - Public release metadata: [`release-public-assets/`](./release-public-assets/)
@@ -16,6 +18,8 @@ This directory is the maintainer entrypoint for archived evidence artifacts.
 - Packaged runtime evidence: [`packaged-runtime/`](./packaged-runtime/)
 - Signed release closure audits: [`signed-release-closure/`](./signed-release-closure/)
 - Community-source discovery and intake: [`plugin-community-source-discovery-report/`](./plugin-community-source-discovery-report/), [`plugin-community-source-intake-report/`](./plugin-community-source-intake-report/), [`plugin-community-source-invitation-kit/`](./plugin-community-source-invitation-kit/)
+
+The latest real-Codex Agent Awareness smoke is at docs/release-evidence/agent-awareness-local-smoke/2026-10-08T22-40-35-815Z/: 19 sessions, 515 events, zero malformed, unknown, or unsupported lifecycle records, and passing automated redaction checks. Dashboard usefulness and pet speech/noise remain pending human review.
 
 Creator Studio provider smoke archives prove provider reachability, command/data flow, and generated asset pipeline wiring. They do not prove final pet visual identity or production asset quality; generated pets still require human review or a future explicit visual-fidelity gate against the user's original image.
 

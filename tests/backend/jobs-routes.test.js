@@ -113,6 +113,23 @@ describe("Job HTTP contract", () => {
 		})
 	})
 
+	it("rejects Creator retries after their private input has been cleared", async () => {
+		const current = internalJob({ id: "creator-retry", kind: "creator.character", status: "failed", attempt: 1, maxAttempts: 2 })
+		let resumed = false
+		const jobs = {
+			byId: () => current, list: () => [], count: () => 0,
+			transition() { throw new Error("must not transition") },
+		}
+		await withServer({
+			jobs, runner: {}, dispatcher: { resume() { resumed = true } }, canRetryJob: () => false,
+		}, async (url) => {
+			const result = await json(await fetch(`${url}/jobs/creator-retry/retry`, { method: "POST", headers }))
+			assert.equal(result.response.status, 409)
+			assert.match(result.body.error.message, /Creator Job input has been cleared/)
+			assert.equal(resumed, false)
+		})
+	})
+
 	it("retry HTTP executes an interrupted job through the real queue and runner", async () => {
 		const [{ openDatabase }, { migrate }, { createJobsRepository }, { createQueue }, { createRunner }, { createJobDispatcher }] = await Promise.all([
 			import("../../services/backend/store/db.js"),

@@ -27,49 +27,49 @@ test('active TODO keeps the current release-evidence blocker truth aligned with 
 
   assert.match(
     todo,
-    /docs\/release-evidence\/signed-release-closure\/2026-07-06T16-46-49Z-v1\.0\.1-rc\.3-authenticated-closure-archive-rerun\//i,
+    /(?:docs\/|\.\/)?release-evidence\/signed-release-closure\/2026-07-06T16-46-49Z-v1\.0\.1-rc\.3-authenticated-closure-archive-rerun\//i,
     'docs/TODO.md should point to the current signed release closure rerun'
   )
   assert.match(
     todo,
-    /docs\/release-evidence\/packaged-runtime\/2026-07-06T17-00-00Z-darwin-arm64-authenticated-artifact\//i,
+    /(?:docs\/|\.\/)?release-evidence\/packaged-runtime\/2026-07-06T17-00-00Z-darwin-arm64-authenticated-artifact\//i,
     'docs/TODO.md should point to the current packaged runtime pending report'
   )
   assert.match(
     todo,
-    /docs\/release-evidence\/windows-smoke\/2026-07-06T16-46-49Z-v1\.0\.1-rc\.3-authenticated-artifact-archive-rerun\//i,
+    /(?:docs\/|\.\/)?release-evidence\/windows-smoke\/2026-07-06T16-46-49Z-v1\.0\.1-rc\.3-authenticated-artifact-archive-rerun\//i,
     'docs/TODO.md should point to the current Windows smoke archive rerun'
   )
   assert.match(
     todo,
-    /docs\/release-evidence\/desktop-picker\/2026-07-06T16-46-49Z-win32-x64-authenticated-artifact-archive-rerun\//i,
+    /(?:docs\/|\.\/)?release-evidence\/desktop-picker\/2026-07-06T16-46-49Z-win32-x64-authenticated-artifact-archive-rerun\//i,
     'docs/TODO.md should point to the current Windows desktop-picker archive rerun'
   )
   assert.match(
     todo,
-    /`codesign`\/`spctl` fail[\s\S]*code has no resources but signature indicates they must be present[\s\S]*classifies codesign\/Gatekeeper\/notarization as `fail`/i,
+    /Self-Signed Distribution Policy[\s\S]*Paid signing and notarization are not future gates[\s\S]*`codesign`\/`spctl` failure[\s\S]*not-ready closure under the old gate/i,
     'docs/TODO.md should keep the current macOS negative signing truth explicit'
   )
   assert.match(
     todo,
-    /artifact\.signed=false[\s\S]*archived-but-not-ready Windows smoke and desktop-picker manifests[\s\S]*fresh passing evidence/i,
-    'docs/TODO.md should keep the current packaged runtime and closure blocker chain explicit'
+    /Paid signing and notarization are not future gates[\s\S]*Historical evidence:[\s\S]*not-ready closure under the old gate/i,
+    'docs/TODO.md should preserve old signed release results as history under the current self-managed policy'
   )
 
   assert.match(
     todoArchitecture,
-    /docs\/release-evidence\/signed-release-closure\/2026-07-06T16-46-49Z-v1\.0\.1-rc\.3-authenticated-closure-archive-rerun\//i,
+    /(?:docs\/|\.\/)?release-evidence\/signed-release-closure\/2026-07-06T16-46-49Z-v1\.0\.1-rc\.3-authenticated-closure-archive-rerun\//i,
     'docs/openpet-current-todo-architecture.md should point to the current signed release closure rerun'
   )
   assert.match(
     todoArchitecture,
-    /docs\/release-evidence\/packaged-runtime\/2026-07-06T17-00-00Z-darwin-arm64-authenticated-artifact\//i,
+    /(?:docs\/|\.\/)?release-evidence\/packaged-runtime\/2026-07-06T17-00-00Z-darwin-arm64-authenticated-artifact\//i,
     'docs/openpet-current-todo-architecture.md should point to the current packaged runtime pending report'
   )
   assert.match(
     todoArchitecture,
-    /macOS codesign\/notarization\/Gatekeeper classify as `fail`[\s\S]*Windows smoke remains unsigned\/pending[\s\S]*desktop-picker archives remain archived but not signed-ready/i,
-    'docs/openpet-current-todo-architecture.md should summarize the current release blockers from the archived closure truth'
+    /historical signed release closure[\s\S]*remains `?not-ready`? under the previous paid-signing policy[\s\S]*macOS codesign\/notarization\/Gatekeeper classify as `?fail`?[\s\S]*Windows smoke is unsigned\/pending[\s\S]*not the current release policy/i,
+    'docs/openpet-current-todo-architecture.md should distinguish archived paid-signing results from current policy'
   )
 })
 

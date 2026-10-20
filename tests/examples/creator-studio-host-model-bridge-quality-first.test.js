@@ -20,6 +20,7 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const sharp = require('sharp')
+const { OFFICIAL_FULL_PET_ACTION_IDS } = require('../../examples/plugins/creator-studio/lib/full-pet-row-contract')
 
 test('host canonical pool keeps paid duplicates quality-eligible while tracking diversity separately', async () => {
   const hashes = ['a'.repeat(64), 'a'.repeat(64), 'b'.repeat(64), 'c'.repeat(64)]
@@ -465,6 +466,46 @@ test('quality-first host runtime reuses a five-way-bound action checkpoint witho
     assert.equal(failed.diversityStatus, 'degraded')
     assert.deepEqual(failed.warningCodes, ['action_candidate_diversity_insufficient'])
   } finally {
+    if (previousUrl == null) delete process.env.OPENPET_BRIDGE_URL
+    else process.env.OPENPET_BRIDGE_URL = previousUrl
+    if (previousToken == null) delete process.env.OPENPET_BRIDGE_TOKEN
+    else process.env.OPENPET_BRIDGE_TOKEN = previousToken
+  }
+})
+
+test('quality-first Backend runs force identity review even when the planner selects a candidate', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-quality-first-backend-identity-review-'))
+  const runId = 'run-backend-review'
+  const sourceRelativePath = `runs/${runId}/inputs/reference.png`
+  fs.mkdirSync(path.dirname(path.join(dataDir, sourceRelativePath)), { recursive: true })
+  await sharp({ create: { width: 192, height: 208, channels: 4, background: { r: 80, g: 120, b: 160, alpha: 1 } } }).png().toFile(path.join(dataDir, sourceRelativePath))
+  const plan = createSpriteAssetPlan({ version: 1, revision: 1, character: { assetClass: 'grounded-compact-character' }, actions: [{ actionId: 'idle' }] })
+  const previousUrl = process.env.OPENPET_BRIDGE_URL
+  const previousToken = process.env.OPENPET_BRIDGE_TOKEN
+  process.env.OPENPET_BRIDGE_URL = 'http://127.0.0.1:1'
+  process.env.OPENPET_BRIDGE_TOKEN = 'test-token'
+  const originalFetch = global.fetch
+  global.fetch = async (url) => {
+    assert.match(String(url), /\/creator\/hatch-pet\/plan$/)
+    return new Response(JSON.stringify({ ok: true, result: {
+      proposal: { assetClass: 'grounded-compact-character', actions: [{ actionId: 'idle' }] },
+      requireIdentityReviewBeforeActions: false
+    } }), { status: 200, headers: { 'content-type': 'application/json' } })
+  }
+  try {
+    const runtime = await createQualityFirstHostRuntime({
+      dataDir,
+      run: {
+        runId,
+        creatorExecution: 'backend',
+        generationTask: { mode: 'full-pet', actions: OFFICIAL_FULL_PET_ACTION_IDS.map((actionId) => ({ actionId })) },
+        input: { referenceImage: { relativePath: sourceRelativePath } }
+      }
+    })
+    assert.equal(runtime.requireIdentityReviewBeforeActions, true)
+    assert.deepEqual(runtime.plan.actions.map((action) => action.actionId), OFFICIAL_FULL_PET_ACTION_IDS.filter((actionId) => actionId !== 'running-left'))
+  } finally {
+    global.fetch = originalFetch
     if (previousUrl == null) delete process.env.OPENPET_BRIDGE_URL
     else process.env.OPENPET_BRIDGE_URL = previousUrl
     if (previousToken == null) delete process.env.OPENPET_BRIDGE_TOKEN

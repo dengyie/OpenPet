@@ -49,9 +49,12 @@ test("T31 exports the four contract plugin handlers with the documented resource
 	assert.equal(install.resourceKey({ pluginId: "demo" }), "plugin:demo")
 	assert.equal(install.resourceKey({ id: "demo" }), "plugin:demo")
 	assert.equal(github.resourceKey({ pluginId: "demo" }), "plugin:demo")
+	assert.equal(github.resourceKey({ repositoryUrl: "https://github.com/OpenPet/Demo" }), "github:openpet/demo")
+	assert.equal(github.resourceKey({ repositoryUrl: "https://github.com/openpet/demo/" }), "github:openpet/demo")
 	assert.equal(command.resourceKey({ pluginId: "demo" }), "plugin:demo")
 	assert.equal(sync.resourceKey({ pluginId: "demo" }), "plugin:demo")
 	assert.equal(sync.resourceKey({}), null)
+	assert.throws(() => github.resourceKey({ repositoryUrl: "https://github.com/openpet/demo/tree/main" }), /GitHub repository homepage URL/)
 })
 
 test("plugin install handler delegates through the backend plugin domain and reports progress", async () => {
@@ -169,6 +172,165 @@ test("same-plugin install resource keys are rejected with LOCKED 423", async () 
 			queue.stop()
 		}
 	} finally {
+		db.close()
+	}
+})
+
+test("plugin install jobs execute with transient local and GitHub inputs while SQLite stores only redacted input", async () => {
+	const [
+		{ createPluginJobHandlers }, { createRunner }, { createJobDispatcher }, { createQueue },
+		{ createJobsRepository }, { migrate }, { openDatabase },
+	] = await Promise.all([
+		import("../../services/backend/jobs/handlers/index.js"),
+		import("../../services/backend/jobs/runner.js"),
+		import("../../services/backend/jobs/dispatcher.js"),
+		import("../../services/backend/jobs/queue.js"),
+		import("../../services/backend/store/repositories/jobs.js"),
+		import("../../services/backend/store/migrate.js"),
+		import("../../services/backend/store/db.js"),
+	])
+	const db = await openDatabase({ file: ":memory:" })
+	migrate({ db })
+	const repo = createJobsRepository({ db })
+	const queue = createQueue({ repo, tickMs: 60_000 })
+	const privateInputs = new Map()
+	const calls = []
+	const handlers = createPluginJobHandlers({
+		plugins: {
+			install: async (source) => { calls.push(["local", source]); return { id: "local-demo" } },
+			installGithub: async (repositoryUrl) => { calls.push(["github", repositoryUrl]); return { id: "github-demo" } },
+		},
+	})
+	const runner = createRunner({
+		repo,
+		queue,
+		handlers,
+		takePrivateInput: (jobId) => {
+			const value = privateInputs.get(jobId)
+			privateInputs.delete(jobId)
+			return value
+		},
+		forgetPrivateInput: (jobId) => privateInputs.delete(jobId),
+	})
+	const dispatch = createJobDispatcher({ queue, runner, privateInputs })
+	try {
+		const local = dispatch({
+			id: "plugin.install:local-transient",
+			kind: "plugin.install",
+			input: { redacted: true, summary: "plugin.install" },
+			privateInput: { path: "/private/local-plugin" },
+		})
+		const github = dispatch({
+			id: "plugin.install.github:github-transient",
+			kind: "plugin.install.github",
+			input: { redacted: true, summary: "plugin.install.github" },
+			privateInput: { repositoryUrl: "https://github.com/openpet/demo" },
+		})
+		await eventually(() => repo.byId(local.id)?.status === "succeeded" && repo.byId(github.id)?.status === "succeeded")
+		assert.deepEqual(calls, [
+			["local", "/private/local-plugin"],
+			["github", "https://github.com/openpet/demo"],
+		])
+		for (const job of [local, github]) {
+			const persisted = db.prepare("SELECT input_json FROM jobs WHERE id = ?").get(job.id).input_json
+			assert.deepEqual(JSON.parse(persisted), { redacted: true, summary: job.kind })
+			assert.equal(privateInputs.has(job.id), false)
+		}
+	} finally {
+		await runner.shutdown()
+		queue.stop()
+		db.close()
+	}
+})
+
+test("GitHub plugin install retries with transient input and clears it after settlement", async () => {
+	const [
+		{ createPluginJobHandlers }, { createRunner }, { createJobDispatcher }, { createQueue },
+		{ createJobsRepository }, { migrate }, { openDatabase },
+	] = await Promise.all([
+		import("../../services/backend/jobs/handlers/index.js"),
+		import("../../services/backend/jobs/runner.js"),
+		import("../../services/backend/jobs/dispatcher.js"),
+		import("../../services/backend/jobs/queue.js"),
+		import("../../services/backend/store/repositories/jobs.js"),
+		import("../../services/backend/store/migrate.js"),
+		import("../../services/backend/store/db.js"),
+	])
+	const db = await openDatabase({ file: ":memory:" })
+	migrate({ db })
+	const repo = createJobsRepository({ db })
+	const privateInputs = new Map()
+	const queue = createQueue({ repo, tickMs: 60_000 })
+	const repositoryUrl = "https://github.com/openpet/demo"
+	const inspected = []
+	let attempts = 0
+	const plugins = {
+		inspectGithub: async (url) => {
+			inspected.push(url)
+			if (++attempts === 1) throw Object.assign(new Error("temporary network failure"), { status: 503 })
+			return { selectionId: "selection-1" }
+		},
+		commitGithubInstall: (selectionId) => ({ id: "demo", selectionId }),
+		clearInstallSelection: () => {},
+	}
+	const runner = createRunner({
+		repo,
+		queue,
+		delay: async () => {},
+		handlers: createPluginJobHandlers({ plugins }),
+		takePrivateInput: (jobId) => {
+			const value = privateInputs.get(jobId)
+			privateInputs.delete(jobId)
+			return value
+		},
+		forgetPrivateInput: (jobId) => privateInputs.delete(jobId),
+	})
+	const dispatch = createJobDispatcher({ queue, runner, privateInputs })
+	try {
+		const job = dispatch({
+			id: "plugin.install.github:retry-input",
+			kind: "plugin.install.github",
+			input: { redacted: true, summary: "plugin.install.github" },
+			privateInput: { repositoryUrl },
+		})
+		await eventually(() => repo.byId(job.id)?.status === "succeeded")
+		assert.deepEqual(inspected, [repositoryUrl, repositoryUrl])
+		assert.deepEqual(repo.byId(job.id).result, { id: "demo", selectionId: "selection-1" })
+		assert.deepEqual(repo.byId(job.id).input, { redacted: true, summary: "plugin.install.github" })
+		assert.equal(privateInputs.has(job.id), false)
+	} finally {
+		await runner.shutdown()
+		queue.stop()
+		db.close()
+	}
+})
+
+test("redacted plugin install without its transient input fails with 409 and cannot retry", async () => {
+	const [{ createPluginJobHandlers }, { createRunner }, { createJobDispatcher }, { createQueue }, { createJobsRepository }, { migrate }, { openDatabase }] = await Promise.all([
+		import("../../services/backend/jobs/handlers/index.js"),
+		import("../../services/backend/jobs/runner.js"),
+		import("../../services/backend/jobs/dispatcher.js"),
+		import("../../services/backend/jobs/queue.js"),
+		import("../../services/backend/store/repositories/jobs.js"),
+		import("../../services/backend/store/migrate.js"),
+		import("../../services/backend/store/db.js"),
+	])
+	const db = await openDatabase({ file: ":memory:" })
+	migrate({ db })
+	const repo = createJobsRepository({ db })
+	const queue = createQueue({ repo, tickMs: 60_000 })
+	const runner = createRunner({ repo, queue, handlers: createPluginJobHandlers({ plugins: {} }) })
+	const dispatch = createJobDispatcher({ queue, runner })
+	try {
+		const job = dispatch({ id: "plugin.install.github:missing", kind: "plugin.install.github", input: { redacted: true, summary: "plugin.install.github" } })
+		await eventually(() => repo.byId(job.id)?.status === "failed")
+		const failed = repo.byId(job.id)
+		assert.equal(failed.error.code, "CONFLICT")
+		assert.equal(failed.error.retryable, false)
+		assert.equal(failed.canRetry, false)
+	} finally {
+		await runner.shutdown()
+		queue.stop()
 		db.close()
 	}
 })

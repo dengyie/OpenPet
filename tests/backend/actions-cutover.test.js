@@ -27,7 +27,7 @@ test("Actions reads the active Shell view including proposals, rules and diagnos
 })
 
 test("Actions rejects mismatched authority responses and preserves domain errors", async (t) => {
-	let response = { type: "actions.result", operation: "remove", ok: true, result: {} }
+	let response = { type: "actions.result", operation: "delete-action", ok: true, result: {} }
 	const actions = await fixture(t, { shell: { request: async () => ({ body: response }) } })
 	await assert.rejects(async () => actions.list(), (error) => error.code === "INTERNAL")
 	response = { type: "actions.result", operation: "get", ok: false, error: { code: "CONFLICT", message: "Active pack changed" } }
@@ -41,25 +41,33 @@ test("Actions queues opaque selection handles and enters finalizing before Shell
 	const actions = await fixture(t, {
 		jobs: { insert: (input) => { queued = input; return { id: "job-1" } } },
 		shell: { request: async (body) => {
+			if (body.operation === "clear-selection") {
+				events.push("shell-clear")
+				return { body: { type: "actions.result", operation: body.operation, ok: true, result: { ok: true } } }
+			}
 			events.push("shell-import")
-			assert.equal(body.operation, "import")
+			assert.equal(body.operation, "import-frames")
 			assert.deepEqual(body.payload, { selectionId: "selection-1", actionId: "wave", label: "Wave" })
-			return { body: { type: "actions.result", operation: "import", ok: true, result } }
+			return { body: { type: "actions.result", operation: "import-frames", ok: true, result } }
 		} },
 	})
 	assert.deepEqual(await actions.importFrames({ selectionId: "selection-1", actionId: "wave", label: "Wave" }), { jobId: "job-1" })
 	assert.equal(queued.kind, "actions.import-frames")
-	assert.deepEqual(queued.input, { selectionId: "selection-1", actionId: "wave", label: "Wave" })
+	assert.deepEqual(queued.input, { redacted: true, summary: "Action frame import input withheld" })
+	assert.deepEqual(queued.privateInput, { selectionId: "selection-1", actionId: "wave", label: "Wave" })
 	assert.deepEqual(events, [])
-	assert.deepEqual(await actions.runImportFrames({ ...queued.input, finalize: async (operation) => { events.push("finalizing"); return operation() } }), result)
-	assert.deepEqual(events, ["finalizing", "shell-import"])
+	assert.deepEqual(await actions.runImportFrames({ ...queued.privateInput, finalize: async (operation) => { events.push("finalizing"); return operation() } }), result)
+	assert.deepEqual(events, ["finalizing", "shell-import", "shell-clear"])
 })
 
 test("Actions cancellation before finalizing never crosses the Shell write boundary", async (t) => {
-	let calls = 0
+	const calls = []
 	const controller = new AbortController()
 	controller.abort(new Error("cancelled"))
-	const actions = await fixture(t, { shell: { request: async () => { calls += 1 } } })
+	const actions = await fixture(t, { shell: { request: async (body) => {
+		calls.push(body)
+		return { body: { type: "actions.result", operation: body.operation, ok: true, result: { ok: true } } }
+	} } })
 	await assert.rejects(() => actions.runImportFrames({ selectionId: "selection-1", actionId: "wave", signal: controller.signal, finalize: (fn) => fn() }), /cancelled/)
-	assert.equal(calls, 0)
+	assert.deepEqual(calls, [{ type: "actions.request", operation: "clear-selection", payload: { selectionId: "selection-1" } }])
 })

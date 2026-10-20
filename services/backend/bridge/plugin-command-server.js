@@ -34,6 +34,11 @@ const CAPABILITY_BY_PATH = Object.freeze({
 	"/settings/read": "settings:read",
 	"/logs/write": "logs:write",
 	"/network/fetch": "network:fetch",
+	"/creator/model-settings": "creator:model-settings",
+	"/creator/model-health-check": "creator:model-health-check",
+	"/creator/model-image-generate": "creator:model-image-generate",
+	"/creator/hatch-pet/plan": "creator:hatch-pet-plan",
+	"/creator/hatch-pet/evaluate": "creator:hatch-pet-evaluate",
 })
 
 function requiredString(value, field) {

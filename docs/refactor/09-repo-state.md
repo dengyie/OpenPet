@@ -41,7 +41,7 @@ scripts/check-api-contract.mjs          ✅ M0 门禁
 tests/backend/state-machine.test.js     ✅ 测试样板
 ```
 
-根 `package.json` 已开启 workspaces(`apps/*`、`services/*`、`packages/*`),`check:node` 已覆盖 `apps` 与 `services`。backend 当前由 12 组 routes 文件装配 133 条实际 method/path；`routes/registry.js` 是硬对账注册表，不是第二套业务实现。
+根 `package.json` 已开启 workspaces(`apps/*`、`services/*`、`packages/*`),`check:node` 已覆盖 `apps` 与 `services`。backend 当前由 12 组 routes 文件装配 136 条已注册路由、149 条文档路由行；`routes/registry.js` 是硬对账注册表，不是第二套业务实现。
 
 **当前 backend 已完成启动、迁移、Job 恢复/调度和 HTTP 业务路由注册。** 所有当前运行期表均已有明确 owner；AI traces 与 HTTP access logs 的归属见 §2.6 与缺口 G13。
 
@@ -153,7 +153,7 @@ const db = await openDatabase({ file, pragmas, logger })
 
 `index.ts` 只做 re-export,新增契约文件要在这里追加一行(热点文件,只追加)。**缩进是 2 空格,不是 tab。**
 
-`bridge.ts` 已导出:`BRIDGE_PROTOCOL_VERSION`、`EXIT_CODE_VERSION_MISMATCH`、`MAX_VERSION_MISMATCH_RELAUNCHES`、`DIALOG_RESULT_TIMEOUT_MS`、`SIDECAR_READY_TIMEOUT_MS`、`envelopeSchema`、`Envelope<T>`、`backendToShellSchema`(9 项)、`shellToBackendSchema`(6 项)、两个信封 schema、`inspectEnvelope`。
+`bridge.ts` 已导出:`BRIDGE_PROTOCOL_VERSION`、`EXIT_CODE_VERSION_MISMATCH`、`MAX_VERSION_MISMATCH_RELAUNCHES`、`DIALOG_RESULT_TIMEOUT_MS`、`SIDECAR_READY_TIMEOUT_MS`、`envelopeSchema`、`Envelope<T>`、`backendToShellSchema`(18 项)、`shellToBackendSchema`(15 项)、两个信封 schema、`inspectEnvelope`。`ready` 还必须包含 `sessionToken` 与非负 `startupMs`。Actions reverse channel 使用严格 operation/payload allowlist，并要求成功/失败双态互斥。
 
 `init` 消息是唯一允许携带敏感数据(`providerKeys`)的地方,ADR-010;后端只留内存,不落盘。
 
@@ -272,11 +272,11 @@ countByStatus(status?)                     // → number | { [status]: number }
 
 按 M1 归组;编号见 [10 篇](./10-tasks-m1.md)、[11 篇](./11-tasks-m1-http.md)、[12 篇](./12-tasks-m2.md)、[13 篇](./13-tasks-m3.md) 的任务卡(M1 = T01–T14、M2 = T15–T23、M3 = T24–T33)。
 
-| 组 | 待建 |
+| 组 | 当前状态 / 未归属能力 |
 | --- | --- |
 | 迁移与仓储 | ~~`store/migrate.js`、`store/repositories/*.js`、`store/migrate-from-json.js`~~ ✅ T01/T02/T14/T47 已落地；`logs.js` 与 `conversations.js` 分别承担 HTTP access logs、插件 logs 与 AI-owned traces |
 | Job 引擎 | ~~`jobs/queue.js`、`jobs/runner.js`、`jobs/progress.js`、`jobs/recovery.js`、`jobs/handlers/*.js`~~ ✅ T05–T08/T31 已落地 |
-| HTTP | ~~`routes/*.js`、`domains/*.js`、SSE 推送~~ ✅ T09–T33 已落地；当前注册表实际 133 条 method/path |
+| HTTP | ~~`routes/*.js`、`domains/*.js`、SSE 推送~~ ✅ T09–T33 已落地；当前注册表实际 136 条 method/path |
 | 密钥 | ~~`secrets/*.js`~~ ✅ T44 `1433b299` 已落地，只写边界与脱敏摘要 |
 | 反向通道 | ~~`dialog.request` 补齐、`apps/desktop/src/sidecar/message-handler.js`、`orphan-cleanup.js`、`domains/plugins/process-ledger.js`(T29)~~ ✅ T12/T13/T29 已落地 |
 | 兼容层 | ~~`mcp/*.js`、`/api/pet/*` 与 `/mcp`~~ ✅ T45 `7bdf4f77` 已迁入同一 sidecar 的独立监听器，默认关闭 |
@@ -295,14 +295,14 @@ countByStatus(status?)                     // → number | { [status]: number }
 | 编号 | 状态 | 现象 | 影响 / 去向 |
 | --- | --- | --- | --- |
 | 缺口 G1 | ✅ | `@openpet/contracts` 的 `main` 已指向构建产物 `dist/` | T34 已闭合: `build:contracts` 已进入 pack/dist/CI,`asarUnpack` 覆盖 `contracts/zod`(实现证据: `77e5d8435d0c88be3760d85f52df15580001720b`;合并证据: `929f6676e354f3aa1b298b4755fc069f96b9addc`) |
-| 缺口 G2 | ✅ | 后端与契约反向通道均为 12 项,含 `dialog.request` 与 settings apply/persist | T12 已补齐 dialog 白名单，T41 增加 settings host-effect/persist 消息；`tests/backend/bridge-dialog.test.js` 与 `tests/backend/reverse-channel-allowlist.test.js` 覆盖成功、超时、关联响应和类型校验 |
+| 缺口 G2 | ✅ | 后端与契约反向通道均为 19/16 项,含 `dialog.request`、plugin production、settings apply/persist、catalog、pet-pack、AI talk 与 Actions | T12 已补齐 dialog 白名单，T41 增加 settings host-effect/persist 消息，Task 4 增加 plugin production，Actions vertical slice 增加 `actions.request/result`，AI Talk slice 增加 `ai.talk.request/result`；`tests/backend/bridge-dialog.test.js` 与 `tests/backend/reverse-channel-allowlist.test.js` 覆盖成功、超时、关联响应、结构化错误和类型校验 |
 | 缺口 G3 | ⏳ | 13 个通用码的状态映射在 `middleware.js` 和契约 `envelope.ts` **各有一份** | 需要 gate 检查这层重复;不要再复制第三处 |
 | 缺口 G4 | ✅ | R20:ESM 入口在 `app.asar` 内可能解析失败 | E6 命中 `spawn ENOTDIR`;已用 `asarUnpack` + unpacked resolver 缓解并收到打包 sidecar ready(证据: `6248d2366435ee765799bdf581c8b6ae22a526e4`) |
 | 缺口 G5 | ✅ | `package-lock.json` 未与 workspaces 同步 | E1 `npm install` 已确认 workspaces 和 lockfile 解析正常;本次 lockfile 无额外变化(证据: `304a5a346083bb7888407a2ed2dcaa3517e4d981`) |
 | 缺口 G6 | ✅ | M0 六条 spike 结果未回填 | E3–E8 已全部实测并回填;唯一权威结果见 [07 篇](./07-spike.md) §7(证据: `bbfdb096d8a224f513eea5160cf000281f487161`) |
 | 缺口 G7 | ✅ | 04 篇 §2.6 的 ⚠️ 待补登记 注记已过期 | 已关闭:注记改为「已补登(v1.3)」,并说明 `system` topic 现列四个事件、已纳入 `check:api-contract` 的 `EVENT_NAMES` 对账范围(证据: `e38940dbd8466712f6c499631e9e5ee9f4250959`) |
 | 缺口 G8 | ✅ | 06 篇 §9 风险表缺 R20 | 已关闭:R20 已补入风险登记册,并同步收紧 §2 spike 第 5 条的判定标准(证据: `6248d2366435ee765799bdf581c8b6ae22a526e4`) |
-| 缺口 G9 | ✅ | 路由表与 IPC 通道盘点门禁已硬化 | `check:api-contract` 对账 `routes/registry.js`、实际 `router.routes()`、03 篇 §4 与 TS/JS IPC 清单;当前为 133 条实际 method/path、87 条通道（T47/T48 迁移证据：`6dc7e9f0`、`5d164d84`） |
+| 缺口 G9 | ✅ | 路由表与 IPC 通道盘点门禁已硬化 | `check:api-contract` 对账 `routes/registry.js`、实际 `router.routes()`、03 篇 §4 与 TS/JS IPC 清单;当前为 136 条实际 method/path、87 条通道（T47/T48 迁移证据：`6dc7e9f0`、`5d164d84`） |
 | 缺口 G10 | ✅ | `tests/backend/state-machine.test.js` 有一处 `it()` 标题笔误 | E9 已改为「6 个状态,17 个 kind」(证据: `bbfdb096d8a224f513eea5160cf000281f487161`) |
 | 缺口 G11 | ✅ | E3 的 `:memory:` SQLite 探针不证明 WAL | T35 已由 file-backed `tests/backend/sqlite-driver.test.js` 复验 WAL、四项默认 pragma 与跨连接持久化(证据: `08c24e1c364e9ca6a59f57bc6544cb447aa0b565`) |
 | 缺口 G12 | ✅ | 03 篇 §3 盘点 7 个 `SERVICE_*` 写通道,§4.1 已有对应入口 | T16 已补齐并实现服务配置写入端点 `PUT /service/config`,同时同步契约表(实现证据: `4480c4b5749d2ed242716732e45573ffc1a3131a`;契约/注册表证据: `4faa07df0244e9ce8bb53501589eaee4e50ac0b9`) |
@@ -341,7 +341,7 @@ countByStatus(status?)                     // → number | { [status]: number }
 | v1.1 | 2026-08-15 | 缺口表新增「状态」列,**关闭 G7 与 G8**(04 篇 §2.6 注记已清、06 篇 §9 已补 R20);G4 的去向改为已登记的 R20;G2 补注由 T12 修且 T18/T19 强依赖;§3 待建清单接上 12/13 篇的卡号(T14、T29、T31),并注明 `conversations` 仓储要到 M4 才建 |
 | v1.2 | 2026-08-15 | **修掉 §5 命令表里 spike 3、spike 4 缺 `ELECTRON_RUN_AS_NODE=1` 的两行**(这是 [14 篇](./14-handoff.md) §5 登记的第 1 条文档债,危险度高:spike 4 用错解释器会得出相反结论);§5 补执行卡与唯一权威结果表的指针;§4 给 G1/G4/G5/G6/G10 标注对应的 E 卡,G9 补注「打印 `todo` 不算红」 |
 | v1.3 | 2026-08-16 | 以 `main` 为基线回填 E1–E10;缺口 G1/G11 改由 T34/T35 对接 #41 §5 卡面与 #41 §4 进度;完成结果替代待执行表,并区分目标 G1–G8 与缺口 G1–G11 |
-| v1.4 | 2026-09-04 | T37 复核当前仓库:补齐 sidecar/backend、迁移、Job、路由与仓储现状;关闭 G2/G9/G11/G12,登记 G13 未归属仓储;同步 68 条实际路由与 158 条 IPC 门禁证据 |
+| v1.4 | 2026-09-04 | T37 复核当前仓库:补齐 sidecar/backend、迁移、Job、路由与仓储现状;关闭 G2/G9/G11/G12,登记 G13 未归属仓储;当时记录 68 条实际路由与 158 条 IPC，属于历史快照 |
 | v1.5 | 2026-09-05 | T41/T42 复核:当前 154 条 IPC;About 两条业务通道已退休;Catalog、Pet Packs、Actions 因后端语义不等价保留 IPC/preload 并登记 blocked:T42;反向通道补记 settings apply/persist 类型 |
 | v1.6 | 2026-09-05 | T42 Catalog 6 条 IPC 已在 `ac59d75f` 同提交退休；当前 148 条 IPC、74 条 REST 路由；T41 live bridge 修复提交 `bac49b80` 待总控 rebase 验收 |
 | v1.7 | 2026-09-05 | T42 Pet Packs 8 条 IPC 已在 `490357f7` 同提交退休；当前 140 条 IPC、74 条 REST 路由；T41 live bridge rebase 后提交 `890dac82` 待合入 |

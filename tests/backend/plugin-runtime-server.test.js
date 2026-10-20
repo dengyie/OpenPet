@@ -101,12 +101,17 @@ test("submits trigger proposals inside the backend", async () => {
 
 test("enqueues model:image-generate as an image Job", async () => {
 	const { calls, plugin, server } = createHarness(["model:image-generate"])
-	const result = await server.handleCapability(plugin.id, "model:image-generate", { prompt: "orange cat" })
-	assert.deepEqual(calls, [["job", {
+	const payload = { prompt: "orange cat" }
+	const result = await server.handleCapability(plugin.id, "model:image-generate", payload)
+	assert.equal(calls.length, 1)
+	assert.match(calls[0][1].id, /^image-generate:/)
+	assert.deepEqual({ ...calls[0][1], id: undefined }, {
+		id: undefined,
 		kind: "image.generate",
-		input: { pluginId: plugin.id, prompt: "orange cat" },
+		input: { redacted: true, summary: "Image generation input withheld" },
+		privateInput: { pluginId: plugin.id, prompt: "orange cat" },
 		resourceKey: `plugin:${plugin.id}`,
-	}]])
+	})
 	assert.deepEqual(result, { jobId: "job-image-1" })
 })
 

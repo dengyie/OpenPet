@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-08T22:13:25Z",
+  "evidenceType": "ai-provider-smoke",
+  "target": {
+    "kind": "packaged-desktop-app",
+    "platform": "darwin",
+    "architecture": "arm64",
+    "signatureStatus": "unsigned"
+  },
+  "provider": "openai-compatible",
+  "baseUrl": "https://api.mangoqwq.com/v1",
+  "chatModel": "deepseek-v4-flash",
+  "credential": {
+    "type": "test-only",
+    "configured": true,
+    "keyMaterialArchived": false
+  },
+  "checks": [
+    {
+      "id": "model-catalog",
+      "status": "pass",
+      "discoveredModelCount": 182,
+      "containsChatModel": true
+    },
+    {
+      "id": "saved-provider-connection",
+      "status": "pass",
+      "elapsedMs": 2196,
+      "replySummary": "ok"
+    },
+    {
+      "id": "packaged-chat",
+      "status": "pass",
+      "requestSummary": "one short, non-sensitive text message",
+      "response": "OpenPet demo 联通正常！我在这里陪着你哦～ 🐾",
+      "replyCharacters": 30,
+      "providerElapsedMs": 1750,
+      "totalElapsedMs": 1832,
+      "streamChunks": 6,
+      "traceStatus": "completed",
+      "persistedMessageCount": 2
+    }
+  ],
+  "skippedChecks": [
+    {
+      "id": "image-generation",
+      "status": "skipped",
+      "reason": "not part of the text-chat smoke; potentially billable"
+    }
+  ],
+  "claimBoundary": "Confirms one configured text-chat request through the local unsigned macOS arm64 packaged demo. Does not establish image-generation behavior, production availability, or signed release readiness."
+}

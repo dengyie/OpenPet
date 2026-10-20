@@ -61,7 +61,7 @@ const createCoreServices = ({
     logDir: path.join(app.getPath('userData'), 'logs')
   })
   const petService = createPetService({ eventBus, settingsService, actionService, appLogService })
-  const aiSidecar = createAiSidecarProxy({ getBackend, fetchImpl, onSnapshot: onAiSnapshot, getActivePetPackId: () => petPackService.getActivePetPack()?.manifest?.id || '' })
+  const aiSidecar = createAiSidecarProxy({ getBackend, fetchImpl, onSnapshot: onAiSnapshot, getActivePetPackId: () => petPackService.getActivePetPack?.()?.manifest?.id || '' })
   const { aiService, aiTalkService, petUtteranceLogService, behaviorOrchestratorService } = aiSidecar
   const imageGenerationModelService = createImageGenerationModelService({ settingsService, secretService, appLogService })
   const triggerRuleRuntimeService = createTriggerRuleRuntimeService({ actionService, petService, appLogService })
@@ -77,7 +77,8 @@ const createCoreServices = ({
     configPath: path.join(projectRoot, 'cat_anime', 'animations.json')
   })
   const createActiveActionImportService = () => {
-    const activePack = petPackService.getActivePetPack()
+    const activePack = petPackService.getActivePetPack?.()
+    if (!activePack) return createLegacyActionImportService()
     const sourceType = activePack.source?.type || ''
     if (sourceType === 'user-installed') {
       return createActionImportService({

@@ -26,7 +26,7 @@ const usage = () => [
   '  --report-output <report.json> Write merged packaged runtime report here',
   '  --desktop-picker-report <json> Link a ready desktop picker smoke report',
   '  --timeout-ms <ms>             Wait for packaged app evidence file',
-  '  --allow-pending-picker        Allow picker-linked checks to remain pending or blocked',
+  '  --allow-pending-picker        Link a structurally valid partial picker report; unresolved checks stay pending',
   '  --help',
   '',
   'This launches the packaged app with OpenPet runtime-smoke environment variables, waits for',
@@ -157,16 +157,19 @@ const createRuntimeCheckEvidence = ({ sessionId, appPath, screenshotPath, deskto
   state: state || {}
 })
 
-const loadDesktopPickerSmokeReport = (reportPath, fsImpl = fs) => {
+const loadDesktopPickerSmokeReport = (reportPath, fsImpl = fs, { allowPending = false, expectedReport = null } = {}) => {
   if (!reportPath) return null
   const absolutePath = path.resolve(reportPath)
   if (!fsImpl.existsSync(absolutePath)) {
     throw new Error(`Linked desktop picker smoke report not found: ${absolutePath}`)
   }
   const report = JSON.parse(fsImpl.readFileSync(absolutePath, 'utf-8'))
-  const validation = validateDesktopPickerReport(report)
+  const validation = validateDesktopPickerReport(report, { allowPending })
   if (!validation.ok) {
     throw new Error(`Linked desktop picker smoke report is not ready: ${validation.errors.join('; ')}`)
+  }
+  if (expectedReport && !desktopPickerReportMatchesRuntime(report, expectedReport)) {
+    throw new Error('Linked desktop picker smoke report does not match packaged runtime artifact')
   }
   return {
     absolutePath,
@@ -176,13 +179,34 @@ const loadDesktopPickerSmokeReport = (reportPath, fsImpl = fs) => {
   }
 }
 
+const desktopPickerReportMatchesRuntime = (pickerReport, runtimeReport) => {
+  const pickerArtifact = pickerReport?.artifact || {}
+  const runtimeArtifact = runtimeReport?.artifact || {}
+  const artifactTarget = (artifact) => artifact.appPath || artifact.installer || artifact.zip || ''
+  return pickerReport?.platform === runtimeReport?.platform
+    && pickerReport?.arch === runtimeReport?.arch
+    && String(pickerArtifact.version || '') === String(runtimeArtifact.version || '')
+    && String(pickerArtifact.releaseDir || '') === String(runtimeArtifact.releaseDir || '')
+    && artifactTarget(pickerArtifact) === artifactTarget(runtimeArtifact)
+}
+
+const statusForDesktopPickerChecks = (desktopPickerEvidence, checkIds) => {
+  const checks = new Map((desktopPickerEvidence?.report?.checks || []).map((check) => [check.id, check]))
+  const required = checkIds.map((id) => checks.get(id))
+  if (required.some((check) => !check)) return 'blocked'
+  if (required.some((check) => check.status === 'fail')) return 'fail'
+  if (required.some((check) => check.status === 'blocked')) return 'blocked'
+  if (required.some((check) => check.status !== 'pass')) return 'pending'
+  return 'pass'
+}
+
 const desktopPickerCheckEvidence = (desktopPickerEvidence, checkIds) => {
   if (!desktopPickerEvidence?.report || !Array.isArray(desktopPickerEvidence.report.checks)) return ''
   const checksById = new Map(desktopPickerEvidence.report.checks.map((check) => [check.id, check]))
   return checkIds
     .map((checkId) => {
       const check = checksById.get(checkId)
-      if (!check?.evidence) return ''
+      if (check?.status !== 'pass' || !check.evidence) return ''
       return `${checkId}: ${check.evidence}`
     })
     .filter(Boolean)
@@ -319,7 +343,7 @@ const applyDesktopPickerEvidence = (runtimeEvidence, desktopPickerEvidence) => {
     state: {
       ...runtimeEvidence.state,
       pluginPicker: {
-        status: 'pass',
+        status: statusForDesktopPickerChecks(desktopPickerEvidence, ['plugin-picker-cancel', 'plugin-picker-zip-review']),
         evidence: desktopPickerCheckEvidence(desktopPickerEvidence, [
           'plugin-picker-cancel',
           'plugin-picker-zip-review',
@@ -327,14 +351,15 @@ const applyDesktopPickerEvidence = (runtimeEvidence, desktopPickerEvidence) => {
         ]) || `Linked ready desktop picker smoke report: ${desktopPickerEvidence.safePath}`
       },
       petPicker: {
-        status: 'pass',
+        status: statusForDesktopPickerChecks(desktopPickerEvidence, ['pet-pack-picker-cancel', 'action-frame-picker-cancel', 'state-after-picker-smoke']),
         evidence: desktopPickerCheckEvidence(desktopPickerEvidence, [
           'pet-pack-picker-cancel',
-          'action-frame-picker-cancel'
+          'action-frame-picker-cancel',
+          'state-after-picker-smoke'
         ]) || `Linked ready desktop picker smoke report: ${desktopPickerEvidence.safePath}`
       },
       invalidPackage: {
-        status: 'pass',
+        status: statusForDesktopPickerChecks(desktopPickerEvidence, ['invalid-package-feedback']),
         evidence: desktopPickerCheckEvidence(desktopPickerEvidence, [
           'invalid-package-feedback'
         ]) || `Linked ready desktop picker smoke report: ${desktopPickerEvidence.safePath}`
@@ -399,7 +424,10 @@ const runPackagedRuntimeSmoke = async ({
   if (!fsImpl.existsSync(executable)) throw new Error(`Packaged app executable not found: ${executable}`)
 
   const desktopPickerEvidence = desktopPickerSmokeReport
-    ? loadDesktopPickerSmokeReport(desktopPickerSmokeReport, fsImpl)
+    ? loadDesktopPickerSmokeReport(desktopPickerSmokeReport, fsImpl, {
+      allowPending: allowPendingPicker,
+      expectedReport: baseReport
+    })
     : null
   const child = spawnImpl(executable, [], {
     env: session.env,
@@ -454,6 +482,8 @@ module.exports = {
   parseArgs,
   runPackagedRuntimeSmoke,
   loadDesktopPickerSmokeReport,
+  desktopPickerReportMatchesRuntime,
+  statusForDesktopPickerChecks,
   applyDesktopPickerEvidence,
   desktopPickerCheckEvidence,
   waitForEvidenceFile

@@ -54,7 +54,7 @@ questions:
 
 1. 它是 HTML 注释,GitHub 渲染时不显示 —— 不打扰人类审阅,但接口读到的是原文。
 2. 字段一个都不能少。没有内容就填 `无`。**空着和填 `无` 是两回事**:空着说明你忘了,填 `无` 说明你确认过。
-3. `gates` 三条只能填 `pass` / `fail` / `skipped:<原因>`。`check:api-contract` 打印的两条 `todo` 不算 `fail`。
+3. `gates` 按变更等级填写 `pass` / `fail` / `skipped:<原因>`。涉及文档、契约、路由或 IPC 的当前基线至少记录 `build:contracts`、`check:node`、`test:backend`、`check:api-contract`、`check:channel-retirement` 和 `check:docs-drift`；旧回执中的三条字段只作历史兼容。
 4. `assertions` 填「满足数/总数」,分母以卡上「验收断言」的条数为准。没满足的在 PR 正文里逐条说明。
 5. `decisions` 记录**卡里没写、你自己定的**每一个决定。这一栏填「无」而代码里又有自由发挥,是这套流程里最难查的问题。
 
@@ -66,10 +66,10 @@ questions:
 
 1. 列出 base 为 `main` 且带对应重构标签的开放 PR。
 2. 逐个抽回执块。缺块的,在 PR 下贴一条「缺回执块」并附 §2 模板,本轮不再处理它。
-3. 三条门禁全 `pass` 且 `assertions` 分子等于分母 → 在 PR 留言「文档侧无异议」,在 #41 §4 勾选对应 checkbox,并在 PR 写 `Refs #41`。⚠️ **合并动作永远留给人,禁止写 `Closes #41`。**
+3. 当前要求的门禁全 `pass` 且 `assertions` 分子等于分母 → 在 PR 留言「文档侧无异议」,在 #41 §4 勾选对应 checkbox,并在 PR 写 `Refs #41`。⚠️ **合并动作永远留给人,禁止写 `Closes #41`。**
 4. 汇总所有 `doc-bugs` → 一次性改文档 → 一个提交 → 在每个提出问题的 PR 下回一条「已修,见 <commit>」。
 5. 回答 `questions`。凡是会改变接口、依赖、目录结构的,不在评论里拍板 —— 升级成 ADR 补进 `README.md` §四,再回复。
-6. 更新 `09-repo-state.md`:§1 目录树、§3 还不存在的文件、§4 缺口表。
+6. 更新 `09-repo-state.md`:§1 目录树、§3 迁移缺口与未归属能力、§4 缺口表。
 7. 更新 #41 §4 当前看板。
 8. 给人一段摘要:能合的是哪些、堵在哪、改了哪些文档。
 
@@ -142,13 +142,13 @@ cd ../OpenPet-t03
 只做卡上「建哪个文件」列出的文件。卡上给了「精确导出签名」,照抄:不改名、不改参数顺序、不额外导出。
 卡上「依赖与阻塞」一栏写了前置条件,先确认满足。
 
-【第四步 门禁,后三条全绿才能提 PR】
+【第四步 门禁,按变更等级执行并记录完整输出】
 npm install            # 首次会大幅改写 lockfile,是预期的,不要回滚
 npm run check:node
 npm run test:backend
 npm run check:api-contract
 
-check:api-contract 会打印两条 todo,那是已知未实现的检查项,不算红。
+当前 check:api-contract 已是硬门禁；先运行 npm run build:contracts，再运行 check:api-contract、check:channel-retirement 和 check:docs-drift。旧版本的 todo 说明仅适用于历史基线。
 
 【第五步 提 PR】
 base 选 main。

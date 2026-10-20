@@ -379,6 +379,7 @@ export function useActionsPane() {
     const actionId = importDraft.actionId.trim()
     setWorking(true)
     setStatus('')
+    setActionImportRequest(null)
     try {
       const started = await actionsHttpApi.importActionFrames({
         selectionId: importInspection.selectionId,

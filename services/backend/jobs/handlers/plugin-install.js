@@ -1,4 +1,4 @@
-import { finalizing, operationContext, pluginResourceKey, report, requirePluginMethod } from "./common.js"
+import { finalizing, operationContext, pluginResourceKey, report, requirePluginMethod, resolvePrivatePluginInput } from "./common.js"
 
 export const kind = "plugin.install"
 
@@ -7,6 +7,7 @@ export function resourceKey(input) {
 }
 
 export async function run(input = {}, ctx = {}) {
+	input = resolvePrivatePluginInput(input, ctx)
 	report(ctx, { phase: "installing", percent: 25 })
 	if (input.selectionId) {
 		const commit = input.update && typeof ctx.plugins?.commitUpdate === "function"

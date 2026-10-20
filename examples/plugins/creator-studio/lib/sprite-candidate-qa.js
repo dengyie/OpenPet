@@ -11,6 +11,7 @@ const standardDeviation = (values) => {
 const unique = (values) => [...new Set(values)]
 
 const analyzeSpriteCandidate = ({ actionId, rawMetrics = {}, profile = {}, actionPolicy = {} } = {}) => {
+  profile = profile && typeof profile === 'object' ? profile : {}
   const frames = Array.isArray(rawMetrics.frames) ? rawMetrics.frames : []
   const failures = []
   if (!frames.length || frames.some((frame) => frame.empty)) failures.push('empty-used-cell')

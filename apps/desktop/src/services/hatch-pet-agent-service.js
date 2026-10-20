@@ -136,7 +136,10 @@ const validateSpritePlanProposal = (value) => {
     const actionId = String(action.actionId || '')
     if (!SPRITE_PRESET_BY_ACTION[actionId] || seen.has(actionId)) throw createInvalidSpritePlanError('actionId is invalid or duplicated')
     seen.add(actionId)
-    if (action.motionPresetId !== SPRITE_PRESET_BY_ACTION[actionId]) throw createInvalidSpritePlanError(`motionPresetId does not match ${actionId}`)
+    const expectedMotionPresetId = SPRITE_PRESET_BY_ACTION[actionId]
+    if (action.motionPresetId !== expectedMotionPresetId) {
+      throw createInvalidSpritePlanError(`motionPresetId for ${actionId} must be ${expectedMotionPresetId}`)
+    }
     assertExactKeys(action.motionParameters, ['intensity', 'leadSide'], 'motionParameters')
     if (!['subtle', 'normal'].includes(action.motionParameters.intensity)) throw createInvalidSpritePlanError('motion intensity is invalid')
     if (!['viewer-left', 'viewer-right'].includes(action.motionParameters.leadSide)) throw createInvalidSpritePlanError('motion leadSide is invalid')
@@ -317,6 +320,7 @@ const createHatchPetAgentService = ({
   if (!configuration && (!secretService?.getSecretValue || !secretService?.setSecret)) throw new Error('SecretService is required')
   if (!pluginService?.getPluginCreatorDataDir) throw new Error('PluginService Creator data directory is required')
   const liveProviderReservations = new Set()
+  const activeRunControllers = new Map()
   const reservationKey = (runId, reservationId) => `${String(runId || '')}:${String(reservationId || '')}`
 
   const recordLog = (entry) => {
@@ -678,7 +682,7 @@ const createHatchPetAgentService = ({
     }
   }
 
-  const evaluateSprite = async ({ runId, scope, board, qa = {}, profile, budgetLedger = null } = {}) => {
+  const evaluateSprite = async ({ runId, scope, board, qa = {}, profile, budgetLedger = null, signal = null } = {}) => {
     const config = getStoredConfig()
     if (!config.enabled) throw new Error('Hatch-pet agent is disabled')
     const completionConfig = getEffectiveCompletionConfig()
@@ -686,7 +690,15 @@ const createHatchPetAgentService = ({
     const dataDir = pluginService.getPluginCreatorDataDir(CREATOR_STUDIO_PLUGIN_ID)
     const root = path.resolve(String(dataDir || ''))
     const boardPath = path.resolve(String(board?.path || ''))
-    if (!boardPath || !boardPath.startsWith(`${root}${path.sep}`)) throw new Error('Sprite evaluator review board escaped the Creator Studio data directory')
+    if (!fs.existsSync(root) || !fs.existsSync(boardPath) || !fs.statSync(boardPath).isFile()) {
+      throw new Error('Sprite evaluator review board is missing from the Creator Studio data directory')
+    }
+    const realRoot = fs.realpathSync.native(root)
+    const realBoardPath = fs.realpathSync.native(boardPath)
+    const relativeBoardPath = path.relative(realRoot, realBoardPath)
+    if (!relativeBoardPath || relativeBoardPath.startsWith('..') || path.isAbsolute(relativeBoardPath)) {
+      throw new Error('Sprite evaluator review board escaped the Creator Studio data directory')
+    }
     const effectiveProfile = profile || DEFAULT_SPRITE_VISUAL_PROFILE
     let ledger = resolveBudgetLedger({ runId, supplied: budgetLedger, limits: config.budgets })
     let repairReason = ''
@@ -696,14 +708,15 @@ const createHatchPetAgentService = ({
     for (let attempt = 0; attempt < attemptLimit; attempt += 1) {
       let request
       try {
-        request = createSpriteEvaluatorRequest({ scope, board: { ...board, path: boardPath }, qa, profile: effectiveProfile, repairReason })
+        request = createSpriteEvaluatorRequest({ scope, board: { ...board, path: realBoardPath }, qa, profile: effectiveProfile, repairReason })
         // 每次记账前重读磁盘账本：上一次 await 期间可能有 Provider 预约/结算落盘，
         // 沿用循环外的内存快照会把这些增量写没。
         ledger = reserveEvaluatorCall(resolveBudgetLedger({ runId, supplied: ledger, limits: config.budgets, preferPersisted: true }))
         persistBudgetLedger({ runId, ledger })
         const completion = await aiService.completeStructuredTool({
           ...request,
-          configOverride: completionConfig
+          configOverride: completionConfig,
+          signal
         })
         const evaluation = String(scope || '').trim() === CANONICAL_COMPARISON_SCOPE
           ? validateCanonicalComparisonEvaluation(completion.arguments, { regions: board?.regions || [] })
@@ -733,6 +746,7 @@ const createHatchPetAgentService = ({
           budgetLedger: ledger
         }
       } catch (error) {
+        if (signal?.aborted || error?.name === 'AbortError') throw error
         const canRetry = attempt + 1 < attemptLimit
         if (isInvalidSpriteEvaluationError(error) && canRetry && !invalidRepairUsed) {
           invalidRepairUsed = true
@@ -766,7 +780,7 @@ const createHatchPetAgentService = ({
     throw new Error('Sprite evaluator exhausted its repair attempts')
   }
 
-  const planSprite = async ({ runId, userIntent = '', budgetLedger = null } = {}) => {
+  const planSprite = async ({ runId, userIntent = '', budgetLedger = null, signal = null } = {}) => {
     const config = getStoredConfig()
     if (!config.enabled) throw new Error('Hatch-pet agent is disabled')
     const completionConfig = getEffectiveCompletionConfig()
@@ -779,17 +793,24 @@ const createHatchPetAgentService = ({
           role: 'system',
           content: [
             'Return the required sprite plan tool call using only registered values.',
+            'Each actionId is paired with exactly one motionPresetId; follow the registeredActionPresets mapping in the user payload and do not mix presets between actions.',
             'Do not add prose, frame poses, Provider choices, file paths, or workflow commands.',
             ...(repairReason ? [`The previous sprite plan was invalid: ${normalizeText(repairReason, 240)}. Return a corrected tool call.`] : [])
           ].join(' ')
         }, {
           role: 'user',
-          content: JSON.stringify({ schemaVersion: 1, runId: normalizeText(runId, 128), userIntent: normalizeText(userIntent, 2000), requiredActionIds: Object.keys(SPRITE_PRESET_BY_ACTION) })
+          content: JSON.stringify({
+            schemaVersion: 1,
+            runId: normalizeText(runId, 128),
+            userIntent: normalizeText(userIntent, 2000),
+            requiredActionIds: Object.keys(SPRITE_PRESET_BY_ACTION),
+            registeredActionPresets: SPRITE_PRESET_BY_ACTION
+          })
         }]
         // 同 evaluateSprite：重读磁盘账本后再记账，避免覆盖 await 期间的 Provider 记账。
         ledger = reservePlannerCall(resolveBudgetLedger({ runId, supplied: ledger, limits: config.budgets, preferPersisted: true }))
         persistBudgetLedger({ runId, ledger })
-        const completion = await aiService.completeStructuredTool({ messages, tool: createSpritePlanTool(), configOverride: completionConfig, timeoutMs: 60000 })
+        const completion = await aiService.completeStructuredTool({ messages, tool: createSpritePlanTool(), configOverride: completionConfig, timeoutMs: 60000, signal })
         return {
           proposal: validateSpritePlanProposal(completion.arguments),
           requireIdentityReviewBeforeActions: config.requireIdentityReviewBeforeActions === true,
@@ -798,6 +819,7 @@ const createHatchPetAgentService = ({
           budgetLedger: ledger
         }
       } catch (error) {
+        if (signal?.aborted || error?.name === 'AbortError') throw error
         if (!isInvalidSpritePlanError(error) || attempt === 1) {
           error.budgetLedger = ledger
           throw error
@@ -808,7 +830,7 @@ const createHatchPetAgentService = ({
     throw new Error('Sprite planner exhausted its repair attempts')
   }
 
-  const requestDecision = async ({ snapshot, legalDecisions, completionConfig, repairReason = '' }) => {
+  const requestDecision = async ({ snapshot, legalDecisions, completionConfig, repairReason = '', signal }) => {
     const messages = [
       { role: 'system', content: HATCH_PET_SHADOW_SYSTEM_PROMPT },
       ...(repairReason
@@ -823,7 +845,8 @@ const createHatchPetAgentService = ({
       messages,
       tool: createDecisionTool(),
       configOverride: completionConfig,
-      timeoutMs: 60000
+      timeoutMs: 60000,
+      signal
     })
     return {
       completion,
@@ -838,7 +861,8 @@ const createHatchPetAgentService = ({
     userIntent,
     stage,
     scope = {},
-    workflowEvidence = {}
+    workflowEvidence = {},
+    signal = null
   } = {}) => {
     const config = getStoredConfig()
     if (!config.enabled) {
@@ -849,7 +873,18 @@ const createHatchPetAgentService = ({
         decision: null
       }
     }
-
+    const runKey = normalizeText(runId, 128)
+    let controller = null
+    if (signal) {
+      controller = null
+    } else {
+      controller = new AbortController()
+      activeRunControllers.set(runKey, controller)
+      signal = controller.signal
+    }
+    const clearActiveRun = () => {
+      if (controller && activeRunControllers.get(runKey) === controller) activeRunControllers.delete(runKey)
+    }
     let store = null
     const decisionId = idFactory()
     const legalDecisions = createLegalDecisions({ mode, stage })
@@ -916,7 +951,7 @@ const createHatchPetAgentService = ({
       let requested
       reserveShadowPlannerCall()
       try {
-        requested = await requestDecision({ snapshot, legalDecisions, completionConfig })
+        requested = await requestDecision({ snapshot, legalDecisions, completionConfig, signal })
       } catch (error) {
         if (!isInvalidModelDecisionError(error)) throw error
         reserveShadowPlannerCall()
@@ -924,6 +959,7 @@ const createHatchPetAgentService = ({
           snapshot,
           legalDecisions,
           completionConfig,
+          signal,
           repairReason: error.message
         })
       }
@@ -976,6 +1012,12 @@ const createHatchPetAgentService = ({
         recordedAt: record.recordedAt
       }
     } catch (error) {
+      if (error?.name === 'AbortError') {
+        try {
+          store?.writeState?.({ runId, state: { version: 1, mode: 'shadow', stage: normalizeText(stage, 80), status: 'canceled', lastDecisionId: decisionId } })
+        } catch (_) {}
+        throw error
+      }
       // 预算耗尽与模型返回非法是两类不同的失败：分开上报，运维才能区分
       // "用满配额"和"模型不合规"。
       const budgetCode = String(error?.code || '')
@@ -1026,7 +1068,16 @@ const createHatchPetAgentService = ({
         decisionId,
         decision: null
       }
+    } finally {
+      clearActiveRun()
     }
+  }
+
+  const cancelRun = (runId) => {
+    const controller = activeRunControllers.get(normalizeText(runId, 128))
+    if (!controller || controller.signal.aborted) return false
+    controller.abort()
+    return true
   }
 
   const getRunStatus = (runId) => {
@@ -1052,6 +1103,15 @@ const createHatchPetAgentService = ({
     }
   }
 
+  const getBudget = (runId) => {
+    const config = getStoredConfig()
+    const ledger = resolveBudgetLedger({ runId, limits: config.budgets })
+    return {
+      runId: normalizeText(runId, 128),
+      budget: createBudgetPublicView(ledger),
+    }
+  }
+
   return {
     getConfig,
     getGenerationReadiness,
@@ -1061,10 +1121,12 @@ const createHatchPetAgentService = ({
     checkCapability,
     checkGenerationCapability,
     createShadowDecision,
+    cancelRun,
     evaluateSprite,
     planSprite,
     recordProviderCall,
     reserveProviderCall,
+    getBudget,
     getRunStatus
   }
 }

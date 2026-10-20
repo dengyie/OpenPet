@@ -100,6 +100,7 @@ describe("T09 health 与服务路由", () => {
 describe("T09 启动编排", () => {
 	it("按 settings → open → migrate → recover → bind 顺序注入运行时", async () => {
 		const calls = []
+		const recoveryEvents = []
 		const runtime = createRuntime({ db: null, settings: null, jobs: null })
 		const userDataDir = "/tmp/openpet-user"
 		const db = { driverName: "fake" }
@@ -127,8 +128,10 @@ describe("T09 启动编排", () => {
 				},
 				recoverJobs(options) {
 					calls.push(["recover", options.repo, options.tmpDir])
+					options.emit?.("system.jobs-recovered", { interrupted: ["job-1"], requeued: [] })
 					return { interrupted: [], requeued: [], tmpRemoved: 0 }
 				},
+				emit(name, payload) { recoveryEvents.push([name, payload]) },
 			},
 			bind: async () => calls.push(["bind"]),
 		})
@@ -146,6 +149,7 @@ describe("T09 启动编排", () => {
 		assert.equal(runtime.settings.name, "settings")
 		assert.equal(runtime.jobs, repo)
 		assert.equal(result.degraded, false)
+		assert.deepEqual(recoveryEvents, [["system.jobs-recovered", { interrupted: ["job-1"], requeued: [] }]])
 	})
 
 	it("schema 首次迁移后导入 JSON,再创建 repositories", async () => {

@@ -2,9 +2,11 @@
 
 > Scope: desktop release design for macOS and Windows only. Mobile is out of scope for the current release track, and Linux is deferred until there is an explicit support decision.
 
+> Current distribution policy (2026-10-10): use self-managed signing only. Do not require paid Apple Developer ID/notarization or paid Windows signing. macOS ad-hoc/local signing and a locally generated Windows certificate can verify artifact integrity, but do not imply Gatekeeper approval, notarization, SmartScreen reputation, or publisher trust. The release workflow and its `--require-signed` closure rules below still describe the previous policy and must be adapted before they are used for a release; see [`TODO.md`](./TODO.md).
+
 ## 1. Current Baseline
 
-OpenPet is already an Electron desktop pet runtime platform with a macOS release baseline, a Windows packaging/CI/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation/summary/archive-manifest baseline, packaged desktop native picker and runtime smoke evidence toolchains, desktop picker evidence archive tooling, and a release-level evidence archive manifest that requires reviewed Windows smoke and desktop picker archive manifests:
+OpenPet is already an Electron desktop pet runtime platform with a macOS release baseline, a Windows packaging/CI/legacy signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation/summary/archive-manifest baseline, packaged desktop native picker and runtime smoke evidence toolchains, desktop picker evidence archive tooling, and a release-level evidence archive manifest that currently requires reviewed Windows smoke and desktop picker archive manifests:
 
 - `npm start` builds the Control Center and launches Electron for development.
 - `npm run pack` creates a local directory package with the current electron-builder config.
@@ -13,7 +15,7 @@ OpenPet is already an Electron desktop pet runtime platform with a macOS release
 - `build/icon.ico` exists for Windows installer/taskbar identity and can be regenerated from `build/icon.png` with `npm run generate-icons`.
 - `.github/workflows/release.yml` has macOS and Windows PR packaging checks, separate release jobs, and a dedicated macOS release evidence artifact upload.
 - About/update asset selection is platform-aware: macOS users see macOS installers, Windows users see Windows installers, and feed metadata/blockmaps are hidden from the user-facing asset list.
-- Windows release policy is enforced in CI: stable Windows tags require signing secrets, while unsigned prerelease assets are explicitly labeled before upload.
+- Legacy Windows release policy is still enforced in CI: stable Windows tags require signing secrets, while unsigned prerelease assets are explicitly labeled before upload. This conflicts with the current self-managed-signing policy and must be removed as part of the release-tooling update.
 - `npm run create-windows-smoke-report` creates a pending Windows smoke report from release artifacts on the Windows runner, `npm run create-windows-smoke-runbook` generates the matching operator runbook, `npm run create-windows-smoke-collector` generates a PowerShell evidence collector, `npm run validate-windows-smoke-evidence-bundle` checks collector output, `npm run create-windows-smoke-evidence-summary` archives reviewed collector/report metadata, `npm run create-windows-smoke-archive-manifest` hashes and validates a reviewed smoke archive, `npm run update-windows-smoke-report` fills evidence during real validation, and `npm run validate-windows-smoke-report` validates structured Windows smoke evidence reports.
 - `npm run create-desktop-picker-smoke-report` creates a pending packaged macOS or Windows native picker smoke report, `npm run create-desktop-picker-smoke-runbook` generates the matching operator guide, `npm run update-desktop-picker-smoke-report` fills picker evidence, `npm run validate-desktop-picker-smoke-report` validates smoke readiness or signed official readiness, `npm run create-desktop-picker-evidence-summary` records reviewed evidence hashes, and `npm run create-desktop-picker-archive-manifest` hashes and validates the reviewed picker archive.
 - `npm run create-packaged-runtime-smoke-report` creates a pending packaged runtime smoke report, `npm run create-packaged-runtime-smoke-runbook` generates the matching operator guide, `npm run run-packaged-runtime-smoke` launches a packaged app and fills automated runtime evidence, `npm run update-packaged-runtime-smoke-report` fills remaining manual evidence, and `npm run validate-packaged-runtime-smoke-report` validates smoke readiness or signed official readiness.
@@ -24,54 +26,55 @@ OpenPet is already an Electron desktop pet runtime platform with a macOS release
 - The pending template lives at `docs/release-evidence/windows-smoke-report.template.json`.
 - `docs/release-checklist.md` documents macOS signing, notarization, update checks, and upgrade compatibility.
 
-Windows is an Electron-compatible target with build configuration, CI release jobs, update asset filtering, signing policy, smoke evidence schema, pending report/runbook/collector artifact generation, evidence bundle validation, evidence summary/archive-manifest tooling, report filling tooling, desktop picker/runtime smoke evidence tooling, desktop picker evidence archive tooling, and release-level archive gates for both Windows smoke and desktop picker reviewed archives, but it is not release-ready yet. The remaining gates are signed artifact evidence, SmartScreen/reputation expectations, GitHub Actions run evidence, filled packaged picker/runtime evidence, and a real Windows smoke-test matrix.
+Windows is an Electron-compatible target with build configuration, CI release jobs, update asset filtering, legacy signing policy, smoke evidence schema, pending report/runbook/collector artifact generation, evidence bundle validation, evidence summary/archive-manifest tooling, report filling tooling, desktop picker/runtime smoke evidence tooling, desktop picker evidence archive tooling, and release-level archive gates for both Windows smoke and desktop picker reviewed archives. The remaining work is to adapt signing/evidence gates to self-managed certificates, document expected SmartScreen warnings, produce filled packaged picker/runtime evidence, and run a real Windows smoke-test matrix.
 
 ## 2. Platform Support Statement
 
 | Platform | Current Status | Release Claim |
 |----------|----------------|---------------|
-| macOS | Public assets and imported workflow evidence both currently fail signed readiness | macOS-first release track; official release still requires passing signed/notarized artifacts |
-| Windows | Packaging, CI, signing-policy, smoke-evidence/reporting/runbook/collector/bundle-validation/summary/archive-manifest, and desktop picker smoke evidence tooling baselines implemented | Do not claim release-ready until signed artifact evidence and real smoke tests land |
+| macOS | Historical public assets fail the previous signed/notarized gate; current package smoke is unsigned | Self-managed signing planned; no notarization or Gatekeeper-trust claim |
+| Windows | Packaging and evidence tooling exist; self-managed signing workflow and target-OS smoke remain open | Self-managed signing planned; no SmartScreen/publisher-trust claim |
 | Linux | Deferred | Do not include in current support matrix |
 | Mobile | Out of scope | Do not design or document for this release track |
 
-Public docs should describe OpenPet as a desktop platform. When platform specifics are needed, say macOS remains the current release track with evidence tooling in place but the current public `v1.0.1-rc.3` assets are not signed-ready, and Windows desktop packaging/CI/evidence tooling is present but not yet user-supported.
+Public docs should describe OpenPet as a desktop platform. When platform specifics are needed, describe the current package/runtime evidence accurately and state that future distributions use self-managed signing. Do not claim notarization or OS trust; retain platform support claims only when target-OS runtime evidence supports them.
 
 ## 3. Target Release Model
 
 ### macOS
 
 - Artifact targets: `dmg` and `zip`.
-- Local/dev builds may be unsigned.
-- Official releases should use Developer ID signing, hardened runtime, and notarization.
+- Local/dev builds may be unsigned. Distribution builds will use ad-hoc signing or a locally controlled identity; do not obtain paid Developer ID signing or notarization.
+- Hardened runtime settings may remain where required by Electron packaging, but they do not make a self-signed app trusted by Gatekeeper.
 - Validation commands:
 
 ```bash
 codesign --verify --deep --strict --verbose=2 "release/mac/OpenPet.app"
-spctl --assess --type execute --verbose=4 "release/mac/OpenPet.app"
-npm run create-macos-release-evidence -- --app "release/mac/OpenPet.app" --notarization-text "<notarytool accepted output>" --output-dir docs/release-evidence/macos-release-evidence/<session>
+codesign -dv --verbose=4 "release/mac/OpenPet.app"
 ```
+
+Record Gatekeeper behavior as an expected trust warning under this policy; `spctl` approval and notarization are not release requirements.
 
 ### Windows
 
 - Artifact targets: NSIS installer (`.exe`) and portable/archive `zip`.
 - Initial architecture: `x64`.
 - `arm64` can be added after a real device or CI validation path exists.
-- Local/dev builds may be unsigned.
-- Official stable releases must use Windows code signing. Without signing and reputation, SmartScreen warnings are expected.
-- Unsigned Windows prerelease artifacts are allowed only for RC/beta/alpha validation and must include `unsigned` in the uploaded asset names.
+- Local/dev builds may be unsigned. Distribution builds will use a locally generated self-signed certificate; do not purchase a publisher certificate or signing service.
+- Self-signed Windows artifacts can show unknown-publisher/SmartScreen warnings. Document the warning and any manual trust steps; do not claim Microsoft publisher reputation.
+- Remove the current stable-tag requirement for paid signing secrets when adapting the release workflow.
 
 ## 4. Build Configuration Baseline
 
 The shared electron-builder configuration now covers both desktop targets:
 
-- macOS keeps `dmg` and `zip` targets, `build/icon.icns`, hardened runtime, entitlements, and the notarization hook.
+- macOS keeps `dmg` and `zip` targets, `build/icon.icns`, and required entitlements; the existing notarization hook belongs to the legacy release policy and should not run for future releases.
 - Windows defines `build.win` with x64 `nsis` and `zip` targets.
 - Windows uses `build/icon.ico`, generated from `build/icon.png` by `scripts/generate-icons.js`.
 - NSIS is configured for assisted install, per-user default install, desktop/start-menu shortcuts, and user data preservation on uninstall.
 - Artifact names use `${productName}-${version}-${os}-${arch}.${ext}` so multi-platform release uploads do not collide.
 - Keep `appId`, `productName`, `publish`, `files`, and `extraResources` shared where possible.
-- Keep all platform-specific signing credentials outside source control and only read them from CI secrets or local environment variables.
+- Keep locally controlled signing identities/private keys outside source control. Do not add paid signing credentials to CI secrets.
 
 Remaining build work is validation-related, not target-definition-related. README commands should still avoid implying that a signed or unsigned Windows artifact has completed support validation.
 
@@ -81,14 +84,14 @@ The release workflow now uses a PR matrix and separate release jobs:
 
 | Job | Runner | Purpose | Expected Artifacts |
 |-----|--------|---------|--------------------|
-| macOS | `macos-latest` | test, syntax, build, pack/dist, optional signing/notarization, macOS evidence artifact generation | `.dmg`, `.zip`, `.blockmap`, `latest-mac.yml`, `openpet-macos-release-evidence-<tag>` Actions artifact |
-| Windows | `windows-latest` | test, syntax, build, dist, optional code signing | `.exe`, `.zip`, `.blockmap`, `latest.yml` |
+| macOS | `macos-latest` | test, syntax, build, pack/dist, ad-hoc or local signing, macOS integrity/runtime evidence | `.dmg`, `.zip`, `.blockmap`, `latest-mac.yml`, release evidence artifact |
+| Windows | `windows-latest` | test, syntax, build, dist, locally generated self-signing | `.exe`, `.zip`, `.blockmap`, `latest.yml` |
 
 Release uploads should keep artifact names platform-explicit, for example `OpenPet-${version}-mac.dmg` and `OpenPet-${version}-win-x64.exe`, so About/update checks and manual downloads are unambiguous.
 
-PR workflows remain unsigned and must not require signing secrets. The macOS tag/manual release job can sign and notarize when Apple secrets are present, otherwise it produces unsigned artifacts. In both modes it generates `release/macos-release-evidence/` and uploads it as an Actions artifact, not as a public GitHub Release asset. The Windows tag/manual release job now inspects `WINDOWS_CSC_LINK` and `WINDOWS_CSC_KEY_PASSWORD`: stable tags fail if either secret is absent, while RC/beta/alpha tags may continue unsigned after `npm run prepare-windows-release-assets` adds `unsigned` to asset names and updates `latest.yml` references.
+The current workflow is still the legacy implementation: it conditionally uses Apple signing/notarization credentials and fails stable Windows releases without `WINDOWS_CSC_LINK` and `WINDOWS_CSC_KEY_PASSWORD`. Do not configure or use those paths. Update the workflow to create macOS ad-hoc/local signatures and Windows self-signed signatures, and make evidence validators distinguish signature integrity from platform trust. Until that work lands, use unsigned local packages and do not treat the legacy signed closure as a release gate.
 
-Windows smoke evidence is recorded separately from user-facing release assets. The Windows release job creates `release/windows-smoke-report.json`, validates it with `--allow-pending`, generates `release/windows-smoke-runbook.md` and `release/windows-smoke-collector.ps1`, and uploads all three as a GitHub Actions artifact so each Windows build has structured build/signature metadata, an operator checklist, and a local evidence collection helper for real validation. This generated report/runbook/collector set does not prove runtime smoke success until every pending check is filled with real Windows evidence. Use `docs/release-evidence/windows-smoke-report.template.json` for manual validation runs, generate or download the matching runbook and collector with `npm run create-windows-smoke-runbook` and `npm run create-windows-smoke-collector`, run the collector on Windows, validate its output with `npm run validate-windows-smoke-evidence-bundle`, archive reviewed metadata with `npm run create-windows-smoke-evidence-summary`, create a reviewed archive hash manifest with `npm run create-windows-smoke-archive-manifest`, fill reports with `npm run update-windows-smoke-report`, and validate filled reports with `npm run validate-windows-smoke-report`. Official stable readiness must also pass `--require-signed` for the evidence bundle, the evidence summary, the archive manifest, and the filled report.
+Windows smoke evidence is recorded separately from user-facing release assets. The Windows release job creates `release/windows-smoke-report.json`, validates it with `--allow-pending`, generates `release/windows-smoke-runbook.md` and `release/windows-smoke-collector.ps1`, and uploads all three as a GitHub Actions artifact so each Windows build has structured build/signature metadata, an operator checklist, and a local evidence collection helper for real validation. This generated report/runbook/collector set does not prove runtime smoke success until every pending check is filled with real Windows evidence. Use `docs/release-evidence/windows-smoke-report.template.json` for manual validation runs, generate or download the matching runbook and collector with `npm run create-windows-smoke-runbook` and `npm run create-windows-smoke-collector`, run the collector on Windows, validate its output with `npm run validate-windows-smoke-evidence-bundle`, archive reviewed metadata with `npm run create-windows-smoke-evidence-summary`, create a reviewed archive hash manifest with `npm run create-windows-smoke-archive-manifest`, fill reports with `npm run update-windows-smoke-report`, and validate filled reports with `npm run validate-windows-smoke-report`. Existing `--require-signed` checks enforce the legacy paid-signing model and must be adapted to self-signature integrity before use.
 
 Packaged native picker evidence is tracked by a separate cross-desktop report so macOS and Windows use the same required picker checks. Generate a pending report and runbook from the packaged artifact directory, fill it during a real launched packaged-app run, then validate without `--allow-pending` before claiming picker smoke success:
 
@@ -107,7 +110,7 @@ npm run validate-desktop-picker-smoke-report -- release/desktop-picker-smoke-rep
 npm run validate-desktop-picker-smoke-report -- release/desktop-picker-smoke-report.json --require-signed
 ```
 
-The first command proves picker smoke readiness. The second is required before an official signed desktop release claim. Do not treat the pending report or runbook as proof of native picker success.
+The first command proves picker smoke readiness. The `--require-signed` variant is a legacy gate and is not current release policy until adapted to accept self-signature integrity. Do not treat the pending report or runbook as proof of native picker success.
 
 After a picker run is reviewed, place the report, runbook, evidence directory, and summary in a `desktop-picker-archive/` directory and create an archive manifest:
 
@@ -130,11 +133,11 @@ npm run create-release-evidence-archive-manifest -- --archive-dir docs/release-e
 npm run create-signed-release-closure-report -- --archive-dir docs/release-evidence/<release-archive> --fail-on-not-ready
 ```
 
-The macOS evidence command writes `macos-codesign.txt`, `macos-notarization.txt`, `macos-gatekeeper.txt`, and summary files. Release workflow runs upload those files as a maintainer artifact; copy that artifact into the permanent release evidence archive before final closure. When imported through `npm run create-macos-release-evidence-archive`, the archive also records `macos-release-evidence-artifact-manifest.json`, and the release archive manifest validates that provenance against the archived macOS evidence files. It records evidence only; the signed manifest command is still required before an official desktop release claim. The closure command converts the evidence into explicit macOS, Windows, and official desktop release wording, and must remain `not-ready` until successful macOS codesign, notarization, Gatekeeper, and packaged runtime evidence are present, alongside signed-ready Windows smoke, reviewed Windows smoke archive, desktop picker, and reviewed desktop picker archive evidence.
+The existing macOS evidence command writes `macos-codesign.txt`, `macos-notarization.txt`, `macos-gatekeeper.txt`, and summary files; its notarization requirements describe the previous policy. The archive helpers can preserve historical evidence and provenance, but the signed manifest and closure checks are legacy gates. Adapt future closure readiness to self-signature integrity, completed target-OS runtime and picker evidence, and explicit Gatekeeper/SmartScreen warnings without requiring notarization or publisher trust.
 
 ## 6. Desktop Verification Matrix
 
-Run this matrix before claiming Windows release readiness and before each official desktop release:
+Run this matrix before making platform support claims and for each distribution build:
 
 | Area | macOS | Windows |
 |------|-------|---------|
@@ -175,9 +178,9 @@ Windows desktop support can be called release-ready only after all of these are 
 - Desktop native picker smoke evidence reports can be generated, filled, validated, summarized, and archive-manifested for packaged macOS and Windows artifacts.
 - Desktop native picker smoke archive manifests can be generated and consumed by the release-level archive and closure report.
 - Reviewed Windows smoke archive manifests are required by the release-level archive and signed closure report, and must match the archived Windows smoke report path and SHA-256 hash.
-- Signed Windows release artifacts have been produced and verified with `Get-AuthenticodeSignature`.
+- Windows self-signed artifacts have been produced and their signature integrity has been verified with `Get-AuthenticodeSignature`.
 - The desktop verification matrix passes on a clean Windows machine or CI-backed manual test environment.
 - About/update behavior distinguishes macOS and Windows release assets.
 - `npm start`, `npm test`, `npm run check:syntax`, and macOS packaging remain functional after the Windows changes.
 
-Current gate status: package targets, icon assets, release workflow, platform-aware update asset filtering, Windows signing policy, Windows smoke evidence template/validator, CI pending-report/runbook/collector generation, evidence bundle validation, evidence summary/archive-manifest tooling, report filling tooling, desktop picker smoke evidence tooling, desktop picker evidence archive tooling, macOS release evidence capture, macOS workflow evidence artifact upload/archive handoff, and release-level archive gates for Windows smoke and desktop picker reviewed archives are implemented; signed artifact evidence, filled packaged picker evidence, and real Windows smoke validation remain open. The latest public macOS asset check also adds a concrete failure case for `v1.0.1-rc.3`: public ZIP and DMG assets currently fail local signature/Gatekeeper verification and therefore do not satisfy the signed-evidence gate. Public release metadata also shows the current `v1.0.1-rc.3` Windows assets are explicitly unsigned prerelease artifacts. Until those remaining gates pass, the correct project status is: macOS release baseline complete with repeatable evidence capture and artifact retention but without official signed readiness; Windows desktop build/CI/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation/summary/archive-manifest, packaged native picker smoke evidence/archive tooling, and release-level reviewed-archive gating are implemented but not release-ready.
+Current gate status: package targets, icon assets, release workflow, platform-aware update asset filtering, smoke evidence tooling, evidence archive tooling, and picker/runtime validation are implemented. The release workflow and archive validators still enforce the previous paid-signing/notarization model and must be adapted for self-managed signing. Filled packaged picker evidence and real Windows smoke validation also remain open. The archived `v1.0.1-rc.3` macOS assets fail the previous signature/Gatekeeper checks and the Windows assets were unsigned; preserve these as historical facts. Current policy requires self-signature integrity plus target-OS runtime evidence, and does not require Gatekeeper approval, notarization, SmartScreen reputation, or paid certificates.

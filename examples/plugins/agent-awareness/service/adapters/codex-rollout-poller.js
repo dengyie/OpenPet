@@ -14,6 +14,7 @@ const DEFAULT_MAX_TAIL_BYTES = 256 * 1024
 
 const CONTENT_BEARING_EVENT_TYPES = new Set([
   'agent_message',
+  'item_completed',
   'thread_goal_updated',
   'user_message'
 ])
@@ -27,6 +28,7 @@ const CONTENT_BEARING_RESPONSE_TYPES = new Set([
 ])
 
 const METADATA_EVENT_TYPES = new Set([
+  'thread_settings_applied',
   'token_count'
 ])
 
@@ -45,21 +47,26 @@ const CONTENT_BEARING_KEYS = new Set([
   'result',
   'stderr',
   'stdout',
-  'summary'
-  ,
+  'summary',
   'text'
 ])
 
 const METADATA_ONLY_TOP_TYPES = new Set([
-  'turn_context'
+  'inter_agent_communication_metadata',
+  'token_usage_record',
+  'turn_context',
+  'world_state'
 ])
 
 const KNOWN_TOP_TYPES = new Set([
   'compacted',
   'event_msg',
+  'inter_agent_communication_metadata',
   'response_item',
   'session_meta',
-  'turn_context'
+  'token_usage_record',
+  'turn_context',
+  'world_state'
 ])
 
 const CONTENT_BEARING_TOP_TYPES = new Set([
@@ -141,10 +148,18 @@ const readTailLines = ({ filePath, maxLines = DEFAULT_MAX_LINES, maxTailBytes = 
     const stat = fs.fstatSync(fd)
     if (!stat.size) return []
     const tailBytes = Math.min(stat.size, Math.max(8192, Number(maxTailBytes) || DEFAULT_MAX_TAIL_BYTES))
+    const tailOffset = stat.size - tailBytes
     const tailBuffer = Buffer.alloc(tailBytes)
-    fs.readSync(fd, tailBuffer, 0, tailBytes, stat.size - tailBytes)
+    fs.readSync(fd, tailBuffer, 0, tailBytes, tailOffset)
     const allTailLines = tailBuffer.toString('utf-8').split(/\r?\n/).filter(Boolean)
-    const tailLines = allTailLines.slice(-Math.max(1, maxLines))
+    let startsAtLineBoundary = tailOffset === 0
+    if (!startsAtLineBoundary) {
+      const precedingByte = Buffer.alloc(1)
+      fs.readSync(fd, precedingByte, 0, 1, tailOffset - 1)
+      startsAtLineBoundary = precedingByte[0] === 0x0a
+    }
+    const completeTailLines = startsAtLineBoundary ? allTailLines : allTailLines.slice(1)
+    const tailLines = completeTailLines.slice(-Math.max(1, maxLines))
     const firstLine = tailBytes === stat.size
       ? allTailLines[0]
       : readFirstLine(fd, stat.size)
@@ -199,6 +214,22 @@ const classifyIgnoredRecord = ({ record }) => {
   return { bucket: 'unsupportedLifecycle', reason: `${topType}:${payloadType || 'unknown'}` }
 }
 
+const normalizeCodexRolloutUsage = (payload, source = payload) => {
+  const info = payload?.info && typeof payload.info === 'object' && !Array.isArray(payload.info)
+    ? payload.info
+    : {}
+  const usage = source && typeof source === 'object' && !Array.isArray(source)
+    ? source
+    : {}
+  const contextWindow = usage.contextWindow
+    ?? usage.context_window
+    ?? info.model_context_window
+    ?? payload?.model_context_window
+    ?? payload?.context_window
+
+  return normalizeUsageSummary({ ...usage, contextWindow })
+}
+
 const createEventFromRecord = ({
   filePath,
   record,
@@ -242,25 +273,32 @@ const createEventFromRecord = ({
       timestamp: toIso(record.timestamp, fallbackTimestamp)
     }
   }
-  if (record?.type === 'event_msg') {
-    if (payload.type === 'token_count') {
-      const usage = normalizeUsageSummary(payload)
-      if (!usage) return null
-      return {
-        sessionId: sessionMeta.id || filePath,
-        type: 'turn.usage',
-        status: 'working',
-        message: 'Codex usage metadata updated.',
-        projectLabel: toProjectLabel(sessionMeta.cwd || ''),
-        usage,
-        summary: {
-          title: toProjectLabel(sessionMeta.cwd || ''),
-          currentStep: 'turn.usage',
-          recentProgressHint: usage.totalTokens != null ? `${usage.totalTokens} tokens observed` : 'Usage metadata updated'
-        },
-        timestamp: toIso(record.timestamp, fallbackTimestamp)
-      }
+  if (
+    (record?.type === 'event_msg' && payload.type === 'token_count') ||
+    record?.type === 'token_usage_record'
+  ) {
+    const info = payload.info && typeof payload.info === 'object' ? payload.info : {}
+    const usageSource = record.type === 'token_usage_record'
+      ? (payload.thread_token_usage || payload.turn_token_usage || payload.total_token_usage || payload.usage || payload)
+      : (info.total_token_usage || info.last_token_usage || payload)
+    const usage = normalizeCodexRolloutUsage(payload, usageSource)
+    if (!usage) return null
+    return {
+      sessionId: sessionMeta.id || filePath,
+      type: 'turn.usage',
+      status: 'working',
+      message: 'Codex usage metadata updated.',
+      projectLabel: toProjectLabel(sessionMeta.cwd || ''),
+      usage,
+      summary: {
+        title: toProjectLabel(sessionMeta.cwd || ''),
+        currentStep: 'turn.usage',
+        recentProgressHint: usage.totalTokens != null ? `${usage.totalTokens} tokens observed` : 'Usage metadata updated'
+      },
+      timestamp: toIso(record.timestamp, fallbackTimestamp)
     }
+  }
+  if (record?.type === 'event_msg') {
     if (payload.type === 'task_started') {
       return {
         sessionId: sessionMeta.id || filePath,

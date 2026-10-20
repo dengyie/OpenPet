@@ -1106,6 +1106,24 @@ const createAiTalkService = ({
     return profile
   }
 
+  const createMemory = (memory = {}) => {
+    const { petPackId } = resolveActivePack()
+    if (!petPackId || typeof aiTalkStore.applyMemoryOperations !== 'function') {
+      throw new Error('AI talk memory creation is not available')
+    }
+    if (!memory || typeof memory !== 'object' || Array.isArray(memory)) throw new Error('Memory must be an object')
+    const result = aiTalkStore.applyMemoryOperations({
+      petPackId,
+      operations: [{ ...memory, operation: memory.operation || 'create' }]
+    })
+    if (result.filtered?.length) {
+      const error = new Error('Memory was rejected by privacy filters')
+      error.code = 'VALIDATION_FAILED'
+      throw error
+    }
+    return getMemoryProfile()
+  }
+
   const migrateLegacyConversationIfNeeded = ({ manifest, petPackId, personaHash } = {}) => {
     if (typeof aiTalkStore.migrateLegacyConversation !== 'function' || typeof aiService.getConversation !== 'function') {
       return { migrated: false, skipped: true, reason: 'legacy migration unavailable', messageCount: 0 }
@@ -1277,6 +1295,23 @@ const createAiTalkService = ({
       petPackId
     })
     return aiTalkStore.getMessages(sessionId, mainConversationId)
+  }
+
+  const listConversations = ({ entrypoint = 'control-center', petPackId = '' } = {}) => {
+    const activePetPackId = normalizeString(petPackId) || resolveActivePack().petPackId
+    if (typeof aiTalkStore.listConversations !== 'function') throw new Error('AI talk conversations are not available')
+    return { conversations: aiTalkStore.listConversations({ entrypoint, petPackId: activePetPackId }) }
+  }
+
+  const deleteConversation = (conversationId) => {
+    const parsed = splitTalkConversationId(conversationId)
+    if (!parsed || getPetPackIdFromSessionId(parsed.sessionId) !== resolveActivePack().petPackId) {
+      const error = new Error('Conversation does not belong to the active pet pack')
+      error.code = 'NOT_FOUND'
+      throw error
+    }
+    if (typeof aiTalkStore.deleteConversation !== 'function') throw new Error('AI talk conversations are not available')
+    return aiTalkStore.deleteConversation(`${parsed.sessionId}:${parsed.conversationId}`)
   }
 
   const recordTraceBehaviorOutcome = ({ conversationId, behavior } = {}) => {
@@ -2101,6 +2136,7 @@ const createAiTalkService = ({
     compilePersonaPrompt,
     compileMemoryContextPrompt,
     clearPetPackMemories,
+    createMemory,
     deleteMemory,
     exportTraceDiagnostics,
     exportTrace,
@@ -2108,6 +2144,8 @@ const createAiTalkService = ({
     flushMemoryJobs: () => Promise.allSettled(Array.from(pendingMemoryJobs)),
     interruptPendingMemoryJobs,
     getConversation,
+    listConversations,
+    deleteConversation,
     createBubbleSegments,
     getTraceExport,
     generatePersonaDraft,

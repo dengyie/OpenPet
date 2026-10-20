@@ -151,6 +151,8 @@ function createContext(req, res, basePath) {
 	const url = new URL(req.url ?? "/", "http://127.0.0.1")
 	const rawPath = normalizePath(url.pathname)
 	const underBase = rawPath === basePath || rawPath.startsWith(basePath + "/")
+	const query = Object.fromEntries(url.searchParams.entries())
+	const hasDuplicateQueryKeys = url.searchParams.size !== Object.keys(query).length
 
 	return {
 		req,
@@ -158,7 +160,8 @@ function createContext(req, res, basePath) {
 		method: (req.method ?? "GET").toUpperCase(),
 		rawPath,
 		routePath: underBase ? normalizePath(rawPath.slice(basePath.length)) : null,
-		query: Object.fromEntries(url.searchParams.entries()),
+		query,
+		hasDuplicateQueryKeys,
 		params: {},
 		body: null,
 		state: {},

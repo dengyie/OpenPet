@@ -16,8 +16,8 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 | Current direct registrations | 81 |
 | Current event-only channels | 6 |
 | Current keep | 41 |
-| Current cutover | 29 |
-| Current blocked | 17 |
+| Current cutover | 31 |
+| Current blocked | 15 |
 | Current dead | 0 |
 | Historical retired | 71 |
 
@@ -63,8 +63,8 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 | `settings:open` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/register-system-ipc.js` | Window/native IPC remains the intended boundary | — |
 | `settings:get` | `retired` | `GET /settings` | `apps/desktop/src/ipc/register-settings-ipc.js` | Control Center reads the versioned, redacted Backend envelope through HTTP | 13a419a66eb2b42781fc2a79d193499fc6b99916 |
 | `settings:save` | `retired` | `PATCH /settings` | `apps/desktop/src/ipc/register-settings-ipc.js` | Control Center writes canonical point-path patches through Backend optimistic locking; trusted Shell effects are applied from Backend snapshots | 13a419a66eb2b42781fc2a79d193499fc6b99916 |
-| `settings:import-cursor` | `blocked:T41` | `POST /settings/cursor/import` — unavailable fallback | `apps/desktop/src/ipc/register-settings-ipc.js` | Route registration receives no handler from the backend composition root, so it returns `BACKEND_UNAVAILABLE`; T41 must bridge the host dialog and cursor importer | — |
-| `settings:preview-scale` | `blocked:T41` | `POST /settings/preview-scale` — unavailable fallback | `apps/desktop/src/ipc/register-settings-ipc.js` | Route registration receives no handler from the backend composition root, so it returns `BACKEND_UNAVAILABLE`; T41 must bridge the host preview side effect | — |
+| `settings:import-cursor` | `cutover:settings` | `POST /settings/cursor/import` | `apps/desktop/src/ipc/register-settings-ipc.js` | Backend sends a path-free `settings.command.request`; Shell owns the native picker and cursor asset import | — |
+| `settings:preview-scale` | `cutover:settings` | `POST /settings/preview-scale` | `apps/desktop/src/ipc/register-settings-ipc.js` | Backend sends the validated scale through the reverse channel; Shell applies the preview effect | — |
 | `settings:close` | `keep` | `IPC-only (native/window)` | `apps/desktop/src/ipc/register-settings-ipc.js` | Window/native IPC remains the intended boundary | — |
 | `settings:changed` | `blocked:T41` | `SSE settings.changed` — renderer/bootstrap parity pending | `apps/desktop/control-center-preload.js` | SSE only publishes changed paths and version after backend PATCH; IPC still synchronizes pet-renderer settings and multiplexes backend bootstrap updates, which T41 must replace before retirement | — |
 | `actions:get` | `retired` | `GET /actions` | `apps/desktop/src/ipc/index.js` | Control Center reads the active Shell action view through Backend HTTP | 36bf913c |
@@ -190,7 +190,7 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 - 当前 active 通道数为 87，后续提交只能减少 active 数量；新增 IPC 常量必须先更新本台账和 T40 依据。
 - `retired` 行必须保留原 channel、真实历史 source、删除提交的完整或短 SHA（至少 7 位）；它不计入 current、keep、cutover、blocked、dead 计数。
 - `keep` 上限是 41。四个 QQ/WeCom host-secret 通道等待 T44 的 secrets 边界，不能借 `keep` 绕过上限。
-- `cutover` 行在同一切换提交中完成 HTTP/SSE 接入、旧 IPC 删除和台账状态更新；不得先并行双写再补删除。
+- `cutover` 行必须在同一切换提交中完成 HTTP/SSE 接入、调用方切换、台账状态和 focused evidence；旧 IPC 只有在 renderer/preload、生产引用、测试和打包清单都完成 reachability proof 后才可改为 `retired`。迁移期间允许旧 IPC 与 HTTP 并存，但不得双写同一业务状态或把旧 IPC 当作 HTTP 的数据源。
 
 T43 已收窄 `apps/desktop/control-center-preload.js`：插件 HTTP 对等方法不再暴露给 renderer；`openPluginDashboard`、`inspectPluginPackage` 与四个 QQ/WeCom host-secret 方法继续保留。T48 已完成 Creator 迁移。主进程 IPC 注册表按当前 87 条通道对账，其中 81 个为直接注册、6 个为事件-only。
 

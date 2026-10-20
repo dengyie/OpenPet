@@ -1,8 +1,8 @@
 # OpenPet Current TODO Architecture
 
-> Date: 2026-07-09
-> Baseline: local `main@51208a53` / `codex/dev7@51208a53`
-> Status: live TODO entry point
+> Date: 2026-10-09
+> Baseline: current migration snapshot; see [`TODO.md`](./TODO.md) and [`superpowers/plans/2026-10-04-openpet-development-plan.md`](./superpowers/plans/2026-10-04-openpet-development-plan.md) for active work and executable verification
+> Status: architecture reference; the active work queue is [`TODO.md`](./TODO.md)
 > Scope: summarize current product gaps by the code architecture that owns them. Historical phase/spec documents remain audit records.
 
 ## Purpose
@@ -17,7 +17,7 @@ This is not a promise to implement every item in one milestone. It is a map for 
 - P1: next milestone candidates with clear user value and an existing architecture owner.
 - P2: useful product polish or scale work after P1 flows are stable.
 - P3: longer-term platform direction.
-- Manual-required: needs real provider accounts, signed artifacts, notarization, Windows machines, production credentials, or human review.
+- Manual-required: needs real provider accounts, target-OS runtime/install evidence, Windows machines, production credentials, or human review. Self-managed signing is the project policy; paid certificates and notarization are out of scope.
 
 Current P0 status: no known startup/build blocker in this TODO pass. Creator Studio review snapshots, AI provider verification evidence, and AI Talk Bubble Chat smoke evidence are now landed; remaining work is mostly bounded P1 drift prevention or Manual-required release evidence.
 
@@ -358,23 +358,23 @@ Owner boundary: release scripts, evidence docs, GitHub Actions.
 
 Current state:
 
-- Evidence tooling exists for packaged runtime, picker, Windows smoke, macOS signing/notarization/Gatekeeper, release archive, and plugin cleanup.
-- Packaged runtime smoke evidence is archived under `docs/release-evidence/packaged-runtime/2026-06-16T14-52-13-074Z-darwin-arm64/`; it proves an unsigned macOS packaged runtime launch, transparent rendering, built-in pack switching, and stable-state restoration, but still records `plugin-picker-evidence-linked` and `pet-picker-evidence-linked` as pending and `invalid-package-feedback` as blocked until a reviewed desktop picker smoke report is linked.
+- Evidence tooling exists for packaged runtime, picker, Windows smoke, legacy macOS signing/notarization/Gatekeeper, release archive, and plugin cleanup. The legacy paid-signing closure must be adapted to self-managed signatures and target-OS runtime evidence.
+- The latest fresh-build unsigned macOS arm64 packaged runtime smoke is archived under `docs/release-evidence/packaged-runtime/2026-10-09T02-18-20-646Z-darwin-arm64/`: **11/14** checks pass. Pet rendering, animation, bubble chat, bundled packs, and stable state passed; three picker-linked checks remain incomplete because the paired picker observation predates the HTTP handoff. The 2026-10-08 14/14 run is historical evidence for its earlier build. This local demo evidence does not establish release readiness.
+- The paired packaged desktop picker observation is archived under `docs/release-evidence/desktop-picker/2026-10-08T21-01-48Z-darwin-arm64/`: **8/9** checks pass, but it predates the HTTP picker handoff. `plugin-install-disabled` remains pending because the reviewed plugin was not installed; the latest runtime report does not claim unobserved picker behavior. A source-level HTTP/reverse-channel accept/cancel/path-rejection integration smoke passes without using desktop UI.
 - A current packaged-runtime pending report also exists under `docs/release-evidence/packaged-runtime/2026-07-06T17-00-00Z-darwin-arm64-authenticated-artifact/`; it preserves the current broken macOS signature text, keeps `artifact.signed=false`, and leaves every runtime check pending until a real launched packaged-app run is observed.
-- Signed release closure evidence is now anchored at `docs/release-evidence/signed-release-closure/2026-07-06T16-46-49Z-v1.0.1-rc.3-authenticated-closure-archive-rerun/`; `officialDesktopRelease`, `macos`, and `windows` all remain `not-ready`, with blockers now expressed as current archive truth rather than older missing-file gaps: macOS codesign/notarization/Gatekeeper classify as `fail`, Windows smoke remains unsigned/pending, and the reconstructed Windows smoke and desktop-picker archives remain archived but not signed-ready.
-- Official desktop/macOS/Windows readiness claims remain conservative and must stay aligned with those archived `not-ready` facts until new reviewed evidence replaces them.
+- The historical signed release closure at `docs/release-evidence/signed-release-closure/2026-07-06T16-46-49Z-v1.0.1-rc.3-authenticated-closure-archive-rerun/` remains `not-ready` under the previous paid-signing policy: macOS codesign/notarization/Gatekeeper classify as fail, Windows smoke is unsigned/pending, and Windows smoke/picker archives are not signed-ready. This result is not the current release policy.
+- Current distribution policy is self-managed signing only, with no paid certificates or notarization. Adapt closure evidence to validate self-signature integrity, completed target-OS runtime/picker checks, and clear Gatekeeper/SmartScreen warning language.
 
 P1 work:
 
-- Archive real signed macOS evidence from workflow artifacts.
-- Archive real Windows signed installer/zip smoke evidence.
+- Adapt macOS release evidence to self-managed signatures without notarization.
+- Adapt Windows release evidence to locally generated self-signed certificates without paid signing secrets.
 - Link packaged runtime smoke evidence with reviewed native picker evidence.
-- Keep release wording aligned with evidence state.
+- Run target-OS runtime/install checks and keep release wording aligned with evidence state; never imply OS trust from self-signing.
 
 Manual-required:
 
-- Apple signing/notarization credentials and accepted notary output.
-- Windows signed artifact execution on real Windows.
+- macOS and Windows target-OS runtime/install verification for self-signed artifacts.
 - Human review of release evidence archives.
 
 ### 7. Documentation Drift
@@ -405,7 +405,7 @@ Choose one of these when starting the next development milestone:
 2. Release Evidence Closure
    - User value: release readiness claims can be upgraded only when real evidence exists.
    - Main files: release scripts/docs.
-   - Boundary: mostly Manual-required until signed macOS artifacts, notarization/Gatekeeper output, real Windows execution, and human desktop picker evidence are available.
+   - Boundary: mostly Manual-required until self-signature evidence, target-OS runtime/install checks, real Windows execution, and human desktop picker evidence are available. Apple notarization and paid signing are out of scope.
 
 3. Plugin Host Bridge Drift Guard
    - User value: new plugin/Creator Studio host routes stay permission-gated, documented, and regression-covered instead of silently widening plugin authority.

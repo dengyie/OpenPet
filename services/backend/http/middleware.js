@@ -36,7 +36,13 @@ export const RETRYABLE_ERROR_CODES = Object.freeze(
 )
 
 export const MAX_BODY_BYTES = 1024 * 1024
+export const EXPANDED_JSON_BODY_LIMIT_BYTES = 1_600_000
 export const DEFAULT_MAX_ACCESS_LOGS = 200
+const EXPANDED_JSON_BODY_ROUTES = new Set([
+	"/creator/references/upload",
+	"/creator/characters/generate",
+	"/ai/images/web-generate",
+])
 
 const KNOWN_CLIENTS = Object.freeze(new Set(["control-center", "pet-window", "mcp"]))
 const LOOPBACK_HOSTS = Object.freeze(new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]))
@@ -92,12 +98,13 @@ export function sendList(ctx, items, options = {}) {
 
 export function sendError(ctx, error) {
 	const apiError = error instanceof ApiError ? error : new ApiError("INTERNAL", "后端内部错误", { cause: error })
+	if (apiError.code === "RATE_LIMITED") ctx.res.setHeader("retry-after", "1")
 	writeJson(ctx, apiError.status, {
 		ok: false,
 		error: {
 			code: apiError.code,
 			message: apiError.message,
-			details: apiError.details,
+			...(apiError.details === null ? {} : { details: apiError.details }),
 			retryable: apiError.retryable,
 			requestId: ctx.requestId,
 		},
@@ -339,6 +346,14 @@ export function jsonBody({ maxBytes = MAX_BODY_BYTES } = {}) {
 	}
 }
 
+export function backendJsonBody() {
+	return (ctx, next) => jsonBody({
+		maxBytes: EXPANDED_JSON_BODY_ROUTES.has(ctx.routePath)
+			? EXPANDED_JSON_BODY_LIMIT_BYTES
+			: MAX_BODY_BYTES,
+	})(ctx, next)
+}
+
 /** 环形缓冲,供 POST /service/diagnostics 读取最近的访问记录。 */
 export function createAccessLogBuffer({ max = DEFAULT_MAX_ACCESS_LOGS } = {}) {
 	const entries = []
@@ -369,8 +384,8 @@ export function accessLog({ buffer, logger, appendHttp } = {}) {
 		const record = () => {
 			if (recorded) return
 			recorded = true
-			ctx.res.off("finish", record)
-			ctx.res.off("close", record)
+			ctx.res.off?.("finish", record)
+			ctx.res.off?.("close", record)
 			const at = Date.now()
 			const entry = {
 				at: new Date(at).toISOString(),
@@ -389,8 +404,19 @@ export function accessLog({ buffer, logger, appendHttp } = {}) {
 			}
 			if (entry.status >= 500) logger?.warn?.("请求以 5xx 结束", entry)
 		}
-		ctx.res.once("finish", record)
-		ctx.res.once("close", record)
-		await next()
+		if (typeof ctx.res.once === "function") {
+			ctx.res.once("finish", record)
+			ctx.res.once("close", record)
+			await next()
+			return
+		}
+		// Small response doubles used by unit callers do not implement the
+		// Node response lifecycle. Record after the middleware chain so the
+		// same DTO contract remains testable without a real HTTP server.
+		try {
+			await next()
+		} finally {
+			record()
+		}
 	}
 }
