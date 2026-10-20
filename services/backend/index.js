@@ -392,6 +392,14 @@ registerAiRoutes(router, { jobs: { insert: (input) => {
 			if (!runtime.ai?.clearProviderApiKey) throw new ApiError("BACKEND_UNAVAILABLE", "Image AI service unavailable")
 			return runtime.ai.clearProviderApiKey(...args)
 		},
+		createWebImageInput: (...args) => {
+			if (!runtime.ai?.createWebImageInput) throw new ApiError("BACKEND_UNAVAILABLE", "Web image generation is unavailable")
+			return runtime.ai.createWebImageInput(...args)
+		},
+		previewGeneratedImage: (...args) => {
+			if (!runtime.ai?.previewGeneratedImage) throw new ApiError("BACKEND_UNAVAILABLE", "Image preview service unavailable")
+			return runtime.ai.previewGeneratedImage(...args)
+		},
 	} })
 runtime.catalog = createCatalogService({
 	root: join(dirname(fileURLToPath(import.meta.url)), "../.."),
