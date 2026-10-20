@@ -623,7 +623,10 @@ if (!runtime.degraded && runtime.jobs) {
 			privateInputs.delete(jobId)
 			return value
 		},
-		forgetPrivateInput: (jobId) => privateInputs.delete(jobId),
+		forgetPrivateInput: (jobId) => {
+			privateInputs.delete(jobId)
+			runtime.creator?.forgetJobInput?.(jobId)
+		},
 		onQueuedCancel: async (job, privateInput) => {
 			if (job.kind === "actions.import-frames" && typeof privateInput?.selectionId === "string") {
 				await runtime.actions.clearSelection({ selectionId: privateInput.selectionId })

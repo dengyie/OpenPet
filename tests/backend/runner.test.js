@@ -52,6 +52,7 @@ async function withRunner(handlers, run, options = {}) {
 			isRunning: options.isRunning,
 			emit: options.emit,
 			shutdownGraceMs: options.shutdownGraceMs ?? 1,
+			forgetPrivateInput: options.forgetPrivateInput,
 		})
 		return await run({ queue, repo, runner })
 	} finally {
@@ -243,6 +244,34 @@ describe("Job runner · retry policy", () => {
 				assert.equal(calls, 2)
 			})
 		}
+	})
+
+	it("preserves Creator private input across automatic retries and clears it after the Job settles", async () => {
+		const { createCreatorJobHandlers } = await import("../../services/backend/jobs/handlers/creator.js")
+		const privateInputs = new Map([["creator-private-retry", { characterName: "Cat", referenceImageToken: "opaque" }]])
+		const calls = []
+		let attempts = 0
+		const creator = {
+			getJobInput: (jobId) => privateInputs.get(jobId) || null,
+			forgetJobInput: (jobId) => privateInputs.delete(jobId),
+			runWorkflow: async (input) => {
+				calls.push(input)
+				attempts += 1
+				if (attempts === 1) throw new ApiError("PROVIDER_ERROR", "temporary", { status: 503 })
+				return { ok: true }
+			},
+		}
+		const handlers = createCreatorJobHandlers({ creator })
+		await withRunner(handlers, async ({ queue, repo, runner }) => {
+			enqueue(queue, "creator-private-retry", "creator.workflow", { redacted: true, summary: "creator.workflow" })
+			const result = await runner.run()
+			assert.equal(result.status, "succeeded")
+			assert.equal(result.attempt, 2)
+			assert.equal(calls.length, 2)
+			assert.deepEqual(calls[0], calls[1])
+			assert.equal(privateInputs.has("creator-private-retry"), false)
+			assert.equal(repo.byId("creator-private-retry").status, "succeeded")
+		}, { forgetPrivateInput: (jobId) => creator.forgetJobInput(jobId) })
 	})
 
 	it("does not retry creator.export because its maxAttempts is one", async () => {

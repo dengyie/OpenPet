@@ -21,20 +21,16 @@ if [[ -z "$RELEASE_ARCHIVE" || ! -f "$RELEASE_ARCHIVE" ]]; then echo "RELEASE_AR
 
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 snapshot_dir=/var/backups/openpet/${timestamp}
-mkdir -p "$snapshot_dir"
+snapshot_stage=""
+snapshot_complete=0
+snapshot_published=0
+work_dir=""
+app_stage=""
+node_stage=""
 copy_tree_without_reflink() {
   cp --reflink=never -a "$@"
 }
-for path in "$APP_ROOT" "$NODE_ROOT" "$DATA_ROOT" "/etc/systemd/system/$SERVICE_NAME"; do
-  if [[ -e "$path" ]]; then copy_tree_without_reflink "$path" "$snapshot_dir/"; fi
-done
 
-install -d -m 0755 "$(dirname "$APP_ROOT")" "$NODE_ROOT" "$DATA_ROOT"
-if ! id -u openpet >/dev/null 2>&1; then useradd --system --home-dir "$DATA_ROOT" --shell /sbin/nologin openpet; fi
-install -d -o openpet -g openpet -m 0700 "$DATA_ROOT"
-
-work_dir=$(mktemp -d /tmp/openpet-install.XXXXXXXXXX)
-chmod 0700 "$work_dir"
 rollback_enabled=0
 deployment_committed=0
 cleanup_install() {
@@ -43,10 +39,32 @@ cleanup_install() {
   if [[ "$rollback_enabled" == 1 && "$deployment_committed" == 0 ]] && ! rollback_deployment; then
     echo "deployment rollback was incomplete; snapshot=$snapshot_dir" >&2
   fi
-  rm -rf -- "$work_dir" "${APP_ROOT}.new" "${NODE_ROOT}.new"
+  if [[ -n "$snapshot_stage" ]]; then rm -rf -- "$snapshot_stage"; fi
+  if [[ "$snapshot_published" == 1 && "$snapshot_complete" == 0 ]]; then rm -rf -- "$snapshot_dir"; fi
+  if [[ -n "$work_dir" ]]; then rm -rf -- "$work_dir"; fi
+  if [[ -n "$app_stage" ]]; then rm -rf -- "$app_stage"; fi
+  if [[ -n "$node_stage" ]]; then rm -rf -- "$node_stage"; fi
   exit "$exit_status"
 }
 trap cleanup_install EXIT
+
+mkdir -p /var/backups/openpet
+snapshot_stage=$(mktemp -d /var/backups/openpet/.openpet-snapshot.XXXXXXXXXX)
+for path in "$APP_ROOT" "$NODE_ROOT" "$DATA_ROOT" "/etc/systemd/system/$SERVICE_NAME"; do
+  if [[ -e "$path" ]]; then copy_tree_without_reflink "$path" "$snapshot_stage/"; fi
+done
+if [[ -e "$snapshot_dir" ]]; then echo "snapshot already exists: $snapshot_dir" >&2; exit 1; fi
+mv -T -- "$snapshot_stage" "$snapshot_dir"
+snapshot_stage=""
+snapshot_published=1
+snapshot_complete=1
+
+install -d -m 0755 "$(dirname "$APP_ROOT")" "$NODE_ROOT" "$DATA_ROOT"
+if ! id -u openpet >/dev/null 2>&1; then useradd --system --home-dir "$DATA_ROOT" --shell /sbin/nologin openpet; fi
+install -d -o openpet -g openpet -m 0700 "$DATA_ROOT"
+
+work_dir=$(mktemp -d /tmp/openpet-install.XXXXXXXXXX)
+chmod 0700 "$work_dir"
 node_tar="$work_dir/node.tar.xz"
 node_stage="${NODE_ROOT}.new"
 node_candidate="$NODE_ROOT"
