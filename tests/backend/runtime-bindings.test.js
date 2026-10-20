@@ -187,6 +187,19 @@ test("sidecar routes use runtime dependencies initialized before ready", async (
 		})
 		assert.equal(rejectedPatch.status, 503)
 		assert.equal(JSON.parse(fs.readFileSync(settingsFile, "utf8")).values.scale, 1.1)
+
+		const imageConfigResponse = await fetch(`${backend.baseUrl}/ai/images/config`, { method: "PATCH", headers, body: JSON.stringify({ config: { baseUrl: "http://127.0.0.1:1/v1", model: "gpt-image-2" } }) })
+		const webImageResponse = await fetch(`${backend.baseUrl}/ai/images/web-generate`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ prompt: "a tiny test pet", candidateCount: 1 }),
+		})
+		const webImageBody = await webImageResponse.json()
+		const imagePreviewResponse = await fetch(`${backend.baseUrl}/ai/images/preview?relativePath=${encodeURIComponent("creator-web/runs/image-generate:missing/0001.png")}`, { headers })
+		assert.equal(imageConfigResponse.status, 200)
+		assert.equal(webImageResponse.status, 202)
+		assert.match(webImageBody.data.jobId, /^image-generate:/)
+		assert.equal(imagePreviewResponse.status, 404)
 	} finally {
 		if (backend?.child) await stopSidecar(backend.child, { graceMs: 5_000 })
 		fs.rmSync(userDataDir, { recursive: true, force: true })
