@@ -54,7 +54,7 @@ ssh gz-cvm 'curl --fail http://127.0.0.1:48330/__openpet/health'
 
 ### 网页控制台的 session 状态
 
-网页密码配置与桌面 Backend session 是两个独立条件。即使桌面 Shell 尚未连接，已配置密码仍可登录 `https://openpet.mangoqwq.com`，以便查看离线状态；业务 API 需要活动 Backend session，否则 Web token 请求返回 `503 Backend session is offline`。活动 session 由桌面端建立，并将 Provider keys 临时注入 Backend 内存。未带 token 仍返回 `401`，不在网页白名单内的 Web token 路由仍返回 `403`。网页图片生成走 Backend 的 `POST /api/v1/ai/images/web-generate`，参考图只进入 Job 临时目录，生成结果固定保存到 Backend 数据目录的 `creator-web/` 下，并通过 `GET /api/v1/ai/images/preview` 受控预览。完整 Creator 流程由 Backend 上的官方插件生成身份候选、等待人工确认、生成和 QA 动作、提供重试及恢复证据；活动 session 仍需要桌面端在线，桌面 Shell 负责本机宠物库导入与激活。
+网页密码配置与桌面 Backend session 是两个独立条件。即使桌面 Shell 尚未连接，已配置密码仍可登录 `https://openpet.mangoqwq.com`，以便查看离线状态；业务 API 需要活动 Backend session，否则 Web token 请求返回 `503 Backend session is offline`。活动 session 由桌面端建立，并将 Provider keys 临时注入 Backend 内存。未带 token 仍返回 `401`，不在网页白名单内的 Web token 路由仍返回 `403`。网页图片生成走 Backend 的 `POST /api/v1/ai/images/web-generate`，用户可以只提交提示词生成 1–3 张文本生图候选，也可以上传 PNG/JPEG/WebP 参考图进行参考图生成；浏览器不能提交文件系统路径、Provider 配置或输出目录。生成结果固定保存到 Backend 数据目录的 `creator-web/` 下，通过 `GET /api/v1/ai/images/preview` 受控预览；用户选择候选后，Creator 只接收图片相对路径与 SHA-256，并由 Backend 再次校验后使用。完整 Creator 流程由 Backend 上的官方插件生成身份候选、等待人工确认、生成和 QA 动作、提供重试及恢复证据；活动 session 仍需要桌面端在线，桌面 Shell 负责本机宠物库导入与激活。
 
 ### 2026-10-17 网页离线登录修复
 
@@ -65,7 +65,7 @@ ssh gz-cvm 'curl --fail http://127.0.0.1:48330/__openpet/health'
 ### 2026-10-17 Backend 图片生成链路
 
 - 网页新增独立的 `POST /api/v1/ai/images/web-generate` Job 入口，避免改变桌面 Control Center 使用的通用 `/ai/images/generate` 契约。
-- Backend 固定网页输出目录为 `creator-web/runs/<jobId>/`；浏览器只能提交提示词与 PNG/JPEG/WebP 参考图，不能提交文件系统路径、输出目录、Provider 配置或未知字段。参考图在 Job 临时目录内校验和使用，Job 清理后不保留上传临时副本。
+- Backend 固定网页输出目录为 `creator-web/runs/<jobId>/`；浏览器只能提交提示词、1–3 张候选数量和可选 PNG/JPEG/WebP 参考图，不能提交文件系统路径、输出目录、Provider 配置或未知字段。未上传参考图时走 text-to-image，上传时走 image-edit；参考图在 Job 临时目录内校验和使用，Job 清理后不保留上传临时副本。
 - `GET /api/v1/ai/images/preview` 只允许读取 `creator-web/` 下的图片，做真实路径 containment 和 4 MiB 预览上限；完整 Creator 流程可使用带 SHA-256 的 Backend 图片产物引用，Backend 校验路径、图片签名与哈希后再复制进 Creator run。
 - Fresh verification：定向 Backend/Host/Web/Creator 检查 **77/77**，`npm run test:backend` **438/438**，`npm run build:web-control`、`npm run check:node`、`npm run typecheck`、`npm run check:api-contract`、`npm run check:docs-drift`、`git diff --check` 通过；未启动 Electron 或桌面 UI。
 

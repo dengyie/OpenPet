@@ -55,6 +55,28 @@ test("web image route uses the Backend normalizer and does not accept client mod
 	await assert.rejects(() => handler({ ...request, body: { ...request.body, baseUrl: "https://attacker.invalid/v1" }, res: response }), /unsupported fields/)
 })
 
+test("web image route queues up to three text-to-image reference candidates", async (t) => {
+	const { registerAiRoutes } = await import("../../services/backend/routes/ai.js")
+	let handler
+	const inserted = []
+	const router = { post: (route, next) => { if (route === "/ai/images/web-generate") handler = next }, get() {}, patch() {}, put() {}, delete() {} }
+	const dataDir = tempDir("openpet-web-image-candidates-")
+	t.after(() => fs.rmSync(dataDir, { recursive: true, force: true }))
+	const ai = createAiService({
+		settings: { read: () => ({ version: 1, values: { models: { imageGeneration: {} } } }), patch: () => ({}) },
+		secrets: { get: () => "" },
+		userDataDir: dataDir,
+	})
+	registerAiRoutes(router, { ai, jobs: { insert: (input) => { inserted.push(input); return { id: input.id } } } })
+	const response = { writableEnded: false, writeHead(status) { this.status = status }, end(value) { this.body = JSON.parse(value) } }
+	await handler({ body: { prompt: "a small fox", candidateCount: 3 }, requestId: "web-image-candidates", startedAt: performance.now(), res: response })
+	assert.equal(response.status, 202)
+	assert.equal(inserted[0].privateInput.textToImage, true)
+	assert.equal(inserted[0].privateInput.outputCount, 3)
+	assert.equal(inserted[0].privateInput.output.dataRelativeDir, `creator-web/runs/${inserted[0].id}`)
+	assert.deepEqual(inserted[0].input, { redacted: true, summary: "Web image generation input withheld" })
+})
+
 test("web image input fixes the output root and validates browser references", async () => {
 	const dataDir = tempDir("openpet-web-image-input-")
 	const ai = createAiService({
@@ -67,9 +89,18 @@ test("web image input fixes the output root and validates browser references", a
 		const job = ai.createWebImageInput({ prompt: "a small fox", referenceImage: { mimeType: "image/png", dataBase64: png } }, "image-generate:job-1")
 		assert.equal(job.output.dataDir, dataDir)
 		assert.equal(job.output.dataRelativeDir, "creator-web/runs/image-generate:job-1")
+		assert.equal(job.textToImage, false)
+		assert.equal(job.outputCount, 1)
+		assert.deepEqual(job.constraints, { width: 1024, height: 1024, transparent: false })
+		const generatedCandidates = ai.createWebImageInput({ prompt: "x", candidateCount: 3 }, "image-generate:job-2")
+		assert.equal(generatedCandidates.textToImage, true)
+		assert.equal(generatedCandidates.outputCount, 3)
+		assert.equal(generatedCandidates.referenceImage, undefined)
 		assert.throws(() => ai.createWebImageInput({ output: { dataDir: "/tmp" } }, "image-generate:job-2"), /output directory/)
 		assert.throws(() => ai.createWebImageInput({ prompt: "x", referenceImage: { mimeType: "image/png", dataBase64: png }, model: "other" }, "image-generate:job-2b"), /unsupported fields/)
-		assert.throws(() => ai.createWebImageInput({ prompt: "x" }, "image-generate:job-2c"), /Reference image is required/)
+		for (const candidateCount of [0, 4, 1.5, "3"]) {
+			assert.throws(() => ai.createWebImageInput({ prompt: "x", candidateCount }, "image-generate:job-2c"), /candidateCount must be an integer from 1 to 3/)
+		}
 		assert.throws(() => ai.createWebImageInput({ prompt: "x", referenceImage: {
 			mimeType: "image/png", dataBase64: Buffer.from("not-an-image").toString("base64")
 		} }, "image-generate:job-3"), /Reference image/)

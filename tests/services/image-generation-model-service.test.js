@@ -1303,6 +1303,61 @@ test('image generation model service uses a gpt-image-2 compatible edit payload'
   assert.ok(Array.isArray(result.conditioning.promptCompiler.promptClauseIds))
 })
 
+test('image generation model service creates at most three text-to-image reference candidates', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-reference-candidates-'))
+  const requests = []
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings()),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-1234', label: 'Image API Key' }
+    }),
+    fetchImpl: async (url, options) => {
+      requests.push({ url, options })
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ data: ['candidate-1', 'candidate-2', 'candidate-3', 'provider-extra'].map((value) => ({ b64_json: Buffer.from(value).toString('base64') })) })
+      }
+    }
+  })
+
+  try {
+    const result = await service.generateImage({
+      prompt: 'A small orange fox, full body, centered',
+      textToImage: true,
+      outputCount: 3,
+      output: { dataDir, dataRelativeDir: 'creator-web/runs/candidates' },
+      constraints: { width: 1024, height: 1024, transparent: false }
+    })
+    assert.equal(requests.length, 1)
+    assert.equal(requests[0].url, 'http://127.0.0.1:8317/v1/images/generations')
+    assert.equal(requests[0].options.headers['Content-Type'], 'application/json')
+    assert.deepEqual(JSON.parse(requests[0].options.body), {
+      model: 'gpt-image-2',
+      prompt: 'A small orange fox, full body, centered',
+      n: 3,
+      size: '1024x1024',
+      quality: 'high'
+    })
+    assert.equal(result.conditioning.mode, 'text-to-image')
+    assert.equal(result.conditioning.referenceImageCount, 0)
+    assert.equal(result.conditioning.requestedOutputCount, 3)
+    assert.equal(Object.hasOwn(result.conditioning, 'multipartImageField'), false)
+    assert.equal(result.outputs.length, 3)
+    assert.ok(result.outputs.every((output) => fs.existsSync(path.join(dataDir, output.dataRelativePath))))
+    await assert.rejects(() => service.generateImage({
+      prompt: 'too many',
+      textToImage: true,
+      outputCount: 4,
+      output: { dataDir, dataRelativeDir: 'creator-web/runs/invalid' },
+      constraints: { width: 1024, height: 1024, transparent: false }
+    }), /outputCount must be an integer from 1 to 3/)
+    assert.equal(requests.length, 1)
+  } finally {
+    fs.rmSync(dataDir, { recursive: true, force: true })
+  }
+})
+
 test('image generation model service downloads a Provider image URL when b64_json is omitted', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-url-'))
   const requests = []

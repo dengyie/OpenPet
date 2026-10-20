@@ -249,7 +249,7 @@
 | POST | `/ai/hatch/start` | 孵化 → **Job** |
 | GET | `/ai/hatch/budget` | 预算账本 |
 | POST | `/ai/images/generate` | → **Job**(265s) |
-| POST | `/ai/images/web-generate` | 网页图片生成 → **Job**；参考图只接受受限 Base64，输出固定到 `creator-web/` |
+| POST | `/ai/images/web-generate` | 网页图片生成 → **Job**；支持可选受限 Base64 参考图与 1–3 张候选，输出固定到 `creator-web/` |
 | GET | `/ai/images/preview` | 受控预览 `creator-web/` 下的 Backend 生成图片 |
 | GET · PATCH | `/ai/images/config` | 图片 Provider 脱敏配置读写（已注册；不接受 `apiKeyRef` 等 owner 字段） |
 | PUT · DELETE | `/ai/images/key` | 图片 API Key 写入/清除；Shell 持久化成功后才返回，仅包含引用和脱敏预览 |
