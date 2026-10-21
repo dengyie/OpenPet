@@ -351,6 +351,9 @@ export function createAiService({ settings, secrets, fetchImpl, logger, userData
 		const outputs = prepared.result.outputs ?? []
 		const stageDir = `${targetDir}.openpet-staging-${randomUUID()}`
 		try {
+			const stagingParent = dirname(stageDir)
+			fs.mkdirSync(stagingParent, { recursive: true })
+			assertRealContained(targetRoot, stagingParent, "Image generation output path is invalid")
 			fs.mkdirSync(stageDir, { recursive: false })
 			assertRealContained(targetRoot, stageDir, "Image generation output path is invalid")
 			for (const output of outputs) {
