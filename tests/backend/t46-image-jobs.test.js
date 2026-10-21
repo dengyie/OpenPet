@@ -382,7 +382,7 @@ test("T42 Actions import uses the real domain and locks cancellation before the 
 
 test("T46 image commit rejects symlink escapes and rolls back partial multi-file staging", async () => {
 	const root = tempDir("openpet-t46-data-")
-	const tmp = tempDir("openpet-t46-tmp-")
+	const tmp = fs.realpathSync.native(tempDir("openpet-t46-tmp-"))
 	const outside = tempDir("openpet-t46-outside-")
 	const ai = createAiService({
 		settings: { read: () => ({ version: 1, values: { models: { imageGeneration: {} } } }), patch: () => ({}) },
@@ -406,6 +406,33 @@ test("T46 image commit rejects symlink escapes and rolls back partial multi-file
 		fs.rmSync(root, { recursive: true, force: true })
 		fs.rmSync(tmp, { recursive: true, force: true })
 		fs.rmSync(outside, { recursive: true, force: true })
+	}
+})
+
+test("T46 image commit creates missing nested output parents before staging", async () => {
+	const root = tempDir("openpet-t46-nested-data-")
+	const tmp = fs.realpathSync.native(tempDir("openpet-t46-nested-tmp-"))
+	const ai = createAiService({
+		settings: { read: () => ({ version: 1, values: { models: { imageGeneration: {} } } }), patch: () => ({}) },
+		secrets: { get: () => "" },
+		userDataDir: root,
+	})
+	const bytes = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+	const relativeDir = "creator-web/runs/image-generate:job-1"
+	const outputPath = path.join(root, relativeDir, "0001.png")
+	try {
+		fs.mkdirSync(path.join(tmp, "outputs"), { recursive: true })
+		fs.writeFileSync(path.join(tmp, "outputs", "0001.png"), bytes)
+		const result = await ai.commitGeneratedImage({
+			tmpDir: tmp,
+			destination: { dataDir: root, dataRelativeDir: relativeDir },
+			result: { outputs: [{ dataRelativePath: "outputs/0001.png" }] },
+		})
+		assert.equal(result.outputs[0].dataRelativePath, `${relativeDir}/0001.png`)
+		assert.deepEqual(fs.readFileSync(outputPath), bytes)
+	} finally {
+		fs.rmSync(root, { recursive: true, force: true })
+		fs.rmSync(tmp, { recursive: true, force: true })
 	}
 })
 
