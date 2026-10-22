@@ -230,6 +230,25 @@ describe("T09 启动编排", () => {
 		assert.equal(timer.unrefCalled, true)
 	})
 
+	it("定时清理会捕获同步异常并写入告警", async () => {
+		let callback
+		const warnings = []
+		health.registerHealthRoutes({
+			router: createRouter({ basePath: "/api/v1" }),
+			runtime: createRuntime(),
+			deps: {
+				cleanup() { throw new Error("image storage unavailable") },
+				logger: { warn: (...args) => warnings.push(args) },
+				setInterval(next) { callback = next; return { unref() {} } },
+			},
+		})
+		callback()
+		await new Promise((resolve) => setImmediate(resolve))
+		assert.equal(warnings.length, 1)
+		assert.equal(warnings[0][0], "Backend 定时清理失败")
+		assert.match(warnings[0][1].error, /image storage unavailable/)
+	})
+
 	it("等待异步迁移与恢复完成后再 bind", async () => {
 		const calls = []
 		let releaseMigration

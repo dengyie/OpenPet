@@ -8,10 +8,12 @@ const require = createRequire(import.meta.url)
 const { createImageGenerationModelService } = require("../../../../apps/desktop/src/services/image-generation-model-service.js")
 
 const WEB_IMAGE_ROOT = "creator-web"
+const WEB_IMAGE_RETENTION_MS = 30 * 24 * 60 * 60 * 1_000
 const MAX_WEB_REFERENCE_BYTES = 1_100_000
 const MAX_WEB_PREVIEW_BYTES = 4 * 1024 * 1024
 const WEB_JOB_ID = /^[A-Za-z0-9][A-Za-z0-9:_-]{0,160}$/
 const WEB_IMAGE_OUTPUT_PATH = /^creator-web\/runs\/image-generate:[0-9a-f-]{36}\/([A-Za-z0-9][A-Za-z0-9._-]{0,100}\.(?:png|jpe?g|webp))$/i
+const WEB_IMAGE_RUN_DIRECTORY = /^image-generate:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const WEB_REFERENCE_MIME = new Map([
 	["image/png", { extension: "png", signature: (bytes) => bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) }],
 	["image/jpeg", { extension: "jpg", signature: (bytes) => bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff }],
@@ -335,6 +337,57 @@ export function createAiService({ settings, secrets, fetchImpl, logger, userData
 		return { relativePath: normalized, mimeType, extension: descriptor.extension, fileName: match[1], sha256, bytes }
 	}
 
+	function cleanupExpiredWebImageCandidates({ retainedContentHashes = [], now = Date.now() } = {}) {
+		const result = { removedFiles: 0, removedDirectories: 0 }
+		if (!userDataDir || !fs.existsSync(resolve(userDataDir))) return result
+
+		let webRoot
+		try {
+			webRoot = resolveWebImageRoot(userDataDir)
+		} catch (error) {
+			if (error?.code === "NOT_FOUND") return result
+			throw error
+		}
+		const runsDir = resolve(webRoot, "runs")
+		if (!fs.existsSync(runsDir)) return result
+		if (fs.lstatSync(runsDir).isSymbolicLink() || !fs.statSync(runsDir).isDirectory()) {
+			throw new ApiError("PERMISSION_DENIED", "Generated image runs directory is invalid")
+		}
+		assertRealContained(webRoot, runsDir, "Generated image runs directory is invalid")
+
+		const retainedHashes = new Set(Array.from(retainedContentHashes || [], (value) => String(value || "").toLowerCase()).filter((value) => /^[a-f0-9]{64}$/.test(value)))
+		for (const entry of fs.readdirSync(runsDir, { withFileTypes: true })) {
+			if (!WEB_IMAGE_RUN_DIRECTORY.test(entry.name) || !entry.isDirectory()) continue
+			const candidateDir = resolve(runsDir, entry.name)
+			const candidateStat = fs.lstatSync(candidateDir)
+			if (candidateStat.isSymbolicLink() || !candidateStat.isDirectory()) continue
+			assertRealContained(runsDir, candidateDir, "Generated image candidate directory is invalid")
+			if (now - candidateStat.mtimeMs < WEB_IMAGE_RETENTION_MS) continue
+
+			for (const file of fs.readdirSync(candidateDir, { withFileTypes: true })) {
+				if (!file.isFile()) continue
+				const candidatePath = resolve(candidateDir, file.name)
+				const relativePath = `${WEB_IMAGE_ROOT}/runs/${entry.name}/${file.name}`
+				if (!WEB_IMAGE_OUTPUT_PATH.test(relativePath)) continue
+				const fileStat = fs.lstatSync(candidatePath)
+				if (fileStat.isSymbolicLink() || !fileStat.isFile()) continue
+				assertRealContained(candidateDir, candidatePath, "Generated image candidate file is invalid")
+				const contentHash = createHash("sha256").update(fs.readFileSync(candidatePath)).digest("hex")
+				if (retainedHashes.has(contentHash)) continue
+				fs.unlinkSync(candidatePath)
+				result.removedFiles += 1
+			}
+
+			try {
+				fs.rmdirSync(candidateDir)
+				result.removedDirectories += 1
+			} catch (error) {
+				if (error?.code !== "ENOTEMPTY" && error?.code !== "EEXIST") throw error
+			}
+		}
+		return result
+	}
+
 	async function commitGeneratedImage(prepared) {
 		const destination = prepared?.destination
 		const sourceRoot = resolve(prepared.tmpDir)
@@ -385,5 +438,5 @@ export function createAiService({ settings, secrets, fetchImpl, logger, userData
 		return result
 	}
 
-	return { ...provider, getConfig, saveConfig, saveProviderApiKey, clearProviderApiKey, createWebImageInput, prepareGeneratedImage, commitGeneratedImage, previewGeneratedImage, readWebGeneratedReference }
+	return { ...provider, getConfig, saveConfig, saveProviderApiKey, clearProviderApiKey, createWebImageInput, prepareGeneratedImage, commitGeneratedImage, previewGeneratedImage, readWebGeneratedReference, cleanupExpiredWebImageCandidates }
 }

@@ -89,6 +89,11 @@ function parseJson(value, fallback = {}) {
 	try { return JSON.parse(value) } catch { return fallback }
 }
 
+function referenceImageContentHash(runState) {
+	const contentHash = String(runState?.input?.referenceImage?.contentHash || "").toLowerCase()
+	return /^[a-f0-9]{64}$/.test(contentHash) ? contentHash : ""
+}
+
 function tokenHash(token) {
 	return createHash("sha256").update(String(token), "utf8").digest("hex")
 }
@@ -195,6 +200,15 @@ export function createCreatorDomain({ db, shell, ai, enqueueJob, runPluginComman
 	const runById = (id) => db.prepare("SELECT * FROM creator_runs WHERE owner = ? AND id = ?").get(owner, id)
 	const latestRun = () => db.prepare("SELECT * FROM creator_runs WHERE owner = ? ORDER BY updated_at DESC, id ASC LIMIT 1").get(owner)
 	const latestBackendRun = () => db.prepare("SELECT * FROM creator_runs WHERE owner = ? ORDER BY updated_at DESC, id ASC").all(owner).find((row) => backendRunState(row)?.creatorExecution === "backend") || null
+	const referencedImageContentHashes = () => {
+		const hashes = new Set()
+		const rows = db.prepare("SELECT state_json FROM creator_runs WHERE owner = ?").all(owner)
+		for (const row of rows) {
+			const contentHash = referenceImageContentHash(parseJson(row.state_json))
+			if (contentHash) hashes.add(contentHash)
+		}
+		return hashes
+	}
 	const runDiagnostics = (runId) => {
 		if (typeof creatorDataDir !== "function") return null
 		try { return readCreatorWorkflowDiagnostics({ pluginDataDir: creatorDataDir("openpet.creator-studio"), runId }) } catch { return null }
@@ -507,7 +521,13 @@ export function createCreatorDomain({ db, shell, ai, enqueueJob, runPluginComman
 			throw error
 		}
 		const runId = safeId(created.run.runId, "runId")
-		saveRun(created.run, input.flowId || null)
+		saveRun({
+			...created.run,
+			input: {
+				...(created.run.input && typeof created.run.input === "object" && !Array.isArray(created.run.input) ? created.run.input : {}),
+				referenceImage: runReference,
+			},
+		}, input.flowId || null)
 		ctx.report?.({ phase: "generating-identity", percent: 10 })
 		const generated = await runBackendCreatorCommandWithProgress("run-step", { runId }, ctx)
 		const finish = () => {
@@ -672,7 +692,7 @@ export function createCreatorDomain({ db, shell, ai, enqueueJob, runPluginComman
 	}
 
 	return {
-		listFlows, createFlow, updateFlow, deleteFlow, uploadReference,
+		listFlows, createFlow, updateFlow, deleteFlow, uploadReference, referencedImageContentHashes,
 		listReferences, bindReference, deleteReference,
 		getState, getLastRun, getAssetPreview, artifacts, recordArtifacts,
 		enqueueCharacter: (input) => enqueue("creator.character", input, "creator:character"),
