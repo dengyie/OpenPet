@@ -346,42 +346,6 @@ const createAbortError = (reason) => {
   return error
 }
 
-const TRANSIENT_PROVIDER_TRANSPORT_CODES = new Set([
-  'ECONNABORTED',
-  'ECONNREFUSED',
-  'ECONNRESET',
-  'EHOSTUNREACH',
-  'ENETDOWN',
-  'ENETUNREACH',
-  'EPIPE',
-  'ETIMEDOUT',
-  'UND_ERR_CONNECT_TIMEOUT',
-  'UND_ERR_HEADERS_TIMEOUT',
-  'UND_ERR_SOCKET'
-])
-
-const isTransientProviderHttpStatus = (status) => {
-  const normalizedStatus = Number(status)
-  return normalizedStatus === 408 || normalizedStatus === 425 || normalizedStatus === 429 ||
-    (normalizedStatus >= 500 && normalizedStatus <= 504) ||
-    (normalizedStatus >= 520 && normalizedStatus <= 524)
-}
-
-const isTransientProviderTransportError = (error) => {
-  if (error?.code === 'provider_timeout') return false
-  const code = String(error?.cause?.code || error?.code || '').trim().toUpperCase()
-  if (TRANSIENT_PROVIDER_TRANSPORT_CODES.has(code)) return true
-  const message = String(error?.message || error || '').trim().toLowerCase()
-  return (
-    message.includes('fetch failed') ||
-    message.includes('connection reset') ||
-    message.includes('socket closed') ||
-    message.includes('socks5') ||
-    message.includes('cannot complete') ||
-    message.includes('timed out')
-  )
-}
-
 const cancelProviderResponseBody = (response) => {
   try {
     Promise.resolve(response?.body?.cancel?.()).catch(() => {})
@@ -781,30 +745,9 @@ const getProviderGenerationBackgroundMode = ({ model, constraints }) => {
 }
 
 const shouldTryFallbackImageModel = (error) => {
-  const message = String(error?.message || error || '').trim().toLowerCase()
-  if (!message) return false
-  if (
-    message.includes('api key is missing') ||
-    message.includes('allowed data directory') ||
-    message.includes('reference image') ||
-    message.includes('owner-controlled') ||
-    message.includes('model configuration changed')
-  ) return false
-  const statusMatch = message.match(/http\s+(\d{3})/i)
-  if (statusMatch) {
-    const status = Number(statusMatch[1])
-    if (
-      status === 408 || status === 425 || status === 429 ||
-      (status >= 500 && status <= 504) ||
-      (status >= 520 && status <= 524)
-    ) return true
-  }
-  return (
-    message.includes('request failed') ||
-    message.includes('timed out') ||
-    message.includes('unsupported model') ||
-    message.includes('model not found')
-  )
+  // A fallback is safe only after the Provider explicitly rejected this model.
+  // Transport failures and 5xx responses may hide a completed, billable request.
+  return [400, 404, 422].includes(Number(error?.httpStatus))
 }
 
 const normalizePromptCompilerEvidence = (value = {}) => {
@@ -1685,13 +1628,47 @@ const createImageGenerationModelService = ({
     let response
     let responseBody = {}
     const requestDeadlineMs = Date.now() + timeoutMs
-    let requestAttempt = 0
-    const canRetryWithinBudget = () => requestAttempt < 2 && Date.now() < requestDeadlineMs
-    const recordTransientRetry = ({ status = 0, error = null }) => {
+    try {
+      const providerRequest = textToImage
+        ? buildProviderGenerationJsonRequest({ model: runtimeConfig.model, prompt, constraints, outputCount: requestedOutputCount })
+        : buildProviderEditMultipartRequest({ model: runtimeConfig.model, prompt, constraints, referenceImages: normalizedReferenceImages, outputCount: requestedOutputCount })
+      const requestBody = providerRequest.body
+      const headers = {
+        Authorization: `Bearer ${apiKey}`,
+        ...providerRequest.headers
+      }
+      const providerResponse = await fetchWithTimeout({
+        fetchImpl,
+        url: `${baseUrl}${endpoint}`,
+        timeoutMs,
+        timeoutMessage: `Image Provider generation timed out after ${timeoutMs}ms`,
+        signal,
+        options: {
+          method: 'POST',
+          headers,
+          body: requestBody
+        },
+        consumeResponse: async (response, controller) => ({
+          response,
+          body: response?.ok
+            ? (await readOptionalJsonResponse(response, controller, responseLimits.imageJsonBytes)).body
+            : {}
+        })
+      })
+      response = providerResponse.response
+      responseBody = providerResponse.body
+    } catch (error) {
+      if (signal?.aborted) throw createAbortError(signal.reason)
+      if (error?.code === 'provider_response_too_large') {
+        const providerError = new Error('Image Provider response exceeded the configured byte limit')
+        providerError.code = 'provider_response_too_large'
+        throw providerError
+      }
+      const isTimeout = /timed out/i.test(String(error?.message || ''))
       recordProviderLog({
-        level: 'warn',
-        event: 'imageGeneration.provider.request.retrying',
-        message: 'Image Provider request will retry after a transient failure',
+        level: 'error',
+        event: 'imageGeneration.provider.request.failed',
+        message: 'Image Provider request failed',
         details: {
           ...createProviderOperationDetails({
             capability: 'image',
@@ -1699,106 +1676,28 @@ const createImageGenerationModelService = ({
             config: runtimeConfig,
             configSource: 'image',
             requestId,
-            outcome: 'retrying'
+            outcome: 'failed'
           }),
           requestId,
           provider: runtimeConfig.provider,
           model: runtimeConfig.model,
           baseUrlHost: getUrlHost(baseUrl),
+          durationMs: nowMs() - providerStartMs,
           endpoint,
           requestMode: conditioning.mode,
           referenceImageCount: normalizedReferenceImages.length,
-          attempt: requestAttempt,
-          nextAttempt: requestAttempt + 1,
-          remainingTimeoutMs: Math.max(0, requestDeadlineMs - Date.now()),
-          status: Number(status) || 0,
-          errorCauseCode: getSafeTransportCauseCode(error)
+          timeoutMs,
+          errorCode: isTimeout ? 'provider_timeout' : 'provider_request_error',
+          errorCauseCode: getSafeTransportCauseCode(error),
+          errorMessage: sanitizeLogText(error?.message || error, { maxChars: 240 })
         }
       })
-    }
-    while (requestAttempt < 2) {
-      requestAttempt += 1
-      try {
-        const providerRequest = textToImage
-          ? buildProviderGenerationJsonRequest({ model: runtimeConfig.model, prompt, constraints, outputCount: requestedOutputCount })
-          : buildProviderEditMultipartRequest({ model: runtimeConfig.model, prompt, constraints, referenceImages: normalizedReferenceImages, outputCount: requestedOutputCount })
-        const requestBody = providerRequest.body
-        const headers = {
-          Authorization: `Bearer ${apiKey}`,
-          ...providerRequest.headers
-        }
-        const providerResponse = await fetchWithTimeout({
-          fetchImpl,
-          url: `${baseUrl}${endpoint}`,
-          timeoutMs: Math.max(1, requestDeadlineMs - Date.now()),
-          timeoutMessage: `Image Provider generation timed out after ${timeoutMs}ms`,
-          signal,
-          options: {
-            method: 'POST',
-            headers,
-            body: requestBody
-          },
-          consumeResponse: async (response, controller) => ({
-            response,
-            body: response?.ok
-              ? (await readOptionalJsonResponse(response, controller, responseLimits.imageJsonBytes)).body
-              : {}
-          })
-        })
-        response = providerResponse.response
-        responseBody = providerResponse.body
-      } catch (error) {
-        if (signal?.aborted) throw createAbortError(signal.reason)
-        if (error?.code === 'provider_response_too_large') {
-          const providerError = new Error('Image Provider response exceeded the configured byte limit')
-          providerError.code = 'provider_response_too_large'
-          throw providerError
-        }
-        if (isTransientProviderTransportError(error) && canRetryWithinBudget()) {
-          recordTransientRetry({ error })
-          continue
-        }
-        const isTimeout = /timed out/i.test(String(error?.message || ''))
-        recordProviderLog({
-          level: 'error',
-          event: 'imageGeneration.provider.request.failed',
-          message: 'Image Provider request failed',
-          details: {
-            ...createProviderOperationDetails({
-              capability: 'image',
-              operation: 'provider-generate',
-              config: runtimeConfig,
-              configSource: 'image',
-              requestId,
-              outcome: 'failed'
-            }),
-            requestId,
-            provider: runtimeConfig.provider,
-            model: runtimeConfig.model,
-            baseUrlHost: getUrlHost(baseUrl),
-            durationMs: nowMs() - providerStartMs,
-            endpoint,
-            requestMode: conditioning.mode,
-            referenceImageCount: normalizedReferenceImages.length,
-            timeoutMs,
-            errorCode: isTimeout ? 'provider_timeout' : 'provider_request_error',
-            errorCauseCode: getSafeTransportCauseCode(error),
-            errorMessage: sanitizeLogText(error?.message || error, { maxChars: 240 })
-          }
-        })
-        const providerError = new Error(isTimeout
-          ? `Image Provider generation timed out after ${timeoutMs}ms`
-          : 'Image Provider request failed')
-        providerError.code = isTimeout ? 'provider_timeout' : 'provider_request_error'
-        providerError.cause = error
-        throw providerError
-      }
-      if (!response?.ok && isTransientProviderHttpStatus(response?.status) && canRetryWithinBudget()) {
-        cancelProviderResponseBody(response)
-        recordTransientRetry({ status: response.status })
-        continue
-      }
-      break
+      const providerError = new Error(isTimeout
+        ? `Image Provider generation timed out after ${timeoutMs}ms`
+        : 'Image Provider request failed')
+      providerError.code = isTimeout ? 'provider_timeout' : 'provider_request_error'
+      providerError.cause = error
+      throw providerError
     }
     if (!response?.ok) {
       // 非重试的失败响应同样要释放响应体，否则连接会一直挂在这里泄漏。

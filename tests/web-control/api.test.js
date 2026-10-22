@@ -31,6 +31,58 @@ test('web API keeps its login token in memory and sends it only to authenticated
   assert.equal(calls[3].options.headers.has('authorization'), false)
 })
 
+test('web logout clears persisted image candidate metadata', async () => {
+  const values = new Map()
+  const storage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+    removeItem: (key) => values.delete(key)
+  }
+  const { createWebApi, readImageCandidateSession, saveImageCandidateSession } = await apiModule
+  const jobId = 'image-generate:123e4567-e89b-42d3-a456-426614174000'
+  assert.equal(saveImageCandidateSession({ jobId, prompt: 'private fox prompt' }, storage), true)
+  const api = createWebApi({
+    fetchImpl: async (url) => url === '/__openpet/web/logout' ? jsonResponse({}) : jsonResponse({ token: 'web-token' }),
+    candidateSessionStorage: storage
+  })
+
+  await api.logout()
+
+  assert.equal(readImageCandidateSession(storage), null)
+})
+
+test('web logout invalidates an image submission that has not returned its Job yet', async () => {
+  const values = new Map()
+  const storage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+    removeItem: (key) => values.delete(key)
+  }
+  const jobId = 'image-generate:123e4567-e89b-42d3-a456-426614174000'
+  let resolveGeneration
+  const { createWebApi, readImageCandidateSession, submitImageCandidateJob } = await apiModule
+  const api = createWebApi({
+    candidateSessionStorage: storage,
+    fetchImpl: async (url) => {
+      if (url === '/__openpet/web/login') return jsonResponse({ token: 'web-token' })
+      if (url === '/__openpet/web/logout') return jsonResponse({})
+      if (url === '/api/v1/ai/images/web-generate') {
+        return await new Promise((resolve) => { resolveGeneration = () => resolve(jsonResponse({ jobId }, 202)) })
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    }
+  })
+  await api.login('web-password')
+
+  const pending = submitImageCandidateJob(api, { prompt: 'private fox prompt' }, { storage })
+  await api.logout()
+  await api.login('web-password')
+  resolveGeneration()
+
+  assert.equal(await pending, null)
+  assert.equal(readImageCandidateSession(storage), null)
+})
+
 test('web API explains when its desktop Backend session is offline', async () => {
   const { createWebApi } = await apiModule
   const api = createWebApi({
@@ -104,6 +156,87 @@ test('web API submits image generation and previews a generated output', async (
   assert.deepEqual(JSON.parse(calls[0].options.body), { prompt: 'a small fox', candidateCount: 3 })
   const previewUrl = new URL(calls[1].url, 'https://openpet.mesh')
   assert.equal(previewUrl.searchParams.get('relativePath'), 'creator-web/runs/image-generate:1/0001.png')
+})
+
+test('image candidate session stores only validated prompt and selection metadata', async () => {
+  const { clearImageCandidateSession, readImageCandidateSession, saveImageCandidateSession } = await apiModule
+  const values = new Map()
+  const storage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+    removeItem: (key) => values.delete(key)
+  }
+  const jobId = 'image-generate:123e4567-e89b-42d3-a456-426614174000'
+  const selectedRelativePath = `creator-web/runs/${jobId}/0002.png`
+
+  assert.equal(saveImageCandidateSession({
+    jobId,
+    prompt: 'a small fox',
+    selectedRelativePath,
+    imageBytes: 'must not persist',
+    token: 'must not persist'
+  }, storage), true)
+  const [serialized] = values.values()
+  assert.deepEqual(JSON.parse(serialized), { jobId, prompt: 'a small fox', selectedRelativePath })
+  assert.deepEqual(readImageCandidateSession(storage), { jobId, prompt: 'a small fox', selectedRelativePath })
+  assert.equal(saveImageCandidateSession({ jobId, prompt: 'x', selectedRelativePath: `creator-web/runs/${jobId}/../secret.png` }, storage), false)
+  clearImageCandidateSession(storage)
+  assert.equal(readImageCandidateSession(storage), null)
+})
+
+test('web API restores generated candidate previews from a completed Backend Job', async () => {
+  const calls = []
+  const jobId = 'image-generate:123e4567-e89b-42d3-a456-426614174000'
+  const relativePath = `creator-web/runs/${jobId}/0001.png`
+  const job = {
+    jobId,
+    kind: 'image.generate',
+    status: 'succeeded',
+    result: { outputs: [
+      { dataRelativePath: relativePath, sha256: 'a'.repeat(64) },
+      { dataRelativePath: 'creator-web/runs/image-generate:123e4567-e89b-42d3-a456-426614174001/0002.png', sha256: 'b'.repeat(64) },
+      { dataRelativePath: `creator-web/runs/${jobId}/0003.png`, sha256: 'invalid' }
+    ] }
+  }
+  const fetchImpl = async (url, options = {}) => {
+    calls.push({ url, options })
+    if (url.startsWith('/api/v1/jobs/')) return jsonResponse(job)
+    if (url.includes('/api/v1/ai/images/preview')) return jsonResponse({ previewDataUrl: 'data:image/png;base64,AA==' })
+    throw new Error(`Unexpected request: ${url}`)
+  }
+  const { createWebApi, restoreGeneratedImageCandidates } = await apiModule
+  const api = createWebApi({ fetchImpl })
+  const restored = await restoreGeneratedImageCandidates(api, jobId)
+
+  assert.deepEqual(restored.job, job)
+  assert.deepEqual(restored.candidates, [{ relativePath, sha256: 'a'.repeat(64), previewDataUrl: 'data:image/png;base64,AA==' }])
+  assert.equal(calls.length, 2)
+  assert.match(calls[0].url, /\/api\/v1\/jobs\/image-generate%3A123e4567-e89b-42d3-a456-426614174000$/)
+  assert.equal(new URL(calls[1].url, 'https://openpet.mesh').searchParams.get('relativePath'), relativePath)
+})
+
+test('stale image submission does not restore a candidate session after prompt changes', async () => {
+  const values = new Map()
+  const storage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+    removeItem: (key) => values.delete(key)
+  }
+  const { clearImageCandidateSession, readImageCandidateSession, submitImageCandidateJob } = await apiModule
+  let requestVersion = 1
+  let completeRequest
+  const api = { generateImage: () => new Promise((resolve) => { completeRequest = resolve }) }
+  const pending = submitImageCandidateJob(api, { prompt: 'old prompt', candidateCount: 3 }, {
+    storage,
+    isCurrent: () => requestVersion === 1
+  })
+
+  requestVersion += 1
+  clearImageCandidateSession(storage)
+  completeRequest({ jobId: 'image-generate:123e4567-e89b-42d3-a456-426614174000' })
+  await pending
+
+  assert.equal(readImageCandidateSession(storage), null)
 })
 
 test('web API continues Creator generation from a Backend artifact without uploading its image bytes', async () => {

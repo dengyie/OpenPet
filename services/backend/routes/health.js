@@ -46,8 +46,8 @@ function degradedGate(runtime) {
 function scheduleLogCleanup({ cleanup, logger, setInterval: schedule = setInterval } = {}) {
 	if (typeof cleanup !== "function") return null
 	const timer = schedule(() => {
-		Promise.resolve(cleanup()).catch((error) => {
-			logger?.warn?.("清理过期日志失败", { error: String(error) })
+		Promise.resolve().then(cleanup).catch((error) => {
+			logger?.warn?.("Backend 定时清理失败", { error: String(error) })
 		})
 	}, LOG_CLEANUP_INTERVAL_MS)
 	timer?.unref?.()

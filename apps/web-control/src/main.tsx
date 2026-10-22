@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { createWebApi, normalizeCreatorRun } from './api.mjs'
+import { clearImageCandidateSession, createWebApi, loadGeneratedImageCandidates, normalizeCreatorRun, readImageCandidateSession, restoreGeneratedImageCandidates, saveImageCandidateSession, submitImageCandidateJob } from './api.mjs'
 import './styles.css'
 
 type Json = Record<string, any>
@@ -194,24 +194,66 @@ function App() {
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const imageRequestVersion = useRef(0)
+  const busyOperationVersion = useRef(0)
 
   const refresh = async () => {
+    const requestSessionRevision = api.sessionRevision()
     const [nextHealth, nextCreator] = await Promise.all([api.health(), api.creatorState()])
+    if (api.sessionRevision() !== requestSessionRevision) return
     setHealth(nextHealth)
     setCreator(nextCreator)
   }
 
   useEffect(() => {
-    if (loggedIn) void refresh().catch((reason) => setMessage(reason instanceof Error ? reason.message : 'Backend 不可用'))
+    if (!loggedIn) return undefined
+    const requestSessionRevision = api.sessionRevision()
+    let canceled = false
+    void refresh().catch((reason) => {
+      if (!canceled && api.sessionRevision() === requestSessionRevision) setMessage(reason instanceof Error ? reason.message : 'Backend 不可用')
+    })
+    return () => { canceled = true }
+  }, [loggedIn])
+
+  useEffect(() => {
+    if (!loggedIn) return undefined
+    const snapshot = readImageCandidateSession()
+    if (!snapshot) return undefined
+    let canceled = false
+    const requestSessionRevision = api.sessionRevision()
+    const requestVersion = imageRequestVersion.current
+    setPrompt(snapshot.prompt)
+    setSelectedImageCandidate(snapshot.selectedRelativePath)
+    setImageJobRequestVersion(requestVersion)
+    void restoreGeneratedImageCandidates(api, snapshot.jobId).then(({ job: restoredJob, candidates }) => {
+      if (canceled || api.sessionRevision() !== requestSessionRevision || imageRequestVersion.current !== requestVersion) return
+      setImageJob(restoredJob)
+      if (restoredJob.status === 'succeeded') {
+        setImageCandidates(candidates)
+        const selected = candidates.some((candidate) => candidate.relativePath === snapshot.selectedRelativePath)
+          ? snapshot.selectedRelativePath
+          : ''
+        setSelectedImageCandidate(selected)
+        setMessage(candidates.length
+          ? `已恢复 ${candidates.length} 张 Backend 候选参考图。`
+          : '候选任务已完成，但候选图已过期或无法预览。')
+      } else if (['failed', 'canceled', 'interrupted'].includes(restoredJob.status)) {
+        setMessage(restoredJob.error?.message || `图片任务${restoredJob.status === 'failed' ? '失败' : '已停止'}`)
+      }
+    }).catch((reason) => {
+      if (!canceled && api.sessionRevision() === requestSessionRevision) setMessage(reason instanceof Error ? reason.message : '候选任务恢复失败')
+    })
+    return () => { canceled = true }
   }, [loggedIn])
 
   useEffect(() => {
     if (!job || !['queued', 'running'].includes(job.status)) return undefined
     let canceled = false
+    const requestSessionRevision = api.sessionRevision()
+    const isCurrentSession = () => !canceled && api.sessionRevision() === requestSessionRevision
     const poll = async () => {
       try {
         const next = await api.job(job.jobId)
-        if (canceled) return
+        if (!isCurrentSession()) return
         setJob(next)
         if (next.status === 'succeeded') {
           setResult(next.result || null)
@@ -221,7 +263,7 @@ function App() {
           setMessage(next.error?.message || `任务${next.status === 'failed' ? '失败' : '已停止'}`)
         }
       } catch (reason) {
-        if (!canceled) setMessage(reason instanceof Error ? reason.message : '任务状态读取失败')
+        if (isCurrentSession()) setMessage(reason instanceof Error ? reason.message : '任务状态读取失败')
       }
     }
     void poll()
@@ -233,27 +275,17 @@ function App() {
     if (!imageJob || !['queued', 'running'].includes(imageJob.status)) return undefined
     let canceled = false
     let completed = false
+    const requestSessionRevision = api.sessionRevision()
+    const isCurrentSession = () => !canceled && api.sessionRevision() === requestSessionRevision
     const poll = async () => {
       try {
         const next = await api.job(imageJob.jobId)
-        if (canceled) return
+        if (!isCurrentSession()) return
         if (next.status === 'succeeded') {
           if (completed) return
           completed = true
-          const outputs = Array.isArray(next.result?.outputs) ? next.result.outputs.slice(0, 3) : []
-          const loaded = await Promise.all(outputs.map(async (output: Json): Promise<GeneratedReference | null> => {
-            const relativePath = output?.dataRelativePath
-            if (typeof relativePath !== 'string' || !relativePath || !/^[a-f0-9]{64}$/i.test(String(output?.sha256 || ''))) return null
-            try {
-              const preview = await api.imagePreview(relativePath)
-              if (typeof preview?.previewDataUrl !== 'string') return null
-              return { relativePath, sha256: String(output.sha256).toLowerCase(), previewDataUrl: preview.previewDataUrl }
-            } catch {
-              return null
-            }
-          }))
-          const candidates = loaded.filter((candidate): candidate is GeneratedReference => candidate !== null)
-          if (!canceled) {
+          const candidates: GeneratedReference[] = await loadGeneratedImageCandidates(api, next)
+          if (isCurrentSession()) {
             setImageJob(next)
             if (imageRequestVersion.current !== imageJobRequestVersion) {
               setImageCandidates([])
@@ -276,7 +308,7 @@ function App() {
           setImageJob(next)
         }
       } catch (reason) {
-        if (!canceled) setMessage(reason instanceof Error ? reason.message : '图片任务状态读取失败')
+        if (isCurrentSession()) setMessage(reason instanceof Error ? reason.message : '图片任务状态读取失败')
       }
     }
     void poll()
@@ -306,12 +338,19 @@ function App() {
   }} />
 
   const schedule = (promise: Promise<Json>, success: string) => {
+    const requestSessionRevision = api.sessionRevision()
+    const busyVersion = ++busyOperationVersion.current
     setBusy(true)
     setMessage('')
     void promise.then((next) => {
+      if (api.sessionRevision() !== requestSessionRevision) return
       setJob({ jobId: next.jobId, status: 'queued' })
       setMessage(success)
-    }).catch((reason) => setMessage(reason instanceof Error ? reason.message : '请求失败')).finally(() => setBusy(false))
+    }).catch((reason) => {
+      if (api.sessionRevision() === requestSessionRevision) setMessage(reason instanceof Error ? reason.message : '请求失败')
+    }).finally(() => {
+      if (busyOperationVersion.current === busyVersion) setBusy(false)
+    })
   }
 
   const generateImagePreview = async () => {
@@ -326,6 +365,7 @@ function App() {
     const requestPrompt = prompt.trim()
     const requestFile = file
     const requestCandidateCount = candidateCount
+    const busyVersion = ++busyOperationVersion.current
     setBusy(true)
     setImageCandidates([])
     setSelectedImageCandidate('')
@@ -337,22 +377,21 @@ function App() {
         dataBase64: await readFileBase64(requestFile)
       } : undefined
       if (imageRequestVersion.current !== requestVersion) {
-        setMessage('形象描述或参考图已更改，请重新生成候选。')
         return
       }
-      const next = await api.generateImage({
+      const next = await submitImageCandidateJob(api, {
         prompt: requestPrompt,
         candidateCount: requestCandidateCount,
         ...(referenceImage ? { referenceImage } : {})
-      })
-      setImageJobRequestVersion(requestVersion)
-      setImageJob({ jobId: next.jobId, status: 'queued' })
-      if (imageRequestVersion.current !== requestVersion) {
-        setMessage('形象描述或参考图已更改，本次候选任务未应用。')
+      }, { isCurrent: () => imageRequestVersion.current === requestVersion })
+      if (!next) {
+        if (imageRequestVersion.current === requestVersion) setMessage('形象描述或参考图已更改，本次候选任务未应用。')
         return
       }
+      setImageJobRequestVersion(requestVersion)
+      setImageJob({ jobId: next.jobId, status: 'queued' })
     } finally {
-      setBusy(false)
+      if (busyOperationVersion.current === busyVersion) setBusy(false)
     }
   }
 
@@ -398,15 +437,26 @@ function App() {
   }
 
   const logout = async () => {
-    await api.logout()
+    imageRequestVersion.current += 1
+    busyOperationVersion.current += 1
     setLoggedIn(false)
     setHealth(null)
     setCreator(null)
+    setName('')
+    setPrompt('')
+    setFile(null)
     setJob(null)
     setImageJob(null)
     setImageCandidates([])
     setSelectedImageCandidate('')
     setResult(null)
+    setSelectedCandidateId('')
+    setConfirmingCandidateId('')
+    setSelectedActionCandidateKey('')
+    setConfirmingActionCandidateKey('')
+    setMessage('')
+    setBusy(false)
+    await api.logout()
   }
 
   return <main className="app-shell">
@@ -426,8 +476,8 @@ function App() {
       <article className="panel create-panel">
         <div className="panel-heading"><div><span className="step-number">01</span><h2>定义新形象</h2><p>上传已有图片，或先生成候选参考图。</p></div><span className="tag">quality-first</span></div>
         <label>宠物名称<input value={name} onChange={(event) => setName(event.target.value)} placeholder="例如 Mango Fox" maxLength={100} /></label>
-        <label>形象与风格描述<textarea value={prompt} onChange={(event) => { imageRequestVersion.current += 1; setPrompt(event.target.value); setImageCandidates([]); setSelectedImageCandidate('') }} placeholder="橘金色的小狐狸，明亮像素风，正面站立，透明背景" rows={4} maxLength={8000} /></label>
-        <label>已有参考图（可选）<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { imageRequestVersion.current += 1; setFile(event.target.files?.[0] || null); setImageCandidates([]); setSelectedImageCandidate('') }} /></label>
+        <label>形象与风格描述<textarea value={prompt} onChange={(event) => { imageRequestVersion.current += 1; clearImageCandidateSession(); setPrompt(event.target.value); setImageCandidates([]); setSelectedImageCandidate('') }} placeholder="橘金色的小狐狸，明亮像素风，正面站立，透明背景" rows={4} maxLength={8000} /></label>
+        <label>已有参考图（可选）<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { imageRequestVersion.current += 1; clearImageCandidateSession(); setFile(event.target.files?.[0] || null); setImageCandidates([]); setSelectedImageCandidate('') }} /></label>
         <div className="row upload-row">
           <span className="muted">{file ? `${file.name} · 最大 1.1 MB` : '不上传图片时将直接按描述生成；上传时生成结果会参考此图'}</span>
         </div>
@@ -455,7 +505,10 @@ function App() {
           {imageJob.error?.message ? <div className="error" role="alert">{imageJob.error.message}</div> : null}
           {imageCandidates.length ? <>
             <div className="reference-candidate-grid">{imageCandidates.map((candidate, index) => <article className={`candidate-card ${selectedImageCandidate === candidate.relativePath ? 'selected' : ''}`} key={candidate.relativePath}>
-              <button type="button" className="candidate-choice" onClick={() => setSelectedImageCandidate(candidate.relativePath)} aria-pressed={selectedImageCandidate === candidate.relativePath}>
+              <button type="button" className="candidate-choice" onClick={() => {
+                setSelectedImageCandidate(candidate.relativePath)
+                if (imageJob?.jobId) saveImageCandidateSession({ jobId: imageJob.jobId, prompt, selectedRelativePath: candidate.relativePath })
+              }} aria-pressed={selectedImageCandidate === candidate.relativePath}>
                 <img className="candidate-preview" src={candidate.previewDataUrl} alt={`候选参考图 ${index + 1}`} />
                 <span className="candidate-copy"><strong>候选 {index + 1}</strong><span>Backend SHA-256 已记录</span><code title={candidate.sha256}>{candidate.sha256.slice(0, 16)}…</code></span>
                 <span className="radio-mark" aria-hidden="true" />

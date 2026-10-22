@@ -163,6 +163,63 @@ test("web generated image handoff checks the run path, image signature, and cont
 	}
 })
 
+test("web candidate cleanup prunes expired unreferenced images and preserves adopted or out-of-scope files", () => {
+	const dataDir = tempDir("openpet-web-image-cleanup-")
+	const runsDir = path.join(dataDir, "creator-web", "runs")
+	const ai = createAiService({
+		settings: { read: () => ({ version: 1, values: { models: { imageGeneration: {} } } }), patch: () => ({}) },
+		secrets: { get: () => "" },
+		userDataDir: dataDir,
+	})
+	const oldTime = Date.now() - 31 * 24 * 60 * 60 * 1_000
+	const adoptedBytes = Buffer.from("adopted candidate")
+	const unusedBytes = Buffer.from("unused candidate")
+	const adoptedHash = require("node:crypto").createHash("sha256").update(adoptedBytes).digest("hex")
+	const oldJob = "image-generate:123e4567-e89b-42d3-a456-426614174000"
+	const unusedJob = "image-generate:123e4567-e89b-42d3-a456-426614174001"
+	const freshJob = "image-generate:123e4567-e89b-42d3-a456-426614174002"
+	const invalidJob = "image-generate:123e4567-e89b-12d3-a456-426614174003"
+	const makeFile = (jobId, name, bytes, mtime = oldTime) => {
+		const directory = path.join(runsDir, jobId)
+		fs.mkdirSync(directory, { recursive: true })
+		const file = path.join(directory, name)
+		fs.writeFileSync(file, bytes)
+		const date = new Date(mtime)
+		fs.utimesSync(file, date, date)
+		fs.utimesSync(directory, date, date)
+		return { directory, file }
+	}
+	const adopted = makeFile(oldJob, "0001.png", adoptedBytes)
+	const unusedSibling = makeFile(oldJob, "0002.png", unusedBytes)
+	const fullyUnused = makeFile(unusedJob, "0001.png", unusedBytes)
+	const fresh = makeFile(freshJob, "0001.png", unusedBytes, Date.now())
+	const invalid = makeFile(invalidJob, "0001.png", unusedBytes)
+	const unrelated = makeFile("creator.workflow:123e4567-e89b-42d3-a456-426614174004", "0001.png", unusedBytes)
+	const outsideDir = tempDir("openpet-web-image-cleanup-outside-")
+	const linkedJobPath = path.join(runsDir, "image-generate:123e4567-e89b-42d3-a456-426614174005")
+	fs.mkdirSync(outsideDir, { recursive: true })
+	const outsideImage = path.join(outsideDir, "0001.png")
+	fs.writeFileSync(outsideImage, unusedBytes)
+	fs.symlinkSync(outsideDir, linkedJobPath, "dir")
+
+	try {
+		const cleaned = ai.cleanupExpiredWebImageCandidates({ retainedContentHashes: [adoptedHash] })
+		assert.deepEqual(cleaned, { removedFiles: 2, removedDirectories: 1 })
+		assert.equal(fs.existsSync(adopted.file), true)
+		assert.equal(fs.existsSync(unusedSibling.file), false)
+		assert.equal(fs.existsSync(fullyUnused.file), false)
+		assert.equal(fs.existsSync(fullyUnused.directory), false)
+		assert.equal(fs.existsSync(fresh.file), true)
+		assert.equal(fs.existsSync(invalid.file), true)
+		assert.equal(fs.existsSync(unrelated.file), true)
+		assert.equal(fs.lstatSync(linkedJobPath).isSymbolicLink(), true)
+		assert.equal(fs.existsSync(outsideImage), true)
+	} finally {
+		fs.rmSync(dataDir, { recursive: true, force: true })
+		fs.rmSync(outsideDir, { recursive: true, force: true })
+	}
+})
+
 test("T46 image handler makes finalization the cancellation boundary", async () => {
 	const { run } = await import("../../services/backend/jobs/handlers/image-generate.js")
 	let committed = false

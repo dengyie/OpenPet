@@ -194,6 +194,7 @@ test("Backend web Creator can continue from a hash-verified generated image arti
 		},
 	})
 	const sha256 = require("node:crypto").createHash("sha256").update(bytes).digest("hex")
+	assert.deepEqual([...creator.referencedImageContentHashes()], [])
 	const result = await creator.runCharacter({
 		backend: "web",
 		characterName: "Mango Fox",
@@ -202,6 +203,7 @@ test("Backend web Creator can continue from a hash-verified generated image arti
 	})
 	assert.deepEqual(calls.map(({ command }) => command), ["create-run", "run-step"])
 	assert.equal(result.run.id, "run-generated-1")
+	assert.deepEqual([...creator.referencedImageContentHashes()], [sha256])
 	const reference = calls[0].payload.referenceImage
 	assert.equal(reference.fileName, "0001.png")
 	assert.deepEqual(fs.readFileSync(path.join(pluginDataDir, reference.relativePath)), bytes)

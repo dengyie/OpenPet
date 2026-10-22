@@ -298,7 +298,15 @@ registerHealthRoutes({
 	router,
 	runtime,
 	includeBusinessRoutes: false,
-	deps: { logger, cleanup: () => runtime.logs?.cleanup?.() },
+	deps: {
+		logger,
+		cleanup: () => Promise.all([
+			Promise.resolve().then(() => runtime.logs?.cleanup?.()),
+			Promise.resolve().then(() => runtime.ai?.cleanupExpiredWebImageCandidates?.({
+				retainedContentHashes: runtime.creator?.referencedImageContentHashes?.() ?? [],
+			})),
+		]),
+	},
 })
 
 // Routes are assembled before storage initialization, so resolve the store
