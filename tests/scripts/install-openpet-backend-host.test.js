@@ -62,3 +62,8 @@ test('backend host installer isolates privileged downloads and restores the serv
   assert.match(installer, /systemctl disable --now "\$SERVICE_NAME"[\s\S]*rm -f "\$unit_path"/)
   assert.match(installer, /restore_service_unit\(\)[\s\S]*systemctl daemon-reload/)
 })
+
+test('resident Backend service exposes the managed Node runtime to bundled plugin commands', () => {
+  const unit = fs.readFileSync(path.resolve(__dirname, '../../deploy/openpet-backend-host.service'), 'utf8')
+  assert.match(unit, /^Environment=PATH=\/opt\/openpet\/node\/bin:/m)
+})

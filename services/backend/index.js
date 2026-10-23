@@ -70,6 +70,7 @@ import { createCreatorDomain } from "./domains/creator/index.js"
 import { createCreatorJobHandlers } from "./jobs/handlers/creator.js"
 import { registerCreatorRoutes } from "./routes/creator.js"
 import { createResidentAiContext } from "./resident-context.js"
+import { omitImageProviderOwnerFields } from "./bridge/creator-image-request.js"
 const require = createRequire(import.meta.url)
 const { normalizeNetworkRequest, requestPluginNetwork } = require("../../apps/desktop/src/services/plugin-network-client.js")
 const { createHatchPetAgentService } = require("../../apps/desktop/src/services/hatch-pet-agent-service.js")
@@ -522,11 +523,7 @@ await initializeBackendRuntime({
 						path: containedFile(dataDir, reference?.path, "Creator reference image"),
 					})) : []
 					return runtime.ai.generateImage({
-						...payload,
-						provider: undefined,
-						baseUrl: undefined,
-						apiKeyRef: undefined,
-						model: undefined,
+						...omitImageProviderOwnerFields(payload),
 						referenceImages,
 						referenceDataDir: dataDir,
 						output: { dataDir, dataRelativeDir },

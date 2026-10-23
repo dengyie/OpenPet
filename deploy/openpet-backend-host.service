@@ -16,6 +16,9 @@ Environment=OPENPET_BACKEND_PORT=48332
 Environment=OPENPET_WEB_ROOT=/opt/openpet/app/dist/web-control
 Environment=OPENPET_RESIDENT_BACKEND=1
 Environment=OPENPET_PROVIDER_KEYS_FILE=/etc/openpet/provider-keys.json
+# Bundled plugin commands are declared as `node ...`. Keep the managed Node
+# runtime on PATH for resident Creator/Plugin jobs launched by the Backend.
+Environment=PATH=/opt/openpet/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 EnvironmentFile=-/etc/openpet/web-control.env
 ExecStart=/opt/openpet/node/bin/node /opt/openpet/app/services/backend/host.js
 Restart=on-failure
