@@ -19,7 +19,10 @@ const analyzeSpriteCandidate = ({ actionId, rawMetrics = {}, profile = {}, actio
   if (frames.some((frame) => frame.pasteClamped)) failures.push('paste-clamped')
   if (frames.some((frame) => Number(frame.unmatchedComponentCount) > 0)) failures.push('detached-effect-contamination')
   const heights = frames.map((frame) => Number(frame.subjectHeightRatio)).filter(Number.isFinite)
-  const anchors = frames.map((frame) => Number(frame.anchorY)).filter(Number.isFinite)
+  const anchors = frames.map((frame) => {
+    const processedAnchor = Number(frame.outputAnchorY)
+    return Number.isFinite(processedAnchor) ? processedAnchor : Number(frame.anchorY)
+  }).filter(Number.isFinite)
   const meanHeight = average(heights)
   const bodyScaleCv = meanHeight > 0 ? standardDeviation(heights) / meanHeight : 0
   const anchorYStd = standardDeviation(anchors)

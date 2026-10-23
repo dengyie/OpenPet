@@ -149,6 +149,9 @@ const processSpriteSheet = async ({ inputPath, outputDir, layout, profile = {}, 
     const top = airborne
       ? Math.round((128 - resizedHeight) / 2)
       : Math.round(128 * 0.9) - resizedHeight
+    const outputAnchorY = airborne
+      ? top + (resizedHeight / 2)
+      : top + resizedHeight
     rawAnchors.push(rawAnchorY)
     const pasteClamped = left < 0 || top < 0 || left + resizedWidth > 128 || top + resizedHeight > 128
     const edgeTouch = bounds.minX <= 0 || bounds.minY <= 0 || bounds.maxX >= cell.info.width - 1 || bounds.maxY >= cell.info.height - 1
@@ -166,6 +169,7 @@ const processSpriteSheet = async ({ inputPath, outputDir, layout, profile = {}, 
         subjectHeightRatio: cell.metrics.subjectHeightRatio,
         subjectWidthRatio: cell.metrics.subjectWidthRatio,
         anchorY: rawAnchorY,
+        outputAnchorY,
         coreThicknessP75Ratio: cell.metrics.coreThicknessP75Ratio
       })
       continue
@@ -186,6 +190,7 @@ const processSpriteSheet = async ({ inputPath, outputDir, layout, profile = {}, 
       subjectHeightRatio: cell.metrics.subjectHeightRatio,
       subjectWidthRatio: cell.metrics.subjectWidthRatio,
       anchorY: rawAnchorY,
+      outputAnchorY,
       coreThicknessP75Ratio: cell.metrics.coreThicknessP75Ratio
     })
   }
