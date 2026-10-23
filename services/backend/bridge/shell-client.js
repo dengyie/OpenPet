@@ -126,6 +126,12 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 
 		const envelope = parsed.envelope
 		const awaiting = pending.get(envelope.id)
+		if (awaiting !== undefined && envelope.body.type === "bridge.error") {
+			pending.delete(envelope.id)
+			clearTimeout(awaiting.timer)
+			awaiting.reject(new ApiError(envelope.body.code, envelope.body.message || "Remote Shell bridge unavailable"))
+			return
+		}
 		const validationError = awaiting && validateExpectedResponse(envelope, awaiting.expectedType, awaiting.expectedOperation)
 		if (awaiting !== undefined && validationError) {
 			pending.delete(envelope.id)

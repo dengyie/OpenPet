@@ -14,6 +14,8 @@ Environment=OPENPET_HOST_PORT=48330
 Environment=OPENPET_BRIDGE_PORT=48331
 Environment=OPENPET_BACKEND_PORT=48332
 Environment=OPENPET_WEB_ROOT=/opt/openpet/app/dist/web-control
+Environment=OPENPET_RESIDENT_BACKEND=1
+Environment=OPENPET_PROVIDER_KEYS_FILE=/etc/openpet/provider-keys.json
 EnvironmentFile=-/etc/openpet/web-control.env
 ExecStart=/opt/openpet/node/bin/node /opt/openpet/app/services/backend/host.js
 Restart=on-failure
@@ -29,7 +31,7 @@ ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
 LockPersonality=true
-ReadWritePaths=/var/lib/openpet
+ReadWritePaths=/var/lib/openpet /etc/openpet
 UMask=0077
 LimitNOFILE=4096
 

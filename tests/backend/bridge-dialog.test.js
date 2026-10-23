@@ -30,7 +30,7 @@ describe("dialog.request bridge", () => {
 		assert.equal(bridge.BACKEND_TO_SHELL_TYPES.includes("dialog.request"), true)
 		assert.equal(bridge.BACKEND_TO_SHELL_TYPES.includes("catalog.request"), true)
 		assert.equal(bridge.BACKEND_TO_SHELL_TYPES.includes("pet-packs.request"), true)
-		assert.equal(bridge.SHELL_TO_BACKEND_TYPES.length, 17, "settings, secrets, Catalog, Pet Pack, Creator, Actions, AI and pet command host results are part of the bridge contract")
+		assert.equal(bridge.SHELL_TO_BACKEND_TYPES.length, 18, "settings, secrets, Catalog, Pet Pack, Creator, Actions, AI, bridge errors and pet command host results are part of the bridge contract")
 	})
 
 	it("request and dialog.result correlate with the same envelope id", async () => {
@@ -66,6 +66,22 @@ describe("dialog.request bridge", () => {
 		}, { id: sent[0].id }))
 		const response = await responsePromise
 		assert.deepEqual(response.body.result, { ok: true, pluginId: "demo.plugin" })
+		client.dispose()
+	})
+
+	it("settles pending requests when the remote Host reports the desktop bridge is unavailable", async () => {
+		const sent = []
+		const client = shellClient.createShellClient({ send: (envelope) => sent.push(envelope) })
+		const pending = client.request({
+			type: "plugin.production.request",
+			operation: "secret.state",
+		}, { timeoutMs: 500 })
+		client.receive(bridge.createEnvelope({
+			type: "bridge.error",
+			code: "BACKEND_UNAVAILABLE",
+			message: "desktop Shell bridge is unavailable",
+		}, { id: sent[0].id }))
+		await assert.rejects(pending, /BACKEND_UNAVAILABLE|desktop Shell bridge is unavailable/)
 		client.dispose()
 	})
 

@@ -1,6 +1,6 @@
 import { fork as nodeFork } from "node:child_process"
 import { createServer } from "node:http"
-import { mkdir, realpath, readFile } from "node:fs/promises"
+import { chmod, mkdir, realpath, readFile, rename, stat, unlink, writeFile } from "node:fs/promises"
 import { existsSync } from "node:fs"
 import { randomBytes, timingSafeEqual } from "node:crypto"
 import { extname, join, resolve, relative, sep } from "node:path"
@@ -15,6 +15,7 @@ const DEFAULT_BACKEND_PORT = 48_332
 const DEFAULT_STARTUP_TIMEOUT_MS = 20_000
 const DEFAULT_SESSION_TTL_MS = 30_000
 const DEFAULT_WEB_TOKEN_TTL_MS = 4 * 60 * 60 * 1_000
+const DEFAULT_PROVIDER_KEYS_FILE = ""
 const MAX_REQUEST_BYTES = 2 * 1024 * 1024
 const MAX_SESSION_BYTES = 1024 * 1024
 const MAX_WEB_LOGIN_BYTES = 16 * 1024
@@ -124,6 +125,7 @@ function validateHostOptions(options) {
 	const entry = resolve(options.entry ?? new URL("./index.js", import.meta.url).pathname)
 	const webRoot = resolve(options.webRoot ?? join(options.rootDir ?? join(entry, "..", "..", ".."), "dist", "web-control"))
 	const webPasswordFile = options.webPasswordFile ? resolve(options.webPasswordFile) : ""
+	const providerKeysFile = options.providerKeysFile ? resolve(options.providerKeysFile) : DEFAULT_PROVIDER_KEYS_FILE
 	if (bindHost !== DEFAULT_BIND_HOST) throw new TypeError("remote Backend host must bind to 127.0.0.1")
 	for (const [name, value] of [["port", port], ["bridgePort", bridgePort], ["backendPort", backendPort]]) {
 		const minimum = name === "port" ? 0 : 1
@@ -145,6 +147,8 @@ function validateHostOptions(options) {
 		webPasswordFile,
 		webPassword: typeof options.webPassword === "string" ? options.webPassword : "",
 		webTokenTtlMs: options.webTokenTtlMs ?? DEFAULT_WEB_TOKEN_TTL_MS,
+		residentBackend: options.residentBackend === true,
+		providerKeysFile,
 		fork: options.fork ?? nodeFork,
 		fetchImpl: options.fetchImpl ?? globalThis.fetch,
 		logger: options.logger ?? null,
@@ -159,6 +163,59 @@ export function createBackendHost(options = {}) {
 	let closing = false
 	let idleTimer = null
 	const webTokens = new Map()
+	let providerWriteQueue = Promise.resolve()
+
+	async function readResidentProviderKeys() {
+		if (!config.providerKeysFile) return {}
+		if (!existsSync(config.providerKeysFile)) return {}
+		const metadata = await stat(config.providerKeysFile)
+		if ((metadata.mode & 0o077) !== 0) throw new Error("provider key file permissions must be 0600")
+		if (typeof process.getuid === "function" && metadata.uid !== process.getuid()) throw new Error("provider key file owner is invalid")
+		let parsed
+		try { parsed = JSON.parse(await readFile(config.providerKeysFile, "utf8")) } catch { throw new Error("provider key file is invalid JSON") }
+		const error = validateProviderKeys(parsed)
+		if (error) throw new Error(error)
+		return structuredClone(parsed)
+	}
+
+	function validateProviderKeys(value) {
+		if (!value || typeof value !== "object" || Array.isArray(value)) return "provider key file must contain an object"
+		if (Object.keys(value).length > 100) return "too many provider keys"
+		for (const [id, secret] of Object.entries(value)) {
+			if (!id || id.length > 160 || typeof secret !== "string" || !secret.trim() || secret.length > 8192) return "invalid provider key entry"
+		}
+		return null
+	}
+
+	async function persistResidentProviderKeyNow(providerId, value) {
+		if (!config.providerKeysFile) throw new Error("resident provider key file is not configured")
+		const current = await readResidentProviderKeys()
+		if (value === null) delete current[providerId]
+		else current[providerId] = value
+		const error = validateProviderKeys(current)
+		if (error) throw new Error(error)
+		const directory = resolve(config.providerKeysFile, "..")
+		await mkdir(directory, { recursive: true, mode: 0o700 })
+		const temporary = `${config.providerKeysFile}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`
+		try {
+			await writeFile(temporary, JSON.stringify(current) + "\n", { mode: 0o600, flag: "wx" })
+			await chmod(temporary, 0o600)
+			await rename(temporary, config.providerKeysFile)
+		} finally {
+			if (existsSync(temporary)) {
+				try { await unlink(temporary) } catch {}
+			}
+		}
+	}
+
+	function persistResidentProviderKey(providerId, value) {
+		const operation = providerWriteQueue.then(
+			() => persistResidentProviderKeyNow(providerId, value),
+			() => persistResidentProviderKeyNow(providerId, value),
+		)
+		providerWriteQueue = operation.catch(() => undefined)
+		return operation
+	}
 
 	function log(level, message, fields = {}) {
 		try {
@@ -173,7 +230,8 @@ export function createBackendHost(options = {}) {
 		idleTimer = setTimeout(() => {
 			if (session === active && Date.now() - active.lastSeenAt >= config.sessionTtlMs) {
 				log("warn", "remote desktop session expired")
-				void endSession(active, "heartbeat-timeout")
+				if (active.resident) detachDesktop(active, "heartbeat-timeout")
+				else void endSession(active, "heartbeat-timeout")
 			}
 		}, config.sessionTtlMs + 25)
 		idleTimer.unref?.()
@@ -217,6 +275,15 @@ export function createBackendHost(options = {}) {
 		webTokens.clear()
 		await stopChild(active.child)
 		log("info", "remote Backend session stopped", { reason })
+	}
+
+	function detachDesktop(active, reason = "desktop-detached") {
+		if (!active || active !== session || !active.resident) return
+		active.bridgeReady = false
+		active.bridgeToken = ""
+		active.desktopAttached = false
+		clearTimeout(idleTimer)
+		log("info", "resident Backend desktop bridge detached", { reason })
 	}
 
 	async function requestShell(active, envelope, waitForReply = true) {
@@ -275,10 +342,30 @@ export function createBackendHost(options = {}) {
 		return null
 	}
 
-	async function startSession(body) {
-		const validationError = validateInit(body)
-		if (validationError) return { status: 400, value: { ok: false, error: validationError } }
-		if (session) return { status: 409, value: { ok: false, error: "a remote Backend session is already active" } }
+	async function startSession(body, { resident = false } = {}) {
+		if (resident) {
+			if (session) return { status: 409, value: { ok: false, error: "resident Backend is already active" } }
+			body = {
+				bridgeToken: "",
+				providerKeys: await readResidentProviderKeys(),
+				legacyToken: null,
+				localHttpConfig: { enabled: false, host: "127.0.0.1", port: 0 },
+				appInfo: { name: "OpenPet Resident", version: "0.0.0", packaged: true, platform: process.platform, arch: process.arch },
+			}
+		} else {
+			const validationError = validateInit(body)
+			if (validationError) return { status: 400, value: { ok: false, error: validationError } }
+		}
+		if (session) {
+			if (session.resident && !resident) {
+				session.bridgeToken = body.bridgeToken
+				session.bridgeReady = true
+				session.desktopAttached = true
+				touch(session)
+				return { status: 200, value: { ok: true, data: { apiVersion: session.ready.apiVersion, sessionToken: session.ready.sessionToken, port: config.port } } }
+			}
+			return { status: 409, value: { ok: false, error: "a remote Backend session is already active" } }
+		}
 		const active = {
 			bridgeToken: body.bridgeToken,
 			bridgeReady: false,
@@ -288,9 +375,11 @@ export function createBackendHost(options = {}) {
 			pendingBackend: new Map(),
 			lastSeenAt: Date.now(),
 			closing: false,
+			resident,
+			desktopAttached: !resident,
 		}
 		session = active
-		active.bridgeReady = true
+		active.bridgeReady = !resident
 		try {
 			await mkdir(config.dataDir, { recursive: true, mode: 0o700 })
 			const normalizedDataDir = await realpath(config.dataDir)
@@ -350,6 +439,16 @@ export function createBackendHost(options = {}) {
 						pending.resolve(envelope)
 						return
 					}
+					if (active.resident && envelope.body.type === "secrets.persist.request") {
+						try {
+							await persistResidentProviderKey(envelope.body.providerId, envelope.body.value)
+							child.send({ v: BRIDGE_VERSION, id: envelope.id, at: Date.now(), body: { type: "secrets.persist.result", providerId: envelope.body.providerId, ok: true } })
+						} catch (error) {
+							log("warn", "resident Provider key persistence failed", { reason: error?.message || "persistence-failed" })
+							child.send({ v: BRIDGE_VERSION, id: envelope.id, at: Date.now(), body: { type: "secrets.persist.result", providerId: envelope.body.providerId, ok: false, error: "Provider key persistence failed" } })
+						}
+						return
+					}
 					const wantsReply = REQUEST_TYPES.has(envelope.body.type)
 					try {
 						active.bridgeReady = true
@@ -359,7 +458,7 @@ export function createBackendHost(options = {}) {
 						active.bridgeReady = false
 						if (wantsReply) {
 							log("warn", "Shell bridge request failed", { type: envelope.body.type, error: error.message })
-							child.send({ v: BRIDGE_VERSION, id: envelope.id, at: Date.now(), body: { type: "bridge.error", code: "BACKEND_UNAVAILABLE" } })
+							child.send({ v: BRIDGE_VERSION, id: envelope.id, at: Date.now(), body: { type: "bridge.error", code: "BACKEND_UNAVAILABLE", message: "desktop Shell bridge is unavailable" } })
 						}
 					}
 				}
@@ -397,6 +496,7 @@ export function createBackendHost(options = {}) {
 					legacyToken: body.legacyToken ?? null,
 					localHttpConfig: body.localHttpConfig ?? { enabled: false, host: "127.0.0.1", port: 0 },
 					httpPort: config.backendPort,
+					residentBackend: resident,
 					appInfo: body.appInfo ?? { name: "OpenPet Remote", version: "0.0.0", packaged: true, platform: process.platform, arch: process.arch },
 				},
 			}
@@ -406,7 +506,7 @@ export function createBackendHost(options = {}) {
 			// Do not keep an extra host-side reference to cleartext credentials.
 			for (const key of Object.keys(body.providerKeys)) delete body.providerKeys[key]
 			const ready = await startup
-			touch(active)
+			if (!resident) touch(active)
 			return { status: 200, value: { ok: true, data: { apiVersion: ready.apiVersion, sessionToken: ready.sessionToken, port: config.port } } }
 		} catch (error) {
 			log("error", "remote Backend startup failed", { reason: error?.message || "startup-failed" })
@@ -417,7 +517,9 @@ export function createBackendHost(options = {}) {
 
 	async function handleControl(request, response, pathname) {
 		if (request.method === "GET" && pathname === "/__openpet/health") {
-			sendJson(response, 200, { ok: true, status: session ? "ready" : "idle", apiVersion: "v1" })
+			const value = { ok: true, status: session ? "ready" : "idle", apiVersion: "v1" }
+			if (session?.resident) value.mode = "resident"
+			sendJson(response, 200, value)
 			return true
 		}
 		if (request.method === "POST" && pathname === "/__openpet/session") {
@@ -488,7 +590,8 @@ export function createBackendHost(options = {}) {
 		}
 		if (request.method === "POST" && pathname === "/__openpet/session/end") {
 			sendJson(response, 202, { ok: true })
-			void endSession(active)
+			if (active.resident) detachDesktop(active, "desktop-session-ended")
+			else void endSession(active)
 			return true
 		}
 		if (request.method === "POST" && pathname === "/__openpet/shell") {
@@ -657,18 +760,29 @@ export function createBackendHost(options = {}) {
 	}
 
 	return {
-		listen() {
+		async listen() {
 			if (server) return Promise.reject(new Error("Backend host already listening"))
 			server = createServer((request, response) => { void handle(request, response) })
 			server.requestTimeout = 70_000
 			server.headersTimeout = 75_000
-			return new Promise((resolveListen, rejectListen) => {
+			const address = await new Promise((resolveListen, rejectListen) => {
 				server.once("error", rejectListen)
 				server.listen(config.port, config.bindHost, () => {
 					server.removeListener("error", rejectListen)
 					resolveListen({ host: config.bindHost, port: server.address().port })
 				})
 			})
+			if (config.residentBackend) {
+				try {
+					const result = await startSession(null, { resident: true })
+					if (result.status !== 200) throw new Error(result.value.error || "resident Backend startup failed")
+				} catch (error) {
+					await new Promise((resolveClose) => server.close(resolveClose))
+					server = null
+					throw error
+				}
+			}
+			return address
 		},
 		async close() {
 			if (closing) return
@@ -678,7 +792,7 @@ export function createBackendHost(options = {}) {
 			if (server) await new Promise((resolveClose) => server.close(resolveClose))
 			server = null
 		},
-		getState: () => ({ status: session ? "ready" : "idle", port: config.port, bindHost: config.bindHost }),
+		getState: () => ({ status: session ? "ready" : "idle", mode: session?.resident ? "resident" : "session", port: config.port, bindHost: config.bindHost }),
 	}
 }
 
@@ -690,6 +804,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
 		bridgePort: Number(process.env.OPENPET_BRIDGE_PORT ?? DEFAULT_BRIDGE_PORT),
 		backendPort: Number(process.env.OPENPET_BACKEND_PORT ?? DEFAULT_BACKEND_PORT),
 		webPassword: process.env.OPENPET_WEB_CONTROL_PASSWORD ?? "",
+		residentBackend: process.env.OPENPET_RESIDENT_BACKEND === "1",
+		providerKeysFile: process.env.OPENPET_PROVIDER_KEYS_FILE ?? "",
 		logger: console,
 	})
 	host.listen().then(({ host: bindHost, port }) => {

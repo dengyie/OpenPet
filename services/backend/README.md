@@ -6,7 +6,7 @@ OpenPet 的后端 sidecar。桌面 Shell 通过 `child_process.fork` 启动；�
 
 `services/backend/host.js` 可托管 `dist/web-control` 静态前端，并用内存中的网页登录令牌代理 `/api/v1/*`。网页登录令牌不会写入磁盘，Backend session 结束后全部失效。Host 本身仍必须绑定 `127.0.0.1:48330`；由广州 CVM 上仅绑定 EasyTier 地址的 Nginx 负责 HTTPS 入口。
 
-Web 控制台只能编排现有 Creator Backend 会话。Provider keys、参考图 authority、桌面 PetService 和最终 pet-pack import 仍由在线 OpenPet Shell 持有；Shell 离线时网页只能显示不可用状态。
+Web 控制台在广州的 resident 模式下可以直接编排 Backend AI、图片和 Creator 任务。Provider keys 由 host 从 `/etc/openpet/provider-keys.json` 注入并以 0600 权限原子持久化；参考图上传、桌面 PetService、最终 pet-pack import/activate 等桌面专属能力仍需要在线 OpenPet Shell。桌面 Shell 离线时这些能力会返回明确的 `BACKEND_UNAVAILABLE`，Backend 本身继续保持可用。
 
 契约以 [`docs/refactor/03-api-contract.md`](../../docs/refactor/03-api-contract.md) 为准,架构以 [`docs/refactor/02-architecture.md`](../../docs/refactor/02-architecture.md) 为准。
 
@@ -26,7 +26,7 @@ Web 控制台只能编排现有 Creator Backend 会话。Provider keys、参考�
 07 篇 spike 1 的握手是「sidecar 先发 `ready`,Shell 再回 `init`」—— 那只是为了证明 `fork` 通道能双向跑。生产顺序反过来:
 
 1. `index.js` **在任何 `await` 之前**挂上 `process.on("message")` 并把消息缓存进 inbox。ESM 的顶层 `await` 会推迟模块求值,不先挂监听有丢 `init` 的风险。
-2. 等 Shell 的 `init`(含 ADR-010 解密后的密钥),10 秒未到则 `exit 65`。
+2. 等 Host/Shell 的 `init`(resident 模式从受保护文件读取的密钥或桌面 Shell 注入的密钥),10 秒未到则 `exit 65`。
 3. 绑定 `127.0.0.1:0`,生成 `sessionToken`。
 4. `listening` 后发 `ready { port, apiVersion, pid, sessionToken, startupMs }`。
 
