@@ -38,7 +38,7 @@ function capability(id) {
   throw new ApiError("NOT_FOUND", "AI provider capability not found")
 }
 
-export function registerAiRuntimeRoutes(router, { getDomain, getImageDomain, shell, secrets, jobs, present, getActions = async () => [] } = {}) {
+export function registerAiRuntimeRoutes(router, { getDomain, getImageDomain, shell, secrets, jobs, present, getActions = async () => [], residentBackend = false } = {}) {
   const domain = () => {
     const ai = getDomain?.()
     if (!ai) throw new ApiError("BACKEND_UNAVAILABLE", "AI backend is unavailable")
@@ -50,7 +50,10 @@ export function registerAiRuntimeRoutes(router, { getDomain, getImageDomain, she
     if (!image) throw new ApiError("BACKEND_UNAVAILABLE", "Image AI backend is unavailable")
     return image
   }
-  const hostAi = (operation, payload = {}, timeoutMs = 60_000) => requestShellAiTalk(shell, operation, payload, { timeoutMs })
+  const hostAi = (operation, payload = {}, timeoutMs = 60_000) => {
+    if (residentBackend) throw new ApiError("BACKEND_UNAVAILABLE", "Desktop Shell AI capability is unavailable in resident Backend mode")
+    return requestShellAiTalk(shell, operation, payload, { timeoutMs })
+  }
   router.get("/ai/state", async (ctx) => { const ai = domain(); await ai.requirePack(); sendSuccess(ctx, ai.snapshot()) })
   router.get("/ai/config", (ctx) => sendSuccess(ctx, createAiConfigView(domain().provider.getConfig())))
   router.patch("/ai/config", (ctx) => sendSuccess(ctx, createAiConfigView(domain().saveConfig(object(ctx.body)))))

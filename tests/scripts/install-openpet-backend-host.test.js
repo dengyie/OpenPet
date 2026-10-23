@@ -40,6 +40,9 @@ test('backend host installer prepares and validates the staged release before sw
   assert.match(installer, /cleanup_install\(\)[\s\S]*rollback_deployment/)
   assert.match(installer, /trap cleanup_install EXIT/)
   assert.match(installer, /if ! install -m 0644 deploy\/openpet-backend-host\.service[\s\S]*exit 1/)
+  assert.match(installer, /PROVIDER_KEYS_FILE=\$PROVIDER_KEYS_DIR\/provider-keys\.json/)
+  assert.match(installer, /existing Provider key file must be owned by openpet:openpet with mode 0600/)
+  assert.match(installer, /install -o openpet -g openpet -m 0600 \/dev\/null "\$PROVIDER_KEYS_FILE"/)
 })
 
 test('backend host installer isolates privileged downloads and restores the service unit on rollback', () => {

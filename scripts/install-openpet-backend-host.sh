@@ -15,6 +15,8 @@ SERVICE_NAME=${SERVICE_NAME:-openpet-backend-host.service}
 NODE_VERSION=${NODE_VERSION:-v24.11.1}
 NODE_ARCH=${NODE_ARCH:-linux-x64}
 RELEASE_ARCHIVE=${RELEASE_ARCHIVE:-}
+PROVIDER_KEYS_DIR=/etc/openpet
+PROVIDER_KEYS_FILE=$PROVIDER_KEYS_DIR/provider-keys.json
 
 if [[ "$(id -u)" != 0 ]]; then echo "installer must run as root" >&2; exit 1; fi
 if [[ -z "$RELEASE_ARCHIVE" || ! -f "$RELEASE_ARCHIVE" ]]; then echo "RELEASE_ARCHIVE must point to a reviewed OpenPet tar archive" >&2; exit 1; fi
@@ -62,6 +64,20 @@ snapshot_complete=1
 install -d -m 0755 "$(dirname "$APP_ROOT")" "$NODE_ROOT" "$DATA_ROOT"
 if ! id -u openpet >/dev/null 2>&1; then useradd --system --home-dir "$DATA_ROOT" --shell /sbin/nologin openpet; fi
 install -d -o openpet -g openpet -m 0700 "$DATA_ROOT"
+install -d -o openpet -g openpet -m 0700 "$PROVIDER_KEYS_DIR"
+if [[ -e "$PROVIDER_KEYS_FILE" ]]; then
+  key_mode="$(stat -c '%a' "$PROVIDER_KEYS_FILE")"
+  key_owner="$(stat -c '%U:%G' "$PROVIDER_KEYS_FILE")"
+  if [[ "$key_mode" != 600 || "$key_owner" != "openpet:openpet" ]]; then
+    echo "existing Provider key file must be owned by openpet:openpet with mode 0600" >&2
+    exit 1
+  fi
+else
+  install -o openpet -g openpet -m 0600 /dev/null "$PROVIDER_KEYS_FILE"
+  printf '{}\n' > "$PROVIDER_KEYS_FILE"
+  chown openpet:openpet "$PROVIDER_KEYS_FILE"
+  chmod 0600 "$PROVIDER_KEYS_FILE"
+fi
 
 work_dir=$(mktemp -d /tmp/openpet-install.XXXXXXXXXX)
 chmod 0700 "$work_dir"

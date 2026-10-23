@@ -69,6 +69,7 @@ import { createPluginJobHandlers, createImageJobHandlers, createHatchJobHandlers
 import { createCreatorDomain } from "./domains/creator/index.js"
 import { createCreatorJobHandlers } from "./jobs/handlers/creator.js"
 import { registerCreatorRoutes } from "./routes/creator.js"
+import { createResidentAiContext } from "./resident-context.js"
 const require = createRequire(import.meta.url)
 const { normalizeNetworkRequest, requestPluginNetwork } = require("../../apps/desktop/src/services/plugin-network-client.js")
 const { createHatchPetAgentService } = require("../../apps/desktop/src/services/hatch-pet-agent-service.js")
@@ -208,6 +209,8 @@ const runtime = {
 	ai: null,
 	creator: null,
 	hatchAgent: null,
+	residentBackend: false,
+	residentAiContext: null,
 }
 
 function containedFile(root, candidate, label) {
@@ -264,6 +267,8 @@ delete initEnvelope.body.secrets
 runtime.userDataDir = initEnvelope.body.userDataDir ?? null
 runtime.legacyToken = initEnvelope.body.legacyToken ?? null
 runtime.appInfo = initEnvelope.body.appInfo ?? {}
+runtime.residentBackend = initEnvelope.body.residentBackend === true
+runtime.residentAiContext = runtime.residentBackend ? createResidentAiContext() : null
 const legacyLocalHttpConfig = initEnvelope.body.localHttpConfig ?? { enabled: false, host: "127.0.0.1", port: 0 }
 const requestedHttpPort = initEnvelope.body.httpPort ?? 0
 if (!Number.isInteger(requestedHttpPort) || requestedHttpPort < 0 || requestedHttpPort > 65_535) {
@@ -364,6 +369,11 @@ if (legacyLocalHttpConfig.enabled) {
 registerServiceRoutes(router, { manager: runtime.service })
 registerAiSecretRoutes(router, { secrets: runtime.secrets, onChanged: () => runtime.aiChat?.publishSnapshot() })
 const aiHostRequest = async (operation, payload = {}) => {
+	if (runtime.residentBackend) {
+		if (operation === "context") return runtime.residentAiContext
+		if (operation === "present") return payload.result
+		throw new ApiError("BACKEND_UNAVAILABLE", "Desktop Shell AI capability is unavailable in resident Backend mode")
+	}
 	const reply = await shell.request({ type: "ai.host.request", operation, payload })
 	if (!reply.body.ok) throw new Error(reply.body.error || "AI host request failed")
 	return reply.body.result
@@ -373,6 +383,7 @@ registerAiRuntimeRoutes(router, {
 	getImageDomain: () => runtime.ai,
 	shell,
 	secrets: runtime.secrets,
+	residentBackend: runtime.residentBackend,
 	jobs: { insert: (input) => {
 		if (!runtime.enqueueJob) throw new ApiError("BACKEND_UNAVAILABLE", "Job service unavailable")
 		return runtime.enqueueJob(input)
@@ -605,7 +616,7 @@ if (!runtime.degraded && runtime.jobs) {
 		repository: createConversationsRepository({ db: runtime.db }),
 		getActivePetPack: async () => (await aiHostRequest("context")).pack,
 		emit: (name, payload) => eventHub.publish(name, payload),
-		onSnapshot: (snapshot) => shell.send({ type: "ai.state", snapshot }),
+		onSnapshot: (snapshot) => { if (!runtime.residentBackend) shell.send({ type: "ai.state", snapshot }) },
 		fetchImpl: globalThis.fetch, logger,
 	})
 		runtime.ai = createAiService({ settings: runtime.settings, secrets: runtime.secrets, fetchImpl: globalThis.fetch, logger, userDataDir: runtime.userDataDir })
@@ -620,7 +631,7 @@ if (!runtime.degraded && runtime.jobs) {
 		})
 		runtime.creator = createCreatorDomain({
 		db: runtime.db,
-		shell,
+		shell: runtime.residentBackend ? null : shell,
 		ai: runtime.ai,
 		enqueueJob: (input) => runtime.enqueueJob?.(input),
 		runPluginCommand: (command, payload, context = {}) => runtime.plugins?.runCreatorBackendCommand?.(command, payload, context),

@@ -718,8 +718,14 @@ export const shellToBackendSchema = z.discriminatedUnion("type", [
     }).strict().optional(),
     /** Remote host mode may pin the Backend listener to a systemd port. */
     httpPort: z.number().int().nonnegative().max(65535).optional(),
+    residentBackend: z.boolean().optional(),
   }).strict(),
   z.object({ type: z.literal("shutdown") }).strict(),
+  z.object({
+    type: z.literal("bridge.error"),
+    code: z.enum(ERROR_CODES),
+    message: z.string().min(1).optional(),
+  }).strict(),
   z.object({ type: z.literal("pet.stateSnapshot"), state: z.record(z.string(), z.unknown()) }),
   z.object({ type: z.literal("dialog.result"), requestId: z.string(), paths: z.array(z.string()).nullable() }),
   z.object({ type: z.literal("power.suspend") }),

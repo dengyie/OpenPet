@@ -2,7 +2,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const http = require('node:http')
 const { EventEmitter } = require('node:events')
-const { mkdtemp, realpath, rm } = require('node:fs/promises')
+const { chmod, mkdir, mkdtemp, readFile, realpath, rm, stat } = require('node:fs/promises')
 const os = require('node:os')
 const path = require('node:path')
 
@@ -152,6 +152,149 @@ test('remote host fixes child storage, proxies authenticated API, and correlates
     await host.close()
     await new Promise((resolve) => bridgeServer.close(resolve))
     await new Promise((resolve) => upstream.close(resolve))
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('resident host keeps Backend online across desktop session end and persists provider keys securely', async () => {
+  const { createBackendHost } = await hostModule
+  const root = await mkdtemp(path.join(os.tmpdir(), 'openpet-resident-host-'))
+  const dataDir = path.join(root, 'data')
+  await mkdir(dataDir, { mode: 0o700 })
+  const providerKeysFile = path.join(dataDir, 'provider-keys.json')
+  await import('node:fs/promises').then(({ writeFile }) => writeFile(providerKeysFile, JSON.stringify({ 'ai.default': 'server-provider-secret' }), { mode: 0o600 }))
+  const upstream = http.createServer((_request, response) => {
+    response.writeHead(200, { 'content-type': 'application/json' })
+    response.end(JSON.stringify({ ok: true }))
+  })
+  const upstreamAddress = await new Promise((resolve) => upstream.listen(0, '127.0.0.1', () => resolve(upstream.address())))
+  const child = new EventEmitter()
+  child.pid = 9234
+  child.exitCode = null
+  child.sent = []
+  child.send = (envelope) => {
+    child.sent.push(envelope)
+    if (envelope.body.type === 'init') {
+      child.initEnvelope = envelope
+      setImmediate(() => child.emit('message', {
+        v: 1,
+        id: 'resident-ready',
+        at: Date.now(),
+        body: { type: 'ready', port: upstreamAddress.port, apiVersion: 'v1', pid: child.pid, sessionToken: 'resident-session-token-01234567890123456789', startupMs: 1 }
+      }))
+    }
+  }
+  child.kill = (signal) => {
+    child.exitCode = signal === 'SIGKILL' ? 137 : 0
+    setImmediate(() => child.emit('exit', child.exitCode, signal))
+  }
+  const logs = []
+  const host = createBackendHost({
+    port: 0,
+    bridgePort: 48_341,
+    backendPort: 48_342,
+    dataDir,
+    providerKeysFile,
+    residentBackend: true,
+    sessionTtlMs: 15,
+    startupTimeoutMs: 1000,
+    fork: () => child,
+    logger: { info: (...args) => logs.push(args), warn: (...args) => logs.push(args), error: (...args) => logs.push(args) }
+  })
+  let address
+  try {
+    address = await host.listen()
+    assert.equal(child.initEnvelope.body.providerKeys['ai.default'], 'server-provider-secret')
+    assert.deepEqual(host.getState().status, 'ready')
+    assert.equal(host.getState().mode, 'resident')
+
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    assert.equal(child.exitCode, null)
+
+    const attached = await call(address, '/__openpet/session', {
+      method: 'POST',
+      body: {
+        bridgeToken: 'c'.repeat(64),
+        providerKeys: { 'ai.default': 'desktop-provider-secret' },
+        localHttpConfig: { enabled: false, host: '127.0.0.1', port: 0 }
+      }
+    })
+    assert.equal(attached.status, 200)
+    assert.equal(child.initEnvelope.body.providerKeys['ai.default'], 'server-provider-secret')
+
+    child.emit('message', {
+      v: 1,
+      id: 'resident-key-save',
+      at: Date.now(),
+      body: { type: 'secrets.persist.request', providerId: 'ai.default', value: 'rotated-provider-secret' }
+    })
+    for (let attempt = 0; attempt < 30 && !child.sent.some((envelope) => envelope.id === 'resident-key-save'); attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+    const keyReply = child.sent.find((envelope) => envelope.id === 'resident-key-save')
+    assert.equal(keyReply.body.type, 'secrets.persist.result')
+    assert.equal(keyReply.body.ok, true)
+    assert.deepEqual(JSON.parse(await readFile(providerKeysFile, 'utf8')), { 'ai.default': 'rotated-provider-secret' })
+    assert.equal((await stat(providerKeysFile)).mode & 0o777, 0o600)
+
+		child.emit('message', {
+			v: 1,
+			id: 'resident-key-save-a',
+			at: Date.now(),
+			body: { type: 'secrets.persist.request', providerId: 'ai.default', value: 'rotated-provider-secret-a' }
+		})
+		child.emit('message', {
+			v: 1,
+			id: 'resident-key-save-b',
+			at: Date.now(),
+			body: { type: 'secrets.persist.request', providerId: 'ai.vision', value: 'rotated-provider-secret-b' }
+		})
+		for (let attempt = 0; attempt < 30 && !child.sent.some((envelope) => envelope.id === 'resident-key-save-b'); attempt += 1) {
+			await new Promise((resolve) => setTimeout(resolve, 10))
+		}
+		assert.deepEqual(JSON.parse(await readFile(providerKeysFile, 'utf8')), {
+			'ai.default': 'rotated-provider-secret-a',
+			'ai.vision': 'rotated-provider-secret-b',
+		})
+
+    const detached = await call(address, '/__openpet/session/end', {
+      method: 'POST',
+      headers: { authorization: 'Bearer resident-session-token-01234567890123456789' }
+    })
+    assert.equal(detached.status, 202)
+    assert.equal(host.getState().status, 'ready')
+    assert.equal(child.exitCode, null)
+    assert.doesNotMatch(JSON.stringify(logs), /server-provider-secret|desktop-provider-secret|rotated-provider-secret/)
+  } finally {
+    await host.close()
+    await new Promise((resolve) => upstream.close(resolve))
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('resident host rejects provider key files with group or world permissions', async () => {
+  const { createBackendHost } = await hostModule
+  const root = await mkdtemp(path.join(os.tmpdir(), 'openpet-resident-insecure-'))
+  const dataDir = path.join(root, 'data')
+  await mkdir(dataDir, { mode: 0o700 })
+  const providerKeysFile = path.join(dataDir, 'provider-keys.json')
+  await import('node:fs/promises').then(({ writeFile }) => writeFile(providerKeysFile, JSON.stringify({ 'ai.default': 'must-not-load' }), { mode: 0o600 }))
+  await chmod(providerKeysFile, 0o644)
+  let forked = false
+  const host = createBackendHost({
+    port: 0,
+    bridgePort: 48_341,
+    backendPort: 48_342,
+    dataDir,
+    providerKeysFile,
+    residentBackend: true,
+    fork: () => { forked = true; throw new Error('unexpected fork') }
+  })
+  try {
+    await assert.rejects(host.listen(), /permissions/i)
+    assert.equal(forked, false)
+  } finally {
+    await host.close()
     await rm(root, { recursive: true, force: true })
   }
 })
