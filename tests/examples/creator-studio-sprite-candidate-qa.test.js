@@ -36,6 +36,21 @@ test('candidate qa accepts bounded raw metrics', () => {
   assert.deepEqual(result.failures, [])
 })
 
+test('candidate qa uses the processed output anchor when raw provider cell placement drifts', () => {
+  const result = analyzeSpriteCandidate({
+    actionId: 'idle',
+    rawMetrics: { frames: [
+      { empty: false, edgeTouch: false, pasteClamped: false, unmatchedComponentCount: 0, subjectHeightRatio: 0.72, anchorY: 0.62, outputAnchorY: 0.9 },
+      { empty: false, edgeTouch: false, pasteClamped: false, unmatchedComponentCount: 0, subjectHeightRatio: 0.72, anchorY: 0.98, outputAnchorY: 0.9 }
+    ] },
+    profile: { canonicalStandingHeightRatio: 0.72, maxBodyScaleCv: 0.08, maxAnchorYStd: 0.05, maxCrossActionScaleDrift: 0.08 }
+  })
+
+  assert.equal(result.ok, true)
+  assert.deepEqual(result.failures, [])
+  assert.equal(result.metrics.anchorYStd, 0)
+})
+
 test('candidate qa accepts null profile while the idle scale profile is being established', () => {
   const result = analyzeSpriteCandidate({
     actionId: 'idle',
