@@ -9,6 +9,10 @@ const { OFFICIAL_FULL_PET_ROWS } = require('./full-pet-row-contract')
 const ATLAS_COLUMNS = 8
 const ATLAS_ROWS = 9
 const TRANSPARENT = { r: 0, g: 0, b: 0, alpha: 0 }
+// Review boards are sent as a single raster image to the visual evaluator. An
+// opaque neutral canvas keeps transparent sprite pixels distinguishable from
+// the transport/background and prevents a valid board from looking blank.
+const REVIEW_BOARD_BACKGROUND = { r: 236, g: 239, b: 243, alpha: 1 }
 
 const sha256File = (filePath) => crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex')
 
@@ -161,7 +165,7 @@ const writeBoard = async ({ width, height, outputPath, rendered }) => {
   const resolvedOutputPath = path.resolve(outputPath)
   fs.mkdirSync(path.dirname(resolvedOutputPath), { recursive: true })
   const temporaryPath = `${resolvedOutputPath}.tmp-${process.pid}-${Date.now()}.png`
-  await sharp({ create: { width, height, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+  await sharp({ create: { width, height, channels: 4, background: REVIEW_BOARD_BACKGROUND } })
     .composite(rendered.map((entry) => entry.composite))
     .png()
     .toFile(temporaryPath)

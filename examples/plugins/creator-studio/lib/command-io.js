@@ -22,7 +22,12 @@ const runCommand = async (handler) => {
     const result = await handler(context)
     writeResult({ ok: true, ...result })
   } catch (error) {
-    writeResult({ ok: false, error: error.message || 'Creator Studio command failed' })
+    writeResult({
+      ok: false,
+      error: error.message || 'Creator Studio command failed',
+      ...(error?.code ? { code: String(error.code).slice(0, 120) } : {}),
+      ...(typeof error?.retryable === 'boolean' ? { retryable: error.retryable } : {})
+    })
     process.exitCode = 1
   }
 }

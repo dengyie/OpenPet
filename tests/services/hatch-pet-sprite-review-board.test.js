@@ -114,6 +114,8 @@ test('final package evaluator board keeps source, canonical, action review, and 
     [1024, 0, 1024, 512],
     [0, 512, 2048, 1024]
   ])
+  const { data, info } = await sharp(result.path).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+  for (let index = 3; index < data.length; index += info.channels) assert.equal(data[index], 255)
 })
 
 test('final package evaluator board expands sparse official atlas cells into readable action details', async () => {

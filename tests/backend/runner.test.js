@@ -246,6 +246,23 @@ describe("Job runner · retry policy", () => {
 		}
 	})
 
+	it("does not retry a semantic Creator failure that is explicitly non-retryable", async () => {
+		let calls = 0
+		await withRunner({
+			"creator.workflow": async () => {
+				calls += 1
+				throw new ApiError("PROVIDER_ERROR", "final package visual gate failed", { status: 502, retryable: false })
+			},
+		}, async ({ queue, repo, runner }) => {
+			enqueue(queue, "semantic-failure", "creator.workflow")
+			const result = await runner.run()
+			assert.equal(result.status, "failed")
+			assert.equal(result.attempt, 1)
+			assert.equal(calls, 1)
+			assert.equal(result.error.retryable, false)
+		})
+	})
+
 	it("preserves Creator private input across automatic retries and clears it after the Job settles", async () => {
 		const { createCreatorJobHandlers } = await import("../../services/backend/jobs/handlers/creator.js")
 		const privateInputs = new Map([["creator-private-retry", { characterName: "Cat", referenceImageToken: "opaque" }]])
