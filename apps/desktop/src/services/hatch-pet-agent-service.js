@@ -723,7 +723,11 @@ const createHatchPetAgentService = ({
         const evaluation = String(scope || '').trim() === CANONICAL_COMPARISON_SCOPE
           ? validateCanonicalComparisonEvaluation(completion.arguments, { regions: board?.regions || [] })
           : validateSpriteEvaluation(completion.arguments, { scope, regions: board?.regions || [] })
-        if (String(scope || '').trim() !== CANONICAL_COMPARISON_SCOPE && isBoardUnreadableEvaluation(evaluation)) {
+        const normalizedScope = String(scope || '').trim()
+        const hasUnreadableEvaluation = normalizedScope === CANONICAL_COMPARISON_SCOPE
+          ? evaluation.candidates.some((candidate) => isBoardUnreadableEvaluation(candidate))
+          : isBoardUnreadableEvaluation(evaluation)
+        if (hasUnreadableEvaluation) {
           throw createInvalidSpriteEvaluationError('board-unreadable cannot be used for a non-empty generated review board')
         }
         const gate = String(scope || '').trim() === CANONICAL_COMPARISON_SCOPE
