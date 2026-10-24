@@ -1,8 +1,10 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
+const crypto = require('crypto')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
+const sharp = require('sharp')
 
 const { createImageGenerationModelService } = require('../../apps/desktop/src/services/image-generation-model-service')
 const { createSavedProviderModelCatalog } = require('../../apps/desktop/src/services/provider-model-catalog')
@@ -1867,6 +1869,56 @@ test('image generation model service uses image edits when reference conditionin
   assert.equal(result.conditioning.references[0].relativePath, 'runs/reference-conditioned/inputs/references/canonical-reference.png')
   assert.equal(result.conditioning.references[0].metadataRelativePath, 'runs/reference-conditioned/inputs/references/reference.json')
   assert.equal(result.conditioning.references[0].role, 'canonical-reference')
+})
+
+test('image generation model service bounds oversized reference images before provider upload', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-image-generation-reference-normalize-'))
+  const referencePath = path.join(dataDir, 'canonical-reference.png')
+  const raw = crypto.randomBytes(1024 * 1024 * 3)
+  await sharp(raw, { raw: { width: 1024, height: 1024, channels: 3 } })
+    .png()
+    .toFile(referencePath)
+  const sourceByteLength = fs.statSync(referencePath).size
+  assert.ok(sourceByteLength > 512 * 1024)
+  const requests = []
+  const service = createImageGenerationModelService({
+    settingsService: createSettingsService(providerSettings({ model: 'gpt-image-2' })),
+    secretService: createSecretService({
+      'secret:model.image.openai.apiKey': { value: 'sk-test-1234', label: 'Image API Key' }
+    }),
+    fetchImpl: async (url, options) => {
+      requests.push({ url, options })
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: [{ b64_json: Buffer.from('edited-image-bytes').toString('base64') }]
+        })
+      }
+    }
+  })
+
+  const result = await service.generateImage({
+    prompt: 'preserve the character identity while changing the pose',
+    output: { dataDir, dataRelativeDir: 'runs/reference-normalize/frames/base' },
+    constraints: { width: 1024, height: 1024, transparent: true },
+    referenceImages: [{
+      path: referencePath,
+      fileName: 'canonical-reference.png',
+      relativePath: 'inputs/references/canonical-reference.png',
+      metadataRelativePath: 'inputs/references/reference.json',
+      role: 'canonical-reference'
+    }]
+  })
+
+  assert.equal(requests.length, 1)
+  const requestBody = requests[0].options.body
+  assert.match(requestBody.toString('utf8'), /name="image"; filename="canonical-reference\.webp"/)
+  assert.match(requestBody.toString('utf8'), /Content-Type: image\/webp/)
+  assert.ok(requestBody.byteLength < sourceByteLength)
+  assert.equal(result.conditioning.references[0].fileName, 'canonical-reference.webp')
+  assert.equal(result.conditioning.references[0].mimeType, 'image/webp')
+  assert.ok(result.conditioning.references[0].byteLength < sourceByteLength)
 })
 
 for (const ambiguousFailure of ['http-524', 'fetch-failed']) {

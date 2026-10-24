@@ -1,6 +1,7 @@
 const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
+const sharp = require('sharp')
 const { sanitizeLogText } = require('./log-safety')
 const { readBoundedResponseBuffer } = require('./bounded-response-body')
 const { normalizeProviderResponseLimits } = require('./provider-response-limits')
@@ -42,6 +43,12 @@ const MAX_PROVIDER_OUTPUT_COUNT = 3
 const VERIFIED_CREATOR_WORKFLOW_IMAGE_MODELS = Object.freeze(['gpt-image-2', 'gpt-image-1', 'gpt-image-1.5'])
 const DIRECT_TRANSPARENT_IMAGE_MODELS = new Set(['gpt-image-1', 'gpt-image-1.5'])
 const MAX_PROVIDER_IMAGE_URL_REDIRECTS = 3
+// Reference images are conditioning inputs, not final assets. Keeping them
+// bounded avoids multi-megabyte multipart uploads that can spend the whole
+// provider timeout in the upstream image edit queue.
+const MAX_REFERENCE_IMAGE_DIMENSION = 768
+const MAX_REFERENCE_IMAGE_BYTES = 512 * 1024
+const REFERENCE_IMAGE_WEBP_QUALITY = 85
 const SAFE_TRACE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9:_-]{0,127}$/
 
 const normalizeImageModelCapabilityKey = (value) => String(value || '').trim().toLowerCase()
@@ -582,7 +589,7 @@ const assertExactlyOneReferenceImage = (referenceImages) => {
   }
 }
 
-const normalizeReferenceImages = (referenceImages = [], { dataDir } = {}) => {
+const normalizeReferenceImages = async (referenceImages = [], { dataDir } = {}) => {
   assertExactlyOneReferenceImage(referenceImages)
   const rawDataDir = String(dataDir || '').trim()
   if (!rawDataDir) {
@@ -599,8 +606,8 @@ const normalizeReferenceImages = (referenceImages = [], { dataDir } = {}) => {
     )
   }
   const realRoot = fs.realpathSync.native(root)
-  return referenceImages
-    .map((entry, index) => {
+  return Promise.all(referenceImages
+    .map(async (entry, index) => {
       if (!entry || typeof entry !== 'object') {
         throw createReferenceContractError(
           'reference_image_invalid',
@@ -644,19 +651,49 @@ const normalizeReferenceImages = (referenceImages = [], { dataDir } = {}) => {
       }
       const fileName = String(entry.fileName || path.basename(sourcePath) || `reference-${index + 1}.png`).trim() || `reference-${index + 1}.png`
       const mimeType = String(entry.mimeType || getImageMimeType(sourcePath)).trim() || 'image/png'
-      const bytes = fs.readFileSync(sourcePath)
+      const sourceBytes = fs.readFileSync(sourcePath)
+      let bytes = sourceBytes
+      let normalizedFileName = fileName
+      let normalizedMimeType = mimeType
+      // Avoid decoding ordinary small references on the request path. The
+      // production failure is caused by large uploads; those are always
+      // decoded and bounded before the multipart request is built.
+      const needsCompression = sourceBytes.byteLength > MAX_REFERENCE_IMAGE_BYTES
+      if (needsCompression) {
+        try {
+          const normalizedBytes = await sharp(sourceBytes)
+            .rotate()
+            .resize({
+              width: MAX_REFERENCE_IMAGE_DIMENSION,
+              height: MAX_REFERENCE_IMAGE_DIMENSION,
+              fit: 'inside',
+              withoutEnlargement: true
+            })
+            .webp({ quality: REFERENCE_IMAGE_WEBP_QUALITY, alphaQuality: REFERENCE_IMAGE_WEBP_QUALITY })
+            .toBuffer()
+          bytes = normalizedBytes
+          normalizedFileName = `${path.basename(fileName, path.extname(fileName)) || `reference-${index + 1}`}.webp`
+          normalizedMimeType = 'image/webp'
+        } catch (error) {
+          throw createReferenceContractError(
+            'reference_image_unusable',
+            `Reference image ${index + 1} could not be normalized: ${error?.message || error}`
+          )
+        }
+      }
+      const sha256 = crypto.createHash('sha256').update(bytes).digest('hex')
       return {
         path: realSourcePath,
-        fileName,
-        mimeType,
+        fileName: normalizedFileName,
+        mimeType: normalizedMimeType,
         byteLength: bytes.length,
-        sha256: String(entry.sha256 || sha256File(sourcePath)).trim() || sha256File(sourcePath),
+        sha256,
         relativePath: createSafeReferenceRelativePath(entry.relativePath),
         metadataRelativePath: createSafeReferenceRelativePath(entry.metadataRelativePath),
         role: String(entry.role || 'reference-image').trim() || 'reference-image',
         bytes
       }
-    })
+    }))
 }
 
 const createMultipartBoundary = () => `----OpenPetFormBoundary${crypto.randomBytes(12).toString('hex')}`
@@ -1973,7 +2010,7 @@ const createImageGenerationModelService = ({
       normalizedReferenceImages = []
     } else {
       assertExactlyOneReferenceImage(referenceImages)
-      normalizedReferenceImages = normalizeReferenceImages(referenceImages, {
+      normalizedReferenceImages = await normalizeReferenceImages(referenceImages, {
         dataDir: referenceDataDir || output?.dataDir
       })
       assertExactlyOneReferenceImage(normalizedReferenceImages)
