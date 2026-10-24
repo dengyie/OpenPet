@@ -324,6 +324,60 @@ test('sprite evaluation retries an all-zero board-unreadable semantic response',
   assert.match(h.calls[1].messages[0].content, /previous evaluation was invalid/i)
 })
 
+test('canonical comparison retries an all-zero board-unreadable candidate response', async () => {
+  const invalid = {
+    arguments: {
+      schemaVersion: 1,
+      recommendation: 'cannot-evaluate',
+      candidates: [{
+        candidateId: 'candidate-1',
+        confidence: 0,
+        scores: { identity: 0, silhouette: 0, smallScale: 0, completeness: 0, style: 0, overall: 0 },
+        defects: [{ code: 'board-unreadable', severity: 'blocking', regionId: 'candidate-1' }]
+      }]
+    },
+    provider: 'p',
+    model: 'm',
+    elapsedMs: 1
+  }
+  const valid = {
+    arguments: {
+      schemaVersion: 1,
+      recommendation: 'pass',
+      candidates: [{
+        candidateId: 'candidate-1',
+        confidence: 0.95,
+        scores: { identity: 96, silhouette: 92, smallScale: 90, completeness: 98, style: 92, overall: 94 },
+        defects: []
+      }]
+    },
+    provider: 'p',
+    model: 'm',
+    elapsedMs: 1
+  }
+  const h = createHarness({ completions: [invalid, valid] })
+  const boardPath = path.join(h.dataDir, 'board.png')
+  await sharp({ create: { width: 8, height: 8, channels: 4, background: '#fff' } }).png().toFile(boardPath)
+  const result = await h.service.evaluateSprite({
+    runId: 'run-canonical-semantic-evaluation-retry',
+    scope: 'canonical-comparison',
+    board: {
+      path: boardPath,
+      sha256: 'c'.repeat(64),
+      regions: [
+        { regionId: 'source', role: 'source-identity' },
+        { regionId: 'candidate-1', role: 'canonical-candidate' }
+      ]
+    },
+    qa: { ok: true, failures: [], metrics: {} },
+    profile: getQualityFirstQualityProfile(),
+    budgetLedger: createBudgetLedger({ startedAtMs: Date.now() })
+  })
+  assert.equal(result.gate.outcome, 'pass')
+  assert.equal(h.calls.length, 2)
+  assert.match(h.calls[1].messages[0].content, /previous evaluation was invalid/i)
+})
+
 test('sprite evaluation rejects an all-zero response even when the provider omits board-unreadable', async () => {
   const invalid = {
     arguments: {
