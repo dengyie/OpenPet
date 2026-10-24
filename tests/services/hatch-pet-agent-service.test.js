@@ -283,6 +283,47 @@ test('sprite evaluation retries one same-model timeout and preserves the request
   assert.equal(h.logs.some((entry) => entry.event === 'hatch-pet.evaluation.retrying' && entry.details?.runId === 'run-timeout-retry-evaluation'), true)
 })
 
+test('sprite evaluation retries an all-zero board-unreadable semantic response', async () => {
+  const invalid = {
+    arguments: {
+      schemaVersion: 1,
+      recommendation: 'cannot-evaluate',
+      confidence: 0,
+      scores: { identity: 0, actionReadability: 0, crossFrame: 0, crossAction: 0, smallScale: 0, style: 0, overall: 0 },
+      defects: [{ code: 'board-unreadable', severity: 'blocking', regionId: 'source' }]
+    },
+    provider: 'p',
+    model: 'm',
+    elapsedMs: 1
+  }
+  const valid = {
+    arguments: {
+      schemaVersion: 1,
+      recommendation: 'pass',
+      confidence: 0.95,
+      scores: { identity: 96, actionReadability: 92, crossFrame: 94, crossAction: 91, smallScale: 90, style: 92, overall: 93 },
+      defects: []
+    },
+    provider: 'p',
+    model: 'm',
+    elapsedMs: 1
+  }
+  const h = createHarness({ completions: [invalid, valid] })
+  const boardPath = path.join(h.dataDir, 'board.png')
+  await sharp({ create: { width: 8, height: 8, channels: 4, background: '#fff' } }).png().toFile(boardPath)
+  const result = await h.service.evaluateSprite({
+    runId: 'run-semantic-evaluation-retry',
+    scope: 'grounded-action',
+    board: { path: boardPath, sha256: 'a'.repeat(64), regions: [{ regionId: 'source' }, { regionId: 'frame-1' }] },
+    qa: { ok: true, failures: [], metrics: {} },
+    profile: getQualityFirstQualityProfile(),
+    budgetLedger: createBudgetLedger({ startedAtMs: Date.now() })
+  })
+  assert.equal(result.gate.outcome, 'pass')
+  assert.equal(h.calls.length, 2)
+  assert.match(h.calls[1].messages[0].content, /previous evaluation was invalid/i)
+})
+
 test('sprite evaluation propagates cancellation to the provider without retrying', async () => {
   let providerSignal
   const controller = new AbortController()
