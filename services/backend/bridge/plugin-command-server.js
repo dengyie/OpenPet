@@ -426,7 +426,11 @@ export function createPluginCommandServer({ plugins, jobs, logger, processLedger
 					const message = typeof structuredError?.error === "string" && structuredError.error
 						? structuredError.error
 						: sanitizePluginCommandText(stderr || `Plugin command exited with ${signal || code}`)
-					reject(new ApiError("PROVIDER_ERROR", message, { status: 502, details: structuredError }))
+					reject(new ApiError("PROVIDER_ERROR", message, {
+						status: 502,
+						details: structuredError,
+						...(typeof structuredError?.retryable === "boolean" ? { retryable: structuredError.retryable } : {})
+					}))
 					return
 				}
 				const parsed = parseResult(stdout)

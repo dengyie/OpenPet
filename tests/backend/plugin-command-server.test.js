@@ -188,6 +188,7 @@ test("T27 preserves sanitized structured command errors from nonzero exits", asy
 		"  ok: false,",
 		"  error: 'command failed at /Users/demo/private with sk-secret123',",
 		"  code: 'COMMAND_FAILED',",
+		"  retryable: false,",
 		"  details: { apiKey: 'raw-secret', path: '/tmp/private-output' }",
 		"}))",
 		"process.exitCode = 7",
@@ -213,11 +214,13 @@ test("T27 preserves sanitized structured command errors from nonzero exits", asy
 			(error) => {
 				assert.equal(error.code, "PROVIDER_ERROR")
 				assert.equal(error.status, 502)
+				assert.equal(error.retryable, false)
 				assert.equal(error.message, "command failed at [redacted-path] with [redacted-secret]")
 				assert.deepEqual(error.details, {
 					ok: false,
 					error: "command failed at [redacted-path] with [redacted-secret]",
 					code: "COMMAND_FAILED",
+					retryable: false,
 					details: { "[redacted-key]": "[redacted-secret]", path: "[redacted-path]" },
 				})
 				assert.doesNotMatch(JSON.stringify(error.details), /raw-secret|\/Users\/demo|\/tmp\/private-output|sk-secret123/)

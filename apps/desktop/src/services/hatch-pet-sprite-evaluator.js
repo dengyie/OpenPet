@@ -179,8 +179,6 @@ const isBoardUnreadableEvaluation = (evaluation) => {
   const scoreValues = scores && typeof scores === 'object' ? Object.values(scores) : []
   const allScoresZero = scoreValues.length > 0 && scoreValues.every((score) => score === 0)
   return evaluation?.confidence === 0 &&
-    defects.length > 0 &&
-    defects.every((defect) => defect?.code === 'board-unreadable') &&
     allScoresZero
 }
 

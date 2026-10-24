@@ -324,6 +324,47 @@ test('sprite evaluation retries an all-zero board-unreadable semantic response',
   assert.match(h.calls[1].messages[0].content, /previous evaluation was invalid/i)
 })
 
+test('sprite evaluation rejects an all-zero response even when the provider omits board-unreadable', async () => {
+  const invalid = {
+    arguments: {
+      schemaVersion: 1,
+      recommendation: 'cannot-evaluate',
+      confidence: 0,
+      scores: { identity: 0, actionDistinctness: 0, crossAction: 0, smallScale: 0, style: 0, overall: 0 },
+      defects: []
+    },
+    provider: 'p',
+    model: 'm',
+    elapsedMs: 1
+  }
+  const valid = {
+    arguments: {
+      schemaVersion: 1,
+      recommendation: 'pass',
+      confidence: 0.95,
+      scores: { identity: 96, actionDistinctness: 92, crossAction: 94, smallScale: 90, style: 92, overall: 93 },
+      defects: []
+    },
+    provider: 'p',
+    model: 'm',
+    elapsedMs: 1
+  }
+  const h = createHarness({ completions: [invalid, valid] })
+  const boardPath = path.join(h.dataDir, 'board.png')
+  await sharp({ create: { width: 8, height: 8, channels: 4, background: '#fff' } }).png().toFile(boardPath)
+  const result = await h.service.evaluateSprite({
+    runId: 'run-zero-without-defect',
+    scope: 'final-package',
+    board: { path: boardPath, sha256: 'b'.repeat(64), regions: [{ regionId: 'source' }, { regionId: 'atlas' }] },
+    qa: { ok: true, failures: [], metrics: {} },
+    profile: getQualityFirstQualityProfile(),
+    budgetLedger: createBudgetLedger({ startedAtMs: Date.now() })
+  })
+  assert.equal(result.gate.outcome, 'pass')
+  assert.equal(h.calls.length, 2)
+  assert.match(h.calls[1].messages[0].content, /previous evaluation was invalid/i)
+})
+
 test('sprite evaluation propagates cancellation to the provider without retrying', async () => {
   let providerSignal
   const controller = new AbortController()

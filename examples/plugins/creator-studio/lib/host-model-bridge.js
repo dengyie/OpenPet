@@ -432,6 +432,7 @@ const evaluateQualityFirstFinalPackage = async ({
     }
     const error = new Error(`Quality-first final package visual gate failed: ${failures.join(', ')}`)
     error.code = 'final_package_visual_gate_failed'
+    error.retryable = false
     error.gate = evaluated?.gate || null
     error.evidenceRelativePath = String(evaluated?.evidenceRelativePath || '')
     throw error

@@ -1178,6 +1178,7 @@ const runQualityFirstActionRepair = async ({
     if (idleOk && (!packageResult || typeof packageResult !== 'object' || !packageResult.artifacts || typeof packageResult.artifacts !== 'object')) {
       const error = new Error('Quality-first final package artifacts are missing')
       error.code = 'quality_first_final_package_missing'
+      error.retryable = false
       throw error
     }
     const { artifacts: packageArtifacts, ...publicPackageResult } = packageResult && typeof packageResult === 'object'
