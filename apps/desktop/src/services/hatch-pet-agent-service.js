@@ -24,6 +24,7 @@ const {
   createSpriteEvaluatorRequest,
   evaluateCanonicalComparisonGate,
   evaluateVisualGate,
+  isBoardUnreadableEvaluation,
   recordSpriteEvaluation,
   validateCanonicalComparisonEvaluation,
   validateSpriteEvaluation
@@ -62,6 +63,7 @@ const normalizeText = (value, maxChars = 2000) => String(value || '')
   .slice(0, maxChars)
 
 const sanitizeErrorMessage = (error) => sanitizeLogText(error?.message || error || 'Unknown error', { maxChars: 240 })
+const createInvalidSpriteEvaluationError = (message) => Object.assign(new Error(`Invalid sprite evaluation: ${message}`), { code: 'invalid_sprite_evaluation' })
 const isInvalidModelDecisionError = (error) => {
   const message = error?.message || ''
   return /^Invalid hatch-pet decision:/.test(message) ||
@@ -721,6 +723,9 @@ const createHatchPetAgentService = ({
         const evaluation = String(scope || '').trim() === CANONICAL_COMPARISON_SCOPE
           ? validateCanonicalComparisonEvaluation(completion.arguments, { regions: board?.regions || [] })
           : validateSpriteEvaluation(completion.arguments, { scope, regions: board?.regions || [] })
+        if (String(scope || '').trim() !== CANONICAL_COMPARISON_SCOPE && isBoardUnreadableEvaluation(evaluation)) {
+          throw createInvalidSpriteEvaluationError('board-unreadable cannot be used for a non-empty generated review board')
+        }
         const gate = String(scope || '').trim() === CANONICAL_COMPARISON_SCOPE
           ? evaluateCanonicalComparisonGate({ evaluation, profile: effectiveProfile, regions: board?.regions || [] })
           : evaluateVisualGate({ scope, ...evaluation, profile: effectiveProfile, regions: board?.regions || [] })

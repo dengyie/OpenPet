@@ -9,6 +9,7 @@ const { getQualityFirstQualityProfile } = require('../../examples/plugins/creato
 const {
   createSpriteEvaluatorRequest,
   evaluateCanonicalComparisonGate,
+  isBoardUnreadableEvaluation,
   validateCanonicalComparisonEvaluation,
   evaluateVisualGate,
   recordSpriteEvaluation,
@@ -81,6 +82,19 @@ test('code-owned gate rejects blocking defects and cannot evaluate low confidenc
   assert.ok(gate.failures.includes('visual-confidence-low'))
 })
 
+test('all-zero board-unreadable output is recognized as an invalid semantic evaluation', () => {
+  assert.equal(isBoardUnreadableEvaluation({
+    confidence: 0,
+    scores: { identity: 0, actionReadability: 0, crossFrame: 0, crossAction: 0, smallScale: 0, style: 0, overall: 0 },
+    defects: [{ code: 'board-unreadable', severity: 'blocking', regionId: 'source' }]
+  }), true)
+  assert.equal(isBoardUnreadableEvaluation({
+    confidence: 0.1,
+    scores: { identity: 0, actionReadability: 0, crossFrame: 0, crossAction: 0, smallScale: 0, style: 0, overall: 0 },
+    defects: [{ code: 'board-unreadable', severity: 'blocking', regionId: 'source' }]
+  }), false)
+})
+
 test('scope-specific gates require the exact grounded, airborne, and package dimensions', () => {
   const profile = getQualityFirstQualityProfile()
   for (const [scope, scores, failingDimension] of [
@@ -108,6 +122,8 @@ test('evaluator request contains one review image and no mutable workflow author
   const serialized = JSON.stringify(request)
   assert.equal(request.tool.function.name, 'hatch_pet_sprite_evaluation')
   assert.equal(request.messages[1].content.filter((part) => part.type === 'image_url').length, 1)
+  assert.match(request.messages[0].content, /Use board-unreadable only when the board itself is missing, blank, corrupted, or impossible to visually inspect/i)
+  assert.match(request.messages[0].content, /When any sprite regions are visible, score their quality and use the specific visual defects instead/i)
   assert.equal(serialized.includes(boardPath), false)
   assert.equal(serialized.includes('approve'), false)
   assert.equal(serialized.includes('activate'), false)
