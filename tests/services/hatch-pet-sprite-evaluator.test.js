@@ -93,6 +93,11 @@ test('all-zero board-unreadable output is recognized as an invalid semantic eval
     scores: { identity: 0, actionReadability: 0, crossFrame: 0, crossAction: 0, smallScale: 0, style: 0, overall: 0 },
     defects: [{ code: 'board-unreadable', severity: 'blocking', regionId: 'source' }]
   }), false)
+  assert.equal(isBoardUnreadableEvaluation({
+    confidence: 0.8,
+    scores: { identity: 0, silhouette: 0, smallScale: 0, completeness: 0, style: 0, overall: 0 },
+    defects: [{ code: 'board-unreadable', severity: 'blocking', regionId: 'candidate-1' }]
+  }), true)
 })
 
 test('scope-specific gates require the exact grounded, airborne, and package dimensions', () => {

@@ -178,8 +178,9 @@ const isBoardUnreadableEvaluation = (evaluation) => {
   const defects = Array.isArray(evaluation?.defects) ? evaluation.defects : []
   const scoreValues = scores && typeof scores === 'object' ? Object.values(scores) : []
   const allScoresZero = scoreValues.length > 0 && scoreValues.every((score) => score === 0)
-  return evaluation?.confidence === 0 &&
-    allScoresZero
+  const boardUnreadable = defects.some((defect) => defect?.code === 'board-unreadable')
+  return (evaluation?.confidence === 0 && allScoresZero) ||
+    (evaluation?.confidence >= 0.5 && allScoresZero && boardUnreadable)
 }
 
 const evaluateCanonicalComparisonGate = ({ evaluation, profile, regions = [] } = {}) => {
