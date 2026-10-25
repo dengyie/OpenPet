@@ -100,6 +100,24 @@ test('rejects unsafe extension entry declarations', () => {
   }), /Plugin service entry cwd must be a safe relative path/)
 })
 
+test('normalizes optional service bridge permissions as a subset of plugin permissions', () => {
+  const manifest = normalizePluginManifest({
+    id: 'service-permissions',
+    name: 'Service Permissions',
+    version: '1.0.0',
+    permissions: ['pet:say', 'assets:generate'],
+    servicePermissions: ['pet:say']
+  })
+  assert.deepEqual(manifest.servicePermissions, ['pet:say'])
+  assert.throws(() => normalizePluginManifest({
+    id: 'service-permissions-invalid',
+    name: 'Service Permissions',
+    version: '1.0.0',
+    permissions: ['pet:say'],
+    servicePermissions: ['assets:generate']
+  }), /must be declared in permissions/)
+})
+
 test('keeps legacy commands as the executable command list when both command shapes exist', () => {
   const manifest = normalizePluginManifest({
     id: 'mixed-commands',

@@ -165,3 +165,50 @@ test("T26 refuses unsupported service bridge permissions before opening or spawn
 	assert.deepEqual(bridgeCalls, [])
 	assert.deepEqual(spawnCalls, [])
 })
+
+test("T26 allows a service to declare no bridge permissions while retaining command permissions", async () => {
+	const { createPluginProcessRuntime } = await import("../../services/backend/domains/plugins/process-runtime.js")
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-t26-service-permissions-"))
+	const spawnCalls = []
+	const bridgeCalls = []
+	let child
+	const runtime = createPluginProcessRuntime({
+		platform: "linux",
+		processEnv: { PATH: "/usr/bin" },
+		bridgeServer: {
+			listen: async ({ pluginId, token }) => {
+				bridgeCalls.push(["listen", pluginId, token])
+				return { url: "http://127.0.0.1:1", token }
+			},
+			closePlugin: async (pluginId) => { bridgeCalls.push(["close", pluginId]) },
+		},
+		spawnProcess: (...args) => {
+			spawnCalls.push(args)
+			child = new EventEmitter()
+			child.pid = 123
+			return child
+		},
+		signalProcessTree: (_pid, signal) => {
+			if (signal === "SIGTERM") child?.emit("exit", 0, signal)
+		},
+	})
+	const definition = {
+		manifest: {
+			id: "openpet.creator-studio",
+			basePath: root,
+			entries: { services: [{ id: "studio", command: "node service.js", cwd: "." }] },
+		},
+	}
+	const started = await runtime.start({
+		plugin: {
+			id: definition.manifest.id,
+			permissions: ["pet-pack:import", "model:image-generate"],
+			servicePermissions: [],
+		},
+		definition,
+	})
+	assert.equal(started.processes.length, 1)
+	assert.equal(spawnCalls.length, 1)
+	assert.equal(bridgeCalls[0][0], "listen")
+	await runtime.stop({ plugin: { id: definition.manifest.id } })
+})

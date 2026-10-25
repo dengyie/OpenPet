@@ -259,6 +259,18 @@ const normalizePluginManifest = (manifest, { source = 'local', basePath = '' } =
       throw new Error(`Unknown plugin permission: ${permission}`)
     }
   }
+  const servicePermissions = manifest.servicePermissions == null ? null : manifest.servicePermissions
+  if (servicePermissions !== null) {
+    if (!Array.isArray(servicePermissions)) throw new Error('Plugin servicePermissions must be an array')
+    for (const permission of servicePermissions) {
+      if (!KNOWN_PLUGIN_PERMISSIONS.has(permission)) {
+        throw new Error(`Unknown plugin service permission: ${permission}`)
+      }
+      if (!permissions.includes(permission)) {
+        throw new Error(`Plugin service permission must be declared in permissions: ${permission}`)
+      }
+    }
+  }
 
   const entries = normalizeExtensionEntries(manifest.entries)
   const legacyCommands = normalizeCommands(manifest.commands)
@@ -277,6 +289,7 @@ const normalizePluginManifest = (manifest, { source = 'local', basePath = '' } =
     main: normalizeRelativeFilePath(manifest.main, 'main', '.js'),
     configSchema: normalizedConfigPath,
     permissions: [...permissions],
+    ...(servicePermissions === null ? {} : { servicePermissions: [...servicePermissions] }),
     network: normalizeNetwork(manifest.network),
     signature: normalizeSignature(manifest.signature),
     commands,

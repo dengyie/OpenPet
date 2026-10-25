@@ -5,6 +5,7 @@
   "profile": "hybrid",
   "description": "Create, review, import, and export Codex-compatible OpenPet pets.",
   "permissions": ["pet-pack:import", "pet:say", "model:image-generate", "assets:generate", "trigger-proposals:write"],
+  "servicePermissions": [],
   "config": "config.schema.json",
   "entries": {
     "commands": [

@@ -71,6 +71,39 @@ test("Creator result serialization strips absolute paths from public run state",
 	assert.equal(JSON.stringify(state).includes("/private/secret.png"), false)
 })
 
+test("Backend Creator reads terminal state from the validated plugin run file", async (t) => {
+	const ctx = await fixture()
+	t.after(() => ctx.db.close())
+	const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-creator-run-state-sync-"))
+	t.after(() => fs.rmSync(dataDir, { recursive: true, force: true }))
+	const runId = "run-disk-failed"
+	const runDir = path.join(dataDir, "runs", runId)
+	fs.mkdirSync(runDir, { recursive: true })
+	fs.writeFileSync(path.join(runDir, "run.json"), JSON.stringify({
+		runId,
+		status: "failed",
+		currentStep: "final-package",
+		reviewStatus: "pending",
+		importStatus: "not-imported",
+		error: "visual-defect-board-unreadable",
+		backendStatus: { state: "failed", message: "visual-defect-board-unreadable" },
+	}))
+	ctx.db.prepare("INSERT INTO creator_runs (id, owner, flow_id, mode, status, state_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+		.run(runId, "desktop", null, "full-pet", "awaiting_identity_review", JSON.stringify({ runId, creatorExecution: "backend" }), 1, 2)
+	const creator = (await import("../../services/backend/domains/creator/index.js")).createCreatorDomain({
+		db: ctx.db,
+		creatorDataDir: () => dataDir,
+		runPluginCommand: async () => { throw new Error("not expected") },
+	})
+	const state = await creator.getState()
+	assert.equal(state.backendLastRun.status, "failed")
+	assert.equal(state.backendLastRun.state.currentStep, "final-package")
+	assert.equal(state.backendLastRun.state.error, "visual-defect-board-unreadable")
+	assert.equal(state.backendLastRun.diagnostics.runStatus, "failed")
+	const last = await creator.getLastRun()
+	assert.equal(last.run.status, "failed")
+})
+
 test("Creator reference deletion is delegated to Shell before metadata removal", async (t) => {
 	const ctx = await fixture()
 	t.after(() => ctx.db.close())
