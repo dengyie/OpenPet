@@ -218,10 +218,30 @@ export function createCreatorDomain({ db, shell, ai, enqueueJob, runPluginComman
 		const run = publicRun(row)
 		const state = run.state && typeof run.state === "object" ? run.state : {}
 		const diagnostics = runDiagnostics(run.id)
+		// Backend-owned Creator commands persist their durable state in the
+		// plugin run workspace. The SQLite row is an index and can lag when a
+		// long-running command exits or is killed before its final callback.
+		// Prefer the validated on-disk terminal/progress fields for reads so the
+		// control plane never reports a stale awaiting/running state.
+		const diskStatus = diagnostics?.runStatus || ""
+		const diskStep = diagnostics?.currentStep || ""
+		const diskReviewStatus = diagnostics?.reviewStatus || ""
+		const diskImportStatus = diagnostics?.importStatus || ""
+		const diskFailure = diagnostics?.failureReason || ""
 		return {
 			...run,
+			...(diskStatus ? { status: diskStatus } : {}),
 			diagnostics,
-			state: { ...state, runId: state.runId || run.id, diagnostics },
+			state: {
+				...state,
+				runId: state.runId || run.id,
+				...(diskStatus ? { status: diskStatus } : {}),
+				...(diskStep ? { currentStep: diskStep } : {}),
+				...(diskReviewStatus ? { reviewStatus: diskReviewStatus } : {}),
+				...(diskImportStatus ? { importStatus: diskImportStatus } : {}),
+				...(diskFailure ? { error: diskFailure } : {}),
+				diagnostics,
+			},
 		}
 	}
 	const backendRunState = (row) => row ? parseJson(row.state_json) : null

@@ -38,7 +38,8 @@ function creatorDirs(manifest) {
 
 function unsupportedBridgePermissions(plugin) {
 	const supported = new Set(PLUGIN_RUNTIME_PERMISSIONS)
-	return [...new Set(Array.isArray(plugin?.permissions) ? plugin.permissions : [])]
+	const declared = plugin?.servicePermissions ?? plugin?.permissions
+	return [...new Set(Array.isArray(declared) ? declared : [])]
 		.filter((permission) => !supported.has(permission))
 }
 
