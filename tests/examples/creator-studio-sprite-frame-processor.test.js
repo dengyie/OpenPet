@@ -33,6 +33,8 @@ test('sprite processor splits exact cells and applies one sheet-level scale', as
   assert.equal(new Set(result.metrics.frames.map((frame) => frame.appliedScale)).size, 1)
   assert.equal(result.metrics.frames.some((frame) => frame.pasteClamped), false)
   assert.equal(result.metrics.frames.some((frame) => frame.edgeTouch), false)
+  assert.equal(result.metrics.frames.every((frame) => frame.outputSubjectHeightRatio === 92 / 128), true)
+  assert.equal(result.metrics.frames.every((frame) => Number.isFinite(frame.outputAnchorYRatio)), true)
   for (const frame of result.frames) assert.equal(fs.existsSync(frame.path), true)
   assert.equal(fs.existsSync(result.contactSheet.path), true)
   assert.equal(fs.existsSync(result.gif.path), true)

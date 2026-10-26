@@ -18,10 +18,19 @@ const analyzeSpriteCandidate = ({ actionId, rawMetrics = {}, profile = {}, actio
   if (frames.some((frame) => frame.edgeTouch)) failures.push('cell-edge-contact')
   if (frames.some((frame) => frame.pasteClamped)) failures.push('paste-clamped')
   if (frames.some((frame) => Number(frame.unmatchedComponentCount) > 0)) failures.push('detached-effect-contamination')
+  // Scale QA intentionally uses the raw cleaned provider cell. The processor
+  // applies one sheet-level runtime scale after this measurement; using the
+  // normalized output here would hide provider-authored cross-action drift.
   const heights = frames.map((frame) => Number(frame.subjectHeightRatio)).filter(Number.isFinite)
   const anchors = frames.map((frame) => {
+    const processedRatio = Number(frame.outputAnchorYRatio)
+    if (Number.isFinite(processedRatio)) return processedRatio
     const processedAnchor = Number(frame.outputAnchorY)
-    return Number.isFinite(processedAnchor) ? processedAnchor : Number(frame.anchorY)
+    if (Number.isFinite(processedAnchor)) {
+      const cellHeight = Number(profile.runtimeCell?.height) || 128
+      return processedAnchor > 1 ? processedAnchor / cellHeight : processedAnchor
+    }
+    return Number(frame.anchorY)
   }).filter(Number.isFinite)
   const meanHeight = average(heights)
   const bodyScaleCv = meanHeight > 0 ? standardDeviation(heights) / meanHeight : 0
@@ -32,7 +41,9 @@ const analyzeSpriteCandidate = ({ actionId, rawMetrics = {}, profile = {}, actio
     : 0
   if (bodyScaleCv > (Number(profile.maxBodyScaleCv) || 0.08)) failures.push('body-scale-variance-high')
   if (crossActionScaleDrift > (Number(profile.maxCrossActionScaleDrift) || 0.08)) failures.push('body-scale-profile-drift')
-  if (anchorYStd > (Number(profile.maxAnchorYStd) || 0.05)) failures.push('anchor-baseline-drift')
+  if (actionPolicy.anchorPolicy !== 'action-relative-root-v1' && anchorYStd > (Number(profile.maxAnchorYStd) || 0.05)) {
+    failures.push('anchor-baseline-drift')
+  }
   const trajectory = rawMetrics.rawTrajectory
   const jumpExcursion = trajectory
     ? Math.max(0, Number(trajectory.maxY) - Number(trajectory.minY))

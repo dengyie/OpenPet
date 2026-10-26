@@ -241,6 +241,9 @@ const measureBodyMask = ({ data, width, height, characterClass = 'grounded-compa
 const createCharacterScaleProfile = ({ canonicalMetrics, idleMetrics = [], characterClass, anchorPolicy, canonicalMasterSha256, idleCheckpointSha256, processorVersion = 1 } = {}) => {
   if (!canonicalMetrics || canonicalMetrics.empty) throw new Error('Character scale profile requires canonical metrics')
   const idle = Array.isArray(idleMetrics) ? idleMetrics : []
+  const idleStandingHeightRatio = average(idle
+    .map((entry) => Number(entry?.subjectHeightRatio))
+    .filter(Number.isFinite))
   const base = {
     version: 1,
     measurementVersion: 1,
@@ -257,7 +260,10 @@ const createCharacterScaleProfile = ({ canonicalMetrics, idleMetrics = [], chara
     canonicalSatelliteDescriptors: canonicalMetrics.identityComponents?.slice(1) || [],
     runtimeCell: { width: 128, height: 128 },
     rawGridCanvas: { width: 1024, height: 1024 },
-    canonicalStandingHeightRatio: Number(canonicalMetrics.subjectHeightRatio) || 0,
+    // Cross-action QA measures raw provider cells. The accepted idle sheet is
+    // the only same-layout baseline available after identity selection; the
+    // canonical master is a full-canvas image and cannot be compared directly.
+    canonicalStandingHeightRatio: idleStandingHeightRatio || Number(canonicalMetrics.subjectHeightRatio) || 0,
     canonicalBodyWidthRatio: Number(canonicalMetrics.subjectWidthRatio) || 0,
     canonicalAlphaAreaRatio: Number(canonicalMetrics.alphaAreaRatio) || 0,
     canonicalCoreThicknessP75Ratio: Number(canonicalMetrics.coreThicknessP75Ratio) || 0,

@@ -168,8 +168,11 @@ const processSpriteSheet = async ({ inputPath, outputDir, layout, profile = {}, 
         unmatchedComponentCount: cell.metrics.unmatchedComponents.length,
         subjectHeightRatio: cell.metrics.subjectHeightRatio,
         subjectWidthRatio: cell.metrics.subjectWidthRatio,
+        outputSubjectHeightRatio: resizedHeight / 128,
+        outputSubjectWidthRatio: resizedWidth / 128,
         anchorY: rawAnchorY,
         outputAnchorY,
+        outputAnchorYRatio: outputAnchorY / 128,
         coreThicknessP75Ratio: cell.metrics.coreThicknessP75Ratio
       })
       continue
@@ -189,8 +192,11 @@ const processSpriteSheet = async ({ inputPath, outputDir, layout, profile = {}, 
       unmatchedComponentCount: cell.metrics.unmatchedComponents.length,
       subjectHeightRatio: cell.metrics.subjectHeightRatio,
       subjectWidthRatio: cell.metrics.subjectWidthRatio,
+      outputSubjectHeightRatio: resizedHeight / 128,
+      outputSubjectWidthRatio: resizedWidth / 128,
       anchorY: rawAnchorY,
       outputAnchorY,
+      outputAnchorYRatio: outputAnchorY / 128,
       coreThicknessP75Ratio: cell.metrics.coreThicknessP75Ratio
     })
   }

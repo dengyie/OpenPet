@@ -51,6 +51,45 @@ test('candidate qa uses the processed output anchor when raw provider cell place
   assert.equal(result.metrics.anchorYStd, 0)
 })
 
+test('candidate qa compares raw provider cells with the accepted idle layout baseline', () => {
+  const result = analyzeSpriteCandidate({
+    actionId: 'running',
+    rawMetrics: { frames: [
+      { empty: false, edgeTouch: false, pasteClamped: false, unmatchedComponentCount: 0, subjectHeightRatio: 0.675, outputSubjectHeightRatio: 0.71875, anchorY: 0.9, outputAnchorY: 115.5, outputAnchorYRatio: 0.90234375 },
+      { empty: false, edgeTouch: false, pasteClamped: false, unmatchedComponentCount: 0, subjectHeightRatio: 0.679, outputSubjectHeightRatio: 0.71875, anchorY: 0.9, outputAnchorY: 115.5, outputAnchorYRatio: 0.90234375 }
+    ] },
+    profile: {
+      canonicalStandingHeightRatio: 0.677,
+      runtimeStandingHeightPx: 92,
+      runtimeCell: { width: 128, height: 128 },
+      maxBodyScaleCv: 0.08,
+      maxAnchorYStd: 0.05,
+      maxCrossActionScaleDrift: 0.08
+    }
+  })
+
+  assert.equal(result.ok, true)
+  assert.deepEqual(result.failures, [])
+  assert.ok(result.metrics.crossActionScaleDrift < 0.004)
+  assert.equal(result.metrics.anchorYStd, 0)
+})
+
+test('candidate qa treats pixel output anchors as pixels when checking normalized baseline drift', () => {
+  const result = analyzeSpriteCandidate({
+    actionId: 'jumping',
+    rawMetrics: { frames: [
+      { empty: false, edgeTouch: false, pasteClamped: false, unmatchedComponentCount: 0, subjectHeightRatio: 0.675, outputSubjectHeightRatio: 0.71875, anchorY: 0.63, outputAnchorY: 64 },
+      { empty: false, edgeTouch: false, pasteClamped: false, unmatchedComponentCount: 0, subjectHeightRatio: 0.675, outputSubjectHeightRatio: 0.71875, anchorY: 0.49, outputAnchorY: 64.5 }
+    ], rawTrajectory: { minY: 0.49, maxY: 0.63 } },
+    profile: { runtimeStandingHeightPx: 92, runtimeCell: { width: 128, height: 128 }, maxBodyScaleCv: 0.08, maxAnchorYStd: 0.05, maxCrossActionScaleDrift: 0.08 },
+    actionPolicy: { minJumpExcursionRatio: 0.08 }
+  })
+
+  assert.equal(result.ok, true)
+  assert.deepEqual(result.failures, [])
+  assert.ok(result.metrics.anchorYStd < 0.005)
+})
+
 test('candidate qa accepts null profile while the idle scale profile is being established', () => {
   const result = analyzeSpriteCandidate({
     actionId: 'idle',
