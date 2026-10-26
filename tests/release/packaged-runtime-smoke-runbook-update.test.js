@@ -101,7 +101,8 @@ test('createRunbook documents every required packaged runtime check', () => {
   assert.match(runbook, /App path: mac-arm64\/OpenPet\.app/)
   assert.match(runbook, /This file does not prove runtime success by itself/)
   assert.match(runbook, /npm run validate-packaged-runtime-smoke-report -- release\/packaged-runtime-smoke-report\.json/)
-  assert.match(runbook, /--require-signed/)
+  assert.match(runbook, /--require-signature-integrity/)
+  assert.match(runbook, /does not establish Gatekeeper, SmartScreen, notarization, or publisher trust/)
 
   for (const check of REQUIRED_CHECKS) {
     assert.equal(runbook.includes(`\`${check.id}\``), true)
@@ -175,7 +176,7 @@ test('update parseArgs rejects incomplete or unsafe flag combinations', () => {
   assert.throws(() => parseUpdateArgs(['report.json', '--check']), /--check requires a value/)
   assert.throws(() => parseUpdateArgs(['report.json', '--check', 'transparent-background', '--status', 'done']), /Invalid check status/)
   assert.throws(() => parseUpdateArgs(['report.json', '--status', 'pass']), /--check is required/)
-  assert.throws(() => parseUpdateArgs(['report.json', '--require-signed']), /--require-signed must be used with --validate-ready/)
+  assert.throws(() => parseUpdateArgs(['report.json', '--require-signature-integrity']), /--require-signature-integrity must be used with --validate-ready/)
 })
 
 test('updateReport updates environment, artifact, fixtures, linked evidence, and selected check evidence', () => {

@@ -332,11 +332,11 @@ const createChecks = (docsRoot, { projectContext, context }) => {
       id: 'todo-keeps-real-blocker-truth',
       description: 'TODO should keep the remaining blocker language explicit about real/manual-required gaps.',
       run: () => /self-signed artifacts on their target operating systems/i.test(todo) &&
-        /locally generated self-signed Windows certificate/i.test(todo) &&
+        /locally generated self-signed Windows certificate(?:\s*\(short-lived\))?/i.test(todo) &&
         /observed packaged-app behavior/i.test(todo) &&
         /actual external compatible package source/i.test(todo) &&
         /real configured packaged provider session/i.test(todo) &&
-        /Self-Signed Distribution Policy[\s\S]*Adapt packaging, CI, and release evidence to self-managed signing[\s\S]*Validate the self-signed artifacts on their target operating systems[\s\S]*Replace the legacy `--require-signed` and notarization-based closure gates/i.test(todo),
+        /Self-Signed Distribution Policy[\s\S]*Adapt packaging and CI to self-managed signing[\s\S]*Validate the self-signed artifacts on their target operating systems[\s\S]*Replace the remaining legacy release archive\/closure helpers/i.test(todo),
       failure: 'docs/TODO.md no longer keeps the current TODO blocker truth explicit about manual-required and real external gaps.'
     },
     {

@@ -131,12 +131,12 @@ test('validateReport requires every runtime check to pass before readiness', () 
   assert.equal(linkedReady.ok, true)
   assert.equal(linkedReady.summary.smokeReady, true)
 
-  const signedReady = validateReport(report, { requireSigned: true })
+  const signedReady = validateReport(report, { requireSignatureIntegrity: true })
   assert.equal(signedReady.ok, false)
   assert.match(signedReady.errors.join('\n'), /artifact\.signed must be true/)
 })
 
-test('validateReport accepts a signed all-pass Windows runtime smoke report', () => {
+test('validateReport accepts self-managed Windows signature integrity for an all-pass runtime smoke report', () => {
   const report = createPackagedRuntimeSmokeReport({
     releaseDir: createReleaseDir(),
     platform: 'win32',
@@ -154,9 +154,9 @@ test('validateReport accepts a signed all-pass Windows runtime smoke report', ()
     check.evidence = `Windows evidence for ${check.id}`
   }
 
-  const result = validateReport(report, { requireSigned: true })
+  const result = validateReport(report, { requireSignatureIntegrity: true })
   assert.equal(result.ok, true)
-  assert.equal(result.summary.officialReady, true)
+  assert.equal(result.summary.signatureIntegrityReady, true)
 })
 
 test('createPackagedRuntimeSmokeReport infers Windows artifact arch from release files during cross-platform structure checks', () => {
@@ -200,7 +200,7 @@ test('validateReport rejects ready runtime reports without a linked desktop pick
     check.evidence = `Evidence for ${check.id}`
   }
 
-  const result = validateReport(report, { requireSigned: true })
+  const result = validateReport(report, { requireSignatureIntegrity: true })
   assert.equal(result.ok, false)
   assert.match(result.errors.join('\n'), /linkedEvidence\.desktopPickerSmokeReport is required/)
 })

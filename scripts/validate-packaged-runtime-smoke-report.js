@@ -27,12 +27,12 @@ const LINKED_PICKER_CHECK_IDS = new Set([
 ])
 
 const usage = () => [
-  'Usage: node scripts/validate-packaged-runtime-smoke-report.js <report.json> [--allow-pending] [--require-signed]',
+  'Usage: node scripts/validate-packaged-runtime-smoke-report.js <report.json> [--allow-pending] [--require-signature-integrity]',
   '',
   'Validates packaged OpenPet runtime smoke evidence for macOS or Windows.',
   'By default every required runtime check must pass.',
   '--allow-pending validates generated or in-progress reports without claiming runtime smoke success.',
-  '--require-signed additionally requires signed artifact evidence for the reported platform.'
+  '--require-signature-integrity requires a valid signature-integrity result for the reported platform; it does not establish OS trust.'
 ].join('\n')
 
 const isObject = (value) => value && typeof value === 'object' && !Array.isArray(value)
@@ -48,6 +48,7 @@ const parseArgs = (argv) => {
   const options = {
     reportPath: null,
     allowPending: false,
+    requireSignatureIntegrity: false,
     requireSigned: false,
     help: false
   }
@@ -55,7 +56,10 @@ const parseArgs = (argv) => {
   for (const arg of argv) {
     if (arg === '--allow-pending') {
       options.allowPending = true
+    } else if (arg === '--require-signature-integrity') {
+      options.requireSignatureIntegrity = true
     } else if (arg === '--require-signed') {
+      options.requireSignatureIntegrity = true
       options.requireSigned = true
     } else if (arg === '--help' || arg === '-h') {
       options.help = true
@@ -78,7 +82,7 @@ const loadReport = (reportPath) => {
 
 const validateSignatureEvidence = ({ report, errors }) => {
   if (!isObject(report.artifact)) return
-  if (report.artifact.signed !== true) errors.push('artifact.signed must be true when --require-signed is used')
+  if (report.artifact.signed !== true) errors.push('artifact.signed must be true when --require-signature-integrity is used')
 
   if (report.platform === 'darwin') {
     if (String(report.artifact.signatureStatus || '').toLowerCase() !== 'valid') {
@@ -101,7 +105,7 @@ const validateSignatureEvidence = ({ report, errors }) => {
 
 const validateReport = (report, options = {}) => {
   const allowPending = Boolean(options.allowPending)
-  const requireSigned = Boolean(options.requireSigned)
+  const requireSignatureIntegrity = Boolean(options.requireSignatureIntegrity || options.requireSigned)
   const errors = []
   const warnings = []
 
@@ -121,10 +125,10 @@ const validateReport = (report, options = {}) => {
     if (!allowPending && !hasEvidence(report.artifact.appPath) && !hasEvidence(report.artifact.installer)) {
       errors.push('artifact.appPath or artifact.installer evidence is required')
     }
-    if (requireSigned) {
+    if (requireSignatureIntegrity) {
       validateSignatureEvidence({ report, errors })
     } else if (report.artifact.signed !== true) {
-      warnings.push('Packaged runtime artifact is not signed; this report cannot prove official release readiness')
+      warnings.push('Packaged runtime artifact is unsigned; signature integrity is not established')
     }
   }
 
@@ -190,7 +194,8 @@ const validateReport = (report, options = {}) => {
       passed,
       total: REQUIRED_CHECKS.length,
       smokeReady: errors.length === 0 && !allowPending,
-      officialReady: errors.length === 0 && !allowPending && requireSigned && report.artifact?.signed === true
+      signatureIntegrityReady: errors.length === 0 && !allowPending && requireSignatureIntegrity && report.artifact?.signed === true,
+      officialReady: errors.length === 0 && !allowPending && requireSignatureIntegrity && report.artifact?.signed === true
     }
   }
 }
@@ -216,10 +221,10 @@ const main = () => {
 
   if (options.allowPending) {
     console.log('Report structure is valid.')
-  } else if (options.requireSigned) {
-    console.log('Packaged runtime smoke report passed signed official-readiness checks.')
+  } else if (options.requireSignatureIntegrity) {
+    console.log('Packaged runtime smoke report passed signature-integrity checks. OS trust is a separate observation.')
   } else {
-    console.log('Packaged runtime smoke report passed smoke checks. Official release readiness still requires signed artifact validation.')
+    console.log('Packaged runtime smoke report passed runtime checks. Signature integrity was not required.')
   }
 }
 

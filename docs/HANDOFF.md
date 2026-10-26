@@ -1,6 +1,6 @@
 # OpenPet Handoff
 
-> Last updated: 2026-10-15
+> Last updated: 2026-10-27
 > Canonical active queue: [`TODO.md`](./TODO.md)
 > Branch: `main`
 
@@ -21,6 +21,7 @@ This file is the compact maintainer continuation note. Historical phase-level de
 
 - OpenPet is an Electron desktop pet platform with a React Control Center, pet packs, AI configuration, local extensions, and loopback-only local HTTP/MCP.
 - The current target is an unsigned/self-signed demo. Do not buy paid signing/notarization. The Guangzhou Backend host is active over EasyTier `ssh gz-cvm`; see [`deployment/openpet-mesh-backend.md`](./deployment/openpet-mesh-backend.md) and its sanitized smoke record.
+- Self-managed release packaging is now wired in the workflow: macOS runs the ad-hoc `codesign` hook and Windows CI creates a short-lived self-signed certificate. The packaged-runtime validator uses `--require-signature-integrity`; this proves artifact integrity only and makes no Gatekeeper, SmartScreen, notarization, or publisher-trust claim. The archive/closure helpers still need the same terminology migration.
 - The current Shell/Backend migration path is `main.js` -> `createOpenPetRuntime()` -> `createSidecarRuntimeCoordinator()` -> `spawnSidecar()` -> `services/backend/index.js`; the migration is active and `src/main/` remains a live Shell boundary.
 - The current executable baseline is 87 IPC channels (81 direct registrations and 6 event-only; 41 keep, 31 cutover, 15 blocked), 136 registered REST routes, 149 documented route rows, 21 SSE events, 8 topics, 17 Job kinds, and 6 Job statuses. Settings cursor import and scale preview travel over a strict Backend route and typed Shell reverse bridge; the native picker and host effects remain Shell-owned. Run `npm run build:contracts` before `npm run check:api-contract`.
 - 2026-10-09 Pet Pack picker source cutover: Control Center requests `POST /pet-packs/validate` with `{ operation: "pick" }`; the Shell owns the native picker, strips the selected path, and returns an opaque selection ID. HTTP import accepts only that ID; validate/export reject renderer path bodies. A real Backend HTTP -> Sidecar reverse-channel accept/cancel/path-injection smoke now passes as part of the focused picker suite (**92/92**). The compatibility IPC remains pending reachability proof.

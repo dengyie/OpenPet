@@ -132,43 +132,7 @@ jobs:
             echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Inspect signing secrets
-        id: signing
-        env:
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          missing=""
-          test -n "$CSC_LINK" || missing="$missing CSC_LINK"
-          test -n "$CSC_KEY_PASSWORD" || missing="$missing CSC_KEY_PASSWORD"
-          test -n "$APPLE_ID" || missing="$missing APPLE_ID"
-          test -n "$APPLE_APP_SPECIFIC_PASSWORD" || missing="$missing APPLE_APP_SPECIFIC_PASSWORD"
-          test -n "$APPLE_TEAM_ID" || missing="$missing APPLE_TEAM_ID"
-
-          if [ -z "$missing" ]; then
-            echo "mode=signed" >> "$GITHUB_OUTPUT"
-            echo "All signing and notarization secrets are present. Building a signed macOS release."
-          else
-            echo "mode=unsigned" >> "$GITHUB_OUTPUT"
-            echo "::notice::Missing signing secrets:$missing. Building an unsigned macOS release."
-          fi
-
-      - name: Build signed distribution
-        if: steps.signing.outputs.mode == 'signed'
-        run: npm run dist -- --publish never
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-
-      - name: Build unsigned distribution
-        if: steps.signing.outputs.mode == 'unsigned'
+      - name: Build self-managed macOS distribution
         run: npm run dist -- --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -176,22 +140,13 @@ jobs:
 
       - name: Create macOS release evidence
         shell: bash
-        env:
-          SIGNING_MODE: ${{ steps.signing.outputs.mode }}
         run: |
           app_path="$(find release -maxdepth 3 -name 'OpenPet.app' -type d | head -n 1)"
-
-          if [ "$SIGNING_MODE" = "signed" ]; then
-            notarization_text=$'status: Accepted\nsource: GitHub Actions signed macOS release workflow completed electron-builder notarization\n'
-          else
-            notarization_text=$'status: NotSubmitted\nsource: unsigned macOS release workflow\n'
-          fi
-
           if [ -n "$app_path" ]; then
-            npm run create-macos-release-evidence -- --app "$app_path" --notarization-text "$notarization_text" --output-dir release/macos-release-evidence
+            npm run create-macos-release-evidence -- --app "$app_path" --notarization-text $'status: NotApplicable\nsource: self-managed signing policy; notarization is intentionally not used\n' --output-dir release/macos-release-evidence
           else
-            echo "::warning::OpenPet.app was not found under release/. Writing pending macOS release evidence."
-            npm run create-macos-release-evidence -- --skip-codesign --skip-spctl --notarization-text "$notarization_text" --output-dir release/macos-release-evidence
+            echo "::warning::OpenPet.app was not found under release/. Writing pending self-managed macOS release evidence."
+            npm run create-macos-release-evidence -- --skip-codesign --skip-spctl --notarization-text $'status: NotApplicable\nsource: self-managed signing policy; notarization is intentionally not used\n' --output-dir release/macos-release-evidence
           fi
 
       - name: Upload macOS release evidence
@@ -271,48 +226,33 @@ jobs:
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Inspect Windows signing secrets
-        id: signing
-        shell: bash
-        env:
-          WINDOWS_CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
-          WINDOWS_CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
-          RELEASE_TAG: ${{ steps.release.outputs.tag }}
-          IS_PRERELEASE: ${{ steps.release.outputs.prerelease }}
+      - name: Build self-managed Windows distribution
+        shell: pwsh
         run: |
-          missing=""
-          test -n "$WINDOWS_CSC_LINK" || missing="$missing WINDOWS_CSC_LINK"
-          test -n "$WINDOWS_CSC_KEY_PASSWORD" || missing="$missing WINDOWS_CSC_KEY_PASSWORD"
-
-          if [ -z "$missing" ]; then
-            echo "mode=signed" >> "$GITHUB_OUTPUT"
-            echo "All Windows signing secrets are present. Building a signed Windows release."
-          elif [ "$IS_PRERELEASE" = "true" ]; then
-            echo "mode=unsigned-prerelease" >> "$GITHUB_OUTPUT"
-            echo "::notice::Missing Windows signing secrets:$missing. Building unsigned prerelease assets for $RELEASE_TAG; filenames will include unsigned."
-          else
-            echo "mode=unsigned-stable" >> "$GITHUB_OUTPUT"
-            echo "::notice::Missing Windows signing secrets:$missing. Building an unsigned Windows release for $RELEASE_TAG; filenames will include unsigned. Windows smoke validation stays pending until a Windows host runs it."
-          fi
-
-      - name: Build signed Windows distribution
-        if: steps.signing.outputs.mode == 'signed'
-        run: npm run dist -- --win --x64 --publish never
+          $certificate = New-SelfSignedCertificate `
+            -Type CodeSigningCert `
+            -Subject 'CN=OpenPet Self-Signed Release' `
+            -CertStoreLocation 'Cert:\CurrentUser\My' `
+            -KeyExportPolicy Exportable `
+            -NotAfter (Get-Date).AddDays(3)
+          $pfxPath = Join-Path $env:RUNNER_TEMP 'openpet-self-signed-release.pfx'
+          $password = [Guid]::NewGuid().ToString('N')
+          $securePassword = ConvertTo-SecureString $password -AsPlainText -Force
+          try {
+            Export-PfxCertificate -Cert $certificate -FilePath $pfxPath -Password $securePassword | Out-Null
+            $env:CSC_LINK = $pfxPath
+            $env:CSC_KEY_PASSWORD = $password
+            npm run dist -- --win --x64 --publish never
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Remove-Item -LiteralPath "Cert:\CurrentUser\My\$($certificate.Thumbprint)" -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $pfxPath -Force -ErrorAction SilentlyContinue
+          }
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
 
-      - name: Build unsigned Windows distribution
-        if: steps.signing.outputs.mode == 'unsigned-prerelease' || steps.signing.outputs.mode == 'unsigned-stable'
-        run: npm run dist -- --win --x64 --publish never
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_IDENTITY_AUTO_DISCOVERY: false
-
-      - name: Mark unsigned Windows assets
-        if: steps.signing.outputs.mode == 'unsigned-prerelease' || steps.signing.outputs.mode == 'unsigned-stable'
-        run: npm run prepare-windows-release-assets
+      - name: Mark self-signed Windows assets
+        run: npm run prepare-windows-release-assets -- --self-signed
 
       - name: Create pending Windows smoke report
         run: npm run create-windows-smoke-report -- --output release/windows-smoke-report.json
