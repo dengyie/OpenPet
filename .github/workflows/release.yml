@@ -106,6 +106,7 @@ jobs:
             Import-Certificate -FilePath $cerPath -CertStoreLocation 'Cert:\CurrentUser\Root' | Out-Null
             $env:CSC_LINK = $pfxPath
             $env:CSC_KEY_PASSWORD = $password
+            $env:ELECTRON_BUILDER_OFFLINE = 'true'
             npm run dist -- --win --x64 --publish never
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             npm run prepare-windows-release-assets -- --self-signed
@@ -279,6 +280,7 @@ jobs:
             Export-PfxCertificate -Cert $certificate -FilePath $pfxPath -Password $securePassword | Out-Null
             $env:CSC_LINK = $pfxPath
             $env:CSC_KEY_PASSWORD = $password
+            $env:ELECTRON_BUILDER_OFFLINE = 'true'
             npm run dist -- --win --x64 --publish never
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } finally {
