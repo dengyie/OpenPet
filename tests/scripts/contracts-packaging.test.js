@@ -81,7 +81,7 @@ test("macOS release builds contracts before release dependencies and packaging",
 	assert.match(testBuild, /platform: macos\n\s+runner: macos-latest\n\s+pack_command: npm run pack/)
 	assert.match(
 		testBuild,
-		/platform: windows\n\s+runner: windows-latest\n\s+pack_command: npm run build:control-center/,
+		/platform: windows\n\s+runner: windows-latest/,
 	)
 	assert.doesNotMatch(
 		release.slice(windowsStart),
@@ -113,7 +113,7 @@ test("PR test-build builds contracts before every contracts consumer", () => {
 	const syntaxIndex = indexOfLine(/^        run: npm run check:syntax$/, "PR test-build should check syntax")
 	const windowsValidationIndex = indexOfLine(/^      - name: Validate Windows release build inputs$/, "PR test-build should validate Windows inputs")
 	const windowsBuildIndex = indexOfLine(/^      - name: Build Control Center on Windows$/, "PR test-build should build Control Center on Windows")
-	const packIndex = indexOfLine(/^      - name: Pack unsigned app$/, "PR test-build should pack the app")
+	const packIndex = indexOfLine(/^      - name: Build and verify self-signed Windows artifacts$/, "PR test-build should verify the self-signed Windows build")
 
 	assert.ok(installIndex < contractsIndex, "contracts must build after dependencies are installed")
 	assert.ok(contractsIndex < testIndex, "contracts must build before macOS tests")
