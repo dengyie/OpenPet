@@ -40,5 +40,8 @@ test('release packaging uses self-managed signing and has no paid certificate or
   assert.match(workflow, /New-SelfSignedCertificate/)
   assert.match(workflow, /-Subject 'CN=OpenPet Self-Signed Release'/)
   assert.match(workflow, /prepare-windows-release-assets -- --self-signed/)
+  assert.match(workflow, /Build and verify self-signed Windows artifacts/)
+  assert.match(workflow, /Get-AuthenticodeSignature/)
+  assert.match(workflow, /expected Valid/)
   assert.match(workflow, /status: NotApplicable[\s\S]*notarization is intentionally not used/)
 })

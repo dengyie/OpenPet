@@ -42,7 +42,6 @@ jobs:
             pack_command: npm run pack
           - platform: windows
             runner: windows-latest
-            pack_command: npm run build:control-center && npx electron-builder --win --x64 --dir --publish never
     runs-on: ${{ matrix.runner }}
 
     steps:
@@ -83,8 +82,41 @@ jobs:
         if: matrix.platform == 'windows'
         run: npm run build:control-center
 
-      - name: Pack unsigned app
+      - name: Pack macOS app
+        if: matrix.platform == 'macos'
         run: ${{ matrix.pack_command }}
+
+      - name: Build and verify self-signed Windows artifacts
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $certificate = New-SelfSignedCertificate `
+            -Type CodeSigningCert `
+            -Subject 'CN=OpenPet Self-Signed CI Test' `
+            -CertStoreLocation 'Cert:\CurrentUser\My' `
+            -KeyExportPolicy Exportable `
+            -NotAfter (Get-Date).AddDays(3)
+          $pfxPath = Join-Path $env:RUNNER_TEMP 'openpet-self-signed-ci-test.pfx'
+          $password = [Guid]::NewGuid().ToString('N')
+          $securePassword = ConvertTo-SecureString $password -AsPlainText -Force
+          try {
+            Export-PfxCertificate -Cert $certificate -FilePath $pfxPath -Password $securePassword | Out-Null
+            $env:CSC_LINK = $pfxPath
+            $env:CSC_KEY_PASSWORD = $password
+            npm run dist -- --win --x64 --publish never
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            npm run prepare-windows-release-assets -- --self-signed
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+            $installer = Get-ChildItem release -Filter '*self-signed.exe' | Select-Object -First 1
+            if (-not $installer) { throw 'No self-signed Windows installer was produced' }
+            $signature = Get-AuthenticodeSignature -LiteralPath $installer.FullName
+            if ($signature.Status -ne 'Valid') { throw "Windows Authenticode status is $($signature.Status), expected Valid" }
+            Write-Output "Verified self-signed installer: $($installer.Name); Authenticode=$($signature.Status)"
+          } finally {
+            Remove-Item -LiteralPath "Cert:\CurrentUser\My\$($certificate.Thumbprint)" -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $pfxPath -Force -ErrorAction SilentlyContinue
+          }
 
   release-macos:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
