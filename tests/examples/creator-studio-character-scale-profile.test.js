@@ -56,6 +56,7 @@ test('character scale profile binds morphology, masks, and idle measurements', (
   assert.equal(profile.componentPolicy, 'reference-guided-body-v1')
   assert.equal(profile.characterClass, 'grounded-compact-character')
   assert.equal(profile.measurementVersion, 1)
+  assert.equal(profile.canonicalStandingHeightRatio, 0.72)
   assert.match(profile.hash, /^[a-f0-9]{64}$/)
   assert.equal(Object.isFrozen(profile), true)
   assert.equal(Object.isFrozen(profile.canonicalSatelliteDescriptors), true)
