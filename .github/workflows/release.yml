@@ -97,10 +97,13 @@ jobs:
             -KeyExportPolicy Exportable `
             -NotAfter (Get-Date).AddDays(3)
           $pfxPath = Join-Path $env:RUNNER_TEMP 'openpet-self-signed-ci-test.pfx'
+          $cerPath = Join-Path $env:RUNNER_TEMP 'openpet-self-signed-ci-test.cer'
           $password = [Guid]::NewGuid().ToString('N')
           $securePassword = ConvertTo-SecureString $password -AsPlainText -Force
           try {
             Export-PfxCertificate -Cert $certificate -FilePath $pfxPath -Password $securePassword | Out-Null
+            Export-Certificate -Cert $certificate -FilePath $cerPath | Out-Null
+            Import-Certificate -FilePath $cerPath -CertStoreLocation 'Cert:\CurrentUser\Root' | Out-Null
             $env:CSC_LINK = $pfxPath
             $env:CSC_KEY_PASSWORD = $password
             npm run dist -- --win --x64 --publish never
@@ -111,11 +114,13 @@ jobs:
             $installer = Get-ChildItem release -Filter '*self-signed.exe' | Select-Object -First 1
             if (-not $installer) { throw 'No self-signed Windows installer was produced' }
             $signature = Get-AuthenticodeSignature -LiteralPath $installer.FullName
-            if ($signature.Status -ne 'Valid') { throw "Windows Authenticode status is $($signature.Status), expected Valid" }
-            Write-Output "Verified self-signed installer: $($installer.Name); Authenticode=$($signature.Status)"
+            if ($signature.Status -ne 'Valid') { throw "Windows Authenticode status is $($signature.Status), expected Valid. $($signature.StatusMessage)" }
+            Write-Output "Verified self-signed installer with temporary CI trust: $($installer.Name); Authenticode=$($signature.Status)"
           } finally {
+            Remove-Item -LiteralPath "Cert:\CurrentUser\Root\$($certificate.Thumbprint)" -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath "Cert:\CurrentUser\My\$($certificate.Thumbprint)" -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath $pfxPath -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $cerPath -Force -ErrorAction SilentlyContinue
           }
 
   release-macos:

@@ -42,6 +42,8 @@ test('release packaging uses self-managed signing and has no paid certificate or
   assert.match(workflow, /prepare-windows-release-assets -- --self-signed/)
   assert.match(workflow, /Build and verify self-signed Windows artifacts/)
   assert.match(workflow, /Get-AuthenticodeSignature/)
+  assert.match(workflow, /Import-Certificate[\s\S]*Cert:\\CurrentUser\\Root/)
+  assert.match(workflow, /Remove-Item -LiteralPath "Cert:\\CurrentUser\\Root\\\$\(\$certificate\.Thumbprint\)"/)
   assert.match(workflow, /expected Valid/)
   assert.match(workflow, /status: NotApplicable[\s\S]*notarization is intentionally not used/)
 })
