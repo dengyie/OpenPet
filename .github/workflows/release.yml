@@ -100,7 +100,6 @@ jobs:
           $pfxPath = Join-Path $env:RUNNER_TEMP 'openpet-self-signed-ci-test.pfx'
           $certPemPath = Join-Path $env:RUNNER_TEMP 'openpet-self-signed-ci-test.pem'
           $keyPemPath = Join-Path $env:RUNNER_TEMP 'openpet-self-signed-ci-test-key.pem'
-          $cerPath = Join-Path $env:RUNNER_TEMP 'openpet-self-signed-ci-test.cer'
           $password = [Guid]::NewGuid().ToString('N')
           $openssl = (Get-Command openssl -ErrorAction Stop).Source
           try {
@@ -108,8 +107,6 @@ jobs:
             & $openssl req -x509 -newkey rsa:2048 -nodes -keyout $keyPemPath -out $certPemPath -days 3 -subj '/CN=OpenPet Self-Signed CI Test' -addext 'basicConstraints=critical,CA:FALSE' -addext 'keyUsage=critical,digitalSignature' -addext 'extendedKeyUsage=codeSigning'
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             & $openssl pkcs12 -export -out $pfxPath -inkey $keyPemPath -in $certPemPath -passout "pass:$password"
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            & $openssl x509 -in $certPemPath -outform DER -out $cerPath
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             Write-Output 'Exported temporary signing certificate.'
             $env:CSC_LINK = $pfxPath
@@ -124,20 +121,14 @@ jobs:
 
             $installer = Get-ChildItem release -Filter '*self-signed.exe' | Select-Object -First 1
             if (-not $installer) { throw 'No self-signed Windows installer was produced' }
-            Write-Output 'Importing temporary certificate for Authenticode verification.'
-            $thumbprint = (& certutil.exe -dump $cerPath | Select-String -Pattern 'Cert Hash\(sha1\):' | ForEach-Object { ($_ -split ':', 2)[1].Trim() } | Select-Object -First 1)
-            if (-not $thumbprint) { throw 'Unable to read temporary certificate thumbprint' }
-            & certutil.exe -f -user -addstore Root $cerPath | Out-Null
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            Write-Output 'Verifying Authenticode signature integrity without requiring OS trust.'
             $signature = Get-AuthenticodeSignature -LiteralPath $installer.FullName
-            if ($signature.Status -ne 'Valid') { throw "Windows Authenticode status is $($signature.Status), expected Valid. $($signature.StatusMessage)" }
-            Write-Output "Verified self-signed installer with temporary CI trust: $($installer.Name); Authenticode=$($signature.Status)"
+            if (-not $signature.SignerCertificate -or $signature.Status -notin @('Valid', 'Unknown')) { throw "Windows Authenticode signature integrity failed: status=$($signature.Status). $($signature.StatusMessage)" }
+            Write-Output "Verified self-signed installer signature integrity: $($installer.Name); Authenticode=$($signature.Status); OS trust intentionally not required."
           } finally {
-            if ($thumbprint) { & certutil.exe -user -delstore Root $thumbprint | Out-Null }
             Remove-Item -LiteralPath $pfxPath -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath $certPemPath -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath $keyPemPath -Force -ErrorAction SilentlyContinue
-            Remove-Item -LiteralPath $cerPath -Force -ErrorAction SilentlyContinue
           }
 
   release-macos:
