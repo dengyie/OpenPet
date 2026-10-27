@@ -33,6 +33,7 @@ on:
 jobs:
   test-build:
     if: github.event_name == 'pull_request'
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -88,7 +89,12 @@ jobs:
 
       - name: Build and verify self-signed Windows artifacts
         if: matrix.platform == 'windows'
+        timeout-minutes: 20
         shell: pwsh
+        env:
+          DEBUG: electron-builder
+          SIGNTOOL_TIMEOUT: 120000
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $certificate = New-SelfSignedCertificate `
             -Type CodeSigningCert `
@@ -107,8 +113,10 @@ jobs:
             $env:CSC_LINK = $pfxPath
             $env:CSC_KEY_PASSWORD = $password
             $env:ELECTRON_BUILDER_OFFLINE = 'true'
+            Write-Output 'Starting Windows package build with electron-builder diagnostics.'
             npm run dist -- --win --x64 --publish never
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            Write-Output 'Windows package build completed; preparing release assets.'
             npm run prepare-windows-release-assets -- --self-signed
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -218,6 +226,7 @@ jobs:
 
   release-windows:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 60
     runs-on: windows-latest
     permissions:
       contents: write
@@ -265,7 +274,11 @@ jobs:
           fi
 
       - name: Build self-managed Windows distribution
+        timeout-minutes: 45
         shell: pwsh
+        env:
+          DEBUG: electron-builder
+          SIGNTOOL_TIMEOUT: 120000
         run: |
           $certificate = New-SelfSignedCertificate `
             -Type CodeSigningCert `
@@ -281,15 +294,14 @@ jobs:
             $env:CSC_LINK = $pfxPath
             $env:CSC_KEY_PASSWORD = $password
             $env:ELECTRON_BUILDER_OFFLINE = 'true'
+            Write-Output 'Starting Windows package build with electron-builder diagnostics.'
             npm run dist -- --win --x64 --publish never
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            Write-Output 'Windows package build completed.'
           } finally {
             Remove-Item -LiteralPath "Cert:\CurrentUser\My\$($certificate.Thumbprint)" -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath $pfxPath -Force -ErrorAction SilentlyContinue
           }
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Mark self-signed Windows assets
         run: npm run prepare-windows-release-assets -- --self-signed
 
