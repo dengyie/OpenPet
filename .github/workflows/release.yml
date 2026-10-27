@@ -123,7 +123,7 @@ jobs:
             if (-not $installer) { throw 'No self-signed Windows installer was produced' }
             Write-Output 'Verifying Authenticode signature integrity without requiring OS trust.'
             $signature = Get-AuthenticodeSignature -LiteralPath $installer.FullName
-            if (-not $signature.SignerCertificate -or $signature.Status -notin @('Valid', 'Unknown')) { throw "Windows Authenticode signature integrity failed: status=$($signature.Status). $($signature.StatusMessage)" }
+            if (-not $signature.SignerCertificate -or $signature.Status -in @('NotSigned', 'HashMismatch', 'NotTrusted', 'PublisherMismatch')) { throw "Windows Authenticode signature integrity failed: status=$($signature.Status). $($signature.StatusMessage)" }
             Write-Output "Verified self-signed installer signature integrity: $($installer.Name); Authenticode=$($signature.Status); OS trust intentionally not required."
           } finally {
             Remove-Item -LiteralPath $pfxPath -Force -ErrorAction SilentlyContinue

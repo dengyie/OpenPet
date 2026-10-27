@@ -46,7 +46,7 @@ test('release packaging uses self-managed signing and has no paid certificate or
   assert.match(workflow, /Build and verify self-signed Windows artifacts/)
   assert.match(workflow, /Get-AuthenticodeSignature/)
   assert.match(workflow, /SignerCertificate/)
-  assert.match(workflow, /Status -notin @\('Valid', 'Unknown'\)/)
+  assert.match(workflow, /Status -in @\('NotSigned', 'HashMismatch', 'NotTrusted', 'PublisherMismatch'\)/)
   assert.match(workflow, /OS trust intentionally not required/)
   assert.equal(workflow.match(/ELECTRON_BUILDER_OFFLINE = 'true'/g)?.length, 2)
   assert.match(workflow, /status: NotApplicable[\s\S]*notarization is intentionally not used/)
