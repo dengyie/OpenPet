@@ -67,7 +67,7 @@ test('parseArgs accepts evidence directory, report, signing, output, and json fl
     'windows-smoke-evidence',
     '--report',
     'windows-smoke-report.json',
-    '--require-signed',
+    '--require-signature-integrity',
     '--output',
     'summary.md',
     '--json'
@@ -75,7 +75,7 @@ test('parseArgs accepts evidence directory, report, signing, output, and json fl
 
   assert.equal(options.evidenceDir, 'windows-smoke-evidence')
   assert.equal(options.reportPath, 'windows-smoke-report.json')
-  assert.equal(options.requireSigned, true)
+  assert.equal(options.requireSignatureIntegrity, true)
   assert.equal(options.outputPath, 'summary.md')
   assert.equal(options.json, true)
 })
@@ -106,7 +106,7 @@ test('createWindowsSmokeEvidenceSummary records hashes and pending report state 
   assert.equal(summary.report.structuralValidation.ok, true)
   assert.equal(summary.report.readinessValidation.ok, false)
   assert.match(summary.evidence.presentFiles[0].sha256, /^[a-f0-9]{64}$/)
-  assert.match(summary.warnings.join('\n'), /cannot prove signed official readiness/)
+  assert.match(summary.warnings.join('\n'), /cannot prove Windows signature integrity/)
 })
 
 test('renderMarkdownSummary includes evidence metadata, report status, and readiness warning', () => {

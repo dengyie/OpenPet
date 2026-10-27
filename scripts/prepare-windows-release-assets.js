@@ -23,15 +23,16 @@ const hasUnsignedMarker = (fileName) => /(^|[-_.])unsigned([-_.]|$)/i.test(fileN
 
 const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-const insertUnsignedMarker = (fileName) => {
-  if (hasUnsignedMarker(fileName)) return fileName
+const insertReleaseMarker = (fileName, marker = 'unsigned') => {
+  if (!['unsigned', 'self-signed'].includes(marker)) throw new Error('marker must be unsigned or self-signed')
+  if (hasUnsignedMarker(fileName) || /(^|[-_.])self-signed([-_.]|$)/i.test(fileName)) return fileName
   if (/\.blockmap$/i.test(fileName)) {
-    return fileName.replace(/\.blockmap$/i, '-unsigned.blockmap')
+    return fileName.replace(/\.blockmap$/i, `-${marker}.blockmap`)
   }
-  return fileName.replace(/(\.[^.]+)$/i, '-unsigned$1')
+  return fileName.replace(/(\.[^.]+)$/i, `-${marker}$1`)
 }
 
-const renameUnsignedWindowsAssets = ({ releaseDir, dryRun = false } = {}) => {
+const renameWindowsReleaseAssets = ({ releaseDir, marker = 'unsigned', dryRun = false } = {}) => {
   if (!releaseDir) throw new Error('releaseDir is required')
   if (!fs.existsSync(releaseDir)) throw new Error(`Release directory not found: ${releaseDir}`)
 
@@ -44,7 +45,7 @@ const renameUnsignedWindowsAssets = ({ releaseDir, dryRun = false } = {}) => {
   const renames = []
   for (const fileName of entries) {
     if (fileName === 'latest.yml') continue
-    const nextName = insertUnsignedMarker(fileName)
+    const nextName = insertReleaseMarker(fileName, marker)
     if (nextName === fileName) continue
 
     const from = path.join(releaseDir, fileName)
@@ -81,11 +82,16 @@ const renameUnsignedWindowsAssets = ({ releaseDir, dryRun = false } = {}) => {
 }
 
 const main = () => {
-  const releaseDir = process.argv[2] || path.join(__dirname, '..', 'release')
-  const result = renameUnsignedWindowsAssets({ releaseDir })
+  const args = process.argv.slice(2)
+  const markerIndex = args.indexOf('--self-signed')
+  const marker = markerIndex >= 0 ? 'self-signed' : 'unsigned'
+  if (markerIndex >= 0) args.splice(markerIndex, 1)
+  if (args.some((arg) => arg.startsWith('--'))) throw new Error('Unexpected argument')
+  const releaseDir = args[0] || path.join(__dirname, '..', 'release')
+  const result = renameWindowsReleaseAssets({ releaseDir, marker })
 
   if (result.renamed.length === 0) {
-    console.log('No unsigned Windows release assets needed renaming.')
+    console.log(`No ${marker} Windows release assets needed renaming.`)
     return
   }
 
@@ -105,6 +111,6 @@ if (require.main === module) {
 }
 
 module.exports = {
-  insertUnsignedMarker,
-  renameUnsignedWindowsAssets
+  insertReleaseMarker,
+  renameWindowsReleaseAssets
 }

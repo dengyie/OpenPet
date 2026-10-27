@@ -1,11 +1,11 @@
 # OpenPet Development Summary
 
-> Last updated: 2026-10-15
+> Last updated: 2026-10-27
 > Branch: `main`
 
 This is the compact engineering snapshot for the current repository state. Use [`TODO.md`](./TODO.md) for active work, and use `docs/phases/` plus `docs/reviews/` for detailed implementation history.
 
-The 2026-10-15 code-only continuation passes Backend **424/424**, Tools **683/683**, and changed Settings/AI/Pet Pack regression suites **68/68**. Typecheck, syntax, contract reconciliation, docs drift, and the Control Center production build pass. `test:core` has **26 browser-launch failures** because the pinned Chromium headless shell is unavailable; no Electron or desktop UI acceptance was performed.
+The 2026-10-27 release-policy continuation passes the focused release/signing/runtime tooling suites (**80/80** across the changed release tests and Windows asset tests). Typecheck, syntax, contract reconciliation, docs drift, and the Control Center production build remain the code gates; no Electron or desktop UI acceptance was performed. The full Core browser suite remains dependent on the locally absent pinned Chromium headless shell, while GitHub CI remains the browser-regression gate.
 
 ## Platform Baseline
 
@@ -47,7 +47,7 @@ OpenPet currently has:
 - A reconstructed Windows smoke archive now exists at `docs/release-evidence/windows-smoke/2026-07-06T16-46-49Z-v1.0.1-rc.3-authenticated-artifact-archive-rerun/`; it preserves the authenticated imported pending report inside the reviewed archive shape without claiming real smoke evidence.
 - A reconstructed Windows desktop-picker archive now exists at `docs/release-evidence/desktop-picker/2026-07-06T16-46-49Z-win32-x64-authenticated-artifact-archive-rerun/`; it corrects the prior cross-platform metadata drift back to `win32/x64` while staying explicitly pending and structure-only.
 - A current `rc.3` closure rerun now exists at `docs/release-evidence/signed-release-closure/2026-07-06T16-46-49Z-v1.0.1-rc.3-authenticated-closure-archive-rerun/`; it consolidates the authenticated release artifacts and reconstructed Windows archives, still lands at `releaseReady: false`, now records macOS codesign/notarization/Gatekeeper as explicit `fail`, and replaces earlier missing-archive blockers with explicit archived-but-not-ready Windows smoke and desktop-picker manifests.
-- Current distribution uses self-managed signing only: macOS ad-hoc or a locally controlled identity, and a locally generated Windows self-signed certificate. Paid certificates and notarization are out of scope. The release workflow and evidence validators still implement the previous policy; remaining work is self-signature integrity plus target-OS runtime/picker evidence, with Gatekeeper and SmartScreen warnings stated plainly.
+- Current distribution uses self-managed signing only: macOS ad-hoc or a locally controlled identity, and a locally generated Windows self-signed certificate. Paid certificates and notarization are out of scope. The release workflow and packaged-runtime validator now use signature-integrity terminology; archive closure helpers still contain legacy notarization/readiness fields and are tracked for migration. Target-OS runtime/picker evidence remains separate, with Gatekeeper and SmartScreen warnings stated plainly.
 
 ## Validation Baseline
 
@@ -72,7 +72,7 @@ npm run create-ai-talk-local-smoke-archive -- --session-dir ai-talk-local-smoke/
 
 ## Open Engineering Themes
 
-- Release tooling still follows the previous paid-signing/notarization policy. Update it for self-managed macOS and Windows signing, then validate signature integrity and runtime behavior on each target OS without claiming Gatekeeper, SmartScreen, or notarization trust. The archived `v1.0.1-rc.3` reports remain historical evidence of that old workflow's failures.
+- Release evidence tooling now uses self-managed macOS/Windows signature-integrity gates. `--require-signed` and `officialReady` remain historical compatibility fields; Gatekeeper, SmartScreen, and notarization are observations. The archived `v1.0.1-rc.3` reports remain historical evidence of the old workflow's failures. Real target-OS validation remains open.
 - Packaged picker evidence for the unsigned demo is archived at [2026-10-08T21-01-48Z-darwin-arm64](./release-evidence/desktop-picker/2026-10-08T21-01-48Z-darwin-arm64/) with **8/9** observed checks; it predates the current HTTP picker cutover and `plugin-install-disabled` remains pending. The latest packaged-runtime smoke passes **11/14**; no desktop UI observation was performed in this continuation.
 - Creator Studio image-provider polish remains open product work, but host-owned durable trigger rules are already landed for `random`, `state`, and `event`.
 - Creator Studio now has Provider row-generation, extraction, stable-slot, row-QA, and official atlas-package infrastructure, while production art approval remains open and Manual-required. The current code still requests both directional rows; the canonical target generates `running-right` once and derives `running-left` as `approved-mirror`. See [`pet-character-generation.md`](./pet-character-generation.md) for the single-image Provider rule, exact quality gates, and remaining runtime work.

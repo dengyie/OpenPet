@@ -42,7 +42,7 @@ const usage = () => [
   '  --add-screenshot <path-or-url> Link a screenshot artifact; repeatable',
   '  --add-recording <path-or-url>  Link a recording artifact; repeatable',
   '  --validate-ready               Require all checks to pass after writing',
-  '  --require-signed               Require signed artifact evidence during validation',
+  '  --require-signature-integrity  Require valid signature-integrity evidence during validation',
   '',
   'Default validation is structural and allows pending checks so reports can be filled incrementally.'
 ].join('\n')
@@ -150,6 +150,7 @@ const parseArgs = (argv) => {
     screenshots: [],
     recordings: [],
     validateReady: false,
+    requireSignatureIntegrity: false,
     requireSigned: false,
     help: false
   }
@@ -207,7 +208,10 @@ const parseArgs = (argv) => {
       index += 1
     } else if (arg === '--validate-ready') {
       options.validateReady = true
+    } else if (arg === '--require-signature-integrity') {
+      options.requireSignatureIntegrity = true
     } else if (arg === '--require-signed') {
+      options.requireSignatureIntegrity = true
       options.requireSigned = true
     } else if (!options.reportPath) {
       options.reportPath = arg
@@ -220,8 +224,10 @@ const parseArgs = (argv) => {
     throw new Error('--check is required when updating check status, evidence, or notes')
   }
   if (options.status && !VALID_STATUSES.has(options.status)) throw new Error(`Invalid check status: ${options.status}`)
-  if (options.requireSigned && !options.validateReady) {
-    throw new Error('--require-signed must be used with --validate-ready')
+  if (options.requireSignatureIntegrity && !options.validateReady) {
+    throw new Error(options.requireSigned
+      ? '--require-signed must be used with --validate-ready'
+      : '--require-signature-integrity must be used with --validate-ready')
   }
   return options
 }
@@ -337,7 +343,7 @@ const listChecks = () => REQUIRED_CHECKS.map((check) => `${check.id}\t${check.la
 
 const validateUpdatedReport = (report, options) => validateReport(report, {
   allowPending: !options.validateReady,
-  requireSigned: options.requireSigned
+  requireSignatureIntegrity: options.requireSignatureIntegrity
 })
 
 const main = () => {

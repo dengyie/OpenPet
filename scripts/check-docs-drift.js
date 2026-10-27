@@ -332,11 +332,11 @@ const createChecks = (docsRoot, { projectContext, context }) => {
       id: 'todo-keeps-real-blocker-truth',
       description: 'TODO should keep the remaining blocker language explicit about real/manual-required gaps.',
       run: () => /self-signed artifacts on their target operating systems/i.test(todo) &&
-        /locally generated self-signed Windows certificate/i.test(todo) &&
+        /locally generated self-signed Windows certificate(?:\s*\(short-lived\))?/i.test(todo) &&
         /observed packaged-app behavior/i.test(todo) &&
         /actual external compatible package source/i.test(todo) &&
         /real configured packaged provider session/i.test(todo) &&
-        /Self-Signed Distribution Policy[\s\S]*Adapt packaging, CI, and release evidence to self-managed signing[\s\S]*Validate the self-signed artifacts on their target operating systems[\s\S]*Replace the legacy `--require-signed` and notarization-based closure gates/i.test(todo),
+        /Self-Signed Distribution Policy[\s\S]*Adapt packaging and CI to self-managed signing[\s\S]*Validate the self-signed artifacts on their target operating systems[\s\S]*Replace the remaining legacy release archive\/closure helpers/i.test(todo),
       failure: 'docs/TODO.md no longer keeps the current TODO blocker truth explicit about manual-required and real external gaps.'
     },
     {
@@ -374,11 +374,11 @@ const createChecks = (docsRoot, { projectContext, context }) => {
       id: 'maintainer-summaries-keep-real-gap-language',
       description: 'Development and status summaries should keep real/manual-required gap language explicit.',
       run: () =>
-        /self-managed macOS and Windows signing/i.test(developmentSummary) &&
-        /signature integrity and runtime behavior/i.test(developmentSummary) &&
+        /self-managed macOS\/Windows signature-integrity gates/i.test(developmentSummary) &&
+        /Real target-OS validation remains open/i.test(developmentSummary) &&
         /compatible third-party package path/i.test(developmentSummary) &&
-        /Adapt macOS packaging\/evidence to self-managed signing without notarization/i.test(projectStatusReview) &&
-        /locally generated self-signed certificate/i.test(projectStatusReview) &&
+        /Validate the current macOS self-managed signature/i.test(projectStatusReview) &&
+        /locally generated Windows self-signed artifact/i.test(projectStatusReview) &&
         /(?:docs\/|\.\/)release-evidence\/desktop-picker\/2026-10-08T21-01-48Z-darwin-arm64[\s\S]*8\/9[\s\S]*plugin-install-disabled[\s\S]*pending/i.test(developmentSummary) &&
         /11\/14[\s\S]*docs\/release-evidence\/desktop-picker\/2026-10-08T21-01-48Z-darwin-arm64[\s\S]*8\/9[\s\S]*plugin-install-disabled[\s\S]*pending/i.test(projectStatusReview) &&
         /compatible third-party package path/i.test(projectStatusReview),

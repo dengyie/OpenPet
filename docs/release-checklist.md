@@ -2,9 +2,9 @@
 
 > Purpose: keep self-signed local distributions and target-platform runtime evidence reproducible without exposing private keys.
 
-> Current policy (2026-10-10): OpenPet will use self-managed signing only. Do not buy Apple Developer ID/notarization, Windows publisher certificates, or third-party signing services. macOS ad-hoc/local signing and a locally generated Windows certificate do not establish Gatekeeper approval, notarization, SmartScreen reputation, or publisher trust. The `--require-signed` and notarization steps in this legacy checklist are not active release gates until the tooling is adapted; see [`TODO.md`](./TODO.md).
+> Current policy (2026-10-27): OpenPet uses self-managed signing only. Do not buy Apple Developer ID/notarization, Windows publisher certificates, or third-party signing services. macOS ad-hoc/local signing and a locally generated Windows certificate do not establish Gatekeeper approval, notarization, SmartScreen reputation, or publisher trust. The packaged-runtime gate is `--require-signature-integrity`; archive closure helpers still use legacy fields and remain open in [`TODO.md`](./TODO.md).
 
-Current desktop scope: macOS and Windows. Existing release tooling captures codesign/notarization/Gatekeeper evidence and currently enforces the previous paid-signing policy. Windows has packaging/CI/update-asset/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation/summary/archive-manifest baselines. Both platforms have packaged native picker/runtime smoke evidence tooling and desktop picker evidence archives. The workflow must be adapted to self-managed signing and target-platform runtime checks before distribution; do not claim OS trust from a self-signed artifact.
+Current desktop scope: macOS and Windows. The release workflow now creates macOS ad-hoc and Windows self-signed artifacts without paid secrets. Windows has packaging/CI/update-asset/signing-policy/smoke-evidence/reporting/runbook/collector/bundle-validation/summary/archive-manifest baselines. Both platforms have packaged native picker/runtime smoke evidence tooling and desktop picker evidence archives. Target-platform runtime checks and archive closure migration remain before distribution; do not claim OS trust from a self-signed artifact.
 
 Historical macOS caution: the archived public release-asset check at `docs/release-evidence/macos-release-evidence/2026-07-06T15-57-51Z-v1.0.1-rc.3-public-release-asset-check/`, the authenticated workflow-artifact import at `docs/release-evidence/macos-release-evidence-archive/2026-07-06T16-17-27Z-v1.0.1-rc.3-authenticated-artifact-import/`, and the companion current-parser rerun at `docs/release-evidence/macos-release-evidence-archive/2026-07-06T17-32-13Z-v1.0.1-rc.3-authenticated-artifact-current-parser-rerun/` show the `v1.0.1-rc.3` assets failing the previous signed-readiness gate. Preserve those results as historical evidence; the active policy is self-managed signing without notarization.
 
@@ -121,20 +121,20 @@ After all macOS packaged native picker checks are filled with concrete evidence,
 
 ```bash
 npm run validate-desktop-picker-smoke-report -- release/desktop-picker-smoke-report.json
-npm run validate-desktop-picker-smoke-report -- release/desktop-picker-smoke-report.json --require-signed
+npm run validate-desktop-picker-smoke-report -- release/desktop-picker-smoke-report.json --require-signature-integrity
 ```
 
-The current `--require-signed` command enforces the legacy trust model and should not be used until adapted. Picker success still requires a completed report with concrete evidence; signature mode does not replace runtime/picker checks.
+The signature-integrity command checks the local artifact signature and does not establish OS trust. Picker success still requires a completed report with concrete evidence; signature mode does not replace runtime/picker checks.
 
 After the filled picker report is reviewed, assemble `desktop-picker-archive/` with `desktop-picker-smoke-report.json`, `desktop-picker-smoke-runbook.md`, `desktop-picker-evidence/`, and a summary, then create the archive manifest:
 
 ```bash
 npm run create-desktop-picker-evidence-summary -- desktop-picker-archive/desktop-picker-evidence --report desktop-picker-archive/desktop-picker-smoke-report.json --output desktop-picker-archive/desktop-picker-evidence-summary.md
 npm run create-desktop-picker-archive-manifest -- --archive-dir desktop-picker-archive
-npm run create-desktop-picker-archive-manifest -- --archive-dir desktop-picker-archive --require-signed
+npm run create-desktop-picker-archive-manifest -- --archive-dir desktop-picker-archive --require-signature-integrity
 ```
 
-The unsigned manifest can archive reviewed material. The `--require-signed` path is a legacy gate; future release readiness must validate self-signature integrity and target-platform behavior without implying OS trust.
+The unsigned manifest can archive reviewed material. The signature-integrity path checks the local artifact signature and target-platform behavior without implying OS trust.
 
 For packaged runtime validation, launch the packaged app through the smoke runner. Use `--allow-pending-picker` only when native picker evidence is intentionally linked later; that mode is archiveable but not full runtime readiness:
 
@@ -170,7 +170,7 @@ Windows distribution under the self-signed policy requires these gates before pl
 - [x] Add a `windows-latest` CI release job or platform matrix.
 - [x] Upload Windows artifacts: `.exe`, `.zip`, `.blockmap`, and `latest.yml`.
 - [x] Filter About/update assets by current desktop platform.
-- [ ] Replace the paid-signing-secret requirement with locally generated self-signed certificate support in CI.
+- [x] Replace paid signing secrets with locally generated self-signed Windows certificate support in CI.
 - [x] Label unsigned artifacts accurately and distinguish them from self-signed artifacts.
 - [x] Add a structured Windows smoke report validator and pending evidence template.
 - [x] Generate and upload a pending Windows smoke report artifact from the Windows release job.
@@ -220,12 +220,12 @@ npm run create-windows-smoke-evidence-summary -- windows-smoke-evidence --report
 npm run create-windows-smoke-archive-manifest -- --archive-dir windows-smoke-archive
 ```
 
-The following commands exercise the legacy paid-signing gate. Do not use `--require-signed` for current release acceptance until the validators are changed to support self-signed integrity evidence:
+Use `--require-signature-integrity` to require local Authenticode integrity evidence. It does not establish publisher trust:
 
 ```bash
-npm run validate-windows-smoke-evidence-bundle -- windows-smoke-evidence --report docs/release-evidence/<report>.json --require-signed
-npm run create-windows-smoke-evidence-summary -- windows-smoke-evidence --report docs/release-evidence/<report>.json --require-signed --output docs/release-evidence/<report>-summary.md
-npm run create-windows-smoke-archive-manifest -- --archive-dir windows-smoke-archive --require-signed
+npm run validate-windows-smoke-evidence-bundle -- windows-smoke-evidence --report docs/release-evidence/<report>.json --require-signature-integrity
+npm run create-windows-smoke-evidence-summary -- windows-smoke-evidence --report docs/release-evidence/<report>.json --require-signature-integrity --output docs/release-evidence/<report>-summary.md
+npm run create-windows-smoke-archive-manifest -- --archive-dir windows-smoke-archive --require-signature-integrity
 ```
 
 The archive manifest expects a reviewed directory containing `windows-smoke-report.json`, `windows-smoke-runbook.md`, `windows-smoke-collector.ps1`, `windows-smoke-evidence/`, and `windows-smoke-evidence-summary.md` or `.json`. It verifies archive completeness and summary consistency, but it does not prove runtime smoke success by itself.
@@ -237,11 +237,11 @@ npm run validate-windows-smoke-report -- docs/release-evidence/<report>.json
 npm run update-windows-smoke-report -- docs/release-evidence/<report>.json --validate-ready
 ```
 
-The following `--require-signed` commands are also legacy-only:
+Use the signature-integrity commands when signature validation is part of the acceptance run:
 
 ```bash
-npm run validate-windows-smoke-report -- docs/release-evidence/<report>.json --require-signed
-npm run update-windows-smoke-report -- docs/release-evidence/<report>.json --validate-ready --require-signed
+npm run validate-windows-smoke-report -- docs/release-evidence/<report>.json --require-signature-integrity
+npm run update-windows-smoke-report -- docs/release-evidence/<report>.json --validate-ready --require-signature-integrity
 ```
 
 Do not mark clean-machine validation complete while runtime checks are pending. Record the expected unknown-publisher/SmartScreen behavior for the self-signed artifact.
@@ -253,17 +253,17 @@ npm run create-desktop-picker-smoke-report -- --platform win32 --release-dir rel
 npm run create-desktop-picker-smoke-runbook -- release/desktop-picker-smoke-report.json --output release/desktop-picker-smoke-runbook.md
 npm run update-desktop-picker-smoke-report -- release/desktop-picker-smoke-report.json --list-checks
 npm run validate-desktop-picker-smoke-report -- release/desktop-picker-smoke-report.json
-npm run validate-desktop-picker-smoke-report -- release/desktop-picker-smoke-report.json --require-signed
+npm run validate-desktop-picker-smoke-report -- release/desktop-picker-smoke-report.json --require-signature-integrity
 ```
 
-The pending report and runbook are operator aids only. The report proves picker smoke success only after all required checks pass with evidence. Its signed command is a legacy gate pending adaptation.
+The pending report and runbook are operator aids only. The report proves picker smoke success only after all required checks pass with evidence. Signature integrity does not establish OS trust.
 
 After reviewing the picker evidence, archive it with a summary and manifest:
 
 ```bash
 npm run create-desktop-picker-evidence-summary -- desktop-picker-archive/desktop-picker-evidence --report desktop-picker-archive/desktop-picker-smoke-report.json --output desktop-picker-archive/desktop-picker-evidence-summary.md
 npm run create-desktop-picker-archive-manifest -- --archive-dir desktop-picker-archive
-npm run create-desktop-picker-archive-manifest -- --archive-dir desktop-picker-archive --require-signed
+npm run create-desktop-picker-archive-manifest -- --archive-dir desktop-picker-archive --require-signature-integrity
 ```
 
 The desktop picker archive manifest expects `desktop-picker-smoke-report.json`, `desktop-picker-smoke-runbook.md`, `desktop-picker-evidence/`, and `desktop-picker-evidence-summary.md` or `.json`. It verifies archive completeness and summary hash consistency, but it does not create picker evidence by itself.
@@ -284,11 +284,11 @@ Then generate the archive manifest:
 ```bash
 npm run create-macos-release-evidence -- --app release/mac/OpenPet.app --notarization-text "<notarytool accepted output>" --output-dir docs/release-evidence/<release-archive>
 npm run create-release-evidence-archive-manifest -- --archive-dir docs/release-evidence/<release-archive>
-npm run create-release-evidence-archive-manifest -- --archive-dir docs/release-evidence/<release-archive> --require-signed
+npm run create-release-evidence-archive-manifest -- --archive-dir docs/release-evidence/<release-archive> --require-signature-integrity
 npm run create-signed-release-closure-report -- --archive-dir docs/release-evidence/<release-archive> --fail-on-not-ready
 ```
 
-The first manifest command can archive pending review material. The signed manifest and closure commands are part of the legacy paid-signing model and must be adapted before use for a release. Preserve their archive consistency checks while changing readiness to self-signature integrity, completed runtime/picker evidence, and explicit OS trust warnings.
+The first manifest command can archive pending review material. The signature-integrity manifest requires local macOS/Windows signature evidence plus completed runtime and picker checks. Gatekeeper, notarization, and SmartScreen remain OS trust observations and do not gate readiness.
 
 Windows smoke checks:
 

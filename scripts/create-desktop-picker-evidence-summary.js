@@ -15,17 +15,17 @@ const STATUS_ORDER = ['pass', 'fail', 'pending', 'blocked']
 /** @typedef {import('@openpet/shared/src/openpet-contracts.ts').DesktopPickerSmokeCheck} DesktopPickerSmokeCheck */
 /** @typedef {import('@openpet/shared/src/openpet-contracts.ts').DesktopPickerSmokeReport} DesktopPickerSmokeReport */
 /** @typedef {import('@openpet/shared/src/openpet-contracts.ts').DesktopPickerValidationResult} DesktopPickerValidationResult */
-/** @typedef {{ evidenceDir: string, reportPath: string | null, requireSigned: boolean, outputPath: string | null, json: boolean, help: boolean }} CliOptions */
-/** @typedef {{ evidenceDir: string | null, reportPath: string | null, requireSigned: boolean, outputPath: string | null, json: boolean, help: boolean }} CliParseState */
-/** @typedef {{ evidenceDir?: string, reportPath?: string | null, requireSigned?: boolean, now?: () => Date, fsImpl?: typeof fs }} SummaryOptions */
+/** @typedef {{ evidenceDir: string, reportPath: string | null, requireSignatureIntegrity: boolean, requireSigned: boolean, outputPath: string | null, json: boolean, help: boolean }} CliOptions */
+/** @typedef {{ evidenceDir: string | null, reportPath: string | null, requireSignatureIntegrity: boolean, requireSigned: boolean, outputPath: string | null, json: boolean, help: boolean }} CliParseState */
+/** @typedef {{ evidenceDir?: string, reportPath?: string | null, requireSignatureIntegrity?: boolean, requireSigned?: boolean, now?: () => Date, fsImpl?: typeof fs }} SummaryOptions */
 /** @typedef {{ summary: DesktopPickerEvidenceSummary, outputPath: string, json?: boolean, fsImpl?: typeof fs }} WriteSummaryOptions */
 
 const usage = () => [
-  'Usage: node scripts/create-desktop-picker-evidence-summary.js [evidence-dir] [--evidence-dir <dir>] [--report <report.json>] [--require-signed] [--output <summary.md>] [--json]',
+  'Usage: node scripts/create-desktop-picker-evidence-summary.js [evidence-dir] [--evidence-dir <dir>] [--report <report.json>] [--require-signature-integrity] [--output <summary.md>] [--json]',
   '',
   `Defaults to ./${DEFAULT_EVIDENCE_DIR}.`,
   'Creates an auditable summary of a desktop picker evidence directory and optional paired smoke report.',
-  '--require-signed keeps the existing signed-evidence gate; it does not mark picker checks as passed.',
+  '--require-signature-integrity requires local signature integrity evidence; it does not mark picker checks as passed.',
   '--json writes the structured summary instead of Markdown.'
 ].join('\n')
 
@@ -35,6 +35,7 @@ const parseArgs = (argv) => {
   const options = {
     evidenceDir: null,
     reportPath: null,
+    requireSignatureIntegrity: false,
     requireSigned: false,
     outputPath: null,
     json: false,
@@ -64,6 +65,8 @@ const parseArgs = (argv) => {
     } else if (arg === '--report') {
       options.reportPath = readValue(index, arg)
       index += 1
+    } else if (arg === '--require-signature-integrity') {
+      options.requireSignatureIntegrity = true
     } else if (arg === '--require-signed') {
       options.requireSigned = true
     } else if (arg === '--output') {
@@ -132,16 +135,17 @@ const countChecksByStatus = (checks = []) => {
 }
 
 /**
- * @param {{ reportPath: string | null, requireSigned: boolean, fsImpl?: typeof fs }} options
+ * @param {{ reportPath: string | null, requireSignatureIntegrity?: boolean, requireSigned?: boolean, fsImpl?: typeof fs }} options
  * @returns {DesktopPickerEvidenceReport | null}
  */
-const summarizeReport = ({ reportPath, requireSigned, fsImpl = fs }) => {
+const summarizeReport = ({ reportPath, requireSignatureIntegrity = false, requireSigned = false, fsImpl = fs }) => {
   if (!reportPath) return null
 
   try {
     const { absoluteReportPath, report } = loadReport(reportPath, fsImpl)
-    const structuralValidation = /** @type {DesktopPickerValidationResult} */ (validateReport(report, { allowPending: true, requireSigned }))
-    const readinessValidation = /** @type {DesktopPickerValidationResult} */ (validateReport(report, { allowPending: false, requireSigned }))
+    const signatureGate = requireSignatureIntegrity || requireSigned
+    const structuralValidation = /** @type {DesktopPickerValidationResult} */ (validateReport(report, { allowPending: true, requireSignatureIntegrity: signatureGate }))
+    const readinessValidation = /** @type {DesktopPickerValidationResult} */ (validateReport(report, { allowPending: false, requireSignatureIntegrity: signatureGate }))
     const checks = Array.isArray(report.checks) ? report.checks : []
     const checkSummary = countChecksByStatus(checks)
 
@@ -192,13 +196,15 @@ const summarizeReport = ({ reportPath, requireSigned, fsImpl = fs }) => {
 const createDesktopPickerEvidenceSummary = ({
   evidenceDir = DEFAULT_EVIDENCE_DIR,
   reportPath = null,
+  requireSignatureIntegrity = false,
   requireSigned = false,
   now = () => new Date(),
   fsImpl = fs
 } = {}) => {
   const absoluteEvidenceDir = path.resolve(evidenceDir)
   const presentFiles = describeEvidenceFiles(absoluteEvidenceDir, fsImpl)
-  const report = summarizeReport({ reportPath, requireSigned, fsImpl })
+  const signatureGate = requireSignatureIntegrity || requireSigned
+  const report = summarizeReport({ reportPath, requireSignatureIntegrity: signatureGate, fsImpl })
   const reportHasLoadError = Boolean(report && 'error' in report)
   const validReport = report && !('error' in report) ? report : null
   const evidenceDirExists = fsImpl.existsSync(absoluteEvidenceDir)
@@ -208,14 +214,15 @@ const createDesktopPickerEvidenceSummary = ({
     ...(report && 'error' in report ? [`report: ${report.error}`] : [])
   ]
   const warnings = [
-    ...(requireSigned || validReport?.readinessValidation.summary.officialReady
+    ...(signatureGate || validReport?.readinessValidation.summary.signatureIntegrityReady
       ? []
-      : ['Pending or unsigned evidence cannot prove signed official desktop picker readiness'])
+      : ['Pending or unsigned evidence cannot prove desktop picker signature integrity'])
   ]
 
   return {
     generatedAt: now().toISOString(),
-    requireSigned,
+    requireSignatureIntegrity: signatureGate,
+    requireSigned: signatureGate,
     ok: errors.length === 0 && !reportHasLoadError,
     releaseReady: Boolean(validReport?.readinessValidation.ok && errors.length === 0),
     evidence: {
@@ -239,11 +246,11 @@ const renderMarkdownSummary = (summary) => {
     '',
     `Generated at: ${summary.generatedAt}`,
     `Evidence directory: ${summary.evidence.evidenceDir}`,
-    `Signed evidence required: ${boolText(summary.requireSigned)}`,
+    `Signature integrity required: ${boolText(summary.requireSignatureIntegrity ?? summary.requireSigned)}`,
     `Evidence/report validation valid: ${boolText(summary.ok)}`,
     `Desktop picker smoke ready: ${boolText(summary.releaseReady)}`,
     '',
-    'This summary archives evidence metadata for review. Pending or unsigned evidence does not prove desktop picker smoke readiness; a real packaged-app picker report must pass readiness validation, and official stable releases must also pass signed artifact validation.',
+    'This summary archives evidence metadata for review. Pending or unsigned evidence does not prove desktop picker smoke readiness; a real packaged-app picker report must pass readiness validation and local signature integrity validation when requested.',
     '',
     '## Evidence Files',
     '',
@@ -300,7 +307,7 @@ const renderMarkdownSummary = (summary) => {
         `Structural report validation: ${boolText(summary.report.structuralValidation.ok)}`,
         `Readiness validation: ${boolText(summary.report.readinessValidation.ok)}`,
         `Smoke ready: ${boolText(summary.report.readinessValidation.summary.smokeReady)}`,
-        `Official signed ready: ${boolText(summary.report.readinessValidation.summary.officialReady)}`
+        `Signature integrity ready: ${boolText(summary.report.readinessValidation.summary.signatureIntegrityReady)}`
       )
     }
   }

@@ -77,7 +77,7 @@ test('createRunbook documents every required Windows smoke check', () => {
   assert.match(runbook, /windows-smoke-collector\.ps1 -ReportPath \.\\windows-smoke-report\.json/)
   assert.match(runbook, /it does not mark any smoke check as passed/)
   assert.match(runbook, /npm run validate-windows-smoke-report -- release\/windows-smoke-report\.json/)
-  assert.match(runbook, /--validate-ready --require-signed/)
+  assert.match(runbook, /--validate-ready --require-signature-integrity/)
 
   for (const check of REQUIRED_CHECKS) {
     assert.equal(runbook.includes(`\`${check.id}\``), true)

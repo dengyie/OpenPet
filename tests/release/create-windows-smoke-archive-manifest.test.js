@@ -99,7 +99,7 @@ test('parseArgs accepts archive paths, signing, and json flags', () => {
     'archive/summary.json',
     '--output',
     'archive/manifest.json',
-    '--require-signed',
+    '--require-signature-integrity',
     '--json'
   ])
 
@@ -110,7 +110,7 @@ test('parseArgs accepts archive paths, signing, and json flags', () => {
   assert.equal(options.collectorPath, 'archive/collector.ps1')
   assert.equal(options.summaryPath, 'archive/summary.json')
   assert.equal(options.outputPath, 'archive/manifest.json')
-  assert.equal(options.requireSigned, true)
+  assert.equal(options.requireSignatureIntegrity, true)
   assert.equal(options.json, true)
 })
 
@@ -143,7 +143,7 @@ test('createWindowsSmokeArchiveManifest records a complete pending archive witho
   assert.equal(manifest.report.structuralValidation.ok, true)
   assert.equal(manifest.report.readinessValidation.ok, false)
   assert.match(manifest.files[0].sha256, /^[a-f0-9]{64}$/)
-  assert.match(manifest.warnings.join('\n'), /cannot prove signed official readiness/)
+  assert.match(manifest.warnings.join('\n'), /cannot prove Windows signature integrity/)
 })
 
 test('createWindowsSmokeArchiveManifest stores archive-safe relative paths in its contract', () => {

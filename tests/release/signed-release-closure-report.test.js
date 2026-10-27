@@ -303,8 +303,8 @@ test('closure report keeps unsigned pending archives not release-ready', () => {
 
   assert.equal(report.releaseReady, false)
   assert.equal(report.claims.officialDesktopRelease.status, 'not-ready')
-  assert.match(report.claims.officialDesktopRelease.claim, /Do not claim official/)
-  assert.match(report.claims.macos.blockers.join('\n'), /macOS codesign evidence status is fail/)
+  assert.match(report.claims.officialDesktopRelease.claim, /Do not claim self-managed desktop signature-integrity readiness/)
+  assert.match(report.claims.macos.blockers.join('\n'), /macOS signature-integrity status is fail/)
   assert.match(report.claims.windows.blockers.join('\n'), /Windows smoke evidence/)
   assert.match(report.smartScreen.claim, /observed result only/)
 })
@@ -320,7 +320,7 @@ test('closure report returns the shared signed release closure contract shape', 
   assert.deepEqual(report.manifest, {
     ok: manifest.ok,
     releaseReady: manifest.releaseReady,
-    requireSigned: manifest.requireSigned,
+    requireSignatureIntegrity: manifest.requireSignatureIntegrity,
     archiveDir: manifest.archive.archiveDir,
     outputPath: manifest.archive.outputPath
   })
@@ -490,10 +490,10 @@ test('renderMarkdown exposes claim status and blockers', () => {
   const report = createSignedReleaseClosureReport({ manifest, now: fixedNow })
   const markdown = renderMarkdown(report)
 
-  assert.match(markdown, /^# Signed Release Evidence Closure/)
+  assert.match(markdown, /^# Self-Managed Release Evidence Closure/)
   assert.match(markdown, /Overall release-ready: no/)
   assert.match(markdown, /officialDesktopRelease/)
-  assert.match(markdown, /Do not claim official signed desktop release readiness/)
+  assert.match(markdown, /Do not claim self-managed desktop signature-integrity readiness/)
   assert.match(markdown, /SmartScreen/)
 })
 
@@ -541,9 +541,9 @@ test('cli fail-on-not-ready exits non-zero after writing the audit report', () =
   ], { encoding: 'utf-8' })
 
   assert.equal(result.status, 1)
-  assert.match(result.stdout, /Release-ready: no/)
+  assert.match(result.stdout, /Signature-integrity ready: no/)
   assert.equal(fs.existsSync(outputPath), true)
-  assert.match(fs.readFileSync(outputPath, 'utf-8'), /Do not claim official signed desktop release readiness/)
+  assert.match(fs.readFileSync(outputPath, 'utf-8'), /Do not claim self-managed desktop signature-integrity readiness/)
 })
 
 test('committed signed-release-closure evidence directories keep companion READMEs for historical context', () => {

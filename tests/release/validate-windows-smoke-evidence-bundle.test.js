@@ -90,7 +90,7 @@ test('validateEvidenceBundle accepts a complete unsigned evidence bundle with wa
   assert.equal(result.ok, true)
   assert.equal(result.summary.files.length, REQUIRED_EVIDENCE_FILES.length)
   assert.equal(result.summary.signed, false)
-  assert.match(result.warnings.join('\n'), /cannot prove signed official readiness/)
+  assert.match(result.warnings.join('\n'), /cannot prove Windows signature integrity/)
 
   for (const file of result.summary.files) {
     assert.equal(typeof file.sha256, 'string')

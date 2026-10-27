@@ -55,7 +55,7 @@ const sanitizeMessage = (message, replacements) => replacements.reduce((text, [u
 }, String(message || ''))
 
 const usage = () => [
-  'Usage: node scripts/create-desktop-picker-archive-manifest.js [--archive-dir <dir>] [--report <report.json>] [--evidence-dir <dir>] [--runbook <runbook.md>] [--summary <summary.md|summary.json>] [--output <manifest.json>] [--require-signed] [--json]',
+  'Usage: node scripts/create-desktop-picker-archive-manifest.js [--archive-dir <dir>] [--report <report.json>] [--evidence-dir <dir>] [--runbook <runbook.md>] [--summary <summary.md|summary.json>] [--output <manifest.json>] [--require-signature-integrity] [--json]',
   '',
   `Defaults to ./${DEFAULT_ARCHIVE_DIR} with the standard desktop picker evidence filenames.`,
   'Creates a hash manifest for a reviewed desktop picker evidence archive.',
@@ -70,6 +70,7 @@ const parseArgs = (argv) => {
     runbookPath: null,
     summaryPath: null,
     outputPath: null,
+    requireSignatureIntegrity: false,
     requireSigned: false,
     json: false,
     help: false
@@ -103,6 +104,8 @@ const parseArgs = (argv) => {
     } else if (arg === '--output') {
       options.outputPath = readValue(index, arg)
       index += 1
+    } else if (arg === '--require-signature-integrity') {
+      options.requireSignatureIntegrity = true
     } else if (arg === '--require-signed') {
       options.requireSigned = true
     } else if (arg === '--json') {
@@ -167,7 +170,7 @@ const describeFile = ({ role, filePath, displayPath = filePath, fsImpl = fs }) =
 
 const loadReport = (reportPath, fsImpl = fs) => JSON.parse(fsImpl.readFileSync(reportPath, 'utf-8'))
 
-const summarizeSummaryFile = ({ summaryPath, summaryDisplayPath, computedSummary, requireSigned, fsImpl = fs }) => {
+const summarizeSummaryFile = ({ summaryPath, summaryDisplayPath, computedSummary, requireSignatureIntegrity, fsImpl = fs }) => {
   const file = describeFile({ role: 'summary', filePath: summaryPath, displayPath: summaryDisplayPath, fsImpl })
   const errors = []
   const warnings = []
@@ -189,7 +192,7 @@ const summarizeSummaryFile = ({ summaryPath, summaryDisplayPath, computedSummary
       const parsed = JSON.parse(content)
       if (parsed.releaseReady !== computedSummary.releaseReady) errors.push('summary JSON releaseReady does not match recomputed evidence state')
       if (parsed.ok !== computedSummary.ok) errors.push('summary JSON ok does not match recomputed evidence state')
-      if (parsed.requireSigned !== requireSigned) errors.push('summary JSON requireSigned does not match archive manifest mode')
+      if ((parsed.requireSignatureIntegrity ?? parsed.requireSigned) !== requireSignatureIntegrity) errors.push('summary JSON signature-integrity mode does not match archive manifest mode')
       if (parsed.evidence?.presentCount !== computedSummary.evidence.presentCount) errors.push('summary JSON evidence.presentCount does not match recomputed evidence state')
       if (JSON.stringify(parsed.evidence?.presentFiles || []) !== JSON.stringify(computedSummary.evidence.presentFiles)) {
         errors.push('summary JSON evidence files do not match recomputed evidence state')
@@ -228,10 +231,12 @@ const createDesktopPickerArchiveManifest = ({
   runbookPath = null,
   summaryPath = null,
   outputPath = null,
+  requireSignatureIntegrity = false,
   requireSigned = false,
   now = () => new Date(),
   fsImpl = fs
 } = {}) => {
+  const signatureGate = requireSignatureIntegrity || requireSigned
   const paths = resolveArchivePaths({ archiveDir, reportPath, evidenceDir, runbookPath, summaryPath, outputPath, fsImpl })
   const safeArchiveDir = createSafeArchiveDirPath(paths.archiveDir)
   const safeReportPath = createSafeArchiveFilePath({
@@ -284,8 +289,8 @@ const createDesktopPickerArchiveManifest = ({
   if (files[0].exists) {
     try {
       report = loadReport(paths.reportPath, fsImpl)
-      reportValidation = validateReport(report, { allowPending: true, requireSigned })
-      readinessValidation = validateReport(report, { allowPending: false, requireSigned })
+      reportValidation = validateReport(report, { allowPending: true, requireSignatureIntegrity: signatureGate })
+      readinessValidation = validateReport(report, { allowPending: false, requireSignatureIntegrity: signatureGate })
       errors.push(...reportValidation.errors.map((error) => `report: ${error}`))
       warnings.push(...reportValidation.warnings.map((warning) => `report: ${warning}`))
     } catch (err) {
@@ -296,7 +301,8 @@ const createDesktopPickerArchiveManifest = ({
   const computedSummary = createDesktopPickerEvidenceSummary({
     evidenceDir: paths.evidenceDir,
     reportPath: paths.reportPath,
-    requireSigned,
+    requireSignatureIntegrity: signatureGate,
+    requireSigned: signatureGate,
     now,
     fsImpl
   })
@@ -307,7 +313,7 @@ const createDesktopPickerArchiveManifest = ({
     summaryPath: paths.summaryPath,
     summaryDisplayPath: safeSummaryPath,
     computedSummary,
-    requireSigned,
+    requireSignatureIntegrity: signatureGate,
     fsImpl
   })
   errors.push(...summary.errors.map((error) => `summary: ${sanitizeMessage(error, messagePathReplacements)}`))
@@ -324,7 +330,8 @@ const createDesktopPickerArchiveManifest = ({
 
   const manifest = {
     generatedAt: now().toISOString(),
-    requireSigned,
+    requireSignatureIntegrity: signatureGate,
+    requireSigned: signatureGate,
     ok: false,
     releaseReady: Boolean(computedSummary.ok && readinessValidation.ok),
     archive: {

@@ -24,12 +24,12 @@ const usage = () => [
   '  --macos-gatekeeper <evidence.txt>',
   '  --output <report.md>                Write the Markdown closure report',
   '  --json-output <report.json>         Write the JSON closure report',
-  '  --fail-on-not-ready                 Exit non-zero when the closure is not release-ready',
+  '  --fail-on-not-ready                 Exit non-zero when the closure is not signature-integrity ready',
   '  --json                              Print the JSON closure report',
   '  --help',
   '',
-  'The closure report turns archive evidence into release-claim language. It never',
-  'upgrades pending, unsigned, or missing evidence into a release-ready claim.'
+  'The closure report turns archive evidence into self-managed signature-integrity language.',
+  'It never upgrades pending, unsigned, or missing evidence into a ready claim; OS trust is reported separately.'
 ].join('\n')
 
 const readValue = (argv, index, flag) => {
@@ -136,7 +136,7 @@ const reportBlockers = ({ label, section, requiredPlatform }) => {
   if (section.releaseReady !== true) {
     const errors = validationErrors(section).filter(hasText)
     if (errors.length) blockers.push(...errors.map((error) => `${label}: ${error}`))
-    else blockers.push(`${label} is archived but not signed release-ready`)
+    else blockers.push(`${label} is archived but not signature-integrity ready`)
   }
   return blockers
 }
@@ -156,7 +156,7 @@ const archiveBlockers = ({ label, section, matchLabel = 'archived report' }) => 
   if (section.releaseReady !== true) {
     const errors = (section.errors || []).filter(hasText)
     if (errors.length) blockers.push(...errors.map((error) => `${label}: ${error}`))
-    else blockers.push(`${label} is archived but not signed release-ready`)
+    else blockers.push(`${label} is archived but not signature-integrity ready`)
   }
   return blockers
 }
@@ -164,14 +164,9 @@ const archiveBlockers = ({ label, section, matchLabel = 'archived report' }) => 
 const macosBlockers = (manifest) => {
   const blockers = []
   const macos = manifest.macos || {}
-  for (const [label, section] of [
-    ['macOS codesign evidence', macos.codesign],
-    ['macOS notarization evidence', macos.notarization],
-    ['macOS Gatekeeper evidence', macos.gatekeeper]
-  ]) {
-    if (!section?.file?.exists) blockers.push(`${label} is missing`)
-    else if (section.status !== 'pass') blockers.push(`${label} status is ${section.status || 'not pass'}`)
-  }
+  const codesign = macos.codesign
+  if (!codesign?.file?.exists) blockers.push('macOS signature-integrity evidence is missing')
+  else if (codesign.status !== 'pass') blockers.push(`macOS signature-integrity status is ${codesign.status || 'not pass'}`)
   return blockers
 }
 
@@ -189,7 +184,7 @@ const macosArtifactBlockers = (manifest) => {
   if (artifactArchive.releaseReady !== true) {
     const warnings = (artifactArchive.warnings || []).filter(hasText)
     if (warnings.length) blockers.push(...warnings.map((warning) => `macOS imported artifact evidence: ${warning}`))
-    else if (artifactArchive.ok === true) blockers.push('macOS imported artifact evidence is archived but not signed release-ready')
+    else if (artifactArchive.ok === true) blockers.push('macOS imported artifact evidence is archived but not signature-integrity ready')
   }
 
   return blockers
@@ -259,7 +254,7 @@ const createSignedReleaseClosureReport = ({ manifest, now = () => new Date() }) 
     manifest: {
       ok: manifest.ok === true,
       releaseReady: manifest.releaseReady === true,
-      requireSigned: manifest.requireSigned === true,
+      requireSignatureIntegrity: manifest.requireSignatureIntegrity === true || manifest.requireSigned === true,
       archiveDir: manifest.archive?.archiveDir || '',
       outputPath: manifest.archive?.outputPath || ''
     },
@@ -267,22 +262,22 @@ const createSignedReleaseClosureReport = ({ manifest, now = () => new Date() }) 
       officialDesktopRelease: createClaim({
         key: 'officialDesktopRelease',
         ready: officialDesktopReady,
-        claim: 'OpenPet may claim official signed desktop release readiness for the archived evidence set.',
-        blockedClaim: 'Do not claim official signed desktop release readiness for this evidence set.',
+        claim: 'OpenPet may claim self-managed desktop signature-integrity readiness for the archived evidence set.',
+        blockedClaim: 'Do not claim self-managed desktop signature-integrity readiness for this evidence set.',
         blockers: [...manifestBlockers, ...macosClaimBlockers, ...windowsClaimBlockers]
       }),
       macos: createClaim({
         key: 'macos',
         ready: macosReady,
-        claim: 'OpenPet may claim macOS signed, notarized, Gatekeeper-accepted runtime readiness for this archived artifact.',
-        blockedClaim: 'Do not claim macOS signed release readiness for this archived artifact.',
+        claim: 'OpenPet may claim macOS self-managed signature-integrity readiness for this archived artifact.',
+        blockedClaim: 'Do not claim macOS self-managed signature-integrity readiness for this archived artifact.',
         blockers: macosClaimBlockers
       }),
       windows: createClaim({
         key: 'windows',
         ready: windowsReady,
-        claim: 'OpenPet may claim Windows signed smoke readiness for this archived artifact.',
-        blockedClaim: 'Do not claim Windows release readiness for this archived artifact.',
+        claim: 'OpenPet may claim Windows self-managed signature-integrity smoke readiness for this archived artifact.',
+        blockedClaim: 'Do not claim Windows self-managed signature-integrity readiness for this archived artifact.',
         blockers: windowsClaimBlockers
       })
     },
@@ -293,21 +288,21 @@ const createSignedReleaseClosureReport = ({ manifest, now = () => new Date() }) 
     nextActions: officialDesktopReady
       ? ['Attach the closure report and archive manifest to the release notes before publishing.']
       : unique([
-          ...macosClaimBlockers.length ? ['Capture signed macOS codesign, notarization, Gatekeeper, and packaged runtime launch evidence.'] : [],
-          ...windowsClaimBlockers.length ? ['Capture signed Windows Authenticode, clean-machine smoke, and desktop picker evidence.'] : [],
-          ...manifestBlockers.length ? ['Regenerate the release evidence archive manifest with --require-signed after all evidence is ready.'] : []
+          ...macosClaimBlockers.length ? ['Capture macOS signature-integrity and packaged runtime launch evidence. Record notarization or Gatekeeper only as optional OS observations.'] : [],
+          ...windowsClaimBlockers.length ? ['Capture Windows self-signed Authenticode, clean-machine smoke, and desktop picker evidence.'] : [],
+          ...manifestBlockers.length ? ['Regenerate the release evidence archive manifest with --require-signature-integrity after all evidence is ready.'] : []
         ])
   }
 }
 
 const renderMarkdown = (report) => {
   const lines = []
-  lines.push('# Signed Release Evidence Closure')
+  lines.push('# Self-Managed Release Evidence Closure')
   lines.push('')
   lines.push(`Generated: ${report.generatedAt}`)
   lines.push(`Overall release-ready: ${report.releaseReady ? 'yes' : 'no'}`)
   lines.push(`Archive manifest ok: ${report.manifest.ok ? 'yes' : 'no'}`)
-  lines.push(`Archive manifest releaseReady: ${report.manifest.releaseReady ? 'yes' : 'no'}`)
+  lines.push(`Archive manifest signature-integrity ready: ${report.manifest.releaseReady ? 'yes' : 'no'}`)
   lines.push('')
   lines.push('| Claim | Status | Release wording |')
   lines.push('|------|--------|-----------------|')
@@ -368,7 +363,7 @@ const loadManifest = ({ options, fsImpl = fs, now = () => new Date() }) => {
     macosNotarizationPath: options.macosNotarizationPath,
     macosGatekeeperPath: options.macosGatekeeperPath,
     outputPath: options.manifestOutput || null,
-    requireSigned: true,
+    requireSignatureIntegrity: true,
     now,
     fsImpl
   })
@@ -400,9 +395,9 @@ const main = () => {
   if (options.json) {
     console.log(JSON.stringify(result.report, null, 2))
   } else {
-    console.log(`Signed release closure report: ${result.outputPath}`)
-    if (result.jsonOutputPath) console.log(`Signed release closure JSON: ${result.jsonOutputPath}`)
-    console.log(`Release-ready: ${result.report.releaseReady ? 'yes' : 'no'}`)
+    console.log(`Self-managed release closure report: ${result.outputPath}`)
+    if (result.jsonOutputPath) console.log(`Self-managed release closure JSON: ${result.jsonOutputPath}`)
+    console.log(`Signature-integrity ready: ${result.report.releaseReady ? 'yes' : 'no'}`)
   }
   if (options.failOnNotReady && !result.report.releaseReady) process.exit(1)
 }

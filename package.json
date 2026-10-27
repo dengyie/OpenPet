@@ -145,7 +145,7 @@
       "node_modules/zod/**",
       "node_modules/**"
     ],
-    "afterSign": "build/notarize.js",
+    "afterPack": "build/sign-ad-hoc.js",
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "directories": {
       "output": "release"
@@ -161,7 +161,7 @@
     "mac": {
       "icon": "build/icon.icns",
       "category": "public.app-category.entertainment",
-      "hardenedRuntime": true,
+      "hardenedRuntime": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
       "gatekeeperAssess": false,

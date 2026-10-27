@@ -21,11 +21,11 @@ const REQUIRED_CHECK_IDS = new Set(REQUIRED_CHECKS.map((check) => check.id))
 const VALID_STATUSES = new Set(['pass', 'fail', 'pending', 'blocked'])
 
 const usage = () => [
-  'Usage: node scripts/validate-windows-smoke-report.js <report.json> [--allow-pending] [--require-signed]',
+  'Usage: node scripts/validate-windows-smoke-report.js <report.json> [--allow-pending] [--require-signature-integrity]',
   '',
   'By default every required Windows smoke check must pass.',
   '--allow-pending validates template/in-progress reports without claiming release readiness.',
-  '--require-signed additionally requires Authenticode signature evidence.'
+  '--require-signature-integrity additionally requires Authenticode signature integrity evidence.'
 ].join('\n')
 
 const isObject = (value) => value && typeof value === 'object' && !Array.isArray(value)
@@ -41,12 +41,15 @@ const parseArgs = (argv) => {
   const options = {
     reportPath: null,
     allowPending: false,
+    requireSignatureIntegrity: false,
     requireSigned: false
   }
 
   for (const arg of argv) {
     if (arg === '--allow-pending') {
       options.allowPending = true
+    } else if (arg === '--require-signature-integrity') {
+      options.requireSignatureIntegrity = true
     } else if (arg === '--require-signed') {
       options.requireSigned = true
     } else if (arg === '--help' || arg === '-h') {
@@ -70,7 +73,8 @@ const loadReport = (reportPath) => {
 
 const validateReport = (report, options = {}) => {
   const allowPending = Boolean(options.allowPending)
-  const requireSigned = Boolean(options.requireSigned)
+  const requireSignatureIntegrity = Boolean(options.requireSignatureIntegrity || options.requireSigned)
+  const legacySigned = Boolean(options.requireSigned && !options.requireSignatureIntegrity)
   const errors = []
   const warnings = []
 
@@ -86,16 +90,16 @@ const validateReport = (report, options = {}) => {
   if (isObject(report.artifact)) {
     if (!allowPending && !hasEvidence(report.artifact.installer)) errors.push('artifact.installer evidence is required')
     if (!allowPending && !hasEvidence(report.artifact.version)) errors.push('artifact.version evidence is required')
-    if (requireSigned) {
-      if (report.artifact.signed !== true) errors.push('artifact.signed must be true when --require-signed is used')
+    if (requireSignatureIntegrity) {
+      if (report.artifact.signed !== true) errors.push(`artifact.signed must be true when ${legacySigned ? '--require-signed' : '--require-signature-integrity'} is used`)
       if (String(report.artifact.authenticodeStatus || '').toLowerCase() !== 'valid') {
-        errors.push('artifact.authenticodeStatus must be "Valid" when --require-signed is used')
+        errors.push(`artifact.authenticodeStatus must be "Valid" when ${legacySigned ? '--require-signed' : '--require-signature-integrity'} is used`)
       }
       if (!hasEvidence(report.artifact.authenticodeEvidence)) {
-        errors.push('artifact.authenticodeEvidence is required when --require-signed is used')
+        errors.push(`artifact.authenticodeEvidence is required when ${legacySigned ? '--require-signed' : '--require-signature-integrity'} is used`)
       }
     } else if (report.artifact.signed !== true) {
-      warnings.push('Windows artifact is not signed; this report cannot prove official release readiness')
+      warnings.push('Windows artifact signature integrity is not established')
     }
   }
 
@@ -146,7 +150,9 @@ const validateReport = (report, options = {}) => {
       passed,
       total: REQUIRED_CHECKS.length,
       smokeReady: errors.length === 0 && !allowPending,
-      officialReady: errors.length === 0 && !allowPending && requireSigned && report.artifact?.signed === true
+      signatureIntegrityReady: errors.length === 0 && !allowPending && requireSignatureIntegrity && report.artifact?.signed === true,
+      // Keep the historical field for consumers of older evidence JSON.
+      officialReady: errors.length === 0 && !allowPending && requireSignatureIntegrity && report.artifact?.signed === true
     }
   }
 }
@@ -172,10 +178,10 @@ const main = () => {
 
   if (options.allowPending) {
     console.log('Report structure is valid.')
-  } else if (options.requireSigned) {
-    console.log('Windows smoke report passed signed official-readiness checks.')
+  } else if (options.requireSignatureIntegrity || options.requireSigned) {
+    console.log('Windows smoke report passed signature-integrity checks.')
   } else {
-    console.log('Windows smoke report passed smoke checks. Official release readiness still requires signed artifact validation.')
+    console.log('Windows smoke report passed smoke checks. Signature integrity was not required.')
   }
 }
 
