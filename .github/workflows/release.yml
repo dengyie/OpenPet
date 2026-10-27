@@ -97,25 +97,20 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $ErrorActionPreference = 'Stop'
-          Write-Output 'Creating temporary self-signed code-signing certificate.'
-          $certificate = New-SelfSignedCertificate `
-            -Type CodeSigningCert `
-            -Subject 'CN=OpenPet Self-Signed CI Test' `
-            -CertStoreLocation 'Cert:\CurrentUser\My' `
-            -KeyAlgorithm RSA `
-            -KeyLength 2048 `
-            -HashAlgorithm SHA256 `
-            -KeyExportPolicy Exportable `
-            -NotAfter (Get-Date).AddDays(3)
-          Write-Output "Created certificate $($certificate.Thumbprint)."
           $pfxPath = Join-Path $env:RUNNER_TEMP 'openpet-self-signed-ci-test.pfx'
+          $certPemPath = Join-Path $env:RUNNER_TEMP 'openpet-self-signed-ci-test.pem'
+          $keyPemPath = Join-Path $env:RUNNER_TEMP 'openpet-self-signed-ci-test-key.pem'
           $cerPath = Join-Path $env:RUNNER_TEMP 'openpet-self-signed-ci-test.cer'
           $password = [Guid]::NewGuid().ToString('N')
-          $securePassword = ConvertTo-SecureString $password -AsPlainText -Force
+          $openssl = (Get-Command openssl -ErrorAction Stop).Source
           try {
-            Write-Output 'Exporting temporary signing certificate.'
-            Export-PfxCertificate -Cert $certificate -FilePath $pfxPath -Password $securePassword | Out-Null
-            Export-Certificate -Cert $certificate -FilePath $cerPath | Out-Null
+            Write-Output "Generating temporary self-signed code-signing certificate with $openssl."
+            & $openssl req -x509 -newkey rsa:2048 -nodes -keyout $keyPemPath -out $certPemPath -days 3 -subj '/CN=OpenPet Self-Signed CI Test' -addext 'basicConstraints=critical,CA:FALSE' -addext 'keyUsage=critical,digitalSignature' -addext 'extendedKeyUsage=codeSigning'
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & $openssl pkcs12 -export -out $pfxPath -inkey $keyPemPath -in $certPemPath -passout "pass:$password"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & $openssl x509 -in $certPemPath -outform DER -out $cerPath
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             Write-Output 'Exported temporary signing certificate.'
             $env:CSC_LINK = $pfxPath
             $env:CSC_KEY_PASSWORD = $password
@@ -135,9 +130,9 @@ jobs:
             if ($signature.Status -ne 'Valid') { throw "Windows Authenticode status is $($signature.Status), expected Valid. $($signature.StatusMessage)" }
             Write-Output "Verified self-signed installer with temporary CI trust: $($installer.Name); Authenticode=$($signature.Status)"
           } finally {
-            Remove-Item -LiteralPath "Cert:\CurrentUser\Root\$($certificate.Thumbprint)" -Force -ErrorAction SilentlyContinue
-            Remove-Item -LiteralPath "Cert:\CurrentUser\My\$($certificate.Thumbprint)" -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath $pfxPath -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $certPemPath -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $keyPemPath -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath $cerPath -Force -ErrorAction SilentlyContinue
           }
 
@@ -291,23 +286,17 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $ErrorActionPreference = 'Stop'
-          Write-Output 'Creating temporary self-signed code-signing certificate.'
-          $certificate = New-SelfSignedCertificate `
-            -Type CodeSigningCert `
-            -Subject 'CN=OpenPet Self-Signed Release' `
-            -CertStoreLocation 'Cert:\CurrentUser\My' `
-            -KeyAlgorithm RSA `
-            -KeyLength 2048 `
-            -HashAlgorithm SHA256 `
-            -KeyExportPolicy Exportable `
-            -NotAfter (Get-Date).AddDays(3)
-          Write-Output "Created certificate $($certificate.Thumbprint)."
           $pfxPath = Join-Path $env:RUNNER_TEMP 'openpet-self-signed-release.pfx'
+          $certPemPath = Join-Path $env:RUNNER_TEMP 'openpet-self-signed-release.pem'
+          $keyPemPath = Join-Path $env:RUNNER_TEMP 'openpet-self-signed-release-key.pem'
           $password = [Guid]::NewGuid().ToString('N')
-          $securePassword = ConvertTo-SecureString $password -AsPlainText -Force
+          $openssl = (Get-Command openssl -ErrorAction Stop).Source
           try {
-            Write-Output 'Exporting temporary signing certificate.'
-            Export-PfxCertificate -Cert $certificate -FilePath $pfxPath -Password $securePassword | Out-Null
+            Write-Output "Generating temporary self-signed code-signing certificate with $openssl."
+            & $openssl req -x509 -newkey rsa:2048 -nodes -keyout $keyPemPath -out $certPemPath -days 3 -subj '/CN=OpenPet Self-Signed Release' -addext 'basicConstraints=critical,CA:FALSE' -addext 'keyUsage=critical,digitalSignature' -addext 'extendedKeyUsage=codeSigning'
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & $openssl pkcs12 -export -out $pfxPath -inkey $keyPemPath -in $certPemPath -passout "pass:$password"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             Write-Output 'Exported temporary signing certificate.'
             $env:CSC_LINK = $pfxPath
             $env:CSC_KEY_PASSWORD = $password
@@ -317,8 +306,9 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             Write-Output 'Windows package build completed.'
           } finally {
-            Remove-Item -LiteralPath "Cert:\CurrentUser\My\$($certificate.Thumbprint)" -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath $pfxPath -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $certPemPath -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $keyPemPath -Force -ErrorAction SilentlyContinue
           }
       - name: Mark self-signed Windows assets
         run: npm run prepare-windows-release-assets -- --self-signed
