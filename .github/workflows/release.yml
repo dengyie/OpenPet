@@ -125,11 +125,15 @@ jobs:
             $installer = Get-ChildItem release -Filter '*self-signed.exe' | Select-Object -First 1
             if (-not $installer) { throw 'No self-signed Windows installer was produced' }
             Write-Output 'Importing temporary certificate for Authenticode verification.'
-            Import-Certificate -FilePath $cerPath -CertStoreLocation 'Cert:\CurrentUser\Root' | Out-Null
+            $thumbprint = (& certutil.exe -dump $cerPath | Select-String -Pattern 'Cert Hash\(sha1\):' | ForEach-Object { ($_ -split ':', 2)[1].Trim() } | Select-Object -First 1)
+            if (-not $thumbprint) { throw 'Unable to read temporary certificate thumbprint' }
+            & certutil.exe -f -user -addstore Root $cerPath | Out-Null
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             $signature = Get-AuthenticodeSignature -LiteralPath $installer.FullName
             if ($signature.Status -ne 'Valid') { throw "Windows Authenticode status is $($signature.Status), expected Valid. $($signature.StatusMessage)" }
             Write-Output "Verified self-signed installer with temporary CI trust: $($installer.Name); Authenticode=$($signature.Status)"
           } finally {
+            if ($thumbprint) { & certutil.exe -user -delstore Root $thumbprint | Out-Null }
             Remove-Item -LiteralPath $pfxPath -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath $certPemPath -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath $keyPemPath -Force -ErrorAction SilentlyContinue
