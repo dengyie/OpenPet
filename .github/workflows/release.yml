@@ -96,20 +96,27 @@ jobs:
           SIGNTOOL_TIMEOUT: 120000
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          $ErrorActionPreference = 'Stop'
+          Write-Output 'Creating temporary self-signed code-signing certificate.'
           $certificate = New-SelfSignedCertificate `
             -Type CodeSigningCert `
             -Subject 'CN=OpenPet Self-Signed CI Test' `
             -CertStoreLocation 'Cert:\CurrentUser\My' `
+            -KeyAlgorithm RSA `
+            -KeyLength 2048 `
+            -HashAlgorithm SHA256 `
             -KeyExportPolicy Exportable `
             -NotAfter (Get-Date).AddDays(3)
+          Write-Output "Created certificate $($certificate.Thumbprint)."
           $pfxPath = Join-Path $env:RUNNER_TEMP 'openpet-self-signed-ci-test.pfx'
           $cerPath = Join-Path $env:RUNNER_TEMP 'openpet-self-signed-ci-test.cer'
           $password = [Guid]::NewGuid().ToString('N')
           $securePassword = ConvertTo-SecureString $password -AsPlainText -Force
           try {
+            Write-Output 'Exporting temporary signing certificate.'
             Export-PfxCertificate -Cert $certificate -FilePath $pfxPath -Password $securePassword | Out-Null
             Export-Certificate -Cert $certificate -FilePath $cerPath | Out-Null
-            Import-Certificate -FilePath $cerPath -CertStoreLocation 'Cert:\CurrentUser\Root' | Out-Null
+            Write-Output 'Exported temporary signing certificate.'
             $env:CSC_LINK = $pfxPath
             $env:CSC_KEY_PASSWORD = $password
             $env:ELECTRON_BUILDER_OFFLINE = 'true'
@@ -122,6 +129,8 @@ jobs:
 
             $installer = Get-ChildItem release -Filter '*self-signed.exe' | Select-Object -First 1
             if (-not $installer) { throw 'No self-signed Windows installer was produced' }
+            Write-Output 'Importing temporary certificate for Authenticode verification.'
+            Import-Certificate -FilePath $cerPath -CertStoreLocation 'Cert:\CurrentUser\Root' | Out-Null
             $signature = Get-AuthenticodeSignature -LiteralPath $installer.FullName
             if ($signature.Status -ne 'Valid') { throw "Windows Authenticode status is $($signature.Status), expected Valid. $($signature.StatusMessage)" }
             Write-Output "Verified self-signed installer with temporary CI trust: $($installer.Name); Authenticode=$($signature.Status)"
@@ -279,18 +288,27 @@ jobs:
         env:
           DEBUG: electron-builder
           SIGNTOOL_TIMEOUT: 120000
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          $ErrorActionPreference = 'Stop'
+          Write-Output 'Creating temporary self-signed code-signing certificate.'
           $certificate = New-SelfSignedCertificate `
             -Type CodeSigningCert `
             -Subject 'CN=OpenPet Self-Signed Release' `
             -CertStoreLocation 'Cert:\CurrentUser\My' `
+            -KeyAlgorithm RSA `
+            -KeyLength 2048 `
+            -HashAlgorithm SHA256 `
             -KeyExportPolicy Exportable `
             -NotAfter (Get-Date).AddDays(3)
+          Write-Output "Created certificate $($certificate.Thumbprint)."
           $pfxPath = Join-Path $env:RUNNER_TEMP 'openpet-self-signed-release.pfx'
           $password = [Guid]::NewGuid().ToString('N')
           $securePassword = ConvertTo-SecureString $password -AsPlainText -Force
           try {
+            Write-Output 'Exporting temporary signing certificate.'
             Export-PfxCertificate -Cert $certificate -FilePath $pfxPath -Password $securePassword | Out-Null
+            Write-Output 'Exported temporary signing certificate.'
             $env:CSC_LINK = $pfxPath
             $env:CSC_KEY_PASSWORD = $password
             $env:ELECTRON_BUILDER_OFFLINE = 'true'
