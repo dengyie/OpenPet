@@ -293,7 +293,7 @@ const createMacosReleaseEvidence = ({
     notarization: macosEvidenceStatus({ kind: 'notarization', content: notarizationContent }),
     gatekeeper: macosEvidenceStatus({ kind: 'gatekeeper', content: gatekeeperContent })
   }
-  const releaseReady = statuses.codesign === 'pass' && statuses.notarization === 'pass' && statuses.gatekeeper === 'pass'
+  const signatureIntegrityReady = statuses.codesign === 'pass'
   const evidenceFiles = [
     describeFile({ role: 'macosCodesignEvidence', filePath: codesignPath, displayPath: safeCodesignPath, fsImpl }),
     describeFile({ role: 'macosNotarizationEvidence', filePath: notarizationPath, displayPath: safeNotarizationPath, fsImpl }),
@@ -303,7 +303,8 @@ const createMacosReleaseEvidence = ({
   const summary = {
     generatedAt,
     ok: true,
-    releaseReady,
+    signatureIntegrityReady,
+    releaseReady: signatureIntegrityReady,
     appPath: safeAppPath,
     outputDir: safeOutputDir,
     statuses,
@@ -316,7 +317,11 @@ const createMacosReleaseEvidence = ({
     },
     evidenceFiles,
     commands,
-    warnings: releaseReady ? [] : ['macOS evidence is archived but does not prove official signed release readiness']
+    warnings: [
+      ...(signatureIntegrityReady ? [] : ['macOS signature integrity is not established']),
+      ...(statuses.notarization !== 'pass' ? ['Notarization is not established; it is not required for this self-managed release.'] : []),
+      ...(statuses.gatekeeper !== 'pass' ? ['Gatekeeper acceptance is not established; it is an OS trust observation, not a release gate.'] : [])
+    ]
   }
 
   writeSummary({ summary, outputPath: absoluteMarkdownSummaryPath, fsImpl })
@@ -333,9 +338,9 @@ const renderMarkdownSummary = (summary) => {
     `App path: ${summary.appPath || '(not provided)'}`,
     `Evidence directory: ${summary.outputDir}`,
     `Evidence valid: ${boolText(summary.ok)}`,
-    `macOS signed release-ready: ${boolText(summary.releaseReady)}`,
+    `macOS signature-integrity ready: ${boolText(summary.signatureIntegrityReady ?? summary.releaseReady)}`,
     '',
-    'This summary archives macOS signing, notarization, and Gatekeeper evidence metadata for review. Pending, unsigned, rejected, or missing evidence does not prove official signed release readiness.',
+    'This summary records local signature-integrity evidence. Notarization and Gatekeeper are optional OS trust observations and are not release gates.',
     '',
     '## Status',
     '',
@@ -391,7 +396,7 @@ const main = () => {
   } else {
     console.log(`macOS release evidence created: ${summary.outputDir}`)
     console.log(`Summary: ${summary.files.markdownSummary}`)
-    console.log(`macOS signed release-ready: ${summary.releaseReady ? 'yes' : 'no'}`)
+    console.log(`macOS signature-integrity ready: ${summary.signatureIntegrityReady ? 'yes' : 'no'}`)
   }
 }
 

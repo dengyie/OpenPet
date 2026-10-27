@@ -18,12 +18,12 @@ const VALID_PLATFORMS = new Set(['darwin', 'win32'])
 const VALID_STATUSES = new Set(['pass', 'fail', 'pending', 'blocked'])
 
 const usage = () => [
-  'Usage: node scripts/validate-desktop-picker-smoke-report.js <report.json> [--allow-pending] [--require-signed]',
+  'Usage: node scripts/validate-desktop-picker-smoke-report.js <report.json> [--allow-pending] [--require-signature-integrity]',
   '',
   'Validates packaged desktop native OS file picker smoke evidence for macOS or Windows.',
   'By default every required picker smoke check must pass.',
   '--allow-pending validates generated or in-progress reports without claiming smoke success.',
-  '--require-signed additionally requires signed artifact evidence for the reported platform.'
+  '--require-signature-integrity additionally requires signature integrity evidence for the reported platform.'
 ].join('\n')
 
 const isObject = (value) => value && typeof value === 'object' && !Array.isArray(value)
@@ -39,6 +39,7 @@ const parseArgs = (argv) => {
   const options = {
     reportPath: null,
     allowPending: false,
+    requireSignatureIntegrity: false,
     requireSigned: false,
     help: false
   }
@@ -46,6 +47,8 @@ const parseArgs = (argv) => {
   for (const arg of argv) {
     if (arg === '--allow-pending') {
       options.allowPending = true
+    } else if (arg === '--require-signature-integrity') {
+      options.requireSignatureIntegrity = true
     } else if (arg === '--require-signed') {
       options.requireSigned = true
     } else if (arg === '--help' || arg === '-h') {
@@ -67,32 +70,34 @@ const loadReport = (reportPath) => {
   return { absolutePath, report: JSON.parse(raw) }
 }
 
-const validateSignatureEvidence = ({ report, errors }) => {
+const validateSignatureEvidence = ({ report, errors, legacySigned = false }) => {
   if (!isObject(report.artifact)) return
-  if (report.artifact.signed !== true) errors.push('artifact.signed must be true when --require-signed is used')
+  const flag = legacySigned ? '--require-signed' : '--require-signature-integrity'
+  if (report.artifact.signed !== true) errors.push(`artifact.signed must be true when ${flag} is used`)
 
   if (report.platform === 'darwin') {
     if (String(report.artifact.signatureStatus || '').toLowerCase() !== 'valid') {
-      errors.push('artifact.signatureStatus must be "Valid" for signed macOS picker smoke readiness')
+      errors.push(`artifact.signatureStatus must be "Valid" for ${legacySigned ? 'signed' : 'signature-integrity'} macOS picker smoke readiness`)
     }
     if (!hasEvidence(report.artifact.signatureEvidence)) {
-      errors.push('artifact.signatureEvidence is required for signed macOS picker smoke readiness')
+      errors.push(`artifact.signatureEvidence is required for ${legacySigned ? 'signed' : 'signature-integrity'} macOS picker smoke readiness`)
     }
   }
 
   if (report.platform === 'win32') {
     if (String(report.artifact.authenticodeStatus || '').toLowerCase() !== 'valid') {
-      errors.push('artifact.authenticodeStatus must be "Valid" for signed Windows picker smoke readiness')
+      errors.push(`artifact.authenticodeStatus must be "Valid" for ${legacySigned ? 'signed' : 'signature-integrity'} Windows picker smoke readiness`)
     }
     if (!hasEvidence(report.artifact.signatureEvidence) && !hasEvidence(report.artifact.authenticodeEvidence)) {
-      errors.push('artifact.signatureEvidence or artifact.authenticodeEvidence is required for signed Windows picker smoke readiness')
+      errors.push(`artifact.signatureEvidence or artifact.authenticodeEvidence is required for ${legacySigned ? 'signed' : 'signature-integrity'} Windows picker smoke readiness`)
     }
   }
 }
 
 const validateReport = (report, options = {}) => {
   const allowPending = Boolean(options.allowPending)
-  const requireSigned = Boolean(options.requireSigned)
+  const requireSignatureIntegrity = Boolean(options.requireSignatureIntegrity || options.requireSigned)
+  const legacySigned = Boolean(options.requireSigned && !options.requireSignatureIntegrity)
   const errors = []
   const warnings = []
 
@@ -110,10 +115,10 @@ const validateReport = (report, options = {}) => {
     if (!allowPending && !hasEvidence(report.artifact.appPath) && !hasEvidence(report.artifact.installer)) {
       errors.push('artifact.appPath or artifact.installer evidence is required')
     }
-    if (requireSigned) {
-      validateSignatureEvidence({ report, errors })
+    if (requireSignatureIntegrity) {
+      validateSignatureEvidence({ report, errors, legacySigned })
     } else if (report.artifact.signed !== true) {
-      warnings.push('Desktop picker smoke artifact is not signed; this report cannot prove official release readiness')
+      warnings.push('Desktop picker artifact signature integrity is not established')
     }
   }
 
@@ -159,7 +164,9 @@ const validateReport = (report, options = {}) => {
       passed,
       total: REQUIRED_CHECKS.length,
       smokeReady: errors.length === 0 && !allowPending,
-      officialReady: errors.length === 0 && !allowPending && requireSigned && report.artifact?.signed === true
+      signatureIntegrityReady: errors.length === 0 && !allowPending && requireSignatureIntegrity && report.artifact?.signed === true,
+      // Keep the historical field for consumers of older evidence JSON.
+      officialReady: errors.length === 0 && !allowPending && requireSignatureIntegrity && report.artifact?.signed === true
     }
   }
 }
@@ -185,10 +192,10 @@ const main = () => {
 
   if (options.allowPending) {
     console.log('Report structure is valid.')
-  } else if (options.requireSigned) {
-    console.log('Desktop picker smoke report passed signed official-readiness checks.')
+  } else if (options.requireSignatureIntegrity || options.requireSigned) {
+    console.log('Desktop picker smoke report passed signature-integrity checks.')
   } else {
-    console.log('Desktop picker smoke report passed smoke checks. Official release readiness still requires signed artifact validation.')
+    console.log('Desktop picker smoke report passed smoke checks. Signature integrity was not required.')
   }
 }
 

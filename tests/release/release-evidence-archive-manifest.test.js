@@ -269,7 +269,7 @@ test('parseArgs accepts archive inputs and output controls', () => {
     '--macos-notarization', 'archive/notary.txt',
     '--macos-gatekeeper', 'archive/spctl.txt',
     '--output', 'archive/manifest.json',
-    '--require-signed',
+    '--require-signature-integrity',
     '--json'
   ])
 
@@ -283,7 +283,7 @@ test('parseArgs accepts archive inputs and output controls', () => {
   assert.equal(options.macosNotarizationPath, 'archive/notary.txt')
   assert.equal(options.macosGatekeeperPath, 'archive/spctl.txt')
   assert.equal(options.outputPath, 'archive/manifest.json')
-  assert.equal(options.requireSigned, true)
+  assert.equal(options.requireSignatureIntegrity, true)
   assert.equal(options.json, true)
 })
 
@@ -314,7 +314,7 @@ test('macosEvidenceStatus detects signing, notarization, and Gatekeeper success 
   assert.equal(macosEvidenceStatus({ kind: 'gatekeeper', content: 'release/mac-arm64/OpenPet.app: accepted\nsource=Notarized Developer ID' }), 'pass')
   assert.equal(macosEvidenceStatus({ kind: 'codesign', content: 'code has no resources but signature indicates they must be present\nexitCode: 1' }), 'fail')
   assert.equal(macosEvidenceStatus({ kind: 'notarization', content: 'status: Invalid\nnot accepted' }), 'fail')
-  assert.equal(macosEvidenceStatus({ kind: 'notarization', content: 'status: NotSubmitted\nsource: unsigned macOS release workflow' }), 'fail')
+  assert.equal(macosEvidenceStatus({ kind: 'notarization', content: 'status: NotSubmitted\nsource: unsigned macOS release workflow' }), 'pending')
   assert.equal(macosEvidenceStatus({ kind: 'gatekeeper', content: 'not accepted\nsource=Unnotarized Developer ID' }), 'fail')
   assert.equal(macosEvidenceStatus({ kind: 'gatekeeper', content: 'rejected' }), 'fail')
   assert.equal(macosEvidenceStatus({ kind: 'codesign', content: 'codesign evidence pending. Provide --app or --codesign-source.' }), 'pending')
@@ -349,7 +349,7 @@ test('createReleaseEvidenceArchiveManifest returns the shared release evidence m
   const manifest = createReleaseEvidenceArchiveManifest({ archiveDir, requireSigned: true, now: fixedNow })
 
   assert.equal(manifest.generatedAt, fixedNow().toISOString())
-  assert.equal(manifest.requireSigned, true)
+  assert.equal(manifest.requireSignatureIntegrity, true)
   assert.equal(typeof manifest.ok, 'boolean')
   assert.equal(typeof manifest.releaseReady, 'boolean')
   assert.equal(path.isAbsolute(manifest.archive.archiveDir), false)
@@ -406,7 +406,7 @@ test('createReleaseEvidenceArchiveManifest returns the shared release evidence m
   assert.ok(Array.isArray(manifest.warnings))
 })
 
-test('createReleaseEvidenceArchiveManifest requires macOS evidence when signed readiness is requested', () => {
+test('createReleaseEvidenceArchiveManifest requires macOS signature evidence but not OS trust evidence', () => {
   const archiveDir = createArchive({ signed: true, status: 'pass', includeMacosEvidence: false })
 
   const manifest = createReleaseEvidenceArchiveManifest({ archiveDir, requireSigned: true, now: fixedNow })
@@ -414,8 +414,7 @@ test('createReleaseEvidenceArchiveManifest requires macOS evidence when signed r
   assert.equal(manifest.ok, false)
   assert.equal(manifest.releaseReady, false)
   assert.match(manifest.errors.join('\n'), /missing macosCodesignEvidence/)
-  assert.match(manifest.errors.join('\n'), /missing macosNotarizationEvidence/)
-  assert.match(manifest.errors.join('\n'), /missing macosGatekeeperEvidence/)
+  assert.doesNotMatch(manifest.errors.join('\n'), /missing macosNotarizationEvidence|missing macosGatekeeperEvidence/)
 })
 
 test('createReleaseEvidenceArchiveManifest marks signed all-pass archives as release ready', () => {
@@ -432,6 +431,20 @@ test('createReleaseEvidenceArchiveManifest marks signed all-pass archives as rel
   assert.equal(manifest.reports.desktopPicker.readinessValidation.summary.officialReady, true)
   assert.equal(manifest.reports.packagedRuntime.readinessValidation.summary.officialReady, true)
   assert.equal(manifest.archives.desktopPicker.releaseReady, true)
+})
+
+test('createReleaseEvidenceArchiveManifest does not gate self-managed readiness on notarization or Gatekeeper', () => {
+  const archiveDir = createArchive({ signed: true, status: 'pass' })
+  fs.writeFileSync(path.join(archiveDir, 'macos-notarization.txt'), 'status: NotSubmitted\n')
+  fs.writeFileSync(path.join(archiveDir, 'macos-gatekeeper.txt'), 'assessment: rejected by host policy\n')
+
+  const manifest = createReleaseEvidenceArchiveManifest({ archiveDir, requireSignatureIntegrity: true, now: fixedNow })
+
+  assert.equal(manifest.ok, true)
+  assert.equal(manifest.releaseReady, true)
+  assert.equal(manifest.macos.codesign.status, 'pass')
+  assert.equal(manifest.macos.notarization.status, 'pending')
+  assert.equal(manifest.macos.gatekeeper.status, 'fail')
 })
 
 test('createReleaseEvidenceArchiveManifest validates imported macOS artifact provenance when present', () => {
@@ -504,7 +517,7 @@ test('createReleaseEvidenceArchiveManifest uses Windows-specific signed archive 
 
   const manifest = createReleaseEvidenceArchiveManifest({ archiveDir, requireSigned: true, now: fixedNow })
 
-  assert.match(manifest.warnings.join('\n'), /windowsSmokeArchiveManifest does not prove signed Windows smoke report archive readiness/)
+  assert.match(manifest.warnings.join('\n'), /windowsSmokeArchiveManifest does not prove signature-integrity archive readiness/)
 })
 
 test('createReleaseEvidenceArchiveManifest rejects Windows archive manifests for a different Windows report', () => {

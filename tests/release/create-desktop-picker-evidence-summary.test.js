@@ -83,7 +83,7 @@ test('parseArgs accepts evidence directory, report, signing, output, and json fl
     'desktop-picker-evidence',
     '--report',
     'desktop-picker-smoke-report.json',
-    '--require-signed',
+    '--require-signature-integrity',
     '--output',
     'summary.md',
     '--json'
@@ -91,7 +91,7 @@ test('parseArgs accepts evidence directory, report, signing, output, and json fl
 
   assert.equal(options.evidenceDir, 'desktop-picker-evidence')
   assert.equal(options.reportPath, 'desktop-picker-smoke-report.json')
-  assert.equal(options.requireSigned, true)
+  assert.equal(options.requireSignatureIntegrity, true)
   assert.equal(options.outputPath, 'summary.md')
   assert.equal(options.json, true)
 })

@@ -2597,6 +2597,7 @@ export interface DesktopPickerValidationSummary {
   passed: number
   total: number
   smokeReady?: boolean
+  signatureIntegrityReady?: boolean
   officialReady?: boolean
 }
 
@@ -2712,6 +2713,7 @@ export type DesktopPickerEvidenceReport =
 
 export interface DesktopPickerEvidenceSummary {
   generatedAt: string
+  requireSignatureIntegrity?: boolean
   requireSigned: boolean
   ok: boolean
   releaseReady: boolean
@@ -2723,6 +2725,7 @@ export interface DesktopPickerEvidenceSummary {
 
 export interface DesktopPickerArchiveManifest {
   generatedAt: string
+  requireSignatureIntegrity?: boolean
   requireSigned: boolean
   ok: boolean
   releaseReady: boolean
@@ -2759,6 +2762,7 @@ export interface WindowsSmokeValidationSummary {
   passed: number
   total: number
   smokeReady?: boolean
+  signatureIntegrityReady?: boolean
   officialReady?: boolean
 }
 
@@ -2863,6 +2867,7 @@ export type WindowsSmokeEvidenceReport =
 
 export interface WindowsSmokeEvidenceSummary {
   generatedAt: string
+  requireSignatureIntegrity?: boolean
   requireSigned: boolean
   ok: boolean
   releaseReady: boolean
@@ -2874,6 +2879,7 @@ export interface WindowsSmokeEvidenceSummary {
 
 export interface WindowsSmokeArchiveManifest {
   generatedAt: string
+  requireSignatureIntegrity?: boolean
   requireSigned: boolean
   ok: boolean
   releaseReady: boolean
@@ -3345,6 +3351,7 @@ export interface PackagedRuntimeSmokeValidationSummary {
   passed: number
   total: number
   smokeReady?: boolean
+  signatureIntegrityReady?: boolean
   officialReady?: boolean
 }
 
@@ -3600,6 +3607,7 @@ export interface MacosReleaseEvidenceCommand {
 export interface MacosReleaseEvidenceSummary {
   generatedAt: string
   ok: boolean
+  signatureIntegrityReady?: boolean
   releaseReady: boolean
   appPath: string
   outputDir: string
@@ -3634,6 +3642,7 @@ export interface MacosReleaseEvidenceArtifactArchiveFile {
 export interface MacosReleaseEvidenceArtifactArchiveManifest {
   generatedAt: string
   ok: boolean
+  signatureIntegrityReady?: boolean
   macosEvidenceReady: boolean
   archive: {
     archiveDir: string
@@ -3651,7 +3660,8 @@ export interface MacosReleaseEvidenceArtifactArchiveManifest {
 
 export interface ReleaseEvidenceArchiveManifest {
   generatedAt: string
-  requireSigned: boolean
+  requireSignatureIntegrity?: boolean
+  requireSigned?: boolean
   ok: boolean
   releaseReady: boolean
   archive: {
@@ -3706,7 +3716,8 @@ export interface SignedReleaseClosureReport {
   manifest: {
     ok: boolean
     releaseReady: boolean
-    requireSigned: boolean
+    requireSignatureIntegrity?: boolean
+    requireSigned?: boolean
     archiveDir: string
     outputPath: string
   }

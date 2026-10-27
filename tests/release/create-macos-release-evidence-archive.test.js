@@ -103,7 +103,7 @@ test('createMacosReleaseEvidenceArchive copies unsigned artifact evidence withou
   assert.equal(fs.existsSync(path.join(archiveDir, 'macos-release-evidence-summary.md')), true)
   assert.equal(fs.existsSync(path.join(archiveDir, 'macos-release-evidence-summary.json')), true)
   assert.equal(fs.existsSync(path.join(archiveDir, 'macos-release-evidence-artifact-manifest.json')), true)
-  assert.match(manifest.warnings.join('\n'), /does not prove official signed release readiness/)
+  assert.match(manifest.warnings.join('\n'), /signature integrity is not established/)
   assert.equal(manifest.archive.outputPath, 'docs/release-evidence/macos-release-evidence-archive/macos-release-evidence-artifact-manifest.json')
 })
 
@@ -123,22 +123,19 @@ test('createMacosReleaseEvidenceArchive marks passing-looking evidence only as e
   assert.equal(manifest.macosEvidenceReady, true)
   assert.equal(manifest.files.length, 3)
   assert.deepEqual(manifest.files.map((file) => file.status), ['pass', 'pass', 'pass'])
-  assert.match(manifest.warnings.join('\n'), /official release readiness still requires release archive/)
+  assert.match(manifest.warnings.join('\n'), /notarization and Gatekeeper remain optional OS trust observations/)
 })
 
-test('createMacosReleaseEvidenceArchive rejects incomplete artifacts before writing misleading manifests', () => {
+test('createMacosReleaseEvidenceArchive requires codesign evidence but not OS trust evidence', () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-macos-artifact-archive-'))
   const artifactDir = path.join(tempDir, 'artifact')
   const archiveDir = path.join(tempDir, 'archive')
   fs.mkdirSync(artifactDir)
-  fs.writeFileSync(path.join(artifactDir, 'macos-codesign.txt'), 'code object is not signed at all\n')
-  fs.writeFileSync(path.join(artifactDir, 'macos-notarization.txt'), 'status: NotSubmitted\n')
-
-  assert.throws(
-    () => createMacosReleaseEvidenceArchive({ artifactDir, archiveDir, now: fixedNow }),
-    /Missing macosGatekeeperEvidence/
-  )
-  assert.equal(fs.existsSync(path.join(archiveDir, 'macos-release-evidence-artifact-manifest.json')), false)
+  fs.writeFileSync(path.join(artifactDir, 'macos-codesign.txt'), 'OpenPet.app: valid on disk\nOpenPet.app: satisfies its Designated Requirement\n')
+  const manifest = createMacosReleaseEvidenceArchive({ artifactDir, archiveDir, now: fixedNow })
+  assert.equal(manifest.signatureIntegrityReady, true)
+  assert.equal(manifest.macosEvidenceReady, true)
+  assert.deepEqual(manifest.files.map((file) => file.role), ['macosCodesignEvidence'])
 })
 
 test('createMacosReleaseEvidenceArchive refuses to overwrite existing archived evidence', () => {

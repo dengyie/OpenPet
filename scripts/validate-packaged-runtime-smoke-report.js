@@ -195,6 +195,7 @@ const validateReport = (report, options = {}) => {
       total: REQUIRED_CHECKS.length,
       smokeReady: errors.length === 0 && !allowPending,
       signatureIntegrityReady: errors.length === 0 && !allowPending && requireSignatureIntegrity && report.artifact?.signed === true,
+      // Keep the historical field for consumers of older evidence JSON.
       officialReady: errors.length === 0 && !allowPending && requireSignatureIntegrity && report.artifact?.signed === true
     }
   }

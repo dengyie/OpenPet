@@ -374,11 +374,11 @@ const createChecks = (docsRoot, { projectContext, context }) => {
       id: 'maintainer-summaries-keep-real-gap-language',
       description: 'Development and status summaries should keep real/manual-required gap language explicit.',
       run: () =>
-        /self-managed macOS and Windows signing/i.test(developmentSummary) &&
-        /signature integrity and runtime behavior/i.test(developmentSummary) &&
+        /self-managed macOS\/Windows signature-integrity gates/i.test(developmentSummary) &&
+        /Real target-OS validation remains open/i.test(developmentSummary) &&
         /compatible third-party package path/i.test(developmentSummary) &&
-        /Adapt macOS packaging\/evidence to self-managed signing without notarization/i.test(projectStatusReview) &&
-        /locally generated self-signed certificate/i.test(projectStatusReview) &&
+        /Validate the current macOS self-managed signature/i.test(projectStatusReview) &&
+        /locally generated Windows self-signed artifact/i.test(projectStatusReview) &&
         /(?:docs\/|\.\/)release-evidence\/desktop-picker\/2026-10-08T21-01-48Z-darwin-arm64[\s\S]*8\/9[\s\S]*plugin-install-disabled[\s\S]*pending/i.test(developmentSummary) &&
         /11\/14[\s\S]*docs\/release-evidence\/desktop-picker\/2026-10-08T21-01-48Z-darwin-arm64[\s\S]*8\/9[\s\S]*plugin-install-disabled[\s\S]*pending/i.test(projectStatusReview) &&
         /compatible third-party package path/i.test(projectStatusReview),

@@ -18,18 +18,18 @@ const STATUS_ORDER = ['pass', 'fail', 'pending', 'blocked']
 /** @typedef {import('@openpet/shared/src/openpet-contracts.ts').WindowsSmokeReport} WindowsSmokeReport */
 /** @typedef {import('@openpet/shared/src/openpet-contracts.ts').WindowsSmokeValidationResult} WindowsSmokeValidationResult */
 /** @typedef {import('@openpet/shared/src/openpet-contracts.ts').WindowsSmokeEvidenceFile} WindowsSmokeEvidenceFile */
-/** @typedef {{ evidenceDir: string, reportPath: string | null, requireSigned: boolean, outputPath: string | null, json: boolean, help: boolean }} CliOptions */
-/** @typedef {{ evidenceDir: string | null, reportPath: string | null, requireSigned: boolean, outputPath: string | null, json: boolean, help: boolean }} CliParseState */
-/** @typedef {{ evidenceDir?: string, reportPath?: string | null, requireSigned?: boolean, now?: () => Date }} SummaryOptions */
+/** @typedef {{ evidenceDir: string, reportPath: string | null, requireSignatureIntegrity: boolean, requireSigned: boolean, outputPath: string | null, json: boolean, help: boolean }} CliOptions */
+/** @typedef {{ evidenceDir: string | null, reportPath: string | null, requireSignatureIntegrity: boolean, requireSigned: boolean, outputPath: string | null, json: boolean, help: boolean }} CliParseState */
+/** @typedef {{ evidenceDir?: string, reportPath?: string | null, requireSignatureIntegrity?: boolean, requireSigned?: boolean, now?: () => Date }} SummaryOptions */
 /** @typedef {{ summary: WindowsSmokeEvidenceSummary, outputPath: string, json?: boolean, fsImpl?: typeof fs }} WriteSummaryOptions */
 /** @typedef {{ ok: boolean, errors: string[], warnings: string[], summary: { evidenceDir: string, files: WindowsSmokeEvidenceFile[], requiredFiles: number, signed?: boolean } }} EvidenceValidationResult */
 
 const usage = () => [
-  'Usage: node scripts/create-windows-smoke-evidence-summary.js [evidence-dir] [--evidence-dir <dir>] [--report <report.json>] [--require-signed] [--output <summary.md>] [--json]',
+  'Usage: node scripts/create-windows-smoke-evidence-summary.js [evidence-dir] [--evidence-dir <dir>] [--report <report.json>] [--require-signature-integrity] [--output <summary.md>] [--json]',
   '',
   `Defaults to ./${DEFAULT_EVIDENCE_DIR}.`,
   'Creates an auditable summary of a Windows smoke evidence directory and optional paired smoke report.',
-  '--require-signed keeps the existing signed-evidence gate; it does not mark runtime smoke checks as passed.',
+  '--require-signature-integrity requires local Authenticode integrity evidence; it does not mark runtime smoke checks as passed.',
   '--json writes the structured summary instead of Markdown.'
 ].join('\n')
 
@@ -39,6 +39,7 @@ const parseArgs = (argv) => {
   const options = {
     evidenceDir: null,
     reportPath: null,
+    requireSignatureIntegrity: false,
     requireSigned: false,
     outputPath: null,
     json: false,
@@ -68,6 +69,8 @@ const parseArgs = (argv) => {
     } else if (arg === '--report') {
       options.reportPath = readValue(index, arg)
       index += 1
+    } else if (arg === '--require-signature-integrity') {
+      options.requireSignatureIntegrity = true
     } else if (arg === '--require-signed') {
       options.requireSigned = true
     } else if (arg === '--output') {
@@ -113,14 +116,15 @@ const countChecksByStatus = (checks = []) => {
   return { counts, byStatus }
 }
 
-/** @param {{ reportPath: string | null, requireSigned: boolean }} options @returns {WindowsSmokeEvidenceReport | null} */
-const summarizeReport = ({ reportPath, requireSigned }) => {
+/** @param {{ reportPath: string | null, requireSignatureIntegrity?: boolean, requireSigned?: boolean }} options @returns {WindowsSmokeEvidenceReport | null} */
+const summarizeReport = ({ reportPath, requireSignatureIntegrity = false, requireSigned = false }) => {
   if (!reportPath) return null
 
   try {
     const { absoluteReportPath, report } = loadReport(reportPath)
-    const structuralValidation = /** @type {WindowsSmokeValidationResult} */ (validateReport(report, { allowPending: true, requireSigned }))
-    const readinessValidation = /** @type {WindowsSmokeValidationResult} */ (validateReport(report, { allowPending: false, requireSigned }))
+    const signatureGate = requireSignatureIntegrity || requireSigned
+    const structuralValidation = /** @type {WindowsSmokeValidationResult} */ (validateReport(report, { allowPending: true, requireSignatureIntegrity: signatureGate }))
+    const readinessValidation = /** @type {WindowsSmokeValidationResult} */ (validateReport(report, { allowPending: false, requireSignatureIntegrity: signatureGate }))
     const checks = Array.isArray(report.checks) ? report.checks : []
     const checkSummary = countChecksByStatus(checks)
 
@@ -168,18 +172,21 @@ const summarizeReport = ({ reportPath, requireSigned }) => {
 const createWindowsSmokeEvidenceSummary = ({
   evidenceDir = DEFAULT_EVIDENCE_DIR,
   reportPath = null,
+  requireSignatureIntegrity = false,
   requireSigned = false,
   now = () => new Date()
 } = {}) => {
-  const validateEvidence = /** @type {(options: { evidenceDir: string, reportPath: string | null, requireSigned: boolean }) => EvidenceValidationResult} */ (validateEvidenceBundle)
-  const evidenceValidation = validateEvidence({ evidenceDir, reportPath, requireSigned })
-  const report = summarizeReport({ reportPath, requireSigned })
+  const signatureGate = requireSignatureIntegrity || requireSigned
+  const validateEvidence = /** @type {(options: { evidenceDir: string, reportPath: string | null, requireSignatureIntegrity: boolean }) => EvidenceValidationResult} */ (validateEvidenceBundle)
+  const evidenceValidation = validateEvidence({ evidenceDir, reportPath, requireSignatureIntegrity: signatureGate })
+  const report = summarizeReport({ reportPath, requireSignatureIntegrity: signatureGate })
   const reportHasLoadError = Boolean(report && 'error' in report)
   const validReport = report && !('error' in report) ? report : null
 
   return {
     generatedAt: now().toISOString(),
-    requireSigned,
+    requireSignatureIntegrity: signatureGate,
+    requireSigned: signatureGate,
     ok: evidenceValidation.ok && !reportHasLoadError,
     releaseReady: Boolean(validReport?.readinessValidation.ok && evidenceValidation.ok),
     evidence: {
@@ -209,11 +216,11 @@ const renderMarkdownSummary = (summary) => {
     '',
     `Generated at: ${summary.generatedAt}`,
     `Evidence directory: ${summary.evidence.evidenceDir}`,
-    `Signed evidence required: ${boolText(summary.requireSigned)}`,
+    `Signature integrity required: ${boolText(summary.requireSignatureIntegrity ?? summary.requireSigned)}`,
     `Evidence/report validation valid: ${boolText(summary.ok)}`,
     `Windows release-ready: ${boolText(summary.releaseReady)}`,
     '',
-    'This summary archives evidence metadata for review. Pending or unsigned evidence does not prove Windows release readiness; a real Windows smoke report must pass readiness validation, and official stable releases must also pass signed Authenticode validation.',
+    'This summary archives evidence metadata for review. Pending or unsigned evidence does not prove Windows release readiness; a real Windows smoke report must pass readiness validation and local Authenticode integrity validation when requested.',
     '',
     '## Evidence Files',
     '',
@@ -269,7 +276,7 @@ const renderMarkdownSummary = (summary) => {
         `Structural report validation: ${boolText(summary.report.structuralValidation.ok)}`,
         `Readiness validation: ${boolText(summary.report.readinessValidation.ok)}`,
         `Smoke ready: ${boolText(summary.report.readinessValidation.summary.smokeReady)}`,
-        `Official signed ready: ${boolText(summary.report.readinessValidation.summary.officialReady)}`
+        `Signature integrity ready: ${boolText(summary.report.readinessValidation.summary.signatureIntegrityReady)}`
       )
     }
   }

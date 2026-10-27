@@ -118,14 +118,14 @@ const createRunbook = ({ report, reportPath, generatedAt = new Date() }) => {
 
   lines.push('## Validation Commands')
   lines.push('')
-  lines.push('Run these commands only after every check has real evidence. The first command is the packaged-app smoke gate. The second command is required before an official signed desktop release claim.')
+  lines.push('Run these commands only after every check has real evidence. The first command is the packaged-app smoke gate. The second command additionally verifies artifact signature integrity; Gatekeeper and SmartScreen trust are separate observations.')
   lines.push('')
   lines.push('```bash')
   lines.push(`npm run validate-desktop-picker-smoke-report -- ${reportCommandPath}`)
-  lines.push(`npm run validate-desktop-picker-smoke-report -- ${reportCommandPath} --require-signed`)
+  lines.push(`npm run validate-desktop-picker-smoke-report -- ${reportCommandPath} --require-signature-integrity`)
   lines.push('```')
   lines.push('')
-  lines.push('Do not mark desktop picker validation complete while any check is pending, blocked, failed, or missing evidence. Do not use the signed readiness command for unsigned local or prerelease artifacts.')
+  lines.push('Do not mark desktop picker validation complete while any check is pending, blocked, failed, or missing evidence. Signature integrity does not establish OS trust.')
 
   return lines.join('\n')
 }

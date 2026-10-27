@@ -36,13 +36,13 @@ test('maintainer summary docs keep current real/manual-required gaps explicit', 
 
   assert.match(
     developmentSummary,
-    /Release tooling still follows the previous paid-signing\/notarization policy[\s\S]*self-managed macOS and Windows signing[\s\S]*Packaged picker evidence[\s\S]*8\/9[\s\S]*plugin-install-disabled[\s\S]*pending[\s\S]*compatible third-party package path/i,
+    /Release evidence tooling now uses self-managed macOS\/Windows signature-integrity gates[\s\S]*Real target-OS validation remains open[\s\S]*Packaged picker evidence[\s\S]*8\/9[\s\S]*plugin-install-disabled[\s\S]*pending[\s\S]*compatible third-party package path/i,
     'development-summary.md should keep the open engineering themes grounded in remaining real/manual-required gaps'
   )
 
   assert.match(
     projectStatusReview,
-    /Adapt macOS packaging\/evidence to self-managed signing without notarization[\s\S]*locally generated self-signed certificate[\s\S]*11\/14[\s\S]*docs\/release-evidence\/desktop-picker\/2026-10-08T21-01-48Z-darwin-arm64[\s\S]*8\/9[\s\S]*plugin-install-disabled[\s\S]*pending[\s\S]*compatible third-party package path/i,
+    /Validate the current macOS self-managed signature[\s\S]*locally generated Windows self-signed artifact[\s\S]*11\/14[\s\S]*docs\/release-evidence\/desktop-picker\/2026-10-08T21-01-48Z-darwin-arm64[\s\S]*8\/9[\s\S]*plugin-install-disabled[\s\S]*pending[\s\S]*compatible third-party package path/i,
     'project-status-review.md should keep the main remaining gaps grounded in remaining real/manual-required gaps'
   )
 })

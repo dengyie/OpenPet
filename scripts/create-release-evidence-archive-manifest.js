@@ -71,10 +71,10 @@ const usage = () => [
   '  --macos-gatekeeper <evidence.txt>',
   '  --macos-artifact-manifest <manifest.json>',
   '  --output <manifest.json>',
-  '  --require-signed',
+  '  --require-signature-integrity',
   '  --json',
   '',
-  'Creates a release-level evidence archive manifest. Archive validity and release readiness are separate: pending or unsigned evidence can be archived, but it cannot prove release readiness.'
+  'Creates a release-level evidence archive manifest. Archive validity and release readiness are separate: pending evidence can be archived, but it cannot prove self-managed signature integrity.'
 ].join('\n')
 
 const parseArgs = (argv) => {
@@ -90,6 +90,7 @@ const parseArgs = (argv) => {
     macosGatekeeperPath: null,
     macosArtifactManifestPath: null,
     outputPath: null,
+    requireSignatureIntegrity: false,
     requireSigned: false,
     json: false,
     help: false
@@ -138,8 +139,10 @@ const parseArgs = (argv) => {
     } else if (arg === '--output') {
       options.outputPath = readValue(index, arg)
       index += 1
+    } else if (arg === '--require-signature-integrity') {
+      options.requireSignatureIntegrity = true
     } else if (arg === '--require-signed') {
-      options.requireSigned = true
+      options.requireSignatureIntegrity = true
     } else if (arg === '--json') {
       options.json = true
     } else {
@@ -233,6 +236,7 @@ const validateReportFile = ({
   filePath,
   displayPath,
   validateReport,
+  requireSignatureIntegrity,
   requireSigned,
   sanitize = (value) => value,
   fsImpl = fs
@@ -247,8 +251,9 @@ const validateReportFile = ({
 
   try {
     const report = loadJsonFile(filePath, fsImpl)
-    const structuralValidation = validateReport(report, { allowPending: true, requireSigned })
-    const readinessValidation = validateReport(report, { allowPending: false, requireSigned })
+    const signatureGate = Boolean(requireSignatureIntegrity || requireSigned)
+    const structuralValidation = validateReport(report, { allowPending: true, requireSignatureIntegrity: signatureGate, requireSigned: signatureGate })
+    const readinessValidation = validateReport(report, { allowPending: false, requireSignatureIntegrity: signatureGate, requireSigned: signatureGate })
     errors.push(...structuralValidation.errors.map((error) => `${role}: ${error}`))
     warnings.push(...structuralValidation.warnings.map((warning) => `${role}: ${warning}`))
     if (!readinessValidation.ok) warnings.push(`${role} is archived but not release-ready`)
@@ -284,6 +289,7 @@ const validateLinkedArchiveManifestFile = ({
   reportFile: expectedReportFile,
   expectedReportPath = '',
   reportRoleLabel,
+  requireSignatureIntegrity,
   requireSigned,
   sanitize = (value) => value,
   fsImpl = fs
@@ -345,8 +351,8 @@ const validateLinkedArchiveManifestFile = ({
       errors.push(`${role} records a stale ${reportRoleLabel} hash`)
     }
     if (!details.releaseReady) warnings.push(`${role} is archived but not release-ready`)
-    if (requireSigned && manifest.ok === true && !details.releaseReady) {
-      warnings.push(`${role} does not prove signed ${reportRoleLabel} archive readiness`)
+    if ((requireSignatureIntegrity || requireSigned) && manifest.ok === true && !details.releaseReady) {
+      warnings.push(`${role} does not prove signature-integrity archive readiness`)
     }
   } catch (err) {
     errors.push(`${role} could not be parsed: ${sanitize(err.message || err)}`)
@@ -365,7 +371,7 @@ const macosEvidenceStatus = ({ content, kind }) => {
   }
   if (kind === 'notarization') {
     if (/(^|\n)\s*status\s*:\s*accepted\s*(\r?\n|$)/i.test(text)) return 'pass'
-    if (/(^|\n)\s*status\s*:\s*(in progress|submitted|pending)\s*(\r?\n|$)/i.test(text)) return 'pending'
+    if (/(^|\n)\s*status\s*:\s*(not submitted|not-submitted|notsubmitted|in progress|submitted|pending)\s*(\r?\n|$)/i.test(text)) return 'pending'
     return trimmed ? 'fail' : 'pending'
   }
   if (kind === 'gatekeeper') {
@@ -377,7 +383,8 @@ const macosEvidenceStatus = ({ content, kind }) => {
   return 'pending'
 }
 
-const validateMacosEvidenceFile = ({ role, filePath, displayPath, kind, requireSigned, fsImpl = fs }) => {
+const validateMacosEvidenceFile = ({ role, filePath, displayPath, kind, requireSignatureIntegrity, requireSigned, fsImpl = fs }) => {
+  const signatureGate = Boolean(requireSignatureIntegrity || requireSigned)
   const file = describeFile({ role, filePath, displayPath, fsImpl })
   const errors = []
   const warnings = []
@@ -385,7 +392,7 @@ const validateMacosEvidenceFile = ({ role, filePath, displayPath, kind, requireS
 
   if (!file.exists) {
     const message = `missing ${role}: ${displayPath}`
-    if (requireSigned) errors.push(message)
+    if (signatureGate && kind === 'codesign') errors.push(message)
     else warnings.push(message)
     return { file, status, releaseReady: false, errors, warnings }
   }
@@ -394,7 +401,7 @@ const validateMacosEvidenceFile = ({ role, filePath, displayPath, kind, requireS
   status = macosEvidenceStatus({ content, kind })
   if (status !== 'pass') {
     const message = `${role} does not prove ${kind} success`
-    if (requireSigned) errors.push(message)
+    if (signatureGate && kind === 'codesign') errors.push(message)
     else warnings.push(message)
   }
 
@@ -432,13 +439,14 @@ const validateMacosArtifactManifestFile = ({
 
   try {
     const manifest = loadJsonFile(filePath, fsImpl)
-    const requiredRoles = ['macosCodesignEvidence', 'macosNotarizationEvidence', 'macosGatekeeperEvidence']
-    const matches = requiredRoles.map((entryRole) => {
+    const requiredRoles = ['macosCodesignEvidence']
+    const optionalRoles = ['macosNotarizationEvidence', 'macosGatekeeperEvidence']
+    const validateRole = (entryRole, required) => {
       const manifestEntry = findFileByRole(manifest.files, entryRole)
       const expectedFile = expectedFilesByRole[entryRole]
       if (!manifestEntry) {
-        errors.push(`${role} does not record ${entryRole}`)
-        return false
+        if (required) errors.push(`${role} does not record ${entryRole}`)
+        return !required
       }
       if (!manifestEntry.sha256 || manifestEntry.sha256 !== expectedFile?.sha256) {
         errors.push(`${role} records a stale ${entryRole} hash`)
@@ -447,7 +455,7 @@ const validateMacosArtifactManifestFile = ({
 
       const recordedPath = manifestEntry.archivedPath || manifestEntry.fileName || ''
       if (!recordedPath) {
-        errors.push(`${role} does not record the archived path for ${entryRole}`)
+        if (required) errors.push(`${role} does not record the archived path for ${entryRole}`)
         return false
       }
 
@@ -462,14 +470,18 @@ const validateMacosArtifactManifestFile = ({
         return false
       }
       return true
-    })
+    }
+    const matches = [
+      ...requiredRoles.map((entryRole) => validateRole(entryRole, true)),
+      ...optionalRoles.map((entryRole) => validateRole(entryRole, false))
+    ]
 
     details.archiveDir = manifest.archive?.archiveDir || ''
     details.outputPath = manifest.archive?.outputPath || ''
     details.artifactName = manifest.source?.artifactName || ''
     details.releaseTag = manifest.source?.releaseTag || ''
     details.workflowRunUrl = manifest.source?.workflowRunUrl || ''
-    details.macosEvidenceReady = manifest.macosEvidenceReady === true
+    details.macosEvidenceReady = manifest.signatureIntegrityReady === true || manifest.macosEvidenceReady === true
     details.matchesMacosEvidence = matches.every(Boolean)
     details.ok = manifest.ok === true && details.matchesMacosEvidence
     details.releaseReady = details.ok && details.macosEvidenceReady
@@ -497,6 +509,7 @@ const createReleaseEvidenceArchiveManifest = ({
   macosGatekeeperPath = null,
   macosArtifactManifestPath = null,
   outputPath = null,
+  requireSignatureIntegrity = false,
   requireSigned = false,
   now = () => new Date(),
   fsImpl = fs
@@ -588,6 +601,7 @@ const createReleaseEvidenceArchiveManifest = ({
       filePath: paths.windowsSmokeReportPath,
       displayPath: safeWindowsSmokeReportPath,
       validateReport: validateWindowsSmokeReport,
+      requireSignatureIntegrity,
       requireSigned,
       sanitize,
       fsImpl
@@ -597,6 +611,7 @@ const createReleaseEvidenceArchiveManifest = ({
       filePath: paths.desktopPickerReportPath,
       displayPath: safeDesktopPickerReportPath,
       validateReport: validateDesktopPickerSmokeReport,
+      requireSignatureIntegrity,
       requireSigned,
       sanitize,
       fsImpl
@@ -606,6 +621,7 @@ const createReleaseEvidenceArchiveManifest = ({
       filePath: paths.packagedRuntimeReportPath,
       displayPath: safePackagedRuntimeReportPath,
       validateReport: validatePackagedRuntimeSmokeReport,
+      requireSignatureIntegrity,
       requireSigned,
       sanitize,
       fsImpl
@@ -618,6 +634,7 @@ const createReleaseEvidenceArchiveManifest = ({
       filePath: paths.macosCodesignPath,
       displayPath: safeMacosCodesignPath,
       kind: 'codesign',
+      requireSignatureIntegrity,
       requireSigned,
       fsImpl
     }),
@@ -626,6 +643,7 @@ const createReleaseEvidenceArchiveManifest = ({
       filePath: paths.macosNotarizationPath,
       displayPath: safeMacosNotarizationPath,
       kind: 'notarization',
+      requireSignatureIntegrity,
       requireSigned,
       fsImpl
     }),
@@ -634,6 +652,7 @@ const createReleaseEvidenceArchiveManifest = ({
       filePath: paths.macosGatekeeperPath,
       displayPath: safeMacosGatekeeperPath,
       kind: 'gatekeeper',
+      requireSignatureIntegrity,
       requireSigned,
       fsImpl
     }),
@@ -663,6 +682,7 @@ const createReleaseEvidenceArchiveManifest = ({
       reportFile: reports.windowsSmoke.file,
       expectedReportPath: paths.windowsSmokeReportPath,
       reportRoleLabel: 'Windows smoke report',
+      requireSignatureIntegrity,
       requireSigned,
       sanitize,
       fsImpl
@@ -703,16 +723,19 @@ const createReleaseEvidenceArchiveManifest = ({
     }
   }
 
-  const macosReady = [macos.codesign, macos.notarization, macos.gatekeeper].every((section) => section.releaseReady)
+  // Self-managed releases only assert local signature integrity. Notarization,
+  // Gatekeeper and SmartScreen are OS trust observations, never release gates.
+  const macosReady = macos.codesign.releaseReady
   const reportsReady = Object.values(reports).every((section) => section.releaseReady)
   const archivesReady = archives.windowsSmoke.releaseReady
     && archives.desktopPicker.releaseReady
     && (!archives.macosArtifact.file.exists || archives.macosArtifact.releaseReady)
-  const releaseReady = requireSigned && errors.length === 0 && macosReady && reportsReady && archivesReady
+  const signatureGate = Boolean(requireSignatureIntegrity || requireSigned)
+  const releaseReady = signatureGate && errors.length === 0 && macosReady && reportsReady && archivesReady
 
   const manifest = {
     generatedAt: now().toISOString(),
-    requireSigned,
+    requireSignatureIntegrity: signatureGate,
     ok: errors.length === 0,
     releaseReady,
     archive: {

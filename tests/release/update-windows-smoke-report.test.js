@@ -70,7 +70,7 @@ test('parseArgs accepts metadata, check updates, and readiness flags', () => {
     '--evidence', 'Launched from Start menu',
     '--notes', 'No crash',
     '--validate-ready',
-    '--require-signed'
+    '--require-signature-integrity'
   ])
 
   assert.equal(options.reportPath, 'report.json')
@@ -82,7 +82,7 @@ test('parseArgs accepts metadata, check updates, and readiness flags', () => {
   assert.equal(options.evidence, 'Launched from Start menu')
   assert.equal(options.notes, 'No crash')
   assert.equal(options.validateReady, true)
-  assert.equal(options.requireSigned, true)
+  assert.equal(options.requireSignatureIntegrity, true)
 })
 
 test('parseArgs rejects incomplete or unsafe flag combinations', () => {
@@ -181,7 +181,7 @@ test('validateUpdatedReport allows incremental reports but rejects readiness wit
   assert.match(ready.errors.join('\n'), /install must pass before Windows release readiness can be claimed/)
 })
 
-test('validateUpdatedReport enforces signed official readiness only when requested', () => {
+test('validateUpdatedReport enforces local signature integrity only when requested', () => {
   const unsigned = createPassingReport()
   assert.equal(validateUpdatedReport(unsigned, { validateReady: true }).ok, true)
   assert.equal(validateUpdatedReport(unsigned, { validateReady: true, requireSigned: true }).ok, false)

@@ -9,12 +9,12 @@ const DEFAULT_MANIFEST_NAME = 'macos-release-evidence-artifact-manifest.json'
 const DEFAULT_ARTIFACT_DIR_LABEL = 'downloaded-artifact'
 
 const REQUIRED_FILES = [
-  { role: 'macosCodesignEvidence', fileName: 'macos-codesign.txt', kind: 'codesign' },
-  { role: 'macosNotarizationEvidence', fileName: 'macos-notarization.txt', kind: 'notarization' },
-  { role: 'macosGatekeeperEvidence', fileName: 'macos-gatekeeper.txt', kind: 'gatekeeper' }
+  { role: 'macosCodesignEvidence', fileName: 'macos-codesign.txt', kind: 'codesign' }
 ]
 
 const OPTIONAL_FILES = [
+  { role: 'macosNotarizationEvidence', fileName: 'macos-notarization.txt', kind: 'notarization' },
+  { role: 'macosGatekeeperEvidence', fileName: 'macos-gatekeeper.txt', kind: 'gatekeeper' },
   { role: 'macosReleaseEvidenceMarkdownSummary', fileName: 'macos-release-evidence-summary.md' },
   { role: 'macosReleaseEvidenceJsonSummary', fileName: 'macos-release-evidence-summary.json' }
 ]
@@ -34,7 +34,7 @@ const usage = () => [
   '',
   'Copies the downloaded macOS release evidence Actions artifact into a permanent',
   'release evidence archive and writes hashes/provenance. This records evidence',
-  'transfer only; official readiness remains gated by release archive and closure reports.'
+  'transfer only; signature-integrity readiness is evaluated by the release archive and closure reports.'
 ].join('\n')
 
 const readValue = (argv, index, flag) => {
@@ -256,10 +256,11 @@ const createMacosReleaseEvidenceArchive = ({
     fsImpl
   })).filter(Boolean)
 
-  const macosEvidenceReady = requiredFiles.every((file) => file.releaseReady)
+  const signatureIntegrityReady = requiredFiles.every((file) => file.releaseReady)
+  const macosEvidenceReady = signatureIntegrityReady
   const warnings = macosEvidenceReady
-    ? ['macOS evidence files look passing; official release readiness still requires release archive and signed closure validation']
-    : ['macOS evidence is archived but does not prove official signed release readiness']
+    ? ['macOS signature integrity is established; notarization and Gatekeeper remain optional OS trust observations.']
+    : ['macOS signature integrity is not established.']
 
   const files = [...requiredFiles, ...optionalFiles].map((file) => ({
     ...file,
@@ -274,6 +275,7 @@ const createMacosReleaseEvidenceArchive = ({
   const manifest = {
     generatedAt,
     ok: true,
+    signatureIntegrityReady,
     macosEvidenceReady,
     archive: {
       archiveDir: safeArchiveDir,

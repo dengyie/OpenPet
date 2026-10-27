@@ -88,7 +88,7 @@ test('createRunbook documents every required desktop picker smoke check', () => 
   assert.match(runbook, /Artifact: mac-arm64\/OpenPet\.app/)
   assert.match(runbook, /This file does not prove native picker success by itself/)
   assert.match(runbook, /npm run validate-desktop-picker-smoke-report -- release\/desktop-picker-smoke-report\.json/)
-  assert.match(runbook, /--require-signed/)
+  assert.match(runbook, /--require-signature-integrity/)
 
   for (const check of REQUIRED_CHECKS) {
     assert.equal(runbook.includes(`\`${check.id}\``), true)
@@ -124,6 +124,8 @@ test('update parseArgs accepts metadata and check updates', () => {
     '--set-env', 'machine=mac-smoke-host',
     '--set-artifact', 'signed=true',
     '--set-fixture', 'pluginPackage=fixtures/focus.openpet-plugin.zip',
+    '--validate-ready',
+    '--require-signature-integrity',
     '--check', 'plugin-picker-cancel',
     '--status', 'pass',
     '--evidence', 'Canceled native picker without state change',
@@ -136,13 +138,14 @@ test('update parseArgs accepts metadata and check updates', () => {
   assert.deepEqual(options.fixtureUpdates, [{ key: 'pluginPackage', value: 'fixtures/focus.openpet-plugin.zip' }])
   assert.equal(options.checkId, 'plugin-picker-cancel')
   assert.equal(options.status, 'pass')
+  assert.equal(options.requireSignatureIntegrity, true)
 })
 
 test('update parseArgs rejects incomplete or unsafe flag combinations', () => {
   assert.throws(() => parseUpdateArgs(['report.json', '--check']), /--check requires a value/)
   assert.throws(() => parseUpdateArgs(['report.json', '--check', 'plugin-picker-cancel', '--status', 'done']), /Invalid check status/)
   assert.throws(() => parseUpdateArgs(['report.json', '--status', 'pass']), /--check is required/)
-  assert.throws(() => parseUpdateArgs(['report.json', '--require-signed']), /--require-signed must be used with --validate-ready/)
+  assert.throws(() => parseUpdateArgs(['report.json', '--require-signature-integrity']), /--require-signature-integrity must be used with --validate-ready/)
 })
 
 test('updateReport updates environment, artifact, fixture, and selected check evidence', () => {

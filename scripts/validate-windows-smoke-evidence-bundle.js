@@ -15,18 +15,19 @@ const REQUIRED_EVIDENCE_FILES = [
 ]
 
 const usage = () => [
-  'Usage: node scripts/validate-windows-smoke-evidence-bundle.js [evidence-dir] [--report <report.json>] [--require-signed] [--json]',
+  'Usage: node scripts/validate-windows-smoke-evidence-bundle.js [evidence-dir] [--report <report.json>] [--require-signature-integrity] [--json]',
   '',
   `Defaults to ./${DEFAULT_EVIDENCE_DIR}.`,
   'Validates the evidence files produced by windows-smoke-collector.ps1.',
   '--report validates the paired Windows smoke report with pending checks allowed.',
-  '--require-signed requires Authenticode evidence with Status : Valid.'
+  '--require-signature-integrity requires Authenticode integrity evidence with Status : Valid.'
 ].join('\n')
 
 const parseArgs = (argv) => {
   const options = {
     evidenceDir: null,
     reportPath: null,
+    requireSignatureIntegrity: false,
     requireSigned: false,
     json: false,
     help: false
@@ -45,6 +46,8 @@ const parseArgs = (argv) => {
     } else if (arg === '--report') {
       options.reportPath = readValue(index, arg)
       index += 1
+    } else if (arg === '--require-signature-integrity') {
+      options.requireSignatureIntegrity = true
     } else if (arg === '--require-signed') {
       options.requireSigned = true
     } else if (arg === '--json') {
@@ -85,7 +88,8 @@ const loadReport = (reportPath) => {
   }
 }
 
-const validateEvidenceBundle = ({ evidenceDir = DEFAULT_EVIDENCE_DIR, reportPath = null, requireSigned = false } = {}) => {
+const validateEvidenceBundle = ({ evidenceDir = DEFAULT_EVIDENCE_DIR, reportPath = null, requireSignatureIntegrity = false, requireSigned = false } = {}) => {
+  const signatureGate = requireSignatureIntegrity || requireSigned
   const absoluteEvidenceDir = path.resolve(evidenceDir)
   const errors = []
   const warnings = []
@@ -139,23 +143,23 @@ const validateEvidenceBundle = ({ evidenceDir = DEFAULT_EVIDENCE_DIR, reportPath
 
   const authenticode = contentsByFile.get('authenticode.txt') || ''
   const signed = hasValidAuthenticodeStatus(authenticode)
-  if (requireSigned && !signed) {
-    errors.push('authenticode.txt must contain Authenticode evidence with Status : Valid when --require-signed is used')
-  } else if (!requireSigned && !signed) {
-    warnings.push('Authenticode status is not Valid; this evidence bundle cannot prove signed official readiness')
+  if (signatureGate && !signed) {
+    errors.push('authenticode.txt must contain Authenticode evidence with Status : Valid when --require-signature-integrity is used')
+  } else if (!signatureGate && !signed) {
+    warnings.push('Authenticode status is not Valid; this evidence bundle cannot prove Windows signature integrity')
   }
 
   let reportSummary = null
   if (reportPath) {
     try {
       const { absoluteReportPath, report } = loadReport(reportPath)
-      const reportValidation = validateReport(report, { allowPending: true, requireSigned })
+      const reportValidation = validateReport(report, { allowPending: true, requireSignatureIntegrity: signatureGate })
       reportSummary = {
         reportPath: absoluteReportPath,
         passed: reportValidation.summary.passed,
         total: reportValidation.summary.total,
         smokeReady: reportValidation.summary.smokeReady,
-        officialReady: reportValidation.summary.officialReady
+        signatureIntegrityReady: reportValidation.summary.signatureIntegrityReady
       }
       warnings.push(...reportValidation.warnings)
       errors.push(...reportValidation.errors.map((error) => `report: ${error}`))

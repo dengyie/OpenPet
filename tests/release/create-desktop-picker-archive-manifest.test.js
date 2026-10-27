@@ -106,7 +106,7 @@ test('parseArgs accepts archive inputs and output controls', () => {
     '--runbook', 'archive/runbook.md',
     '--summary', 'archive/summary.json',
     '--output', 'archive/manifest.json',
-    '--require-signed',
+    '--require-signature-integrity',
     '--json'
   ])
 
@@ -116,7 +116,7 @@ test('parseArgs accepts archive inputs and output controls', () => {
   assert.equal(options.runbookPath, 'archive/runbook.md')
   assert.equal(options.summaryPath, 'archive/summary.json')
   assert.equal(options.outputPath, 'archive/manifest.json')
-  assert.equal(options.requireSigned, true)
+  assert.equal(options.requireSignatureIntegrity, true)
   assert.equal(options.json, true)
 })
 
