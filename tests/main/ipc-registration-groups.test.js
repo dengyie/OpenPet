@@ -362,7 +362,6 @@ test('registerServiceIpc wires service status, token rotation, and config persis
         return { enabled: true, host: config.host, port: config.port, mcp: { activeSessions: 0, sessionTtlMs: 1000 } }
       },
       stop: async () => ({ enabled: false, host: '127.0.0.1', port: 0, mcp: { activeSessions: 0, sessionTtlMs: 1000 } }),
-      revokeMcpSessions: () => ({ activeSessions: 0, sessionTtlMs: 1000 })
     },
     normalizeLocalHttpConfig: (_current, next) => ({ host: '127.0.0.1', ...next }),
     createLocalHttpToken: () => 'rotated-token',
@@ -377,10 +376,9 @@ test('registerServiceIpc wires service status, token rotation, and config persis
   assert.equal(savedSettings.length, 2)
   assert.deepEqual(rotated.runtime, { enabled: true, host: '127.0.0.1', port: 8317, mcp: { activeSessions: 1, sessionTtlMs: 1000 } })
   assert.deepEqual(saved.config, { host: '127.0.0.1', enabled: true, port: 8456, token: 'custom-token', backendMode: 'local', sshAlias: 'gz-cvm', backendPort: 48330 })
-  assert.ok(ipcMain.handlers.has(IPC.SERVICE_REVOKE_MCP_SESSIONS))
 })
 
-test('registerServiceIpc controls only the sidecar-owned MCP server', async () => {
+test('registerServiceIpc forwards remaining service operations to the sidecar', async () => {
   const ipcMain = createIpcMainStub()
   const savedSettings = []
   const requests = []
@@ -426,7 +424,6 @@ test('registerServiceIpc controls only the sidecar-owned MCP server', async () =
   await ipcMain.handlers.get(IPC.SERVICE_GET_LOGS)(null, { page: 1 })
   await ipcMain.handlers.get(IPC.SERVICE_EXPORT_LOGS)(null, { format: 'json' })
   await ipcMain.handlers.get(IPC.SERVICE_CLEAR_LOGS)()
-  await ipcMain.handlers.get(IPC.SERVICE_REVOKE_MCP_SESSIONS)()
   await ipcMain.handlers.get(IPC.SERVICE_ROTATE_TOKEN)()
   const saved = await ipcMain.handlers.get(IPC.SERVICE_SAVE_CONFIG)(null, { ...settings.localHttp, port: 8456 })
 
@@ -435,15 +432,13 @@ test('registerServiceIpc controls only the sidecar-owned MCP server', async () =
     '/api/v1/service/logs?page=1',
     '/api/v1/service/logs?operation=export&format=json',
     '/api/v1/service/logs',
-    '/api/v1/service/token/revoke-sessions',
-    '/api/v1/service/status',
     '/api/v1/service/token/rotate',
     '/api/v1/service/status',
     '/api/v1/service/config',
     '/api/v1/service/status'
   ])
-  assert.equal(JSON.parse(requests[8].options.body).enabled, true)
-  assert.equal(JSON.parse(requests[8].options.body).port, 8456)
+  assert.equal(JSON.parse(requests[6].options.body).enabled, true)
+  assert.equal(JSON.parse(requests[6].options.body).port, 8456)
   assert.deepEqual(saved.runtime.mcp, { activeSessions: 0, sessionTtlMs: 1000 })
   assert.equal(savedSettings.length, 2)
 })

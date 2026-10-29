@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { controlCenterAPI as api } from '../api/control-center-api.ts'
+import { serviceHttpApi as api } from '../features/service/api.ts'
 import { cloneServiceLogs, cloneServiceStatus, defaultServiceStatus } from '../lib/defaults.ts'
 import { downloadTextFile } from '../lib/download.ts'
 import { messageFromError } from '../lib/errors.ts'

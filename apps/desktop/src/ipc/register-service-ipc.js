@@ -89,15 +89,6 @@ const registerServiceIpc = ({
     return createServiceStatusView(savedSettings.localHttp, sidecarConfigured ? runtime : (localHttpService.getStatus() || runtime))
   })
 
-  ipcMainService.handle(IPC.SERVICE_REVOKE_MCP_SESSIONS, async () => {
-    if (sidecarConfigured) {
-      await requestSidecar('/service/token/revoke-sessions', 'POST', {})
-      return createSidecarStatusView()
-    }
-    const mcp = localHttpService.revokeMcpSessions()
-    return createServiceStatusView(petService.getSettings().localHttp, { ...localHttpService.getStatus(), mcp })
-  })
-
   ipcMainService.handle(IPC.SERVICE_SAVE_CONFIG, async (_event, config) => {
     const currentSettings = petService.getSettings()
     const nextConfig = normalizeLocalHttpConfig(currentSettings.localHttp, config)

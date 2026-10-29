@@ -39,7 +39,6 @@ const IPC = {
   SERVICE_EXPORT_LOGS: 'service:export-logs',
   SERVICE_CLEAR_LOGS: 'service:clear-logs',
   SERVICE_ROTATE_TOKEN: 'service:rotate-token',
-  SERVICE_REVOKE_MCP_SESSIONS: 'service:revoke-mcp-sessions',
 }
 
 contextBridge.exposeInMainWorld('controlCenterAPI', {
@@ -73,7 +72,6 @@ contextBridge.exposeInMainWorld('controlCenterAPI', {
   exportServiceLogs: (filters) => ipcRenderer.invoke(IPC.SERVICE_EXPORT_LOGS, filters),
   clearServiceLogs: () => ipcRenderer.invoke(IPC.SERVICE_CLEAR_LOGS),
   rotateServiceToken: () => ipcRenderer.invoke(IPC.SERVICE_ROTATE_TOKEN),
-  revokeMcpSessions: () => ipcRenderer.invoke(IPC.SERVICE_REVOKE_MCP_SESSIONS),
   close: () => ipcRenderer.send(IPC.SETTINGS_CLOSE)
 })
 

@@ -85,7 +85,6 @@ export const IPC = Object.freeze({
   SERVICE_EXPORT_LOGS: 'service:export-logs',
   SERVICE_CLEAR_LOGS: 'service:clear-logs',
   SERVICE_ROTATE_TOKEN: 'service:rotate-token',
-  SERVICE_REVOKE_MCP_SESSIONS: 'service:revoke-mcp-sessions',
 } as const)
 
 export type IpcChannelName = typeof IPC[keyof typeof IPC]
