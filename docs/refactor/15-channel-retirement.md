@@ -1,25 +1,25 @@
 # 15 · IPC 通道退役台账
 
-> v2.1 · 2026-09-12 · T43/T47/T48 · 以 `apps/desktop/src/shared/ipc-channels.ts` 为当前清单
+> v2.2 · 2026-10-29 · T43/T47/T48/T49 · 以 `apps/desktop/src/shared/ipc-channels.ts` 为当前清单
 
-本台账登记当前 87 个 IPC 常量的去向。`keep` 是 02 篇允许长期存在的窗口/原生边界；`cutover:<domain>` 表示 03 篇已有 HTTP/SSE 对等入口；`blocked:Txx` 表示等待指定任务卡完成后再切换；`retired` 表示已从当前清单删除并保留历史记录；`dead` 仅用于确认没有生产调用方的遗留常量。
+本台账登记当前 86 个 IPC 常量的去向。`keep` 是 02 篇允许长期存在的窗口/原生边界；`cutover:<domain>` 表示 03 篇已有 HTTP/SSE 对等入口；`blocked:Txx` 表示等待指定任务卡完成后再切换；`retired` 表示已从当前清单删除并保留历史记录；`dead` 仅用于确认没有生产调用方的遗留常量。
 
-当前台账由 81 个 `ipcMainService.handle/on` 注册和 6 个事件-only 通道组成。Source 列是实际生产引用文件，不是推测路径；门禁会逐项检查 TS/JS 清单、注册/事件来源、重复项和未知 `IPC.*` 引用。
+当前台账由 80 个 `ipcMainService.handle/on` 注册和 6 个事件-only 通道组成。Source 列是实际生产引用文件，不是推测路径；门禁会逐项检查 TS/JS 清单、注册/事件来源、重复项和未知 `IPC.*` 引用。
 
-T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `keep ≤ 41`，因此新增的 QQ/WeCom 四个 host-secret 通道登记为 `blocked:T44`，而不是伪装成长期 keep。T41 及后续任务可把已删除常量保留为 `retired` 历史行，并在 Retired by 列记录提交 SHA；历史行不计入当前通道对账或 keep 上限。
+T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `keep ≤ 41`，因此新增的 QQ/WeCom 四个 host-secret 通道登记为 `blocked:T44`，而不是伪装成长期 keep。T44 的 host-secret 边界已经落地；这些通道仍因当前产品保留 Shell 原生凭据边界而不进入 HTTP cutover。T41 及后续任务可把已删除常量保留为 `retired` 历史行，并在 Retired by 列记录提交 SHA；历史行不计入当前通道对账或 keep 上限。
 
 ## Summary
 
 | Scope | Count |
 | --- | ---: |
-| Current IPC constants | 87 |
-| Current direct registrations | 81 |
+| Current IPC constants | 86 |
+| Current direct registrations | 80 |
 | Current event-only channels | 6 |
 | Current keep | 41 |
-| Current cutover | 31 |
-| Current blocked | 15 |
+| Current cutover | 37 |
+| Current blocked | 8 |
 | Current dead | 0 |
-| Historical retired | 71 |
+| Historical retired | 72 |
 
 ## Ledger
 
@@ -111,12 +111,12 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 | `hatch-pet-agent:clear-api-key` | `retired` | `DELETE /ai/providers/ai.hatch-pet/key` | `apps/desktop/src/ipc/register-ai-ipc.js` | Hatch secret removal uses the backend secret boundary | 6dc7e9f0 |
 | `hatch-pet-agent:check-capability` | `blocked:T47` | `IPC-only (native/window)` | `apps/desktop/src/ipc/register-ai-ipc.js` | Capability checks remain a native host boundary until the Hatch runtime contract is migrated | — |
 | `hatch-pet-agent:get-run-status` | `blocked:T47` | `IPC-only (native/window)` | `apps/desktop/src/ipc/register-ai-ipc.js` | Run status remains a native host boundary until the Hatch runtime contract is migrated | — |
-| `image-generation:get-config` | `blocked:T46` | `Backend image-generation Job not landed` | `apps/desktop/src/ipc/register-ai-ipc.js` | Image generation waits for T46 Job handler | — |
-| `image-generation:save-config` | `blocked:T46` | `Backend image-generation Job not landed` | `apps/desktop/src/ipc/register-ai-ipc.js` | Image generation waits for T46 Job handler | — |
-| `image-generation:save-api-key` | `blocked:T46` | `Backend image-generation Job not landed` | `apps/desktop/src/ipc/register-ai-ipc.js` | Image generation waits for T46 Job handler | — |
-| `image-generation:clear-api-key` | `blocked:T46` | `Backend image-generation Job not landed` | `apps/desktop/src/ipc/register-ai-ipc.js` | Image generation waits for T46 Job handler | — |
-| `image-generation:check-health` | `blocked:T46` | `Backend image-generation Job not landed` | `apps/desktop/src/ipc/register-ai-ipc.js` | Image generation waits for T46 Job handler | — |
-| `image-generation:discover-models` | `blocked:T46` | `Backend image-generation Job not landed` | `apps/desktop/src/ipc/register-ai-ipc.js` | Image generation waits for T46 Job handler | — |
+| `image-generation:get-config` | `cutover:ai` | `GET /ai/images/config` | `apps/desktop/src/ipc/register-ai-ipc.js` | Image Provider configuration is served by the Backend AI domain; keep the compatibility handler until reachability proof permits retirement | — |
+| `image-generation:save-config` | `cutover:ai` | `PATCH /ai/images/config` | `apps/desktop/src/ipc/register-ai-ipc.js` | Image Provider configuration writes use the Backend mutation boundary; keep the compatibility handler until reachability proof permits retirement | — |
+| `image-generation:save-api-key` | `cutover:ai` | `PUT /ai/images/key` | `apps/desktop/src/ipc/register-ai-ipc.js` | Image Provider secrets use the Backend secret boundary; keep the compatibility handler until reachability proof permits retirement | — |
+| `image-generation:clear-api-key` | `cutover:ai` | `DELETE /ai/images/key` | `apps/desktop/src/ipc/register-ai-ipc.js` | Image Provider secret removal uses the Backend secret boundary; keep the compatibility handler until reachability proof permits retirement | — |
+| `image-generation:check-health` | `cutover:ai` | `GET /ai/images/health` | `apps/desktop/src/ipc/register-ai-ipc.js` | Image Provider health checks run in the Backend AI domain; keep the compatibility handler until reachability proof permits retirement | — |
+| `image-generation:discover-models` | `cutover:ai` | `GET /ai/images/models` | `apps/desktop/src/ipc/register-ai-ipc.js` | Image Provider model discovery runs in the Backend AI domain; keep the compatibility handler until reachability proof permits retirement | — |
 | `ai:get-conversation` | `retired` | `GET /ai/conversations?conversationId=:id` | `apps/desktop/src/ipc/register-ai-ipc.js` | Conversation reads use the SQLite-backed backend repository | 6dc7e9f0 |
 | `ai:chat` | `retired` | `POST /ai/chat` | `apps/desktop/src/ipc/register-ai-ipc.js` | AI chat streams through authenticated backend SSE | 6dc7e9f0 |
 | `ai:export-trace-diagnostics` | `retired` | `POST /ai/traces/diagnostics` | `apps/desktop/src/ipc/register-ai-ipc.js` | Trace diagnostics export runs in the backend | 6dc7e9f0 |
@@ -133,10 +133,10 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 | `plugins:im-gateway:get-secret-state` | `cutover:plugins` | `GET /plugins/:id/config?operation=secret-state` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
 | `plugins:im-gateway:save-telegram-token` | `cutover:plugins` | `PUT /plugins/:id/config?operation=secret-save` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
 | `plugins:im-gateway:clear-telegram-token` | `cutover:plugins` | `PUT /plugins/:id/config?operation=secret-clear` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
-| `plugins:im-gateway:save-qq-credentials` | `blocked:T44` | `Backend secrets boundary not landed` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Host-secret channel waits for T44 secrets boundary | — |
-| `plugins:im-gateway:clear-qq-credentials` | `blocked:T44` | `Backend secrets boundary not landed` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Host-secret channel waits for T44 secrets boundary | — |
-| `plugins:im-gateway:save-wecom-credentials` | `blocked:T44` | `Backend secrets boundary not landed` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Host-secret channel waits for T44 secrets boundary | — |
-| `plugins:im-gateway:clear-wecom-credentials` | `blocked:T44` | `Backend secrets boundary not landed` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Host-secret channel waits for T44 secrets boundary | — |
+| `plugins:im-gateway:save-qq-credentials` | `blocked:T44` | `IPC-only (host-secret/native)` | `apps/desktop/src/ipc/register-plugin-ipc.js` | QQ credentials remain Shell-owned; no HTTP cutover is planned in the current adapter scope | — |
+| `plugins:im-gateway:clear-qq-credentials` | `blocked:T44` | `IPC-only (host-secret/native)` | `apps/desktop/src/ipc/register-plugin-ipc.js` | QQ credential removal remains Shell-owned; no HTTP cutover is planned in the current adapter scope | — |
+| `plugins:im-gateway:save-wecom-credentials` | `blocked:T44` | `IPC-only (host-secret/native)` | `apps/desktop/src/ipc/register-plugin-ipc.js` | WeCom credentials remain Shell-owned; no HTTP cutover is planned in the current adapter scope | — |
+| `plugins:im-gateway:clear-wecom-credentials` | `blocked:T44` | `IPC-only (host-secret/native)` | `apps/desktop/src/ipc/register-plugin-ipc.js` | WeCom credential removal remains Shell-owned; no HTTP cutover is planned in the current adapter scope | — |
 | `plugins:run-creator-studio-default-flow` | `cutover:plugins` | `POST /plugins/:id/commands/:cmd?operation=creator-default-flow` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
 | `plugins:run-command` | `cutover:plugins` | `POST /plugins/:id/commands/:cmd` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
 | `plugins:run-setup` | `cutover:plugins` | `POST /plugins/:id/commands/:cmd?operation=setup` | `apps/desktop/src/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
@@ -174,7 +174,7 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 | `service:export-logs` | `cutover:service` | `GET /service/logs?operation=export` | `apps/desktop/src/ipc/register-service-ipc.js` | Existing backend route is the migration target | — |
 | `service:clear-logs` | `cutover:service` | `DELETE /service/logs` | `apps/desktop/src/ipc/register-service-ipc.js` | Existing backend route is the migration target | — |
 | `service:rotate-token` | `cutover:service` | `POST /service/token/rotate` | `apps/desktop/src/ipc/register-service-ipc.js` | Existing backend route is the migration target | — |
-| `service:revoke-mcp-sessions` | `blocked:T45` | `Backend route not implemented: POST /service/token/revoke-sessions` | `apps/desktop/src/ipc/register-service-ipc.js` | Waiting for T45 MCP sidecar migration; current backend route registry has no MCP session revoke endpoint | — |
+| `service:revoke-mcp-sessions` | `retired` | `POST /service/token/revoke-sessions` | `apps/desktop/src/ipc/register-service-ipc.js` | Service pane now calls the authenticated Backend HTTP route; no renderer, preload, or main-process caller remains | a6dd003c |
 | `about:get-info` | `retired` | `GET /about` | `apps/desktop/src/ipc/index.js` | Control Center reads the host About view through Backend HTTP | 413c5825 |
 | `about:check-updates` | `retired` | `POST /about/check-updates` | `apps/desktop/src/ipc/index.js` | Control Center queues the existing update-check Job and follows its result through Backend Job/SSE APIs | 413c5825 |
 | `catalog:get` | `retired` | `GET /catalog` | `apps/desktop/src/ipc/index.js` | Catalog state now comes from the Shell-owned Catalog bridge and Backend HTTP route | ac59d75f |
@@ -187,11 +187,11 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 ## Operating rules
 
 - `npm run check:channel-retirement` 对当前 active 行与 TS 清单逐项对账；active 必须精确覆盖当前常量，历史 `retired` 行可以不再存在于当前源。
-- 当前 active 通道数为 87，后续提交只能减少 active 数量；新增 IPC 常量必须先更新本台账和 T40 依据。
+- 当前 active 通道数为 86，后续提交只能减少 active 数量；新增 IPC 常量必须先更新本台账和 T40 依据。
 - `retired` 行必须保留原 channel、真实历史 source、删除提交的完整或短 SHA（至少 7 位）；它不计入 current、keep、cutover、blocked、dead 计数。
-- `keep` 上限是 41。四个 QQ/WeCom host-secret 通道等待 T44 的 secrets 边界，不能借 `keep` 绕过上限。
+- `keep` 上限是 41。四个 QQ/WeCom host-secret 通道虽已具备 T44 的存储边界，但当前仍保留为明确的 Shell 原生凭据边界，不能借 `keep` 绕过上限或伪装成 HTTP cutover。
 - `cutover` 行必须在同一切换提交中完成 HTTP/SSE 接入、调用方切换、台账状态和 focused evidence；旧 IPC 只有在 renderer/preload、生产引用、测试和打包清单都完成 reachability proof 后才可改为 `retired`。迁移期间允许旧 IPC 与 HTTP 并存，但不得双写同一业务状态或把旧 IPC 当作 HTTP 的数据源。
 
-T43 已收窄 `apps/desktop/control-center-preload.js`：插件 HTTP 对等方法不再暴露给 renderer；`openPluginDashboard`、`inspectPluginPackage` 与四个 QQ/WeCom host-secret 方法继续保留。T48 已完成 Creator 迁移。主进程 IPC 注册表按当前 87 条通道对账，其中 81 个为直接注册、6 个为事件-only。
+T43 已收窄 `apps/desktop/control-center-preload.js`：插件 HTTP 对等方法不再暴露给 renderer；`openPluginDashboard`、`inspectPluginPackage` 与四个 QQ/WeCom host-secret 方法继续保留。T48 已完成 Creator 迁移。T49 完成 Service 面板 HTTP 切换并退役 MCP session revoke 兼容 IPC。主进程 IPC 注册表按当前 86 条通道对账，其中 80 个为直接注册、6 个为事件-only。
 
 Refs #41
