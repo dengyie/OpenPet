@@ -710,7 +710,7 @@ const createHatchPetAgentService = ({
     for (let attempt = 0; attempt < attemptLimit; attempt += 1) {
       let request
       try {
-        request = createSpriteEvaluatorRequest({ scope, board: { ...board, path: realBoardPath }, qa, profile: effectiveProfile, repairReason })
+        request = await createSpriteEvaluatorRequest({ scope, board: { ...board, path: realBoardPath }, qa, profile: effectiveProfile, repairReason })
         // 每次记账前重读磁盘账本：上一次 await 期间可能有 Provider 预约/结算落盘，
         // 沿用循环外的内存快照会把这些增量写没。
         ledger = reserveEvaluatorCall(resolveBudgetLedger({ runId, supplied: ledger, limits: config.budgets, preferPersisted: true }))

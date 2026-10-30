@@ -1,4 +1,5 @@
 const fs = require('node:fs')
+const crypto = require('node:crypto')
 const os = require('node:os')
 const path = require('node:path')
 const test = require('node:test')
@@ -115,10 +116,12 @@ test('scope-specific gates require the exact grounded, airborne, and package dim
   }
 })
 
-test('evaluator request contains one review image and no mutable workflow authority', () => {
-  const boardPath = path.join(os.tmpdir(), 'review-board.png')
-  fs.writeFileSync(boardPath, Buffer.from('image'))
-  const request = createSpriteEvaluatorRequest({
+test('evaluator request contains one compressed review image and no mutable workflow authority', async () => {
+  const boardDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-review-board-'))
+  const boardPath = path.join(boardDir, 'review-board.png')
+  await sharp({ create: { width: 2048, height: 1536, channels: 4, background: { r: 236, g: 239, b: 243, alpha: 1 } } }).png().toFile(boardPath)
+  const originalBoardHash = crypto.createHash('sha256').update(fs.readFileSync(boardPath)).digest('hex')
+  const request = await createSpriteEvaluatorRequest({
     scope: 'canonical',
     board: { path: boardPath, sha256: 'a'.repeat(64), regions: REGIONS, mimeType: 'image/png' },
     qa: { ok: true, failures: [], metrics: { bodyScaleCv: 0.01 } },
@@ -126,7 +129,16 @@ test('evaluator request contains one review image and no mutable workflow author
   })
   const serialized = JSON.stringify(request)
   assert.equal(request.tool.function.name, 'hatch_pet_sprite_evaluation')
-  assert.equal(request.messages[1].content.filter((part) => part.type === 'image_url').length, 1)
+  const imagePart = request.messages[1].content.find((part) => part.type === 'image_url')
+  assert.ok(imagePart)
+  assert.match(imagePart.image_url.url, /^data:image\/jpeg;base64,/)
+  const encodedBoard = Buffer.from(imagePart.image_url.url.split(',')[1], 'base64')
+  const encodedMetadata = await sharp(encodedBoard).metadata()
+  assert.equal(encodedMetadata.format, 'jpeg')
+  assert.equal(encodedMetadata.width, 1536)
+  assert.equal(encodedMetadata.height, 1152)
+  assert.ok(encodedBoard.length < fs.statSync(boardPath).size)
+  assert.equal(crypto.createHash('sha256').update(fs.readFileSync(boardPath)).digest('hex'), originalBoardHash)
   assert.match(request.messages[0].content, /Use board-unreadable only when the board itself is missing, blank, corrupted, or impossible to visually inspect/i)
   assert.match(request.messages[0].content, /When any sprite regions are visible, score their quality and use the specific visual defects instead/i)
   assert.equal(serialized.includes(boardPath), false)
@@ -246,7 +258,7 @@ test('canonical evaluator tool schema requires exactly the candidate regions on 
     { regionId: 'source', role: 'source-identity' },
     ...[1, 2, 3, 4].map((index) => ({ regionId: `candidate-${index}`, role: 'canonical-candidate' }))
   ]
-  const request = createSpriteEvaluatorRequest({
+  const request = await createSpriteEvaluatorRequest({
     scope: 'canonical-comparison',
     board: { path: boardPath, sha256: 'a'.repeat(64), regions },
     qa: { ok: true, failures: [], metrics: {} },
