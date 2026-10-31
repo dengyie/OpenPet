@@ -146,8 +146,11 @@ const processSpriteSheet = async ({ inputPath, outputDir, layout, profile = {}, 
     const rawAnchorY = actionPolicy.anchorPolicy === 'action-relative-root-v1'
       ? (bounds.minY + bounds.maxY) / 2 / cell.info.height
       : (profile.characterClass === 'grounded-elongated-character' ? cell.metrics.elongatedContactBandY : cell.metrics.compactBaselineY)
+    const outputAnchorCenterY = actionPolicy.anchorPolicy === 'action-relative-root-v1'
+      ? rawAnchorY * 128
+      : 64
     const top = airborne
-      ? Math.round((128 - resizedHeight) / 2)
+      ? Math.round(outputAnchorCenterY - resizedHeight / 2)
       : Math.round(128 * 0.9) - resizedHeight
     const outputAnchorY = airborne
       ? top + (resizedHeight / 2)
