@@ -111,7 +111,7 @@ const DEFAULT_AGENT_AWARENESS_SIGNAL_MAX_DEPTH = 5
 
 const LOOPBACK_HEALTH_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
 const defaultServiceProcessTree = createServiceProcessTree()
-const SERVICE_BRIDGE_ROUTE_PATTERN = /^\/plugins\/bridge\/([^/]+)\/([^/]+)\/([^/]+)(\/context|\/pet\/say|\/pet\/action|\/pet\/event|\/ai\/chat)$/
+const SERVICE_BRIDGE_ROUTE_PATTERN = /^\/plugins\/bridge\/([^/]+)\/([^/]+)\/([^/]+)(\/context|\/pet\/say|\/pet\/action|\/pet\/event|\/pet\/attention|\/ai\/chat)$/
 const SERVICE_BRIDGE_READ_ONLY_ROUTES = new Map([
   ['/context', 'context']
 ])
@@ -119,6 +119,7 @@ const SERVICE_BRIDGE_JSON_ROUTES = new Map([
   ['/pet/say', 'petSay'],
   ['/pet/action', 'petAction'],
   ['/pet/event', 'petEvent'],
+  ['/pet/attention', 'petAttention'],
   ['/ai/chat', 'aiChat']
 ])
 
@@ -766,6 +767,27 @@ const createPluginService = ({ settingsService, petService, actionService, actio
           message: payload.message,
           ttlMs: payload.ttlMs,
           source: `plugin:${plugin.manifest.id}:bridge`
+        })
+      }
+    },
+    petAttention: async (payload = {}) => {
+      assertPermission(plugin.manifest, 'pet:attention')
+      const serviceId = String(commandId || '').replace(/^service:/, '')
+      if (!isAgentAwarenessHealthTarget({ pluginId: plugin.manifest.id, serviceId })) {
+        throw new Error('pet:attention is reserved for the Agent Awareness service')
+      }
+      const allowedKeys = new Set(['sessionKey', 'status', 'eventId', 'ttlMs', 'activeTurn'])
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload) || Object.keys(payload).some((key) => !allowedKeys.has(key))) {
+        throw new TypeError('Agent attention payload contains unsupported fields')
+      }
+      return {
+        ok: true,
+        result: petService.submitAttentionState({
+          sessionKey: payload.sessionKey,
+          status: payload.status,
+          eventId: payload.eventId,
+          ttlMs: payload.ttlMs,
+          activeTurn: payload.activeTurn
         })
       }
     }
@@ -1635,6 +1657,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
   const stopPluginServices = (pluginId, options = {}) => {
     expirePluginServiceBridgeRuntimes(pluginId)
     serviceRuntimeRegistry.stopPlugin(pluginId, options)
+    if (pluginId === AGENT_AWARENESS_PLUGIN_ID) petService.clearIntentSource?.('agent-awareness')
   }
 
   const stopPluginSetups = (pluginId, options = {}) => {
@@ -2326,6 +2349,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
     if (!runtime || runtime.status !== 'running') throw new Error('Plugin service is not running')
     expireServiceBridgeRuntime(runtime)
     stopPluginServiceRuntime(pluginId, serviceId, runtime)
+    if (isAgentAwarenessHealthTarget({ pluginId, serviceId })) petService.clearIntentSource?.('agent-awareness')
     return {
       ok: true,
       pluginId,

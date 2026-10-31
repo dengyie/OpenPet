@@ -306,7 +306,7 @@ const defaultHatchPetAgentConfig: HatchPetAgentConfigView = {
   budgets: {
     maxIdentityRegenerations: 1,
     maxActionAttemptsPerAction: 3,
-    maxEvaluationAttemptsPerArtifact: 2,
+    maxEvaluationAttemptsPerArtifact: 3,
     maxProviderCalls: 64,
     maxElapsedMs: 3600000,
     maxEstimatedCost: null

@@ -2,6 +2,9 @@ const fs = require('fs')
 const path = require('path')
 const { safeStorage } = require('electron')
 const { createAiSidecarProxy } = require('../ai-sidecar-proxy')
+const { createPetIntentDispatcher } = require('../pet-service')
+const { createCompanionIntentBroker: createDefaultCompanionIntentBroker } = require('../companion-intent-broker-service')
+const { SETTINGS_CHANGED } = require('../settings-service')
 
 const createCoreServices = ({
   app,
@@ -20,6 +23,8 @@ const createCoreServices = ({
     createActionService,
     createPetPackService,
     createPetService,
+    createCompanionIntentBroker = createDefaultCompanionIntentBroker,
+    createCompanionAudioLeaseService,
     createSecretService,
     createImageGenerationModelService,
     createTriggerRuleRuntimeService,
@@ -40,6 +45,9 @@ const createCoreServices = ({
     saveSettings,
     syncSideEffects: (settings) => syncLoginItemSettings(settings.autoStart)
   })
+  const companionAudioLeaseService = typeof createCompanionAudioLeaseService === 'function'
+    ? createCompanionAudioLeaseService({ getSettings: () => settingsService.get() })
+    : null
 
   let catalogService = null
   const petPackService = createPetPackService({
@@ -60,7 +68,64 @@ const createCoreServices = ({
   const appLogService = createAppLogService({
     logDir: path.join(app.getPath('userData'), 'logs')
   })
-  const petService = createPetService({ eventBus, settingsService, actionService, appLogService })
+  const companionIntentBroker = createCompanionIntentBroker({
+    now: Date.now,
+    isEnabled: () => settingsService.get()?.companion?.enabled !== false,
+    dispatch: createPetIntentDispatcher({
+      eventBus,
+      now: Date.now,
+      resolveAttentionPresentation: (status) => actionService.resolvePresentation?.(status)
+    }),
+    onTimerError: (error) => {
+      try {
+        appLogService.record?.({
+          actor: 'system',
+          scope: 'pet',
+          level: 'error',
+          event: 'companion.intent.expiry-dispatch.failed',
+          message: 'Companion intent expiry dispatch failed',
+          details: { errorCode: String(error?.code || error?.name || 'dispatch-error').slice(0, 80) }
+        })
+      } catch (_) {
+        // Expiry diagnostics must not crash the Electron main process.
+      }
+    }
+  })
+  const syncCompanionFocus = (settings) => {
+    try {
+      companionIntentBroker.setFocusedSession(settings?.companion?.focusedSessionKey || '')
+    } catch (error) {
+      try {
+        appLogService.record?.({
+          actor: 'system',
+          scope: 'pet',
+          level: 'warn',
+          event: 'companion.focus.sync.failed',
+          message: 'Companion focus setting was rejected',
+          details: { errorCode: String(error?.code || error?.name || 'invalid-focus').slice(0, 80) }
+        })
+      } catch (_) {
+        // Settings synchronization must never break pet startup.
+      }
+    }
+  }
+  const syncCompanionEnabled = (settings) => {
+    companionIntentBroker.setCompanionEnabled?.(settings?.companion?.enabled !== false)
+  }
+  syncCompanionEnabled(settingsService.get())
+  syncCompanionFocus(settingsService.get())
+  eventBus.on?.(SETTINGS_CHANGED, (settings) => {
+    syncCompanionEnabled(settings)
+    syncCompanionFocus(settings)
+  })
+  const petService = createPetService({
+    eventBus,
+    settingsService,
+    actionService,
+    appLogService,
+    companionIntentBroker,
+    companionAudioLeaseService
+  })
   const aiSidecar = createAiSidecarProxy({ getBackend, fetchImpl, onSnapshot: onAiSnapshot, getActivePetPackId: () => petPackService.getActivePetPack?.()?.manifest?.id || '' })
   const { aiService, aiTalkService, petUtteranceLogService, behaviorOrchestratorService } = aiSidecar
   const imageGenerationModelService = createImageGenerationModelService({ settingsService, secretService, appLogService })
@@ -129,6 +194,7 @@ const createCoreServices = ({
       aiTalkService,
       aiSidecar,
       appLogService,
+      companionAudioLeaseService,
       behaviorOrchestratorService,
       cursorAssetService,
       systemCursorService,

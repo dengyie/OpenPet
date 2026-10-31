@@ -75,6 +75,7 @@ const createOpenPetRuntime = ({
       aiTalkService,
       aiSidecar,
       appLogService,
+      companionAudioLeaseService,
       behaviorOrchestratorService,
       cursorAssetService,
       systemCursorService,
@@ -399,6 +400,7 @@ const createOpenPetRuntime = ({
     safeRecordAppLog,
     triggerRuleRuntimeService,
     aiTalkService,
+    petService,
     systemCursorService,
     sidecarRuntimeCoordinator,
     getPluginService: () => pluginService
@@ -544,6 +546,7 @@ const createOpenPetRuntime = ({
     cursorAssetService,
     systemCursorService,
     appLogService,
+    companionAudioLeaseService,
     applyWindowScale: (targetWindow, scale) => applyWindowScale(targetWindow, scale),
     applyPetViewport,
     clampToWorkArea,

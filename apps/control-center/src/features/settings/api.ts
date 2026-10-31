@@ -57,6 +57,7 @@ export function settingsEnvelopeToViewModel(envelope: SettingsSnapshot, runtimeS
       hasAnchor: Boolean(home.anchor),
     },
     petBubbleChat: { ...defaultSettings.petBubbleChat, ...(values.petBubbleChat || {}) },
+    companion: { ...defaultSettings.companion, ...(values.companion || {}) },
     systemCursorStatus: { ...defaultSettings.systemCursorStatus, ...(runtimeStatus || {}) },
   })
   return next
@@ -73,6 +74,23 @@ const canonicalValues = (settings: Partial<ControlCenterSettings>) => {
   if (settings.petBubbleChat) {
     for (const key of ['enabled', 'autoPopup', 'autoHide', 'pinOnInteraction'] as const) {
       if (has(settings.petBubbleChat, key)) result[`petBubbleChat.${key}`] = settings.petBubbleChat[key]
+    }
+  }
+  if (settings.companion) {
+    const companion = settings.companion
+    const direct = ['enabled', 'focusedSessionKey'] as const
+    for (const key of direct) if (has(companion, key)) result[`companion.${key}`] = companion[key]
+    for (const key of ['completed', 'waiting', 'failed'] as const) {
+      if (companion.noticeCooldownMs && has(companion.noticeCooldownMs, key)) result[`companion.noticeCooldownMs.${key}`] = companion.noticeCooldownMs[key]
+    }
+    for (const key of ['enabled', 'start', 'end'] as const) {
+      if (companion.quietHours && has(companion.quietHours, key)) result[`companion.quietHours.${key}`] = companion.quietHours[key]
+    }
+    for (const key of ['enabled', 'language', 'volume'] as const) {
+      if (companion.voice && has(companion.voice, key)) result[`companion.voice.${key}`] = companion.voice[key]
+    }
+    for (const key of ['enabled', 'intensity'] as const) {
+      if (companion.idleMotion && has(companion.idleMotion, key)) result[`companion.idleMotion.${key}`] = companion.idleMotion[key]
     }
   }
   return result
@@ -131,6 +149,7 @@ const settingsViewToBackendValues = (settings: Partial<ControlCenterSettings>) =
     home: { enabled: settings.home?.enabled, radius: settings.home?.radius, anchor: settings.home?.hasAnchor ? { x: 0, y: 0 } : null },
   },
   petBubbleChat: structuredClone(settings.petBubbleChat),
+  companion: structuredClone(settings.companion),
 })
 
 const persistDemoSettings = (values: Record<string, unknown>) => {
@@ -195,7 +214,7 @@ const demoSettingsApi: SettingsApi = {
   async schema() {
     return {
       version: 1,
-      writablePaths: ['pet.scale', 'scale', 'walkSpeed', 'walkDuration', 'bubbleDuration', 'menuPosition', 'autoStart', 'selectedCursorId', 'customCursor', 'customCursors', 'hiddenCursorIds', 'customCursorScope', 'petBehavior.grounded', 'petBehavior.home.enabled', 'petBehavior.home.radius', 'petBubbleChat.enabled', 'petBubbleChat.autoPopup', 'petBubbleChat.autoHide', 'petBubbleChat.pinOnInteraction'],
+      writablePaths: ['pet.scale', 'scale', 'walkSpeed', 'walkDuration', 'bubbleDuration', 'menuPosition', 'autoStart', 'selectedCursorId', 'customCursor', 'customCursors', 'hiddenCursorIds', 'customCursorScope', 'petBehavior.grounded', 'petBehavior.home.enabled', 'petBehavior.home.radius', 'petBubbleChat.enabled', 'petBubbleChat.autoPopup', 'petBubbleChat.autoHide', 'petBubbleChat.pinOnInteraction', 'companion.enabled', 'companion.focusedSessionKey', 'companion.noticeCooldownMs.completed', 'companion.noticeCooldownMs.waiting', 'companion.noticeCooldownMs.failed', 'companion.quietHours.enabled', 'companion.quietHours.start', 'companion.quietHours.end', 'companion.voice.enabled', 'companion.voice.language', 'companion.voice.volume', 'companion.idleMotion.enabled', 'companion.idleMotion.intensity'],
       trustedPaths: ['petBehavior.home.anchor'],
       scalePreview: { min: 0.5, max: 1.5, step: 0.01 },
       cursorImport: { extensions: ['png', 'webp'], maxBytes: 512_000 },

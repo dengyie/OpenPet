@@ -12,6 +12,7 @@ const registerRuntimeAppLifecycle = ({
   safeRecordAppLog,
   triggerRuleRuntimeService,
   aiTalkService,
+  petService,
   systemCursorService,
   sidecarRuntimeCoordinator,
   getPluginService,
@@ -69,6 +70,7 @@ const registerRuntimeAppLifecycle = ({
             message: error?.message || 'Plugin shutdown failed before app quit'
           })
         })
+        .finally(() => petService?.dispose?.())
       const aiTalkShutdown = Promise.resolve()
         .then(() => aiTalkService?.flushMemoryJobs?.())
         .then(() => {

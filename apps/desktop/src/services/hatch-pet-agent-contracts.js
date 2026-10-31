@@ -1,7 +1,7 @@
 const DEFAULT_HATCH_PET_BUDGETS = Object.freeze({
   maxIdentityRegenerations: 1,
   maxActionAttemptsPerAction: 3,
-  maxEvaluationAttemptsPerArtifact: 2,
+  maxEvaluationAttemptsPerArtifact: 3,
   maxPlannerCalls: 34,
   maxEvaluatorCalls: 68,
   maxProviderCalls: 72,

@@ -15,6 +15,7 @@ const CAPABILITIES = Object.freeze([
 	"pet:say",
 	"pet:play-action",
 	"pet:event",
+	"pet:attention",
 	"trigger-proposals:write",
 	"model:image-generate",
 	"settings:read",
@@ -30,6 +31,7 @@ const PERMISSION_FOR_CAPABILITY = Object.freeze({
 	"pet:say": "pet:say",
 	"pet:play-action": "pet:action",
 	"pet:event": "pet:event",
+	"pet:attention": "pet:attention",
 	"trigger-proposals:write": "trigger-proposals:write",
 	"model:image-generate": "model:image-generate",
 	"settings:read": "settings:read",
@@ -164,6 +166,39 @@ export function createPluginRuntimeServer({ shell, plugins, settings, jobs, netw
 				})
 				return { ok: true }
 			}
+			case "pet:attention": {
+				if (pluginId !== "openpet.agent-awareness") {
+					throw new ApiError("PERMISSION_DENIED", "pet:attention is reserved for Agent Awareness")
+				}
+				const allowed = new Set(["sessionKey", "status", "eventId", "ttlMs", "activeTurn"])
+				if (Object.keys(body).some((key) => !allowed.has(key))) {
+					throw new ApiError("VALIDATION_FAILED", "pet:attention contains unsupported fields")
+				}
+				const sessionKey = typeof body.sessionKey === "string" ? body.sessionKey : ""
+				const statuses = ["idle", "thinking", "working", "waiting", "blocked", "completed", "failed", "compacting"]
+				if (!/^[a-f0-9]{12}$/.test(sessionKey) || !statuses.includes(body.status)) {
+					throw new ApiError("VALIDATION_FAILED", "pet:attention sessionKey or status is invalid")
+				}
+				if (body.eventId !== undefined && (typeof body.eventId !== "string" || body.eventId.length < 1 || body.eventId.length > 128)) {
+					throw new ApiError("VALIDATION_FAILED", "pet:attention eventId is invalid")
+				}
+				if (body.ttlMs !== undefined && (typeof body.ttlMs !== "number" || !Number.isFinite(body.ttlMs) || body.ttlMs < 0 || body.ttlMs > 600000)) {
+					throw new ApiError("VALIDATION_FAILED", "pet:attention ttlMs is invalid")
+				}
+				if (body.activeTurn !== undefined && typeof body.activeTurn !== "boolean") {
+					throw new ApiError("VALIDATION_FAILED", "pet:attention activeTurn is invalid")
+				}
+				requireMethod(shell, "send", "Shell reverse channel is unavailable")({
+					type: "pet.attention",
+					source: "agent-awareness",
+					sessionKey,
+					status: body.status,
+					...(body.eventId === undefined ? {} : { eventId: body.eventId }),
+					...(body.ttlMs === undefined ? {} : { ttlMs: body.ttlMs }),
+					...(body.activeTurn === undefined ? {} : { activeTurn: body.activeTurn }),
+				})
+				return { ok: true }
+			}
 			case "trigger-proposals:write":
 				return requireMethod(plugins, "submitTriggerProposal", "Plugin trigger proposal service is unavailable")(pluginId, body)
 			case "model:image-generate": {
@@ -254,6 +289,7 @@ export function createPluginRuntimeServer({ shell, plugins, settings, jobs, netw
 				"/pet/action": "pet:play-action",
 				"/pet/play-action": "pet:play-action",
 				"/pet/event": "pet:event",
+				"/pet/attention": "pet:attention",
 				"/trigger-proposals/write": "trigger-proposals:write",
 				"/model/image-generate": "model:image-generate",
 				"/settings/read": "settings:read",

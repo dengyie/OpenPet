@@ -6,6 +6,9 @@ const SAFE_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/
 const SAFE_TRIGGER_RULE_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9:_-]*$/
 const TRIGGER_RULE_TYPES = new Set(['random', 'state', 'event'])
 const TRIGGER_RULE_STATUSES = new Set(['active', 'disabled'])
+const PRESENTATION_SCHEMA_VERSION = 1
+const PRESENTATION_STATUSES = new Set(['idle', 'thinking', 'working', 'waiting', 'blocked', 'completed', 'failed', 'compacting'])
+const PRESENTATION_EXPRESSIONS = new Set(['normal', 'focused', 'busy', 'question', 'happy', 'concerned', 'neutral'])
 
 const inferActionKind = (actionId) => {
   if (/idle|bai|stand/i.test(actionId)) return 'idle'
@@ -188,6 +191,69 @@ const normalizeTriggerRule = (rule, actionIds) => {
   return normalized
 }
 
+const normalizePresentationTarget = (target, { fieldName, actionIds }) => {
+  if (!target || typeof target !== 'object' || Array.isArray(target)) {
+    throw new Error(`pet pack ${fieldName} must be an object`)
+  }
+  const actionId = optionalString(target.actionId)
+  if (!actionIds.has(actionId)) {
+    throw new Error(`pet pack ${fieldName}.actionId does not exist: ${actionId || 'unknown'}`)
+  }
+  const expression = optionalString(target.expression) || 'normal'
+  if (!PRESENTATION_EXPRESSIONS.has(expression)) {
+    throw new Error(`pet pack ${fieldName}.expression is unsupported: ${expression}`)
+  }
+  return { actionId, expression }
+}
+
+const normalizePresentation = (presentation, { actionIds, defaultAction }) => {
+  if (presentation == null) return null
+  if (!presentation || typeof presentation !== 'object' || Array.isArray(presentation)) {
+    throw new Error('pet pack presentation must be an object')
+  }
+  const schemaVersion = Number(presentation.schemaVersion || PRESENTATION_SCHEMA_VERSION)
+  if (schemaVersion !== PRESENTATION_SCHEMA_VERSION) {
+    throw new Error(`pet pack presentation.schemaVersion is unsupported: ${presentation.schemaVersion}`)
+  }
+  const states = presentation.states
+  if (states != null && (!states || typeof states !== 'object' || Array.isArray(states))) {
+    throw new Error('pet pack presentation.states must be an object')
+  }
+  const normalizedStates = {}
+  for (const [status, target] of Object.entries(states || {})) {
+    if (!PRESENTATION_STATUSES.has(status)) {
+      throw new Error(`pet pack presentation state is unsupported: ${status}`)
+    }
+    normalizedStates[status] = normalizePresentationTarget(target, {
+      fieldName: `presentation.states.${status}`,
+      actionIds
+    })
+  }
+  const fallback = presentation.fallback == null
+    ? { actionId: defaultAction, expression: 'normal' }
+    : normalizePresentationTarget(presentation.fallback, {
+      fieldName: 'presentation.fallback',
+      actionIds
+    })
+  return {
+    schemaVersion,
+    states: normalizedStates,
+    fallback
+  }
+}
+
+const resolvePresentation = (manifest, status) => {
+  const presentation = manifest?.presentation
+  if (!presentation) return { actionId: manifest?.defaultAction || '', expression: 'normal', mapped: false }
+  const normalizedStatus = PRESENTATION_STATUSES.has(status) ? status : 'idle'
+  const target = presentation.states?.[normalizedStatus] || presentation.fallback
+  return {
+    actionId: target?.actionId || manifest?.defaultAction || '',
+    expression: target?.expression || 'normal',
+    mapped: Boolean(presentation.states?.[normalizedStatus])
+  }
+}
+
 const normalizePetPackManifest = (manifest) => {
   assertSafeId(manifest?.id, 'id')
 
@@ -214,6 +280,10 @@ const normalizePetPackManifest = (manifest) => {
     clickAction,
     actions
   }
+  const actionIds = new Set(actions.map((action) => action.id))
+  if (manifest.presentation !== undefined) {
+    normalized.presentation = normalizePresentation(manifest.presentation, { actionIds, defaultAction })
+  }
   for (const field of ['requiredActionIds', 'availableActionIds', 'degradedActionIds', 'omittedActionIds']) {
     if (Array.isArray(manifest[field])) {
       normalized[field] = [...new Set(manifest[field].map((value) => optionalString(value)).filter(Boolean))]
@@ -232,10 +302,20 @@ const normalizePetPackManifest = (manifest) => {
     normalized.triggerProposalInbox = manifest.triggerProposalInbox.map((proposal) => ({ ...proposal }))
   }
   if (Array.isArray(manifest.triggerRules)) {
-    const actionIds = new Set(actions.map((action) => action.id))
     normalized.triggerRules = manifest.triggerRules.map((rule) => normalizeTriggerRule(rule, actionIds))
   }
   return normalized
 }
 
-module.exports = { inferActionKind, normalizeAction, normalizePersona, normalizePetPackManifest, normalizeProvenance }
+module.exports = {
+  PRESENTATION_EXPRESSIONS,
+  PRESENTATION_SCHEMA_VERSION,
+  PRESENTATION_STATUSES,
+  inferActionKind,
+  normalizeAction,
+  normalizePersona,
+  normalizePetPackManifest,
+  normalizePresentation,
+  normalizeProvenance,
+  resolvePresentation
+}

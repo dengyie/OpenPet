@@ -93,6 +93,11 @@ export const SETTINGS_CANONICAL_PATHS = [
   "petBehavior.grounded", "petBehavior.home.enabled", "petBehavior.home.radius",
   "petBehavior.home.anchor", "petBubbleChat.enabled", "petBubbleChat.autoPopup",
   "petBubbleChat.autoHide", "petBubbleChat.pinOnInteraction",
+  "companion.enabled", "companion.focusedSessionKey",
+  "companion.noticeCooldownMs.completed", "companion.noticeCooldownMs.waiting", "companion.noticeCooldownMs.failed",
+  "companion.quietHours.enabled", "companion.quietHours.start", "companion.quietHours.end",
+  "companion.voice.enabled", "companion.voice.language", "companion.voice.volume",
+  "companion.idleMotion.enabled", "companion.idleMotion.intensity",
 ] as const
 
 /** Settings paths that may only be persisted across the private Shell↔Backend process bridge. */

@@ -5,6 +5,11 @@ const CANONICAL_PATHS = Object.freeze([
 	"selectedCursorId", "customCursor", "customCursors", "hiddenCursorIds", "customCursorScope",
 	"petBehavior.grounded", "petBehavior.home.enabled", "petBehavior.home.radius", "petBehavior.home.anchor",
 	"petBubbleChat.enabled", "petBubbleChat.autoPopup", "petBubbleChat.autoHide", "petBubbleChat.pinOnInteraction",
+	"companion.enabled", "companion.focusedSessionKey",
+	"companion.noticeCooldownMs.completed", "companion.noticeCooldownMs.waiting", "companion.noticeCooldownMs.failed",
+	"companion.quietHours.enabled", "companion.quietHours.start", "companion.quietHours.end",
+	"companion.voice.enabled", "companion.voice.language", "companion.voice.volume",
+	"companion.idleMotion.enabled", "companion.idleMotion.intensity",
 ])
 const PERSISTABLE_PATHS = CANONICAL_PATHS
 

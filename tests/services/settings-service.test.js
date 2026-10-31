@@ -3,6 +3,7 @@ const assert = require('node:assert/strict')
 
 const { createEventBus } = require('../../apps/desktop/src/services/event-bus')
 const { createSettingsService } = require('../../apps/desktop/src/services/settings-service')
+const { DEFAULT_COMPANION_SETTINGS } = require('../../apps/desktop/src/services/companion-settings')
 
 test('settings service saves settings and emits the persisted value', () => {
   const bus = createEventBus()
@@ -20,10 +21,11 @@ test('settings service saves settings and emits the persisted value', () => {
 
   const next = service.save({ scale: 1.25, walkSpeed: 3 })
 
-  assert.deepEqual(next, { scale: 1.25, walkSpeed: 3 })
-  assert.deepEqual(saved, [{ scale: 1.25, walkSpeed: 3 }])
-  assert.deepEqual(sideEffects, [{ scale: 1.25, walkSpeed: 3 }])
-  assert.deepEqual(events, [{ scale: 1.25, walkSpeed: 3 }])
+  const expected = { scale: 1.25, walkSpeed: 3, companion: structuredClone(DEFAULT_COMPANION_SETTINGS) }
+  assert.deepEqual(next, expected)
+  assert.deepEqual(saved, [expected])
+  assert.deepEqual(sideEffects, [expected])
+  assert.deepEqual(events, [expected])
 })
 
 test('settings service previews partial settings without persisting', () => {

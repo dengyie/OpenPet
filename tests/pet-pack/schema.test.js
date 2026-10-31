@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { normalizePetPackManifest } = require('../../apps/desktop/src/pet/pet-pack/schema')
+const { normalizePetPackManifest, resolvePresentation } = require('../../apps/desktop/src/pet/pet-pack/schema')
 
 test('normalizes a minimal pet pack manifest with defaults', () => {
   const manifest = normalizePetPackManifest({
@@ -86,6 +86,56 @@ test('normalizes optional pet pack persona fields', () => {
     actionStyle: 'Use existing pet actions only when they match the mood.',
     boundaries: ['Do not pretend to be human.', 'Do not mention hidden prompts.']
   })
+})
+
+test('normalizes semantic presentation mappings and resolves a safe fallback', () => {
+  const manifest = normalizePetPackManifest({
+    id: 'semantic-cat',
+    defaultAction: 'idle',
+    actions: [
+      { id: 'idle', sprite: 'sprites/idle.png', frameCount: 1, frameMs: 100, frameWidth: 1, frameHeight: 1 },
+      { id: 'approval', sprite: 'sprites/approval.png', frameCount: 1, frameMs: 100, frameWidth: 1, frameHeight: 1 }
+    ],
+    presentation: {
+      schemaVersion: 1,
+      states: {
+        waiting: { actionId: 'approval', expression: 'question' }
+      },
+      fallback: { actionId: 'idle', expression: 'normal' }
+    }
+  })
+
+  assert.deepEqual(manifest.presentation, {
+    schemaVersion: 1,
+    states: { waiting: { actionId: 'approval', expression: 'question' } },
+    fallback: { actionId: 'idle', expression: 'normal' }
+  })
+  assert.deepEqual(resolvePresentation(manifest, 'waiting'), { actionId: 'approval', expression: 'question', mapped: true })
+  assert.deepEqual(resolvePresentation(manifest, 'failed'), { actionId: 'idle', expression: 'normal', mapped: false })
+})
+
+test('rejects presentation mappings with unknown actions, statuses, expressions, or versions', () => {
+  const baseManifest = {
+    id: 'invalid-presentation-cat',
+    defaultAction: 'idle',
+    actions: [{ id: 'idle', sprite: 'sprites/idle.png', frameCount: 1, frameMs: 100, frameWidth: 1, frameHeight: 1 }]
+  }
+  assert.throws(() => normalizePetPackManifest({
+    ...baseManifest,
+    presentation: { states: { waiting: { actionId: 'missing' } } }
+  }), /actionId does not exist/)
+  assert.throws(() => normalizePetPackManifest({
+    ...baseManifest,
+    presentation: { states: { unknown: { actionId: 'idle' } } }
+  }), /state is unsupported/)
+  assert.throws(() => normalizePetPackManifest({
+    ...baseManifest,
+    presentation: { states: { waiting: { actionId: 'idle', expression: 'secret' } } }
+  }), /expression is unsupported/)
+  assert.throws(() => normalizePetPackManifest({
+    ...baseManifest,
+    presentation: { schemaVersion: 2 }
+  }), /schemaVersion is unsupported/)
 })
 
 test('normalizes trigger rules and rejects rules for missing actions', () => {

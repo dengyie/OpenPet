@@ -59,6 +59,17 @@ test('demo pet chat state initializes shared streaming state to null', async () 
   assert.equal(state.streaming, null)
 })
 
+test('demo Companion diagnostics stays content-free and mirrors the focused setting', async () => {
+  const diagnostics = await demoControlCenterAPI.getCompanionDiagnostics()
+
+  assert.equal(diagnostics.attention, null)
+  assert.equal(diagnostics.attentionSessionCount, 0)
+  assert.deepEqual(diagnostics.queues, { notice: 0, dialogue: 0, action: 0 })
+  assert.deepEqual(diagnostics.active, { notice: false, action: false })
+  assert.deepEqual(diagnostics.decisions, [])
+  assert.equal(diagnostics.audioLease.active, false)
+})
+
 test('demo QQ credentials survive a module reload through session storage', async () => {
   await demoControlCenterAPI.saveImGatewayQqOfficialCredentials({ appId: 'demo-app-id', clientSecret: 'demo-client-secret' })
   const reloaded = await import(`../../apps/control-center/src/api/demo-control-center-api.ts?qqReload=${Date.now()}`)

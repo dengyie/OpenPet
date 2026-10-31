@@ -1,5 +1,6 @@
 const SETTINGS_CHANGED = 'settings:changed'
 const SETTINGS_PREVIEW = 'settings:preview'
+const { normalizeCompanionSettings } = require('./companion-settings')
 
 const cloneSettings = (settings) => structuredClone(settings)
 
@@ -7,7 +8,10 @@ const validateSettings = (settings) => {
   if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
     throw new Error('Settings must be an object')
   }
-  return settings
+  return {
+    ...settings,
+    companion: normalizeCompanionSettings(settings.companion)
+  }
 }
 
 const createSettingsService = ({ eventBus, loadSettings, saveSettings, syncSideEffects }) => {

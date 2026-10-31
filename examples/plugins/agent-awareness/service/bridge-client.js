@@ -21,6 +21,7 @@ const createBridgeClient = ({
 
   return {
     event: (payload) => post('/pet/event', payload),
+    attention: (payload) => post('/pet/attention', payload),
     say: (payload) => post('/pet/say', payload)
   }
 }

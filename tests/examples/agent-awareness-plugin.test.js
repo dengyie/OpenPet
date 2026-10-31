@@ -50,7 +50,7 @@ test('agent awareness manifest declares bounded runtime entries', () => {
 
   assert.equal(manifest.id, 'openpet.agent-awareness')
   assert.equal(manifest.profile, 'runtime')
-  assert.deepEqual(manifest.permissions, ['pet:say', 'pet:event'])
+  assert.deepEqual(manifest.permissions, ['pet:say', 'pet:event', 'pet:attention'])
   assert.deepEqual(manifest.entries.commands.map((entry) => entry.id), [
     'doctor',
     'codex-hook-plan',
@@ -85,11 +85,11 @@ test('agent awareness bridge client reads service bridge env from plugin service
       }
     })
 
-    const result = await client.say({ text: 'Agent needs attention.', ttlMs: 1000 })
+    const result = await client.attention({ sessionKey: '0123456789ab', status: 'waiting', eventId: 'event-1' })
 
     assert.deepEqual(result, { ok: true })
     assert.equal(requests.length, 1)
-    assert.equal(requests[0].url, 'http://127.0.0.1:7777/plugins/bridge/openpet.agent-awareness/agent-awareness/run/pet/say')
+    assert.equal(requests[0].url, 'http://127.0.0.1:7777/plugins/bridge/openpet.agent-awareness/agent-awareness/run/pet/attention')
     assert.equal(requests[0].options.headers.Authorization, 'Bearer service-bridge-token')
   } finally {
     if (previousBridgeUrl == null) delete process.env.OPENPET_BRIDGE_URL
@@ -962,6 +962,7 @@ test('agent awareness server serves health and notifies pet only for incremental
     dataDir,
     bridgeClient: {
       event: async (payload) => bridgeCalls.push(['event', payload]),
+      attention: async (payload) => bridgeCalls.push(['attention', payload]),
       say: async (payload) => bridgeCalls.push(['say', payload])
     },
     createRolloutPoller: ({ onEvent: handler }) => {
@@ -1018,10 +1019,13 @@ test('agent awareness server serves health and notifies pet only for incremental
   assert.equal('storePath' in health.sessions, false)
   assert.equal('codexHome' in health.codexPoller, false)
   assert.equal(Array.isArray(sessions.sessions), true)
-  assert.deepEqual(bridgeCalls, [
-    ['event', { type: 'agent:completed', message: '', ttlMs: 8000 }],
-    ['say', { text: '我刚完成：Codex completed a turn.', ttlMs: 6000 }]
-  ])
+  assert.equal(bridgeCalls.length, 2)
+  assert.equal(bridgeCalls[0][0], 'attention')
+  assert.match(bridgeCalls[0][1].sessionKey, /^[a-f0-9]{12}$/)
+  assert.equal(bridgeCalls[0][1].status, 'completed')
+  assert.equal(bridgeCalls[0][1].activeTurn, false)
+  assert.equal(typeof bridgeCalls[0][1].eventId, 'string')
+  assert.deepEqual(bridgeCalls[1], ['say', { text: '我刚完成：Codex completed a turn.', ttlMs: 6000 }])
 })
 
 test('agent awareness HTTP ingestion stays successful and deduplicates after bridge failure', async () => {
@@ -1590,11 +1594,13 @@ test('agent awareness server merges hook and poller events into one richer runti
 
 test('agent awareness server does not let older poller discovery downgrade newer hook state', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-agent-awareness-service-stale-merge-'))
+  const bridgeCalls = []
   const service = createAgentAwarenessServer({
     dataDir,
     bridgeClient: {
-      event: async () => {},
-      say: async () => {}
+      attention: async (payload) => bridgeCalls.push(['attention', payload]),
+      event: async (payload) => bridgeCalls.push(['event', payload]),
+      say: async (payload) => bridgeCalls.push(['say', payload])
     },
     createRolloutPoller: () => ({
       getStatus: () => ({ enabled: true, seenCount: 0 }),
@@ -1632,6 +1638,9 @@ test('agent awareness server does not let older poller discovery downgrade newer
   assert.equal(session.history[0].status, 'idle')
   assert.equal(session.history[0].message, '')
   assert.equal(session.history.at(-1).status, 'waiting')
+  assert.equal(bridgeCalls.length, 2)
+  assert.equal(bridgeCalls[0][0], 'attention')
+  assert.equal(bridgeCalls[0][1].status, 'waiting')
 })
 
 test('agent awareness server reports installed hook mode when current hook assets still exist', async () => {

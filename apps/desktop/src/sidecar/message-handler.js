@@ -125,6 +125,7 @@ const BACKEND_TO_SHELL_TYPES = Object.freeze([
 	"pet.say",
 	"pet.playAction",
 	"pet.event",
+	"pet.attention",
 	"window.openPluginDashboard",
 	"notify",
 	"tray.setBadge",
@@ -469,6 +470,14 @@ function parseEnvelope(raw) {
 		case "pet.event":
 			if (typeof body.name !== "string") return fail("bad-body", "pet.event.name")
 			break
+		case "pet.attention": {
+			const statuses = ["idle", "thinking", "working", "waiting", "blocked", "completed", "failed", "compacting"]
+			if (!/^[a-f0-9]{12}$/.test(body.sessionKey || "") || !statuses.includes(body.status)) return fail("bad-body", "pet.attention")
+			if (body.eventId !== undefined && (typeof body.eventId !== "string" || body.eventId.length < 1 || body.eventId.length > 128)) return fail("bad-body", "pet.attention.eventId")
+			if (body.ttlMs !== undefined && (!Number.isFinite(body.ttlMs) || body.ttlMs < 0 || body.ttlMs > 600000)) return fail("bad-body", "pet.attention.ttlMs")
+			if (body.activeTurn !== undefined && typeof body.activeTurn !== "boolean") return fail("bad-body", "pet.attention.activeTurn")
+			break
+		}
 		case "window.openPluginDashboard":
 			if (typeof body.pluginId !== "string" || body.pluginId.length === 0) return fail("bad-body", "window.openPluginDashboard.pluginId")
 			break
@@ -707,6 +716,16 @@ function createMessageHandler({ dialog, petService, secretService, logger, send,
 					return true
 				case "pet.event":
 					petService?.setEvent?.({ event: body.name, payload: body.payload, source: "backend" })
+					return true
+				case "pet.attention":
+					if (body.source !== "agent-awareness") return false
+					petService?.submitAttentionState?.({
+						sessionKey: body.sessionKey,
+						status: body.status,
+						eventId: body.eventId,
+						ttlMs: body.ttlMs,
+						activeTurn: body.activeTurn
+					})
 					return true
 				case "notify":
 					onNotify?.(body)

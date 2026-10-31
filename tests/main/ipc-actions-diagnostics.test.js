@@ -215,6 +215,45 @@ test('actions:get returns trigger runtime diagnostics alongside the actions conf
   })
 })
 
+test('companion diagnostics and audio lease handlers stay behind the host IPC boundary', async () => {
+  const ipcMain = createIpcMainStub()
+  const { registerIpcHandlers } = loadIpcWithElectron({
+    ipcMain,
+    BrowserWindow: { fromWebContents: () => null },
+    app: { quit: () => {} },
+    dialog: {},
+    screen: {
+      getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } })
+    }
+  })
+  const snapshot = { attention: null, queues: { notice: 0, dialogue: 0, action: 0 } }
+  const leaseCalls = []
+  registerIpcHandlers({
+    ...createRequiredServices({
+      petService: {
+        ...createRequiredServices().petService,
+        getCompanionSnapshot: () => snapshot
+      },
+      companionAudioLeaseService: {
+        request: (payload) => { leaseCalls.push(['request', payload]); return { granted: true } },
+        release: (payload) => { leaseCalls.push(['release', payload]); return { released: true } },
+        heartbeat: (payload) => { leaseCalls.push(['heartbeat', payload]); return { renewed: true } }
+      }
+    }),
+    ipcMainService: ipcMain
+  })
+
+  assert.deepEqual(await ipcMain.handlers.get(IPC.COMPANION_GET_DIAGNOSTICS)(), snapshot)
+  assert.deepEqual(await ipcMain.handlers.get(IPC.COMPANION_AUDIO_LEASE_REQUEST)(null, { signalId: 's1' }), { granted: true })
+  assert.deepEqual(await ipcMain.handlers.get(IPC.COMPANION_AUDIO_LEASE_RELEASE)(null, { signalId: 's1' }), { released: true })
+  assert.deepEqual(await ipcMain.handlers.get(IPC.COMPANION_AUDIO_LEASE_HEARTBEAT)(null, { signalId: 's1' }), { renewed: true })
+  assert.deepEqual(leaseCalls, [
+    ['request', { signalId: 's1' }],
+    ['release', { signalId: 's1' }],
+    ['heartbeat', { signalId: 's1' }]
+  ])
+})
+
 test('actions:save-config returns animations with trigger runtime diagnostics after host rule edits', async () => {
   const ipcMain = createIpcMainStub()
   const { registerIpcHandlers } = loadIpcWithElectron({

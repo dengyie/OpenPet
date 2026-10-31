@@ -51,7 +51,7 @@ test('candidate qa uses the processed output anchor when raw provider cell place
   assert.equal(result.metrics.anchorYStd, 0)
 })
 
-test('candidate qa compares raw provider cells with the accepted idle layout baseline', () => {
+test('candidate qa compares normalized runtime cells with the accepted idle output baseline', () => {
   const result = analyzeSpriteCandidate({
     actionId: 'running',
     rawMetrics: { frames: [
@@ -70,8 +70,60 @@ test('candidate qa compares raw provider cells with the accepted idle layout bas
 
   assert.equal(result.ok, true)
   assert.deepEqual(result.failures, [])
-  assert.ok(result.metrics.crossActionScaleDrift < 0.004)
+  assert.ok(result.metrics.crossActionScaleDrift < 0.001)
   assert.equal(result.metrics.anchorYStd, 0)
+})
+
+test('candidate qa does not reject pose-dependent raw height when runtime output is normalized', () => {
+  const result = analyzeSpriteCandidate({
+    actionId: 'running-right',
+    rawMetrics: { frames: [
+      { empty: false, edgeTouch: false, pasteClamped: false, unmatchedComponentCount: 0, subjectHeightRatio: 0.42, outputSubjectHeightRatio: 0.71875, outputAnchorYRatio: 0.9 },
+      { empty: false, edgeTouch: false, pasteClamped: false, unmatchedComponentCount: 0, subjectHeightRatio: 0.48, outputSubjectHeightRatio: 0.71875, outputAnchorYRatio: 0.9 }
+    ] },
+    profile: {
+      canonicalStandingHeightRatio: 0.64,
+      runtimeStandingHeightPx: 92,
+      runtimeCell: { width: 128, height: 128 },
+      maxBodyScaleCv: 0.08,
+      maxAnchorYStd: 0.05,
+      maxCrossActionScaleDrift: 0.08
+    },
+    actionPolicy: { anchorPolicy: 'compact-contact-root-v1' }
+  })
+
+  assert.equal(result.ok, true)
+  assert.deepEqual(result.failures, [])
+  assert.equal(result.metrics.crossActionScaleDrift, 0)
+})
+
+test('candidate qa compares representative runtime height across actions while bounding pose variation separately', () => {
+  const result = analyzeSpriteCandidate({
+    actionId: 'running-right',
+    rawMetrics: { frames: [
+      { empty: false, edgeTouch: false, pasteClamped: false, unmatchedComponentCount: 0, subjectHeightRatio: 0.412, outputSubjectHeightRatio: 0.71875, outputAnchorYRatio: 0.8984 },
+      { empty: false, edgeTouch: false, pasteClamped: false, unmatchedComponentCount: 0, subjectHeightRatio: 0.381, outputSubjectHeightRatio: 0.66406, outputAnchorYRatio: 0.8984 },
+      { empty: false, edgeTouch: false, pasteClamped: false, unmatchedComponentCount: 0, subjectHeightRatio: 0.412, outputSubjectHeightRatio: 0.71875, outputAnchorYRatio: 0.8984 },
+      { empty: false, edgeTouch: false, pasteClamped: false, unmatchedComponentCount: 0, subjectHeightRatio: 0.451, outputSubjectHeightRatio: 0.78906, outputAnchorYRatio: 0.8984 },
+      { empty: false, edgeTouch: false, pasteClamped: false, unmatchedComponentCount: 0, subjectHeightRatio: 0.416, outputSubjectHeightRatio: 0.72656, outputAnchorYRatio: 0.8984 },
+      { empty: false, edgeTouch: false, pasteClamped: false, unmatchedComponentCount: 0, subjectHeightRatio: 0.395, outputSubjectHeightRatio: 0.6875, outputAnchorYRatio: 0.8984 },
+      { empty: false, edgeTouch: false, pasteClamped: false, unmatchedComponentCount: 0, subjectHeightRatio: 0.404, outputSubjectHeightRatio: 0.703125, outputAnchorYRatio: 0.8984 },
+      { empty: false, edgeTouch: false, pasteClamped: false, unmatchedComponentCount: 0, subjectHeightRatio: 0.443, outputSubjectHeightRatio: 0.7734375, outputAnchorYRatio: 0.8984 }
+    ] },
+    profile: {
+      runtimeStandingHeightPx: 92,
+      runtimeCell: { width: 128, height: 128 },
+      maxBodyScaleCv: 0.08,
+      maxAnchorYStd: 0.05,
+      maxCrossActionScaleDrift: 0.08
+    },
+    actionPolicy: { anchorPolicy: 'compact-contact-root-v1' }
+  })
+
+  assert.equal(result.ok, true)
+  assert.deepEqual(result.failures, [])
+  assert.ok(result.metrics.bodyScaleCv < 0.08)
+  assert.equal(result.metrics.crossActionScaleDrift, 0)
 })
 
 test('candidate qa treats pixel output anchors as pixels when checking normalized baseline drift', () => {

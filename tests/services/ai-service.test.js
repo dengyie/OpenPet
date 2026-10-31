@@ -86,7 +86,7 @@ test('ai service exposes config without secret values', () => {
       budgets: {
         maxIdentityRegenerations: 1,
         maxActionAttemptsPerAction: 3,
-        maxEvaluationAttemptsPerArtifact: 2,
+        maxEvaluationAttemptsPerArtifact: 3,
         maxProviderCalls: 72,
         maxPlannerCalls: 34,
         maxEvaluatorCalls: 68,

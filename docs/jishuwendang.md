@@ -70,8 +70,8 @@ npm run check:docs-drift
 ```
 
 `build:contracts` 是 API 合同门禁的前置步骤；`check:api-contract` 当前只承认
-`routes/registry.js` 中实际注册的路由。当前基线为 86 个 IPC（80 个直接注册、6 个
-事件-only；退役台账为 41 keep、37 cutover、8 blocked）、136 个已注册 REST 路由、149 个 API 文档路由行、
+`routes/registry.js` 中实际注册的路由。当前基线为 90 个 IPC（84 个直接注册、6 个
+事件-only；退役台账为 41 keep、37 cutover、12 blocked）、136 个已注册 REST 路由、149 个 API 文档路由行、
 21 个 SSE 事件、8 个 topic、17 个 Job kind 和 6 个 Job status。完整测试若受本机 Playwright 浏览器缺失
 影响，必须如实记录失败原因，不能把未执行的 UI 证据写成通过。
 

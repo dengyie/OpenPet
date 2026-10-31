@@ -704,7 +704,6 @@ const createHatchPetAgentService = ({
     const effectiveProfile = profile || DEFAULT_SPRITE_VISUAL_PROFILE
     let ledger = resolveBudgetLedger({ runId, supplied: budgetLedger, limits: config.budgets })
     let repairReason = ''
-    let invalidRepairUsed = false
     let transientRetryUsed = false
     const attemptLimit = config.budgets.maxEvaluationAttemptsPerArtifact
     for (let attempt = 0; attempt < attemptLimit; attempt += 1) {
@@ -757,8 +756,7 @@ const createHatchPetAgentService = ({
       } catch (error) {
         if (signal?.aborted || error?.name === 'AbortError') throw error
         const canRetry = attempt + 1 < attemptLimit
-        if (isInvalidSpriteEvaluationError(error) && canRetry && !invalidRepairUsed) {
-          invalidRepairUsed = true
+        if (isInvalidSpriteEvaluationError(error) && canRetry) {
           repairReason = error.message
           continue
         }

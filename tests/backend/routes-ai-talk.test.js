@@ -53,7 +53,7 @@ function aiRuntimeFixture() {
 		budgets: {
 			maxIdentityRegenerations: 1,
 			maxActionAttemptsPerAction: 3,
-			maxEvaluationAttemptsPerArtifact: 2,
+			maxEvaluationAttemptsPerArtifact: 3,
 			maxPlannerCalls: 34,
 			maxEvaluatorCalls: 68,
 			maxProviderCalls: 20,

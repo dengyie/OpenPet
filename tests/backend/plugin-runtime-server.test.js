@@ -92,6 +92,42 @@ test("routes pet:event through the Shell reverse channel", async () => {
 	assert.deepEqual(calls, [["shell", { type: "pet.event", name: "working", payload: { percent: 25 } }]])
 })
 
+test("routes restricted pet:attention only for Agent Awareness", async () => {
+	const { calls, plugin, server } = createHarness(["pet:attention"])
+	plugin.id = "openpet.agent-awareness"
+	await server.handleCapability(plugin.id, "pet:attention", {
+		sessionKey: "0123456789ab",
+		status: "waiting",
+		eventId: "event-1",
+		activeTurn: true,
+	})
+	assert.deepEqual(calls, [["shell", {
+		type: "pet.attention",
+		source: "agent-awareness",
+		sessionKey: "0123456789ab",
+		status: "waiting",
+		eventId: "event-1",
+		activeTurn: true,
+	}]])
+})
+
+test("rejects pet:attention priority and caller supplied fields", async () => {
+	const { plugin, server } = createHarness(["pet:attention"])
+	plugin.id = "openpet.agent-awareness"
+	await assert.rejects(
+		() => server.handleCapability(plugin.id, "pet:attention", { sessionKey: "0123456789ab", status: "waiting", priority: "urgent" }),
+		(error) => error?.code === "VALIDATION_FAILED",
+	)
+})
+
+test("denies pet:attention to plugins outside the reserved Agent Awareness identity", async () => {
+	const { plugin, server } = createHarness(["pet:attention"])
+	await assert.rejects(
+		() => server.handleCapability(plugin.id, "pet:attention", { sessionKey: "0123456789ab", status: "waiting" }),
+		(error) => error?.code === "PERMISSION_DENIED" && error.status === 403,
+	)
+})
+
 test("submits trigger proposals inside the backend", async () => {
 	const { calls, plugin, server } = createHarness(["trigger-proposals:write"])
 	const result = await server.handleCapability(plugin.id, "trigger-proposals:write", { actionId: "wave" })

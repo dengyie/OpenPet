@@ -22,7 +22,7 @@ import {
   removeStoredCursorRecord,
   resizeCustomCursorRecord
 } from '@openpet/shared/src/cursor-library.ts'
-import type { ControlCenterSettings, CursorOption, CustomCursorRecord } from '@openpet/shared/src/openpet-contracts.ts'
+import type { CompanionDiagnosticsViewState, ControlCenterSettings, CursorOption, CustomCursorRecord } from '@openpet/shared/src/openpet-contracts.ts'
 import type { PetPaneProps } from '../panes/PetPane.tsx'
 
 const normalizeCursorState = (settings: Partial<ControlCenterSettings>) => (
@@ -72,6 +72,7 @@ export function usePetSettingsPane() {
   const [originalSettings, setOriginalSettings] = useState<ControlCenterSettings>(defaultSettings)
   const [status, setStatus] = useState('')
   const [runtimeStatus, setRuntimeStatus] = useState<Partial<ControlCenterSettings['systemCursorStatus']>>(() => runtimeCursorStatus() || {})
+  const [companionDiagnostics, setCompanionDiagnostics] = useState<CompanionDiagnosticsViewState | null>(null)
   const originalRef = useRef<ControlCenterSettings>(defaultSettings)
   const saveRevisionRef = useRef(0)
   const appliedSaveRevisionRef = useRef(0)
@@ -81,6 +82,29 @@ export function usePetSettingsPane() {
   const acceptedSettingsVersionRef = useRef(-1)
   const settingsHttpApi = useMemo(() => createSettingsApi(backendClient), [])
   const sse = useSse(['settings'])
+
+  const refreshCompanionDiagnostics = async (isMounted: () => boolean = () => true) => {
+    try {
+      const next = await api.getCompanionDiagnostics?.()
+      if (isMounted()) setCompanionDiagnostics(next || null)
+    } catch {
+      if (isMounted()) setCompanionDiagnostics(null)
+    }
+  }
+
+  useEffect(() => {
+    let mounted = true
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const poll = async () => {
+      await refreshCompanionDiagnostics(() => mounted)
+      if (mounted) timer = setTimeout(poll, 2000)
+    }
+    void poll()
+    return () => {
+      mounted = false
+      if (timer) clearTimeout(timer)
+    }
+  }, [])
 
   const reloadSettings = async (mounted: () => boolean) => {
     const requestSequence = ++settingsReloadSequenceRef.current
@@ -399,6 +423,8 @@ export function usePetSettingsPane() {
     status,
     saving,
     cursorOptions,
+    companionDiagnostics,
+    onRefreshCompanionDiagnostics: () => refreshCompanionDiagnostics(),
     onChange,
     onChangeCursorScope,
     onSelectCursor,

@@ -277,10 +277,17 @@ const createAgentAwarenessServer = ({
         : { status: 'pending', retry: 'not-automatic' }
     })
     if (initial) return pending
+    if (toTimestampMs(event.timestamp) < toTimestampMs(pending.session?.timestamp)) {
+      return store.updateCommittedEvent(eventId, { notification: { status: 'skipped', retry: 'not-needed', reason: 'stale-session-state' } })
+    }
     const mapped = mapper.mapEvent({ event, previousSession })
     let notification
     try {
-      if (mapped.petEvent) await bridgeClient.event(mapped.petEvent)
+      if (mapped.attention && typeof bridgeClient.attention === 'function') {
+        await bridgeClient.attention({ ...mapped.attention, eventId })
+      } else if (mapped.petEvent) {
+        await bridgeClient.event(mapped.petEvent)
+      }
       if (mapped.speech?.text) await bridgeClient.say(mapped.speech)
       notification = { status: 'delivered', retry: 'not-needed' }
     } catch (_) {

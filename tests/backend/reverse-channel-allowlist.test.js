@@ -14,6 +14,7 @@ const EXPECTED_BACKEND_TO_SHELL_TYPES = [
 	"pet.say",
 	"pet.playAction",
 	"pet.event",
+	"pet.attention",
 	"window.openPluginDashboard",
 	"notify",
 	"tray.setBadge",
@@ -55,7 +56,7 @@ async function contractBackendToShellTypes() {
 		assert.deepEqual(await contractBackendToShellTypes(), EXPECTED_BACKEND_TO_SHELL_TYPES)
 		assert.deepEqual(backendSchema.BACKEND_TO_SHELL_TYPES, EXPECTED_BACKEND_TO_SHELL_TYPES)
 		assert.deepEqual(SHELL_BACKEND_TO_SHELL_TYPES, EXPECTED_BACKEND_TO_SHELL_TYPES)
-		assert.equal(new Set(SHELL_BACKEND_TO_SHELL_TYPES).size, 23)
+	assert.equal(new Set(SHELL_BACKEND_TO_SHELL_TYPES).size, 24)
 	})
 
 	it("drops malformed and non-allowlisted envelopes and logs each rejection", async () => {
@@ -333,7 +334,7 @@ async function contractBackendToShellTypes() {
 					systemPromptVersion: 1, requireIdentityReviewBeforeActions: false,
 					budgets: {
 						maxIdentityRegenerations: 1, maxActionAttemptsPerAction: 3,
-						maxEvaluationAttemptsPerArtifact: 2, maxPlannerCalls: 34, maxEvaluatorCalls: 68,
+						maxEvaluationAttemptsPerArtifact: 3, maxPlannerCalls: 34, maxEvaluatorCalls: 68,
 						maxProviderCalls: 20, maxElapsedMs: 43200000, maxEstimatedCost: null,
 					},
 					hasApiKey: false, configSource: "chat-fallback",

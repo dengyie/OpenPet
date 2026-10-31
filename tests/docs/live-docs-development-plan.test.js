@@ -36,7 +36,7 @@ test('Chinese development guide reflects the current Shell/sidecar/backend owner
     'services/backend/routes/registry.js',
     'packages/contracts/',
     'settings-persistence-queue.js',
-    '86 个 IPC',
+    '90 个 IPC',
     '136 个已注册 REST 路由',
     '149 个 API 文档路由行',
     '方法级矩阵'
@@ -61,7 +61,7 @@ test('live maintainer docs expose the current migration slice and gate prerequis
   assert.match(context.currentFacts.join('\n'), /Job cancellation and recovery/)
   assert.match(context.currentFacts.join('\n'), /build:contracts/)
 
-  assert.match(todo, /86 current IPC channels[\s\S]*136 registered REST routes[\s\S]*149 documented route rows/)
+  assert.match(todo, /90 current IPC channels[\s\S]*136 registered REST routes[\s\S]*149 documented route rows/)
   assert.match(handoff, /Provider credentials are Shell-owned[\s\S]*in-memory copy/)
   assert.ok(context.validation.commands.includes('npm run build:contracts'))
   assert.ok(context.validation.commands.includes('npm run check:api-contract'))
@@ -79,7 +79,7 @@ test('migration docs distinguish registered routes from target and blocked rows'
   assert.match(api, /五条 Settings 路由均已注册/)
   assert.match(api, /Creator routes are registered in the runtime registry/)
   assert.match(repoState, /136 条已注册路由、149 条文档路由行/)
-  assert.match(plan, /86 current IPC channels \(41 keep, 37 cutover, 8 blocked\), 136 registered REST routes, 149 documented route rows/)
+  assert.match(plan, /90 current IPC channels \(41 keep, 37 cutover, 12 blocked\), 136 registered REST routes, 149 documented route rows/)
   assert.match(plan, /Task 6 status: no candidate is safe to delete/)
 })
 
@@ -195,7 +195,7 @@ test('AI migration docs keep shipped facades, remaining IPC, and partial status 
   assert.match(plan, /Current status \| \*\*partial\*\*[\s\S]*Remaining AI-specific compatibility IPC is image-generation configuration and Hatch capability\/run status/)
   assert.match(api, /当前 AI 目标路由均已进入运行时 registry。Control Center 运行时已将配置、密钥、Persona、Memory、聊天、对话、Trace、行为配置\/规则\/dry-run\/replay\/export\/clear 及图片配置\/密钥\/健康\/模型探测接入 Backend/)
   assert.match(ledger, /\| Current cutover \| 37 \|/)
-  assert.match(ledger, /\| Current blocked \| 8 \|/)
+  assert.match(ledger, /\| Current blocked \| 12 \|/)
   assert.match(ledger, /\| `hatch-pet-agent:save-config` \| `retired` \|/)
   assert.match(ledger, /\| `ai-behavior:replay-decision` \| `retired` \|/)
 })

@@ -36,6 +36,7 @@ import type {
   CatalogPluginEntry,
   CatalogState,
   ChatMessage,
+  CompanionDiagnosticsViewState,
   ControlCenterApi,
   ControlCenterSettings,
   CreatorBindReferenceRequest,
@@ -173,7 +174,7 @@ const defaultDemoHatchPetAgentConfig: HatchPetAgentConfigView = {
   budgets: {
     maxIdentityRegenerations: 1,
     maxActionAttemptsPerAction: 3,
-    maxEvaluationAttemptsPerArtifact: 2,
+    maxEvaluationAttemptsPerArtifact: 3,
     maxProviderCalls: 64,
     maxElapsedMs: 3600000,
     maxEstimatedCost: null
@@ -1798,7 +1799,7 @@ const cloneDemoHatchPetAgentConfig = (
     budgets: {
       maxIdentityRegenerations: clampDemoHatchPetInteger(sourceBudgets.maxIdentityRegenerations, 1, 0, 3),
       maxActionAttemptsPerAction: clampDemoHatchPetInteger(sourceBudgets.maxActionAttemptsPerAction, 3, 1, 6),
-      maxEvaluationAttemptsPerArtifact: clampDemoHatchPetInteger(sourceBudgets.maxEvaluationAttemptsPerArtifact, 2, 1, 3),
+      maxEvaluationAttemptsPerArtifact: clampDemoHatchPetInteger(sourceBudgets.maxEvaluationAttemptsPerArtifact, 3, 1, 3),
       maxProviderCalls: clampDemoHatchPetInteger(sourceBudgets.maxProviderCalls, 64, 1, 200),
       maxElapsedMs: clampDemoHatchPetInteger(sourceBudgets.maxElapsedMs, 3600000, 60000, 14400000),
       maxEstimatedCost: estimatedCost
@@ -2853,6 +2854,23 @@ export const demoControlCenterAPI: DemoControlCenterApi = {
     ok: true,
     actionId,
     source: 'demo-control-center'
+  }),
+  getCompanionDiagnostics: async (): Promise<CompanionDiagnosticsViewState> => ({
+    attention: null,
+    focusedSessionKey: demoState.settings.companion.focusedSessionKey || undefined,
+    attentionSessionCount: 0,
+    queues: { notice: 0, dialogue: 0, action: 0 },
+    active: { notice: false, action: false },
+    decisions: [],
+    audioLease: {
+      active: false,
+      ownerId: '',
+      role: '',
+      source: '',
+      clipId: '',
+      signalId: '',
+      expiresAt: 0
+    }
   }),
   saveActionsConfig: async (config) => {
     const triggerProposal = config?.triggerProposal

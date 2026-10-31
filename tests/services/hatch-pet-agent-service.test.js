@@ -573,25 +573,25 @@ test('sprite evaluation allows exactly one invalid-output repair and charges bot
   assert.match(h.calls[1].messages[0].content, /previous evaluation was invalid/i)
 })
 
-test('sprite evaluation still stops after a second invalid output when the artifact budget allows three calls', async () => {
+test('sprite evaluation retries invalid output until the artifact budget is exhausted', async () => {
   const invalid = { arguments: { schemaVersion: 1, recommendation: 'pass', confidence: 0.95, scores: {}, defects: [] }, provider: 'p', model: 'm', elapsedMs: 1 }
   const valid = { arguments: { schemaVersion: 1, recommendation: 'pass', confidence: 0.95, scores: { identity: 96, silhouette: 94, smallScale: 90, completeness: 98, style: 92, overall: 94 }, defects: [] }, provider: 'p', model: 'm', elapsedMs: 1 }
   const h = createHarness({ budgets: { maxEvaluationAttemptsPerArtifact: 3 }, completions: [invalid, invalid, valid] })
   const boardPath = path.join(h.dataDir, 'board.png')
   await sharp({ create: { width: 8, height: 8, channels: 4, background: '#fff' } }).png().toFile(boardPath)
 
-  await assert.rejects(
-    h.service.evaluateSprite({
+  const result = await h.service.evaluateSprite({
       runId: 'run-invalid-twice-three-call-budget',
       scope: 'canonical',
       board: { path: boardPath, sha256: 'a'.repeat(64), regions: [{ regionId: 'source' }, { regionId: 'candidate-1' }] },
       qa: { ok: true, failures: [], metrics: {} },
       profile: getQualityFirstQualityProfile(),
       budgetLedger: createBudgetLedger({ startedAtMs: Date.now() })
-    }),
-    /Invalid sprite evaluation/
-  )
-  assert.equal(h.calls.length, 2)
+    })
+  assert.equal(result.gate.outcome, 'pass')
+  assert.equal(h.calls.length, 3)
+  assert.equal(result.budgetLedger.usage.evaluatorCalls, 3)
+  assert.match(h.calls[2].messages[0].content, /previous evaluation was invalid/i)
 })
 
 test('sprite evaluation repairs a provider response that omits the required tool call', async () => {

@@ -75,4 +75,14 @@ describe("T41 settings HTTP cutover", async () => {
 		assert.match(source, /settingsEnvelopeToViewModel\(savedSnapshot, runtimeStatus\)/)
 		assert.match(source, /acceptedSettingsVersionRef\.current = Math\.max\(acceptedSettingsVersionRef\.current, savedSnapshot\.version\)/)
 	})
+
+	it("keeps Companion settings and diagnostics on separate paths", () => {
+		const pane = require("node:fs").readFileSync("apps/control-center/src/panes/PetPane.tsx", "utf8")
+		const hook = require("node:fs").readFileSync("apps/control-center/src/hooks/usePetSettingsPane.ts", "utf8")
+		assert.match(pane, /data-testid="companion-settings"/)
+		assert.match(pane, /Companion focused session key/)
+		assert.match(pane, /data-testid="companion-diagnostics"/)
+		assert.match(hook, /getCompanionDiagnostics\?\./)
+		assert.match(hook, /companionDiagnostics/)
+	})
 })

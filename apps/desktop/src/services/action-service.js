@@ -1,4 +1,5 @@
 const { getLegacyPetAnimations, loadLegacyPetPack } = require('../pet/pet-pack/loader')
+const { resolvePresentation } = require('../pet/pet-pack/schema')
 const path = require('path')
 const { pathToFileURL } = require('url')
 
@@ -13,6 +14,7 @@ const emptyConfig = {
   defaultAction: '',
   clickAction: '',
   actions: [],
+  presentation: null,
   triggerProposalInbox: [],
   triggerRules: []
 }
@@ -214,6 +216,7 @@ const normalizePersistedCreatorConfig = (config = {}) => ({
   defaultAction: String(config.defaultAction || ''),
   clickAction: String(config.clickAction || ''),
   actions: Array.isArray(config.actions) ? config.actions.map((action) => ({ ...action })) : [],
+  ...(config.presentation ? { presentation: structuredClone(config.presentation) } : {}),
   triggerProposalInbox: Array.isArray(config.triggerProposalInbox)
     ? config.triggerProposalInbox.map(normalizeTriggerProposalInboxItem)
     : [],
@@ -454,6 +457,7 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
     return {
       defaultAction: config.defaultAction || '',
       clickAction: config.clickAction || '',
+      ...(config.presentation ? { presentation: structuredClone(config.presentation) } : {}),
       actions: Array.isArray(config.actions) ? config.actions.map((action) => ({
         ...action,
         sprite: action.sprite
@@ -475,6 +479,7 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
     return {
       defaultAction: config.defaultAction || '',
       clickAction: config.clickAction || '',
+      ...(config.presentation ? { presentation: structuredClone(config.presentation) } : {}),
       actions: Array.isArray(config.actions) ? config.actions.map((action) => ({ ...action })) : [],
       triggerProposalInbox: Array.isArray(config.triggerProposalInbox)
         ? config.triggerProposalInbox.map(normalizeTriggerProposalInboxItem)
@@ -519,6 +524,8 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
   const listActions = () => getConfig().actions
 
   const getAction = (actionId) => listActions().find((action) => action.id === actionId) || null
+
+  const resolvePresentationForStatus = (status) => resolvePresentation(getPetPack().manifest || emptyConfig, status)
 
   const getPreviewConfig = () => {
     const config = getConfig()
@@ -960,6 +967,7 @@ const createActionService = ({ petPackService, loadPetPack, loadLegacyAnimations
     getPreviewConfig,
     listActions,
     getAction,
+    resolvePresentation: resolvePresentationForStatus,
     reload,
     validateCreatorActionMutation,
     applyCreatorActionMutation,

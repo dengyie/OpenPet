@@ -20,6 +20,65 @@ export interface ControlCenterSettings {
   grounded: boolean
   home: ControlCenterPetHomeSettings
   petBubbleChat: PetBubbleChatSettings
+  companion: CompanionSettings
+}
+
+export interface CompanionSettings {
+  enabled: boolean
+  focusedSessionKey: string
+  noticeCooldownMs: {
+    completed: number
+    waiting: number
+    failed: number
+  }
+  quietHours: {
+    enabled: boolean
+    start: string
+    end: string
+  }
+  voice: {
+    enabled: boolean
+    language: 'zh-CN' | 'en-US'
+    volume: number
+  }
+  idleMotion: {
+    enabled: boolean
+    intensity: number
+  }
+}
+
+export interface CompanionAudioLeaseViewState {
+  active: boolean
+  ownerId: string
+  role: string
+  source: string
+  clipId: string
+  signalId: string
+  expiresAt: number
+}
+
+export interface CompanionDiagnosticsViewState {
+  attention: {
+    sessionKey: string
+    status: string
+    priority: string
+    createdAt: number
+    expiresAt: number
+    reason: string
+  } | null
+  focusedSessionKey?: string
+  attentionSessionCount: number
+  queues: { notice: number; dialogue: number; action: number }
+  active: { notice: boolean; action: boolean }
+  decisions: Array<{
+    accepted: boolean
+    intentId: string
+    lane: string
+    outcome: string
+    reason: string
+    queueDepth: number
+  }>
+  audioLease: CompanionAudioLeaseViewState
 }
 
 export interface PetBubbleChatSettings {
@@ -3836,6 +3895,10 @@ export interface ControlCenterApi {
   getCreatorLastRun: () => Promise<CreatorLastRunResult>
   getCreatorAssetPreview: (payload: CreatorAssetPreviewRequest) => Promise<CreatorAssetPreviewResult>
   playPetAction: (actionId: string) => Promise<PetActionPlaybackResult>
+  getCompanionDiagnostics?: () => Promise<CompanionDiagnosticsViewState | null>
+  requestCompanionAudioLease?: (payload: Record<string, unknown>) => Promise<Record<string, unknown>>
+  releaseCompanionAudioLease?: (payload: Record<string, unknown>) => Promise<Record<string, unknown>>
+  heartbeatCompanionAudioLease?: (payload: Record<string, unknown>) => Promise<Record<string, unknown>>
   runCreatorStudioDefaultFlow: (prompt: string) => Promise<CreatorStudioDefaultFlowResult>
   runPluginCommand: (pluginId: string, commandId: string, payload?: JsonObject) => Promise<PluginCommandRunResultViewState>
   runPluginSetup: (pluginId: string, setupId: string) => Promise<PluginSetupRunResultViewState>

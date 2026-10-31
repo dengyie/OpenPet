@@ -238,6 +238,134 @@
   line-height: var(--op-line-height-relaxed);
 }
 
+/* ── Companion 设置与运行时诊断 ──────────────── */
+
+.companion-settings,
+.companion-diagnostics {
+  gap: var(--op-space-6);
+}
+
+.companion-subsection {
+  display: grid;
+  gap: var(--op-space-3);
+  padding-top: var(--op-space-4);
+  border-top: 1px solid var(--op-color-border-soft);
+}
+
+.companion-subsection h3 {
+  margin: 0;
+  font-size: var(--op-font-size-xl);
+  color: var(--op-color-text-strong);
+}
+
+.compact-field-row {
+  min-height: 48px;
+}
+
+.companion-session-input {
+  width: min(280px, 100%);
+  font-family: var(--op-font-mono);
+}
+
+.companion-number-input {
+  width: min(220px, 100%);
+}
+
+.companion-time-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(160px, 1fr));
+  gap: var(--op-space-5);
+}
+
+.companion-time-field {
+  display: grid;
+  gap: var(--op-space-2);
+  color: var(--op-color-text-muted);
+  font-size: var(--op-font-size-md);
+}
+
+.companion-time-field .text-input {
+  width: 100%;
+}
+
+.companion-diagnostics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--op-space-4);
+}
+
+.companion-diagnostic-item {
+  display: grid;
+  gap: var(--op-space-2);
+  min-width: 0;
+  padding: var(--op-space-5);
+  border: 1px solid var(--op-color-border-soft);
+  border-radius: var(--op-radius-md);
+  background: var(--op-color-surface-sunken);
+}
+
+.companion-diagnostic-item span,
+.companion-diagnostic-item small {
+  color: var(--op-color-text-muted);
+  font-size: var(--op-font-size-md);
+}
+
+.companion-diagnostic-item strong {
+  overflow-wrap: anywhere;
+  color: var(--op-color-text-strong);
+  font-size: var(--op-font-size-2xl);
+}
+
+.companion-diagnostics-meta {
+  display: flex;
+  gap: var(--op-space-4);
+  flex-wrap: wrap;
+  color: var(--op-color-text-muted);
+  font-size: var(--op-font-size-md);
+}
+
+.companion-decision-list {
+  display: grid;
+  gap: var(--op-space-3);
+}
+
+.companion-decision-row {
+  display: grid;
+  grid-template-columns: auto minmax(90px, 1fr) minmax(120px, 1.5fr) auto;
+  align-items: center;
+  gap: var(--op-space-3);
+  min-width: 0;
+  padding: var(--op-space-3) 0;
+  border-bottom: 1px solid var(--op-color-border-soft);
+  color: var(--op-color-text-muted);
+  font-size: var(--op-font-size-md);
+}
+
+.companion-decision-row:last-child {
+  border-bottom: 0;
+}
+
+.companion-decision-row code {
+  overflow-wrap: anywhere;
+  color: var(--op-color-text);
+  font-family: var(--op-font-mono);
+}
+
+@media (max-width: 760px) {
+  .companion-diagnostics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .companion-decision-row {
+    grid-template-columns: auto 1fr;
+  }
+
+  .companion-decision-row code,
+  .companion-decision-row small {
+    grid-column: 2;
+  }
+}
+
 /* ── 空状态 ───────────────────────────────────── */
 
 .empty-chat {

@@ -100,9 +100,14 @@ const createAgentStateMapper = ({
       message: '',
       ttlMs: event.status === 'completed' ? 8000 : 30000
     }
+    const attention = {
+      sessionKey: event.sessionId,
+      status: event.status,
+      activeTurn: event.active !== false && !['idle', 'completed', 'failed'].includes(event.status)
+    }
     const decision = evaluateSpeech({ event, previousSession })
     if (!decision.notification.shouldSpeak) {
-      return { petEvent, speech: null, notification: decision.notification }
+      return { attention, petEvent, speech: null, notification: decision.notification }
     }
     const statusKey = `${event.sessionId}:${event.status}`
     const fingerprint = `${event.sessionId}:${event.status}:${event.type}:${event.project || ''}`
@@ -110,6 +115,7 @@ const createAgentStateMapper = ({
     lastSpeechByFingerprint.set(fingerprint, decision.nowMs)
     return {
       petEvent,
+      attention,
       notification: decision.notification,
       speech: {
         text: createSpeechText(event),

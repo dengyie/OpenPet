@@ -11,6 +11,7 @@ const { app } = require('electron')
 const { writeJsonAtomic } = require('./json-file-utils')
 const { createDefaultCursorSettings } = require('../native/cursor-asset-service')
 const { SYSTEM_CURSOR_ID, normalizeCursorSettingsState } = require('../shared/cursor-library')
+const { DEFAULT_COMPANION_SETTINGS, normalizeCompanionSettings } = require('./companion-settings')
 
 // 设置保存在 Electron 用户数据目录，卸载重装后仍然保留。
 const settingsPath = path.join(app.getPath('userData'), 'settings.json')
@@ -78,6 +79,7 @@ const defaultSettings = {
     autoHide: true,
     pinOnInteraction: true
   },
+  companion: structuredClone(DEFAULT_COMPANION_SETTINGS),
   ai: {
     enabled: false,
     provider: 'openai-compatible',
@@ -190,6 +192,7 @@ const mergeSettings = (settings = {}) => ({
     autoHide: settings.petBubbleChat?.autoHide !== false,
     pinOnInteraction: settings.petBubbleChat?.pinOnInteraction !== false
   },
+  companion: normalizeCompanionSettings(settings.companion),
   models: {
     ...defaultSettings.models,
     ...(isPlainObject(settings.models) ? settings.models : {}),

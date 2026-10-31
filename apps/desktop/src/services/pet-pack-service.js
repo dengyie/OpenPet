@@ -193,6 +193,7 @@ const createPackSummary = (pack, { active = false, installedAt = '', updatedAt =
     actionCount: pack.manifest.actions.length,
     defaultAction: pack.manifest.defaultAction,
     clickAction: pack.manifest.clickAction,
+    presentation: pack.manifest.presentation ? structuredClone(pack.manifest.presentation) : null,
     previewSprite: previewAction?.sprite
       ? pathToFileURL(path.join(pack.rootPath, previewAction.sprite)).toString()
       : '',

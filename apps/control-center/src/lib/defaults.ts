@@ -75,6 +75,14 @@ export const defaultSettings = {
     autoPopup: true,
     autoHide: true,
     pinOnInteraction: true
+  },
+  companion: {
+    enabled: true,
+    focusedSessionKey: '',
+    noticeCooldownMs: { completed: 120000, waiting: 120000, failed: 120000 },
+    quietHours: { enabled: false, start: '22:00', end: '08:00' },
+    voice: { enabled: false, language: 'zh-CN', volume: 0.7 },
+    idleMotion: { enabled: true, intensity: 0.8 }
   }
 } satisfies ControlCenterSettings
 
@@ -442,6 +450,26 @@ export const cloneSettings = (settings: Partial<ControlCenterSettings> | null | 
     autoPopup: settings?.petBubbleChat?.autoPopup !== false,
     autoHide: settings?.petBubbleChat?.autoHide !== false,
     pinOnInteraction: settings?.petBubbleChat?.pinOnInteraction !== false
+  },
+  companion: {
+    ...defaultSettings.companion,
+    ...(settings?.companion || {}),
+    noticeCooldownMs: {
+      ...defaultSettings.companion.noticeCooldownMs,
+      ...(settings?.companion?.noticeCooldownMs || {})
+    },
+    quietHours: {
+      ...defaultSettings.companion.quietHours,
+      ...(settings?.companion?.quietHours || {})
+    },
+    voice: {
+      ...defaultSettings.companion.voice,
+      ...(settings?.companion?.voice || {})
+    },
+    idleMotion: {
+      ...defaultSettings.companion.idleMotion,
+      ...(settings?.companion?.idleMotion || {})
+    }
   }
 })
 

@@ -851,6 +851,35 @@ test.describe('Control Center smoke', () => {
     await expect(page.getByRole('switch', { name: 'Enable pet bubble chat popup' })).toHaveAttribute('aria-checked', 'false')
   })
 
+  test('configures Companion settings and exposes bounded runtime diagnostics', async ({ page }) => {
+    await page.goto('/')
+
+    const companion = page.getByTestId('companion-settings')
+    const diagnostics = page.getByTestId('companion-diagnostics')
+    await expect(companion).toBeVisible()
+    await expect(companion.getByRole('switch', { name: 'Enable companion output' })).toHaveAttribute('aria-checked', 'true')
+    await expect(diagnostics).toContainText('运行时诊断')
+    await expect(diagnostics).toContainText('暂无决策记录')
+
+    await companion.getByLabel('Companion focused session key').fill('ABCDEF123456')
+    await companion.getByRole('switch', { name: 'Enable companion quiet hours' }).click()
+    await companion.getByLabel('Companion quiet hours start').fill('23:00')
+    await companion.getByLabel('Companion quiet hours end').fill('07:00')
+    await companion.getByRole('switch', { name: 'Enable companion voice' }).click()
+    await companion.getByLabel('Companion voice volume').fill('0.45')
+    await companion.getByLabel('已完成提示冷却').fill('30000')
+    await companion.getByRole('button', { name: '保存', exact: true }).click()
+
+    await page.reload()
+    await expect(page.getByLabel('Companion focused session key')).toHaveValue('abcdef123456')
+    await expect(page.getByRole('switch', { name: 'Enable companion quiet hours' })).toHaveAttribute('aria-checked', 'true')
+    await expect(page.getByLabel('Companion quiet hours start')).toHaveValue('23:00')
+    await expect(page.getByLabel('Companion quiet hours end')).toHaveValue('07:00')
+    await expect(page.getByRole('switch', { name: 'Enable companion voice' })).toHaveAttribute('aria-checked', 'true')
+    await expect(page.getByLabel('已完成提示冷却')).toHaveValue('30000')
+    await expect(page.getByTestId('companion-diagnostics')).toContainText('会话数量')
+  })
+
   test('configures a custom pet hover cursor in the simplified cursor picker', async ({ page }) => {
     await page.goto('/')
 

@@ -119,6 +119,14 @@ const controlCenterSettingsFixture = {
     autoPopup: true,
     autoHide: true,
     pinOnInteraction: true
+  },
+  companion: {
+    enabled: true,
+    focusedSessionKey: '',
+    noticeCooldownMs: { completed: 120000, waiting: 120000, failed: 120000 },
+    quietHours: { enabled: false, start: '22:00', end: '08:00' },
+    voice: { enabled: false, language: 'zh-CN', volume: 0.7 },
+    idleMotion: { enabled: true, intensity: 0.8 }
   }
 } satisfies ControlCenterSettings
 

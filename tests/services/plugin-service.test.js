@@ -156,6 +156,8 @@ const createRunnablePluginDir = ({ manifest = {}, source, configSchema }) => {
 }
 
 const createDeclarationOnlyPluginDir = ({
+  pluginId = 'weather-declaration',
+  serviceId = 'companion',
   dashboardUrl = 'http://127.0.0.1:8787',
   commandCommand = 'node ./commands/announce.js',
   commandCwd = '.',
@@ -167,10 +169,10 @@ const createDeclarationOnlyPluginDir = ({
   permissions = []
 } = {}) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-declaration-plugin-'))
-  const pluginPath = path.join(root, 'weather-declaration')
+  const pluginPath = path.join(root, pluginId)
   fs.mkdirSync(pluginPath)
   fs.writeFileSync(path.join(pluginPath, 'plugin.json'), JSON.stringify({
-    id: 'weather-declaration',
+    id: pluginId,
     name: 'Weather Declaration',
     version: '1.0.0',
     profile,
@@ -179,7 +181,7 @@ const createDeclarationOnlyPluginDir = ({
       setup: setupEntries,
       commands: [{ id: 'announce', title: 'Announce Weather', command: commandCommand, cwd: commandCwd }],
       services: [{
-        id: 'companion',
+        id: serviceId,
         title: 'Companion Service',
         command: serviceCommand,
         cwd: serviceCwd,
@@ -4622,7 +4624,7 @@ test('plugin service bridge pet routes enforce manifest permissions', async () =
     }),
     petService: createBridgeAwarePetService(),
     officialPlugins: [],
-    pluginDirs: [createDeclarationOnlyPluginDir()],
+    pluginDirs: [createDeclarationOnlyPluginDir({ permissions: ['pet:attention'] })],
     spawnServiceProcess: (file, args, options) => {
       spawned.push({ file, args, options })
       return createSlowStoppingServiceProcess()
@@ -4638,6 +4640,60 @@ test('plugin service bridge pet routes enforce manifest permissions', async () =
 
   assert.equal(response.status, 403)
   assert.match(response.body.error, /does not have pet:say permission/)
+  const attention = await requestBridge(`${spawned[0].options.env.OPENPET_SERVICE_BRIDGE_URL}/pet/attention`, {
+    token: spawned[0].options.env.OPENPET_SERVICE_BRIDGE_TOKEN,
+    method: 'POST',
+    body: { sessionKey: '0123456789ab', status: 'waiting' }
+  })
+  assert.equal(attention.status, 400)
+  assert.match(attention.body.error, /reserved for the Agent Awareness service/)
+})
+
+test('Agent Awareness service bridge admits only the restricted pet attention route', async () => {
+  const spawned = []
+  const petService = createBridgeAwarePetService()
+  petService.submitAttentionState = (payload) => {
+    petService.calls.push(['attention', payload])
+    return { accepted: true, lane: 'attention' }
+  }
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'openpet.agent-awareness': true } }
+    }),
+    petService,
+    officialPlugins: [],
+    pluginDirs: [createDeclarationOnlyPluginDir({
+      pluginId: 'openpet.agent-awareness',
+      serviceId: 'agent-awareness',
+      permissions: ['pet:attention']
+    })],
+    spawnServiceProcess: (file, args, options) => {
+      spawned.push({ file, args, options })
+      return createSlowStoppingServiceProcess()
+    }
+  })
+
+  await service.startService('openpet.agent-awareness', 'agent-awareness')
+  const response = await requestBridge(`${spawned[0].options.env.OPENPET_SERVICE_BRIDGE_URL}/pet/attention`, {
+    token: spawned[0].options.env.OPENPET_SERVICE_BRIDGE_TOKEN,
+    method: 'POST',
+    body: { sessionKey: '0123456789ab', status: 'waiting', eventId: 'event-1' }
+  })
+  assert.equal(response.status, 200)
+  assert.deepEqual(petService.calls, [['attention', {
+    sessionKey: '0123456789ab',
+    status: 'waiting',
+    eventId: 'event-1',
+    ttlMs: undefined,
+    activeTurn: undefined
+  }]])
+  const forbidden = await requestBridge(`${spawned[0].options.env.OPENPET_SERVICE_BRIDGE_URL}/pet/attention`, {
+    token: spawned[0].options.env.OPENPET_SERVICE_BRIDGE_TOKEN,
+    method: 'POST',
+    body: { sessionKey: '0123456789ab', status: 'waiting', priority: 'urgent' }
+  })
+  assert.equal(forbidden.status, 400)
+  service.stopService('openpet.agent-awareness', 'agent-awareness')
 })
 
 test('plugin service bridge lets service runtimes call ai chat through aiTalkService', async () => {

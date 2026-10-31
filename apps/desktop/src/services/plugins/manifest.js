@@ -2,6 +2,7 @@ const KNOWN_PLUGIN_PERMISSIONS = new Set([
   'pet:say',
   'pet:action',
   'pet:event',
+  'pet:attention',
   'ai:chat',
   'storage',
   'network',

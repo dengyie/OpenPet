@@ -138,7 +138,7 @@ const resolvePetSaySourceSurface = ({ source = '', requestSource = '' } = {}) =>
 /**
  * 注册所有 IPC 处理器。接收依赖注入对象，各 handler 只通过注入的函数访问外部能力。
  */
-const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, aiTalkService = null, hatchPetAgentService, petUtteranceLogService = null, petBubbleChatWindowService = null, imageGenerationModelService, behaviorOrchestratorService, triggerRuleRuntimeService = null, creatorStudioDefaultFlowService = null, creatorWorkflowService = null, pluginService, pluginInstallService, pluginGithubImportService, localHttpService, actionService, actionImportService, cursorAssetService, systemCursorService, appLogService, applyWindowScale, applyPetViewport = () => {},
+const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, aiTalkService = null, hatchPetAgentService, petUtteranceLogService = null, petBubbleChatWindowService = null, imageGenerationModelService, behaviorOrchestratorService, triggerRuleRuntimeService = null, creatorStudioDefaultFlowService = null, creatorWorkflowService = null, pluginService, pluginInstallService, pluginGithubImportService, localHttpService, actionService, actionImportService, cursorAssetService, systemCursorService, companionAudioLeaseService = null, appLogService, applyWindowScale, applyPetViewport = () => {},
   clampToWorkArea, getMovementState, createSettingsWindow, petMovementPolicy, petChatWindowService = null, sidecarRuntimeCoordinator = null, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain, screenService = screen, appService = app, showContextMenuWindow = showPetContextMenuWindow }) => {
 
   const showOpenDialogForEvent = (event, options) => {
@@ -428,6 +428,11 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   ipcMainService.handle(IPC.PET_BUBBLE_CHAT_SHOW_MESSAGE, (_event, payload = {}) => {
     return petChatFacade.showLocalBubbleChatMessage(payload)
   })
+
+  ipcMainService.handle(IPC.COMPANION_GET_DIAGNOSTICS, () => petService.getCompanionSnapshot?.() || null)
+  ipcMainService.handle(IPC.COMPANION_AUDIO_LEASE_REQUEST, (_event, payload = {}) => companionAudioLeaseService?.request?.(payload) || { granted: false, reason: 'unavailable' })
+  ipcMainService.handle(IPC.COMPANION_AUDIO_LEASE_RELEASE, (_event, payload = {}) => companionAudioLeaseService?.release?.(payload) || { released: false, reason: 'unavailable' })
+  ipcMainService.handle(IPC.COMPANION_AUDIO_LEASE_HEARTBEAT, (_event, payload = {}) => companionAudioLeaseService?.heartbeat?.(payload) || { renewed: false, reason: 'unavailable' })
 
   ipcMainService.on(IPC.PET_BUBBLE_CHAT_HIDE, (_event, payload = {}) => {
     petChatFacade.hideBubbleChat(payload)

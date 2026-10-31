@@ -177,3 +177,52 @@ test('pet service rejects unavailable actions when approved idle is also absent'
     /Unknown action: waving/
   )
 })
+
+test('pet service submits pseudonymous attention through the broker and returns content-free decisions', () => {
+  const events = []
+  const service = createPetService({
+    eventBus: { emit: (eventName, payload) => events.push([eventName, payload]) },
+    now: () => 1000,
+    settingsService: { get: () => ({}) },
+    actionService: { getConfig: () => ({}), getAction: () => null }
+  })
+
+  const decision = service.submitAttentionState({
+    sessionKey: '0123456789ab',
+    status: 'waiting',
+    eventId: 'hashed-event-id'
+  })
+  assert.equal(decision.accepted, true)
+  assert.equal(decision.lane, 'attention')
+  assert.deepEqual(events, [['pet:event', {
+    type: 'agent:waiting',
+    message: '',
+    ttlMs: 600000,
+    source: 'agent-awareness'
+  }]])
+  assert.throws(() => service.submitAttentionState({ sessionKey: 'raw-session-id', status: 'waiting' }), /pseudonymous/)
+  service.dispose()
+})
+
+test('pet service maps selected attention status to the active pet-pack presentation action', () => {
+  const events = []
+  const eventBus = { emit: (type, payload) => events.push({ type, payload }) }
+  const service = createPetService({
+    eventBus,
+    settingsService: { get: () => ({}) },
+    actionService: {
+      getConfig: () => ({ defaultAction: 'idle', clickAction: 'idle', actions: [{ id: 'idle' }, { id: 'approval' }] }),
+      getAction: (actionId) => ['idle', 'approval'].includes(actionId) ? { id: actionId } : null,
+      resolvePresentation: (status) => status === 'waiting'
+        ? { actionId: 'approval', expression: 'question', mapped: true }
+        : { actionId: 'idle', expression: 'normal', mapped: false }
+    },
+    now: () => 1000
+  })
+
+  service.submitAttentionState({ sessionKey: 'abcdef123456', status: 'waiting', eventId: 'approval-1' })
+  assert.deepEqual(events.map(({ type, payload }) => ({ type, actionId: payload.actionId, status: payload.presentationStatus, eventType: payload.type })), [
+    { type: 'pet:action', actionId: 'approval', status: 'waiting', eventType: undefined },
+    { type: 'pet:event', actionId: undefined, status: undefined, eventType: 'agent:waiting' }
+  ])
+})

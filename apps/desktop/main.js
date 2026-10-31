@@ -24,6 +24,8 @@ const { createSettingsService } = require('./src/services/settings-service')
 const { createActionService } = require('./src/services/action-service')
 const { createPetPackService } = require('./src/services/pet-pack-service')
 const { createPetService } = require('./src/services/pet-service')
+const { createCompanionIntentBroker } = require('./src/services/companion-intent-broker-service')
+const { createCompanionAudioLeaseService } = require('./src/services/companion-audio-lease-service')
 const { createSecretService } = require('./src/services/secret-service')
 const { createImageGenerationModelService } = require('./src/services/image-generation-model-service')
 const { createTriggerRuleRuntimeService } = require('./src/services/trigger-rule-runtime-service')
@@ -104,6 +106,8 @@ const bootstrapOpenPet = () => {
       createActionService,
       createPetPackService,
       createPetService,
+      createCompanionIntentBroker,
+      createCompanionAudioLeaseService,
       createSecretService,
       createImageGenerationModelService,
       createTriggerRuleRuntimeService,

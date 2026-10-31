@@ -1105,6 +1105,69 @@ const prepareGeneratedKeyframeOutput = async (filePath) => {
   }
 }
 
+// Provider identity images arrive at arbitrary dimensions and frequently use the
+// full source canvas even when the character itself is transparent. Normalize the
+// generated subject into the runtime canvas before technical QA so the identity
+// asset has deterministic padding and a stable lower-center baseline.
+const normalizeGeneratedCanonicalOutput = async (filePath, {
+  canvasWidth = 1024,
+  canvasHeight = 1024,
+  targetHeightRatio = 0.72,
+  baselineRatio = 0.88
+} = {}) => {
+  const source = path.resolve(String(filePath || ''))
+  const width = Math.max(1, Math.round(Number(canvasWidth) || 1024))
+  const height = Math.max(1, Math.round(Number(canvasHeight) || 1024))
+  const targetHeight = Math.max(1, Math.floor(height * Math.max(0.5, Math.min(0.82, Number(targetHeightRatio) || 0.72))))
+  const baseline = Math.max(1, Math.min(height - 1, Math.round(height * Math.max(0.72, Math.min(0.94, Number(baselineRatio) || 0.88)))))
+  const trimmed = await sharp(source)
+    .ensureAlpha()
+    .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 }, threshold: 1 })
+    .png()
+    .toBuffer()
+  const trimmedMetadata = await sharp(trimmed).metadata()
+  const subjectWidth = Math.max(1, Number(trimmedMetadata.width) || 0)
+  const subjectHeight = Math.max(1, Number(trimmedMetadata.height) || 0)
+  if (!subjectWidth || !subjectHeight) throw new Error('Canonical identity output has no visible subject')
+  const resized = await sharp(trimmed)
+    .resize({
+      width: Math.max(1, Math.floor(width * 0.84)),
+      height: targetHeight,
+      fit: 'inside',
+      withoutEnlargement: false,
+      background: { r: 0, g: 0, b: 0, alpha: 0 }
+    })
+    .png()
+    .toBuffer()
+  const resizedMetadata = await sharp(resized).metadata()
+  const renderedWidth = Math.max(1, Number(resizedMetadata.width) || 0)
+  const renderedHeight = Math.max(1, Number(resizedMetadata.height) || 0)
+  const left = Math.max(0, Math.round((width - renderedWidth) / 2))
+  const top = Math.max(0, baseline - renderedHeight)
+  const temporaryPath = `${source}.normalized-${process.pid}-${Date.now()}.png`
+  await sharp({
+    create: {
+      width,
+      height,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 }
+    }
+  })
+    .composite([{ input: resized, left, top }])
+    .png()
+    .toFile(temporaryPath)
+  fs.renameSync(temporaryPath, source)
+  return {
+    width,
+    height,
+    renderedWidth,
+    renderedHeight,
+    left,
+    top,
+    baseline
+  }
+}
+
 const readImageMaskMetricsFromAlpha = ({ data, width, height, totalPixels, edgeWidth }) => {
   let visiblePixels = 0
   let edgePixels = 0
@@ -3101,7 +3164,11 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
       stage: 'identity',
       canvas: { width: 1024, height: 1024 },
       referenceRole: sourceReference.role,
-      subject: { count: 1, framing: 'full-body', targetOccupancyPercent: 72, safePaddingPercent: 12, rootAnchor: 'lower-center' },
+      // Identity assets need visible margin around extremities before they can seed
+      // the fixed-size action grid. The Provider consistently overfills this task
+      // at the old 72% target, so use a conservative occupancy target and explicit
+      // padding that leaves room for horns, wings, tails, and antialiasing.
+      subject: { count: 1, framing: 'full-body', targetOccupancyPercent: 64, safePaddingPercent: 16, rootAnchor: 'lower-center' },
       strategyId: diversityProfileId,
       requestedChanges: createCanonicalRequestedChanges(diversityProfileId)
     })
@@ -3132,6 +3199,9 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
       const output = outputs[0]
       const outputPath = path.join(dataDir, output.dataRelativePath)
       const cutout = await prepareGeneratedKeyframeOutput(outputPath)
+      const normalization = cutout.safe
+        ? await normalizeGeneratedCanonicalOutput(outputPath)
+        : null
       const metrics = await readImageMaskMetrics(outputPath)
       const eligible = cutout.safe && metrics.visiblePixels > 0 && metrics.edgeRatio === 0 && metrics.minPaddingRatio >= 0.05
       const sha256 = sha256File(outputPath)
@@ -3146,6 +3216,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
         eligible,
         score: eligible ? Math.round((1 - metrics.centerOffsetRatio) * 100) : 0,
         canonicalMetrics: await canonicalMetrics({ path: outputPath }),
+        normalization,
         descriptors,
         artifacts: [{ role: 'raw-canonical', path: outputPath, sha256 }],
         provider: generated.response?.provider || settings.provider,
@@ -4063,6 +4134,7 @@ module.exports = {
     hasHumanCandidateSelection,
     isSoftIdentityDescriptorRetryEligible,
     prepareGeneratedKeyframeOutput,
+    normalizeGeneratedCanonicalOutput,
     loadRetainedQualityFirstActionCandidates,
     generateCanonicalCandidatePool,
     generateSelectedFullPetAction,

@@ -27,11 +27,27 @@ This document is the single live entry for the whole Agent Awareness program. Us
 | Current shipped baseline | live | the exact product truth today |
 | Phase A: product skeleton parity | merged to local main; manual acceptance follow-up open | the shipped product skeleton baseline |
 | Phase B: core visible information | plugin dashboard workbench shipped; desktop acceptance still manual | the visible metadata layer after Phase A |
-| Phase C: desktop companion completeness | designed, not started | the later companion-product completeness layer |
+| Phase C: desktop companion completeness | host Broker foundation implemented; manual desktop acceptance remains open | the later companion-product completeness layer |
 
 ## Current Delivery Status
 
 The current `codex/dev7` baseline is no longer "paper design only." It has the full planned Phase A code surface plus the full bundled-plugin/dashboard Phase B visible-information milestone. Manual-required desktop acceptance is still open.
+
+### Host Presentation Update (2026-11-01)
+
+- The Shell now routes pet dialogue, notices, actions, and Agent Awareness attention through a bounded in-memory Companion Intent Broker behind `PetService`.
+- Attention is selected across at most 40 pseudonymous sessions by semantic urgency, explicit host focus, active-turn state, recency, and stable session key. Old Agent Awareness events are suppressed before they reach the pet when the durable session store already has a newer state.
+- `pet:attention` is restricted to the `openpet.agent-awareness` runtime service. The capability accepts only a pseudonymous session key, a known status, event identity, bounded TTL, and active-turn flag; it cannot set priority or focus.
+- Automated Broker, PetService, Agent Awareness, plugin bridge, and reverse-channel checks cover the implementation. Multi-session desktop noise and interaction acceptance remains a required manual step before Phase 3 Pet Pack presentation mapping.
+
+### Companion Settings And Diagnostics Update (2026-11-01)
+
+- Phase 3 Pet Pack presentation mappings are now validated against declared action IDs and resolved through `ActionService.resolvePresentation()`. Missing mappings use the pack default action without rewriting older manifests.
+- Phase 4 Companion preferences are available in the Pet pane: enablement, focused pseudonymous session key, completion/waiting/failure notice cooldowns, quiet hours, local voice language/volume, and idle-motion intensity.
+- The Shell applies the persisted focused session setting to the Broker when settings are loaded or changed. The Control Center reads a bounded runtime snapshot through `companion:get-diagnostics`; diagnostics show selected status, queue depth, content-free reason codes, and audio lease state only.
+- Local voice playback uses one host-owned lease with owner/signal checks, duplicate-signal suppression, heartbeat renewal, a 30-second maximum lifetime, and quiet-hour/voice-disabled rejection. No remote audio URL or message body crosses the lease boundary.
+- Disabling Companion is enforced at the Shell Broker boundary: Agent Awareness attention, notices, actions, and speech are suppressed, the selected attention surface returns to idle, and any active audio lease is released; user dialogue and direct manual pet interaction remain available.
+- Automated UI, demo API, preload, IPC, settings, and service tests cover the new surface. Multi-session desktop noise, accessibility, and audio feel remain manual acceptance work.
 
 ### Already Landed
 
@@ -90,6 +106,7 @@ Today Agent Awareness provides:
 - richer sanitized runtime session state covering `session`, `turn`, `tool`, `approval`, `progress`, usage, git, and generated summary metadata;
 - bounded pet events for accepted safe lifecycle signals;
 - low-frequency pet speech for selected status changes, backed by a plugin-internal notification policy that keeps urgent transitions interruptive while cooling repeated status chatter;
+- host-owned Companion Intent Broker admission for Agent Awareness attention state, with bounded per-session selection, deterministic multi-session focus, stale-state expiry, and a restricted `pet:attention` bridge capability;
 - a reserved Plugins pane health-note summary in the form `X active · Y sessions · Z events`;
 - a Control Center-native `Agent Awareness 原生详情` summary that reads the real bundled service health details for active sessions, tracked sessions, observed events, usage tokens, estimated cost, and peak context when available;
 - a first-class `查看 Codex 详情` entry in the Plugins pane that deep-links to the Agent Awareness dashboard session workbench;
@@ -126,7 +143,7 @@ Agent Awareness is not yet "complete Codex awareness." The current milestone doe
 
 - auto-install Codex hooks during discovery or app boot;
 - capture raw prompts, model responses, tool arguments, tool results, terminal transcript, stdout, stderr, or full local paths;
-- expose host-level multi-session pinning or independent pet-window focus controls as a finished product feature;
+- expose independent pet-window focus controls as a finished product feature; the host policy now accepts a bounded focus command for the shared pet surface while the UI remains a later product surface;
 - provide user-configurable persistent noise controls;
 - infer model pricing or cost when Codex does not provide safe cost metadata;
 - drive semantic pet actions beyond `pet:event` and `pet:say`;

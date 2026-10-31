@@ -1409,6 +1409,44 @@ test('keyframe preparation reports an explicit QA reason when an opaque backgrou
   assert.equal(preparation.failureCondition, 'background-not-safely-removable')
 })
 
+test('canonical identity normalization restores deterministic padding and baseline', async () => {
+  const dataDir = makeDataDir()
+  const outputPath = path.join(dataDir, 'runs/run-normalized-canonical/canonical.png')
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true })
+  await sharp({
+    create: {
+      width: 512,
+      height: 512,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 }
+    }
+  }).composite([{
+    input: Buffer.from('<svg width="512" height="512" xmlns="http://www.w3.org/2000/svg"><rect x="100" y="2" width="312" height="430" rx="100" fill="#9c7cf4"/></svg>')
+  }]).png().toFile(outputPath)
+
+  const normalization = await __testInternals.normalizeGeneratedCanonicalOutput(outputPath)
+  const image = await sharp(outputPath).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+  let minY = image.info.height
+  let maxY = -1
+  let minX = image.info.width
+  let maxX = -1
+  for (let y = 0; y < image.info.height; y += 1) {
+    for (let x = 0; x < image.info.width; x += 1) {
+      if (image.data[((y * image.info.width) + x) * 4 + 3] <= 24) continue
+      minY = Math.min(minY, y)
+      maxY = Math.max(maxY, y)
+      minX = Math.min(minX, x)
+      maxX = Math.max(maxX, x)
+    }
+  }
+  assert.deepEqual({ width: image.info.width, height: image.info.height }, { width: 1024, height: 1024 })
+  assert.equal(normalization.baseline, 901)
+  assert.equal(maxY, 900)
+  assert.ok(minY >= 160)
+  assert.ok(minX >= 80)
+  assert.ok(maxX <= 943)
+})
+
 test('keyframe quality rejects descriptor drift even when mean foreground color remains close', () => {
   const metrics = {
     visiblePixels: 12000,

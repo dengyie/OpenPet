@@ -1,6 +1,6 @@
 # 03 · API 契约与通信协议
 
-> 🔌 本篇是前后端并行开发的唯一依据。契约未定稿前不得开始写业务代码。当前 86 个 IPC 通道的去向已在本篇逐域定义。
+> 🔌 本篇是前后端并行开发的唯一依据。契约未定稿前不得开始写业务代码。当前 90 个 IPC 通道的去向已在本篇逐域定义。
 
 当前运行时注册基线为 **136 条已注册路由、149 条契约路由行**；§4 的未注册行会明确标为目标或 blocked。
 
@@ -110,7 +110,7 @@
 
 **专用业务码**(搭配 400/409/423):`PLUGIN_MANIFEST_INVALID`、`PLUGIN_ALREADY_RUNNING`、`PLUGIN_NATIVE_NOT_APPROVED`、`PET_PACK_INCOMPATIBLE`、`ACTION_FRAMES_MISSING`、`AI_KEY_NOT_CONFIGURED`、`JOB_NOT_CANCELABLE`、`MIGRATION_REQUIRED`。
 
-## 3. 86 个通道的去向总表
+## 3. 90 个通道的去向总表
 
 | 域 | 通道数 | 留 IPC | 迁 HTTP | 备注 |
 | --- | --- | --- | --- | --- |
@@ -124,11 +124,12 @@
 | `PLUGINS_*` | 29 | 6 | 23 | `OPEN_DASHBOARD`、`INSPECT_PACKAGE`、QQ/WeCom 凭据保存/清除留 |
 | `CREATOR_*` | 1 | 1 | 0 | 仅 `PICK_REFERENCE_IMAGE` 保留原生文件选择；其余业务通道由 Backend/Job 提供 |
 | `SERVICE_*` | 6 | 0 | 6 | MCP session revoke 已由 Service HTTP facade 接管，其兼容 IPC 已在 T49 退役；其余服务边界全迁 |
+| `COMPANION_*` | 4 | 4 | 0 | Companion 诊断与本地音频租约由 Shell 主持，保持内容无关的原生边界 |
 | `ABOUT_*` | 0 | 0 | 0 | `about:get-info` / `about:check-updates` 已在 T42 退休；能力改由 Backend HTTP/Job 提供 |
 | `CATALOG_*` | 0 | 0 | 0 | 6 个 Catalog 通道已在 T42 同一提交中退休；HTTP 路由仍由 Backend 提供 |
-| **合计** | **86** | **46** | **40** | |
+| **合计** | **90** | **50** | **40** | |
 
-> **实现登记（T47/T48/T49）**：本表只统计当前 IPC 通道。AI 对话通过 HTTP/SSE 进入后端，历史由 SQLite 保存；孵化配置和密钥也由后端统一写入。Actions 的业务通道与 Creator 的 12 个业务通道已由 Backend HTTP/Job 承接；Service 面板通过 Backend HTTP 访问服务路由。`check:api-contract` 以 `src/shared/ipc-channels.ts` 为清单逐项复算：**86 = 46 留 IPC + 40 迁 HTTP**。
+> **实现登记（T47/T48/T49/T50）**：本表只统计当前 IPC 通道。AI 对话通过 HTTP/SSE 进入后端，历史由 SQLite 保存；孵化配置和密钥也由后端统一写入。Actions 的业务通道与 Creator 的 12 个业务通道已由 Backend HTTP/Job 承接；Service 面板通过 Backend HTTP 访问服务路由；Companion 诊断和音频租约保留在 Shell 的原生边界。`check:api-contract` 以 `src/shared/ipc-channels.ts` 为清单逐项复算：**90 = 50 留 IPC + 40 迁 HTTP**。
 
 ## 4. 路由表
 

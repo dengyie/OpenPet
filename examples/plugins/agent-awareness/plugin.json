@@ -5,7 +5,7 @@
   "profile": "runtime",
   "configSchema": "config.schema.json",
   "description": "Reflect local AI coding-agent activity through OpenPet pet status, speech, and a local dashboard.",
-  "permissions": ["pet:say", "pet:event"],
+  "permissions": ["pet:say", "pet:event", "pet:attention"],
   "entries": {
     "commands": [
       { "id": "doctor", "title": "Check Agent Awareness Setup", "command": "node ./commands/doctor.js", "cwd": "." },

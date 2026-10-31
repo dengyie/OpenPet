@@ -25,8 +25,8 @@ function resultEnvelope(id, paths) {
 
 describe("dialog.request bridge", () => {
 	it("backend whitelist contains exactly the contract message types", () => {
-		assert.equal(bridge.BACKEND_TO_SHELL_TYPES.length, 23)
-		assert.equal(new Set(bridge.BACKEND_TO_SHELL_TYPES).size, 23)
+		assert.equal(bridge.BACKEND_TO_SHELL_TYPES.length, 24)
+		assert.equal(new Set(bridge.BACKEND_TO_SHELL_TYPES).size, 24)
 		assert.equal(bridge.BACKEND_TO_SHELL_TYPES.includes("dialog.request"), true)
 		assert.equal(bridge.BACKEND_TO_SHELL_TYPES.includes("catalog.request"), true)
 		assert.equal(bridge.BACKEND_TO_SHELL_TYPES.includes("pet-packs.request"), true)
