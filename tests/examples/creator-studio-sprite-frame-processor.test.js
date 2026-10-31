@@ -164,6 +164,50 @@ test('sprite processor records raw jumping trajectory for candidate QA', async (
   assert.ok(result.metrics.rawTrajectory.maxY - result.metrics.rawTrajectory.minY > 0.1)
 })
 
+test('sprite processor preserves jumping anchor trajectory in exported frame pixels', async () => {
+  const dir = createTempDir()
+  const inputPath = path.join(dir, 'jump-anchor-sheet.png')
+  const svg = `<svg width="1024" height="1024" xmlns="http://www.w3.org/2000/svg">
+    <rect x="120" y="100" width="120" height="180" fill="#cc3344"/>
+    <rect x="440" y="170" width="120" height="180" fill="#cc3344"/>
+    <rect x="760" y="240" width="120" height="180" fill="#cc3344"/>
+    <rect x="120" y="612" width="120" height="180" fill="#cc3344"/>
+    <rect x="440" y="682" width="120" height="180" fill="#cc3344"/>
+  </svg>`
+  await sharp(Buffer.from(svg)).ensureAlpha().png().toFile(inputPath)
+  const result = await processSpriteSheet({
+    inputPath,
+    outputDir: path.join(dir, 'processed'),
+    layout: { columns: 3, rows: 2, cellCount: 6, unusedCells: [5] },
+    profile: { characterClass: 'grounded-compact-character' },
+    actionPolicy: { actionId: 'jumping', anchorPolicy: 'action-relative-root-v1', minJumpExcursionRatio: 0.1 }
+  })
+
+  const nonEmpty = result.metrics.frames.filter((frame) => !frame.empty)
+  assert.ok(nonEmpty.length >= 5)
+  assert.ok(nonEmpty.every((frame) => Math.abs(frame.outputAnchorYRatio - frame.anchorY) < 0.02))
+  const pixelCentroids = []
+  for (const frame of result.frames) {
+    const metrics = result.metrics.frames.find((entry) => entry.index === frame.index)
+    if (metrics.empty) continue
+    const { data, info } = await sharp(frame.path).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+    let weightedY = 0
+    let alphaTotal = 0
+    for (let y = 0; y < info.height; y += 1) {
+      for (let x = 0; x < info.width; x += 1) {
+        const alpha = data[((y * info.width) + x) * info.channels + 3]
+        weightedY += y * alpha
+        alphaTotal += alpha
+      }
+    }
+    assert.ok(alphaTotal > 0, `frame ${frame.index} should retain visible pixels`)
+    const centroidRatio = weightedY / alphaTotal / info.height
+    assert.ok(Math.abs(centroidRatio - metrics.outputAnchorYRatio) < 0.02)
+    pixelCentroids.push(centroidRatio)
+  }
+  assert.ok(Math.max(...pixelCentroids) - Math.min(...pixelCentroids) > 0.1)
+})
+
 test('sprite processor records paste clamp without cropping the paid candidate', async () => {
   const dir = createTempDir()
   const inputPath = path.join(dir, 'oversized-sheet.png')
