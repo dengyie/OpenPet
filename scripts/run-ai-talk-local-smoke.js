@@ -685,34 +685,37 @@ const runAiTalkLocalSmoke = async ({
       const streamingEvents = []
       const startedAt = Date.now()
       let firstDeltaLatencyMs = 0
-      const pending = aiTalkService.streamChat({
-        message: content,
-        entrypoint: 'bubble-chat-smoke',
-        requestId,
-        onState: (state = {}) => {
-          const status = ['started', 'streaming', 'completed', 'canceled', 'failed'].includes(state.status)
-            ? state.status
-            : 'streaming'
-          const partialReplyChars = Number(state.partialReplyChars) || String(state.partialReply || '').length
-          streamingEvents.push({
-            requestId: sanitizeText(state.requestId || requestId, 120),
-            status,
-            partialReplyChars,
-            chunkCount: Number(state.chunkCount) || 0,
-            canCancel: state.canCancel === true && (status === 'started' || status === 'streaming')
-          })
-          if (!firstDeltaLatencyMs && status === 'streaming' && partialReplyChars > 0) {
-            firstDeltaLatencyMs = Date.now() - startedAt
-          }
-        }
-      })
       let cancelTimer = null
-      if (cancelAfterMs > 0 && typeof aiTalkService.cancelRequest === 'function') {
+      const scheduleCancellation = () => {
+        if (cancelTimer || cancelAfterMs <= 0 || typeof aiTalkService.cancelRequest !== 'function') return
         cancelTimer = setTimeout(() => {
           aiTalkService.cancelRequest({ requestId, reason: 'smoke-cancel-after-ms', sourceSurface: 'local-smoke' })
         }, cancelAfterMs)
       }
       try {
+        const pending = aiTalkService.streamChat({
+          message: content,
+          entrypoint: 'bubble-chat-smoke',
+          requestId,
+          onState: (state = {}) => {
+            const status = ['started', 'streaming', 'completed', 'canceled', 'failed'].includes(state.status)
+              ? state.status
+              : 'streaming'
+            const partialReplyChars = Number(state.partialReplyChars) || String(state.partialReply || '').length
+            streamingEvents.push({
+              requestId: sanitizeText(state.requestId || requestId, 120),
+              status,
+              partialReplyChars,
+              chunkCount: Number(state.chunkCount) || 0,
+              canCancel: state.canCancel === true && (status === 'started' || status === 'streaming')
+            })
+            if (!firstDeltaLatencyMs && status === 'streaming' && partialReplyChars > 0) {
+              firstDeltaLatencyMs = Date.now() - startedAt
+            }
+            if (status === 'started' || status === 'streaming') scheduleCancellation()
+          }
+        })
+        scheduleCancellation()
         result = await pending
       } finally {
         if (cancelTimer) clearTimeout(cancelTimer)
