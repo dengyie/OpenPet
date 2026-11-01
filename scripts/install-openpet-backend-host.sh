@@ -49,21 +49,18 @@ snapshot_backend_state() {
     copy_tree_without_reflink "$DATA_ROOT/backend/settings.json" "$backend_snapshot_dir/"
   fi
   if [[ -e "$source_db" ]]; then
-    if [[ ! -x "$NODE_ROOT/bin/node" || ! -e "$APP_ROOT/node_modules/better-sqlite3" ]]; then
+    if [[ ! -x "$NODE_ROOT/bin/node" ]]; then
       echo "cannot create a consistent Backend database snapshot without the installed Node runtime" >&2
       exit 1
     fi
-    OPENPET_SNAPSHOT_APP_ROOT="$APP_ROOT" \
     OPENPET_SNAPSHOT_SOURCE_DB="$source_db" \
     OPENPET_SNAPSHOT_DESTINATION_DB="$destination_db" \
       "$NODE_ROOT/bin/node" --input-type=module -e '
-        import { createRequire } from "node:module"
-        const require = createRequire(`${process.env.OPENPET_SNAPSHOT_APP_ROOT}/package.json`)
-        const Database = require("better-sqlite3")
-        const database = new Database(process.env.OPENPET_SNAPSHOT_SOURCE_DB, { readonly: true })
+        import { backup, DatabaseSync } from "node:sqlite"
+        const database = new DatabaseSync(process.env.OPENPET_SNAPSHOT_SOURCE_DB, { readOnly: true })
         const destination = process.env.OPENPET_SNAPSHOT_DESTINATION_DB
         try {
-          await database.backup(destination)
+          await backup(database, destination)
         } finally {
           database.close()
         }

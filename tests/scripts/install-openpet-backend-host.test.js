@@ -2,7 +2,9 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const { spawnSync } = require('node:child_process')
+const os = require('node:os')
 const path = require('node:path')
+const { DatabaseSync } = require('node:sqlite')
 
 const installerPath = path.resolve(__dirname, '../../scripts/install-openpet-backend-host.sh')
 
@@ -54,7 +56,10 @@ test('backend host installer isolates privileged downloads and restores the serv
   assert.match(installer, /copy_tree_without_reflink\(\)[\s\S]*cp --reflink=never -a/)
   assert.match(installer, /snapshot_stage=\$\(mktemp -d \/var\/backups\/openpet\/\.openpet-snapshot\./)
   assert.match(installer, /snapshot_backend_state\(\)/)
-  assert.match(installer, /database\.backup\(destination\)/)
+  assert.match(installer, /import \{ backup, DatabaseSync \} from "node:sqlite"/)
+  assert.match(installer, /new DatabaseSync\(process\.env\.OPENPET_SNAPSHOT_SOURCE_DB, \{ readOnly: true \}\)/)
+  assert.match(installer, /await backup\(database, destination\)/)
+  assert.doesNotMatch(installer, /better-sqlite3/)
   assert.match(installer, /copy_tree_without_reflink "\$DATA_ROOT\/backend\/settings\.json"/)
   assert.match(installer, /if \[\[ "\$node_upgrade_required" == 1 && -e "\$NODE_ROOT" \]\]/)
   assert.doesNotMatch(installer, /for path in "\$APP_ROOT" "\$NODE_ROOT" "\$DATA_ROOT"/)
@@ -65,6 +70,37 @@ test('backend host installer isolates privileged downloads and restores the serv
   assert.match(installer, /copy_tree_without_reflink "\$snapshot_unit" "\$unit_path"/)
   assert.match(installer, /systemctl disable --now "\$SERVICE_NAME"[\s\S]*rm -f "\$unit_path"/)
   assert.match(installer, /restore_service_unit\(\)[\s\S]*systemctl daemon-reload/)
+})
+
+test('backend host installer creates a consistent snapshot with the managed Node SQLite driver', (t) => {
+  const installer = fs.readFileSync(installerPath, 'utf8')
+  const snapshotProgram = installer.match(/"\$NODE_ROOT\/bin\/node" --input-type=module -e '\n([\s\S]*?)\n      '/)?.[1]
+  assert.ok(snapshotProgram, 'installer snapshot program must be extractable')
+
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-installer-snapshot-'))
+  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }))
+  const sourcePath = path.join(tempDir, 'source.db')
+  const destinationPath = path.join(tempDir, 'snapshot.db')
+  const source = new DatabaseSync(sourcePath)
+  source.exec('PRAGMA journal_mode = WAL; CREATE TABLE evidence (id INTEGER PRIMARY KEY, value TEXT); INSERT INTO evidence (value) VALUES (\'committed\');')
+
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', snapshotProgram], {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      OPENPET_SNAPSHOT_SOURCE_DB: sourcePath,
+      OPENPET_SNAPSHOT_DESTINATION_DB: destinationPath
+    }
+  })
+  source.close()
+
+  assert.equal(result.status, 0, result.stderr)
+  const snapshot = new DatabaseSync(destinationPath, { readOnly: true })
+  const rows = snapshot.prepare('SELECT id, value FROM evidence').all()
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].id, 1)
+  assert.equal(rows[0].value, 'committed')
+  snapshot.close()
 })
 
 test('resident Backend service exposes the managed Node runtime to bundled plugin commands', () => {
