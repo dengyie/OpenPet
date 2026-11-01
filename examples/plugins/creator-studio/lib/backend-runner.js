@@ -1194,6 +1194,7 @@ const runQualityFirstActionRepair = async ({
         ? { artifacts: { ...(generatingRun.artifacts || {}), ...packageArtifacts } }
         : {}),
       status,
+      error: '',
       currentStep: status === 'ready_for_review' ? 'review' : 'recovery',
       reviewStatus: status === 'ready_for_review' ? 'pending' : 'recovery-required',
       generationLease: undefined,
@@ -1203,6 +1204,9 @@ const runQualityFirstActionRepair = async ({
         phase: status === 'ready_for_review' ? 'ready_for_review' : 'recovery-required',
         actionResults,
         ...(packageResult ? { package: publicPackageResult } : {}),
+        ...(status === 'ready_for_review'
+          ? { omittedActionIds: [...(publicPackageResult?.basicActions?.omittedActionIds || [])] }
+          : {}),
         ...(recovery ? { recovery } : {}),
         nextAction: status === 'ready_for_review' ? 'human-review' : 'export-recovery-bundle'
       }

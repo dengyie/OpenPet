@@ -657,6 +657,7 @@ test('quality-first action repair reruns only the requested action and preserves
   writeRun({ dataDir, run: {
     ...created,
     status: 'ready_for_review',
+    error: 'stale final package evaluation failure',
     taskStatus: 'confirmed',
     generationTask: { ...created.generationTask, pipeline: 'quality-first-v1' },
     qualityFirst: {
@@ -682,6 +683,7 @@ test('quality-first action repair reruns only the requested action and preserves
     persistActionResult: async () => {},
     finalizePackage: async () => ({
       spritesheetRelativePath: `runs/${created.runId}/quality-first/package/spritesheet.webp`,
+      basicActions: { omittedActionIds: ['review'] },
       artifacts: {
         outputDir: path.join(dataDir, 'runs', created.runId, 'quality-first', 'package'),
         petJson: path.join(dataDir, 'runs', created.runId, 'quality-first', 'package', 'pet.json'),
@@ -699,8 +701,10 @@ test('quality-first action repair reruns only the requested action and preserves
   })
   assert.deepEqual(calls, [{ actionId: 'waving', canonical: 'canonical-1', profile: profile.hash }])
   assert.equal(result.run.status, 'ready_for_review')
+  assert.equal(result.run.error, '')
   assert.equal(result.run.qualityFirst.actionResults.waving.ok, true)
   assert.equal(result.run.qualityFirst.actionResults.idle.ok, true)
+  assert.deepEqual(result.run.qualityFirst.omittedActionIds, ['review'])
   assert.equal(result.run.qualityFirst.package.spritesheetRelativePath.endsWith('spritesheet.webp'), true)
   assert.equal(result.run.artifacts.spritesheet.endsWith('spritesheet.webp'), true)
   assert.equal(Object.hasOwn(result.run.qualityFirst.package, 'artifacts'), false)
