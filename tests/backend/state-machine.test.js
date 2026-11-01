@@ -184,15 +184,17 @@ describe("状态机 · 取消", () => {
 })
 
 describe("状态机 · 重试预算", () => {
-	it("恰好 9 个 kind 的 maxAttempts 为 2,其余为 1", () => {
+	it("恰好 7 个 kind 的 maxAttempts 为 2,其余为 1", () => {
 		const keys = Object.keys(sm.MAX_ATTEMPTS_BY_KIND)
-		assert.equal(keys.length, 9)
+		assert.equal(keys.length, 7)
 		for (const key of keys) {
 			// 漂移护栏:写错 kind 名字会默默退化成不重试,这里直接报错。
 			assert.equal(sm.isJobKind(key), true, key + " 不是合法 kind")
 			assert.equal(sm.MAX_ATTEMPTS_BY_KIND[key], 2)
 		}
 		assert.equal(sm.maxAttemptsFor("image.generate"), 2)
+		assert.equal(sm.maxAttemptsFor("creator.character"), 1)
+		assert.equal(sm.maxAttemptsFor("creator.workflow"), 1)
 		assert.equal(sm.maxAttemptsFor("creator.export"), 1)
 		assert.equal(sm.maxAttemptsFor("store.migrate"), 1)
 		assert.equal(sm.maxAttemptsFor("不存在的kind"), sm.DEFAULT_MAX_ATTEMPTS)

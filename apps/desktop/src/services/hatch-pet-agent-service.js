@@ -714,7 +714,10 @@ const createHatchPetAgentService = ({
         // 沿用循环外的内存快照会把这些增量写没。
         ledger = reserveEvaluatorCall(resolveBudgetLedger({ runId, supplied: ledger, limits: config.budgets, preferPersisted: true }))
         persistBudgetLedger({ runId, ledger })
-        const completion = await aiService.completeStructuredTool({
+        const completeVisualEvaluation = typeof aiService.completeStructuredVisionTool === 'function'
+          ? aiService.completeStructuredVisionTool.bind(aiService)
+          : aiService.completeStructuredTool.bind(aiService)
+        const completion = await completeVisualEvaluation({
           ...request,
           configOverride: completionConfig,
           signal

@@ -116,6 +116,9 @@ function createAiSidecarProxy({ getBackend, getActivePetPackId, fetchImpl = glob
     completeStructuredTool: ({ configOverride, signal, ...input } = {}) => mutate('/ai/completions', {
       method: 'completeStructuredTool', capability: 'hatch-pet', request: input,
     }, 'POST', { signal }),
+    completeStructuredVisionTool: ({ configOverride, signal, ...input } = {}) => mutate('/ai/completions', {
+      method: 'completeStructuredTool', capability: 'hatch-pet-vision', request: input,
+    }, 'POST', { signal }),
   }
   const aiTalkService = {
     streamChat,

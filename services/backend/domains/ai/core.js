@@ -137,10 +137,16 @@ export function createAiDomain({ settings, secrets, repository, getActivePetPack
       || Object.keys(request).some((field) => !fields[method].includes(field))) {
       throw new ApiError("VALIDATION_FAILED", "Unsupported completion request fields")
     }
-    if (!["chat", "hatch-pet"].includes(capability) || capability === "hatch-pet" && method !== "completeStructuredTool") {
+    if (!["chat", "hatch-pet", "hatch-pet-vision"].includes(capability)
+      || capability !== "chat" && method !== "completeStructuredTool") {
       throw new ApiError("VALIDATION_FAILED", "Unsupported completion capability")
     }
-    const input = { ...request, signal, ...(capability === "hatch-pet" ? { configOverride: hatchCompletionConfig() } : {}) }
+    const configOverride = capability === "hatch-pet"
+      ? hatchCompletionConfig()
+      : capability === "hatch-pet-vision"
+        ? provider.getEffectiveVisionConfig()
+        : null
+    const input = { ...request, signal, ...(configOverride ? { configOverride } : {}) }
     try { return await provider[method](input) } finally { publishSnapshot() }
   }
   const dispose = async () => {

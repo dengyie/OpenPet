@@ -9,7 +9,13 @@ async function setup(t) {
   const middleware = await import('../../services/backend/http/middleware.js')
   const { registerAiRuntimeRoutes } = await import('../../services/backend/routes/ai-runtime.js')
   let state = createEmptyState()
-  let settings = { version: 0, values: { ai: { enabled: true, provider: 'openai-compatible', baseUrl: 'https://chat.example/v1', model: 'chat-model' } } }
+  let settings = { version: 0, values: { ai: {
+    enabled: true,
+    provider: 'openai-compatible',
+    baseUrl: 'https://chat.example/v1',
+    model: 'chat-model',
+    vision: { mode: 'override', provider: 'openai-compatible', baseUrl: 'https://vision.example/v1', model: 'vision-model', apiKeyRef: 'ai.vision' }
+  } } }
   const calls = []
   const patches = []
   const domain = createAiDomain({
@@ -20,7 +26,7 @@ async function setup(t) {
       patches.push(request)
       settings = { version: settings.version + 1, values: { ...settings.values, ...request.patch } }
     } },
-    secrets: { get: (ref) => ({ 'ai.default': 'chat-secret', 'ai.hatch-pet': 'hatch-secret', 'other-secret': 'unrelated-secret' })[ref] || '' },
+    secrets: { get: (ref) => ({ 'ai.default': 'chat-secret', 'ai.vision': 'vision-secret', 'ai.hatch-pet': 'hatch-secret', 'other-secret': 'unrelated-secret' })[ref] || '' },
     getActivePetPack: async () => ({ manifest: { id: 'cat', displayName: 'Cat', actions: [] } }),
     fetchImpl: async (url, options) => {
       calls.push({ url, options })
@@ -65,4 +71,14 @@ test('Hatch completions resolve the latest configuration and its canonical secre
   assert.equal(calls[0].options.headers.Authorization, 'Bearer hatch-secret')
   assert.equal(JSON.parse(calls[0].options.body).model, 'hatch-model')
   assert.equal(JSON.stringify(await config.json()).includes('hatch-secret'), false)
+})
+
+test('Hatch visual evaluations use the backend-owned vision configuration', async (t) => {
+  const { send, calls } = await setup(t)
+  const response = await send('/ai/completions', { method: 'completeStructuredTool', capability: 'hatch-pet-vision', request })
+  assert.equal(response.status, 200, JSON.stringify(await response.clone().json()))
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].url, 'https://vision.example/v1/chat/completions')
+  assert.equal(calls[0].options.headers.Authorization, 'Bearer vision-secret')
+  assert.equal(JSON.parse(calls[0].options.body).model, 'vision-model')
 })

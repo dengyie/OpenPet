@@ -21,6 +21,11 @@ PROVIDER_KEYS_FILE=$PROVIDER_KEYS_DIR/provider-keys.json
 if [[ "$(id -u)" != 0 ]]; then echo "installer must run as root" >&2; exit 1; fi
 if [[ -z "$RELEASE_ARCHIVE" || ! -f "$RELEASE_ARCHIVE" ]]; then echo "RELEASE_ARCHIVE must point to a reviewed OpenPet tar archive" >&2; exit 1; fi
 
+node_upgrade_required=0
+if [[ ! -x "$NODE_ROOT/bin/node" || "$("$NODE_ROOT/bin/node" --version 2>/dev/null || true)" != "$NODE_VERSION" ]]; then
+  node_upgrade_required=1
+fi
+
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 snapshot_dir=/var/backups/openpet/${timestamp}
 snapshot_stage=""
@@ -31,6 +36,39 @@ app_stage=""
 node_stage=""
 copy_tree_without_reflink() {
   cp --reflink=never -a "$@"
+}
+
+snapshot_backend_state() {
+  local backend_root="$DATA_ROOT/backend"
+  local backend_snapshot_dir="$snapshot_stage/$(basename "$DATA_ROOT")/backend"
+  local source_db="$backend_root/openpet.db"
+  local destination_db="$backend_snapshot_dir/openpet.db"
+  if [[ ! -e "$backend_root" ]]; then return; fi
+  install -d -m 0700 "$backend_snapshot_dir"
+  if [[ -e "$backend_root/settings.json" ]]; then
+    copy_tree_without_reflink "$DATA_ROOT/backend/settings.json" "$backend_snapshot_dir/"
+  fi
+  if [[ -e "$source_db" ]]; then
+    if [[ ! -x "$NODE_ROOT/bin/node" || ! -e "$APP_ROOT/node_modules/better-sqlite3" ]]; then
+      echo "cannot create a consistent Backend database snapshot without the installed Node runtime" >&2
+      exit 1
+    fi
+    OPENPET_SNAPSHOT_APP_ROOT="$APP_ROOT" \
+    OPENPET_SNAPSHOT_SOURCE_DB="$source_db" \
+    OPENPET_SNAPSHOT_DESTINATION_DB="$destination_db" \
+      "$NODE_ROOT/bin/node" --input-type=module -e '
+        import { createRequire } from "node:module"
+        const require = createRequire(`${process.env.OPENPET_SNAPSHOT_APP_ROOT}/package.json`)
+        const Database = require("better-sqlite3")
+        const database = new Database(process.env.OPENPET_SNAPSHOT_SOURCE_DB, { readonly: true })
+        const destination = process.env.OPENPET_SNAPSHOT_DESTINATION_DB
+        try {
+          await database.backup(destination)
+        } finally {
+          database.close()
+        }
+      '
+  fi
 }
 
 rollback_enabled=0
@@ -52,9 +90,10 @@ trap cleanup_install EXIT
 
 mkdir -p /var/backups/openpet
 snapshot_stage=$(mktemp -d /var/backups/openpet/.openpet-snapshot.XXXXXXXXXX)
-for path in "$APP_ROOT" "$NODE_ROOT" "$DATA_ROOT" "/etc/systemd/system/$SERVICE_NAME"; do
-  if [[ -e "$path" ]]; then copy_tree_without_reflink "$path" "$snapshot_stage/"; fi
-done
+if [[ -e "$APP_ROOT" ]]; then copy_tree_without_reflink "$APP_ROOT" "$snapshot_stage/"; fi
+if [[ "$node_upgrade_required" == 1 && -e "$NODE_ROOT" ]]; then copy_tree_without_reflink "$NODE_ROOT" "$snapshot_stage/"; fi
+snapshot_backend_state
+if [[ -e "/etc/systemd/system/$SERVICE_NAME" ]]; then copy_tree_without_reflink "/etc/systemd/system/$SERVICE_NAME" "$snapshot_stage/"; fi
 if [[ -e "$snapshot_dir" ]]; then echo "snapshot already exists: $snapshot_dir" >&2; exit 1; fi
 mv -T -- "$snapshot_stage" "$snapshot_dir"
 snapshot_stage=""
@@ -84,7 +123,7 @@ chmod 0700 "$work_dir"
 node_tar="$work_dir/node.tar.xz"
 node_stage="${NODE_ROOT}.new"
 node_candidate="$NODE_ROOT"
-if [[ ! -x "$NODE_ROOT/bin/node" || "$("$NODE_ROOT/bin/node" --version 2>/dev/null || true)" != "$NODE_VERSION" ]]; then
+if [[ "$node_upgrade_required" == 1 ]]; then
   curl --fail --location --retry 3 "https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}-${NODE_ARCH}.tar.xz" -o "$node_tar"
   rm -rf "$node_stage"; mkdir -p "$node_stage"
   tar -xJf "$node_tar" -C "$node_stage" --strip-components=1
