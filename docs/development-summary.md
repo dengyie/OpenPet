@@ -1,9 +1,11 @@
 # OpenPet Development Summary
 
-> Last updated: 2026-10-27
+> Last updated: 2026-11-02
 > Branch: `main`
 
 This is the compact engineering snapshot for the current repository state. Use [`TODO.md`](./TODO.md) for active work, and use `docs/phases/` plus `docs/reviews/` for detailed implementation history.
+
+GitHub `main` revision `2f868ece` is deployed to the Guangzhou resident Backend after PR #96 and successful main CI run `41348263121`. Real run `2026-11-01-aster` now completes resident action recovery and final package rebuild without a desktop Shell. The current final Vision evidence uses `gpt-6-astra`, has non-zero scores (`identity=91`, `overall=84`, `confidence=0.92`), and returns a quality `repair` outcome without `cannot-evaluate` or `board-unreadable`. The package is technically reviewable with five available real/approved-mirror actions; four optional actions remain omitted after genuine quality rejection. Recovery state now clears stale errors and reports omitted action IDs consistently. No Electron, desktop import, or work-machine UI acceptance was performed.
 
 The 2026-10-27 release-policy continuation passes the focused release/signing/runtime tooling suites (**80/80** across the changed release tests and Windows asset tests). Typecheck, syntax, contract reconciliation, docs drift, and the Control Center production build remain the code gates; no Electron or desktop UI acceptance was performed. The full Core browser suite remains dependent on the locally absent pinned Chromium headless shell, while GitHub CI remains the browser-regression gate.
 
