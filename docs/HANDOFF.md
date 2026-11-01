@@ -1,6 +1,6 @@
 # OpenPet Handoff
 
-> Last updated: 2026-10-29
+> Last updated: 2026-11-02
 > Canonical active queue: [`TODO.md`](./TODO.md)
 > Branch: `main`
 
@@ -21,6 +21,8 @@ This file is the compact maintainer continuation note. Historical phase-level de
 
 - OpenPet is an Electron desktop pet platform with a React Control Center, pet packs, AI configuration, local extensions, and loopback-only local HTTP/MCP.
 - The current target is an unsigned/self-signed demo. Do not buy paid signing/notarization. The Guangzhou Backend host is active over EasyTier `ssh gz-cvm`; see [`deployment/openpet-mesh-backend.md`](./deployment/openpet-mesh-backend.md) and its sanitized smoke record.
+- GitHub `main` revision `2f868ece` (PR #96) is deployed on the Guangzhou Backend; main CI run `41348263121` completed successfully and the deployment snapshot is `/var/backups/openpet/20261101T204344Z-4162250`. Remote hashes match `origin/main`, service health is `ready/resident`, and only loopback Backend ports plus EasyTier-bound Nginx are listening.
+- Real Creator recovery run `2026-11-01-aster` reached `ready_for_review` through the resident Backend. `running-right` passed at 88; the final `gpt-6-astra` evaluation returned `identity=91`, `overall=84`, `confidence=0.92`, and a scored `repair` result without `cannot-evaluate` or `board-unreadable`. A real `waving` retry produced 85/82/70/84 and correctly remained omitted. PR #96 also clears stale run errors and synchronizes omitted action IDs after recovery. Do not describe this as artistic approval: desktop import and human review remain outstanding by design.
 - Self-managed release packaging is now wired in the workflow: macOS runs the ad-hoc `codesign` hook and Windows CI creates a short-lived self-signed certificate. The packaged-runtime validator uses `--require-signature-integrity`; this proves artifact integrity only and makes no Gatekeeper, SmartScreen, notarization, or publisher-trust claim. The archive/closure helpers still need the same terminology migration.
 - The current Shell/Backend migration path is `main.js` -> `createOpenPetRuntime()` -> `createSidecarRuntimeCoordinator()` -> `spawnSidecar()` -> `services/backend/index.js`; the migration is active and `src/main/` remains a live Shell boundary.
 - The current executable baseline is 86 IPC channels (80 direct registrations and 6 event-only; 41 keep, 37 cutover, 8 blocked), 136 registered REST routes, 149 documented route rows, 21 SSE events, 8 topics, 17 Job kinds, and 6 Job statuses. The T46 image Provider operations retain compatibility entries pending reachability proof; T45 MCP session revocation is now called by the Service HTTP facade and its IPC handler was retired in `a6dd003c`. Settings cursor import and scale preview travel over a strict Backend route and typed Shell reverse bridge; the native picker and host effects remain Shell-owned. Run `npm run build:contracts` before `npm run check:api-contract`.
