@@ -477,7 +477,7 @@ test('runAiTalkLocalSmoke records canceled streaming smoke without side effects'
   const aiTalkService = {
     streamChat: async ({ requestId, onState }) => {
       onState({ requestId, status: 'streaming', partialReply: 'partial should not persist', partialReplyChars: 26, chunkCount: 1, canCancel: true })
-      await new Promise((resolve) => setTimeout(resolve, 10))
+      await new Promise((resolve) => setTimeout(resolve, 1))
       onState({ requestId, status: 'canceled', partialReply: 'partial should not persist', partialReplyChars: 26, chunkCount: 1, canCancel: false })
       return {
         canceled: true,
