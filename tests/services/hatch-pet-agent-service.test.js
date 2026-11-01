@@ -11,15 +11,21 @@ const { getQualityFirstQualityProfile } = require('../../examples/plugins/creato
 
 const validDecision = (decision = 'generate-identity') => ({ schemaVersion: 1, decision, scope: {}, reasonCodes: ['ready'], confidence: 0.8 })
 
-const createHarness = ({ enabled = true, configMode = 'follow-chat', requireIdentityReviewBeforeActions = false, completions = [], completeStructuredTool = null, secret = 'sk-host-owned', dataDir: suppliedDataDir = '', budgets = {} } = {}) => {
+const createHarness = ({ enabled = true, configMode = 'follow-chat', requireIdentityReviewBeforeActions = false, completions = [], completeStructuredTool = null, completeStructuredVisionTool = null, secret = 'sk-host-owned', dataDir: suppliedDataDir = '', budgets = {} } = {}) => {
   let settings = { ai: { provider: 'openai-compatible', baseUrl: 'https://chat.test/v1', model: 'chat-model', apiKeyRef: 'ai.default', conversations: { untouched: [{ role: 'user', content: 'keep' }] }, memory: { enabled: true }, behavior: { enabled: true }, hatchPet: { enabled, configMode, provider: 'openai-compatible', baseUrl: 'https://dedicated.test/v1', model: 'planner', apiKeyRef: 'wrong-ref', requireIdentityReviewBeforeActions, budgets } } }
   const calls = []
   const logs = []
   const dataDir = suppliedDataDir || fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-hatch-service-'))
   const queue = [...completions]
   let secretReads = 0
+  const aiService = {
+    completeStructuredTool: async (request) => { calls.push(request); if (completeStructuredTool) return completeStructuredTool(request); const next = queue.shift(); if (next instanceof Error) throw next; return next }
+  }
+  if (completeStructuredVisionTool) {
+    aiService.completeStructuredVisionTool = async (request) => { calls.push(request); return completeStructuredVisionTool(request) }
+  }
   const service = createHatchPetAgentService({
-    aiService: { completeStructuredTool: async (request) => { calls.push(request); if (completeStructuredTool) return completeStructuredTool(request); const next = queue.shift(); if (next instanceof Error) throw next; return next } },
+    aiService,
     settingsService: { get: () => settings, update: (updater) => { settings = updater(settings); return settings } },
     secretService: { getSecretValue: () => { secretReads += 1; return secret }, setSecret: () => {}, deleteSecret: () => {} },
     pluginService: { getPluginCreatorDataDir: () => dataDir },
@@ -220,6 +226,35 @@ test('sprite evaluation uses one local review board and records a code-owned gat
   assert.equal(h.calls[0].timeoutMs, 120000)
   assert.equal(JSON.stringify(h.calls[0]).includes(boardPath), false)
   assert.equal(fs.existsSync(path.join(h.dataDir, result.evidenceRelativePath)), true)
+})
+
+test('sprite evaluation prefers the dedicated visual structured completion route', async () => {
+  const completion = {
+    arguments: { schemaVersion: 1, recommendation: 'pass', confidence: 0.95, scores: { identity: 96, silhouette: 94, smallScale: 90, completeness: 98, style: 92, overall: 94 }, defects: [] },
+    provider: 'openai-compatible',
+    model: 'vision-model',
+    elapsedMs: 10
+  }
+  let visualCalls = 0
+  const h = createHarness({
+    completeStructuredTool: async () => { throw new Error('generic Hatch completion must not evaluate images') },
+    completeStructuredVisionTool: async () => { visualCalls += 1; return completion }
+  })
+  const boardPath = path.join(h.dataDir, 'vision-board.png')
+  await sharp({ create: { width: 8, height: 8, channels: 4, background: '#fff' } }).png().toFile(boardPath)
+
+  const result = await h.service.evaluateSprite({
+    runId: 'run-vision-route',
+    scope: 'canonical',
+    board: { path: boardPath, sha256: 'e'.repeat(64), regions: [{ regionId: 'source', role: 'source-identity' }, { regionId: 'candidate-1', role: 'canonical-candidate' }] },
+    qa: { ok: true, failures: [], metrics: {} },
+    profile: getQualityFirstQualityProfile(),
+    budgetLedger: createBudgetLedger({ startedAtMs: Date.now() })
+  })
+
+  assert.equal(result.gate.outcome, 'pass')
+  assert.equal(result.model, 'vision-model')
+  assert.equal(visualCalls, 1)
 })
 
 test('sprite evaluation accepts a safe realpath alias to a local review board', async (t) => {

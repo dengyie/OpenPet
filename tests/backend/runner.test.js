@@ -226,22 +226,24 @@ describe("Job runner · retry policy", () => {
 		})
 	})
 
-	it("retries 429/5xx creator workflow failures within maxAttempts using repository transitions", async () => {
-		for (const status of [429, 503]) {
+	it("runs stateful Creator commands once and preserves their first failure", async () => {
+		for (const kind of ["creator.character", "creator.workflow"]) {
 			let calls = 0
 			await withRunner({
-				"creator.workflow": async () => {
+				[kind]: async () => {
 					calls += 1
-					if (calls === 1) throw new ApiError("PROVIDER_ERROR", "temporary", { status })
-					return { ok: true }
+					throw new ApiError("PROVIDER_ERROR", `first failure for ${kind}`, { status: 503 })
 				},
 			}, async ({ queue, repo, runner }) => {
-				const jobId = `retry-${status}`
-				enqueue(queue, jobId, "creator.workflow")
+				const jobId = `single-attempt-${kind}`
+				enqueue(queue, jobId, kind)
 				const result = await runner.run()
-				assert.equal(result.status, "succeeded")
-				assert.equal(repo.byId(jobId).attempt, 2)
-				assert.equal(calls, 2)
+				assert.equal(result.status, "failed")
+				assert.equal(result.attempt, 1)
+				assert.equal(result.maxAttempts, 1)
+				assert.equal(result.error.message, `first failure for ${kind}`)
+				assert.equal(repo.byId(jobId).error.message, `first failure for ${kind}`)
+				assert.equal(calls, 1)
 			})
 		}
 	})
@@ -263,31 +265,28 @@ describe("Job runner · retry policy", () => {
 		})
 	})
 
-	it("preserves Creator private input across automatic retries and clears it after the Job settles", async () => {
+	it("clears Creator private input after a single failed execution", async () => {
 		const { createCreatorJobHandlers } = await import("../../services/backend/jobs/handlers/creator.js")
 		const privateInputs = new Map([["creator-private-retry", { characterName: "Cat", referenceImageToken: "opaque" }]])
 		const calls = []
-		let attempts = 0
 		const creator = {
 			getJobInput: (jobId) => privateInputs.get(jobId) || null,
 			forgetJobInput: (jobId) => privateInputs.delete(jobId),
 			runWorkflow: async (input) => {
 				calls.push(input)
-				attempts += 1
-				if (attempts === 1) throw new ApiError("PROVIDER_ERROR", "temporary", { status: 503 })
-				return { ok: true }
+				throw new ApiError("PROVIDER_ERROR", "first workflow failure", { status: 503 })
 			},
 		}
 		const handlers = createCreatorJobHandlers({ creator })
 		await withRunner(handlers, async ({ queue, repo, runner }) => {
 			enqueue(queue, "creator-private-retry", "creator.workflow", { redacted: true, summary: "creator.workflow" })
 			const result = await runner.run()
-			assert.equal(result.status, "succeeded")
-			assert.equal(result.attempt, 2)
-			assert.equal(calls.length, 2)
-			assert.deepEqual(calls[0], calls[1])
+			assert.equal(result.status, "failed")
+			assert.equal(result.attempt, 1)
+			assert.equal(result.error.message, "first workflow failure")
+			assert.equal(calls.length, 1)
 			assert.equal(privateInputs.has("creator-private-retry"), false)
-			assert.equal(repo.byId("creator-private-retry").status, "succeeded")
+			assert.equal(repo.byId("creator-private-retry").status, "failed")
 		}, { forgetPrivateInput: (jobId) => creator.forgetJobInput(jobId) })
 	})
 

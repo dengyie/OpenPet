@@ -47,7 +47,7 @@ describe("Jobs repository · insert 与互斥", () => {
 			assert.equal(inserted.id, "job-defaults")
 			assert.equal(inserted.status, "queued")
 			assert.equal(inserted.attempt, 1)
-			assert.equal(inserted.maxAttempts, 2)
+			assert.equal(inserted.maxAttempts, 1)
 			assert.deepEqual(inserted.input, { redacted: true, summary: "test job-defaults" })
 		})
 	})

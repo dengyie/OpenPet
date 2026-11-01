@@ -69,9 +69,12 @@ export const DEFAULT_MAX_ATTEMPTS = 1
 
 /**
  * 04 篇 §2.5:默认不重试;provider / 网络类 kind 自动重试 1 次(maxAttempts = 2)。
- * 只列 2 的那 9 个,其余走 DEFAULT_MAX_ATTEMPTS —— 避免写 17 行然后跟契约漂移。
+ * 只列 2 的那 7 个,其余走 DEFAULT_MAX_ATTEMPTS —— 避免写 17 行然后跟契约漂移。
  *
  * 不重试的理由各不相同,别随手加:
+ * - creator.character / creator.workflow:命令会持久化工作流检查点,并在内部重试
+ *   Provider 候选;失败后只能通过 retry-identity / retry-action 从检查点恢复。整 Job
+ *   自动重放会重复执行已完成的状态转换,并用次生冲突覆盖首个真实错误。
  * - plugin.command / creator.export / pet-pack.* / actions.import-frames:有磁盘副作用,
  *   重跑可能产生半成品文件。
  * - store.migrate:重跑迁移是数据事故,必须人工介入。
@@ -81,8 +84,6 @@ export const MAX_ATTEMPTS_BY_KIND = Object.freeze({
 	"image.generate": 2,
 	"sprite.generate": 2,
 	"sprite.evaluate": 2,
-	"creator.character": 2,
-	"creator.workflow": 2,
 	"hatch.run": 2,
 	"plugin.install.github": 2,
 	"catalog.install": 2,

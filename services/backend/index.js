@@ -493,6 +493,7 @@ await initializeBackendRuntime({
 				runtime.hatchAgent = createHatchPetAgentService({
 					aiService: {
 						completeStructuredTool: ({ signal, configOverride: _ignored, ...request } = {}) => runtime.aiChat.complete({ method: "completeStructuredTool", capability: "hatch-pet", request }, { signal }),
+						completeStructuredVisionTool: ({ signal, configOverride: _ignored, ...request } = {}) => runtime.aiChat.complete({ method: "completeStructuredTool", capability: "hatch-pet-vision", request }, { signal }),
 					},
 					configuration: {
 						getAiConfig: () => runtime.settings.read().values.ai || {},
