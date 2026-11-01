@@ -324,6 +324,34 @@ test('sprite evaluation retries an all-zero board-unreadable semantic response',
   assert.match(h.calls[1].messages[0].content, /previous evaluation was invalid/i)
 })
 
+test('sprite evaluation preserves a confident board-unreadable result as cannot-evaluate', async () => {
+  const evaluation = {
+    arguments: {
+      schemaVersion: 1,
+      recommendation: 'cannot-evaluate',
+      confidence: 0.8,
+      scores: { identity: 0, actionReadability: 0, crossFrame: 0, crossAction: 0, smallScale: 0, style: 0, overall: 0 },
+      defects: [{ code: 'board-unreadable', severity: 'blocking', regionId: 'source' }]
+    },
+    provider: 'p',
+    model: 'm',
+    elapsedMs: 1
+  }
+  const h = createHarness({ completions: [evaluation] })
+  const boardPath = path.join(h.dataDir, 'board.png')
+  await sharp({ create: { width: 8, height: 8, channels: 4, background: '#fff' } }).png().toFile(boardPath)
+  const result = await h.service.evaluateSprite({
+    runId: 'run-confident-board-unreadable',
+    scope: 'grounded-action',
+    board: { path: boardPath, sha256: 'd'.repeat(64), regions: [{ regionId: 'source' }, { regionId: 'frame-1' }] },
+    qa: { ok: true, failures: [], metrics: {} },
+    profile: getQualityFirstQualityProfile(),
+    budgetLedger: createBudgetLedger({ startedAtMs: Date.now() })
+  })
+  assert.equal(result.gate.outcome, 'cannot-evaluate')
+  assert.equal(h.calls.length, 1)
+})
+
 test('canonical comparison retries an all-zero board-unreadable candidate response', async () => {
   const invalid = {
     arguments: {

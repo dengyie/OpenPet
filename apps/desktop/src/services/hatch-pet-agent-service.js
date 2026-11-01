@@ -726,7 +726,14 @@ const createHatchPetAgentService = ({
         const hasUnreadableEvaluation = normalizedScope === CANONICAL_COMPARISON_SCOPE
           ? evaluation.candidates.some((candidate) => isBoardUnreadableEvaluation(candidate))
           : isBoardUnreadableEvaluation(evaluation)
-        if (hasUnreadableEvaluation) {
+        // A zero-confidence, all-zero board-unreadable response is a malformed
+        // semantic fallback and is worth one repair attempt. Once the model
+        // supplies confidence, preserve the evaluator's cannot-evaluate gate
+        // instead of retrying the same board until the run budget is exhausted.
+        const requiresUnreadableRepair = normalizedScope === CANONICAL_COMPARISON_SCOPE
+          ? evaluation.candidates.some((candidate) => isBoardUnreadableEvaluation(candidate) && candidate.confidence === 0)
+          : hasUnreadableEvaluation && evaluation.confidence === 0
+        if (requiresUnreadableRepair) {
           throw createInvalidSpriteEvaluationError('board-unreadable cannot be used for a non-empty generated review board')
         }
         const gate = String(scope || '').trim() === CANONICAL_COMPARISON_SCOPE
