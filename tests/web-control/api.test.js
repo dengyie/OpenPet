@@ -273,3 +273,58 @@ test('Creator run normalization supports flat Shell views and nested Backend pub
   assert.equal(desktop.workflowState, 'review-required')
   assert.equal(desktop.qualityFirst, qualityFirst)
 })
+
+test('Creator run normalization preserves package artifacts while enriching diagnostics', async () => {
+  const { normalizeCreatorRun, getCreatorPackagePreviews } = await apiModule
+  const runId = 'run-final-package'
+  const spritesheetRelativePath = `runs/${runId}/quality-first/package/spritesheet.webp`
+  const boardRelativePath = `runs/${runId}/evaluations/final-package-review-board.png`
+  const normalized = normalizeCreatorRun({
+    id: runId,
+    state: {
+      runId,
+      creatorExecution: 'backend',
+      qualityFirst: {
+        phase: 'ready_for_review',
+        package: {
+          spritesheetRelativePath,
+          visualEvaluation: { boardRelativePath, recommended: false }
+        }
+      }
+    }
+  }, {
+    progress: {
+      qualityFirst: {
+        phase: 'ready_for_review',
+        packageReview: {
+          boardRelativePath,
+          recommended: false,
+          qualityWarningCodes: ['visual-score-overall-below-minimum']
+        }
+      }
+    }
+  })
+
+  assert.equal(normalized.qualityFirst.package.spritesheetRelativePath, spritesheetRelativePath)
+  assert.equal(normalized.qualityFirst.package.visualEvaluation.boardRelativePath, boardRelativePath)
+  assert.deepEqual(normalized.qualityFirst.packageReview.qualityWarningCodes, ['visual-score-overall-below-minimum'])
+  assert.deepEqual(getCreatorPackagePreviews(normalized), [
+    { kind: 'spritesheet', label: '完整动作图', relativePath: spritesheetRelativePath, runId },
+    { kind: 'review-board', label: '最终评估图', relativePath: boardRelativePath, runId }
+  ])
+})
+
+test('Creator package preview paths stay bound to the current run and image types', async () => {
+  const { getCreatorPackagePreviews } = await apiModule
+  const runId = 'run-preview-safety'
+  assert.deepEqual(getCreatorPackagePreviews({
+    runId,
+    qualityFirst: {
+      package: {
+        spritesheetRelativePath: `runs/${runId}/../other/spritesheet.webp`,
+        visualEvaluation: { boardRelativePath: '/tmp/private-board.png' }
+      },
+      packageReview: { boardRelativePath: `runs/other-run/evaluations/board.png` }
+    }
+  }), [])
+})

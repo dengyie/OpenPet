@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { clearImageCandidateSession, createWebApi, loadGeneratedImageCandidates, normalizeCreatorRun, readImageCandidateSession, restoreGeneratedImageCandidates, saveImageCandidateSession, submitImageCandidateJob } from './api.mjs'
+import { clearImageCandidateSession, createWebApi, getCreatorPackagePreviews, loadGeneratedImageCandidates, normalizeCreatorRun, readImageCandidateSession, restoreGeneratedImageCandidates, saveImageCandidateSession, submitImageCandidateJob } from './api.mjs'
 import './styles.css'
 
 type Json = Record<string, any>
@@ -171,6 +171,62 @@ function ActionCandidateCard({
       {candidate.recommended ? '采用此动作候选' : '查看质量提示并选择'}
     </button> : null}
   </article>
+}
+
+function CreatorPackagePreview({
+  run,
+  omittedActionIds
+}: {
+  run: Json
+  omittedActionIds: string[]
+}) {
+  const previews = getCreatorPackagePreviews(run)
+  const [images, setImages] = useState<Record<string, string>>({})
+  const [errors, setErrors] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    let canceled = false
+    setImages({})
+    setErrors({})
+    void Promise.all(previews.map(async (preview) => {
+      try {
+        const result = await api.assetPreview(preview.runId, preview.relativePath)
+        if (result?.ok === false || typeof result?.previewDataUrl !== 'string') throw new Error(result?.message || '资源暂不可预览')
+        return { kind: preview.kind, value: result.previewDataUrl }
+      } catch (reason) {
+        return { kind: preview.kind, error: reason instanceof Error ? reason.message : '资源暂不可预览' }
+      }
+    })).then((results) => {
+      if (canceled) return
+      const nextImages: Record<string, string> = {}
+      const nextErrors: Record<string, string> = {}
+      results.forEach((result) => {
+        if ('value' in result && result.value) nextImages[result.kind] = result.value
+        if ('error' in result && result.error) nextErrors[result.kind] = result.error
+      })
+      setImages(nextImages)
+      setErrors(nextErrors)
+    })
+    return () => { canceled = true }
+  }, [run.runId, previews.map((preview) => `${preview.kind}:${preview.relativePath}`).join('|')])
+
+  const packageState = run.qualityFirst?.package || {}
+  const visualEvaluation = packageState.visualEvaluation || {}
+  const recommended = visualEvaluation.recommended === true || visualEvaluation.gate?.ok === true
+  const hasReview = previews.some((preview) => preview.kind === 'review-board')
+
+  if (!previews.length && !omittedActionIds.length && !packageState) return null
+  return <section className="panel package-preview-panel">
+    <div className="panel-heading"><div><span className="step-number">03</span><h2>生成成品</h2><p>这里显示最近一次 Backend 打包的动作图和最终评估图。</p></div><span className={`tag ${recommended ? '' : 'tag-warning'}`}>{recommended ? '评估通过' : '需要复查'}</span></div>
+    {previews.length ? <div className="package-preview-grid">{previews.map((preview) => <article className="package-preview-card" key={preview.kind}>
+      <strong>{preview.label}</strong>
+      {images[preview.kind] ? <img src={images[preview.kind]} alt={preview.label} /> : <div className="package-preview-placeholder">{errors[preview.kind] || '正在加载成品…'}</div>}
+      <code title={preview.relativePath}>{preview.relativePath}</code>
+    </article>)}</div> : <div className="empty-state package-empty-state"><strong>当前 run 没有可预览的最终包</strong><span>如果刚完成生成，请刷新页面；如果状态为 recovery-required，请先修复失败动作。</span></div>}
+    {Array.isArray(visualEvaluation.qualityWarningCodes) && visualEvaluation.qualityWarningCodes.length ? <p className="warning-text package-note">最终评估提示：{visualEvaluation.qualityWarningCodes.join(' · ')}</p> : null}
+    {Array.isArray(omittedActionIds) && omittedActionIds.length ? <p className="warning-text package-note">质量门省略动作：{omittedActionIds.join(' · ')}</p> : null}
+    {!hasReview && previews.length ? <p className="muted package-note">最终评估图尚未生成，当前只显示可用的动作图。</p> : null}
+  </section>
 }
 
 function App() {
@@ -519,6 +575,11 @@ function App() {
         </div> : null}
       </article>
     </section>
+
+    {currentRun?.runId && (qualityFirst?.package || qualityFirst?.packageReview || (qualityFirst?.omittedActionIds || []).length) ? <CreatorPackagePreview
+      run={currentRun}
+      omittedActionIds={Array.isArray(qualityFirst?.omittedActionIds) ? qualityFirst.omittedActionIds : []}
+    /> : null}
 
     {identityReview?.status === 'pending' && currentRun?.runId ? <section className="panel review-panel">
       <div className="panel-heading"><div><span className="step-number">03</span><h2>选择形象候选</h2><p>逐张查看候选图；只有你确认后才会开始生成动作。</p></div><span className="tag">等待人工选择</span></div>

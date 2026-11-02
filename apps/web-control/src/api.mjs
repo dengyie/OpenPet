@@ -14,6 +14,40 @@ function isCandidatePathForJob(value, jobId) {
   return value.startsWith(prefix) && /^[A-Za-z0-9][A-Za-z0-9._-]{0,100}\.(?:png|jpe?g|webp)$/i.test(value.slice(prefix.length))
 }
 
+function isCreatorPreviewPathForRun(value, runId) {
+  if (typeof value !== 'string' || !runId || value.includes('\\') || value.split('/').includes('..')) return false
+  const prefix = `runs/${runId}/`
+  return value.startsWith(prefix) && /^[A-Za-z0-9][A-Za-z0-9._/-]{0,300}\.(?:png|jpe?g|webp|gif)$/i.test(value.slice(prefix.length))
+}
+
+export function getCreatorPackagePreviews(run) {
+  if (!run || typeof run !== 'object' || Array.isArray(run)) return []
+  const runId = String(run.runId || run.id || '').trim()
+  if (!runId) return []
+  const qualityFirst = run.qualityFirst && typeof run.qualityFirst === 'object' ? run.qualityFirst : {}
+  const packageState = qualityFirst.package && typeof qualityFirst.package === 'object' ? qualityFirst.package : {}
+  const visualEvaluation = packageState.visualEvaluation && typeof packageState.visualEvaluation === 'object'
+    ? packageState.visualEvaluation
+    : {}
+  const packageReview = qualityFirst.packageReview && typeof qualityFirst.packageReview === 'object'
+    ? qualityFirst.packageReview
+    : {}
+  const entries = [
+    { kind: 'spritesheet', label: '完整动作图', relativePath: packageState.spritesheetRelativePath },
+    {
+      kind: 'review-board',
+      label: '最终评估图',
+      relativePath: visualEvaluation.boardRelativePath || packageReview.boardRelativePath
+    }
+  ]
+  const seen = new Set()
+  return entries.filter((entry) => {
+    if (!isCreatorPreviewPathForRun(entry.relativePath, runId) || seen.has(entry.relativePath)) return false
+    seen.add(entry.relativePath)
+    return true
+  }).map((entry) => ({ ...entry, runId }))
+}
+
 export function saveImageCandidateSession(value, storage = sessionStorageOrNull()) {
   if (!storage || !isImageCandidateJobId(value?.jobId) || typeof value?.prompt !== 'string' || value.prompt.length > 8000) return false
   const selectedRelativePath = value.selectedRelativePath || ''
@@ -89,7 +123,11 @@ export function normalizeCreatorRun(raw, fallbackDiagnostics = null) {
   const nested = raw.state && typeof raw.state === 'object' && !Array.isArray(raw.state) ? raw.state : {}
   const diagnostics = raw.diagnostics || nested.diagnostics || fallbackDiagnostics || null
   const progress = diagnostics?.progress || nested.progress || raw.progress || null
-  const qualityFirst = progress?.qualityFirst || nested.qualityFirst || raw.qualityFirst || null
+  const rawQualityFirst = nested.qualityFirst || raw.qualityFirst || null
+  const diagnosticQualityFirst = progress?.qualityFirst || null
+  const qualityFirst = rawQualityFirst && diagnosticQualityFirst
+    ? { ...rawQualityFirst, ...diagnosticQualityFirst }
+    : (rawQualityFirst || diagnosticQualityFirst || null)
   return {
     ...nested,
     ...raw,
