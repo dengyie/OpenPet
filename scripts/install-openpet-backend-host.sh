@@ -83,6 +83,28 @@ cleanup_install() {
   if [[ -n "$node_stage" ]]; then rm -rf -- "$node_stage"; fi
   exit "$exit_status"
 }
+
+extract_release_archive() {
+  local archive="$1"
+  local destination="$2"
+  tar -xzf "$archive" -C "$destination"
+  if [[ -f "$destination/package.json" && -f "$destination/package-lock.json" ]]; then
+    return 0
+  fi
+
+  local children=()
+  while IFS= read -r -d '' child; do children+=("$child"); done < <(find "$destination" -mindepth 1 -maxdepth 1 -type d -print0)
+  if [[ "${#children[@]}" != 1 || ! -f "${children[0]}/package.json" || ! -f "${children[0]}/package-lock.json" ]]; then
+    echo "release archive must contain package.json and package-lock.json at its root or under one top-level directory" >&2
+    return 1
+  fi
+  local staged_root="${children[0]}"
+  local entry
+  while IFS= read -r -d '' entry; do
+    mv -- "$entry" "$destination/"
+  done < <(find "$staged_root" -mindepth 1 -maxdepth 1 -print0)
+  rmdir -- "$staged_root"
+}
 trap cleanup_install EXIT
 
 mkdir -p /var/backups/openpet
@@ -134,7 +156,7 @@ export PATH="$node_candidate/bin:$PATH"
 
 app_stage="${APP_ROOT}.new"
 rm -rf "$app_stage"; install -d -m 0755 "$app_stage"
-tar -xzf "$RELEASE_ARCHIVE" -C "$app_stage" --strip-components=1
+extract_release_archive "$RELEASE_ARCHIVE" "$app_stage"
 # macOS source archives can contain AppleDouble metadata beside real files.
 # Never let those metadata files enter the runtime tree or migration scanner.
 find "$app_stage" -type f \( -name '._*' -o -name '.DS_Store' \) -delete
