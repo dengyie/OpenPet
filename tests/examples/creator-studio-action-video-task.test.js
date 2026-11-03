@@ -289,6 +289,52 @@ test('provider video task binds the action contract and rejects timing drift', (
   }), /timing must match/)
 })
 
+test('provider video task accepts the normalized action task emitted by the video runner', () => {
+  const driver = createMotionDriver({ actionId: 'idle' })
+  const durationMs = Math.round((driver.frameCount / driver.fps) * 1000)
+  const actionTask = createActionVideoTask({
+    schemaVersion: 1,
+    taskType: 'action-video-v1',
+    actionId: 'idle',
+    motionPresetId: driver.motionPresetId,
+    motionParameters: driver.motionParameters,
+    reference: { sha256: HASH_A, role: 'canonical-identity' },
+    motionDriver: { sha256: driver.sha256, fps: driver.fps, frameCount: driver.frameCount, loop: driver.loop },
+    canvas: { width: 512, height: 512 },
+    fps: driver.fps,
+    durationMs,
+    background: { mode: 'solid', color: '#12ff4d', purpose: 'matting-assist' },
+    camera: 'locked',
+    output: 'video'
+  })
+  const providerTask = createProviderVideoTask({
+    schemaVersion: 1,
+    taskType: 'provider-video-generation',
+    providerId: 'mango-api',
+    model: 'grok-imagine-video',
+    actionTask,
+    request: {
+      backgroundColor: '#12ff4d',
+      backgroundMode: 'solid',
+      camera: 'locked',
+      durationMs,
+      fps: driver.fps,
+      outputMimeType: 'video/mp4'
+    },
+    retryPolicy: { maxAttempts: 2, backoffMs: 1000 }
+  })
+  assert.equal(providerTask.actionTask.framePlanHash, actionTask.framePlanHash)
+  assert.throws(() => createProviderVideoTask({
+    schemaVersion: providerTask.schemaVersion,
+    taskType: providerTask.taskType,
+    providerId: providerTask.providerId,
+    model: providerTask.model,
+    actionTask: { ...actionTask, framePlanHash: HASH_B },
+    request: providerTask.request,
+    retryPolicy: providerTask.retryPolicy
+  }), /framePlanHash does not match/)
+})
+
 test('video runner protocol binds the request hash and redacts failure detail', () => {
   const driver = createMotionDriver({ actionId: 'waving' })
   const actionTask = {

@@ -39,13 +39,24 @@ const deepFreeze = (value) => {
   return value
 }
 
+const normalizeActionTask = (value) => {
+  if (!isPlainObject(value)) return createActionVideoTask(value)
+  const hasFramePlanHash = Object.hasOwn(value, 'framePlanHash')
+  const { framePlanHash: suppliedFramePlanHash, ...rawActionTask } = value
+  const actionTask = createActionVideoTask(rawActionTask)
+  if (hasFramePlanHash && String(suppliedFramePlanHash || '') !== actionTask.framePlanHash) {
+    throw providerVideoTaskError('actionTask.framePlanHash does not match the action task')
+  }
+  return actionTask
+}
+
 const createProviderVideoTask = (input = {}) => {
   assertExactKeys(input, ['schemaVersion', 'taskType', 'providerId', 'model', 'actionTask', 'request', 'retryPolicy'], 'task')
   if (input.schemaVersion !== PROVIDER_VIDEO_TASK_SCHEMA_VERSION) throw providerVideoTaskError('schemaVersion is invalid')
   if (input.taskType !== PROVIDER_VIDEO_TASK_TYPE) throw providerVideoTaskError('taskType is invalid')
   const providerId = safeId(input.providerId, 'providerId', SAFE_PROVIDER)
   const model = safeId(input.model, 'model', SAFE_PROVIDER)
-  const actionTask = createActionVideoTask(input.actionTask)
+  const actionTask = normalizeActionTask(input.actionTask)
   assertExactKeys(input.request, ['backgroundColor', 'backgroundMode', 'camera', 'durationMs', 'fps', 'outputMimeType'], 'request')
   const backgroundMode = String(input.request.backgroundMode || '')
   if (!['solid', 'transparent'].includes(backgroundMode)) throw providerVideoTaskError('request.backgroundMode is invalid')
