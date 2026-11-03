@@ -28,6 +28,7 @@ const { createCompanionIntentBroker } = require('./src/services/companion-intent
 const { createCompanionAudioLeaseService } = require('./src/services/companion-audio-lease-service')
 const { createSecretService } = require('./src/services/secret-service')
 const { createImageGenerationModelService } = require('./src/services/image-generation-model-service')
+const { createVideoGenerationModelService } = require('./src/services/video-generation-model-service')
 const { createTriggerRuleRuntimeService } = require('./src/services/trigger-rule-runtime-service')
 const { createCreatorReferenceService } = require('./src/services/creator-reference-service')
 const { createCreatorStudioDefaultFlowService } = require('./src/services/creator-studio-default-flow-service')
@@ -110,6 +111,7 @@ const bootstrapOpenPet = () => {
       createCompanionAudioLeaseService,
       createSecretService,
       createImageGenerationModelService,
+      createVideoGenerationModelService,
       createTriggerRuleRuntimeService,
       createCreatorReferenceService,
       createCreatorStudioDefaultFlowService,

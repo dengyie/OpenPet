@@ -3292,6 +3292,33 @@ export interface ImageGenerationHealthCheckResult {
   }
 }
 
+export interface VideoGenerationConfigViewState {
+  provider: string
+  baseUrl: string
+  model: string
+  apiKeyRef: string
+  timeoutMs: number
+  maxConcurrentJobs: number
+  hasApiKey: boolean
+  apiKeyPreview: string
+  apiKeyLabel: string
+  modelCatalog: ProviderModelCatalogViewState
+}
+
+export interface VideoGenerationConfigSaveRequest {
+  provider?: string
+  baseUrl?: string
+  model?: string
+  timeoutMs?: number
+  maxConcurrentJobs?: number
+}
+
+export interface VideoGenerationSaveApiKeyResult {
+  apiKeyRef: string
+  hasApiKey: boolean
+  apiKeyPreview: string
+}
+
 export type ImageGenerationHealthCheckRequest = Record<string, never>
 
 export interface ImageGenerationOutputRef {
@@ -3853,6 +3880,11 @@ export interface ControlCenterApi {
   clearImageGenerationApiKey: () => Promise<ImageGenerationSaveApiKeyResult>
   checkImageGenerationHealth: (payload?: ImageGenerationHealthCheckRequest) => Promise<ImageGenerationHealthCheckResult>
   discoverImageGenerationModels: () => Promise<ProviderModelDiscoveryResult>
+  getVideoGenerationConfig: () => Promise<VideoGenerationConfigViewState>
+  saveVideoGenerationConfig: (config: VideoGenerationConfigSaveRequest) => Promise<VideoGenerationConfigViewState>
+  saveVideoGenerationApiKey: (apiKey: string) => Promise<VideoGenerationSaveApiKeyResult>
+  clearVideoGenerationApiKey: () => Promise<VideoGenerationSaveApiKeyResult>
+  discoverVideoGenerationModels: () => Promise<ProviderModelDiscoveryResult>
   getAiConversation: (conversationId: string) => Promise<ChatMessage[]>
   listAiConversations?: (filters?: { entrypoint?: string; petPackId?: string }) => Promise<{ conversations: Array<Record<string, unknown>> }>
   getAiConversationView?: (conversationId: string) => Promise<Record<string, unknown>>

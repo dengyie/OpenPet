@@ -23,6 +23,9 @@ import type {
   ImageGenerationConfigViewState,
   ImageGenerationHealthCheckResult,
   ImageGenerationSaveApiKeyResult,
+  VideoGenerationConfigSaveRequest,
+  VideoGenerationConfigViewState,
+  VideoGenerationSaveApiKeyResult,
   ProviderModelDiscoveryResult,
 } from '@openpet/shared/src/openpet-contracts.ts'
 
@@ -97,6 +100,17 @@ const imageConfigPatchSchema = v.strictObject({ config: v.strictObject({
   maxConcurrentJobs: v.optional(v.pipe(v.number(), v.finite(), v.integer(), v.minValue(1), v.maxValue(8))),
 }) }) as v.GenericSchema<{ config: ImageGenerationConfigSaveRequest }>
 const imageKeyResultSchema = v.strictObject({ apiKeyRef: v.string(), hasApiKey: v.boolean(), apiKeyPreview: v.string() })
+const videoConfigSchema = v.strictObject({
+  provider: v.string(), baseUrl: v.string(), model: v.string(), apiKeyRef: v.string(),
+  timeoutMs: nonNegativeInteger(), maxConcurrentJobs: nonNegativeInteger(), hasApiKey: v.boolean(),
+  apiKeyPreview: v.string(), apiKeyLabel: v.string(), modelCatalog: imageModelCatalogSchema,
+})
+const videoConfigPatchSchema = v.strictObject({ config: v.strictObject({
+  provider: v.optional(v.literal('openai-compatible')), baseUrl: v.optional(v.pipe(v.string(), v.maxLength(2000))),
+  model: v.optional(v.pipe(v.string(), v.maxLength(2000))),
+  timeoutMs: v.optional(v.pipe(v.number(), v.finite(), v.integer(), v.minValue(1000), v.maxValue(600000))),
+  maxConcurrentJobs: v.optional(v.pipe(v.number(), v.finite(), v.integer(), v.minValue(1), v.maxValue(8))),
+}) }) as v.GenericSchema<{ config: VideoGenerationConfigSaveRequest }>
 const emptySchema = v.strictObject({})
 const unknownObjectSchema = v.record(v.string(), v.unknown())
 const behaviorConfigSchema = v.strictObject({ enabled: v.boolean(), useTools: v.boolean(), cooldownMs: nonNegativeInteger(), rules: v.array(v.unknown()), decisions: v.array(v.unknown()) })
@@ -390,6 +404,11 @@ export function createAiTalkHttpApi(client: ApiClient = backendClient) {
     }),
     checkImageHealth: () => client.request({ method: 'GET', path: '/ai/images/health', responseSchema: unknownObjectSchema, retry: false, timeoutMs: 60_000 }) as unknown as Promise<ImageGenerationHealthCheckResult>,
     discoverImageModels: () => client.request({ method: 'GET', path: '/ai/images/models', responseSchema: unknownObjectSchema, retry: false, timeoutMs: 60_000 }) as unknown as Promise<ProviderModelDiscoveryResult>,
+    getVideoConfig: () => client.request({ method: 'GET', path: '/ai/videos/config', responseSchema: videoConfigSchema }) as Promise<VideoGenerationConfigViewState>,
+    saveVideoConfig: (config: VideoGenerationConfigSaveRequest) => client.request({ method: 'PATCH', path: '/ai/videos/config', requestSchema: videoConfigPatchSchema, body: { config }, responseSchema: videoConfigSchema, retry: false }) as Promise<VideoGenerationConfigViewState>,
+    saveVideoApiKey: (apiKey: string) => client.request({ method: 'PUT', path: '/ai/videos/key', requestSchema: apiKeySchema, body: { apiKey }, responseSchema: imageKeyResultSchema, retry: false }) as Promise<VideoGenerationSaveApiKeyResult>,
+    clearVideoApiKey: () => client.request({ method: 'DELETE', path: '/ai/videos/key', responseSchema: imageKeyResultSchema, retry: false }) as Promise<VideoGenerationSaveApiKeyResult>,
+    discoverVideoModels: () => client.request({ method: 'GET', path: '/ai/videos/models', responseSchema: unknownObjectSchema, retry: false, timeoutMs: 60_000 }) as unknown as Promise<ProviderModelDiscoveryResult>,
   }
 }
 
@@ -486,6 +505,11 @@ export const aiTalkApi = {
   getHatchBudget: (runId: string) => useDemoApi() ? fromDemo((api) => api.getHatchPetAgentRunStatus(runId)) : httpApi.getHatchBudget(runId),
   checkImageHealth: () => useDemoApi() ? fromDemo((api) => api.checkImageGenerationHealth({})) : httpApi.checkImageHealth(),
   discoverImageModels: () => useDemoApi() ? fromDemo((api) => api.discoverImageGenerationModels()) : httpApi.discoverImageModels(),
+  getVideoConfig: () => useDemoApi() ? fromDemo((api) => api.getVideoGenerationConfig()) : httpApi.getVideoConfig(),
+  saveVideoConfig: (config: VideoGenerationConfigSaveRequest) => useDemoApi() ? fromDemo((api) => api.saveVideoGenerationConfig(config)) : httpApi.saveVideoConfig(config),
+  saveVideoApiKey: (apiKey: string) => useDemoApi() ? fromDemo((api) => api.saveVideoGenerationApiKey(apiKey)) : httpApi.saveVideoApiKey(apiKey),
+  clearVideoApiKey: () => useDemoApi() ? fromDemo((api) => api.clearVideoGenerationApiKey()) : httpApi.clearVideoApiKey(),
+  discoverVideoModels: () => useDemoApi() ? fromDemo((api) => api.discoverVideoGenerationModels()) : httpApi.discoverVideoModels(),
   deleteMemory: (memoryId: string) => useDemoApi() ? fromDemo((api) => api.deleteAiMemory(memoryId)) : httpApi.deleteMemory(memoryId),
   clearPetPackMemories: () => useDemoApi() ? fromDemo((api) => api.clearAiPetPackMemories()) : httpApi.clearPetPackMemories(),
 }

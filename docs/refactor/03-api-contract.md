@@ -256,6 +256,9 @@
 | PUT · DELETE | `/ai/images/key` | 图片 API Key 写入/清除；Shell 持久化成功后才返回，仅包含引用和脱敏预览 |
 | GET | `/ai/images/health` | provider 健康 |
 | GET | `/ai/images/models` | 图像模型目录 |
+| GET · PATCH | `/ai/videos/config` | 视频 Provider 脱敏配置读写；固定 Grok 视频能力，不接受 `apiKeyRef` |
+| PUT · DELETE | `/ai/videos/key` | 视频 API Key 写入/清除；只返回引用和脱敏预览 |
+| GET | `/ai/videos/models` | Mango API 视频模型目录（含 `grok-imagine-video*`） |
 
 AI HTTP 路由逐条拒绝未声明的 query 字段和重复 query key。Provider key 响应由 HTTP 边界生成固定的脱敏 DTO；密钥值只用于等待 Shell 持久化和计算末尾掩码，不序列化 secret store 的返回对象。
 

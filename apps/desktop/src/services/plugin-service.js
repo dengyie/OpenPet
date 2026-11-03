@@ -504,7 +504,7 @@ const assertStorageKey = (key) => {
   }
 }
 
-const createPluginService = ({ settingsService, petService, actionService, actionImportService, petPackService, aiService, aiTalkService, imageGenerationModelService, secretService = null, hatchPetAgentService = null, fetchImpl = globalThis.fetch, resolveAddress, pluginNetworkConnect = connectPinnedHttps, pluginNetworkTimeoutMs = 10000, serviceHealthTimeoutMs, healthCheckTimeoutMs = serviceHealthTimeoutMs ?? PLUGIN_SERVICE_HEALTH_TIMEOUT_MS, serviceStopGracePeriodMs = PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS, commandProcessTimeoutMs = LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, openExternal = async () => { throw new Error('Dashboard opener is not available') }, selectCreatorAssetFrameFolder = async () => { throw new Error('Creator asset folder picker is not available') }, onPetPackActivated = () => {}, spawnServiceProcess = spawn, spawnSetupProcess = spawnServiceProcess, spawnCommandProcess = spawnServiceProcess, killServiceProcess = process.kill, signalServiceProcessTree = defaultServiceProcessTree.signalServiceProcessTree, setServiceHealthTimer = setTimeout, clearServiceHealthTimer = clearTimeout, probeAgentAwarenessActivity = defaultProbeAgentAwarenessActivity, setAgentAwarenessAutostartTimer = setInterval, clearAgentAwarenessAutostartTimer = clearInterval, agentAwarenessAutostartIntervalMs = DEFAULT_AGENT_AWARENESS_AUTOSTART_INTERVAL_MS, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
+const createPluginService = ({ settingsService, petService, actionService, actionImportService, petPackService, aiService, aiTalkService, imageGenerationModelService, videoGenerationModelService = null, secretService = null, hatchPetAgentService = null, fetchImpl = globalThis.fetch, resolveAddress, pluginNetworkConnect = connectPinnedHttps, pluginNetworkTimeoutMs = 10000, serviceHealthTimeoutMs, healthCheckTimeoutMs = serviceHealthTimeoutMs ?? PLUGIN_SERVICE_HEALTH_TIMEOUT_MS, serviceStopGracePeriodMs = PLUGIN_SERVICE_STOP_GRACE_PERIOD_MS, commandProcessTimeoutMs = LOCAL_PLUGIN_COMMAND_TIMEOUT_MS, openExternal = async () => { throw new Error('Dashboard opener is not available') }, selectCreatorAssetFrameFolder = async () => { throw new Error('Creator asset folder picker is not available') }, onPetPackActivated = () => {}, spawnServiceProcess = spawn, spawnSetupProcess = spawnServiceProcess, spawnCommandProcess = spawnServiceProcess, killServiceProcess = process.kill, signalServiceProcessTree = defaultServiceProcessTree.signalServiceProcessTree, setServiceHealthTimer = setTimeout, clearServiceHealthTimer = clearTimeout, probeAgentAwarenessActivity = defaultProbeAgentAwarenessActivity, setAgentAwarenessAutostartTimer = setInterval, clearAgentAwarenessAutostartTimer = clearInterval, agentAwarenessAutostartIntervalMs = DEFAULT_AGENT_AWARENESS_AUTOSTART_INTERVAL_MS, pluginDirs = [], officialPlugins = [], getPluginBlockStatus = () => ({ blocked: false, reasons: [] }) }) => {
   let effectiveHatchPetAgentService = hatchPetAgentService
   if (!settingsService) throw new Error('settingsService is required')
   if (!petService) throw new Error('petService is required')
@@ -946,6 +946,7 @@ const createPluginService = ({ settingsService, petService, actionService, actio
       if (!imageGenerationModelService?.getConfig) throw new Error('Creator model settings are not available')
       appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.model-settings read invoked' })
       const config = imageGenerationModelService.getConfig()
+      const videoConfig = videoGenerationModelService?.getConfig?.() || null
       return {
         ok: true,
         config: {
@@ -958,7 +959,18 @@ const createPluginService = ({ settingsService, petService, actionService, actio
           maxConcurrentJobs: config.maxConcurrentJobs,
           hasApiKey: config.hasApiKey,
           modelCatalog: config.modelCatalog,
-          creatorWorkflowModelPolicy: config.creatorWorkflowModelPolicy
+          creatorWorkflowModelPolicy: config.creatorWorkflowModelPolicy,
+          ...(videoConfig ? {
+            videoGeneration: {
+              provider: videoConfig.provider,
+              baseUrl: videoConfig.baseUrl,
+              model: videoConfig.model,
+              timeoutMs: videoConfig.timeoutMs,
+              maxConcurrentJobs: videoConfig.maxConcurrentJobs,
+              hasApiKey: videoConfig.hasApiKey,
+              modelCatalog: videoConfig.modelCatalog
+            }
+          } : {})
         }
       }
     },
@@ -1045,6 +1057,32 @@ const createPluginService = ({ settingsService, petService, actionService, actio
         ok: true,
         result
       }
+    },
+    creatorModelVideoGenerate: async (payload = {}, { signal = null } = {}) => {
+      assertPermission(plugin.manifest, 'model:image-generate')
+      if (!videoGenerationModelService?.generateVideo) throw new Error('Creator model video generation is not available')
+      appendLog({ pluginId: plugin.manifest.id, commandId, level: 'info', message: 'Bridge creator.model-video-generate invoked' })
+      const {
+        backend: _ignoredBackend,
+        provider: _ignoredProvider,
+        baseUrl: _ignoredBaseUrl,
+        apiKeyRef: _ignoredApiKeyRef,
+        model: _ignoredModel,
+        runId: rawRunId,
+        ...providerPayload
+      } = payload
+      const runId = String(rawRunId || '').trim()
+      const result = await videoGenerationModelService.generateVideo({
+        ...providerPayload,
+        runId,
+        signal,
+        referenceImages: sanitizeCreatorModelReferenceImages(plugin.manifest, payload.referenceImages),
+        output: {
+          ...(payload.output || {}),
+          dataDir: ensurePluginCreatorDirs(plugin.manifest).dataDir
+        }
+      })
+      return { ok: true, result }
     },
     creatorHatchPetPlan: async (payload = {}, { signal = null } = {}) => {
       assertPermission(plugin.manifest, 'model:image-generate')

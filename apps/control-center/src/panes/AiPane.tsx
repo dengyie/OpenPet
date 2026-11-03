@@ -16,6 +16,7 @@ import type {
   HatchPetAgentCapabilityResult,
   HatchPetAgentConfigView,
   ImageGenerationConfigViewState,
+  VideoGenerationConfigViewState,
   ProviderModelCatalogViewState,
   ProviderModelDiscoveryResult,
   PetChatStateViewState,
@@ -725,6 +726,8 @@ export interface AiPaneProps {
   activeConfig: AiConfigViewState
   imageGenerationConfig: ImageGenerationConfigViewState
   activeImageGenerationConfig: ImageGenerationConfigViewState
+  videoGenerationConfig: VideoGenerationConfigViewState
+  activeVideoGenerationConfig: VideoGenerationConfigViewState
   hatchPetAgentConfig: HatchPetAgentConfigView
   activeHatchPetAgentConfig: HatchPetAgentConfigView
   hatchPetAgentConfigDirty: boolean
@@ -755,10 +758,13 @@ export interface AiPaneProps {
   imageHealthResult: ImageGenerationHealthCheckResult | null
   imageModelDiscovery: ProviderModelDiscoveryResult | null
   imageModelDiscoveryStatus: string
+  videoModelDiscovery: ProviderModelDiscoveryResult | null
+  videoModelDiscoveryStatus: string
   imageTransparencyCompatibilityHint: string
   onChange: (partial: Partial<AiConfigViewState>) => void
   onChangeVision: (partial: Partial<VisionConfigViewState>) => void
   onChangeImageGeneration: (partial: Partial<ImageGenerationConfigViewState>) => void
+  onChangeVideoGeneration: (partial: Partial<VideoGenerationConfigViewState>) => void
   onChangeHatchPetAgent: (partial: Partial<HatchPetAgentConfigView>) => void
   onSave: () => void | Promise<void>
   onSaveHatchPetAgentConfig: () => void | Promise<void>
@@ -772,6 +778,7 @@ export interface AiPaneProps {
   onDiscoverAiModels: () => void | Promise<void>
   onDiscoverVisionModels: () => void | Promise<void>
   onSaveImageGeneration: () => void | Promise<void>
+  onSaveVideoGeneration: () => void | Promise<void>
   onSavePersonaOverride: () => void | Promise<void>
   onResetPersonaOverride: () => void | Promise<void>
   onGeneratePersonaDraft: () => void | Promise<void>
@@ -779,8 +786,11 @@ export interface AiPaneProps {
   onDismissGeneratedPersonaDraft: () => void | Promise<void>
   onSaveImageGenerationApiKey: () => void | Promise<void>
   onClearImageGenerationApiKey: () => void | Promise<void>
+  onSaveVideoGenerationApiKey: () => void | Promise<void>
+  onClearVideoGenerationApiKey: () => void | Promise<void>
   onCheckImageGenerationHealth: () => void | Promise<void>
   onDiscoverImageGenerationModels: () => void | Promise<void>
+  onDiscoverVideoGenerationModels: () => void | Promise<void>
   onSendChat: () => void | Promise<void>
   saving: boolean
   status: string
@@ -800,6 +810,8 @@ export interface AiPaneProps {
   setVisionApiKeyDraft: (value: string) => void
   imageApiKeyDraft: string
   setImageApiKeyDraft: (value: string) => void
+  videoApiKeyDraft: string
+  setVideoApiKeyDraft: (value: string) => void
   setHatchPetAgentApiKeyDraft: (value: string) => void
   onChangePersonaDraft: (partial: Partial<AiPaneProps['personaDraft']>) => void
   personaGenerationInstruction: string
@@ -848,6 +860,8 @@ export function AiPane({
   activeConfig,
   imageGenerationConfig = defaultImageGenerationConfig,
   activeImageGenerationConfig = defaultImageGenerationConfig,
+  videoGenerationConfig,
+  activeVideoGenerationConfig,
   hatchPetAgentConfig,
   activeHatchPetAgentConfig,
   hatchPetAgentConfigDirty,
@@ -869,10 +883,13 @@ export function AiPane({
   imageHealthResult,
   imageModelDiscovery,
   imageModelDiscoveryStatus,
+  videoModelDiscovery,
+  videoModelDiscoveryStatus,
   imageTransparencyCompatibilityHint,
   onChange,
   onChangeVision,
   onChangeImageGeneration,
+  onChangeVideoGeneration,
   onChangeHatchPetAgent,
   onSave,
   onSaveHatchPetAgentConfig,
@@ -886,6 +903,7 @@ export function AiPane({
   onDiscoverAiModels,
   onDiscoverVisionModels,
   onSaveImageGeneration,
+  onSaveVideoGeneration,
   onSavePersonaOverride,
   onResetPersonaOverride,
   onGeneratePersonaDraft,
@@ -893,8 +911,11 @@ export function AiPane({
   onDismissGeneratedPersonaDraft,
   onSaveImageGenerationApiKey,
   onClearImageGenerationApiKey,
+  onSaveVideoGenerationApiKey,
+  onClearVideoGenerationApiKey,
   onCheckImageGenerationHealth,
   onDiscoverImageGenerationModels,
+  onDiscoverVideoGenerationModels,
   onSendChat,
   saving,
   status,
@@ -914,6 +935,8 @@ export function AiPane({
   setVisionApiKeyDraft,
   imageApiKeyDraft,
   setImageApiKeyDraft,
+  videoApiKeyDraft,
+  setVideoApiKeyDraft,
   setHatchPetAgentApiKeyDraft,
   onChangePersonaDraft,
   personaGenerationInstruction,
@@ -960,6 +983,7 @@ export function AiPane({
   const latestMemoryJob = memoryProfile.recentJobs[0]
   const saveDisabled = saving || Boolean(providerConfigValidationError)
   const imageSaveDisabled = saving || Boolean(imageProviderValidationError)
+  const videoSaveDisabled = saving || !videoGenerationConfig?.baseUrl.trim() || !videoGenerationConfig?.model.trim()
   const apiKeyDraftReady = Boolean(apiKeyDraft.trim())
   const visionApiKeyDraftReady = Boolean(visionApiKeyDraft.trim())
   const visionConfigChanges = providerConfigChanges.filter((item) => item.startsWith('Vision'))
@@ -1001,6 +1025,10 @@ export function AiPane({
     imageModelDiscoveryStatus,
     imageModelDiscovery?.models?.length ? `models: ${imageModelDiscovery.models.join(', ')}` : '',
     hasUnsavedImageProbeInputs && (imageModelDiscoveryStatus || imageModelDiscovery) ? '仍对应已保存配置' : ''
+  ].filter(Boolean).join(' · ')
+  const videoModelDiscoverySummary = [
+    videoModelDiscoveryStatus,
+    videoModelDiscovery?.models?.length ? `models: ${videoModelDiscovery.models.join(', ')}` : ''
   ].filter(Boolean).join(' · ')
   const activeChatHostSummary = getProviderHostSummary(activeConfig.baseUrl)
   const activeVisionHostSummary = getProviderHostSummary(activeConfig.vision.effectiveBaseUrl)
@@ -1224,6 +1252,50 @@ export function AiPane({
                         健康检查
                       </button>
                     </div>
+                  </div>
+                </div>
+              </div>
+            </details>
+
+            <details className="provider-capability-card provider-capability-panel" data-testid="video-provider-card" open>
+              <ProviderCapabilityPanelSummary
+                title="视频模型"
+                description="用于 Creator Studio 生成动作视频、抽帧和绿幕抠图素材。"
+                hostSummary={getProviderHostSummary(activeVideoGenerationConfig?.baseUrl || '')}
+                modelSummary={activeVideoGenerationConfig?.model || ''}
+                draftSummary={videoModelDiscoverySummary}
+                hasApiKey={Boolean(activeVideoGenerationConfig?.hasApiKey)}
+              />
+              <div className="provider-capability-body">
+                <div className="section provider-core-summary">
+                  <label className="field-row">
+                    <span className="field-label">Base URL</span>
+                    <input aria-label="视频 Base URL" className="text-input" value={videoGenerationConfig?.baseUrl || ''} onChange={(event) => onChangeVideoGeneration({ baseUrl: event.target.value })} />
+                  </label>
+                  <div className="field-row">
+                    <span className="field-label">Model</span>
+                    <ProviderModelSelector
+                      ariaLabel="视频 Model"
+                      currentModel={videoGenerationConfig?.model || ''}
+                      cachedCatalog={activeVideoGenerationConfig?.modelCatalog || { cacheKey: '', models: [], fetchedAt: '', source: 'none' }}
+                      recommendedModels={['grok-imagine-video', 'grok-imagine-video-1.5', 'grok-imagine-video-1.5-preview']}
+                      saving={saving}
+                      statusText={videoModelDiscoverySummary}
+                      onSelectModel={(model) => onChangeVideoGeneration({ model })}
+                      onRefreshModels={onDiscoverVideoGenerationModels}
+                    />
+                  </div>
+                  <div className="field-row">
+                    <div><div className="field-label">API Key</div><div className="field-note">{videoGenerationConfig?.hasApiKey ? '已保存' : '未保存'}{videoGenerationConfig?.apiKeyPreview ? ` · ${videoGenerationConfig.apiKeyPreview}` : ''}</div></div>
+                    <div className="inline-action">
+                      <input aria-label="视频 API Key" className="text-input" type="password" value={videoApiKeyDraft} placeholder={videoGenerationConfig?.hasApiKey ? '输入新密钥覆盖' : '输入视频 API Key'} onChange={(event) => setVideoApiKeyDraft(event.target.value)} />
+                      <button type="button" className="ghost" aria-label="保存视频密钥" onClick={onSaveVideoGenerationApiKey} disabled={!videoApiKeyDraft.trim() || saving}>保存</button>
+                      <button type="button" className="danger-text" aria-label="清除视频密钥" onClick={onClearVideoGenerationApiKey} disabled={saving || !videoGenerationConfig?.hasApiKey}>清除</button>
+                    </div>
+                  </div>
+                  <div className="provider-card-actions provider-card-actions-inline">
+                    <button type="button" className="primary" aria-label="保存视频 Provider" onClick={onSaveVideoGeneration} disabled={videoSaveDisabled}>保存</button>
+                    <button type="button" className="ghost" aria-label="刷新视频模型" onClick={onDiscoverVideoGenerationModels} disabled={saving}>刷新模型</button>
                   </div>
                 </div>
               </div>

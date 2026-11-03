@@ -19,6 +19,7 @@ The goal is to keep a small set of live operating docs current and treat the res
 | Compact engineering snapshot | [`development-summary.md`](./development-summary.md) |
 | Compact product and release snapshot | [`project-status-review.md`](./project-status-review.md) |
 | Current Shell/Backend migration development plan | [`superpowers/plans/2026-10-04-openpet-development-plan.md`](./superpowers/plans/2026-10-04-openpet-development-plan.md) |
+| Video animation asset development plan | [`superpowers/plans/2026-11-02-openpet-video-animation-development.md`](./superpowers/plans/2026-11-02-openpet-video-animation-development.md) |
 | Guangzhou mesh Backend deployment | [`deployment/openpet-mesh-backend.md`](./deployment/openpet-mesh-backend.md) |
 
 Use the live docs above for current truth. Phase, review, and old Superpowers plan/spec files are audit records unless this map explicitly lists them as active runbooks. The 2026-10-04 migration plan is the current method-level implementation guide for Shell/Backend work; it does not replace `TODO.md` as the active queue.
@@ -35,6 +36,7 @@ Use the live docs above for current truth. Phase, review, and old Superpowers pl
 | AI provider settings UX | [`ai-provider-settings-ux-design.md`](./ai-provider-settings-ux-design.md) |
 | AI Talk and pet dialogue | [`openpet-current-todo-architecture.md`](./openpet-current-todo-architecture.md), [`superpowers/specs/2026-06-20-pet-dialogue-phase1-design.md`](./superpowers/specs/2026-06-20-pet-dialogue-phase1-design.md), [`superpowers/specs/2026-06-28-real-provider-chat-acceptance-runbook.md`](./superpowers/specs/2026-06-28-real-provider-chat-acceptance-runbook.md) |
 | Pet character and action generation | [`pet-character-generation.md`](./pet-character-generation.md) |
+| Video animation asset pipeline | [`superpowers/plans/2026-11-02-openpet-video-animation-development.md`](./superpowers/plans/2026-11-02-openpet-video-animation-development.md) |
 | Control Center visual design notes | [`design-system/cursor-settings.md`](./design-system/cursor-settings.md) |
 | Creator Studio and model-generation backlog | [`superpowers/specs/2026-06-19-creator-studio-conversational-generation-todo.md`](./superpowers/specs/2026-06-19-creator-studio-conversational-generation-todo.md), [`superpowers/specs/2026-06-19-openpet-model-settings-backlog.md`](./superpowers/specs/2026-06-19-openpet-model-settings-backlog.md), [`superpowers/specs/2026-06-20-openpet-creator-prompt-builder-design.md`](./superpowers/specs/2026-06-20-openpet-creator-prompt-builder-design.md) |
 | Desktop release evidence | [`desktop-release-design.md`](./desktop-release-design.md), [`release-checklist.md`](./release-checklist.md) |

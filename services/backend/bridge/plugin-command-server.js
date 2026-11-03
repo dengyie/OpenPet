@@ -37,6 +37,7 @@ const CAPABILITY_BY_PATH = Object.freeze({
 	"/creator/model-settings": "creator:model-settings",
 	"/creator/model-health-check": "creator:model-health-check",
 	"/creator/model-image-generate": "creator:model-image-generate",
+	"/creator/model-video-generate": "creator:model-video-generate",
 	"/creator/hatch-pet/plan": "creator:hatch-pet-plan",
 	"/creator/hatch-pet/evaluate": "creator:hatch-pet-evaluate",
 })

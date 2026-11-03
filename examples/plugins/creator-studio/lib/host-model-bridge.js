@@ -5,6 +5,8 @@ const { areSpriteCandidatesDuplicates, runQualityFirstAction } = require('./qual
 const { archiveCandidateRevision, writeCandidateRecord } = require('./sprite-candidate-store')
 const { createQualityFirstFullPetOrchestrator } = require('./quality-first-full-pet-orchestrator')
 const { createProviderImageTask } = require('./provider-image-task')
+const { createVideoCandidateArtifacts, runVideoAction } = require('./video-action-runner')
+const { isGrokVideoModel } = require('./video-provider-capabilities')
 const { compileProviderImagePrompt } = require('./provider-image-prompt-compiler')
 const { createSpriteAssetPlan } = require('./sprite-asset-plan')
 const { createCharacterAnchorGrid } = require('./character-anchor-grid')
@@ -3104,6 +3106,12 @@ const generateSelectedFullPetAction = (options = {}) => runQualityFirstAction(op
 
 const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null } = {}) => {
   const settings = await readHostModelSettings()
+  const videoSettings = settings.videoGeneration && typeof settings.videoGeneration === 'object'
+    ? settings.videoGeneration
+    : null
+  const videoModel = String(videoSettings?.model || '').trim()
+  const useVideoActionPipeline = Boolean(videoSettings?.hasApiKey === true && isGrokVideoModel(videoModel))
+  const actionProcessorVersion = useVideoActionPipeline ? 2 : 1
   const sourceReference = resolveOriginalReferenceImage({ dataDir, run })
   if (!isUsableLocalReferenceImage({ dataDir, referenceImage: sourceReference })) {
     throw createProviderReferenceContractError('reference_image_required', 'Quality-first generation requires one usable local reference image')
@@ -3277,7 +3285,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
       planHash: plan.hash,
       canonicalHash: canonical?.sha256,
       profileHash: actionProfile?.hash,
-      processorVersion: 1,
+        processorVersion: actionProcessorVersion,
       qualityProfileHash: qualityProfile.hash,
       requireBindings: true
     })
@@ -3306,6 +3314,99 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
         },
         candidates: []
       }
+    }
+    if (useVideoActionPipeline) {
+      const runner = await generateSelectedFullPetAction({
+        context: {
+          actionId,
+          provider: String(videoSettings.provider || 'mango-api'),
+          model: videoModel,
+          duplicateThresholds: { perceptualHashDistance: 4, identityDescriptorDistance: 0.08, alphaMaskDistance: 0.08 }
+        },
+        existingCandidates: [],
+        reserveCreativeDispatch: async () => {},
+        generateCandidate: async ({ candidateId }) => {
+          const videoResult = await runVideoAction({
+            dataDir,
+            run,
+            action,
+            canonical,
+            model: videoModel,
+            outputRelativeDir: `runs/${run.runId}/candidates/${actionId}/${candidateId}/video`
+          })
+          const processed = await createVideoCandidateArtifacts({
+            processed: videoResult.processed,
+            outputDir: path.join(dataDir, `runs/${run.runId}/candidates/${actionId}/${candidateId}/processed`),
+            layout: action.layout,
+            expectedFrameCount: action.frameCount,
+            characterClass: plan.character.assetClass
+          })
+          const descriptors = await createSpriteImageDescriptors({ imagePath: processed.processedSheet.path })
+          const rawVideoPath = path.resolve(dataDir, videoResult.rawVideo.relativePath)
+          return {
+            candidateId,
+            strategyId: `video-${videoModel}`,
+            rawPath: processed.rawSheet.path,
+            rawVideoPath,
+            promptRelativePath: '',
+            provider: 'mango-api',
+            model: videoModel,
+            requestId: String(videoResult.rawVideo.taskId || ''),
+            traceContext: { runId: run.runId, actionId, stage: 'action-video-candidate', candidateId },
+            sha256: processed.rawSheet.sha256,
+            descriptors,
+            actionPolicy: { anchorPolicy: action.anchorPolicy },
+            outputDir: path.join(dataDir, `runs/${run.runId}/candidates/${actionId}/${candidateId}/processed`),
+            processed,
+            videoTemporalQuality: videoResult.temporalQuality,
+            artifacts: [
+              { role: 'raw-video', path: rawVideoPath, sha256: String(videoResult.rawVideo.sha256 || sha256File(rawVideoPath)) },
+              { role: 'raw-sheet', path: processed.rawSheet.path, sha256: processed.rawSheet.sha256 },
+              { role: 'processed-sheet', path: processed.processedSheet.path, sha256: processed.processedSheet.sha256 },
+              { role: 'contact-sheet', path: processed.contactSheet.path, sha256: processed.contactSheet.sha256 },
+              { role: 'gif', path: processed.gif.path, sha256: processed.gif.sha256 }
+            ]
+          }
+        },
+        processCandidate: async (candidate) => {
+          const temporal = candidate.videoTemporalQuality || {}
+          const spriteQa = analyzeSpriteCandidate({ actionId, rawMetrics: candidate.processed.metrics, profile: actionProfile, actionPolicy: action })
+          const failures = [...new Set([...(spriteQa.failures || []), ...(Array.isArray(temporal.failures) ? temporal.failures : [])])]
+          return {
+            ...candidate,
+            technicalEligible: failures.every((failure) => !['empty-used-cell', 'video-frame-empty', 'mask-dropout', 'root-anchor-missing'].includes(failure)),
+            qa: { ...spriteQa, ok: failures.length === 0, failures, temporalQuality: temporal },
+            processed: candidate.processed
+          }
+        },
+        evaluateCandidate: async (candidate) => {
+          const evaluatorBoardPath = path.join(candidate.outputDir, 'evaluator-board.png')
+          const board = await createActionEvaluatorBoard({ sourcePath: sourceReference.path, canonicalPath, candidateFrames: candidate.processed.frames, outputPath: evaluatorBoardPath })
+          const evaluation = await requestHatchPetSpriteEvaluation({ runId: run.runId, scope: actionId === 'jumping' ? 'airborne-action' : 'grounded-action', board: { relativePath: path.relative(dataDir, board.path).replace(/\\/g, '/'), sha256: board.sha256, regions: board.regions }, qa: candidate.qa })
+          return { evaluation: evaluation.evaluation, gate: evaluation.gate, evaluationEvidenceRelativePath: evaluation.evidenceRelativePath }
+        },
+        persistCandidate: async (candidate) => {
+          const record = writeCandidateRecord({
+            dataDir,
+            runId: run.runId,
+            scope: `action-${actionId}`,
+            candidate: {
+              ...candidate,
+              bindings: {
+                planHash: plan.hash,
+                canonicalHash: canonical.sha256,
+                profileHash: actionId === 'idle' ? '' : String(actionProfile?.hash || ''),
+        processorVersion: actionProcessorVersion,
+                qualityProfileHash: qualityProfile.hash
+              },
+              artifacts: collectQualityFirstCandidateArtifacts({ dataDir, candidate })
+            }
+          })
+          candidate.candidateRecordRelativePath = record.relativePath
+        },
+        archiveCandidateRevision: async () => archiveCandidateRevision({ dataDir, runId: run.runId, scope: `action-${actionId}`, reason: 'video-action-repair' })
+      })
+      return runner
     }
     const anchorPath = path.join(dataDir, `runs/${run.runId}/references/${actionId}/anchor-grid.png`)
     const boardPath = path.join(dataDir, `runs/${run.runId}/references/${actionId}/action-reference-board.png`)
@@ -3372,7 +3473,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
               planHash: plan.hash,
               canonicalHash: canonical.sha256,
               profileHash: actionId === 'idle' ? '' : String(actionProfile?.hash || ''),
-              processorVersion: 1,
+              processorVersion: actionProcessorVersion,
               qualityProfileHash: qualityProfile.hash
             },
             artifacts: collectQualityFirstCandidateArtifacts({ dataDir, candidate })
@@ -3524,7 +3625,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
         planHash: String(plan.hash || '').slice(0, 128),
         canonicalHash: String(canonical?.sha256 || '').slice(0, 128),
         profileHash: String(profile?.hash || '').slice(0, 128),
-        processorVersion: 1,
+        processorVersion: actionProcessorVersion,
         qualityProfileHash: String(qualityProfile?.hash || '').slice(0, 128)
       },
       row: packagedFrames.length > 0 ? {
@@ -3686,7 +3787,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
       anchorPolicy: 'compact-contact-root-v1',
       canonicalMasterSha256: canonical.sha256,
       idleCheckpointSha256: idle.selectedCandidateId,
-      processorVersion: 1
+      processorVersion: actionProcessorVersion
     })
   }
   const orchestrator = createQualityFirstFullPetOrchestrator({

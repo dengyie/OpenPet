@@ -265,6 +265,7 @@ Current bridge routes:
 - `GET /creator/model-settings`
 - `POST /creator/model-health-check`
 - `POST /creator/model-image-generate`
+- `POST /creator/model-video-generate`
 - `POST /creator/hatch-pet/plan`
 - `POST /creator/hatch-pet/evaluate`
 
@@ -318,6 +319,7 @@ Current endpoint set:
 - `GET /creator/model-settings`
 - `POST /creator/model-health-check`
 - `POST /creator/model-image-generate`
+- `POST /creator/model-video-generate`
 - `POST /creator/hatch-pet/plan`
 - `POST /creator/hatch-pet/evaluate`
 

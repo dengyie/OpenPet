@@ -176,6 +176,42 @@ test("image configuration routes reject owner fields, unknown fields, and out-of
 	assert.deepEqual(calls, [])
 })
 
+test("video configuration routes keep video provider state separate and expose discovered Grok models", async () => {
+	const calls = []
+	const config = {
+		provider: "openai-compatible",
+		baseUrl: "https://api.mangoqwq.com/v1",
+		model: "grok-imagine-video",
+		apiKeyRef: "secret:model.video.openai-compatible.apiKey",
+		timeoutMs: 300000,
+		maxConcurrentJobs: 1,
+		hasApiKey: true,
+		apiKeyPreview: "••••1234",
+		apiKeyLabel: "Video API Key",
+		modelCatalog: { cacheKey: "", models: [], fetchedAt: "", source: "none" },
+	}
+	const ai = {
+		getVideoConfig: async () => config,
+		saveVideoConfig: async (next) => { calls.push(["config", next]); return { ...config, ...next } },
+		saveVideoProviderApiKey: async (value) => { calls.push(["key", value]); return { apiKeyRef: config.apiKeyRef, hasApiKey: true, apiKeyPreview: "••••1234" } },
+		clearVideoProviderApiKey: async () => ({ apiKeyRef: config.apiKeyRef, hasApiKey: false, apiKeyPreview: "" }),
+		discoverVideoModels: async () => ({ provider: "mango-api", baseUrl: config.baseUrl, models: ["grok-imagine-video", "grok-imagine-video-1.5"], videoModels: ["grok-imagine-video", "grok-imagine-video-1.5"] }),
+	}
+	await withImageServer(ai, async (base) => {
+		const headers = { "content-type": "application/json" }
+		const saved = await fetch(`${base}/ai/videos/config`, { method: "PATCH", headers, body: JSON.stringify({ config: { model: "grok-imagine-video-1.5" } }) })
+		assert.equal(saved.status, 200)
+		assert.equal((await saved.json()).data.model, "grok-imagine-video-1.5")
+		const models = await fetch(`${base}/ai/videos/models`)
+		assert.equal(models.status, 200)
+		const body = await models.json()
+		assert.deepEqual(body.data.models, ["grok-imagine-video", "grok-imagine-video-1.5"])
+		assert.equal(body.data.hasApiKey, true)
+		assert.equal(JSON.stringify(body).includes("apiKey"), false)
+	})
+	assert.deepEqual(calls, [["config", { model: "grok-imagine-video-1.5" }]])
+})
+
 test("image routes expose dependency failures as retryable unavailability", async () => {
 	await withImageServer(undefined, async (base) => {
 		const headers = { "content-type": "application/json" }
