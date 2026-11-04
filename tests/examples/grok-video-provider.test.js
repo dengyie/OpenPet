@@ -251,3 +251,20 @@ test('Grok video provider rejects unsafe content redirects and oversized content
     (error) => error.code === 'video_content_too_large'
   )
 })
+
+
+test('existing video output is rejected before any paid Provider request', async () => {
+  const outputDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openpet-video-conflict-'))
+  const outputPath = path.join(outputDir, 'idle.mp4')
+  await fs.writeFile(outputPath, 'retained-paid-video')
+  let calls = 0
+  const provider = createGrokVideoProvider({
+    baseUrl: 'https://api.mangoqwq.com/v1', apiKey: 'runtime-only-key',
+    fetchImpl: async () => { calls += 1; throw new Error('must not contact Provider') }
+  })
+  await assert.rejects(provider.generateVideo({
+    model: 'grok-imagine-video', prompt: 'idle', outputDir, outputFileName: 'idle.mp4'
+  }), (error) => error.code === 'video_output_conflict' && error.retryable === false)
+  assert.equal(calls, 0)
+  assert.equal(await fs.readFile(outputPath, 'utf8'), 'retained-paid-video')
+})

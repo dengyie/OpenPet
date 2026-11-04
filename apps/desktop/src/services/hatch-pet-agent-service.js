@@ -14,6 +14,7 @@ const {
   createBudgetPublicView,
   reconcileAbandonedProviderReservations,
   recordProviderCall: recordBudgetProviderCall,
+  renewBudgetWindow: renewBudgetWindowLedger,
   reserveEvaluatorCall,
   reservePlannerCall,
   reserveProviderCall: reserveBudgetProviderCall
@@ -618,6 +619,13 @@ const createHatchPetAgentService = ({
     )
     const restored = Object.freeze({
       ...baseline,
+      activeWindowStartedAtMs: Math.max(baseline.startedAtMs, Number(stored.activeWindowStartedAtMs) || baseline.startedAtMs),
+      windowVersion: Math.max(1, Math.trunc(Number(stored.windowVersion) || 1)),
+      renewalCount: Math.max(0, Math.trunc(Number(stored.renewalCount) || 0)),
+      lastRenewedAtMs: stored.lastRenewedAtMs === null || stored.lastRenewedAtMs === undefined || stored.lastRenewedAtMs === ''
+        ? null
+        : (Number.isFinite(Number(stored.lastRenewedAtMs)) ? Math.max(baseline.startedAtMs, Number(stored.lastRenewedAtMs)) : null),
+      lastRenewalReason: normalizeText(stored.lastRenewalReason, '', 80),
       reservationSequence: restoredSequence,
       usage: Object.freeze({
         ...baseline.usage,
@@ -682,6 +690,18 @@ const createHatchPetAgentService = ({
       budgetLedger: recorded,
       budget: createBudgetPublicView(recorded)
     }
+  }
+
+  const renewBudgetWindow = ({ runId, reason = 'recovery' } = {}) => {
+    const config = getStoredConfig()
+    const ledger = resolveBudgetLedger({ runId, limits: config.budgets, preferPersisted: true })
+    const renewed = renewBudgetWindowLedger(ledger, { reason })
+    if (renewed === ledger) {
+      return { runId: normalizeText(runId, '', 128), renewed: false, budgetLedger: ledger, budget: createBudgetPublicView(ledger) }
+    }
+    persistBudgetLedger({ runId, ledger: renewed })
+    recordLog({ level: 'info', event: 'hatch-pet.budget.window-renewed', message: 'Hatch-pet recovery budget window renewed', details: { runId: normalizeText(runId, '', 128), windowVersion: renewed.windowVersion, reason: normalizeText(reason, '', 80) } })
+    return { runId: normalizeText(runId, '', 128), renewed: true, budgetLedger: renewed, budget: createBudgetPublicView(renewed) }
   }
 
   const evaluateSprite = async ({ runId, scope, board, qa = {}, profile, budgetLedger = null, signal = null } = {}) => {
@@ -1142,6 +1162,7 @@ const createHatchPetAgentService = ({
     evaluateSprite,
     planSprite,
     recordProviderCall,
+    renewBudgetWindow,
     reserveProviderCall,
     getBudget,
     getRunStatus

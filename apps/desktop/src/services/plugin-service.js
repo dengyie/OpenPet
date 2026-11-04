@@ -1072,16 +1072,53 @@ const createPluginService = ({ settingsService, petService, actionService, actio
         ...providerPayload
       } = payload
       const runId = String(rawRunId || '').trim()
-      const result = await videoGenerationModelService.generateVideo({
-        ...providerPayload,
-        runId,
-        signal,
-        referenceImages: sanitizeCreatorModelReferenceImages(plugin.manifest, payload.referenceImages),
-        output: {
-          ...(payload.output || {}),
-          dataDir: ensurePluginCreatorDirs(plugin.manifest).dataDir
+      const canAccountProviderCall = Boolean(
+        plugin.manifest.id === CREATOR_STUDIO_PLUGIN_ID &&
+        runId &&
+        effectiveHatchPetAgentService?.reserveProviderCall &&
+        effectiveHatchPetAgentService?.recordProviderCall
+      )
+      const reservation = canAccountProviderCall
+        ? effectiveHatchPetAgentService.reserveProviderCall({
+            runId,
+            timeoutMs: Math.max(0, Number(payload.timeoutMs) || 0)
+          })
+        : null
+      let result
+      try {
+        result = await videoGenerationModelService.generateVideo({
+          ...providerPayload,
+          runId,
+          signal,
+          referenceImages: sanitizeCreatorModelReferenceImages(plugin.manifest, payload.referenceImages),
+          output: {
+            ...(payload.output || {}),
+            dataDir: ensurePluginCreatorDirs(plugin.manifest).dataDir
+          }
+        })
+      } catch (error) {
+        if (reservation) {
+          const httpStatus = String(error?.message || '').match(/HTTP\s+(\d{3})/i)?.[1]
+          effectiveHatchPetAgentService.recordProviderCall({
+            runId,
+            reservationId: reservation.reservationId,
+            budgetLedger: reservation.budgetLedger,
+            ok: false,
+            code: httpStatus ? `http-${httpStatus}` : String(error?.code || 'provider-request-error').slice(0, 80)
+          })
         }
-      })
+        throw error
+      }
+      if (reservation) {
+        effectiveHatchPetAgentService.recordProviderCall({
+          runId,
+          reservationId: reservation.reservationId,
+          budgetLedger: reservation.budgetLedger,
+          ok: true,
+          code: 'ok',
+          estimatedCost: result?.usage?.estimatedCostUsd ?? null
+        })
+      }
       return { ok: true, result }
     },
     creatorHatchPetPlan: async (payload = {}, { signal = null } = {}) => {

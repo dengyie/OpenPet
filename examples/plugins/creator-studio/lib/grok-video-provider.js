@@ -227,6 +227,16 @@ const createGrokVideoProvider = ({ baseUrl, apiKey, fetchImpl = globalThis.fetch
     const normalizedSize = size === undefined ? undefined : String(size).trim()
     if (normalizedSize !== undefined && !/^\d{2,5}x\d{2,5}$/.test(normalizedSize)) throw grokVideoError('video size is invalid')
 
+    const outputPath = path.join(normalizedOutputDir, normalizedFileName)
+    // A repair must never spend another Provider call on an occupied destination.
+    // Keep the exclusive write below as the final guard against concurrent writes.
+    try {
+      await fs.lstat(outputPath)
+      throw grokVideoError('video output file already exists', 'video_output_conflict', { retryable: false })
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error
+    }
+    await fs.mkdir(normalizedOutputDir, { recursive: true })
     const reference = await readReferenceDataUrl({ referenceDataUrl, referencePath, referenceMimeType })
     throwIfAborted(signal)
     const submit = await requestJson({
@@ -286,11 +296,9 @@ const createGrokVideoProvider = ({ baseUrl, apiKey, fetchImpl = globalThis.fetch
     }
     if (!contentBytes.length || contentBytes.length > normalizedMaxBytes) throw grokVideoError('video content size is invalid', 'video_content_too_large')
     if (!VIDEO_MIME_TYPES.has(contentType)) contentType = normalizedFileName.endsWith('.webm') ? 'video/webm' : normalizedFileName.endsWith('.mov') ? 'video/quicktime' : 'video/mp4'
-    await fs.mkdir(normalizedOutputDir, { recursive: true })
-    const outputPath = path.join(normalizedOutputDir, normalizedFileName)
     await fs.writeFile(outputPath, contentBytes, { flag: 'wx' }).catch(async (error) => {
       if (error.code !== 'EEXIST') throw error
-      throw grokVideoError('video output file already exists', 'video_output_conflict')
+      throw grokVideoError('video output file already exists', 'video_output_conflict', { retryable: false })
     })
     const sha256 = crypto.createHash('sha256').update(contentBytes).digest('hex')
     onProgress?.({ taskId, status: 'downloaded', poll: undefined, maxPolls: normalizedMaxPolls })

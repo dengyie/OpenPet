@@ -103,6 +103,7 @@ const assertCanonicalPool = (pool) => {
 
 const publicActionResult = (result) => ({
   ok: result?.ok === true,
+  processorVersion: Number(result?.processorVersion) || 1,
   actionId: normalizeId(result?.actionId),
   disposition: String(result?.disposition || ''),
   selectedCandidateId: normalizeId(result?.selectedCandidateId),

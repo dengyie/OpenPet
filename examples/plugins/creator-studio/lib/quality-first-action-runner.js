@@ -47,13 +47,15 @@ const runQualityFirstAction = async ({
     throw new Error('Quality-first action runner requires generation, processing, evaluation, and reservation callbacks')
   }
   const thresholds = context.duplicateThresholds || {}
+  const candidateIdPrefix = String(context.candidateIdPrefix || 'candidate')
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,110}$/.test(candidateIdPrefix)) throw new Error('Action candidate ID prefix is invalid')
   const allCandidates = []
   const distinctCandidates = []
   const dispatches = []
   const failureCodes = []
   const dispatch = async (attemptKind, repairCodes = []) => {
     const dispatchIndex = Math.max(0, ...dispatches.map((entry) => Number(entry.dispatchIndex) || 0)) + 1
-    const assignedCandidateId = `candidate-${dispatchIndex}`
+    const assignedCandidateId = `${candidateIdPrefix}-${dispatchIndex}`
     await reserveCreativeDispatch({ actionId, attemptKind, candidateId: assignedCandidateId, dispatchIndex })
     let generated
     try {

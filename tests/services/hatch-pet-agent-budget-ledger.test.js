@@ -5,6 +5,7 @@ const {
   assertPlanFitsBudget,
   createBudgetLedger,
   createBudgetPublicView,
+  renewBudgetWindow,
   reconcileAbandonedProviderReservations,
   recordProviderCall,
   reserveEvaluatorCall,
@@ -90,6 +91,26 @@ test('recordProviderCall settles a call that finished after the elapsed budget e
     () => reserveProviderCall(ledger, { timeoutMs: 480_000, now: () => nowMs }),
     (error) => error?.code === 'hatch_pet_elapsed_budget_exhausted'
   )
+})
+
+test('renewBudgetWindow opens an explicit recovery window without resetting historical usage', () => {
+  let nowMs = 1_000
+  let ledger = createBudgetLedger({ limits, startedAtMs: nowMs, now: () => nowMs })
+  const provider = reserveProviderCall(ledger, { timeoutMs: 480_000, now: () => nowMs })
+  ledger = recordProviderCall(provider.ledger, provider.reservationId, { ok: false, code: 'http-524', now: () => nowMs })
+  nowMs += limits.maxElapsedMs + 1
+  assert.throws(
+    () => reserveProviderCall(ledger, { timeoutMs: 480_000, now: () => nowMs }),
+    (error) => error?.code === 'hatch_pet_elapsed_budget_exhausted'
+  )
+
+  const renewed = renewBudgetWindow(ledger, { now: () => nowMs, reason: 'retry-action' })
+  assert.equal(renewed.windowVersion, 2)
+  assert.equal(renewed.usage.providerCalls, 1)
+  assert.equal(renewed.renewalCount, 1)
+  assert.equal(renewed.lastRenewalReason, 'retry-action')
+  assert.equal(renewed.activeWindowStartedAtMs, nowMs)
+  assert.doesNotThrow(() => reserveProviderCall(renewed, { timeoutMs: 480_000, now: () => nowMs }))
 })
 
 test('cost overrun is recorded at settlement and enforced at the next reservation', () => {

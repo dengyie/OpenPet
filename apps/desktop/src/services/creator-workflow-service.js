@@ -1881,7 +1881,7 @@ const createQualityFirstIdentityReviewView = ({ run = null, pluginDataDir = '' }
                     planHash: normalizeText(qualityFirst.planHash),
                     canonicalHash: acceptedCanonicalHash,
                     profileHash: normalizeText(actionId) === 'idle' ? '' : normalizeText(qualityFirst.scaleProfileHash),
-                    processorVersion: 1,
+                    processorVersion: Number(result?.processorVersion) || 1,
                     qualityProfileHash: activeQualityProfileHash
                   }
                 }))
@@ -3175,6 +3175,7 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
       const pluginDataDir = pluginService.getPluginCreatorDataDir(CREATOR_STUDIO_PLUGIN_ID)
       updateWorkflowProgress({ runId: normalizedRunId, commandId, message: label })
       startProgressPolling()
+      await hatchPetAgentService?.renewBudgetWindow?.({ runId: normalizedRunId, reason: commandId })
       const commandResult = await pluginService.runCommand(CREATOR_STUDIO_PLUGIN_ID, commandId, {
         runId: normalizedRunId,
         ...(normalizedActionId ? { actionId: normalizedActionId } : {})

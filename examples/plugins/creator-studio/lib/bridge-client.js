@@ -14,8 +14,9 @@ const callBridge = async (route, payload = {}, { signal } = {}) => {
   const body = await response.json()
   if (!response.ok || body.ok === false) {
     const error = new Error(body.error || `OpenPet bridge request failed: ${response.status}`)
-    const errorCode = String(body.errorCode || '').trim()
+    const errorCode = String(body.errorCode || body.code || '').trim()
     if (/^[a-z0-9][a-z0-9_]{0,79}$/.test(errorCode)) error.code = errorCode
+    if (typeof body.retryable === 'boolean') error.retryable = body.retryable
     if (Array.isArray(body?.errorDetails?.modelAttempts)) {
       error.modelAttempts = body.errorDetails.modelAttempts
     }

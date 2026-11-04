@@ -10,7 +10,8 @@ test('creator bridge client preserves structured provider attempt diagnostics', 
     response.end(JSON.stringify({
       ok: false,
       error: 'Image Provider generation failed with HTTP 524',
-      errorCode: 'provider_http_error',
+      code: 'video_provider_network_error',
+      retryable: true,
       errorDetails: {
         modelAttempts: [{
           model: 'gpt-image-2',
@@ -33,7 +34,8 @@ test('creator bridge client preserves structured provider attempt diagnostics', 
 
   try {
     await assert.rejects(() => callBridge('/creator/model-image-generate'), (error) => {
-      assert.equal(error.code, 'provider_http_error')
+      assert.equal(error.code, 'video_provider_network_error')
+      assert.equal(error.retryable, true)
       assert.deepEqual(error.modelAttempts, [{
         model: 'gpt-image-2',
         ok: false,

@@ -836,6 +836,44 @@ test('host-owned provider reservations persist every image HTTP attempt includin
   assert.deepEqual(stored.reservations, {})
 })
 
+test('recovery budget renewal persists a new active window without erasing usage', () => {
+  const h = createHarness()
+  const runId = 'run-recovery-window'
+  const runDir = path.join(h.dataDir, 'runs', runId, 'budgets')
+  fs.mkdirSync(runDir, { recursive: true })
+  const oldStartedAtMs = Date.parse('2026-07-01T00:00:00.000Z')
+  const ledger = createBudgetLedger({ startedAtMs: oldStartedAtMs })
+  const historical = {
+    ...ledger,
+    usage: { ...ledger.usage, providerCalls: 3, providerFailures: 1 },
+    activeWindowStartedAtMs: oldStartedAtMs
+  }
+  fs.writeFileSync(path.join(runDir, 'ledger.json'), `${JSON.stringify(historical)}\n`)
+
+  const result = h.service.renewBudgetWindow({ runId, reason: 'retry-action' })
+  assert.equal(result.renewed, true)
+  assert.equal(result.budgetLedger.windowVersion, 2)
+  assert.equal(result.budgetLedger.usage.providerCalls, 3)
+  assert.equal(result.budgetLedger.lastRenewalReason, 'retry-action')
+  const stored = JSON.parse(fs.readFileSync(path.join(runDir, 'ledger.json'), 'utf8'))
+  assert.equal(stored.windowVersion, 2)
+  assert.equal(stored.usage.providerCalls, 3)
+})
+
+test('restoring a legacy ledger keeps an explicit null renewal timestamp null', () => {
+  const h = createHarness()
+  const runId = 'run-legacy-null-renewal'
+  const runDir = path.join(h.dataDir, 'runs', runId, 'budgets')
+  fs.mkdirSync(runDir, { recursive: true })
+  const ledger = createBudgetLedger({ startedAtMs: Date.now() })
+  fs.writeFileSync(path.join(runDir, 'ledger.json'), `${JSON.stringify({ ...ledger, lastRenewedAtMs: null })}\n`)
+
+  const result = h.service.renewBudgetWindow({ runId })
+
+  assert.equal(result.renewed, false)
+  assert.equal(result.budgetLedger.lastRenewedAtMs, null)
+})
+
 test('restarting the hatch-pet service reconciles an abandoned provider reservation as a failed attempt', () => {
   const first = createHarness()
   const reservation = first.service.reserveProviderCall({ runId: 'run-restart-ledger', timeoutMs: 480000 })

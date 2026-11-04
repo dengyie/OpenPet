@@ -322,7 +322,12 @@ export function createPluginRuntimeServer({ shell, plugins, settings, jobs, netw
 			sendJson(response, 200, result)
 		} catch (error) {
 			if (statusFor(error) >= 500) logger?.error?.("Plugin runtime bridge request failed", { error: String(error) })
-			sendJson(response, statusFor(error), { ok: false, error: error?.message ?? "Plugin runtime request failed", code: error?.code ?? "INTERNAL" })
+			sendJson(response, statusFor(error), {
+				ok: false,
+				error: error?.message ?? "Plugin runtime request failed",
+				code: error?.code ?? "INTERNAL",
+				...(typeof error?.retryable === "boolean" ? { retryable: error.retryable } : {}),
+			})
 		} finally {
 			request.off("aborted", abort)
 			response.off("close", closed)

@@ -76,6 +76,11 @@ const createBudgetLedger = ({ limits = DEFAULT_LIMITS, startedAtMs, now = Date.n
   return Object.freeze({
     version: 1,
     startedAtMs: normalizedStartedAtMs,
+    activeWindowStartedAtMs: normalizedStartedAtMs,
+    windowVersion: 1,
+    renewalCount: 0,
+    lastRenewedAtMs: null,
+    lastRenewalReason: '',
     limits: Object.freeze(normalizeLimits(limits)),
     usage: Object.freeze({
       providerCalls: 0,
@@ -92,7 +97,8 @@ const createBudgetLedger = ({ limits = DEFAULT_LIMITS, startedAtMs, now = Date.n
 }
 
 const assertElapsedBudget = (ledger, now) => {
-  const elapsedMs = Math.max(0, toBoundedInteger(now(), ledger.startedAtMs) - ledger.startedAtMs)
+  const windowStartedAtMs = toBoundedInteger(ledger.activeWindowStartedAtMs, ledger.startedAtMs)
+  const elapsedMs = Math.max(0, toBoundedInteger(now(), windowStartedAtMs) - windowStartedAtMs)
   if (elapsedMs >= ledger.limits.maxElapsedMs) {
     throw createBudgetError('hatch_pet_elapsed_budget_exhausted', 'Hatch-pet elapsed-time budget is exhausted')
   }
@@ -108,6 +114,19 @@ const updateLedger = (ledger, changes) => Object.freeze({
     ? Object.freeze({ ...changes.reservations })
     : ledger.reservations
 })
+
+const renewBudgetWindow = (ledger, { now = Date.now, reason = '' } = {}) => {
+  const windowStartedAtMs = toBoundedInteger(ledger.activeWindowStartedAtMs, ledger.startedAtMs)
+  const currentNowMs = Math.max(windowStartedAtMs, toBoundedInteger(now(), windowStartedAtMs))
+  if (currentNowMs - windowStartedAtMs < ledger.limits.maxElapsedMs) return ledger
+  return updateLedger(ledger, {
+    activeWindowStartedAtMs: currentNowMs,
+    windowVersion: Math.max(1, toBoundedInteger(ledger.windowVersion, 1)) + 1,
+    renewalCount: Math.max(0, toBoundedInteger(ledger.renewalCount, 0)) + 1,
+    lastRenewedAtMs: currentNowMs,
+    lastRenewalReason: String(reason || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 80)
+  })
+}
 
 const reserveProviderCall = (ledger, { timeoutMs, now = Date.now } = {}) => {
   assertElapsedBudget(ledger, now)
@@ -209,9 +228,11 @@ const reservePlannerCall = (ledger, { now = Date.now } = {}) => reserveStructure
 const reserveEvaluatorCall = (ledger, { now = Date.now } = {}) => reserveStructuredCall(ledger, 'evaluator', now)
 
 const createBudgetPublicView = (ledger, { now = Date.now } = {}) => {
-  const elapsedMs = Math.max(0, toBoundedInteger(now(), ledger.startedAtMs) - ledger.startedAtMs)
+  const windowStartedAtMs = toBoundedInteger(ledger.activeWindowStartedAtMs, ledger.startedAtMs)
+  const elapsedMs = Math.max(0, toBoundedInteger(now(), windowStartedAtMs) - windowStartedAtMs)
   return Object.freeze({
     version: ledger.version,
+    windowVersion: Math.max(1, toBoundedInteger(ledger.windowVersion, 1)),
     limits: Object.freeze({ ...ledger.limits }),
     usage: Object.freeze({ ...ledger.usage, elapsedMs }),
     remaining: Object.freeze({
@@ -228,6 +249,7 @@ module.exports = {
   assertPlanFitsBudget,
   createBudgetLedger,
   createBudgetPublicView,
+  renewBudgetWindow,
   recordProviderCall,
   reconcileAbandonedProviderReservations,
   reserveEvaluatorCall,
