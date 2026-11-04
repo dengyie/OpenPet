@@ -83,6 +83,7 @@
     "validate-plugin-cleanup-evidence-report": "node scripts/validate-plugin-cleanup-evidence-report.js",
     "smoke:ai-provider": "node scripts/run-ai-provider-smoke.js",
     "smoke:creator-studio-provider": "node scripts/run-creator-studio-provider-smoke.js",
+    "smoke:video-actions": "node scripts/run-video-action-matrix-smoke.js",
     "smoke:creator-workflow-host": "node scripts/run-creator-workflow-host-smoke.js",
     "configure-agent-awareness:codex": "node scripts/configure-agent-awareness-codex.js",
     "create-plugin-sandbox-evaluation": "node scripts/create-plugin-sandbox-evaluation.js",
