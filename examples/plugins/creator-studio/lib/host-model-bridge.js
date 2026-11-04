@@ -342,6 +342,40 @@ const requestHatchPetSpriteEvaluation = async ({ runId, scope, board, qa, budget
   return response.result
 }
 
+const evaluateQualityFirstActionCandidate = async ({
+  dataDir,
+  runId,
+  actionId,
+  sourcePath,
+  canonicalPath,
+  candidate,
+  createBoard = createActionEvaluatorBoard,
+  requestEvaluation = requestHatchPetSpriteEvaluation
+} = {}) => {
+  const evaluatorBoardPath = path.join(candidate.outputDir, 'evaluator-board.png')
+  const board = await createBoard({
+    sourcePath,
+    canonicalPath,
+    candidateFrames: candidate.processed.frames,
+    outputPath: evaluatorBoardPath
+  })
+  const evaluation = await requestEvaluation({
+    runId,
+    scope: actionId === 'jumping' ? 'airborne-action' : 'grounded-action',
+    board: {
+      relativePath: path.relative(dataDir, board.path).replace(/\\/g, '/'),
+      sha256: board.sha256,
+      regions: board.regions
+    },
+    qa: candidate.qa
+  })
+  return {
+    evaluation: evaluation.evaluation,
+    gate: evaluation.gate,
+    evaluationEvidenceRelativePath: evaluation.evidenceRelativePath
+  }
+}
+
 const resolveQualityFirstDataPath = ({ dataDir, relativePath, label }) => {
   const normalized = String(relativePath || '').trim().replace(/\\/g, '/')
   if (!normalized || normalized.startsWith('/') || /^[a-zA-Z]:\//.test(normalized) || normalized.split('/').includes('..')) {
@@ -3315,6 +3349,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
         candidates: []
       }
     }
+    const canonicalPath = path.join(dataDir, canonical.relativePath)
     if (useVideoActionPipeline) {
       const runner = await generateSelectedFullPetAction({
         context: {
@@ -3381,12 +3416,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
             processed: candidate.processed
           }
         },
-        evaluateCandidate: async (candidate) => {
-          const evaluatorBoardPath = path.join(candidate.outputDir, 'evaluator-board.png')
-          const board = await createActionEvaluatorBoard({ sourcePath: sourceReference.path, canonicalPath, candidateFrames: candidate.processed.frames, outputPath: evaluatorBoardPath })
-          const evaluation = await requestHatchPetSpriteEvaluation({ runId: run.runId, scope: actionId === 'jumping' ? 'airborne-action' : 'grounded-action', board: { relativePath: path.relative(dataDir, board.path).replace(/\\/g, '/'), sha256: board.sha256, regions: board.regions }, qa: candidate.qa })
-          return { evaluation: evaluation.evaluation, gate: evaluation.gate, evaluationEvidenceRelativePath: evaluation.evidenceRelativePath }
-        },
+        evaluateCandidate: (candidate) => evaluateQualityFirstActionCandidate({ dataDir, runId: run.runId, actionId, sourcePath: sourceReference.path, canonicalPath, candidate }),
         persistCandidate: async (candidate) => {
           const record = writeCandidateRecord({
             dataDir,
@@ -3412,7 +3442,6 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
     }
     const anchorPath = path.join(dataDir, `runs/${run.runId}/references/${actionId}/anchor-grid.png`)
     const boardPath = path.join(dataDir, `runs/${run.runId}/references/${actionId}/action-reference-board.png`)
-    const canonicalPath = path.join(dataDir, canonical.relativePath)
     await createCharacterAnchorGrid({ masterPath: canonicalPath, layout: action.layout, outputPath: anchorPath, dataDir, planRevision: plan.revision })
     await createActionReferenceBoard({ anchorGridPath: anchorPath, sourceDetailPath: sourceReference.path, outputPath: boardPath, dataDir, metadata: { actionId, planHash: plan.hash } })
     const boardRelativePath = path.relative(dataDir, boardPath).replace(/\\/g, '/')
@@ -3458,12 +3487,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
         const qa = analyzeSpriteCandidate({ actionId, rawMetrics: processed.metrics, profile: actionProfile, actionPolicy: action })
         return { ...candidate, processed, qa, artifacts: [{ role: 'raw-sheet', path: candidate.rawPath, sha256: candidate.sha256 }, { role: 'processed-sheet', path: processed.processedSheet.path, sha256: processed.processedSheet.sha256 }, { role: 'contact-sheet', path: processed.contactSheet.path, sha256: processed.contactSheet.sha256 }, { role: 'gif', path: processed.gif.path, sha256: processed.gif.sha256 }] }
       },
-      evaluateCandidate: async (candidate) => {
-        const evaluatorBoardPath = path.join(candidate.outputDir, 'evaluator-board.png')
-        const board = await createActionEvaluatorBoard({ sourcePath: sourceReference.path, canonicalPath, candidateFrames: candidate.processed.frames, outputPath: evaluatorBoardPath })
-        const evaluation = await requestHatchPetSpriteEvaluation({ runId: run.runId, scope: actionId === 'jumping' ? 'airborne-action' : 'grounded-action', board: { relativePath: path.relative(dataDir, board.path).replace(/\\/g, '/'), sha256: board.sha256, regions: board.regions }, qa: candidate.qa })
-        return { evaluation: evaluation.evaluation, gate: evaluation.gate, evaluationEvidenceRelativePath: evaluation.evidenceRelativePath }
-      },
+      evaluateCandidate: (candidate) => evaluateQualityFirstActionCandidate({ dataDir, runId: run.runId, actionId, sourcePath: sourceReference.path, canonicalPath, candidate }),
       persistCandidate: async (candidate) => {
         const record = writeCandidateRecord({
           dataDir,
@@ -4228,6 +4252,7 @@ module.exports = {
     createCanonicalRequestedChanges,
     createFailedCanonicalCandidate,
     createQualityFirstActionCandidateTask,
+    evaluateQualityFirstActionCandidate,
     evaluateCanonicalCandidatePool,
     createSoftIdentityRetryRequestedChanges,
     generateActionKeyframe,

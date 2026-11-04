@@ -775,6 +775,49 @@ test('quality-first final package requires a passing code-owned visual gate over
   }), /canonical.*inside the Creator Studio data directory/i)
 })
 
+test('video action candidates build their evaluator board with the accepted canonical', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-video-action-evaluator-'))
+  const runId = 'run-video-action-evaluator'
+  const runDir = path.join(dataDir, 'runs', runId)
+  const sourcePath = path.join(runDir, 'source.png')
+  const canonicalPath = path.join(runDir, 'canonical.png')
+  const outputDir = path.join(runDir, 'candidates', 'idle', 'candidate-1', 'processed')
+  fs.mkdirSync(outputDir, { recursive: true })
+  const framePaths = []
+  for (const [index, filePath] of [sourcePath, canonicalPath, ...Array.from({ length: 6 }, (_, frameIndex) => path.join(outputDir, `frame-${frameIndex + 1}.png`))].entries()) {
+    await sharp({ create: { width: 64, height: 64, channels: 4, background: { r: 30 + index * 15, g: 90, b: 160, alpha: 1 } } }).png().toFile(filePath)
+    if (index >= 2) framePaths.push(filePath)
+  }
+  const requests = []
+  const evaluated = await hostModelBridgeModule.__testInternals.evaluateQualityFirstActionCandidate({
+    dataDir,
+    runId,
+    actionId: 'idle',
+    sourcePath,
+    canonicalPath,
+    candidate: {
+      outputDir,
+      processed: { frames: framePaths.map((framePath, index) => ({ index, path: framePath })) },
+      qa: { ok: true, failures: [] }
+    },
+    requestEvaluation: async (request) => {
+      requests.push(request)
+      return {
+        evaluation: { scores: { overall: 93 } },
+        gate: { ok: true, outcome: 'pass', failures: [] },
+        evidenceRelativePath: `runs/${runId}/evaluations/idle.json`
+      }
+    }
+  })
+
+  assert.equal(evaluated.gate.ok, true)
+  assert.equal(evaluated.evaluation.scores.overall, 93)
+  assert.equal(requests.length, 1)
+  assert.equal(requests[0].scope, 'grounded-action')
+  assert.deepEqual(requests[0].board.regions.slice(0, 2).map((region) => region.role), ['source-identity', 'canonical-identity'])
+  assert.equal(fs.existsSync(path.join(outputDir, 'evaluator-board.png')), true)
+})
+
 test('final package quality stays advisory after any explicit human candidate selection', () => {
   const { hasHumanCandidateSelection } = hostModelBridgeModule.__testInternals
   assert.equal(hasHumanCandidateSelection({
