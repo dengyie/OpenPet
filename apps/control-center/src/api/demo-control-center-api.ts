@@ -3737,7 +3737,7 @@ export const demoControlCenterAPI: DemoControlCenterApi = {
   },
   discoverVideoGenerationModels: async () => {
     if (!demoState.videoGenerationConfig.hasApiKey) return { ok: false, provider: demoState.videoGenerationConfig.provider, baseUrl: demoState.videoGenerationConfig.baseUrl, model: demoState.videoGenerationConfig.model, hasApiKey: false, models: [], code: 'missing_api_key', message: 'Video generation API key is missing' }
-    const models = ['grok-imagine-video', 'grok-imagine-video-1.5']
+    const models = ['grok-imagine-video-1.5', 'grok-imagine-video']
     persistDemoVideoModelCatalog(models)
     return { ok: true, provider: demoState.videoGenerationConfig.provider, baseUrl: demoState.videoGenerationConfig.baseUrl, model: demoState.videoGenerationConfig.model, hasApiKey: true, models, code: 'ok', message: 'ok' }
   },

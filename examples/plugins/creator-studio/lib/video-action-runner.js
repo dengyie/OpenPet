@@ -175,7 +175,7 @@ const runVideoAction = async ({
   run,
   action,
   canonical,
-  model = 'grok-imagine-video',
+  model = 'grok-imagine-video-1.5',
   fps = 12,
   canvas = { width: 512, height: 512 },
   outputRelativeDir = `runs/${run?.runId || 'run'}/video`,

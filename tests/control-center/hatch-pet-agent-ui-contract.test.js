@@ -37,10 +37,14 @@ test('AiPane presents quality-first Hatch-pet readiness, budgets, identity check
 test('AiPane video recommendations follow the live Mango catalog without dropping adapter compatibility', () => {
   const pane = read('apps/control-center/src/panes/AiPane.tsx')
   const demo = read('apps/control-center/src/api/demo-control-center-api.ts')
+  const defaults = read('apps/control-center/src/lib/defaults.ts')
   for (const model of ['grok-imagine-video', 'grok-imagine-video-1.5']) {
     assert.match(pane, new RegExp(`'${model}'`))
     assert.match(demo, new RegExp(`'${model}'`))
   }
+  assert.ok(pane.indexOf("'grok-imagine-video-1.5'") < pane.indexOf("'grok-imagine-video'"))
+  assert.ok(demo.indexOf("'grok-imagine-video-1.5'") < demo.indexOf("'grok-imagine-video'"))
+  assert.match(defaults, /model: 'grok-imagine-video-1\.5'/)
   assert.doesNotMatch(pane, /grok-imagine-video-1\.5-preview/)
   assert.doesNotMatch(demo, /grok-imagine-video-1\.5-preview/)
   assert.equal(isGrokVideoModel('grok-imagine-video-1.5-preview'), true)

@@ -21,6 +21,15 @@ const videoResponse = (bytes) => ({
   async arrayBuffer() { return bytes }
 })
 
+test('video generation defaults to the live-tested Grok 1.5 model', () => {
+  const service = createVideoGenerationModelService({
+    settingsService: { get: () => ({}) },
+    secretService: { getSecretValue: () => '' }
+  })
+
+  assert.equal(service.getConfig().model, 'grok-imagine-video-1.5')
+})
+
 test('video generation model service keeps credentials in the secret boundary and writes a run-owned artifact', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'openpet-video-service-'))
   const referencePath = path.join(root, 'canonical.png')

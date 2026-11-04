@@ -15,7 +15,7 @@ const DEFAULT_VIDEO_TIMEOUT_MS = 300_000
 const DEFAULT_VIDEO_CONFIG = Object.freeze({
   provider: 'openai-compatible',
   baseUrl: 'https://api.mangoqwq.com/v1',
-  model: 'grok-imagine-video',
+  model: 'grok-imagine-video-1.5',
   apiKeyRef: 'secret:model.video.openai-compatible.apiKey',
   timeoutMs: DEFAULT_VIDEO_TIMEOUT_MS,
   maxConcurrentJobs: 1
