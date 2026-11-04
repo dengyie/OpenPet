@@ -40,6 +40,39 @@ test('video prompt binds exact loop closure and safe character margins', () => {
   assert.match(prompt, /no body part may touch or cross any image edge/i)
 })
 
+test('video repair prompt targets the recorded temporal failure', () => {
+  const driver = createMotionDriver({ actionId: 'idle' })
+  const initial = buildVideoPrompt({
+    run: { input: { petName: 'Mori' } },
+    action: { actionId: 'idle' },
+    driver
+  })
+  const repair = buildVideoPrompt({
+    run: { input: { petName: 'Mori' } },
+    action: { actionId: 'idle' },
+    driver,
+    attemptKind: 'repair',
+    failureCodes: ['loop-seam-too-large']
+  })
+  assert.notEqual(repair, initial)
+  assert.match(repair, /repair pass/i)
+  assert.match(repair, /first and final extracted frames/i)
+  assert.match(repair, /fixed camera framing and character scale/i)
+})
+
+test('jumping video prompt reserves conservative top clearance', () => {
+  const driver = createMotionDriver({ actionId: 'jumping' })
+  const prompt = buildVideoPrompt({
+    run: { input: { petName: 'Mori' } },
+    action: { actionId: 'jumping' },
+    driver,
+    attemptKind: 'repair',
+    failureCodes: ['frame-edge-contact']
+  })
+  assert.match(prompt, /conservative jump height/i)
+  assert.match(prompt, /at least 20 percent empty space above/i)
+})
+
 test('video technical eligibility rejects temporal integrity failures', () => {
   for (const failure of ['frame-edge-contact', 'detached-effect-contamination', 'loop-seam-too-large', 'motion-is-static']) {
     assert.equal(isVideoTechnicalFailure(failure), true)
@@ -286,10 +319,14 @@ test('video frame sequence emits stable normalized frames and hashes', async () 
   assert.equal(result.normalizedFrames.length, 3)
   assert.equal(result.normalizedFrames[0].relativePath, 'normalized/0001.png')
   assert.match(result.normalizedFrames[0].sha256, /^[a-f0-9]{64}$/)
+  assert.equal(result.normalizedFrameMetrics.length, 3)
+  assert.equal(result.normalizedFrameMetrics.every((metric) => metric.edgeTouch === false), true)
   assert.deepEqual(result.placements.placements.map((placement) => placement.baseline), [28.8, 28.8, 28.8])
   assert.equal(result.spriteSheet.relativePath, 'spritesheet.png')
   assert.equal(fs.existsSync(result.sidecarPath), true)
-  assert.match(JSON.parse(fs.readFileSync(result.sidecarPath, 'utf8')).spriteSheet.sha256, /^[a-f0-9]{64}$/)
+  const sidecar = JSON.parse(fs.readFileSync(result.sidecarPath, 'utf8'))
+  assert.match(sidecar.spriteSheet.sha256, /^[a-f0-9]{64}$/)
+  assert.equal(sidecar.normalizedMetrics.length, 3)
 })
 
 test('video frame sequence stops before writing the next frame after cancellation', async () => {
@@ -505,7 +542,14 @@ test('video runner service retries only retryable failures and is idempotent', a
   assert.equal(calls, 2)
 })
 
-const createRunVideoActionFixture = async ({ bridge, signal }) => {
+const createRunVideoActionFixture = async ({
+  bridge,
+  signal,
+  action = { actionId: 'waving', motionPrompt: 'wave' },
+  attemptKind,
+  failureCodes,
+  processFrames
+}) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-video-runner-'))
   const referencePath = path.join(root, 'reference.png')
   const rawPath = path.join(root, 'runs', 'run-video', 'video', 'raw', 'waving.mp4')
@@ -515,18 +559,20 @@ const createRunVideoActionFixture = async ({ bridge, signal }) => {
   const result = await runVideoAction({
     dataDir: root,
     run: { runId: 'run-video', input: { petName: 'Test pet' } },
-    action: { actionId: 'waving', motionPrompt: 'wave' },
+    action,
     canonical: { relativePath: 'reference.png', sha256: HASH_A, fileName: 'reference.png' },
+    attemptKind,
+    failureCodes,
     signal,
     bridge,
     decode: async () => ({ framePaths: ['fixture-frame-1.png', 'fixture-frame-2.png'] }),
-    processFrames: async () => ({
+    processFrames: processFrames || (async () => ({
       normalizedFrames: [],
       frameMetrics: [
         { bbox: { left: 1, top: 1, width: 10, height: 20 }, root: { x: 1, y: 20 }, alphaCoverage: 0.8, maskCoverage: 0.8, hash: HASH_A },
         { bbox: { left: 1, top: 2, width: 10, height: 21 }, root: { x: 2, y: 21 }, alphaCoverage: 0.8, maskCoverage: 0.8, hash: HASH_B }
       ]
-    })
+    }))
   })
   return { root, result }
 }
@@ -557,6 +603,41 @@ test('runVideoAction keeps Provider video geometry independent from the sprite c
   assert.equal(request.size, '1280x720')
   assert.equal(request.request.aspect_ratio, '16:9')
   assert.equal(request.request.resolution, '720p')
+})
+
+test('runVideoAction gates on normalized frames while retaining raw temporal diagnostics', async () => {
+  const rawMetrics = [
+    { bbox: { left: 0, top: 0, width: 20, height: 20 }, root: { x: 10, y: 20 }, alphaCoverage: 0.8, maskCoverage: 0.8, hash: HASH_A, edgeTouch: true },
+    { bbox: { left: 80, top: 0, width: 40, height: 40 }, root: { x: 100, y: 40 }, alphaCoverage: 0.8, maskCoverage: 0.8, hash: HASH_B, edgeTouch: true }
+  ]
+  const normalizedMetrics = [
+    { bbox: { left: 40, top: 40, width: 20, height: 20 }, root: { x: 50, y: 60 }, alphaCoverage: 0.8, maskCoverage: 0.8, hash: HASH_A, edgeTouch: false },
+    { bbox: { left: 40, top: 40, width: 20, height: 20 }, root: { x: 50, y: 60 }, alphaCoverage: 0.8, maskCoverage: 0.8, hash: HASH_B, edgeTouch: false }
+  ]
+  const { result } = await createRunVideoActionFixture({
+    bridge: async () => ({ result: { outputs: [{ dataRelativePath: 'runs/run-video/video/raw/waving.mp4', sha256: HASH_B, mimeType: 'video/mp4' }] } }),
+    processFrames: async () => ({ normalizedFrames: [], frameMetrics: rawMetrics, normalizedFrameMetrics: normalizedMetrics })
+  })
+  assert.equal(result.ok, true)
+  assert.equal(result.temporalQuality.ok, true)
+  assert.equal(result.rawTemporalQuality.ok, false)
+  assert.ok(result.rawTemporalQuality.failures.includes('frame-edge-contact'))
+  assert.ok(result.rawTemporalQuality.failures.includes('loop-seam-too-large'))
+})
+
+test('runVideoAction forwards repair failure context into the Provider prompt', async () => {
+  let request
+  await createRunVideoActionFixture({
+    action: { actionId: 'jumping', motionPrompt: 'jump' },
+    attemptKind: 'repair',
+    failureCodes: ['frame-edge-contact'],
+    bridge: async (_route, payload) => {
+      request = payload
+      return { result: { outputs: [{ dataRelativePath: 'runs/run-video/video/raw/waving.mp4', sha256: HASH_B, mimeType: 'video/mp4' }] } }
+    }
+  })
+  assert.match(request.prompt, /repair pass/i)
+  assert.match(request.prompt, /at least 20 percent empty space above/i)
 })
 
 test('runVideoAction does not retry a non-retryable bridge error', async () => {

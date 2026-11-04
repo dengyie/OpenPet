@@ -220,6 +220,7 @@ const processFrameSequence = async ({
     padding
   })
   const normalizedFrames = []
+  const normalizedFrameMetrics = []
   for (let index = 0; index < alphaFrames.length; index += 1) {
     throwIfAborted(signal)
     const normalizedPath = path.join(stableDir, `${String(index + 1).padStart(4, '0')}.png`)
@@ -229,6 +230,9 @@ const processFrameSequence = async ({
       placement: placements.placements[index],
       canvas: placements.canvas
     })
+    const normalizedMetrics = await inspectAlphaBounds(normalizedPath)
+    if (!normalizedMetrics) throw matteError(`normalized frame ${index} has no visible subject`)
+    normalizedFrameMetrics.push(normalizedMetrics)
     normalizedFrames.push({
       relativePath: path.relative(outputDir, normalizedPath).replace(/\\/g, '/'),
       path: normalizedPath,
@@ -263,7 +267,9 @@ const processFrameSequence = async ({
       relativePath: path.relative(outputDir, spriteSheetPath).replace(/\\/g, '/'),
       sha256: crypto.createHash('sha256').update(fs.readFileSync(spriteSheetPath)).digest('hex')
     },
-    metrics: frameMetrics
+    metrics: frameMetrics,
+    rawMetrics: frameMetrics,
+    normalizedMetrics: normalizedFrameMetrics
   }
   const sidecarPath = path.join(outputDir, 'video-sidecar.json')
   fs.writeFileSync(sidecarPath, `${JSON.stringify(sidecar, null, 2)}\n`)
@@ -274,6 +280,7 @@ const processFrameSequence = async ({
     alphaFrames: Object.freeze(alphaFrames.map((frame) => Object.freeze({ ...frame }))),
     normalizedFrames: Object.freeze(normalizedFrames.map((frame) => Object.freeze({ ...frame }))),
     frameMetrics: Object.freeze(frameMetrics.map((metric) => Object.freeze(metric))),
+    normalizedFrameMetrics: Object.freeze(normalizedFrameMetrics.map((metric) => Object.freeze(metric))),
     placements,
     spriteSheet: Object.freeze({
       path: spriteSheetPath,

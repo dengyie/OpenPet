@@ -29,6 +29,15 @@ const PROVIDER_VIDEO_SIZE = '1280x720'
 const PROVIDER_VIDEO_ASPECT_RATIO = '16:9'
 const isVideoTechnicalFailure = (failure) => VIDEO_TECHNICAL_FAILURES.has(String(failure || ''))
 
+const VIDEO_REPAIR_INSTRUCTIONS = Object.freeze({
+  'loop-seam-too-large': 'Make the first and final extracted frames match exactly in pose, root position, silhouette, camera framing, and character scale; finish settling before the final frame.',
+  'frame-edge-contact': 'Reduce the motion amplitude and keep at least 20 percent empty space above the character and clear space on every other edge in every frame.',
+  'detached-effect-contamination': 'Remove every detached particle, trail, floor mark, prop, shadow, duplicate limb, and floating visual effect.',
+  'motion-is-static': 'Keep the root and camera fixed while making the requested moving body part pass through visibly distinct motion phases.',
+  'mask-dropout': 'Keep the entire character continuously visible against the uniform green background in every frame.',
+  'root-anchor-missing': 'Keep one complete grounded lower-center body root visible in every frame.'
+})
+
 const safeSegment = (value, fallback) => {
   const normalized = String(value || '').trim().replace(/[^a-zA-Z0-9._-]+/g, '-')
   return normalized || fallback
@@ -151,23 +160,39 @@ const resolveReference = ({ dataDir, reference }) => {
   return { ...reference, relativePath, fileName: String(reference.fileName || path.basename(target)) }
 }
 
-const buildVideoPrompt = ({ run, action, driver }) => {
+const buildVideoPrompt = ({ run, action, driver, attemptKind = 'initial', failureCodes = [] }) => {
   const identity = String(run?.input?.petName || 'the referenced pet').trim()
+  const actionId = String(action?.actionId || '').trim().toLowerCase()
   const actionText = String(action?.motionPrompt || action?.name || action?.actionId || 'the requested action').trim()
   const beats = driver.framePlan.map((beat) => beat.replace(/^Frame \d+:\s*/i, '')).join('; ')
   const loopContract = driver.loop
     ? 'Frame 1 and the final frame must depict the same neutral pose, root position, silhouette, body scale, camera framing, and background. Complete all visible motion in the middle of the clip, then fully settle back to that exact starting state before the final frame; do not end mid-motion.'
     : 'Begin and end on fully readable poses with no cut-off motion.'
+  const actionGuidance = actionId === 'idle'
+    ? 'For idle, use only subtle local breathing or source-appropriate secondary motion with fixed camera framing and character scale; do not translate, zoom, rotate, or resize the body.'
+    : actionId === 'jumping'
+      ? 'For jumping, use a conservative jump height, keep the complete airborne pose in the middle 60 percent of the frame, and retain at least 20 percent empty space above the highest body point.'
+      : ''
+  const repairInstructions = attemptKind === 'repair'
+    ? [...new Set((Array.isArray(failureCodes) ? failureCodes : [])
+        .map((code) => VIDEO_REPAIR_INSTRUCTIONS[String(code || '')])
+        .filter(Boolean))]
+    : []
+  const repairGuidance = attemptKind === 'repair'
+    ? `This is a repair pass for a rejected result. ${repairInstructions.join(' ') || 'Correct the rejected temporal result while preserving identity, framing, and the ordered motion plan.'}`
+    : ''
   return [
     `Animate the exact referenced character ${identity} performing ${actionText}.`,
     'Preserve the exact face, markings, body proportions, accessories, palette, material, lighting, camera distance, and silhouette from the reference image.',
     `Use this ordered motion plan: ${beats}.`,
     'Full body visible in every frame, locked camera, centered grounded root, one subject only, no text, no logo, no props, no particles, no detached effects.',
     'Keep at least 12 percent empty margin around the full character in every frame; no body part may touch or cross any image edge.',
+    actionGuidance,
     'Use a flat uniform chroma green background #12ff4d for matting; no gradient, shadows, floor, or background movement.',
     loopContract,
+    repairGuidance,
     'Return a short seamless loop with visibly distinct motion phases.'
-  ].join(' ')
+  ].filter(Boolean).join(' ')
 }
 
 const runVideoAction = async ({
@@ -179,6 +204,8 @@ const runVideoAction = async ({
   fps = 12,
   canvas = { width: 512, height: 512 },
   outputRelativeDir = `runs/${run?.runId || 'run'}/video`,
+  attemptKind = 'initial',
+  failureCodes = [],
   signal,
   decode = extractVideoFrames,
   bridge = callBridge,
@@ -218,7 +245,7 @@ const runVideoAction = async ({
   const providerRequest = {
     runId,
     model,
-    prompt: buildVideoPrompt({ run, action, driver }),
+    prompt: buildVideoPrompt({ run, action, driver, attemptKind, failureCodes }),
     referenceImages: [{ ...reference, role: 'canonical-identity' }],
     seconds: Math.max(1, Math.round(durationMs / 1000)),
     // Keep the Provider's temporal output at a video-native 16:9/720p size.
@@ -271,7 +298,11 @@ const runVideoAction = async ({
     backgroundColor: '#12ff4d',
     signal
   })
-  const temporalQuality = analyzeTemporalQuality({ frames: processed.frameMetrics, loop: driver.loop })
+  const rawTemporalQuality = analyzeTemporalQuality({ frames: processed.frameMetrics, loop: driver.loop })
+  const finalFrameMetrics = Array.isArray(processed.normalizedFrameMetrics) && processed.normalizedFrameMetrics.length
+    ? processed.normalizedFrameMetrics
+    : processed.frameMetrics
+  const temporalQuality = analyzeTemporalQuality({ frames: finalFrameMetrics, loop: driver.loop })
   return Object.freeze({
     ok: temporalQuality.ok,
     actionId,
@@ -281,6 +312,7 @@ const runVideoAction = async ({
     rawVideo: { ...output, relativePath: output.dataRelativePath },
     decoded,
     processed,
+    rawTemporalQuality,
     temporalQuality
   })
 }

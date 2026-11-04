@@ -3361,13 +3361,15 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
         },
         existingCandidates: [],
         reserveCreativeDispatch: async () => {},
-        generateCandidate: async ({ candidateId }) => {
+        generateCandidate: async ({ candidateId, attemptKind, failureCodes }) => {
           const videoResult = await runVideoAction({
             dataDir,
             run,
             action,
             canonical,
             model: videoModel,
+            attemptKind,
+            failureCodes,
             outputRelativeDir: `runs/${run.runId}/candidates/${actionId}/${candidateId}/video`
           })
           const processed = await createVideoCandidateArtifacts({
@@ -3395,6 +3397,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
             outputDir: path.join(dataDir, `runs/${run.runId}/candidates/${actionId}/${candidateId}/processed`),
             processed,
             videoTemporalQuality: videoResult.temporalQuality,
+            videoRawTemporalQuality: videoResult.rawTemporalQuality,
             artifacts: [
               { role: 'raw-video', path: rawVideoPath, sha256: String(videoResult.rawVideo.sha256 || sha256File(rawVideoPath)) },
               { role: 'raw-sheet', path: processed.rawSheet.path, sha256: processed.rawSheet.sha256 },
