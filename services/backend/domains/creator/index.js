@@ -167,7 +167,7 @@ export function redactCreatorValue(value) {
 	return redact(value)
 }
 
-export function createCreatorDomain({ db, shell, ai, enqueueJob, runPluginCommand, creatorDataDir, emit, owner = "desktop", now = Date.now, logger } = {}) {
+export function createCreatorDomain({ db, shell, ai, enqueueJob, runPluginCommand, creatorDataDir, hatchPetAgent, emit, owner = "desktop", now = Date.now, logger } = {}) {
 	if (!db || typeof db.prepare !== "function") throw new ApiError("INTERNAL", "Creator domain 需要数据库 driver")
 	if (typeof shell?.request !== "function" && typeof ai?.prepareGeneratedImage !== "function" && !(typeof runPluginCommand === "function" && typeof creatorDataDir === "function")) {
 		throw new ApiError("BACKEND_UNAVAILABLE", "Creator authority unavailable")
@@ -619,6 +619,9 @@ export function createCreatorDomain({ db, shell, ai, enqueueJob, runPluginComman
 			const commandByOperation = { "accept-identity": "accept-identity", "accept-action-candidate": "accept-action-candidate", "retry-action": "retry-action", "retry-identity": "retry-identity" }
 			const command = commandByOperation[operation]
 			if (!command) throw new ApiError("BACKEND_UNAVAILABLE", "This Creator step requires the desktop Shell")
+			if (["retry-action", "retry-identity"].includes(command)) {
+				await hatchPetAgent?.()?.renewBudgetWindow?.({ runId: String(input.runId || ""), reason: command })
+			}
 			const result = await runBackendCreatorCommandWithProgress(command, input, ctx)
 			const finish = () => {
 				const run = saveRun(result.run, input.flowId || null)

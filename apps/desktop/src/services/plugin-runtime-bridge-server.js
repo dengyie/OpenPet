@@ -191,6 +191,7 @@ const createPluginRuntimeBridgeServer = ({
         ok: false,
         error: error.message || 'Bridge request failed',
         ...(/^[a-z0-9][a-z0-9_]{0,79}$/.test(errorCode) ? { errorCode } : {}),
+        ...(typeof error?.retryable === 'boolean' ? { retryable: error.retryable } : {}),
         ...(modelAttempts.length ? { errorDetails: { modelAttempts } } : {})
       })
     }

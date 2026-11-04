@@ -716,7 +716,7 @@ test('quality-first action repair reruns only the requested action and preserves
   ])
 })
 
-test('manual action selection reuses an exact retained candidate without Provider generation', async () => {
+for (const processorVersion of [1, 2]) test(`manual action selection reuses processor ${processorVersion} retained candidates without Provider generation`, async () => {
   const dataDir = createDataDir()
   const created = createRun({
     dataDir,
@@ -739,7 +739,7 @@ test('manual action selection reuses an exact retained candidate without Provide
       recommended: false,
       technicalFailureCodes: [],
       qualityWarningCodes: warnings,
-      bindings: createCandidateBindings({ planHash: plan.hash, canonicalHash: canonical.sha256, profileHash: profile.hash }),
+      bindings: { ...createCandidateBindings({ planHash: plan.hash, canonicalHash: canonical.sha256, profileHash: profile.hash }), processorVersion },
       artifacts: [{ role: 'raw-sheet', path: rawPath, sha256: candidateHash }],
       qa: { ok: true, failures: [] },
       gate: { ok: false, outcome: 'reject', failures: warnings }
@@ -780,6 +780,7 @@ test('manual action selection reuses an exact retained candidate without Provide
   } })
   const calls = []
   const runtime = {
+    actionProcessorVersion: processorVersion,
     runAction: async () => { throw new Error('manual selection must not call Provider generation') },
     materializeActionCandidate: async ({ actionId, candidate }) => {
       calls.push(['materialize', actionId, candidate.candidateId, candidate.selection.selectionAuthority])

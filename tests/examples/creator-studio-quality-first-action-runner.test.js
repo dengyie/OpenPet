@@ -310,3 +310,22 @@ test('runner retains a failed Provider dispatch with request evidence and contin
   assert.deepEqual(failed.modelAttempts, [{ model: 'gpt-image-2', ok: false, requestId: 'provider-request-failed-1' }])
   assert.equal(dispatchCount, 3)
 })
+
+
+test('action revisions use distinct candidate IDs for outputs and failed records', async () => {
+  const ids = []
+  for (const candidateIdPrefix of ['video-revision-a', 'video-revision-b']) {
+    const result = await runQualityFirstAction({
+      context: { actionId: 'idle', candidateIdPrefix },
+      reserveCreativeDispatch: () => {},
+      generateCandidate: async ({ candidateId }) => {
+        ids.push(candidateId)
+        throw Object.assign(new Error('provider unavailable'), { code: 'video_generation_failed' })
+      },
+      processCandidate: async (candidate) => candidate,
+      evaluateCandidate: async () => ({})
+    })
+    assert.ok(result.candidates.every((candidate) => candidate.candidateId.startsWith(candidateIdPrefix + '-')))
+  }
+  assert.equal(new Set(ids).size, ids.length)
+})

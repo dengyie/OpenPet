@@ -110,7 +110,7 @@ const verifyRetainedCandidateArtifact = ({ dataDir, runId, artifact, label }) =>
   return relativePath
 }
 
-const assertCandidateBindingsCurrent = ({ candidate, actionId, plan, canonical, profile }) => {
+const assertCandidateBindingsCurrent = ({ candidate, actionId, plan, canonical, profile, processorVersion = 1 }) => {
   const bindings = candidate?.bindings
   const expectedProfileHash = actionId === 'idle' ? '' : String(profile?.hash || '')
   if (
@@ -118,7 +118,7 @@ const assertCandidateBindingsCurrent = ({ candidate, actionId, plan, canonical, 
     String(bindings.planHash || '') !== String(plan?.hash || '') ||
     String(bindings.canonicalHash || '') !== String(canonical?.sha256 || '') ||
     String(bindings.profileHash || '') !== expectedProfileHash ||
-    Number(bindings.processorVersion) !== 1 ||
+    Number(bindings.processorVersion) !== processorVersion ||
     String(bindings.qualityProfileHash || '') !== String(getQualityFirstQualityProfile().hash || '')
   ) {
     throw createCandidateValidationError('candidate_binding_stale', 'Candidate dependency binding is missing or stale')
@@ -712,6 +712,7 @@ const acceptQualityFirstCanonicalIdentity = async ({
 
 const createQualityFirstActionResultView = (result) => ({
   ok: result?.ok === true,
+  processorVersion: Number(result?.processorVersion) || 1,
   actionId: String(result?.actionId || ''),
   disposition: String(result?.disposition || ''),
   selectedCandidateId: String(result?.selectedCandidateId || ''),
@@ -888,7 +889,8 @@ const acceptQualityFirstActionCandidate = async ({
     actionId: normalizedActionId,
     plan,
     canonical,
-    profile
+    profile,
+    processorVersion: runtime.actionProcessorVersion || 1
   })
   assertHumanCandidateSelection({
     candidate,

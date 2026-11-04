@@ -1033,6 +1033,80 @@ test('Creator Studio Hatch planning receives bridge cancellation after the HTTP 
   }
 })
 
+test('Creator Studio video generation is accounted in the Hatch-pet Provider budget', async () => {
+  const spawned = []
+  const child = createFakeServiceProcess()
+  const bridgeCalls = []
+  const hatchPetCalls = []
+  const service = createPluginService({
+    settingsService: createSettingsService({
+      plugins: { enabled: { 'openpet.creator-studio': true } }
+    }),
+    petService: createBridgeAwarePetService(),
+    imageGenerationModelService: {
+      getConfig: () => ({ provider: 'openai-compatible', baseUrl: 'https://api.openai.com/v1', model: 'gpt-image-2', hasApiKey: true })
+    },
+    videoGenerationModelService: {
+      getConfig: () => ({ provider: 'openai-compatible', baseUrl: 'https://api.mangoqwq.com/v1', model: 'grok-imagine-video', hasApiKey: true }),
+      generateVideo: async (payload) => {
+        bridgeCalls.push(payload)
+        return { ok: true, provider: 'mango-api', model: 'grok-imagine-video', result: { outputs: [{ dataRelativePath: 'runs/demo-video/frames/video.mp4', mimeType: 'video/mp4', sha256: 'a'.repeat(64), byteLength: 12, taskId: 'task-1' }], taskId: 'task-1' } }
+      }
+    },
+    hatchPetAgentService: {
+      reserveProviderCall: (payload) => {
+        hatchPetCalls.push(['reserveProviderCall', payload])
+        return { reservationId: 'provider-1', budgetLedger: { version: 1, reservations: { 'provider-1': { type: 'provider' } } } }
+      },
+      recordProviderCall: (payload) => {
+        hatchPetCalls.push(['recordProviderCall', payload])
+        return { budgetLedger: { usage: { providerCalls: 1 } } }
+      }
+    },
+    officialPlugins: [],
+    pluginDirs: [path.resolve(__dirname, '../../examples/plugins')],
+    spawnCommandProcess: (file, args, options) => {
+      spawned.push({ file, args, options })
+      return child
+    }
+  })
+
+  const commandRun = service.runCommand('openpet.creator-studio', 'create-run', { petName: 'Video Pet', prompt: 'pet' })
+  await waitFor(() => spawned.length === 1)
+  const baseUrl = spawned[0].options.env.OPENPET_BRIDGE_URL
+  const token = spawned[0].options.env.OPENPET_BRIDGE_TOKEN
+  const dataDir = service.getPluginCreatorDataDir('openpet.creator-studio')
+  const referenceRelativePath = 'runs/demo-video/inputs/references/canonical-reference.png'
+  const referencePath = path.join(dataDir, referenceRelativePath)
+  fs.mkdirSync(path.dirname(referencePath), { recursive: true })
+  fs.writeFileSync(referencePath, 'reference-image')
+
+  const response = await requestBridge(`${baseUrl}/creator/model-video-generate`, {
+    method: 'POST',
+    token,
+    body: {
+      runId: 'demo-video',
+      prompt: 'a locked camera idle loop',
+      referenceImages: [{ relativePath: referenceRelativePath, fileName: 'canonical-reference.png', role: 'canonical-reference' }],
+      output: { dataRelativeDir: 'runs/demo-video/frames' }
+    }
+  })
+
+  child.stdout.write('{"ok":true}\n')
+  child.emit('exit', 0, null)
+  await commandRun
+
+  assert.equal(response.status, 200)
+  assert.equal(response.body.ok, true)
+  assert.equal(bridgeCalls.length, 1)
+  assert.deepEqual(hatchPetCalls.map(([name]) => name), ['reserveProviderCall', 'recordProviderCall'])
+  assert.deepEqual(hatchPetCalls[0][1], { runId: 'demo-video', timeoutMs: 0 })
+  assert.equal(hatchPetCalls[1][1].runId, 'demo-video')
+  assert.equal(hatchPetCalls[1][1].reservationId, 'provider-1')
+  assert.equal(hatchPetCalls[1][1].ok, true)
+  assert.equal(hatchPetCalls[1][1].code, 'ok')
+})
+
 test('Creator Studio Hatch evaluation receives bridge cancellation after the HTTP client disconnects', async () => {
   const spawned = []
   const child = createFakeServiceProcess()

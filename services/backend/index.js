@@ -71,6 +71,7 @@ import { createCreatorJobHandlers } from "./jobs/handlers/creator.js"
 import { registerCreatorRoutes } from "./routes/creator.js"
 import { createResidentAiContext } from "./resident-context.js"
 import { omitImageProviderOwnerFields } from "./bridge/creator-image-request.js"
+import { runCreatorProviderCall } from "./bridge/creator-provider-call.js"
 const require = createRequire(import.meta.url)
 const { normalizeNetworkRequest, requestPluginNetwork } = require("../../apps/desktop/src/services/plugin-network-client.js")
 const { createHatchPetAgentService } = require("../../apps/desktop/src/services/hatch-pet-agent-service.js")
@@ -212,6 +213,30 @@ const runtime = {
 	hatchAgent: null,
 	residentBackend: false,
 	residentAiContext: null,
+}
+
+const getHatchAgent = () => {
+	if (runtime.hatchAgent) return runtime.hatchAgent
+	if (!runtime.aiChat || !runtime.settings || !runtime.secrets) throw new ApiError("BACKEND_UNAVAILABLE", "Hatch-pet AI service is unavailable")
+	runtime.hatchAgent = createHatchPetAgentService({
+		aiService: {
+			completeStructuredTool: ({ signal, configOverride: _ignored, ...request } = {}) => runtime.aiChat.complete({ method: "completeStructuredTool", capability: "hatch-pet", request }, { signal }),
+			completeStructuredVisionTool: ({ signal, configOverride: _ignored, ...request } = {}) => runtime.aiChat.complete({ method: "completeStructuredTool", capability: "hatch-pet-vision", request }, { signal }),
+		},
+		configuration: {
+			getAiConfig: () => runtime.settings.read().values.ai || {},
+			getConfig: () => runtime.aiChat.getHatchConfig(),
+			saveConfig: (config) => { runtime.aiChat.saveConfig({ hatchPet: config }); return runtime.aiChat.getHatchConfig() },
+			saveApiKey: async (value) => { const result = await runtime.secrets.set("ai.hatch-pet", value); runtime.aiChat.publishSnapshot(); return { apiKeyRef: "ai.hatch-pet", hasApiKey: result.configured === true, updatedAt: new Date().toISOString() } },
+			clearApiKey: async () => { await runtime.secrets.clear("ai.hatch-pet"); runtime.aiChat.publishSnapshot(); return { apiKeyRef: "ai.hatch-pet", hasApiKey: false, updatedAt: new Date().toISOString() } },
+		},
+		pluginService: { getPluginCreatorDataDir: (pluginId) => {
+			if (!runtime.plugins?.runtimeDirs) throw new ApiError("BACKEND_UNAVAILABLE", "Creator plugin data directory is unavailable")
+			return runtime.plugins.runtimeDirs(pluginId).dataDir
+		} },
+		appLogService: { record: (entry) => logger?.[entry.level || "info"]?.(entry.message, entry.details) },
+	})
+	return runtime.hatchAgent
 }
 
 function containedFile(root, candidate, label) {
@@ -507,26 +532,6 @@ await initializeBackendRuntime({
 				if (!runtime.plugins?.runtimeDirs) throw new ApiError("BACKEND_UNAVAILABLE", "Creator plugin data directory is unavailable")
 				return runtime.plugins.runtimeDirs(pluginId).dataDir
 			}
-			const hatchAgent = () => {
-				if (runtime.hatchAgent) return runtime.hatchAgent
-				if (!runtime.aiChat || !runtime.settings || !runtime.secrets) throw new ApiError("BACKEND_UNAVAILABLE", "Hatch-pet AI service is unavailable")
-				runtime.hatchAgent = createHatchPetAgentService({
-					aiService: {
-						completeStructuredTool: ({ signal, configOverride: _ignored, ...request } = {}) => runtime.aiChat.complete({ method: "completeStructuredTool", capability: "hatch-pet", request }, { signal }),
-						completeStructuredVisionTool: ({ signal, configOverride: _ignored, ...request } = {}) => runtime.aiChat.complete({ method: "completeStructuredTool", capability: "hatch-pet-vision", request }, { signal }),
-					},
-					configuration: {
-						getAiConfig: () => runtime.settings.read().values.ai || {},
-						getConfig: () => runtime.aiChat.getHatchConfig(),
-						saveConfig: (config) => { runtime.aiChat.saveConfig({ hatchPet: config }); return runtime.aiChat.getHatchConfig() },
-						saveApiKey: async (value) => { const result = await runtime.secrets.set("ai.hatch-pet", value); runtime.aiChat.publishSnapshot(); return { apiKeyRef: "ai.hatch-pet", hasApiKey: result.configured === true, updatedAt: new Date().toISOString() } },
-						clearApiKey: async () => { await runtime.secrets.clear("ai.hatch-pet"); runtime.aiChat.publishSnapshot(); return { apiKeyRef: "ai.hatch-pet", hasApiKey: false, updatedAt: new Date().toISOString() } },
-					},
-					pluginService: { getPluginCreatorDataDir: creatorDataDir },
-					appLogService: { record: (entry) => logger?.[entry.level || "info"]?.(entry.message, entry.details) },
-				})
-				return runtime.hatchAgent
-			}
 			const creatorBridge = {
 				modelSettings: (pluginId) => {
 					if (!runtime.ai?.getConfig) throw new ApiError("BACKEND_UNAVAILABLE", "Image model settings are unavailable")
@@ -544,12 +549,18 @@ await initializeBackendRuntime({
 						...reference,
 						path: containedFile(dataDir, reference?.path, "Creator reference image"),
 					})) : []
-					return runtime.ai.generateImage({
-						...omitImageProviderOwnerFields(payload),
-						referenceImages,
-						referenceDataDir: dataDir,
-						output: { dataDir, dataRelativeDir },
+					return runCreatorProviderCall({
+						pluginId,
+						payload,
 						signal,
+					hatchAgentFactory: getHatchAgent,
+						operation: ({ signal: operationSignal }) => runtime.ai.generateImage({
+							...omitImageProviderOwnerFields(payload),
+							referenceImages,
+							referenceDataDir: dataDir,
+							output: { dataDir, dataRelativeDir },
+							signal: operationSignal,
+						}),
 					})
 				},
 				modelVideoGenerate: async (pluginId, payload = {}, { signal } = {}) => {
@@ -561,19 +572,25 @@ await initializeBackendRuntime({
 						...reference,
 						path: containedFile(dataDir, reference?.path || resolve(dataDir, String(reference?.relativePath || "")), "Creator video reference image"),
 					})) : []
-					return runtime.ai.generateVideo({
-						...omitImageProviderOwnerFields(payload),
-						referenceImages,
-						output: { ...output, dataDir, dataRelativeDir },
+					return runCreatorProviderCall({
+						pluginId,
+						payload,
 						signal,
+					hatchAgentFactory: getHatchAgent,
+						operation: ({ signal: operationSignal }) => runtime.ai.generateVideo({
+							...omitImageProviderOwnerFields(payload),
+							referenceImages,
+							output: { ...output, dataDir, dataRelativeDir },
+							signal: operationSignal,
+						}),
 					})
 				},
-				hatchPetPlan: async (_pluginId, payload, { signal } = {}) => hatchAgent().planSprite({ runId: String(payload?.runId || ""), userIntent: String(payload?.userIntent || ""), signal }),
+				hatchPetPlan: async (_pluginId, payload, { signal } = {}) => getHatchAgent().planSprite({ runId: String(payload?.runId || ""), userIntent: String(payload?.userIntent || ""), signal }),
 				hatchPetEvaluate: async (pluginId, payload, { signal } = {}) => {
 					const dataDir = creatorDataDir(pluginId)
 					const board = payload?.board && typeof payload.board === "object" ? payload.board : {}
 					const boardPath = containedFile(dataDir, resolve(dataDir, String(board.relativePath || "")), "Creator review board")
-					return hatchAgent().evaluateSprite({
+					return getHatchAgent().evaluateSprite({
 						runId: String(payload?.runId || ""), scope: String(payload?.scope || ""),
 						board: { path: boardPath, relativePath: String(board.relativePath || ""), sha256: String(board.sha256 || ""), regions: Array.isArray(board.regions) ? board.regions : [] },
 						qa: payload?.qa && typeof payload.qa === "object" ? payload.qa : {}, signal,
@@ -671,6 +688,7 @@ if (!runtime.degraded && runtime.jobs) {
 		enqueueJob: (input) => runtime.enqueueJob?.(input),
 		runPluginCommand: (command, payload, context = {}) => runtime.plugins?.runCreatorBackendCommand?.(command, payload, context),
 		creatorDataDir: (pluginId) => runtime.plugins?.runtimeDirs?.(pluginId)?.dataDir,
+		hatchPetAgent: getHatchAgent,
 		emit: (name, payload) => eventHub.publish(name, payload),
 		logger,
 	})

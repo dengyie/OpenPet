@@ -3354,6 +3354,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
       const runner = await generateSelectedFullPetAction({
         context: {
           actionId,
+          candidateIdPrefix: `video-${crypto.randomUUID()}`,
           provider: String(videoSettings.provider || 'mango-api'),
           model: videoModel,
           duplicateThresholds: { perceptualHashDistance: 4, identityDescriptorDistance: 0.08, alphaMaskDistance: 0.08 }
@@ -3438,7 +3439,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
         },
         archiveCandidateRevision: async () => archiveCandidateRevision({ dataDir, runId: run.runId, scope: `action-${actionId}`, reason: 'video-action-repair' })
       })
-      return runner
+      return { ...runner, processorVersion: actionProcessorVersion }
     }
     const anchorPath = path.join(dataDir, `runs/${run.runId}/references/${actionId}/anchor-grid.png`)
     const boardPath = path.join(dataDir, `runs/${run.runId}/references/${actionId}/action-reference-board.png`)
@@ -3509,7 +3510,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
       },
       archiveCandidateRevision: async () => archiveCandidateRevision({ dataDir, runId: run.runId, scope: `action-${actionId}`, reason: 'reason-directed-repair' })
     })
-    return runner
+    return { ...runner, processorVersion: actionProcessorVersion }
   }
   const materializeActionCandidate = async ({ actionId, candidate, profile }) => {
     const action = plan.actions.find((entry) => entry.actionId === actionId)
@@ -3858,6 +3859,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
   })
   return {
     plan,
+    actionProcessorVersion,
     planResult,
     // Web Backend runs always pause for an explicit identity choice before any
     // action generation. Desktop runs retain the planner's normal policy.

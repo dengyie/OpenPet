@@ -2368,6 +2368,21 @@ test('creator workflow diagnostics expose renderer-safe quality-first identity c
   assert.equal(diagnostics.progress.qualityFirst.actionResults.idle.candidates[1].selectionState, 'selectable-with-warning')
   assert.equal(diagnostics.progress.qualityFirst.actionResults.idle.candidates[1].relativePath, `runs/${runId}/candidates/idle/candidate-2/raw/candidate.png`)
   assert.doesNotMatch(JSON.stringify(diagnostics), /\/Users\/private/)
+  const runPath = path.join(runDir, 'run.json')
+  const videoRun = JSON.parse(fs.readFileSync(runPath, 'utf8'))
+  videoRun.qualityFirst.actionResults.idle.processorVersion = 2
+  fs.writeFileSync(runPath, JSON.stringify(videoRun))
+  const recordPath = path.join(actionRecordDir, 'candidate.json')
+  const videoRecord = JSON.parse(fs.readFileSync(recordPath, 'utf8'))
+  videoRecord.candidate.bindings.processorVersion = 2
+  fs.writeFileSync(recordPath, JSON.stringify(videoRecord))
+  const videoView = __testInternals.readWorkflowDiagnostics({ pluginDataDir, runId })
+  assert.equal(videoView.progress.qualityFirst.actionResults.idle.candidates[1].technicalEligible, true)
+  videoRun.qualityFirst.actionResults.idle.processorVersion = 1
+  fs.writeFileSync(runPath, JSON.stringify(videoRun))
+  const staleView = __testInternals.readWorkflowDiagnostics({ pluginDataDir, runId })
+  assert.equal(staleView.progress.qualityFirst.actionResults.idle.candidates[1].technicalEligible, false)
+
 })
 
 test('creator workflow diagnostics reconstruct legacy action eligibility only from complete verified artifacts', () => {
