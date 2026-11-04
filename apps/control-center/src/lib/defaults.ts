@@ -240,7 +240,7 @@ export const defaultImageGenerationConfig = {
 export const defaultVideoGenerationConfig = {
   provider: 'openai-compatible',
   baseUrl: 'https://api.mangoqwq.com/v1',
-  model: 'grok-imagine-video',
+  model: 'grok-imagine-video-1.5',
   apiKeyRef: 'secret:model.video.openai-compatible.apiKey',
   timeoutMs: 300000,
   maxConcurrentJobs: 1,

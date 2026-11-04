@@ -1278,7 +1278,7 @@ export function AiPane({
                       ariaLabel="视频 Model"
                       currentModel={videoGenerationConfig?.model || ''}
                       cachedCatalog={activeVideoGenerationConfig?.modelCatalog || { cacheKey: '', models: [], fetchedAt: '', source: 'none' }}
-                      recommendedModels={['grok-imagine-video', 'grok-imagine-video-1.5']}
+                      recommendedModels={['grok-imagine-video-1.5', 'grok-imagine-video']}
                       saving={saving}
                       statusText={videoModelDiscoverySummary}
                       onSelectModel={(model) => onChangeVideoGeneration({ model })}
