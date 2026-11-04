@@ -3,18 +3,20 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
+const { EventEmitter } = require('node:events')
 const sharp = require('sharp')
 
 const { createActionVideoTask } = require('../../examples/plugins/creator-studio/lib/action-video-task')
 const { createMotionDriver } = require('../../examples/plugins/creator-studio/lib/motion-driver-registry')
 const { createFrameTiming, createLoopIndexes, selectFrameIndexes } = require('../../examples/plugins/creator-studio/lib/video-frame-extractor')
+const { extractVideoFrames } = require('../../examples/plugins/creator-studio/lib/video-decoder')
 const { createVideoArtifact } = require('../../examples/plugins/creator-studio/lib/video-artifact-contract')
 const { analyzeTemporalQuality, computeGlobalBounds, createStablePlacements } = require('../../examples/plugins/creator-studio/lib/video-stabilizer')
-const { processFrameSequence, processMatteFrame } = require('../../examples/plugins/creator-studio/lib/video-matte-pipeline')
+const { DEFAULT_BACKGROUND_TOLERANCE, processFrameSequence, processMatteFrame } = require('../../examples/plugins/creator-studio/lib/video-matte-pipeline')
 const { createProviderVideoTask } = require('../../examples/plugins/creator-studio/lib/provider-video-task')
 const { createVideoRunnerRequest, createVideoRunnerResponse } = require('../../examples/plugins/creator-studio/lib/video-runner-protocol')
 const { createVideoRunnerService } = require('../../examples/plugins/creator-studio/lib/video-runner-service')
-const { createVideoCandidateArtifacts } = require('../../examples/plugins/creator-studio/lib/video-action-runner')
+const { buildVideoPrompt, createVideoCandidateArtifacts, isVideoTechnicalFailure, runVideoAction } = require('../../examples/plugins/creator-studio/lib/video-action-runner')
 
 const HASH_A = 'a'.repeat(64)
 const HASH_B = 'b'.repeat(64)
@@ -27,6 +29,22 @@ test('official motion driver is deterministic and carries a frame plan hash', ()
   assert.equal(driver.loop, true)
   assert.match(driver.sha256, /^[a-f0-9]{64}$/)
   assert.deepEqual(driver, createMotionDriver({ actionId: 'waving' }))
+})
+
+test('video prompt binds exact loop closure and safe character margins', () => {
+  const driver = createMotionDriver({ actionId: 'idle' })
+  const prompt = buildVideoPrompt({ run: { input: { petName: 'Mori' } }, action: { actionId: 'idle' }, driver })
+  assert.match(prompt, /Frame 1 and the final frame must depict the same neutral pose/i)
+  assert.match(prompt, /fully settle back to that exact starting state/i)
+  assert.match(prompt, /at least 12 percent empty margin/i)
+  assert.match(prompt, /no body part may touch or cross any image edge/i)
+})
+
+test('video technical eligibility rejects temporal integrity failures', () => {
+  for (const failure of ['frame-edge-contact', 'detached-effect-contamination', 'loop-seam-too-large', 'motion-is-static']) {
+    assert.equal(isVideoTechnicalFailure(failure), true)
+  }
+  assert.equal(isVideoTechnicalFailure('body-scale-variance-high'), false)
 })
 
 test('action video task binds canonical identity and motion driver', () => {
@@ -89,6 +107,38 @@ test('frame extractor preserves ordered samples and loop modes', () => {
   assert.deepEqual(createLoopIndexes({ indexes: [0, 1, 2, 3], mode: 'ping-pong' }), [0, 1, 2, 3, 2, 1])
 })
 
+test('video decoder samples the full source timeline including the final frame', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-video-decoder-'))
+  const videoPath = path.join(root, 'source.mp4')
+  fs.writeFileSync(videoPath, 'fixture-video')
+  const calls = []
+  const spawnImpl = (command, args) => {
+    calls.push({ command, args })
+    const child = new EventEmitter()
+    child.stdout = new EventEmitter()
+    child.stderr = new EventEmitter()
+    child.kill = () => {}
+    process.nextTick(() => {
+      if (command === 'ffprobe') {
+        child.stdout.emit('data', Buffer.from('24\n'))
+      } else {
+        const pattern = args.at(-1)
+        for (let index = 1; index <= 6; index += 1) {
+          fs.writeFileSync(pattern.replace('%04d', String(index).padStart(4, '0')), `frame-${index}`)
+        }
+      }
+      child.emit('close', 0)
+    })
+    return child
+  }
+  const result = await extractVideoFrames({ videoPath, outputDir: 'frames', dataDir: root, fps: 12, maxFrames: 6, spawnImpl })
+  assert.deepEqual(result.sourceIndexes, [0, 5, 9, 14, 18, 23])
+  assert.equal(result.frameCount, 6)
+  assert.equal(calls[0].command, 'ffprobe')
+  assert.equal(calls[1].command, 'ffmpeg')
+  assert.match(calls[1].args[calls[1].args.indexOf('-vf') + 1], /eq\(n\\,0\).*eq\(n\\,23\)/)
+})
+
 test('stabilizer computes a global envelope and common baseline', () => {
   const frames = [
     { bbox: { left: 4, top: 10, width: 20, height: 30 } },
@@ -117,6 +167,32 @@ test('temporal quality rejects dropped masks and static frames', () => {
     frames: [{ bbox: { left: 1, top: 2, width: 10, height: 20 }, root: { x: 5, y: 22 }, hash: HASH_A }]
   })
   assert.deepEqual(missing.failures, ['mask-coverage-missing', 'alpha-coverage-missing'])
+})
+
+test('temporal quality rejects edge contact, detached contamination, and a broken loop seam', () => {
+  const result = analyzeTemporalQuality({
+    loop: true,
+    frames: [
+      { bbox: { left: 0, top: 2, width: 10, height: 20 }, root: { x: 5, y: 22 }, alphaCoverage: 0.1, maskCoverage: 0.1, hash: HASH_A, edgeTouch: true, unmatchedComponentCount: 1 },
+      { bbox: { left: 20, top: 2, width: 10, height: 20 }, root: { x: 25, y: 22 }, alphaCoverage: 0.1, maskCoverage: 0.1, hash: HASH_B, edgeTouch: false, unmatchedComponentCount: 0 }
+    ]
+  })
+  assert.equal(result.ok, false)
+  assert.ok(result.failures.includes('frame-edge-contact'))
+  assert.ok(result.failures.includes('detached-effect-contamination'))
+  assert.ok(result.failures.includes('loop-seam-too-large'))
+  assert.ok(result.metrics.loopSeamDistanceRatio > 0.2)
+})
+
+test('temporal quality ignores background-only pixel changes when measuring motion', () => {
+  const result = analyzeTemporalQuality({
+    frames: [
+      { bbox: { left: 1, top: 2, width: 10, height: 20 }, root: { x: 5, y: 22 }, alphaCoverage: 0.11, maskCoverage: 0.1, hash: HASH_A, bodyMaskSha256: HASH_B },
+      { bbox: { left: 1, top: 2, width: 10, height: 20 }, root: { x: 5, y: 22 }, alphaCoverage: 0.12, maskCoverage: 0.1, hash: HASH_B, bodyMaskSha256: HASH_B }
+    ]
+  })
+  assert.ok(result.failures.includes('motion-is-static'))
+  assert.equal(result.metrics.uniqueMotionFrameCount, 1)
 })
 
 test('video artifact contract rejects traversal and preserves frame cardinality', () => {
@@ -166,6 +242,24 @@ test('video matte removes edge-connected green while preserving an enclosed whit
   assert.equal(data[centerOffset + 3], 255)
   assert.ok(result.removedPixelRatio > 0.5)
   await assert.rejects(() => processMatteFrame(source, { tolerance: -1 }), /tolerance is invalid/)
+})
+
+test('video matte default tolerance handles compressed chroma spill', async () => {
+  assert.equal(DEFAULT_BACKGROUND_TOLERANCE, 180)
+  const source = await sharp({
+    create: { width: 12, height: 12, channels: 4, background: { r: 20, g: 243, b: 15, alpha: 1 } }
+  }).composite([{
+    input: await sharp({
+      create: { width: 4, height: 6, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } }
+    }).png().toBuffer(),
+    left: 4,
+    top: 3
+  }]).png().toBuffer()
+  const result = await processMatteFrame(source, { backgroundColor: '#12ff4d' })
+  const { data, info } = await sharp(result.buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+  const centerOffset = ((6 * info.width) + 6) * info.channels
+  assert.equal(data[centerOffset + 3], 255)
+  assert.ok(result.removedPixelRatio > 0.5)
 })
 
 test('video frame sequence emits stable normalized frames and hashes', async () => {
@@ -409,6 +503,89 @@ test('video runner service retries only retryable failures and is idempotent', a
   assert.equal(first.status, 'succeeded')
   assert.equal(second, first)
   assert.equal(calls, 2)
+})
+
+const createRunVideoActionFixture = async ({ bridge, signal }) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-video-runner-'))
+  const referencePath = path.join(root, 'reference.png')
+  const rawPath = path.join(root, 'runs', 'run-video', 'video', 'raw', 'waving.mp4')
+  fs.mkdirSync(path.dirname(rawPath), { recursive: true })
+  await sharp({ create: { width: 8, height: 8, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } } }).png().toFile(referencePath)
+  fs.writeFileSync(rawPath, 'fixture-video')
+  const result = await runVideoAction({
+    dataDir: root,
+    run: { runId: 'run-video', input: { petName: 'Test pet' } },
+    action: { actionId: 'waving', motionPrompt: 'wave' },
+    canonical: { relativePath: 'reference.png', sha256: HASH_A, fileName: 'reference.png' },
+    signal,
+    bridge,
+    decode: async () => ({ framePaths: ['fixture-frame-1.png', 'fixture-frame-2.png'] }),
+    processFrames: async () => ({
+      normalizedFrames: [],
+      frameMetrics: [
+        { bbox: { left: 1, top: 1, width: 10, height: 20 }, root: { x: 1, y: 20 }, alphaCoverage: 0.8, maskCoverage: 0.8, hash: HASH_A },
+        { bbox: { left: 1, top: 2, width: 10, height: 21 }, root: { x: 2, y: 21 }, alphaCoverage: 0.8, maskCoverage: 0.8, hash: HASH_B }
+      ]
+    })
+  })
+  return { root, result }
+}
+
+test('runVideoAction retries a retryable bridge error once', async () => {
+  let calls = 0
+  const { result } = await createRunVideoActionFixture({
+    bridge: async () => {
+      calls += 1
+      if (calls === 1) throw Object.assign(new Error('upstream timeout'), { retryable: true })
+      return { result: { outputs: [{ dataRelativePath: 'runs/run-video/video/raw/waving.mp4', sha256: HASH_B, mimeType: 'video/mp4' }] } }
+    }
+  })
+  assert.equal(calls, 2)
+  assert.equal(result.ok, true)
+  assert.equal(result.rawVideo.relativePath, 'runs/run-video/video/raw/waving.mp4')
+})
+
+test('runVideoAction keeps Provider video geometry independent from the sprite canvas', async () => {
+  let request
+  const { result } = await createRunVideoActionFixture({
+    bridge: async (_route, payload) => {
+      request = payload
+      return { result: { outputs: [{ dataRelativePath: 'runs/run-video/video/raw/waving.mp4', sha256: HASH_B, mimeType: 'video/mp4' }] } }
+    }
+  })
+  assert.equal(result.ok, true)
+  assert.equal(request.size, '1280x720')
+  assert.equal(request.request.aspect_ratio, '16:9')
+  assert.equal(request.request.resolution, '720p')
+})
+
+test('runVideoAction does not retry a non-retryable bridge error', async () => {
+  let calls = 0
+  await assert.rejects(() => createRunVideoActionFixture({
+    bridge: async () => {
+      calls += 1
+      throw Object.assign(new Error('invalid request'), { retryable: false })
+    }
+  }), /invalid request/)
+  assert.equal(calls, 1)
+})
+
+test('runVideoAction cancels retry backoff when the request is aborted', async () => {
+  const controller = new AbortController()
+  let calls = 0
+  const promise = createRunVideoActionFixture({
+    signal: controller.signal,
+    bridge: async () => {
+      calls += 1
+      if (calls === 1) {
+        setImmediate(() => controller.abort(new Error('test cancellation')))
+        throw Object.assign(new Error('upstream timeout'), { retryable: true })
+      }
+      return { result: { outputs: [{ dataRelativePath: 'runs/run-video/video/raw/waving.mp4', sha256: HASH_B, mimeType: 'video/mp4' }] } }
+    }
+  })
+  await assert.rejects(() => promise, /test cancellation/)
+  assert.equal(calls, 1)
 })
 
 test('video runner service coalesces concurrent duplicate requests', async () => {

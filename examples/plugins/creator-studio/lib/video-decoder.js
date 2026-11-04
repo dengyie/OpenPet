@@ -1,6 +1,7 @@
 const fs = require('node:fs')
 const path = require('node:path')
 const { spawn } = require('node:child_process')
+const { selectFrameIndexes } = require('./video-frame-extractor')
 
 const decoderError = (message, code = 'video_decoder_invalid') => Object.assign(new Error(message), { code })
 
@@ -20,10 +21,12 @@ const assertInside = ({ root, target, label }) => {
   return targetPath
 }
 
-const runProcess = ({ spawnImpl, command, args, cwd, signal }) => new Promise((resolve, reject) => {
+const runProcess = ({ spawnImpl, command, args, cwd, signal, unavailableMessage, startFailedMessage, failedMessage }) => new Promise((resolve, reject) => {
   let settled = false
-  const child = spawnImpl(command, args, { cwd, stdio: ['ignore', 'ignore', 'pipe'] })
+  const child = spawnImpl(command, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] })
+  let stdout = ''
   let stderr = ''
+  child.stdout?.on('data', (chunk) => { stdout = `${stdout}${chunk}`.slice(-4_000) })
   child.stderr?.on('data', (chunk) => { stderr = `${stderr}${chunk}`.slice(-4_000) })
   const abort = () => {
     try { child.kill('SIGTERM') } catch (_) {}
@@ -39,17 +42,35 @@ const runProcess = ({ spawnImpl, command, args, cwd, signal }) => new Promise((r
     settled = true
     signal?.removeEventListener('abort', abort)
     reject(error.code === 'ENOENT'
-      ? decoderError('ffmpeg is required to decode Provider videos', 'video_decoder_unavailable')
-      : decoderError('ffmpeg failed to start', 'video_decoder_start_failed'))
+      ? decoderError(unavailableMessage, 'video_decoder_unavailable')
+      : decoderError(startFailedMessage, 'video_decoder_start_failed'))
   })
   child.once('close', (code) => {
     if (settled) return
     settled = true
     signal?.removeEventListener('abort', abort)
-    if (code !== 0) reject(decoderError(`ffmpeg failed to decode the video${stderr ? `: ${stderr}` : ''}`, 'video_decoder_failed'))
-    else resolve()
+    if (code !== 0) reject(decoderError(`${failedMessage}${stderr ? `: ${stderr}` : ''}`, 'video_decoder_failed'))
+    else resolve(stdout)
   })
 })
+
+const probeFrameCount = async ({ videoPath, dataDir, ffprobePath, spawnImpl, signal }) => {
+  const stdout = await runProcess({
+    spawnImpl,
+    command: ffprobePath,
+    cwd: dataDir,
+    signal,
+    unavailableMessage: 'ffprobe is required to inspect Provider videos',
+    startFailedMessage: 'ffprobe failed to start',
+    failedMessage: 'ffprobe failed to inspect the video',
+    args: ['-v', 'error', '-select_streams', 'v:0', '-count_frames', '-show_entries', 'stream=nb_read_frames', '-of', 'default=nokey=1:noprint_wrappers=1', videoPath]
+  })
+  const frameCount = Number.parseInt(String(stdout || '').trim(), 10)
+  if (!Number.isInteger(frameCount) || frameCount < 1 || frameCount > 100_000) {
+    throw decoderError('ffprobe returned an invalid video frame count', 'video_decoder_probe_invalid')
+  }
+  return frameCount
+}
 
 const extractVideoFrames = async ({
   videoPath,
@@ -58,6 +79,7 @@ const extractVideoFrames = async ({
   fps = 12,
   maxFrames = 32,
   ffmpegPath = 'ffmpeg',
+  ffprobePath = 'ffprobe',
   spawnImpl = spawn,
   signal
 } = {}) => {
@@ -69,6 +91,10 @@ const extractVideoFrames = async ({
   const normalizedMaxFrames = Number(maxFrames)
   if (!Number.isInteger(normalizedFps) || normalizedFps < 1 || normalizedFps > 60) throw decoderError('Video decode FPS is invalid')
   if (!Number.isInteger(normalizedMaxFrames) || normalizedMaxFrames < 1 || normalizedMaxFrames > 128) throw decoderError('Video decode frame limit is invalid')
+  const sourceFrameCount = await probeFrameCount({ videoPath: inputPath, dataDir, ffprobePath, spawnImpl, signal })
+  if (sourceFrameCount < normalizedMaxFrames) throw decoderError('Provider video contains fewer frames than the action contract', 'video_decoder_frame_count_mismatch')
+  const selection = selectFrameIndexes({ sourceFrameCount, sourceFps: 1, targetFrameCount: normalizedMaxFrames, targetFps: normalizedFps })
+  const selectFilter = selection.indexes.map((index) => `eq(n\\,${index})`).join('+')
   fs.mkdirSync(absoluteOutputDir, { recursive: true })
   const outputPattern = path.join(absoluteOutputDir, '%04d.png')
   await runProcess({
@@ -76,14 +102,17 @@ const extractVideoFrames = async ({
     command: ffmpegPath,
     cwd: dataDir,
     signal,
-    args: ['-hide_banner', '-loglevel', 'error', '-i', inputPath, '-vf', `fps=${normalizedFps}`, '-frames:v', String(normalizedMaxFrames), '-y', outputPattern]
+    unavailableMessage: 'ffmpeg is required to decode Provider videos',
+    startFailedMessage: 'ffmpeg failed to start',
+    failedMessage: 'ffmpeg failed to decode the video',
+    args: ['-hide_banner', '-loglevel', 'error', '-i', inputPath, '-vf', `select=${selectFilter},setpts=N/${normalizedFps}/TB`, '-vsync', '0', '-frames:v', String(normalizedMaxFrames), '-y', outputPattern]
   })
   const framePaths = fs.readdirSync(absoluteOutputDir)
     .filter((entry) => /^\d{4}\.png$/.test(entry))
     .sort()
     .map((entry) => path.join(absoluteOutputDir, entry))
-  if (!framePaths.length) throw decoderError('ffmpeg produced no video frames', 'video_decoder_empty')
-  return Object.freeze({ fps: normalizedFps, frameCount: framePaths.length, outputDir: absoluteOutputDir, framePaths: Object.freeze(framePaths) })
+  if (framePaths.length !== normalizedMaxFrames) throw decoderError(`ffmpeg produced ${framePaths.length} video frames; expected ${normalizedMaxFrames}`, 'video_decoder_frame_count_mismatch')
+  return Object.freeze({ fps: normalizedFps, frameCount: framePaths.length, sourceFrameCount, sourceIndexes: selection.indexes, outputDir: absoluteOutputDir, framePaths: Object.freeze(framePaths) })
 }
 
 module.exports = { decoderError, extractVideoFrames }

@@ -32,11 +32,18 @@ const sleep = (ms, signal) => new Promise((resolve, reject) => {
     reject(signal.reason || grokVideoError('video generation was canceled', 'video_provider_canceled'))
     return
   }
-  const timer = setTimeout(resolve, ms)
-  signal?.addEventListener('abort', () => {
+  const cleanup = () => signal?.removeEventListener('abort', onAbort)
+  const onResolve = () => {
+    cleanup()
+    resolve()
+  }
+  const onAbort = () => {
     clearTimeout(timer)
+    cleanup()
     reject(signal.reason || grokVideoError('video generation was canceled', 'video_provider_canceled'))
-  }, { once: true })
+  }
+  const timer = setTimeout(onResolve, ms)
+  signal?.addEventListener('abort', onAbort, { once: true })
 })
 
 const normalizeTaskId = (payload) => {
@@ -47,6 +54,30 @@ const normalizeTaskId = (payload) => {
 }
 
 const normalizeStatus = (payload) => String(payload?.status || payload?.state || payload?.data?.status || '').trim().toLowerCase()
+
+const scrubFailureText = (value, secret = '') => String(value || '')
+  .replace(secret ? new RegExp(secret.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g') : /$^/, '[redacted]')
+  .replace(/[\u0000-\u001f\u007f]/g, ' ')
+  .replace(/Bearer\s+\S+/gi, 'Bearer [redacted]')
+  .replace(/data:[^,\s]+,[A-Za-z0-9+/=]{24,}/gi, 'data:[redacted]')
+  .replace(/\b(?:api[\s_-]*key|secret|credential|token)\b/gi, '[redacted]')
+  .replace(/\b(?:sk|key)-[A-Za-z0-9_-]{12,}\b/gi, '[redacted]')
+  .replace(/https?:\/\/\S+/gi, '[url]')
+  .trim()
+  .slice(0, 240)
+
+const terminalFailureDetail = (payload, secret = '') => {
+  const nested = payload?.error && typeof payload.error === 'object' ? payload.error : payload
+  const code = scrubFailureText(nested?.code || payload?.code, secret)
+  const message = scrubFailureText(nested?.message || payload?.message || (typeof payload?.error === 'string' ? payload.error : ''), secret)
+  if (!code && !message) return { detail: '', retryable: false }
+  const retryable = typeof nested?.retryable === 'boolean'
+    ? nested.retryable
+    : typeof payload?.retryable === 'boolean'
+      ? payload.retryable
+      : /(?:timeout|timed out|deadline|connect|connection|temporar|overload|rate.?limit|\b429\b|\b5\d\d\b|unavailable|try again)/i.test(`${code} ${message}`)
+  return { detail: [code, message].filter(Boolean).join(': '), retryable }
+}
 
 const normalizePrompt = (value) => {
   const prompt = String(value || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim()
@@ -81,8 +112,11 @@ const normalizeAspectRatio = (value) => {
 
 const createRequestBody = ({ model, prompt, referenceDataUrl, seconds, size, request = {} } = {}) => {
   const body = { model, prompt }
-  if (referenceDataUrl) body.image = { url: referenceDataUrl }
-  if (seconds !== undefined) body.duration = String(seconds)
+  // Mango's public compatibility endpoint accepts the first-frame image as
+  // `image_url`; the object-shaped `image` field is only valid on the native
+  // Grok endpoint and is rejected by the deployed gateway.
+  if (referenceDataUrl) body.image_url = referenceDataUrl
+  if (seconds !== undefined) body.duration = seconds
   body.aspect_ratio = normalizeAspectRatio(request.aspect_ratio || size)
   body.resolution = String(request.resolution || '720p').trim().toLowerCase()
   if (!['480p', '720p', '1080p'].includes(body.resolution)) throw grokVideoError('video resolution is invalid')
@@ -209,7 +243,14 @@ const createGrokVideoProvider = ({ baseUrl, apiKey, fetchImpl = globalThis.fetch
       const status = normalizeStatus(statusPayload)
       onProgress?.({ taskId, status: status || 'queued', poll: poll + 1, maxPolls: normalizedMaxPolls })
       if (TERMINAL_SUCCESS.has(status)) break
-      if (TERMINAL_FAILURE.has(status)) throw grokVideoError('video provider generation failed', 'video_generation_failed')
+      if (TERMINAL_FAILURE.has(status)) {
+        const failure = terminalFailureDetail(statusPayload, normalizedApiKey)
+        throw grokVideoError(
+          failure.detail ? `video provider generation failed: ${failure.detail}` : 'video provider generation failed',
+          'video_generation_failed',
+          { retryable: failure.retryable }
+        )
+      }
       if (poll === normalizedMaxPolls - 1) throw grokVideoError('video provider polling timed out', 'video_provider_timeout', { retryable: true })
       await sleepImpl(normalizedPollInterval, signal)
       throwIfAborted(signal)

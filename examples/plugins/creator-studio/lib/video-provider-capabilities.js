@@ -9,6 +9,26 @@ const providerCapabilityError = (message, code = 'video_provider_capability_inva
   return error
 }
 
+const scrubProviderText = (value, secret = '') => String(value || '')
+  .replace(secret ? new RegExp(secret.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g') : /$^/, '[redacted]')
+  .replace(/[\u0000-\u001f\u007f]/g, ' ')
+  .replace(/Bearer\s+\S+/gi, 'Bearer [redacted]')
+  .replace(/data:[^,\s]+,[A-Za-z0-9+/=]{24,}/gi, 'data:[redacted]')
+  .replace(/\b(?:api[\s_-]*key|secret|credential|token)\b/gi, '[redacted]')
+  .replace(/\b(?:sk|key)-[A-Za-z0-9_-]{12,}\b/gi, '[redacted]')
+  .replace(/https?:\/\/\S+/gi, '[url]')
+  .trim()
+  .slice(0, 240)
+
+const providerErrorDetail = (payload, secret) => {
+  if (!payload || typeof payload !== 'object') return ''
+  const nested = payload.error && typeof payload.error === 'object' ? payload.error : payload
+  const code = scrubProviderText(nested.code || payload.code, secret)
+  const message = scrubProviderText(nested.message || payload.message || (typeof payload.error === 'string' ? payload.error : ''), secret)
+  if (!code && !message) return ''
+  return [code, message].filter(Boolean).join(': ')
+}
+
 const normalizeBaseUrl = (value) => {
   let parsed
   try {
@@ -30,7 +50,7 @@ const normalizeApiKey = (value) => {
   return key
 }
 
-const requestError = (message, response) => {
+const requestError = (message, response, payload, apiKey) => {
   const status = Number(response?.status) || 0
   const retryable = status === 408 || status === 429 || status >= 500
   const code = status === 401 || status === 403
@@ -40,7 +60,8 @@ const requestError = (message, response) => {
       : retryable
         ? 'video_provider_retryable_http'
         : 'video_provider_http_error'
-  return providerCapabilityError(message, code, { status, retryable })
+  const detail = providerErrorDetail(payload, apiKey)
+  return providerCapabilityError(detail ? `${message}: ${detail}` : message, code, { status, retryable })
 }
 
 const combineAbortSignals = (signal, timeoutMs) => {
@@ -98,7 +119,7 @@ const fetchJson = async ({ fetchImpl, url, apiKey, method = 'GET', body, signal,
     } catch {
       parsed = null
     }
-    if (!response.ok) throw requestError(`video provider request returned HTTP ${response.status}`, response)
+    if (!response.ok) throw requestError(`video provider request returned HTTP ${response.status}`, response, parsed, apiKey)
     return parsed
   } finally {
     combined.dispose()
@@ -160,6 +181,7 @@ const normalizeModelList = (payload) => {
 }
 
 const isGrokVideoModel = (value) => /^grok-imagine-video(?:[-.]|$)/i.test(String(value || '').trim())
+
 
 const discoverVideoModels = async ({ baseUrl, apiKey, fetchImpl = globalThis.fetch, signal, timeoutMs } = {}) => {
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl)

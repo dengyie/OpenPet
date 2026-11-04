@@ -86,7 +86,7 @@ const createStablePlacements = ({ frames = [], canvasWidth, canvasHeight, paddin
   })
 }
 
-const analyzeTemporalQuality = ({ frames = [], loop = false } = {}) => {
+const analyzeTemporalQuality = ({ frames = [], loop = false, maxLoopSeamRatio = 0.2 } = {}) => {
   if (!Array.isArray(frames) || !frames.length) throw stabilizerError('frames must not be empty')
   const normalized = frames.map((frame, index) => {
     const bbox = normalizeBox(frame?.bbox, index)
@@ -97,7 +97,9 @@ const analyzeTemporalQuality = ({ frames = [], loop = false } = {}) => {
       rootY: Number(root.y),
       alphaCoverage: Number(frame.alphaCoverage),
       maskCoverage: Number(frame.maskCoverage),
-      hash: String(frame.hash || '')
+      hash: String(frame.bodyMaskSha256 || frame.hash || ''),
+      edgeTouch: frame.edgeTouch === true,
+      unmatchedComponentCount: Math.max(0, Number(frame.unmatchedComponentCount) || 0)
     }
   })
   const rootX = normalized.map((frame) => frame.rootX).filter(Number.isFinite)
@@ -120,12 +122,25 @@ const analyzeTemporalQuality = ({ frames = [], loop = false } = {}) => {
         first.bbox.height - last.bbox.height
       )
     : 0
+  const loopSeamScale = Math.max(
+    first.bbox.width,
+    first.bbox.height,
+    last.bbox.width,
+    last.bbox.height,
+    Number.EPSILON
+  )
+  const loopSeamDistanceRatio = loop ? loopSeamDistance / loopSeamScale : 0
   const failures = []
   if (maskDropoutRate > 0) failures.push('mask-dropout')
   if (normalized.some((frame) => !Number.isFinite(frame.maskCoverage))) failures.push('mask-coverage-missing')
   if (normalized.some((frame) => !Number.isFinite(frame.alphaCoverage))) failures.push('alpha-coverage-missing')
   if (uniqueMotionFrameCount < Math.min(2, normalized.length)) failures.push('motion-is-static')
   if (rootX.length !== normalized.length || rootY.length !== normalized.length) failures.push('root-anchor-missing')
+  if (normalized.some((frame) => frame.edgeTouch === true)) failures.push('frame-edge-contact')
+  if (normalized.some((frame) => Number(frame.unmatchedComponentCount) > 0)) failures.push('detached-effect-contamination')
+  if (loop && (!Number.isFinite(Number(maxLoopSeamRatio)) || Number(maxLoopSeamRatio) < 0 || loopSeamDistanceRatio > Number(maxLoopSeamRatio))) {
+    failures.push('loop-seam-too-large')
+  }
   return Object.freeze({
     version: 1,
     ok: failures.length === 0,
@@ -138,6 +153,7 @@ const analyzeTemporalQuality = ({ frames = [], loop = false } = {}) => {
       maskDropoutRate,
       uniqueMotionFrameCount,
       loopSeamDistance,
+      loopSeamDistanceRatio,
       frameCount: normalized.length
     })
   })

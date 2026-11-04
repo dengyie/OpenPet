@@ -92,6 +92,10 @@ These are already true and should not be re-planned as open work:
 - [x] Agent Awareness Phase B foundation: safe token/context/cost aggregation when metadata exists, best-effort git branch/dirty summaries, usage stats dashboard, per-session detail/focus links, generated summaries/progress hints, notification-policy evidence, and stale-session merge protection.
 - [x] Broad Node test coverage, Playwright Control Center regression coverage, and a TypeScript migration baseline across shared contracts and key UI/service boundaries.
 
+## Video Provider Smoke Truth (2026-11-04)
+
+The Mango API catalog currently exposes `grok-imagine-video`, `grok-imagine-video-1.5`, and `grok-imagine-video-1.5-preview`. A real request using the default model reached the gateway but failed upstream with a retryable proxy connect timeout; the preview model was rejected by Mango with non-retryable `model_price_error` because fixed pricing is not configured for its task usage expression. These are upstream availability/configuration results, not local adapter failures. The Creator runner now requests Provider-native `1280x720`, `16:9`, `720p` output while keeping the local sprite canvas independent. Real three-action A/B evidence remains open.
+
 ## Reference Docs
 
 - Current snapshot: [`HANDOFF.md`](./HANDOFF.md)

@@ -5,6 +5,7 @@ const os = require('node:os')
 const path = require('node:path')
 
 const { createGrokVideoProvider } = require('../../examples/plugins/creator-studio/lib/grok-video-provider')
+const { fetchJson } = require('../../examples/plugins/creator-studio/lib/video-provider-capabilities')
 
 const jsonResponse = (payload, status = 200) => ({
   ok: status >= 200 && status < 300,
@@ -33,6 +34,7 @@ test('Mango model discovery returns only the deployed Grok video models', async 
         { id: 'grok-imagine-video' },
         { id: 'grok-imagine-video-1.5' },
         { id: 'grok-imagine-video-1.5-preview' },
+        { id: 'gemini-web-video' },
         { id: 'grok-imagine-image-2.0' },
         { id: 'text-model' }
       ] })
@@ -89,8 +91,9 @@ test('Grok video provider submits, polls, downloads and hashes a video artifact'
   assert.equal(calls.length, 3)
   const submit = JSON.parse(calls[0].init.body)
   assert.equal(submit.model, 'grok-imagine-video-1.5')
-  assert.deepEqual(submit.image, { url: 'data:image/png;base64,AAAA' })
-  assert.equal(submit.duration, '2')
+  assert.equal(submit.image_url, 'data:image/png;base64,AAAA')
+  assert.equal(submit.image, undefined)
+  assert.equal(submit.duration, 2)
   assert.equal(submit.aspect_ratio, '1:1')
   assert.equal(submit.resolution, '720p')
   assert.equal(calls.every(({ init }) => init.headers['User-Agent'] === 'OpenPet/1.0 (video-provider)'), true)
@@ -100,7 +103,7 @@ test('Grok video provider submits, polls, downloads and hashes a video artifact'
 test('Grok video provider rejects failed jobs without exposing response details', async () => {
   const provider = createGrokVideoProvider({
     baseUrl: 'https://api.mangoqwq.com/v1',
-    apiKey: 'runtime-only-secret',
+    apiKey: 'runtimeOnlyKey_42',
     fetchImpl: async (url) => {
       if (url.endsWith('/videos')) return jsonResponse({ id: 'task-failed', status: 'failed', error: 'provider secret should not escape' })
       throw new Error('unexpected URL')
@@ -112,6 +115,84 @@ test('Grok video provider rejects failed jobs without exposing response details'
     (error) => {
       assert.equal(error.code, 'video_generation_failed')
       assert.doesNotMatch(error.message, /provider secret|runtime-only-secret/)
+      return true
+    }
+  )
+})
+
+test('Grok video provider preserves redacted terminal failure details and retryability', async () => {
+  const provider = createGrokVideoProvider({
+    baseUrl: 'https://api.mangoqwq.com/v1',
+    apiKey: 'runtimeOnlyKey_42',
+    fetchImpl: async (url) => {
+      if (url.endsWith('/videos')) return jsonResponse({ id: 'task-failed-transient', status: 'queued' })
+      if (url.endsWith('/videos/task-failed-transient')) return jsonResponse({
+        id: 'task-failed-transient',
+        status: 'failed',
+        error: { code: 'internal_error', message: 'socks connect to https://grok.com/rest/app-chat/conversations/new timed out; runtimeOnlyKey_42' }
+      })
+      throw new Error('unexpected URL')
+    },
+    sleepImpl: async () => {}
+  })
+
+  await assert.rejects(
+    provider.generateVideo({ model: 'grok-imagine-video', prompt: 'test', outputDir: '/tmp/openpet-grok-terminal-failure' }),
+    (error) => {
+      assert.equal(error.code, 'video_generation_failed')
+      assert.equal(error.retryable, true)
+      assert.match(error.message, /internal_error/)
+      assert.match(error.message, /timed out/)
+      assert.doesNotMatch(error.message, /runtimeOnlyKey_42|grok\.com/)
+      return true
+    }
+  )
+})
+
+test('Grok video provider keeps a bounded, redacted provider error detail', async () => {
+  await assert.rejects(
+    fetchJson({
+      fetchImpl: async () => jsonResponse({
+        error: {
+          code: 'invalid_request',
+          message: 'image_url data:image/png;base64,ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 rejected credential runtime-only-secret'
+        }
+      }, 400),
+      url: 'https://api.mangoqwq.com/v1/videos',
+      apiKey: 'runtime-only-secret'
+    }),
+    (error) => {
+      assert.equal(error.code, 'video_provider_http_error')
+      assert.match(error.message, /invalid_request/)
+      assert.doesNotMatch(error.message, /ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/)
+      assert.doesNotMatch(error.message, /runtime-only-secret/)
+      assert.ok(error.message.length < 360)
+      return true
+    }
+  )
+})
+
+test('Grok video provider redacts generic sk/key token formats in terminal failures', async () => {
+  const provider = createGrokVideoProvider({
+    baseUrl: 'https://api.mangoqwq.com/v1',
+    apiKey: 'runtime-key',
+    fetchImpl: async (url) => {
+      if (url.endsWith('/videos')) return jsonResponse({ id: 'task-token-failure', status: 'queued' })
+      if (url.endsWith('/videos/task-token-failure')) return jsonResponse({
+        id: 'task-token-failure',
+        status: 'failed',
+        error: { code: 'internal_error', message: 'upstream returned ' + 'sk' + '-live-1234567890abcdef and key-prod-abcdef123456' }
+      })
+      throw new Error('unexpected URL ' + url)
+    },
+    sleepImpl: async () => {}
+  })
+
+  await assert.rejects(
+    provider.generateVideo({ model: 'grok-imagine-video', prompt: 'test', outputDir: '/tmp/openpet-grok-token-failure' }),
+    (error) => {
+      assert.doesNotMatch(error.message, /sk-live-|key-prod-/)
+      assert.match(error.message, /internal_error/)
       return true
     }
   )

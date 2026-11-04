@@ -13,6 +13,21 @@ const { analyzeTemporalQuality } = require('./video-stabilizer')
 const { measureBodyMask } = require('./character-scale-profile')
 
 const runnerError = (message, code = 'video_action_runner_invalid') => Object.assign(new Error(message), { code })
+const VIDEO_TECHNICAL_FAILURES = new Set([
+  'empty-used-cell',
+  'video-frame-empty',
+  'mask-dropout',
+  'mask-coverage-missing',
+  'alpha-coverage-missing',
+  'root-anchor-missing',
+  'frame-edge-contact',
+  'detached-effect-contamination',
+  'loop-seam-too-large',
+  'motion-is-static'
+])
+const PROVIDER_VIDEO_SIZE = '1280x720'
+const PROVIDER_VIDEO_ASPECT_RATIO = '16:9'
+const isVideoTechnicalFailure = (failure) => VIDEO_TECHNICAL_FAILURES.has(String(failure || ''))
 
 const safeSegment = (value, fallback) => {
   const normalized = String(value || '').trim().replace(/[^a-zA-Z0-9._-]+/g, '-')
@@ -140,13 +155,18 @@ const buildVideoPrompt = ({ run, action, driver }) => {
   const identity = String(run?.input?.petName || 'the referenced pet').trim()
   const actionText = String(action?.motionPrompt || action?.name || action?.actionId || 'the requested action').trim()
   const beats = driver.framePlan.map((beat) => beat.replace(/^Frame \d+:\s*/i, '')).join('; ')
+  const loopContract = driver.loop
+    ? 'Frame 1 and the final frame must depict the same neutral pose, root position, silhouette, body scale, camera framing, and background. Complete all visible motion in the middle of the clip, then fully settle back to that exact starting state before the final frame; do not end mid-motion.'
+    : 'Begin and end on fully readable poses with no cut-off motion.'
   return [
     `Animate the exact referenced character ${identity} performing ${actionText}.`,
     'Preserve the exact face, markings, body proportions, accessories, palette, material, lighting, camera distance, and silhouette from the reference image.',
     `Use this ordered motion plan: ${beats}.`,
     'Full body visible in every frame, locked camera, centered grounded root, one subject only, no text, no logo, no props, no particles, no detached effects.',
+    'Keep at least 12 percent empty margin around the full character in every frame; no body part may touch or cross any image edge.',
     'Use a flat uniform chroma green background #12ff4d for matting; no gradient, shadows, floor, or background movement.',
-    'Return a short seamless loop with visibly distinct motion phases and a natural return toward the first pose.'
+    loopContract,
+    'Return a short seamless loop with visibly distinct motion phases.'
   ].join(' ')
 }
 
@@ -195,16 +215,47 @@ const runVideoAction = async ({
     retryPolicy: { maxAttempts: 2, backoffMs: 1_000 }
   })
   const rawRelativeDir = `${outputRelativeDir.replace(/\\/g, '/').replace(/\/$/, '')}/raw`
-  const response = await bridge('/creator/model-video-generate', {
+  const providerRequest = {
     runId,
     model,
     prompt: buildVideoPrompt({ run, action, driver }),
     referenceImages: [{ ...reference, role: 'canonical-identity' }],
     seconds: Math.max(1, Math.round(durationMs / 1000)),
-    size: `${canvas.width}x${canvas.height}`,
-    request: { background: { mode: 'solid', color: '#12ff4d' }, motionDriverSha256: driver.sha256 },
+    // Keep the Provider's temporal output at a video-native 16:9/720p size.
+    // The Creator canvas is an independent 512px sprite normalization target.
+    size: PROVIDER_VIDEO_SIZE,
+    request: {
+      background: { mode: 'solid', color: '#12ff4d' },
+      aspect_ratio: PROVIDER_VIDEO_ASPECT_RATIO,
+      resolution: '720p',
+      motionDriverSha256: driver.sha256
+    },
     output: { dataRelativeDir: rawRelativeDir, fileName: `${safeSegment(actionId, 'action')}.mp4` }
-  }, { signal })
+  }
+  let response
+  for (let attempt = 1; attempt <= providerTask.retryPolicy.maxAttempts; attempt += 1) {
+    try {
+      response = await bridge('/creator/model-video-generate', providerRequest, { signal })
+      break
+    } catch (error) {
+      if (!error?.retryable || attempt >= providerTask.retryPolicy.maxAttempts) throw error
+      await new Promise((resolve, reject) => {
+        if (signal?.aborted) {
+          reject(signal.reason || error)
+          return
+        }
+        const onAbort = () => {
+          clearTimeout(timer)
+          reject(signal.reason || error)
+        }
+        const timer = setTimeout(() => {
+          signal?.removeEventListener('abort', onAbort)
+          resolve()
+        }, providerTask.retryPolicy.backoffMs * attempt)
+        signal?.addEventListener('abort', onAbort, { once: true })
+      })
+    }
+  }
   const generated = response?.result?.result || response?.result || {}
   const output = Array.isArray(generated.outputs) ? generated.outputs[0] : null
   if (!output?.dataRelativePath) throw runnerError('Video Provider returned no output', 'video_provider_invalid_response')
@@ -234,4 +285,4 @@ const runVideoAction = async ({
   })
 }
 
-module.exports = { buildVideoPrompt, createVideoCandidateArtifacts, runVideoAction, runnerError }
+module.exports = { buildVideoPrompt, createVideoCandidateArtifacts, isVideoTechnicalFailure, runVideoAction, runnerError }

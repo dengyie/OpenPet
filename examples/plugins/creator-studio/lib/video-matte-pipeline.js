@@ -4,6 +4,12 @@ const path = require('node:path')
 const sharp = require('sharp')
 
 const { createStablePlacements } = require('./video-stabilizer')
+const { measureBodyMask } = require('./character-scale-profile')
+
+// Grok's requested chroma background is compressed and varies across the
+// frame. A low threshold leaves disconnected green islands that look like
+// subject components after edge-connected traversal.
+const DEFAULT_BACKGROUND_TOLERANCE = 180
 
 const matteError = (message) => Object.assign(new Error(`Invalid video matte pipeline input: ${message}`), {
   code: 'video_matte_pipeline_invalid'
@@ -43,7 +49,7 @@ const isEdge = ({ x, y, width, height }) => x === 0 || y === 0 || x === width - 
 
 const processMatteFrame = async (sourceInput, {
   backgroundColor = '#12ff4d',
-  tolerance = 86,
+  tolerance = DEFAULT_BACKGROUND_TOLERANCE,
   softness = 28,
   despill = true
 } = {}) => {
@@ -147,12 +153,18 @@ const inspectAlphaBounds = async (input) => {
     }
   }
   if (!visible) return null
+  const body = measureBodyMask({ data, width: info.width, height: info.height })
+  if (body.empty) return null
+  const bounds = body.bodyBounds
   return {
-    bbox: { left, top, width: right - left + 1, height: bottom - top + 1 },
-    root: { x: (left + right) / 2, y: bottom },
+    bbox: { left: bounds.minX, top: bounds.minY, width: bounds.maxX - bounds.minX + 1, height: bounds.maxY - bounds.minY + 1 },
+    root: { x: body.compactRootX * info.width, y: body.compactBaselineY * info.height },
     alphaCoverage: visible / (info.width * info.height),
-    maskCoverage: visible / (info.width * info.height),
-    hash: crypto.createHash('sha256').update(data).digest('hex')
+    maskCoverage: body.bodyMaskArea / (info.width * info.height),
+    hash: body.bodyMaskSha256,
+    edgeTouch: left <= 0 || top <= 0 || right >= info.width - 1 || bottom >= info.height - 1,
+    unmatchedComponentCount: body.unmatchedComponents.length,
+    bodyMaskSha256: body.bodyMaskSha256 || ''
   }
 }
 
@@ -275,6 +287,7 @@ const processFrameSequence = async ({
 }
 
 module.exports = {
+  DEFAULT_BACKGROUND_TOLERANCE,
   matteError,
   processFrameSequence,
   processMatteFrame

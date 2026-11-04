@@ -5,7 +5,7 @@ const { areSpriteCandidatesDuplicates, runQualityFirstAction } = require('./qual
 const { archiveCandidateRevision, writeCandidateRecord } = require('./sprite-candidate-store')
 const { createQualityFirstFullPetOrchestrator } = require('./quality-first-full-pet-orchestrator')
 const { createProviderImageTask } = require('./provider-image-task')
-const { createVideoCandidateArtifacts, runVideoAction } = require('./video-action-runner')
+const { createVideoCandidateArtifacts, isVideoTechnicalFailure, runVideoAction } = require('./video-action-runner')
 const { isGrokVideoModel } = require('./video-provider-capabilities')
 const { compileProviderImagePrompt } = require('./provider-image-prompt-compiler')
 const { createSpriteAssetPlan } = require('./sprite-asset-plan')
@@ -3372,9 +3372,11 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
           const temporal = candidate.videoTemporalQuality || {}
           const spriteQa = analyzeSpriteCandidate({ actionId, rawMetrics: candidate.processed.metrics, profile: actionProfile, actionPolicy: action })
           const failures = [...new Set([...(spriteQa.failures || []), ...(Array.isArray(temporal.failures) ? temporal.failures : [])])]
+          const technicalFailureCodes = failures.filter(isVideoTechnicalFailure)
           return {
             ...candidate,
-            technicalEligible: failures.every((failure) => !['empty-used-cell', 'video-frame-empty', 'mask-dropout', 'root-anchor-missing'].includes(failure)),
+            technicalEligible: technicalFailureCodes.length === 0,
+            technicalFailureCodes,
             qa: { ...spriteQa, ok: failures.length === 0, failures, temporalQuality: temporal },
             processed: candidate.processed
           }
