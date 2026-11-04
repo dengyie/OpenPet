@@ -412,6 +412,26 @@ registerAiRoutes(router, { jobs: { insert: (input) => {
 			if (!runtime.ai?.clearProviderApiKey) throw new ApiError("BACKEND_UNAVAILABLE", "Image AI service unavailable")
 			return runtime.ai.clearProviderApiKey(...args)
 		},
+		getVideoConfig: (...args) => {
+			if (!runtime.ai?.getVideoConfig) throw new ApiError("BACKEND_UNAVAILABLE", "Video AI service unavailable")
+			return runtime.ai.getVideoConfig(...args)
+		},
+		saveVideoConfig: (...args) => {
+			if (!runtime.ai?.saveVideoConfig) throw new ApiError("BACKEND_UNAVAILABLE", "Video AI service unavailable")
+			return runtime.ai.saveVideoConfig(...args)
+		},
+		saveVideoProviderApiKey: (...args) => {
+			if (!runtime.ai?.saveVideoProviderApiKey) throw new ApiError("BACKEND_UNAVAILABLE", "Video AI service unavailable")
+			return runtime.ai.saveVideoProviderApiKey(...args)
+		},
+		clearVideoProviderApiKey: (...args) => {
+			if (!runtime.ai?.clearVideoProviderApiKey) throw new ApiError("BACKEND_UNAVAILABLE", "Video AI service unavailable")
+			return runtime.ai.clearVideoProviderApiKey(...args)
+		},
+		discoverVideoModels: (...args) => {
+			if (!runtime.ai?.discoverVideoModels) throw new ApiError("BACKEND_UNAVAILABLE", "Video AI service unavailable")
+			return runtime.ai.discoverVideoModels(...args)
+		},
 		createWebImageInput: (...args) => {
 			if (!runtime.ai?.createWebImageInput) throw new ApiError("BACKEND_UNAVAILABLE", "Web image generation is unavailable")
 			return runtime.ai.createWebImageInput(...args)
@@ -511,7 +531,8 @@ await initializeBackendRuntime({
 				modelSettings: (pluginId) => {
 					if (!runtime.ai?.getConfig) throw new ApiError("BACKEND_UNAVAILABLE", "Image model settings are unavailable")
 					const config = runtime.ai.getConfig()
-					return { ok: true, config: { provider: config.provider, baseUrl: config.baseUrl, model: config.model, organization: config.organization, project: config.project, timeoutMs: config.timeoutMs, maxConcurrentJobs: config.maxConcurrentJobs, hasApiKey: config.hasApiKey, modelCatalog: config.modelCatalog, creatorWorkflowModelPolicy: config.creatorWorkflowModelPolicy } }
+					const videoConfig = runtime.ai.getVideoConfig?.() || null
+					return { ok: true, config: { provider: config.provider, baseUrl: config.baseUrl, model: config.model, organization: config.organization, project: config.project, timeoutMs: config.timeoutMs, maxConcurrentJobs: config.maxConcurrentJobs, hasApiKey: config.hasApiKey, modelCatalog: config.modelCatalog, creatorWorkflowModelPolicy: config.creatorWorkflowModelPolicy, ...(videoConfig ? { videoGeneration: { provider: videoConfig.provider, baseUrl: videoConfig.baseUrl, model: videoConfig.model, timeoutMs: videoConfig.timeoutMs, maxConcurrentJobs: videoConfig.maxConcurrentJobs, hasApiKey: videoConfig.hasApiKey, modelCatalog: videoConfig.modelCatalog } } : {}) } }
 				},
 				modelHealthCheck: (_pluginId, { signal } = {}) => runtime.ai.checkHealth({ signal }),
 				modelImageGenerate: async (pluginId, payload = {}, { signal } = {}) => {
@@ -528,6 +549,22 @@ await initializeBackendRuntime({
 						referenceImages,
 						referenceDataDir: dataDir,
 						output: { dataDir, dataRelativeDir },
+						signal,
+					})
+				},
+				modelVideoGenerate: async (pluginId, payload = {}, { signal } = {}) => {
+					if (!runtime.ai?.generateVideo) throw new ApiError("BACKEND_UNAVAILABLE", "Video model generation is unavailable")
+					const dataDir = creatorDataDir(pluginId)
+					const output = payload.output && typeof payload.output === "object" ? payload.output : {}
+					const dataRelativeDir = containedRelative(dataDir, output.dataRelativeDir, "Creator video output")
+					const referenceImages = Array.isArray(payload.referenceImages) ? payload.referenceImages.map((reference) => ({
+						...reference,
+						path: containedFile(dataDir, reference?.path || resolve(dataDir, String(reference?.relativePath || "")), "Creator video reference image"),
+					})) : []
+					return runtime.ai.generateVideo({
+						...omitImageProviderOwnerFields(payload),
+						referenceImages,
+						output: { ...output, dataDir, dataRelativeDir },
 						signal,
 					})
 				},

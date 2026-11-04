@@ -115,6 +115,8 @@ const DEFAULT_MOTION_PRESET_BY_ACTION = Object.freeze(Object.fromEntries(
 
 const getDefaultMotionPresetId = (actionId) => DEFAULT_MOTION_PRESET_BY_ACTION[normalizeText(actionId)] || ''
 
+const getMotionPreset = (motionPresetId) => MOTION_PRESETS[normalizeText(motionPresetId)] || null
+
 const expandMotionPreset = ({ actionId, motionPresetId, motionParameters = {}, frameCount } = {}) => {
   const normalizedActionId = normalizeText(actionId)
   const preset = MOTION_PRESETS[normalizeText(motionPresetId)]
@@ -405,6 +407,7 @@ module.exports = {
   buildActionFramePlan,
   expandMotionPreset,
   getActionText,
+  getMotionPreset,
   getDefaultMotionPresetId,
   getDefaultLockedParts,
   getKeyframePoseInstruction,

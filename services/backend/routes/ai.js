@@ -15,6 +15,11 @@ export const AI_ROUTES = Object.freeze([
 	"PATCH /ai/images/config",
 	"PUT /ai/images/key",
 	"DELETE /ai/images/key",
+	"GET /ai/videos/config",
+	"PATCH /ai/videos/config",
+	"PUT /ai/videos/key",
+	"DELETE /ai/videos/key",
+	"GET /ai/videos/models",
 ])
 export const AI_TALK_ROUTES = Object.freeze([
 	"GET /ai/config",
@@ -137,6 +142,7 @@ export function registerAiSecretRoutes(router, { secrets, onChanged } = {}) {
 }
 
 const IMAGE_CONFIG_FIELDS = new Set(["provider", "baseUrl", "model", "organization", "project", "timeoutMs", "maxConcurrentJobs"])
+const VIDEO_CONFIG_FIELDS = new Set(["provider", "baseUrl", "model", "timeoutMs", "maxConcurrentJobs"])
 
 function validateImageConfig(value) {
 	const config = bodyObject(value)
@@ -150,9 +156,28 @@ function validateImageConfig(value) {
 	return structuredClone(config)
 }
 
+function validateVideoConfig(value) {
+	const config = bodyObject(value)
+	if (Object.keys(config).some((key) => !VIDEO_CONFIG_FIELDS.has(key))) throw new ApiError("VALIDATION_FAILED", "Video config contains unsupported fields")
+	for (const key of ["provider", "baseUrl", "model"]) {
+		if (config[key] !== undefined && (typeof config[key] !== "string" || config[key].length > 2000)) throw new ApiError("VALIDATION_FAILED", `Video config ${key} is invalid`)
+	}
+	if (config.provider !== undefined && config.provider !== "openai-compatible") throw new ApiError("VALIDATION_FAILED", "Video provider is unsupported")
+	if (config.timeoutMs !== undefined && (!Number.isInteger(config.timeoutMs) || config.timeoutMs < 1000 || config.timeoutMs > 600000)) throw new ApiError("VALIDATION_FAILED", "Video timeoutMs is invalid")
+	if (config.maxConcurrentJobs !== undefined && (!Number.isInteger(config.maxConcurrentJobs) || config.maxConcurrentJobs < 1 || config.maxConcurrentJobs > 8)) throw new ApiError("VALIDATION_FAILED", "Video maxConcurrentJobs is invalid")
+	return structuredClone(config)
+}
+
 function requireImageAi(ai) {
 	if (!ai || typeof ai.getConfig !== "function" || typeof ai.saveConfig !== "function" || typeof ai.saveProviderApiKey !== "function" || typeof ai.clearProviderApiKey !== "function") {
 		throw new ApiError("BACKEND_UNAVAILABLE", "Image AI service unavailable")
+	}
+	return ai
+}
+
+function requireVideoAi(ai) {
+	if (!ai || typeof ai.getVideoConfig !== "function" || typeof ai.saveVideoConfig !== "function" || typeof ai.saveVideoProviderApiKey !== "function" || typeof ai.clearVideoProviderApiKey !== "function" || typeof ai.discoverVideoModels !== "function") {
+		throw new ApiError("BACKEND_UNAVAILABLE", "Video AI service unavailable")
 	}
 	return ai
 }
@@ -209,6 +234,29 @@ export function registerAiRoutes(router, { jobs, ai, secrets } = {}) {
 		return sendSuccess(ctx, { apiKeyRef: result.apiKeyRef, hasApiKey: result.hasApiKey, apiKeyPreview: result.apiKeyPreview })
 	})
 	register("delete", "/ai/images/key", async (ctx) => sendSuccess(ctx, await requireImageAi(ai).clearProviderApiKey()))
+	register("get", "/ai/videos/config", async (ctx) => sendSuccess(ctx, await requireVideoAi(ai).getVideoConfig()))
+	register("patch", "/ai/videos/config", async (ctx) => {
+		const body = bodyObject(ctx.body)
+		exactBodyKeys(body, ["config"])
+		return sendSuccess(ctx, await requireVideoAi(ai).saveVideoConfig(validateVideoConfig(body.config)))
+	})
+	register("put", "/ai/videos/key", async (ctx) => {
+		const body = bodyObject(ctx.body)
+		exactBodyKeys(body, ["apiKey"])
+		const result = await requireVideoAi(ai).saveVideoProviderApiKey(imageApiKey(body))
+		return sendSuccess(ctx, result)
+	})
+	register("delete", "/ai/videos/key", async (ctx) => sendSuccess(ctx, await requireVideoAi(ai).clearVideoProviderApiKey()))
+	register("get", "/ai/videos/models", async (ctx) => {
+		const config = await requireVideoAi(ai).getVideoConfig()
+		try {
+			const result = await requireVideoAi(ai).discoverVideoModels()
+			return sendSuccess(ctx, { ok: true, ...result, model: config.model, hasApiKey: config.hasApiKey })
+		} catch (error) {
+			if (error instanceof ApiError) throw error
+			return sendSuccess(ctx, { ok: false, provider: config.provider, baseUrl: config.baseUrl, model: config.model, hasApiKey: config.hasApiKey, models: [], code: String(error?.code || "video_model_discovery_failed"), message: String(error?.message || "Video model discovery failed") })
+		}
+	})
 }
 
 function bodyObject(value) {

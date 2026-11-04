@@ -109,6 +109,14 @@ const defaultSettings = {
       project: '',
       timeoutMs: 120000,
       maxConcurrentJobs: 1
+    },
+    videoGeneration: {
+      provider: 'openai-compatible',
+      baseUrl: 'https://api.mangoqwq.com/v1',
+      model: 'grok-imagine-video',
+      apiKeyRef: 'secret:model.video.openai-compatible.apiKey',
+      timeoutMs: 300000,
+      maxConcurrentJobs: 1
     }
   },
   plugins: {
@@ -196,7 +204,11 @@ const mergeSettings = (settings = {}) => ({
   models: {
     ...defaultSettings.models,
     ...(isPlainObject(settings.models) ? settings.models : {}),
-    imageGeneration: mergeImageGenerationSettings(settings.models?.imageGeneration)
+    imageGeneration: mergeImageGenerationSettings(settings.models?.imageGeneration),
+    videoGeneration: {
+      ...defaultSettings.models.videoGeneration,
+      ...(isPlainObject(settings.models?.videoGeneration) ? settings.models.videoGeneration : {})
+    }
   },
   plugins: {
     ...defaultSettings.plugins,

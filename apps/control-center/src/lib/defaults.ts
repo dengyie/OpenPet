@@ -16,6 +16,7 @@ import type {
   CreatorStateViewState,
   CustomCursorSettings,
   ImageGenerationConfigViewState,
+  VideoGenerationConfigViewState,
   PetChatStateViewState,
   PetPacksViewState,
   ServiceLogEntry,
@@ -235,6 +236,19 @@ export const defaultImageGenerationConfig = {
     source: 'none'
   }
 } satisfies ImageGenerationConfigViewState
+
+export const defaultVideoGenerationConfig = {
+  provider: 'openai-compatible',
+  baseUrl: 'https://api.mangoqwq.com/v1',
+  model: 'grok-imagine-video',
+  apiKeyRef: 'secret:model.video.openai-compatible.apiKey',
+  timeoutMs: 300000,
+  maxConcurrentJobs: 1,
+  hasApiKey: false,
+  apiKeyPreview: '',
+  apiKeyLabel: 'Video API Key',
+  modelCatalog: { cacheKey: '', models: [], fetchedAt: '', source: 'none' }
+} satisfies VideoGenerationConfigViewState
 
 export const defaultPetChatState = {
   available: false,
@@ -608,6 +622,18 @@ export const cloneImageGenerationConfig = (
   ...(config || {}),
   modelCatalog: {
     ...defaultImageGenerationConfig.modelCatalog,
+    ...(config?.modelCatalog || {}),
+    models: Array.isArray(config?.modelCatalog?.models) ? config.modelCatalog.models : []
+  }
+})
+
+export const cloneVideoGenerationConfig = (
+  config: Partial<VideoGenerationConfigViewState> | null | undefined
+): VideoGenerationConfigViewState => ({
+  ...defaultVideoGenerationConfig,
+  ...(config || {}),
+  modelCatalog: {
+    ...defaultVideoGenerationConfig.modelCatalog,
     ...(config?.modelCatalog || {}),
     models: Array.isArray(config?.modelCatalog?.models) ? config.modelCatalog.models : []
   }

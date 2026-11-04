@@ -27,6 +27,7 @@ const createCoreServices = ({
     createCompanionAudioLeaseService,
     createSecretService,
     createImageGenerationModelService,
+    createVideoGenerationModelService,
     createTriggerRuleRuntimeService,
     createCreatorReferenceService,
     createLocalHttpService,
@@ -129,6 +130,9 @@ const createCoreServices = ({
   const aiSidecar = createAiSidecarProxy({ getBackend, fetchImpl, onSnapshot: onAiSnapshot, getActivePetPackId: () => petPackService.getActivePetPack?.()?.manifest?.id || '' })
   const { aiService, aiTalkService, petUtteranceLogService, behaviorOrchestratorService } = aiSidecar
   const imageGenerationModelService = createImageGenerationModelService({ settingsService, secretService, appLogService })
+  const videoGenerationModelService = typeof createVideoGenerationModelService === 'function'
+    ? createVideoGenerationModelService({ settingsService, secretService, appLogService })
+    : null
   const triggerRuleRuntimeService = createTriggerRuleRuntimeService({ actionService, petService, appLogService })
   const creatorReferenceService = createCreatorReferenceService({
     settingsService,
@@ -200,6 +204,7 @@ const createCoreServices = ({
       systemCursorService,
       creatorReferenceService,
       imageGenerationModelService,
+      videoGenerationModelService,
       triggerRuleRuntimeService,
       localHttpService,
       petMovementPolicy,

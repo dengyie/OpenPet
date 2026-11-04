@@ -24,6 +24,7 @@ const CAPABILITIES = Object.freeze([
 	"creator:model-settings",
 	"creator:model-health-check",
 	"creator:model-image-generate",
+	"creator:model-video-generate",
 	"creator:hatch-pet-plan",
 	"creator:hatch-pet-evaluate",
 ])
@@ -40,6 +41,7 @@ const PERMISSION_FOR_CAPABILITY = Object.freeze({
 	"creator:model-settings": "model:image-generate",
 	"creator:model-health-check": "model:image-generate",
 	"creator:model-image-generate": "model:image-generate",
+	"creator:model-video-generate": "model:image-generate",
 	"creator:hatch-pet-plan": "model:image-generate",
 	"creator:hatch-pet-evaluate": "model:image-generate",
 })
@@ -219,6 +221,8 @@ export function createPluginRuntimeServer({ shell, plugins, settings, jobs, netw
 				return { ok: true, result: await requireMethod(creator, "modelHealthCheck", "Creator model health check is unavailable")(pluginId, { signal }) }
 			case "creator:model-image-generate":
 				return { ok: true, result: await requireMethod(creator, "modelImageGenerate", "Creator model image generation is unavailable")(pluginId, body, { signal }) }
+			case "creator:model-video-generate":
+				return { ok: true, result: await requireMethod(creator, "modelVideoGenerate", "Creator model video generation is unavailable")(pluginId, body, { signal }) }
 			case "creator:hatch-pet-plan":
 				return { ok: true, result: await requireMethod(creator, "hatchPetPlan", "Creator hatch-pet planning is unavailable")(pluginId, body, { signal }) }
 			case "creator:hatch-pet-evaluate":
@@ -298,6 +302,7 @@ export function createPluginRuntimeServer({ shell, plugins, settings, jobs, netw
 				"/creator/model-settings": "creator:model-settings",
 				"/creator/model-health-check": "creator:model-health-check",
 				"/creator/model-image-generate": "creator:model-image-generate",
+				"/creator/model-video-generate": "creator:model-video-generate",
 				"/creator/hatch-pet/plan": "creator:hatch-pet-plan",
 				"/creator/hatch-pet/evaluate": "creator:hatch-pet-evaluate",
 			}[pathname]

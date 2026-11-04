@@ -154,6 +154,7 @@ test('main forwards IPC-provided scale values to the window scaler', async () =>
     const serviceFactories = {
       './src/services/pet-pack-service': { createPetPackService: () => ({ listPacks: () => [], getActivePetPack: () => ({ manifest: { id: 'legacy-cat', persona: null, actions: [] } }) }) },
       './src/services/secret-service': { createSecretService: () => ({ id: 'secret-service' }) },
+      './src/services/video-generation-model-service': { createVideoGenerationModelService: () => ({}) },
       './src/services/ai-service': { createAiService: () => ({ id: 'ai-service' }) },
       './src/services/hatch-pet-agent-service': { createHatchPetAgentService: () => ({ id: 'hatch-pet-agent-service' }) },
       './src/services/ai-talk-store': {
@@ -416,6 +417,7 @@ test('main still stops plugin services when lifecycle logging fails during quit'
     const serviceFactories = {
       './src/services/pet-pack-service': { createPetPackService: () => ({ listPacks: () => [], getActivePetPack: () => ({ manifest: { id: 'legacy-cat', persona: null, actions: [] } }) }) },
       './src/services/secret-service': { createSecretService: () => ({}) },
+      './src/services/video-generation-model-service': { createVideoGenerationModelService: () => ({}) },
       './src/services/ai-service': { createAiService: () => ({}) },
       './src/services/hatch-pet-agent-service': { createHatchPetAgentService: () => ({}) },
       './src/services/ai-talk-store': { createAiTalkStore: () => ({}) },
@@ -632,6 +634,7 @@ test('main persists repaired cursor metadata and collection entry when repair re
       './src/services/ai-service': { createAiService: () => ({}) },
       './src/services/hatch-pet-agent-service': { createHatchPetAgentService: () => ({}) },
       './src/services/image-generation-model-service': { createImageGenerationModelService: () => ({}) },
+      './src/services/video-generation-model-service': { createVideoGenerationModelService: () => ({}) },
       './src/services/behavior-orchestrator-service': { createBehaviorOrchestratorService: () => ({ getConfig: () => ({ enabled: false }) }) },
       './src/services/creator-reference-service': {
         createCreatorReferenceService: () => ({

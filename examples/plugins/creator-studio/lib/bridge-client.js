@@ -1,4 +1,4 @@
-const callBridge = async (route, payload = {}) => {
+const callBridge = async (route, payload = {}, { signal } = {}) => {
   const baseUrl = process.env.OPENPET_BRIDGE_URL
   const token = process.env.OPENPET_BRIDGE_TOKEN
   if (!baseUrl || !token) throw new Error('OpenPet bridge is not available')
@@ -8,6 +8,7 @@ const callBridge = async (route, payload = {}) => {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json'
     },
+    signal,
     body: JSON.stringify(payload)
   })
   const body = await response.json()

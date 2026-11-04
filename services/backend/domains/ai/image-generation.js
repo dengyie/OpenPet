@@ -6,6 +6,7 @@ import { ApiError } from "../../http/middleware.js"
 
 const require = createRequire(import.meta.url)
 const { createImageGenerationModelService } = require("../../../../apps/desktop/src/services/image-generation-model-service.js")
+const { createVideoGenerationModelService } = require("../../../../apps/desktop/src/services/video-generation-model-service.js")
 
 const WEB_IMAGE_ROOT = "creator-web"
 const WEB_IMAGE_RETENTION_MS = 30 * 24 * 60 * 60 * 1_000
@@ -75,23 +76,25 @@ function resolveWebImageRoot(userDataDir) {
 
 function settingsAdapter(settings) {
 	let pending = Promise.resolve()
+	const saveCapability = (capability, next) => {
+		const operation = pending.then(() => {
+			const current = settings.read()
+			return settings.patch({ ifVersion: current.version, patch: { [`models.${capability}`]: next } })
+		}, () => {
+			const current = settings.read()
+			return settings.patch({ ifVersion: current.version, patch: { [`models.${capability}`]: next } })
+		})
+		const mapped = operation.catch((cause) => {
+			if (cause instanceof ApiError) throw cause
+			throw new ApiError("BACKEND_UNAVAILABLE", "Shell model configuration persistence unavailable", { cause })
+		})
+		pending = mapped.catch(() => undefined)
+		return mapped
+	}
 	return {
 		get: () => settings.read().values,
-		save: (next) => {
-			const operation = pending.then(() => {
-				const current = settings.read()
-				return settings.patch({ ifVersion: current.version, patch: { "models.imageGeneration": next.models?.imageGeneration ?? {} } })
-			}, () => {
-				const current = settings.read()
-				return settings.patch({ ifVersion: current.version, patch: { "models.imageGeneration": next.models?.imageGeneration ?? {} } })
-			})
-			const mapped = operation.catch((cause) => {
-				if (cause instanceof ApiError) throw cause
-				throw new ApiError("BACKEND_UNAVAILABLE", "Shell image configuration persistence unavailable", { cause })
-			})
-			pending = mapped.catch(() => undefined)
-			return mapped
-		},
+		save: (next) => saveCapability('imageGeneration', next.models?.imageGeneration ?? {}),
+		saveVideo: (next) => saveCapability('videoGeneration', next.models?.videoGeneration ?? next),
 	}
 }
 
@@ -166,6 +169,12 @@ export function createAiService({ settings, secrets, fetchImpl, logger, userData
 		awaitPersistence: true,
 		appLogService: { record: (entry) => logger?.info?.(entry.message || "image generation", entry.details) },
 	})
+	const videoProvider = createVideoGenerationModelService({
+		settingsService: settingsBridge,
+		secretService: secretsBridge,
+		fetchImpl,
+		appLogService: { record: (entry) => logger?.info?.(entry.message || "video generation", entry.details) },
+	})
 	let configMutations = Promise.resolve()
 	let keyMutations = Promise.resolve()
 	const serialize = (queue, operation) => {
@@ -200,6 +209,28 @@ export function createAiService({ settings, secrets, fetchImpl, logger, userData
 	}
 
 	const getConfig = () => imageConfigView(provider.getConfig())
+	const videoConfigView = (value = {}) => {
+		const config = value && typeof value === "object" && !Array.isArray(value) ? value : {}
+		const catalog = config.modelCatalog && typeof config.modelCatalog === "object" && !Array.isArray(config.modelCatalog) ? config.modelCatalog : {}
+		return {
+			provider: typeof config.provider === "string" ? config.provider : "",
+			baseUrl: typeof config.baseUrl === "string" ? config.baseUrl : "",
+			model: typeof config.model === "string" ? config.model : "",
+			apiKeyRef: typeof config.apiKeyRef === "string" ? config.apiKeyRef : "",
+			timeoutMs: Number.isInteger(config.timeoutMs) ? config.timeoutMs : 0,
+			maxConcurrentJobs: Number.isInteger(config.maxConcurrentJobs) ? config.maxConcurrentJobs : 0,
+			hasApiKey: Boolean(config.hasApiKey),
+			apiKeyPreview: typeof config.apiKeyPreview === "string" ? config.apiKeyPreview : "",
+			apiKeyLabel: "Video API Key",
+			modelCatalog: {
+				cacheKey: typeof catalog.cacheKey === "string" ? catalog.cacheKey : "",
+				models: Array.isArray(catalog.models) ? catalog.models.filter((model) => typeof model === "string") : [],
+				fetchedAt: typeof catalog.fetchedAt === "string" ? catalog.fetchedAt : "",
+				source: ["none", "saved"].includes(catalog.source) ? catalog.source : "none"
+			}
+		}
+	}
+	const getVideoConfig = () => videoConfigView(videoProvider.getConfig())
 	const saveConfig = (partial) => {
 		const operation = serialize(configMutations, async () => {
 			try {
@@ -229,6 +260,27 @@ export function createAiService({ settings, secrets, fetchImpl, logger, userData
 		const operation = serialize(keyMutations, async () => {
 			return await provider.clearProviderApiKey()
 		})
+		keyMutations = operation.queue
+		return operation.result
+	}
+	const saveVideoConfig = (partial) => {
+		const operation = serialize(configMutations, async () => {
+			try { return videoConfigView(await videoProvider.saveConfig(partial)) }
+			catch (error) { if (error instanceof ApiError) throw error; throw new ApiError("VALIDATION_FAILED", error?.message || "Video config is invalid", { cause: error }) }
+		})
+		configMutations = operation.queue
+		return operation.result
+	}
+	const saveVideoProviderApiKey = (value) => {
+		const operation = serialize(keyMutations, async () => {
+			try { return await videoProvider.saveProviderApiKey(value) }
+			catch (error) { if (error instanceof ApiError) throw error; throw new ApiError("VALIDATION_FAILED", error?.message || "Video API key is invalid", { cause: error }) }
+		})
+		keyMutations = operation.queue
+		return operation.result
+	}
+	const clearVideoProviderApiKey = () => {
+		const operation = serialize(keyMutations, async () => videoProvider.clearProviderApiKey())
 		keyMutations = operation.queue
 		return operation.result
 	}
@@ -438,5 +490,23 @@ export function createAiService({ settings, secrets, fetchImpl, logger, userData
 		return result
 	}
 
-	return { ...provider, getConfig, saveConfig, saveProviderApiKey, clearProviderApiKey, createWebImageInput, prepareGeneratedImage, commitGeneratedImage, previewGeneratedImage, readWebGeneratedReference, cleanupExpiredWebImageCandidates }
+	return {
+		...provider,
+		getConfig,
+		saveConfig,
+		saveProviderApiKey,
+		clearProviderApiKey,
+		createWebImageInput,
+		prepareGeneratedImage,
+		commitGeneratedImage,
+		previewGeneratedImage,
+		readWebGeneratedReference,
+		cleanupExpiredWebImageCandidates,
+		getVideoConfig,
+		saveVideoConfig,
+		saveVideoProviderApiKey,
+		clearVideoProviderApiKey,
+		discoverVideoModels: videoProvider.discoverModels,
+		generateVideo: videoProvider.generateVideo
+	}
 }

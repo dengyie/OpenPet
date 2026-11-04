@@ -1,4 +1,4 @@
-import { cloneActionsConfig, cloneAiConfig, cloneAiMemoryProfile, cloneAiPersonaProfile, cloneAiTalkTraceSummary, cloneCatalog, cloneChatMessages, cloneCreatorLastRun, cloneCreatorReference, cloneCreatorState, cloneImageGenerationConfig, clonePetChatState, clonePetPacks, cloneServiceStatus, cloneSettings, defaultActionsConfig, defaultAiConfig, defaultAiMemoryProfile, defaultAiPersonaProfile, defaultAiTalkTraceSummary, defaultCreatorState, defaultImageGenerationConfig, defaultPetChatState, defaultPetPacks, defaultServiceStatus, defaultSettings } from '../lib/defaults.ts'
+import { cloneActionsConfig, cloneAiConfig, cloneAiMemoryProfile, cloneAiPersonaProfile, cloneAiTalkTraceSummary, cloneCatalog, cloneChatMessages, cloneCreatorLastRun, cloneCreatorReference, cloneCreatorState, cloneImageGenerationConfig, cloneVideoGenerationConfig, clonePetChatState, clonePetPacks, cloneServiceStatus, cloneSettings, defaultActionsConfig, defaultAiConfig, defaultAiMemoryProfile, defaultAiPersonaProfile, defaultAiTalkTraceSummary, defaultCreatorState, defaultImageGenerationConfig, defaultVideoGenerationConfig, defaultPetChatState, defaultPetPacks, defaultServiceStatus, defaultSettings } from '../lib/defaults.ts'
 import { buildImageGenerationConfigSavePayload, buildProviderConfigSavePayload } from '../lib/ai-provider-config.ts'
 import { stripFileExtension } from '@openpet/shared/src/cursor-library.ts'
 import type {
@@ -62,6 +62,7 @@ import type {
   HatchPetAgentConfigSaveRequest,
   HatchPetAgentConfigView,
   ImageGenerationConfigViewState,
+  VideoGenerationConfigViewState,
   JsonObject,
   PetChatBubbleViewState,
   PetActionPlaybackResult,
@@ -115,6 +116,7 @@ interface DemoState {
     placement: string
   }
   imageGenerationConfig: ImageGenerationConfigViewState
+  videoGenerationConfig: VideoGenerationConfigViewState
   petPacks: PetPacksViewState
   serviceStatus: ServiceStatusViewState
   catalog: CatalogState
@@ -186,7 +188,7 @@ const defaultDemoHatchPetAgentConfig: HatchPetAgentConfigView = {
   effectiveModel: 'gpt-4o-mini'
 }
 
-const buildDemoProviderCacheKey = (capability: 'chat' | 'image' | 'vision', provider: string, baseUrl: string) => (
+const buildDemoProviderCacheKey = (capability: 'chat' | 'image' | 'vision' | 'video', provider: string, baseUrl: string) => (
   [capability, String(provider || '').trim(), normalizeDemoProviderBaseUrl(baseUrl)].join(':')
 )
 const demoPetPackSelectionId = 'demo-pet-pack-selection'
@@ -1604,6 +1606,7 @@ const createDefaultDemoState = (): DemoState => {
       placement: ''
     },
     imageGenerationConfig: cloneImageGenerationConfig(defaultImageGenerationConfig),
+    videoGenerationConfig: cloneVideoGenerationConfig(defaultVideoGenerationConfig),
     petPacks,
     serviceStatus: createDemoServiceStatus(),
     catalog: createDemoCatalog(),
@@ -1676,6 +1679,7 @@ const readDemoState = (): DemoState => {
         placement: typeof state.petBubbleChatState?.placement === 'string' ? state.petBubbleChatState.placement : ''
       },
       imageGenerationConfig: cloneImageGenerationConfig(state.imageGenerationConfig),
+      videoGenerationConfig: cloneVideoGenerationConfig(state.videoGenerationConfig),
       petPacks,
       serviceStatus: cloneServiceStatus(state.serviceStatus),
       catalog: cloneCatalog(state.catalog || createDemoCatalog()),
@@ -1737,6 +1741,19 @@ const persistDemoImageModelCatalog = (models: string[]) => {
     ...demoState.imageGenerationConfig,
     modelCatalog: {
       cacheKey: buildDemoProviderCacheKey('image', demoState.imageGenerationConfig.provider, demoState.imageGenerationConfig.baseUrl),
+      models,
+      fetchedAt: new Date().toISOString(),
+      source: 'saved'
+    }
+  })
+  writeDemoState()
+}
+
+const persistDemoVideoModelCatalog = (models: string[]) => {
+  demoState.videoGenerationConfig = cloneVideoGenerationConfig({
+    ...demoState.videoGenerationConfig,
+    modelCatalog: {
+      cacheKey: buildDemoProviderCacheKey('video', demoState.videoGenerationConfig.provider, demoState.videoGenerationConfig.baseUrl),
       models,
       fetchedAt: new Date().toISOString(),
       source: 'saved'
@@ -3700,6 +3717,29 @@ export const demoControlCenterAPI: DemoControlCenterApi = {
       code: 'ok',
       message: 'Image Provider model discovery succeeded'
     }
+  },
+  getVideoGenerationConfig: async () => cloneVideoGenerationConfig(demoState.videoGenerationConfig),
+  saveVideoGenerationConfig: async (config) => {
+    demoState.videoGenerationConfig = cloneVideoGenerationConfig({ ...demoState.videoGenerationConfig, ...config })
+    writeDemoState()
+    return cloneVideoGenerationConfig(demoState.videoGenerationConfig)
+  },
+  saveVideoGenerationApiKey: async (apiKey) => {
+    const preview = apiKey ? `••••${apiKey.slice(-4)}` : ''
+    demoState.videoGenerationConfig = cloneVideoGenerationConfig({ ...demoState.videoGenerationConfig, hasApiKey: Boolean(apiKey), apiKeyPreview: preview })
+    writeDemoState()
+    return { apiKeyRef: demoState.videoGenerationConfig.apiKeyRef, hasApiKey: Boolean(apiKey), apiKeyPreview: preview }
+  },
+  clearVideoGenerationApiKey: async () => {
+    demoState.videoGenerationConfig = cloneVideoGenerationConfig({ ...demoState.videoGenerationConfig, hasApiKey: false, apiKeyPreview: '' })
+    writeDemoState()
+    return { apiKeyRef: demoState.videoGenerationConfig.apiKeyRef, hasApiKey: false, apiKeyPreview: '' }
+  },
+  discoverVideoGenerationModels: async () => {
+    if (!demoState.videoGenerationConfig.hasApiKey) return { ok: false, provider: demoState.videoGenerationConfig.provider, baseUrl: demoState.videoGenerationConfig.baseUrl, model: demoState.videoGenerationConfig.model, hasApiKey: false, models: [], code: 'missing_api_key', message: 'Video generation API key is missing' }
+    const models = ['grok-imagine-video', 'grok-imagine-video-1.5', 'grok-imagine-video-1.5-preview']
+    persistDemoVideoModelCatalog(models)
+    return { ok: true, provider: demoState.videoGenerationConfig.provider, baseUrl: demoState.videoGenerationConfig.baseUrl, model: demoState.videoGenerationConfig.model, hasApiKey: true, models, code: 'ok', message: 'ok' }
   },
   getAiConversation: async (conversationId) => {
     const { conversationId: resolvedConversationId } = resolveDemoConversationContext({ conversationId })

@@ -12,11 +12,13 @@ import {
   cloneAiTalkTraceSummary,
   cloneChatMessages,
   cloneImageGenerationConfig,
+  cloneVideoGenerationConfig,
   clonePetChatState,
   defaultAiConfig,
   defaultAiMemoryProfile,
   defaultAiPersonaProfile,
   defaultImageGenerationConfig,
+  defaultVideoGenerationConfig,
   defaultPetChatState
 } from '../lib/defaults.ts'
 import { downloadTextFile } from '../lib/download.ts'
@@ -56,6 +58,7 @@ import type {
   HatchPetAgentConfigView,
   ImageGenerationHealthCheckResult,
   ImageGenerationConfigViewState,
+  VideoGenerationConfigViewState,
   ProviderModelDiscoveryResult,
   PetChatStateViewState,
   VisionConfigViewState
@@ -352,11 +355,14 @@ export function useAiPane(activeTab = 'ai') {
   const [generatedPersonaDraft, setGeneratedPersonaDraft] = useState<AiPersonaDraftViewState | null>(null)
   const [imageGenerationConfig, setImageGenerationConfig] = useState<ImageGenerationConfigViewState>(defaultImageGenerationConfig)
   const [activeImageGenerationConfig, setActiveImageGenerationConfig] = useState<ImageGenerationConfigViewState>(defaultImageGenerationConfig)
+  const [videoGenerationConfig, setVideoGenerationConfig] = useState<VideoGenerationConfigViewState>(defaultVideoGenerationConfig)
+  const [activeVideoGenerationConfig, setActiveVideoGenerationConfig] = useState<VideoGenerationConfigViewState>(defaultVideoGenerationConfig)
   const [hatchPetAgentConfig, setHatchPetAgentConfig] = useState<HatchPetAgentConfigView>(defaultHatchPetAgentConfig)
   const [activeHatchPetAgentConfig, setActiveHatchPetAgentConfig] = useState<HatchPetAgentConfigView>(defaultHatchPetAgentConfig)
   const [apiKeyDraft, setApiKeyDraft] = useState('')
   const [visionApiKeyDraft, setVisionApiKeyDraft] = useState('')
   const [imageApiKeyDraft, setImageApiKeyDraft] = useState('')
+  const [videoApiKeyDraft, setVideoApiKeyDraft] = useState('')
   const [hatchPetAgentApiKeyDraft, setHatchPetAgentApiKeyDraft] = useState('')
   const [status, setStatus] = useState('')
   const [connectionStatus, setConnectionStatus] = useState('')
@@ -374,6 +380,8 @@ export function useAiPane(activeTab = 'ai') {
   const [visionModelDiscoveryStatus, setVisionModelDiscoveryStatus] = useState('')
   const [imageModelDiscovery, setImageModelDiscovery] = useState<ProviderModelDiscoveryResult | null>(null)
   const [imageModelDiscoveryStatus, setImageModelDiscoveryStatus] = useState('')
+  const [videoModelDiscovery, setVideoModelDiscovery] = useState<ProviderModelDiscoveryResult | null>(null)
+  const [videoModelDiscoveryStatus, setVideoModelDiscoveryStatus] = useState('')
   const [chatDraft, setChatDraft] = useState('')
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [petChatState, setPetChatState] = useState<PetChatStateViewState>(defaultPetChatState)
@@ -443,6 +451,13 @@ export function useAiPane(activeTab = 'ai') {
       preserveDraft
     }).imageGenerationConfig)
     setActiveImageGenerationConfig(nextConfig)
+    return nextConfig
+  }
+
+  const loadVideoGenerationConfig = async ({ preserveDraft = false } = {}) => {
+    const nextConfig = cloneVideoGenerationConfig(await aiTalkApi.getVideoConfig())
+    setVideoGenerationConfig((current) => preserveDraft ? cloneVideoGenerationConfig({ ...current, apiKeyRef: nextConfig.apiKeyRef, hasApiKey: nextConfig.hasApiKey, apiKeyPreview: nextConfig.apiKeyPreview, modelCatalog: nextConfig.modelCatalog }) : nextConfig)
+    setActiveVideoGenerationConfig(nextConfig)
     return nextConfig
   }
 
@@ -566,10 +581,11 @@ export function useAiPane(activeTab = 'ai') {
       aiHttpApi.getAiPersonaProfile(),
       aiHttpApi.getAiMemoryProfile(),
       aiTalkApi.getImageConfig(),
+      aiTalkApi.getVideoConfig(),
       aiHttpApi.getHatchPetAgentConfig(),
       api.getPetChatState(),
       aiHttpApi.getAiBehavior()
-    ]).then(([loadedConfig, loadedPersonaProfile, loadedMemoryProfile, loadedImageGenerationConfig, loadedHatchPetAgentConfig, loadedPetChatState, loadedBehavior]) => {
+    ]).then(([loadedConfig, loadedPersonaProfile, loadedMemoryProfile, loadedImageGenerationConfig, loadedVideoGenerationConfig, loadedHatchPetAgentConfig, loadedPetChatState, loadedBehavior]) => {
       if (!mounted) return
       const nextConfig = cloneAiConfig(loadedConfig)
       setConfig(nextConfig)
@@ -581,6 +597,9 @@ export function useAiPane(activeTab = 'ai') {
       const nextImageGenerationConfig = cloneImageGenerationConfig(loadedImageGenerationConfig)
       setImageGenerationConfig(nextImageGenerationConfig)
       setActiveImageGenerationConfig(nextImageGenerationConfig)
+      const nextVideoGenerationConfig = cloneVideoGenerationConfig(loadedVideoGenerationConfig)
+      setVideoGenerationConfig(nextVideoGenerationConfig)
+      setActiveVideoGenerationConfig(nextVideoGenerationConfig)
       const nextHatchPetAgentConfig = cloneHatchPetAgentConfig(loadedHatchPetAgentConfig)
       setHatchPetAgentConfig(nextHatchPetAgentConfig)
       setActiveHatchPetAgentConfig(nextHatchPetAgentConfig)
@@ -821,6 +840,31 @@ export function useAiPane(activeTab = 'ai') {
     }
   }
 
+  const onSaveVideoGeneration = async () => {
+    setSaving(true)
+    setStatus('')
+    try {
+      const next = cloneVideoGenerationConfig(videoGenerationConfig)
+      if (!next.baseUrl.trim() || !next.model.trim()) throw new Error('视频 Provider Base URL 和 Model 不能为空')
+      const saved = cloneVideoGenerationConfig(await aiTalkApi.saveVideoConfig({
+        provider: next.provider,
+        baseUrl: normalizeProviderBaseUrl(next.baseUrl),
+        model: next.model.trim(),
+        timeoutMs: next.timeoutMs,
+        maxConcurrentJobs: next.maxConcurrentJobs
+      }))
+      setVideoGenerationConfig(saved)
+      setActiveVideoGenerationConfig(saved)
+      setVideoModelDiscovery(null)
+      setVideoModelDiscoveryStatus('')
+      setStatus('视频 Provider 配置已保存')
+    } catch (error) {
+      setStatus(messageFromError(error, '视频 Provider 配置保存失败'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const onSaveBehavior = async () => {
     setSaving(true)
     setBehaviorStatus('')
@@ -958,6 +1002,64 @@ export function useAiPane(activeTab = 'ai') {
       setImageStatus('图片 API Key 已保存')
     } catch (error) {
       setImageStatus(messageFromError(error, '图片 API Key 保存失败'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const onSaveVideoGenerationApiKey = async () => {
+    setSaving(true)
+    try {
+      const key = videoApiKeyDraft.trim()
+      if (!key) throw new Error('视频 API Key 不能为空')
+      const result = await aiTalkApi.saveVideoApiKey(key)
+      const apply = (current: VideoGenerationConfigViewState) => cloneVideoGenerationConfig({ ...current, hasApiKey: result.hasApiKey, apiKeyPreview: result.apiKeyPreview })
+      setVideoGenerationConfig(apply)
+      setActiveVideoGenerationConfig(apply)
+      setVideoApiKeyDraft('')
+      setVideoModelDiscovery(null)
+      setVideoModelDiscoveryStatus('')
+      setStatus('视频 API Key 已保存')
+    } catch (error) {
+      setStatus(messageFromError(error, '视频 API Key 保存失败'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const onClearVideoGenerationApiKey = async () => {
+    setSaving(true)
+    try {
+      const result = await aiTalkApi.clearVideoApiKey()
+      const apply = (current: VideoGenerationConfigViewState) => cloneVideoGenerationConfig({ ...current, hasApiKey: result.hasApiKey, apiKeyPreview: result.apiKeyPreview })
+      setVideoGenerationConfig(apply)
+      setActiveVideoGenerationConfig(apply)
+      setVideoApiKeyDraft('')
+      setVideoModelDiscovery(null)
+      setVideoModelDiscoveryStatus('')
+      setStatus('视频 API Key 已清除')
+    } catch (error) {
+      setStatus(messageFromError(error, '视频 API Key 清除失败'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const onDiscoverVideoGenerationModels = async () => {
+    if (videoApiKeyDraft.trim()) {
+      setVideoModelDiscoveryStatus('当前视频 API Key 草稿未保存；请先保存密钥后再刷新模型。')
+      return
+    }
+    setSaving(true)
+    setVideoModelDiscoveryStatus('视频模型探测中')
+    try {
+      const result = await aiTalkApi.discoverVideoModels()
+      setVideoModelDiscovery(result)
+      const config = result.ok ? await loadVideoGenerationConfig({ preserveDraft: true }) : activeVideoGenerationConfig
+      setVideoModelDiscoveryStatus(`${result.ok ? `视频 Provider 已发现 ${result.models.length} 个模型` : (result.message || '视频模型探测失败')} ${formatProviderModelCatalogMeta(config.modelCatalog)}`.trim())
+    } catch (error) {
+      setVideoModelDiscovery(null)
+      setVideoModelDiscoveryStatus(messageFromError(error, '视频模型探测失败'))
     } finally {
       setSaving(false)
     }
@@ -1377,6 +1479,8 @@ export function useAiPane(activeTab = 'ai') {
     activeConfig,
     imageGenerationConfig,
     activeImageGenerationConfig,
+    videoGenerationConfig,
+    activeVideoGenerationConfig,
     hatchPetAgentConfig,
     activeHatchPetAgentConfig,
     hatchPetAgentConfigDirty,
@@ -1397,6 +1501,8 @@ export function useAiPane(activeTab = 'ai') {
     imageProviderValidationError: validateImageProviderConfig(imageGenerationConfig),
     imageModelDiscovery,
     imageModelDiscoveryStatus,
+    videoModelDiscovery,
+    videoModelDiscoveryStatus,
     imageTransparencyCompatibilityHint: getImageTransparencyCompatibilityHint(imageGenerationConfig.model),
     saving,
     status,
@@ -1417,6 +1523,8 @@ export function useAiPane(activeTab = 'ai') {
     setVisionApiKeyDraft,
     imageApiKeyDraft,
     setImageApiKeyDraft,
+    videoApiKeyDraft,
+    setVideoApiKeyDraft,
     setHatchPetAgentApiKeyDraft,
     onChangePersonaDraft,
     personaGenerationInstruction,
@@ -1466,6 +1574,10 @@ export function useAiPane(activeTab = 'ai') {
       ...current,
       ...partial
     })),
+    onChangeVideoGeneration: (partial: Partial<VideoGenerationConfigViewState>) => setVideoGenerationConfig((current) => cloneVideoGenerationConfig({
+      ...current,
+      ...partial
+    })),
     onChangeHatchPetAgent: (partial: Partial<HatchPetAgentConfigView>) => setHatchPetAgentConfig((current) => cloneHatchPetAgentConfig({
       ...current,
       ...partial,
@@ -1483,6 +1595,7 @@ export function useAiPane(activeTab = 'ai') {
     onClearHatchPetAgentApiKey,
     onCheckHatchPetAgentCapability,
     onSaveImageGeneration,
+    onSaveVideoGeneration,
     onSavePersonaOverride,
     onResetPersonaOverride,
     onGeneratePersonaDraft,
@@ -1494,10 +1607,13 @@ export function useAiPane(activeTab = 'ai') {
     onClearVisionApiKey,
     onSaveImageGenerationApiKey,
     onClearImageGenerationApiKey,
+    onSaveVideoGenerationApiKey,
+    onClearVideoGenerationApiKey,
     onCheckImageGenerationHealth,
     onDiscoverAiModels,
     onDiscoverVisionModels,
     onDiscoverImageGenerationModels,
+    onDiscoverVideoGenerationModels,
     onTest,
     onDryRunBehavior,
     onReplayBehaviorDecision,
