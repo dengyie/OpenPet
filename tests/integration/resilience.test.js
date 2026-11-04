@@ -117,8 +117,11 @@ test("real plugin command timeout fails the job with provider timeout", async ()
 
 test("real orphan process is killed and ledger is emptied on startup sweep", async () => {
   const dir = tempDir()
-  const orphan = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" })
+  const orphan = spawn(process.execPath, ["-e", "process.title = 'openpet-orphan'; process.stdout.write('ready'); setInterval(() => {}, 1000)"], {
+    stdio: ["ignore", "pipe", "ignore"],
+  })
   try {
+    await once(orphan.stdout, "data")
     let identity = null
     for (let attempt = 0; attempt < 20 && !identity; attempt += 1) {
       identity = inspectProcessIdentity(orphan.pid)
