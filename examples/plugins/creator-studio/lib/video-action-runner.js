@@ -301,7 +301,7 @@ const runVideoAction = async ({
     .flatten({ background: '#12ff4d' }).png().toFile(firstFramePath)
   signal?.throwIfAborted()
   const providerReference = { relativePath: firstFrameRelativePath, fileName: 'first-frame.png', mimeType: 'image/png', sha256: sha256File(firstFramePath) }
-  const driver = createMotionDriver({ actionId, motionPresetId: action?.motionPresetId || '', motionParameters: { intensity: action?.motionIntensity || 'normal', leadSide: action?.leadSide || 'viewer-left' }, fps })
+  const driver = createMotionDriver({ actionId, motionPresetId: action?.motionPresetId || '', motionParameters: action?.motionParameters || {}, fps })
   const durationMs = Math.round((driver.frameCount / driver.fps) * 1000)
   const actionTask = createActionVideoTask({
     schemaVersion: 1,

@@ -793,6 +793,7 @@ test('video action candidates build their evaluator board with the accepted cano
     dataDir,
     runId,
     actionId: 'idle',
+    action: { motionParameters: { intensity: 'subtle', leadSide: 'viewer-right' } },
     sourcePath,
     canonicalPath,
     candidate: {
@@ -814,6 +815,11 @@ test('video action candidates build their evaluator board with the accepted cano
   assert.equal(evaluated.evaluation.scores.overall, 93)
   assert.equal(requests.length, 1)
   assert.equal(requests[0].scope, 'grounded-action')
+  assert.equal(requests[0].qa.actionIntent?.actionId, 'idle')
+  assert.equal(requests[0].qa.actionIntent?.loop, true)
+  assert.equal(requests[0].qa.actionIntent?.frameCount, 6)
+  assert.match(requests[0].qa.actionIntent?.framePlan.join(' ') || '', /breathing/i)
+  assert.match(requests[0].qa.actionIntent.framePlan.join(' '), /subtle intensity.*viewer-right/)
   assert.deepEqual(requests[0].board.regions.slice(0, 2).map((region) => region.role), ['source-identity', 'canonical-identity'])
   assert.equal(fs.existsSync(path.join(outputDir, 'evaluator-board.png')), true)
 })

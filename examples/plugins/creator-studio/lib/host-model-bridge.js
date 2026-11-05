@@ -2,6 +2,7 @@ const { callBridge } = require('./bridge-client')
 const { appendRunLog } = require('./run-store')
 const { FULL_PET_WORKFLOW_MAX_DURATION_MS } = require('./full-pet-workflow-contract')
 const { areSpriteCandidatesDuplicates, runQualityFirstAction } = require('./quality-first-action-runner')
+const { createMotionDriver } = require('./motion-driver-registry')
 const { archiveCandidateRevision, writeCandidateRecord } = require('./sprite-candidate-store')
 const { createQualityFirstFullPetOrchestrator } = require('./quality-first-full-pet-orchestrator')
 const { createProviderImageTask } = require('./provider-image-task')
@@ -346,12 +347,18 @@ const evaluateQualityFirstActionCandidate = async ({
   dataDir,
   runId,
   actionId,
+  action = {},
   sourcePath,
   canonicalPath,
   candidate,
   createBoard = createActionEvaluatorBoard,
   requestEvaluation = requestHatchPetSpriteEvaluation
 } = {}) => {
+  const motionDriver = createMotionDriver({
+    actionId,
+    motionPresetId: action.motionPresetId || '',
+    motionParameters: action.motionParameters || {}
+  })
   const evaluatorBoardPath = path.join(candidate.outputDir, 'evaluator-board.png')
   const board = await createBoard({
     sourcePath,
@@ -367,7 +374,10 @@ const evaluateQualityFirstActionCandidate = async ({
       sha256: board.sha256,
       regions: board.regions
     },
-    qa: candidate.qa
+    qa: {
+      ...candidate.qa,
+      actionIntent: { actionId, loop: motionDriver.loop, frameCount: motionDriver.frameCount, framePlan: motionDriver.framePlan }
+    }
   })
   return {
     evaluation: evaluation.evaluation,
@@ -3421,7 +3431,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
             processed: candidate.processed
           }
         },
-        evaluateCandidate: (candidate) => evaluateQualityFirstActionCandidate({ dataDir, runId: run.runId, actionId, sourcePath: sourceReference.path, canonicalPath, candidate }),
+        evaluateCandidate: (candidate) => evaluateQualityFirstActionCandidate({ dataDir, runId: run.runId, actionId, action, sourcePath: sourceReference.path, canonicalPath, candidate }),
         persistCandidate: async (candidate) => {
           const record = writeCandidateRecord({
             dataDir,
@@ -3492,7 +3502,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
         const qa = analyzeSpriteCandidate({ actionId, rawMetrics: processed.metrics, profile: actionProfile, actionPolicy: action })
         return { ...candidate, processed, qa, artifacts: [{ role: 'raw-sheet', path: candidate.rawPath, sha256: candidate.sha256 }, { role: 'processed-sheet', path: processed.processedSheet.path, sha256: processed.processedSheet.sha256 }, { role: 'contact-sheet', path: processed.contactSheet.path, sha256: processed.contactSheet.sha256 }, { role: 'gif', path: processed.gif.path, sha256: processed.gif.sha256 }] }
       },
-      evaluateCandidate: (candidate) => evaluateQualityFirstActionCandidate({ dataDir, runId: run.runId, actionId, sourcePath: sourceReference.path, canonicalPath, candidate }),
+      evaluateCandidate: (candidate) => evaluateQualityFirstActionCandidate({ dataDir, runId: run.runId, actionId, action, sourcePath: sourceReference.path, canonicalPath, candidate }),
       persistCandidate: async (candidate) => {
         const record = writeCandidateRecord({
           dataDir,
