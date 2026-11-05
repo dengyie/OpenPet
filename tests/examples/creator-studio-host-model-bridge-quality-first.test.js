@@ -9,7 +9,7 @@ const {
   createQualityFirstRecoveryBundle,
   evaluateQualityFirstFinalPackage
 } = require('../../examples/plugins/creator-studio/lib/host-model-bridge')
-const { readActionCheckpoints, writeActionCheckpoint } = require('../../examples/plugins/creator-studio/lib/full-pet-action-checkpoints')
+const { readActionCheckpoints, resolveReusableActionResult, writeActionCheckpoint } = require('../../examples/plugins/creator-studio/lib/full-pet-action-checkpoints')
 const { getQualityFirstQualityProfile } = require('../../examples/plugins/creator-studio/lib/pet-generation-quality-profile')
 const { compileProviderImagePrompt } = require('../../examples/plugins/creator-studio/lib/provider-image-prompt-compiler')
 const { writeCandidateRecord } = require('../../examples/plugins/creator-studio/lib/sprite-candidate-store')
@@ -443,6 +443,15 @@ test('quality-first host runtime reuses a five-way-bound action checkpoint witho
       dataDir,
       run: { runId, input: { referenceImage: { relativePath: sourceRelativePath } } },
       planOverride: plan
+    })
+    const oldCheckpoint = readActionCheckpoints({ dataDir, runId }).actions.idle
+    assert.equal(resolveReusableActionResult({
+      dataDir, runId, actionId: 'idle', ...oldCheckpoint.bindings,
+      processorVersion: runtime.actionProcessorVersion, requireBindings: true
+    }), null, 'a checkpoint evaluated without action intent must not be reused')
+    writeActionCheckpoint({
+      dataDir, runId,
+      result: { ...oldCheckpoint, bindings: { ...oldCheckpoint.bindings, processorVersion: runtime.actionProcessorVersion }, row: { ...oldCheckpoint.row, frames: [{ index: 0, durationMs: 120, path: framePath }] } }
     })
     const result = await runtime.runAction({ actionId: 'idle', canonical })
     assert.equal(result.ok, true)
