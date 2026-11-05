@@ -112,10 +112,9 @@ const normalizeAspectRatio = (value) => {
 
 const createRequestBody = ({ model, prompt, referenceDataUrl, seconds, size, request = {} } = {}) => {
   const body = { model, prompt }
-  // Mango's public compatibility endpoint accepts the first-frame image as
-  // `image_url`; the object-shaped `image` field is only valid on the native
-  // Grok endpoint and is rejected by the deployed gateway.
-  if (referenceDataUrl) body.image_url = referenceDataUrl
+  // Use Grok's native first-frame contract. A top-level image_url can be
+  // discarded by generic gateway task parsing, silently generating without it.
+  if (referenceDataUrl) body.image = { url: referenceDataUrl }
   if (seconds !== undefined) body.duration = seconds
   body.aspect_ratio = normalizeAspectRatio(request.aspect_ratio || size)
   body.resolution = String(request.resolution || '720p').trim().toLowerCase()
