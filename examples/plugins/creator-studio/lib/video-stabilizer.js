@@ -13,6 +13,11 @@ const coefficientOfVariation = (values) => {
   return mean > 0 ? standardDeviation(values) / mean : 0
 }
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
+const median = (values) => {
+  const sorted = values.slice().sort((a, b) => a - b)
+  const middle = Math.floor(sorted.length / 2)
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2
+}
 
 const normalizeBox = (box, index) => {
   if (!box || !Number.isFinite(Number(box.left)) || !Number.isFinite(Number(box.top)) || !Number.isFinite(Number(box.width)) || !Number.isFinite(Number(box.height))) {
@@ -41,7 +46,7 @@ const computeGlobalBounds = (frames = []) => {
   return Object.freeze({ left, top, right, bottom, width: right - left, height: bottom - top })
 }
 
-const createStablePlacements = ({ frames = [], canvasWidth, canvasHeight, padding = 0.1, baseline = null } = {}) => {
+const createStablePlacements = ({ frames = [], canvasWidth, canvasHeight, padding = 0.1, baseline = null, anchorPolicy, targetStandingHeightRatio = null } = {}) => {
   const width = Number(canvasWidth)
   const height = Number(canvasHeight)
   if (!Number.isInteger(width) || width < 1 || !Number.isInteger(height) || height < 1) throw stabilizerError('canvas is invalid')
@@ -53,10 +58,23 @@ const createStablePlacements = ({ frames = [], canvasWidth, canvasHeight, paddin
   const safePadding = clamp(numericPadding, 0, 0.4)
   const maxWidth = Math.max(...boxes.map((box) => box.width))
   const maxHeight = Math.max(...boxes.map((box) => box.height))
-  const scale = Math.min(
+  const fitScale = Math.min(
     (width * (1 - safePadding * 2)) / maxWidth,
     (height * (1 - safePadding * 2)) / maxHeight
   )
+  const targetRatio = targetStandingHeightRatio === null ? null : Number(targetStandingHeightRatio)
+  if (targetRatio !== null && (!Number.isFinite(targetRatio) || targetRatio <= 0 || targetRatio >= 1)) throw stabilizerError('standing height ratio is invalid')
+  // Keep one scale for the sequence and the same runtime standing height as
+  // other actions. Reject overflow rather than shrinking an action silently.
+  const scale = targetRatio === null ? fitScale : height * targetRatio / median(boxes.map((box) => box.height))
+  const relativeRoot = anchorPolicy === 'action-relative-root-v1'
+  const sourceRoots = relativeRoot ? frames.map((frame) => {
+    const sourceHeight = Number(frame.canvas?.height)
+    const rootY = Number(frame.root?.y)
+    if (!Number.isFinite(rootY) || !Number.isFinite(sourceHeight) || sourceHeight <= 0) throw stabilizerError('relative root needs source canvas and root')
+    return rootY / sourceHeight
+  }) : []
+  const groundedSourceRoot = relativeRoot ? Math.max(...sourceRoots) : 0
   const targetBaseline = baseline !== null && baseline !== undefined && Number.isFinite(Number(baseline))
     ? Number(baseline)
     : height * (1 - safePadding)
@@ -65,7 +83,11 @@ const createStablePlacements = ({ frames = [], canvasWidth, canvasHeight, paddin
     const scaledHeight = box.height * scale
     const sourceBaseline = box.bottom
     const left = (width - scaledWidth) / 2
-    const top = targetBaseline - (sourceBaseline - box.top) * scale
+    // Preserve the source excursion in canvas ratios; scaling the displacement
+    // by body scale would magnify jumps when a small source pet is enlarged.
+    const rootOffset = relativeRoot ? (sourceRoots[index] - groundedSourceRoot) * height : 0
+    const outputBaseline = targetBaseline + rootOffset
+    const top = outputBaseline - (sourceBaseline - box.top) * scale
     return Object.freeze({
       frame: index,
       scale,
@@ -73,7 +95,7 @@ const createStablePlacements = ({ frames = [], canvasWidth, canvasHeight, paddin
       top,
       width: scaledWidth,
       height: scaledHeight,
-      baseline: targetBaseline,
+      baseline: outputBaseline,
       source: Object.freeze({ ...box })
     })
   })

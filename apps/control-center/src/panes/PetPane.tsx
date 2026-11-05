@@ -169,6 +169,7 @@ export function PetPane({
           <input
             className="range"
             type="range"
+            aria-label="Pet size"
             min="50"
             max="150"
             step="5"

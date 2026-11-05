@@ -716,7 +716,7 @@ test('quality-first action repair reruns only the requested action and preserves
   ])
 })
 
-for (const processorVersion of [1, 2, 3]) test(`manual action selection reuses processor ${processorVersion} retained candidates without Provider generation`, async () => {
+for (const processorVersion of [1, 2, 3, 4]) test(`manual action selection reuses processor ${processorVersion} retained candidates without Provider generation`, async () => {
   const dataDir = createDataDir()
   const created = createRun({
     dataDir,

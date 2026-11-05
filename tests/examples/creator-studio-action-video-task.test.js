@@ -371,6 +371,52 @@ test('video stabilization crops the subject before scaling and preserves its asp
   assert.deepEqual(result.normalizedFrameMetrics[0].bbox, result.normalizedFrameMetrics[1].bbox)
 })
 
+test('video normalization preserves jumping displacement and the declared runtime body scale', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-video-jump-'))
+  const subject = await sharp({ create: { width: 20, height: 30, channels: 4, background: '#eaa344' } }).png().toBuffer()
+  const framePaths = []
+  for (const [index, top] of [50, 35, 50].entries()) {
+    const framePath = path.join(root, `frame-${index}.png`)
+    await sharp({ create: { width: 80, height: 100, channels: 4, background: '#12ff4d' } })
+      .composite([{ input: subject, left: 30, top }]).png().toFile(framePath)
+    framePaths.push(framePath)
+  }
+  const result = await processFrameSequence({
+    framePaths, outputDir: path.join(root, 'output'), canvasWidth: 128, canvasHeight: 128,
+    anchorPolicy: 'action-relative-root-v1', targetStandingHeightRatio: 92 / 128
+  })
+  const metrics = result.normalizedFrameMetrics
+  assert.ok(metrics[0].root.y - metrics[1].root.y >= 18, 'normalization erased the takeoff')
+  assert.deepEqual(metrics[0].bbox, metrics[2].bbox, 'landing must return to the original baseline')
+  assert.ok(metrics.every((frame) => Math.abs(frame.bbox.height - 92) <= 1), 'runtime scale must match the profile')
+  const candidate = await createVideoCandidateArtifacts({
+    processed: result, outputDir: path.join(root, 'candidate'), layout: { columns: 2, rows: 2 }, expectedFrameCount: 3
+  })
+  assert.ok(Math.abs(candidate.metrics.rawTrajectory.maxY - candidate.metrics.rawTrajectory.minY - 0.15) < 0.01)
+  const grounded = await processFrameSequence({
+    framePaths, outputDir: path.join(root, 'grounded'), canvasWidth: 128, canvasHeight: 128,
+    targetStandingHeightRatio: 92 / 128
+  })
+  assert.deepEqual(grounded.normalizedFrameMetrics[0].bbox, grounded.normalizedFrameMetrics[1].bbox)
+  const groundedCandidate = await createVideoCandidateArtifacts({
+    processed: grounded, outputDir: path.join(root, 'grounded-candidate'), layout: { columns: 2, rows: 2 }, expectedFrameCount: 3
+  })
+  assert.ok(Math.abs(groundedCandidate.metrics.rawTrajectory.maxY - groundedCandidate.metrics.rawTrajectory.minY - 0.15) < 0.01, 'raw trajectory must come from source frames even when output is stabilized')
+})
+
+test('video grounded normalization uses the profile standing height', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-video-profile-scale-'))
+  const framePath = path.join(root, 'frame.png')
+  const subject = await sharp({ create: { width: 20, height: 30, channels: 4, background: '#eaa344' } }).png().toBuffer()
+  await sharp({ create: { width: 80, height: 100, channels: 4, background: '#12ff4d' } })
+    .composite([{ input: subject, left: 30, top: 50 }]).png().toFile(framePath)
+  const result = await processFrameSequence({
+    framePaths: [framePath], outputDir: path.join(root, 'output'), canvasWidth: 128, canvasHeight: 128,
+    targetStandingHeightRatio: 92 / 128
+  })
+  assert.equal(result.normalizedFrameMetrics[0].bbox.height, 92)
+})
+
 test('video candidates materialize a reusable 1024 grid and runtime frames', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-video-candidate-'))
   const sourceDir = path.join(root, 'source')
@@ -571,6 +617,7 @@ const createRunVideoActionFixture = async ({
   bridge,
   signal,
   action = { actionId: 'waving', motionPrompt: 'wave' },
+  scaleProfile,
   attemptKind,
   failureCodes,
   processFrames,
@@ -614,6 +661,7 @@ const createRunVideoActionFixture = async ({
     dataDir: root,
     run: { runId: 'run-video', input: { petName: 'Test pet' } },
     action,
+    scaleProfile,
     canonical: { relativePath: 'reference.png', sha256: HASH_A, fileName: 'reference.png' },
     attemptKind,
     failureCodes,
@@ -624,6 +672,26 @@ const createRunVideoActionFixture = async ({
   })
   return { root, result }
 }
+
+test('runVideoAction forwards the action anchor and supports the not-yet-created idle profile', async () => {
+  for (const profile of [null, { runtimeStandingHeightPx: 90, runtimeCell: { height: 128 } }]) {
+    let options
+    await createRunVideoActionFixture({
+      action: { actionId: 'jumping', anchorPolicy: 'action-relative-root-v1' },
+      scaleProfile: profile,
+      bridge: async () => ({ result: { outputs: [{ dataRelativePath: 'runs/run-video/video/raw/waving.mp4', sha256: HASH_B, mimeType: 'video/mp4' }] } }),
+      processFrames: async (input) => {
+        options = input
+        return { normalizedFrames: [], frameMetrics: [
+          { bbox: { left: 1, top: 2, width: 10, height: 20 }, root: { x: 6, y: 22 }, alphaCoverage: 0.1, maskCoverage: 0.1, hash: HASH_A },
+          { bbox: { left: 1, top: 1, width: 10, height: 20 }, root: { x: 6, y: 21 }, alphaCoverage: 0.1, maskCoverage: 0.1, hash: HASH_B }
+        ] }
+      }
+    })
+    assert.equal(options.anchorPolicy, 'action-relative-root-v1')
+    assert.equal(options.targetStandingHeightRatio, (profile?.runtimeStandingHeightPx || 92) / 128)
+  }
+})
 
 test('runVideoAction retries a retryable bridge error once', async () => {
   let calls = 0

@@ -308,7 +308,7 @@ test.describe('Control Center smoke', () => {
   test('keeps key Pet and About interactions responsive', async ({ page }) => {
     await page.goto('/')
 
-    const scale = page.locator('input[type="range"]')
+    const scale = page.getByRole('slider', { name: 'Pet size', exact: true })
     await expect(scale).toHaveValue('100')
     await scale.evaluate((input) => {
       const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
@@ -831,7 +831,7 @@ test.describe('Control Center smoke', () => {
   test('persists Pet settings in the demo API session', async ({ page }) => {
     await page.goto('/')
 
-    const scale = page.locator('input[type="range"]')
+    const scale = page.getByRole('slider', { name: 'Pet size', exact: true })
     await scale.evaluate((input) => {
       const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
       valueSetter.call(input, '135')
@@ -868,7 +868,9 @@ test.describe('Control Center smoke', () => {
     await companion.getByRole('switch', { name: 'Enable companion voice' }).click()
     await companion.getByLabel('Companion voice volume').fill('0.45')
     await companion.getByLabel('已完成提示冷却').fill('30000')
-    await companion.getByRole('button', { name: '保存', exact: true }).click()
+    const save = page.getByRole('button', { name: '保存', exact: true })
+    await save.click()
+    await expect(save).toBeEnabled()
 
     await page.reload()
     await expect(page.getByLabel('Companion focused session key')).toHaveValue('abcdef123456')

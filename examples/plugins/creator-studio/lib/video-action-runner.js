@@ -171,13 +171,17 @@ const createVideoCandidateArtifacts = async ({
   fs.copyFileSync(processedSheetPath, contactSheetPath)
   const gifPath = path.join(normalizedOutputDir, 'animation.gif')
   await createAnimatedGif({ frames, outputPath: gifPath })
+  const sourceAnchors = (processed?.frameMetrics || []).map((frame) => Number(frame.root?.y) / Number(frame.canvas?.height))
+  const rawTrajectory = sourceAnchors.length === frameCount && sourceAnchors.every(Number.isFinite)
+    ? { minY: Math.min(...sourceAnchors), maxY: Math.max(...sourceAnchors) }
+    : null
   const metrics = {
     version: 2,
     inputSha256: String(processed?.spriteSheet?.sha256 || ''),
     sourceDimensions: { width: Number(processed?.canvas?.width) || 0, height: Number(processed?.canvas?.height) || 0 },
     canvas: { width: 128, height: 128 },
     layout: { columns, rows, cellCount: columns * rows, unusedCells: Array.from({ length: columns * rows - frameCount }, (_, index) => frameCount + index) },
-    rawTrajectory: { minY: Math.min(...frameMetrics.map((frame) => frame.outputAnchorYRatio)), maxY: Math.max(...frameMetrics.map((frame) => frame.outputAnchorYRatio)) },
+    rawTrajectory,
     frames: frameMetrics
   }
   return {
@@ -259,6 +263,7 @@ const runVideoAction = async ({
   model = 'grok-imagine-video-1.5',
   fps = 12,
   canvas = { width: 512, height: 512 },
+  scaleProfile = {},
   outputRelativeDir = `runs/${run?.runId || 'run'}/video`,
   attemptKind = 'initial',
   failureCodes = [],
@@ -368,6 +373,8 @@ const runVideoAction = async ({
     canvasHeight: canvas.height,
     fps: driver.fps,
     backgroundColor: '#12ff4d',
+    anchorPolicy: action.anchorPolicy,
+    targetStandingHeightRatio: (Number(scaleProfile?.runtimeStandingHeightPx) || 92) / (Number(scaleProfile?.runtimeCell?.height) || 128),
     signal
   })
   const rawTemporalQuality = analyzeTemporalQuality({ frames: processed.frameMetrics, loop: driver.loop })

@@ -157,6 +157,7 @@ const inspectAlphaBounds = async (input) => {
   if (body.empty) return null
   const bounds = body.bodyBounds
   return {
+    canvas: { width: info.width, height: info.height },
     bbox: { left: bounds.minX, top: bounds.minY, width: bounds.maxX - bounds.minX + 1, height: bounds.maxY - bounds.minY + 1 },
     root: { x: body.compactRootX * info.width, y: body.compactBaselineY * info.height },
     alphaCoverage: visible / (info.width * info.height),
@@ -193,6 +194,8 @@ const processFrameSequence = async ({
   fps = 12,
   backgroundColor = '#12ff4d',
   padding = 0.1,
+  anchorPolicy,
+  targetStandingHeightRatio = null,
   signal
 } = {}) => {
   if (!Array.isArray(framePaths) || framePaths.length < 1 || framePaths.length > 128) throw matteError('framePaths must contain 1 to 128 frames')
@@ -220,7 +223,9 @@ const processFrameSequence = async ({
     frames: frameMetrics,
     canvasWidth: Number(canvasWidth),
     canvasHeight: Number(canvasHeight),
-    padding
+    padding,
+    anchorPolicy,
+    targetStandingHeightRatio
   })
   const normalizedFrames = []
   const normalizedFrameMetrics = []
