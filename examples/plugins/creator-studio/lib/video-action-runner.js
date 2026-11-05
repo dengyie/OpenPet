@@ -171,13 +171,17 @@ const createVideoCandidateArtifacts = async ({
   fs.copyFileSync(processedSheetPath, contactSheetPath)
   const gifPath = path.join(normalizedOutputDir, 'animation.gif')
   await createAnimatedGif({ frames, outputPath: gifPath })
+  const sourceAnchors = (processed?.frameMetrics || []).map((frame) => Number(frame.root?.y) / Number(frame.canvas?.height))
+  const rawTrajectory = sourceAnchors.length === frameCount && sourceAnchors.every(Number.isFinite)
+    ? { minY: Math.min(...sourceAnchors), maxY: Math.max(...sourceAnchors) }
+    : null
   const metrics = {
     version: 2,
     inputSha256: String(processed?.spriteSheet?.sha256 || ''),
     sourceDimensions: { width: Number(processed?.canvas?.width) || 0, height: Number(processed?.canvas?.height) || 0 },
     canvas: { width: 128, height: 128 },
     layout: { columns, rows, cellCount: columns * rows, unusedCells: Array.from({ length: columns * rows - frameCount }, (_, index) => frameCount + index) },
-    rawTrajectory: { minY: Math.min(...frameMetrics.map((frame) => frame.outputAnchorYRatio)), maxY: Math.max(...frameMetrics.map((frame) => frame.outputAnchorYRatio)) },
+    rawTrajectory,
     frames: frameMetrics
   }
   return {
@@ -259,6 +263,7 @@ const runVideoAction = async ({
   model = 'grok-imagine-video-1.5',
   fps = 12,
   canvas = { width: 512, height: 512 },
+  scaleProfile = {},
   outputRelativeDir = `runs/${run?.runId || 'run'}/video`,
   attemptKind = 'initial',
   failureCodes = [],
@@ -270,7 +275,23 @@ const runVideoAction = async ({
   const runId = String(run?.runId || '').trim()
   const actionId = String(action?.actionId || '').trim().toLowerCase()
   if (!runId || !actionId) throw runnerError('Video action run and action identifiers are required')
+  signal?.throwIfAborted()
   const reference = resolveReference({ dataDir, reference: canonical })
+  const relativeDir = String(outputRelativeDir || '').replace(/\\/g, '/').replace(/\/$/, '')
+  if (!relativeDir || relativeDir.startsWith('/') || relativeDir.split('/').some((part) => !part || part === '..' || part === '.') || relativeDir.includes('\0')) {
+    throw runnerError('Video action output path is invalid')
+  }
+  // Video codecs cannot retain canonical alpha. Supply the same chroma and
+  // aspect ratio used by the decoder/matte pipeline from the very first frame.
+  const firstFrameRelativePath = `${relativeDir}/inputs/first-frame.png`
+  const firstFramePath = path.resolve(dataDir, ...firstFrameRelativePath.split('/'))
+  fs.mkdirSync(path.dirname(firstFramePath), { recursive: true })
+  const [videoWidth, videoHeight] = PROVIDER_VIDEO_SIZE.split('x').map(Number)
+  await sharp(path.resolve(dataDir, reference.relativePath))
+    .resize({ width: videoWidth, height: videoHeight, fit: 'contain', background: '#12ff4d' })
+    .flatten({ background: '#12ff4d' }).png().toFile(firstFramePath)
+  signal?.throwIfAborted()
+  const providerReference = { relativePath: firstFrameRelativePath, fileName: 'first-frame.png', mimeType: 'image/png', sha256: sha256File(firstFramePath) }
   const driver = createMotionDriver({ actionId, motionPresetId: action?.motionPresetId || '', motionParameters: { intensity: action?.motionIntensity || 'normal', leadSide: action?.leadSide || 'viewer-left' }, fps })
   const durationMs = Math.round((driver.frameCount / driver.fps) * 1000)
   const actionTask = createActionVideoTask({
@@ -302,7 +323,7 @@ const runVideoAction = async ({
     runId,
     model,
     prompt: buildVideoPrompt({ run, action, driver, attemptKind, failureCodes }),
-    referenceImages: [{ ...reference, role: 'canonical-identity' }],
+    referenceImages: [{ ...providerReference, role: 'canonical-identity' }],
     seconds: Math.max(1, Math.round(durationMs / 1000)),
     // Keep the Provider's temporal output at a video-native 16:9/720p size.
     // The Creator canvas is an independent 512px sprite normalization target.
@@ -352,6 +373,8 @@ const runVideoAction = async ({
     canvasHeight: canvas.height,
     fps: driver.fps,
     backgroundColor: '#12ff4d',
+    anchorPolicy: action.anchorPolicy,
+    targetStandingHeightRatio: (Number(scaleProfile?.runtimeStandingHeightPx) || 92) / (Number(scaleProfile?.runtimeCell?.height) || 128),
     signal
   })
   const rawTemporalQuality = analyzeTemporalQuality({ frames: processed.frameMetrics, loop: driver.loop })
@@ -376,6 +399,7 @@ const runVideoAction = async ({
     model,
     driver,
     providerTask,
+    providerReference,
     rawVideo: { ...output, relativePath: output.dataRelativePath },
     decoded,
     processed,

@@ -157,6 +157,7 @@ const inspectAlphaBounds = async (input) => {
   if (body.empty) return null
   const bounds = body.bodyBounds
   return {
+    canvas: { width: info.width, height: info.height },
     bbox: { left: bounds.minX, top: bounds.minY, width: bounds.maxX - bounds.minX + 1, height: bounds.maxY - bounds.minY + 1 },
     root: { x: body.compactRootX * info.width, y: body.compactBaselineY * info.height },
     alphaCoverage: visible / (info.width * info.height),
@@ -176,7 +177,10 @@ const writeStableFrame = async ({ input, outputPath, placement, canvas }) => {
   if (left < 0 || top < 0 || left + width > canvas.width || top + height > canvas.height) {
     throw matteError('stabilized frame exceeds the declared canvas')
   }
-  const resized = await sharp(input).resize({ width, height, fit: 'fill' }).png().toBuffer()
+  const source = placement.source
+  const resized = await sharp(input)
+    .extract({ left: source.left, top: source.top, width: source.width, height: source.height })
+    .resize({ width, height, fit: 'fill' }).png().toBuffer()
   await sharp({
     create: { width: canvas.width, height: canvas.height, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } }
   }).composite([{ input: resized, left, top }]).png().toFile(outputPath)
@@ -190,6 +194,8 @@ const processFrameSequence = async ({
   fps = 12,
   backgroundColor = '#12ff4d',
   padding = 0.1,
+  anchorPolicy,
+  targetStandingHeightRatio = null,
   signal
 } = {}) => {
   if (!Array.isArray(framePaths) || framePaths.length < 1 || framePaths.length > 128) throw matteError('framePaths must contain 1 to 128 frames')
@@ -217,7 +223,9 @@ const processFrameSequence = async ({
     frames: frameMetrics,
     canvasWidth: Number(canvasWidth),
     canvasHeight: Number(canvasHeight),
-    padding
+    padding,
+    anchorPolicy,
+    targetStandingHeightRatio
   })
   const normalizedFrames = []
   const normalizedFrameMetrics = []
