@@ -725,6 +725,7 @@ const createHatchPetAgentService = ({
     let ledger = resolveBudgetLedger({ runId, supplied: budgetLedger, limits: config.budgets })
     let repairReason = ''
     let transientRetryUsed = false
+    let useVisionCapability = typeof aiService.completeStructuredVisionTool === 'function'
     const attemptLimit = config.budgets.maxEvaluationAttemptsPerArtifact
     for (let attempt = 0; attempt < attemptLimit; attempt += 1) {
       let request
@@ -734,9 +735,14 @@ const createHatchPetAgentService = ({
         // 沿用循环外的内存快照会把这些增量写没。
         ledger = reserveEvaluatorCall(resolveBudgetLedger({ runId, supplied: ledger, limits: config.budgets, preferPersisted: true }))
         persistBudgetLedger({ runId, ledger })
-        const completeVisualEvaluation = typeof aiService.completeStructuredVisionTool === 'function'
-          ? aiService.completeStructuredVisionTool.bind(aiService)
-          : aiService.completeStructuredTool.bind(aiService)
+        // The first attempt uses the dedicated vision capability. If its
+        // provider is transiently unavailable, the retry must cross the
+        // normal Hatch capability so the configured Hatch/chat model is
+        // actually used as the fallback. Keeping this choice in the caller
+        // avoids a backend route that silently ignores configOverride.
+        const completeVisualEvaluation = (useVisionCapability
+          ? aiService.completeStructuredVisionTool
+          : aiService.completeStructuredTool).bind(aiService)
         const completion = await completeVisualEvaluation({
           ...request,
           configOverride: completionConfig,
@@ -792,6 +798,7 @@ const createHatchPetAgentService = ({
         }
         if (isTransientStructuredProviderError(error) && canRetry && !transientRetryUsed) {
           transientRetryUsed = true
+          useVisionCapability = false
           recordLog({
             level: 'warn',
             event: 'hatch-pet.evaluation.retrying',

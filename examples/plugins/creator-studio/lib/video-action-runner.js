@@ -11,6 +11,8 @@ const { processFrameSequence } = require('./video-matte-pipeline')
 const { extractVideoFrames } = require('./video-decoder')
 const { analyzeTemporalQuality } = require('./video-stabilizer')
 const { measureBodyMask } = require('./character-scale-profile')
+const { createIdentityDescriptor, identityDescriptorDistance } = require('./identity-descriptor')
+const { getQualityFirstQualityProfile } = require('./pet-generation-quality-profile')
 
 const runnerError = (message, code = 'video_action_runner_invalid') => Object.assign(new Error(message), { code })
 const VIDEO_TECHNICAL_FAILURES = new Set([
@@ -22,6 +24,7 @@ const VIDEO_TECHNICAL_FAILURES = new Set([
   'root-anchor-missing',
   'frame-edge-contact',
   'detached-effect-contamination',
+  'identity-drift',
   'loop-seam-too-large',
   'motion-is-static'
 ])
@@ -29,10 +32,52 @@ const PROVIDER_VIDEO_SIZE = '1280x720'
 const PROVIDER_VIDEO_ASPECT_RATIO = '16:9'
 const isVideoTechnicalFailure = (failure) => VIDEO_TECHNICAL_FAILURES.has(String(failure || ''))
 
+const readIdentityDescriptor = async (imagePath) => {
+  if (!imagePath || !fs.existsSync(imagePath) || !fs.statSync(imagePath).isFile()) return null
+  const { data, info } = await sharp(imagePath).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+  const measured = measureBodyMask({ data, width: info.width, height: info.height })
+  if (measured.empty || !measured.bodyBounds) return null
+  const bounds = measured.bodyBounds
+  return createIdentityDescriptor({
+    data,
+    info,
+    bounds: {
+      left: bounds.minX,
+      top: bounds.minY,
+      right: bounds.maxX,
+      bottom: bounds.maxY,
+      width: bounds.maxX - bounds.minX + 1,
+      height: bounds.maxY - bounds.minY + 1
+    }
+  })
+}
+
+const analyzeIdentityConsistency = async ({ referencePath, framePaths = [] } = {}) => {
+  if (!referencePath || !fs.existsSync(referencePath) || !Array.isArray(framePaths) || !framePaths.length) {
+    return Object.freeze({ ok: false, failures: ['identity-evidence-missing'], metrics: {} })
+  }
+  const canonicalDescriptor = await readIdentityDescriptor(referencePath)
+  if (!canonicalDescriptor) return Object.freeze({ ok: false, failures: ['identity-reference-unreadable'], metrics: {} })
+  const frameDescriptors = await Promise.all(framePaths.map((framePath) => readIdentityDescriptor(framePath)))
+  if (frameDescriptors.some((descriptor) => !descriptor)) {
+    return Object.freeze({ ok: false, failures: ['identity-frame-unreadable'], metrics: { frameCount: framePaths.length } })
+  }
+  const distances = frameDescriptors.map((descriptor) => identityDescriptorDistance(descriptor, canonicalDescriptor))
+  const maxDistance = Math.max(...distances)
+  const maxAllowedDistance = getQualityFirstQualityProfile().crossAction.maxIdentityDescriptorDistance
+  const failures = maxDistance > maxAllowedDistance ? ['identity-drift'] : []
+  return Object.freeze({
+    ok: failures.length === 0,
+    failures: Object.freeze(failures),
+    metrics: Object.freeze({ maxIdentityDescriptorDistance: maxDistance, maxAllowedIdentityDescriptorDistance: maxAllowedDistance, frameCount: framePaths.length })
+  })
+}
+
 const VIDEO_REPAIR_INSTRUCTIONS = Object.freeze({
   'loop-seam-too-large': 'Make the first and final extracted frames match exactly in pose, root position, silhouette, camera framing, and character scale; finish settling before the final frame.',
   'frame-edge-contact': 'Reduce the motion amplitude and keep at least 20 percent empty space above the character and clear space on every other edge in every frame.',
   'detached-effect-contamination': 'Remove every detached particle, trail, floor mark, prop, shadow, duplicate limb, and floating visual effect.',
+  'identity-drift': 'Restore the exact referenced identity and body proportions; do not replace the character with a human, creature, costume, or different silhouette.',
   'motion-is-static': 'Keep the root and camera fixed while making the requested moving body part pass through visibly distinct motion phases.',
   'mask-dropout': 'Keep the entire character continuously visible against the uniform green background in every frame.',
   'root-anchor-missing': 'Keep one complete grounded lower-center body root visible in every frame.'
@@ -303,8 +348,19 @@ const runVideoAction = async ({
     ? processed.normalizedFrameMetrics
     : processed.frameMetrics
   const temporalQuality = analyzeTemporalQuality({ frames: finalFrameMetrics, loop: driver.loop })
+  const identityQuality = await analyzeIdentityConsistency({
+    referencePath: path.resolve(dataDir, reference.relativePath),
+    framePaths: (processed.normalizedFrames || []).map((frame) => frame.path)
+  })
+  const combinedFailures = [...new Set([...(temporalQuality.failures || []), ...(identityQuality.failures || [])])]
+  const combinedTemporalQuality = Object.freeze({
+    ...temporalQuality,
+    ok: combinedFailures.length === 0,
+    failures: Object.freeze(combinedFailures),
+    metrics: Object.freeze({ ...temporalQuality.metrics, ...identityQuality.metrics })
+  })
   return Object.freeze({
-    ok: temporalQuality.ok,
+    ok: combinedTemporalQuality.ok,
     actionId,
     model,
     driver,
@@ -313,7 +369,8 @@ const runVideoAction = async ({
     decoded,
     processed,
     rawTemporalQuality,
-    temporalQuality
+    identityQuality,
+    temporalQuality: combinedTemporalQuality
   })
 }
 

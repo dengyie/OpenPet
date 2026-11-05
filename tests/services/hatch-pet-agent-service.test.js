@@ -570,6 +570,35 @@ test('sprite evaluation retries one transient provider 524 response', async () =
   assert.deepEqual(h.calls[1], h.calls[0])
 })
 
+test('sprite evaluation falls back from the vision capability to Hatch capability after a transient vision failure', async () => {
+  const unavailable = Object.assign(new Error('AI provider is temporarily unavailable'), { providerStatus: 503 })
+  const valid = {
+    arguments: { schemaVersion: 1, recommendation: 'pass', confidence: 0.95, scores: { identity: 96, silhouette: 94, smallScale: 90, completeness: 98, style: 92, overall: 94 }, defects: [] },
+    provider: 'openai-compatible',
+    model: 'chat-model',
+    elapsedMs: 10
+  }
+  const h = createHarness({
+    completions: [valid],
+    completeStructuredVisionTool: async () => { throw unavailable }
+  })
+  const boardPath = path.join(h.dataDir, 'board.png')
+  await sharp({ create: { width: 8, height: 8, channels: 4, background: '#fff' } }).png().toFile(boardPath)
+
+  const result = await h.service.evaluateSprite({
+    runId: 'run-vision-fallback',
+    scope: 'canonical',
+    board: { path: boardPath, sha256: 'a'.repeat(64), regions: [{ regionId: 'source' }, { regionId: 'candidate-1' }] },
+    qa: { ok: true, failures: [], metrics: {} },
+    profile: getQualityFirstQualityProfile(),
+    budgetLedger: createBudgetLedger({ startedAtMs: Date.now() })
+  })
+
+  assert.equal(result.gate.outcome, 'pass')
+  assert.equal(h.calls.length, 2)
+  assert.equal(h.logs.some((entry) => entry.event === 'hatch-pet.evaluation.retrying'), true)
+})
+
 test('sprite evaluation permits only one transient retry even when the artifact budget allows three calls', async () => {
   const firstTimeout = Object.assign(new Error('AI provider request timed out'), { name: 'TimeoutError' })
   const secondTimeout = Object.assign(new Error('AI provider request timed out'), { name: 'TimeoutError' })

@@ -74,7 +74,7 @@ test('jumping video prompt reserves conservative top clearance', () => {
 })
 
 test('video technical eligibility rejects temporal integrity failures', () => {
-  for (const failure of ['frame-edge-contact', 'detached-effect-contamination', 'loop-seam-too-large', 'motion-is-static']) {
+  for (const failure of ['frame-edge-contact', 'detached-effect-contamination', 'identity-drift', 'loop-seam-too-large', 'motion-is-static']) {
     assert.equal(isVideoTechnicalFailure(failure), true)
   }
   assert.equal(isVideoTechnicalFailure('body-scale-variance-high'), false)
@@ -548,14 +548,43 @@ const createRunVideoActionFixture = async ({
   action = { actionId: 'waving', motionPrompt: 'wave' },
   attemptKind,
   failureCodes,
-  processFrames
+  processFrames,
+  referenceCreate,
+  normalizedFramesFactory
 }) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-video-runner-'))
   const referencePath = path.join(root, 'reference.png')
   const rawPath = path.join(root, 'runs', 'run-video', 'video', 'raw', 'waving.mp4')
   fs.mkdirSync(path.dirname(rawPath), { recursive: true })
-  await sharp({ create: { width: 8, height: 8, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } } }).png().toFile(referencePath)
+  if (referenceCreate) {
+    await sharp({ create: referenceCreate }).png().toFile(referencePath)
+  } else {
+    await sharp({ create: { width: 8, height: 8, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } } }).png().toFile(referencePath)
+  }
   fs.writeFileSync(rawPath, 'fixture-video')
+  const fixtureFrameProcessor = async (options) => {
+    const processed = processFrames
+      ? await processFrames(options)
+      : {
+          normalizedFrames: [],
+          frameMetrics: [
+            { bbox: { left: 1, top: 1, width: 10, height: 20 }, root: { x: 1, y: 20 }, alphaCoverage: 0.8, maskCoverage: 0.8, hash: HASH_A },
+            { bbox: { left: 1, top: 2, width: 10, height: 21 }, root: { x: 2, y: 21 }, alphaCoverage: 0.8, maskCoverage: 0.8, hash: HASH_B }
+          ]
+        }
+    const normalizedFrames = normalizedFramesFactory
+      ? await normalizedFramesFactory(options)
+      : (processed.normalizedFrames || [])
+    if (normalizedFrames.length) return { ...processed, normalizedFrames }
+    const framePaths = []
+    for (let index = 0; index < (processed.frameMetrics || []).length; index += 1) {
+      const framePath = path.join(options.outputDir, 'fixture-normalized', `${index + 1}.png`)
+      fs.mkdirSync(path.dirname(framePath), { recursive: true })
+      await sharp({ create: { width: 8, height: 8, channels: 4, background: '#ffffff' } }).png().toFile(framePath)
+      framePaths.push({ path: framePath })
+    }
+    return { ...processed, normalizedFrames: framePaths }
+  }
   const result = await runVideoAction({
     dataDir: root,
     run: { runId: 'run-video', input: { petName: 'Test pet' } },
@@ -566,13 +595,7 @@ const createRunVideoActionFixture = async ({
     signal,
     bridge,
     decode: async () => ({ framePaths: ['fixture-frame-1.png', 'fixture-frame-2.png'] }),
-    processFrames: processFrames || (async () => ({
-      normalizedFrames: [],
-      frameMetrics: [
-        { bbox: { left: 1, top: 1, width: 10, height: 20 }, root: { x: 1, y: 20 }, alphaCoverage: 0.8, maskCoverage: 0.8, hash: HASH_A },
-        { bbox: { left: 1, top: 2, width: 10, height: 21 }, root: { x: 2, y: 21 }, alphaCoverage: 0.8, maskCoverage: 0.8, hash: HASH_B }
-      ]
-    }))
+    processFrames: fixtureFrameProcessor
   })
   return { root, result }
 }
@@ -623,6 +646,34 @@ test('runVideoAction gates on normalized frames while retaining raw temporal dia
   assert.equal(result.rawTemporalQuality.ok, false)
   assert.ok(result.rawTemporalQuality.failures.includes('frame-edge-contact'))
   assert.ok(result.rawTemporalQuality.failures.includes('loop-seam-too-large'))
+})
+
+test('runVideoAction rejects a video whose subject aspect ratio drifts from the canonical identity', async () => {
+  const { result } = await createRunVideoActionFixture({
+    referenceCreate: { width: 80, height: 80, channels: 4, background: '#ffffff' },
+    normalizedFramesFactory: async ({ outputDir }) => {
+      const framePaths = []
+      const svg = Buffer.from('<svg width="80" height="80" xmlns="http://www.w3.org/2000/svg"><rect x="35" y="20" width="10" height="45" fill="#ffffff"/></svg>')
+      for (let index = 0; index < 2; index += 1) {
+        const framePath = path.join(outputDir, 'identity-drift', `${index + 1}.png`)
+        fs.mkdirSync(path.dirname(framePath), { recursive: true })
+        await sharp(svg).png().toFile(framePath)
+        framePaths.push({ path: framePath })
+      }
+      return framePaths
+    },
+    bridge: async () => ({ result: { outputs: [{ dataRelativePath: 'runs/run-video/video/raw/waving.mp4', sha256: HASH_B, mimeType: 'video/mp4' }] } }),
+    processFrames: async () => ({
+      normalizedFrames: [],
+      frameMetrics: [
+        { bbox: { left: 1, top: 1, width: 8, height: 40 }, root: { x: 1, y: 40 }, alphaCoverage: 0.8, maskCoverage: 0.8, hash: HASH_A },
+        { bbox: { left: 1, top: 2, width: 8, height: 40 }, root: { x: 2, y: 40 }, alphaCoverage: 0.8, maskCoverage: 0.8, hash: HASH_B }
+      ]
+    })
+  })
+  assert.equal(result.ok, false)
+  assert.equal(result.identityQuality.ok, false)
+  assert.ok(result.temporalQuality.failures.includes('identity-drift'))
 })
 
 test('runVideoAction forwards repair failure context into the Provider prompt', async () => {
