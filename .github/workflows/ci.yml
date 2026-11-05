@@ -49,6 +49,9 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Run core and Control Center regression baseline
+        run: npm run test:core:all
+
       - name: Build Control Center
         run: npm run build:control-center
 
