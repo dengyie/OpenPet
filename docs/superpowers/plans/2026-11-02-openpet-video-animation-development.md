@@ -448,3 +448,4 @@ Mango API 的 OpenAI-compatible Grok video provider 已作为独立 Provider 路
 - 原始透明 canonical 直接进入视频模型，使首帧底色与后续绿幕不同，并且上游可能沿用首帧正方形尺寸。Provider 输入改为独立落盘的 1280×720 不透明绿幕首帧，保留 canonical 原图；派生输入记录自己的 hash，身份质量仍对照原 canonical。
 - 像素回归进一步确认稳定化把跳跃各帧固定到相同底部，消除了起跳位移；默认归一化到 80% 高度（102px）也不匹配既有 runtime profile 的 92px。处理器现在以全序列中位角色高度和 profile 确定共同 scale，并按源画布比例保留 action-relative-root 位移；溢出仍拒绝，禁止偷偷缩小角色。rawTrajectory 来自源帧 root/canvas，不使用处理后基线冒充原始轨迹。
 - 视频 processorVersion 升至 4，防止复用旧归一化 checkpoint。最终 Creator 九动作和 final-package 仍需在该修复部署后重跑，不能把单视频通过写成完整成品通过。
+- PR #106 已合入 main `d07bdf8f` 并部署广州；正式 idle 恢复完成三份技术合格的视频与 Vision 评估（74/84/84），仍因真实视觉阈值保持 recovery-required。发现视频 repair 提示词只消费技术失败码，忽略帧间、风格、小尺寸与动作可读性反馈；后续修复针对这些已发生的失败项给出明确纠正，并约束 idle 保持参考肢体姿势。完整证据见 [线上恢复记录](../../release-evidence/remote-backend/2026-11-06-video-normalization-recovery.md)。

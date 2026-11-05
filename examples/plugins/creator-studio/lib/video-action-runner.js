@@ -81,7 +81,16 @@ const VIDEO_REPAIR_INSTRUCTIONS = Object.freeze({
   'identity-drift': 'Restore the exact referenced identity and body proportions; do not replace the character with a human, creature, costume, or different silhouette.',
   'motion-is-static': 'Keep the root and camera fixed while making the requested moving body part pass through visibly distinct motion phases.',
   'mask-dropout': 'Keep the entire character continuously visible against the uniform green background in every frame.',
-  'root-anchor-missing': 'Keep one complete grounded lower-center body root visible in every frame.'
+  'root-anchor-missing': 'Keep one complete grounded lower-center body root visible in every frame.',
+  'visual-score-crossFrame-below-minimum': 'Use no morphing between frames: keep the same facial anatomy, markings, fur or line pattern, limb shapes, and body proportions throughout the clip.',
+  'visual-score-crossAction-below-minimum': 'Keep the exact reference neutral proportions, face, costume, and accessories so this action belongs to the same pet as its other actions.',
+  'visual-score-style-below-minimum': 'Preserve the reference rendering style and material throughout; do not add new realism, smoothing, texture, lighting, or a different drawing style.',
+  'visual-score-smallScale-below-minimum': 'Keep a crisp silhouette, clean edges, and readable facial features at a 32-pixel preview; avoid motion blur and added fine detail.',
+  'visual-score-actionReadability-below-minimum': 'Show visibly distinct but bounded motion phases using only the body parts assigned by the requested action; do not replace the action with a different gesture.',
+  'visual-defect-action-unreadable': 'Show visibly distinct but bounded motion phases using only the body parts assigned by the requested action; do not replace the action with a different gesture.',
+  'visual-defect-cross-frame-inconsistent': 'Use no morphing between frames: keep the same facial anatomy, markings, fur or line pattern, limb shapes, and body proportions throughout the clip.',
+  'visual-defect-style-drift': 'Preserve the reference rendering style and material throughout; do not add new realism, smoothing, texture, lighting, or a different drawing style.',
+  'visual-defect-small-scale-unreadable': 'Keep a crisp silhouette, clean edges, and readable facial features at a 32-pixel preview; avoid motion blur and added fine detail.'
 })
 
 const safeSegment = (value, fallback) => {
@@ -226,7 +235,7 @@ const buildVideoPrompt = ({ run, action, driver, attemptKind = 'initial', failur
     ? 'Frame 1 and the final frame must depict the same neutral pose, root position, silhouette, body scale, camera framing, and background. Complete all visible motion in the middle of the clip, then fully settle back to that exact starting state before the final frame; do not end mid-motion.'
     : 'Begin and end on fully readable poses with no cut-off motion.'
   const actionGuidance = actionId === 'idle'
-    ? 'For idle, use only subtle local breathing or source-appropriate secondary motion with fixed camera framing and character scale; do not translate, zoom, rotate, or resize the body.'
+    ? 'For idle, keep the exact reference resting limb pose throughout, with one readable slow breathing cycle and a natural eye blink in the middle. Do not lift, lower, wave, or reposition the paws or hands. Use only subtle local breathing or source-appropriate secondary motion with fixed camera framing and character scale; do not translate, zoom, rotate, or resize the body.'
     : actionId === 'jumping'
       ? 'For jumping, use a conservative jump height, keep the complete airborne pose in the middle 60 percent of the frame, and retain at least 20 percent empty space above the highest body point.'
       : ''
