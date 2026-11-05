@@ -67,6 +67,18 @@ test('video repair prompt targets the recorded temporal failure', () => {
   assert.match(repair, /fixed camera framing and character scale/i)
 })
 
+test('video repair prompt applies the actual visual evaluator failures', () => {
+  const prompt = buildVideoPrompt({
+    run: { input: { petName: 'Mikan' } }, action: { actionId: 'idle' },
+    driver: createMotionDriver({ actionId: 'idle' }), attemptKind: 'repair',
+    failureCodes: ['visual-score-crossFrame-below-minimum', 'visual-score-style-below-minimum', 'visual-score-smallScale-below-minimum', 'visual-defect-action-unreadable']
+  })
+  assert.match(prompt, /no morphing between frames/i)
+  assert.match(prompt, /reference rendering style/i)
+  assert.match(prompt, /32.pixel/i)
+  assert.match(prompt, /visibly distinct.*motion phases/i)
+})
+
 test('jumping video prompt reserves conservative top clearance', () => {
   const driver = createMotionDriver({ actionId: 'jumping' })
   const prompt = buildVideoPrompt({

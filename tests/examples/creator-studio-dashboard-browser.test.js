@@ -20,10 +20,11 @@ const openDashboardServer = async (dataDir, testContext) => {
   return server
 }
 
-const openDashboardPage = async (server, testContext) => {
+const openDashboardPage = async (server, testContext, beforeNavigate) => {
   const browser = await chromium.launch({ headless: true })
   trackBrowserCleanup(testContext, browser)
   const page = await browser.newPage()
+  if (beforeNavigate) await beforeNavigate(page)
   await page.goto(`http://127.0.0.1:${server.address().port}`)
   return { browser, page }
 }
@@ -1372,10 +1373,22 @@ test('creator studio dashboard preserves imported action follow-up for legacy ru
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-imported-action-legacy-pre-task-'))
   await seedLegacyImportedActionRunWithoutTask(dataDir)
   const server = await openDashboardServer(dataDir, t)
-  const { browser, page } = await openDashboardPage(server, t)
+  const { browser, page } = await openDashboardPage(server, t, async (page) => {
+    await page.route('**/api/runs/*', async (route) => {
+      if (/^\/api\/runs\/[^/]+$/.test(new URL(route.request().url()).pathname)) {
+        const response = await route.fetch()
+        await new Promise((resolve) => setTimeout(resolve, 150))
+        await route.fulfill({ response })
+      } else {
+        await route.continue()
+      }
+    })
+  })
 
   try {
-    await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
+    // The list is populated before loadRun fetches and renders the selected
+    // run. Wait for that completed load, not merely an option value.
+    await page.waitForFunction(() => /Loaded latest run\./.test(document.querySelector('#status-line')?.textContent || ''))
 
     const handoffText = await page.locator('#import-handoff-panel').textContent()
     const reviewText = await page.locator('#action-review-panel').textContent()
