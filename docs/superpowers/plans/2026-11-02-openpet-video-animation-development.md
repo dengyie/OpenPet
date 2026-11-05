@@ -439,4 +439,11 @@ Mango API 的 OpenAI-compatible Grok video provider 已作为独立 Provider 路
 3. 只改变首帧生成路径；保持文本视频、Console/Build、多参考图校验、凭据隔离和现有视频下载生命周期。
 4. 在服务器用 Mikan canonical-2 验证真实首帧任务、视频下载、抽帧/Alpha/时序 QA，再从正式 Creator recovery API 完成全部动作与最终包评估。记录参考图 hash、上游图数、Provider、输出 hash 和最终非零评分；不得使用质量 override。
 
-Grok 主工作区包含未提交的 tebi 网络迁移改动。其归属尚未确认，当前仅做只读调查；这些改动不能被本次视频修复覆盖或丢弃。
+用户已确认保留 Grok 主工作区网络迁移改动，并授权独立修复。Web 首帧实现已提交至自有 fork `dengyie/grok2api` 的 `main`（`6c5c165e`）；全量 Go 测试、首帧 race 和含迁移代码的集成测试通过。生产构建保留既有六份网络源文件，十一份主工作区文件的 SHA-256 均未变化。
+
+### 13.3 真实首帧验证与后处理修复（2026-11-06）
+
+- tebi 影子实例复用同一配置密钥，使用独立 SQLite 快照与媒体目录。真实 Mikan 首帧任务 `video_Kt9ZnnCzfMOvAKaWPxmOOZAq` 为 `grok_web`、输入图数 1、`completed`；下载 934,896 bytes，SHA-256 `f10b02a1ce11b4ff3df413016abc7986d82d7e98395e9d17e0a6a597cf017b21`。切换生产前保留二进制、配置和一致性数据库快照，切换后 `/healthz` 200。
+- 正式 Creator idle 恢复进入视频与抠图阶段，发现稳定化使用角色 bbox 计算目标宽高，却对完整源画布执行 resize，造成角色细条失真。新增真实像素回归：20×30 角色在 80×60 画布上移动时，旧输出变为 15×41；修复为先裁剪 `placement.source` 再等比例归一化。
+- 原始透明 canonical 直接进入视频模型，使首帧底色与后续绿幕不同，并且上游可能沿用首帧正方形尺寸。Provider 输入改为独立落盘的 1280×720 不透明绿幕首帧，保留 canonical 原图；派生输入记录自己的 hash，身份质量仍对照原 canonical。
+- 视频 processorVersion 升至 3，防止复用旧失真 checkpoint。最终 Creator 九动作和 final-package 仍需在该修复部署后重跑，不能把单视频通过写成完整成品通过。

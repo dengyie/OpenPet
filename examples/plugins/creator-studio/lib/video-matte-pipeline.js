@@ -176,7 +176,10 @@ const writeStableFrame = async ({ input, outputPath, placement, canvas }) => {
   if (left < 0 || top < 0 || left + width > canvas.width || top + height > canvas.height) {
     throw matteError('stabilized frame exceeds the declared canvas')
   }
-  const resized = await sharp(input).resize({ width, height, fit: 'fill' }).png().toBuffer()
+  const source = placement.source
+  const resized = await sharp(input)
+    .extract({ left: source.left, top: source.top, width: source.width, height: source.height })
+    .resize({ width, height, fit: 'fill' }).png().toBuffer()
   await sharp({
     create: { width: canvas.width, height: canvas.height, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } }
   }).composite([{ input: resized, left, top }]).png().toFile(outputPath)

@@ -3145,7 +3145,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
     : null
   const videoModel = String(videoSettings?.model || '').trim()
   const useVideoActionPipeline = Boolean(videoSettings?.hasApiKey === true && isGrokVideoModel(videoModel))
-  const actionProcessorVersion = useVideoActionPipeline ? 2 : 1
+  const actionProcessorVersion = useVideoActionPipeline ? 3 : 1
   const sourceReference = resolveOriginalReferenceImage({ dataDir, run })
   if (!isUsableLocalReferenceImage({ dataDir, referenceImage: sourceReference })) {
     throw createProviderReferenceContractError('reference_image_required', 'Quality-first generation requires one usable local reference image')

@@ -353,6 +353,24 @@ test('video frame sequence stops before writing the next frame after cancellatio
   }), /test cancellation/)
 })
 
+test('video stabilization crops the subject before scaling and preserves its aspect ratio', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-video-subject-geometry-'))
+  const subject = await sharp({ create: { width: 20, height: 30, channels: 4, background: '#eaa344' } }).png().toBuffer()
+  const framePaths = []
+  for (const [index, left] of [8, 40].entries()) {
+    const framePath = path.join(root, `frame-${index}.png`)
+    await sharp({ create: { width: 80, height: 60, channels: 4, background: '#12ff4d' } })
+      .composite([{ input: subject, left, top: 15 }]).png().toFile(framePath)
+    framePaths.push(framePath)
+  }
+  const result = await processFrameSequence({ framePaths, outputDir: path.join(root, 'output'), canvasWidth: 100, canvasHeight: 100 })
+  for (const metric of result.normalizedFrameMetrics) {
+    assert.ok(Math.abs(metric.bbox.width / metric.bbox.height - 2 / 3) < 0.03, `subject was distorted to ${metric.bbox.width}x${metric.bbox.height}`)
+    assert.ok(metric.bbox.height >= 78, 'subject must occupy the intended normalized height')
+  }
+  assert.deepEqual(result.normalizedFrameMetrics[0].bbox, result.normalizedFrameMetrics[1].bbox)
+})
+
 test('video candidates materialize a reusable 1024 grid and runtime frames', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-video-candidate-'))
   const sourceDir = path.join(root, 'source')
@@ -633,6 +651,29 @@ test('runVideoAction keeps Provider video geometry independent from the sprite c
   assert.equal(request.size, '1280x720')
   assert.equal(request.request.aspect_ratio, '16:9')
   assert.equal(request.request.resolution, '720p')
+})
+
+test('runVideoAction sends an opaque green first frame at the requested video aspect ratio', async () => {
+  let sentReference
+  const { root } = await createRunVideoActionFixture({
+    referenceCreate: { width: 20, height: 30, channels: 4, background: { r: 255, g: 160, b: 70, alpha: 0.5 } },
+    bridge: async (_route, request) => {
+      sentReference = request.referenceImages[0]
+      return { result: { outputs: [{ dataRelativePath: 'runs/run-video/video/raw/waving.mp4', sha256: HASH_B, mimeType: 'video/mp4' }] } }
+    }
+  })
+  assert.notEqual(sentReference.relativePath, 'reference.png', 'canonical source must stay immutable')
+  const prepared = await sharp(path.join(root, sentReference.relativePath)).raw().toBuffer({ resolveWithObject: true })
+  assert.equal(prepared.info.width, 1280)
+  assert.equal(prepared.info.height, 720)
+  assert.deepEqual([...prepared.data.subarray(0, prepared.info.channels)], prepared.info.channels === 4 ? [18, 255, 77, 255] : [18, 255, 77])
+  if (prepared.info.channels === 4) {
+    for (let pixel = 3; pixel < prepared.data.length; pixel += 4) assert.equal(prepared.data[pixel], 255)
+  }
+  const source = await sharp(path.join(root, 'reference.png')).metadata()
+  assert.equal(source.width, 20)
+  assert.equal(source.height, 30)
+  assert.equal(source.hasAlpha, true)
 })
 
 test('runVideoAction gates on normalized frames while retaining raw temporal diagnostics', async () => {
