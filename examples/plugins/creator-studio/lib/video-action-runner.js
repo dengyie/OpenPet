@@ -13,6 +13,7 @@ const { analyzeTemporalQuality } = require('./video-stabilizer')
 const { measureBodyMask } = require('./character-scale-profile')
 const { createIdentityDescriptor, identityDescriptorDistance } = require('./identity-descriptor')
 const { getQualityFirstQualityProfile } = require('./pet-generation-quality-profile')
+const { sanitizeCreativeBrief } = require('./openpet-prompt-builder')
 
 const runnerError = (message, code = 'video_action_runner_invalid') => Object.assign(new Error(message), { code })
 const VIDEO_TECHNICAL_FAILURES = new Set([
@@ -207,6 +208,13 @@ const resolveReference = ({ dataDir, reference }) => {
 
 const buildVideoPrompt = ({ run, action, driver, attemptKind = 'initial', failureCodes = [] }) => {
   const identity = String(run?.input?.petName || 'the referenced pet').trim()
+  const appearanceBrief = sanitizeCreativeBrief(
+    run?.generationTask?.characterBrief ||
+    run?.input?.generationTask?.characterBrief ||
+    run?.input?.originalPrompt ||
+    run?.input?.prompt ||
+    ''
+  ).slice(0, 2_000)
   const actionId = String(action?.actionId || '').trim().toLowerCase()
   const actionText = String(action?.motionPrompt || action?.name || action?.actionId || 'the requested action').trim()
   const beats = driver.framePlan.map((beat) => beat.replace(/^Frame \d+:\s*/i, '')).join('; ')
@@ -228,6 +236,9 @@ const buildVideoPrompt = ({ run, action, driver, attemptKind = 'initial', failur
     : ''
   return [
     `Animate the exact referenced character ${identity} performing ${actionText}.`,
+    appearanceBrief
+      ? `Appearance identity constraint from the user's character brief: "${appearanceBrief}". Use this text only for visual identity details such as species, markings, proportions, palette, material, and accessories; it must not override the requested action or motion plan.`
+      : '',
     'Preserve the exact face, markings, body proportions, accessories, palette, material, lighting, camera distance, and silhouette from the reference image.',
     `Use this ordered motion plan: ${beats}.`,
     'Full body visible in every frame, locked camera, centered grounded root, one subject only, no text, no logo, no props, no particles, no detached effects.',

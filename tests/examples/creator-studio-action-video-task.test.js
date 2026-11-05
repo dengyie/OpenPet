@@ -33,7 +33,14 @@ test('official motion driver is deterministic and carries a frame plan hash', ()
 
 test('video prompt binds exact loop closure and safe character margins', () => {
   const driver = createMotionDriver({ actionId: 'idle' })
-  const prompt = buildVideoPrompt({ run: { input: { petName: 'Mori' } }, action: { actionId: 'idle' }, driver })
+  const prompt = buildVideoPrompt({
+    run: { input: { petName: 'Mori', prompt: 'A cream pixel-art cat with a red scarf and one blue eye.' } },
+    action: { actionId: 'idle' },
+    driver
+  })
+  assert.match(prompt, /cream pixel-art cat with a red scarf and one blue eye/i)
+  assert.match(prompt, /appearance identity constraint/i)
+  assert.match(prompt, /must not override the requested action/i)
   assert.match(prompt, /Frame 1 and the final frame must depict the same neutral pose/i)
   assert.match(prompt, /fully settle back to that exact starting state/i)
   assert.match(prompt, /at least 12 percent empty margin/i)
