@@ -733,6 +733,19 @@ test('runVideoAction keeps Provider video geometry independent from the sprite c
   assert.equal(request.request.resolution, '720p')
 })
 
+test('runVideoAction uses the intensity and lead side from the sprite plan', async () => {
+  let request
+  const { result } = await createRunVideoActionFixture({
+    action: { actionId: 'idle', motionParameters: { intensity: 'subtle', leadSide: 'viewer-right' } },
+    bridge: async (_route, payload) => {
+      request = payload
+      return { result: { outputs: [{ dataRelativePath: 'runs/run-video/video/raw/idle.mp4', sha256: HASH_B, mimeType: 'video/mp4' }] } }
+    }
+  })
+  assert.deepEqual(result.driver.motionParameters, { intensity: 'subtle', leadSide: 'viewer-right' })
+  assert.match(request.prompt, /subtle intensity.*viewer-right/)
+})
+
 test('runVideoAction sends an opaque green first frame at the requested video aspect ratio', async () => {
   let sentReference
   const { root } = await createRunVideoActionFixture({

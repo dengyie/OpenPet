@@ -146,6 +146,20 @@ test('evaluator request contains one compressed review image and no mutable work
   assert.equal(serialized.includes('activate'), false)
 })
 
+test('action evaluator retains the intended motion and rejects an unlabeled action board', async () => {
+  const boardDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-action-intent-'))
+  const boardPath = path.join(boardDir, 'board.png')
+  await sharp({ create: { width: 128, height: 128, channels: 4, background: '#eee' } }).png().toFile(boardPath)
+  const input = { scope: 'grounded-action', board: { path: boardPath, sha256: 'a'.repeat(64), regions: REGIONS }, profile: getQualityFirstQualityProfile() }
+  const actionIntent = { actionId: 'idle', loop: true, frameCount: 3, framePlan: ['neutral pose', 'visible breathing and blink', 'return to neutral pose'] }
+  const request = await createSpriteEvaluatorRequest({ ...input, qa: { ok: true, actionIntent } })
+  const payload = JSON.parse(request.messages[1].content.find((part) => part.type === 'text').text)
+  assert.deepEqual(payload.actionIntent, actionIntent)
+  assert.match(request.messages[0].content, /specified action/i)
+  await assert.rejects(() => createSpriteEvaluatorRequest({ ...input, qa: { ok: true } }), /action intent/i)
+  await assert.rejects(() => createSpriteEvaluatorRequest({ ...input, qa: { actionIntent: { ...actionIntent, frameCount: 4 } } }), /frame plan/i)
+})
+
 test('evaluation evidence is atomically stored under dataDir with a relative path', () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-sprite-evaluation-'))
   const relativePath = recordSpriteEvaluation({

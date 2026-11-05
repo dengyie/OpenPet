@@ -350,7 +350,7 @@ test('sprite evaluation retries an all-zero board-unreadable semantic response',
     runId: 'run-semantic-evaluation-retry',
     scope: 'grounded-action',
     board: { path: boardPath, sha256: 'a'.repeat(64), regions: [{ regionId: 'source' }, { regionId: 'frame-1' }] },
-    qa: { ok: true, failures: [], metrics: {} },
+    qa: { ok: true, failures: [], metrics: {}, actionIntent: { actionId: 'idle', loop: true, frameCount: 3, framePlan: ['neutral resting pose', 'breathing and blink', 'return to neutral resting pose'] } },
     profile: getQualityFirstQualityProfile(),
     budgetLedger: createBudgetLedger({ startedAtMs: Date.now() })
   })
@@ -379,7 +379,7 @@ test('sprite evaluation preserves a confident board-unreadable result as cannot-
     runId: 'run-confident-board-unreadable',
     scope: 'grounded-action',
     board: { path: boardPath, sha256: 'd'.repeat(64), regions: [{ regionId: 'source' }, { regionId: 'frame-1' }] },
-    qa: { ok: true, failures: [], metrics: {} },
+    qa: { ok: true, failures: [], metrics: {}, actionIntent: { actionId: 'idle', loop: true, frameCount: 3, framePlan: ['neutral resting pose', 'breathing and blink', 'return to neutral resting pose'] } },
     profile: getQualityFirstQualityProfile(),
     budgetLedger: createBudgetLedger({ startedAtMs: Date.now() })
   })
