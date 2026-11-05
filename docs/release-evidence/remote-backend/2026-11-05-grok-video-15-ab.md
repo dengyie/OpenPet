@@ -17,15 +17,21 @@ The adapter keeps both models selectable. `grok-imagine-video-1.5` is now the qu
 
 ## Same-input A/B
 
-Both runs used the same reference image, prompt, `1280x720` output, and two-second request. Each run completed Provider submission, polling, content download, frame extraction, green-screen matting, despill, stabilization, Sprite/GIF/contact-sheet generation, and temporal QA.
+Both OpenPet requests supplied the same reference image, prompt, `1280x720` output, and two-second request. Each run completed Provider submission, polling, content download, frame extraction, green-screen matting, despill, stabilization, Sprite/GIF/contact-sheet generation, and temporal QA. The later upstream audit below limits what these requests prove.
 
 | Model | Provider artifact | QA result | Loop seam ratio | Body scale CV | Root X std | Notes |
 | --- | ---: | --- | ---: | ---: | ---: | --- |
 | `grok-imagine-video` | 697,764 bytes | `ok=true` | 0.0684813 | 0.0111063 | 20.8966 | 6 unique motion frames; no mask dropout |
 | `grok-imagine-video-1.5` | 584,621 bytes | `ok=true` | 0.0115184 | 0.0080069 | 0.3727 | 6 unique motion frames; no mask dropout; alpha flicker 0.0004546 |
 
-The 1.5 result is the better default for this sample because it had a materially lower loop seam ratio, lower body-scale variance, and near-zero root drift while preserving six distinct motion frames. This is a model-selection signal, not a substitute for the remaining three-action and human art-quality gates.
+The second output measured a lower loop seam ratio, body-scale variance, and root drift. These are measurements of two generated outputs, not evidence of a difference between upstream models.
+
+## Upstream audit correction (2026-11-06)
+
+Mango channel #345 maps both `grok-imagine-video-1.5` and its preview alias to `grok-imagine-video`. Historical Grok Web jobs record `input_image_count=0`: the generic gateway DTO discarded OpenPet's `image_url`. Consequently this sample does not establish reference-conditioned generation, identity preservation, or superior quality from a distinct 1.5 model. The configured default remains selectable, but its previous model-selection rationale is withdrawn.
+
+OpenPet `2eb6f725` now sends the native `image: {url: dataURL}` first-frame object. Mango API `e2e64b981` preserves that object through its existing host video protocol; deployment CI `42106616711` succeeded and the production version matches. A real request using Mikan's accepted canonical image created Grok Console job `video_GKfCMehn-xQjNIuTDinvCrGH` with `input_image_count=1`. It failed because the upstream rejected the account's free usage/provisioning state. Grok Web currently rejects image input locally. This verifies reference transport only; a completed reference-conditioned video and complete Creator package remain pending.
 
 ## Boundary
 
-This evidence proves the real Provider and technical post-processing path. It does not claim that a complete `idle` / `waving` / `jumping` pet pack or human art approval has been completed.
+The original outputs prove text-conditioned Provider generation and technical post-processing. They do not prove reference-conditioned video, a complete Creator pet pack, or human art approval.

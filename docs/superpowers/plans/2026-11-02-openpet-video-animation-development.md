@@ -401,7 +401,7 @@ Mango API 的 OpenAI-compatible Grok video provider 已作为独立 Provider 路
 - [x] 实现隔离的 GPU runner 请求/响应协议、并发请求合并、幂等重试与取消边界；One-to-All 1.3B 推理 adapter 仍需在独立 GPU runner 实装。
 - [x] 接入 Mango API Grok 视频模型的 Creator 候选路由和可复用 sprite artifact 适配。
 - [ ] 完成三动作 A/B，并归档质量门结果。
-- [ ] 三动作通过后，再接 Creator Studio UI 和远程 Backend。
+- [x] 接入 Creator Studio UI 和远程 Backend 的视频配置及候选路由；真实全动作质量验收仍未完成。
 - [ ] 记录模型、权重、依赖和输出资产许可证。
 
 ## 12. 调研来源
@@ -423,3 +423,20 @@ Mango API 的 OpenAI-compatible Grok video provider 已作为独立 Provider 路
 - [VideoMaMa](https://github.com/cvlab-kaist/VideoMaMa)
 
 本计划的项目热度、硬件和许可证信息来自 2026-11-02 的 Grok Search 检索与官方仓库页面。热度会变化，模型权重和第三方依赖条款必须在实现和发布前重新核对。
+
+## 13. 生产图生视频修复范围（2026-11-06）
+
+用户后续提供了 Mango API Grok 视频模型，当前交付路线使用该 API；One-to-All GPU 推理仍是调研候选，不是本次 API 接入的部署前提。真实 Creator 验收须完成九个配置动作，不能只用三动作或单视频技术 smoke 替代。
+
+上游审计确认，旧请求的 `image_url` 被 Mango 通用任务 DTO 丢弃。OpenPet `2eb6f725` 改用原生 `image: {url: dataURL}`，Mango `e2e64b981` 在现有 Sora 插件登记 Grok host video protocol，两个修复均已部署。Mikan 的真实 Console 任务已记录 `input_image_count=1`，但返回额度/provision key 429。当前 Grok Web 的路由校验和 adapter 均拒绝图输入，因此需要在这两处补齐已查证的首帧协议。
+
+[公开 transport 源码](https://github.com/Lee-SiHyeon/web-api-playbook/blob/901c9c619e85594bec365f7c599ec495ae4c6c68/service-packs/grok/src/grok-media-video-transport.mjs) 明确区分 `mediaGenInput.textToVideo` 与 `mediaGenInput.imageToVideo`。后者包含 `prompt`、`aspectRatio`、`duration`、`resolutionName`、`skipAudio`、`mode` 和单个 `inputAssets`；`useFirstFrame` 为可选布尔字段。源码只提供捕获请求的证据，不能据此宣称任意分辨率/时长或生产账号已经验证。
+
+最小实施路径：
+
+1. 在隔离工作区新增失败回归，覆盖 Web 首帧请求被当前路由和 adapter 拒绝；保留多参考图拒绝，避免声明未经验证的能力。
+2. 复用现有图片校验、同账号出口租约与 `/http/upload-file-v2/direct` 上传能力；以上传响应的 `fileMetadataId` 构造 `imageToVideo.inputAssets`。缺少该标识、上传失败或取消时必须停止，不能降级为无图文本视频。
+3. 只改变首帧生成路径；保持文本视频、Console/Build、多参考图校验、凭据隔离和现有视频下载生命周期。
+4. 在服务器用 Mikan canonical-2 验证真实首帧任务、视频下载、抽帧/Alpha/时序 QA，再从正式 Creator recovery API 完成全部动作与最终包评估。记录参考图 hash、上游图数、Provider、输出 hash 和最终非零评分；不得使用质量 override。
+
+Grok 主工作区包含未提交的 tebi 网络迁移改动。其归属尚未确认，当前仅做只读调查；这些改动不能被本次视频修复覆盖或丢弃。
