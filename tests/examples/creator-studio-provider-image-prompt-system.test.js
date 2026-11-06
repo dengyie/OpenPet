@@ -286,7 +286,7 @@ test('gpt image 2 non-idle and idle keyframes separate pose authority from ident
     'BACKGROUND',
     'CONSTRAINTS'
   ])
-  assert.match(running.prompt, /sole authority for the new pose/i)
+  assert.match(running.prompt, /ACTION PLAN controls the pose and viewing direction/i)
   assert.match(running.prompt, /character faces viewer-right/i)
   assert.match(running.prompt, /small body rise and fall/i)
   assert.match(running.prompt, /translation across the canvas/i)

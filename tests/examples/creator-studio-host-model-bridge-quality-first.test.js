@@ -41,10 +41,26 @@ test('running video prepares one QA-approved contact pose for all candidates and
   assert.equal(calls[0].keyframeRole, 'start')
   assert.equal(calls[0].referenceImages[0].relativePath, canonical.relativePath)
   assert.match(calls[0].action.viewDirection, /right-facing.*side/i)
+  assert.deepEqual(calls[0].action.animatedParts, ['both legs and feet only'])
+  assert.match(calls[0].action.forbiddenMotion.join(' '), /front-facing rotation.*wing flap.*blink/i)
   assert.equal(calls[0].action.animationType, 'locomotion_loop')
   const resolveIdle = hostModelBridgeModule.__testInternals.createVideoStartReferenceResolver({ action: { actionId: 'idle' }, canonical,
     generateKeyframe: async () => { throw new Error('idle must not generate a pose') } })
   assert.equal(await resolveIdle(), canonical)
+})
+
+test('running start preparation uses canonical pixels without reintroducing the resting-pose character narrative', async () => {
+  let input
+  const resolveStart = hostModelBridgeModule.__testInternals.createVideoStartReferenceResolver({
+    dataDir: '/data', run: { runId: 'rest-conflict', generationTask: { characterBrief: 'Two wings resting by its sides, facing forward.' } },
+    settings: {}, action: { actionId: 'running-right' }, canonical: { relativePath: 'canonical.png' },
+    generateKeyframe: async (value) => {
+      input = value
+      return { ok: true, referenceImage: { relativePath: 'start.png' }, keyframe: { sha256: 'b'.repeat(64) } }
+    }
+  })
+  await resolveStart()
+  assert.deepEqual(input.appearanceIntent, [])
 })
 
 test('a rejected running start pose stops video preparation without falling back to front-facing canonical', async () => {

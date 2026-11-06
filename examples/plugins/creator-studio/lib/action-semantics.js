@@ -393,11 +393,11 @@ const getKeyframePoseInstruction = ({ action = {}, keyframeRole = 'start' } = {}
       : 'Pose: preserve the canonical pose and silhouette with only one subtle identity-safe local change; no action extreme, large appendage movement, or body-root motion.'
   }
   if (isStart) {
-    if (animationType === 'locomotion_loop') return 'Pose: first contact pose of an in-place gait cycle, full body visible, with opposing visible locomotion appendages clearly separated.'
+    if (animationType === 'locomotion_loop') return 'Pose: first contact pose of an in-place gait cycle, full body visible, in a strict side profile with both locomotion legs and feet clearly visible and separated: one foot planted under the body and the other extended forward or back.'
     if (animationType === 'vertical_bounce') return 'Pose: grounded anticipation pose at the original baseline, full body visible and ready to jump.'
     return 'Pose: full-body neutral pose with the body anchored and visible motion appendages at rest unless the source image clearly uses a different neutral stance.'
   }
-  if (animationType === 'locomotion_loop') return 'Pose: opposite contact or passing pose of the gait cycle, with visible locomotion appendages reversed from the start while identity, scale, and root remain stable.'
+  if (animationType === 'locomotion_loop') return 'Pose: opposite contact or passing pose of the gait cycle, with both locomotion legs and feet clearly visible and reversed from the start while identity, scale, and root remain stable.'
   if (animationType === 'vertical_bounce') return 'Pose: airborne peak with the full body clearly above the starting baseline; preserve identity, scale, and horizontal root alignment so the final sequence can return to the same baseline.'
   if (isWavingAction(action)) return 'Pose: full-body action pose with the selected visible waving appendage clearly changed from neutral and fully raised into a readable greeting while the rest of the identity, scale, and lower-center root remain stable.'
   return `Pose: full-body action peak with the ${resolvePrimaryAnimatedPart(action)} clearly changed from neutral while identity, scale, and lower-center root remain stable.`
