@@ -99,7 +99,8 @@ test('video repair prompt applies the actual visual evaluator failures', () => {
   assert.match(prompt, /no morphing between frames/i)
   assert.match(prompt, /reference rendering style/i)
   assert.match(prompt, /32.pixel/i)
-  assert.match(prompt, /visibly distinct.*motion phases/i)
+  assert.match(prompt, /exactly one clearly visible blink/i)
+  assert.match(prompt, /no other visible movement/i)
 })
 
 test('jumping video prompt reserves conservative top clearance', () => {
