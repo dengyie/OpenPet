@@ -238,6 +238,9 @@ const buildVideoPrompt = ({ driver, attemptKind = 'initial', failureCodes = [] }
   const repairGuidance = attemptKind === 'repair'
     ? `This is a repair pass for a rejected result. ${repairInstructions.join(' ') || 'Correct the rejected temporal result while preserving identity, framing, and the ordered motion plan.'}`
     : ''
+  const loopOutcome = actionId === 'idle'
+    ? 'Return a short seamless loop with exactly one clearly visible blink and no other visible movement.'
+    : 'Return a short seamless loop with visibly distinct motion phases.'
   return [
     `Animate the exact character in the provided first-frame image performing ${actionId}. The first-frame image is the sole appearance reference.`,
     'Preserve the exact face, markings, body proportions, accessories, palette, material, lighting, camera distance, and silhouette from the reference image.',
@@ -248,7 +251,7 @@ const buildVideoPrompt = ({ driver, attemptKind = 'initial', failureCodes = [] }
     'Use a flat uniform chroma green background #12ff4d for matting; no gradient, shadows, floor, or background movement.',
     loopContract,
     repairGuidance,
-    'Return a short seamless loop with visibly distinct motion phases.'
+    loopOutcome
   ].filter(Boolean).join(' ')
 }
 
