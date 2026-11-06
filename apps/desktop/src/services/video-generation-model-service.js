@@ -250,7 +250,12 @@ const createVideoGenerationModelService = ({
       recordLog({ level: 'info', event: 'videoGeneration.request.completed', message: 'Video Provider request completed', details: { runId: String(runId || ''), model: normalizedModel, durationMs: now().getTime() - startedAt.getTime(), byteLength: generated.byteLength } })
       return result
     } catch (error) {
-      recordLog({ level: 'error', event: 'videoGeneration.request.failed', message: 'Video Provider request failed', details: { runId: String(runId || ''), model: normalizedModel, durationMs: now().getTime() - startedAt.getTime(), errorCode: String(error?.code || 'video_provider_error') } })
+      const taskId = String(error?.taskId || '')
+      recordLog({ level: 'error', event: 'videoGeneration.request.failed', message: 'Video Provider request failed', details: {
+        runId: String(runId || ''), model: normalizedModel, durationMs: now().getTime() - startedAt.getTime(), errorCode: String(error?.code || 'video_provider_error'),
+        ...(/^[a-zA-Z0-9_-]{1,256}$/.test(taskId) ? { taskId } : {}),
+        ...(['submit', 'poll', 'content'].includes(error?.stage) ? { stage: error.stage } : {})
+      } })
       throw error
     }
   }

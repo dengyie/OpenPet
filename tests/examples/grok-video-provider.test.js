@@ -268,3 +268,114 @@ test('existing video output is rejected before any paid Provider request', async
   assert.equal(calls, 0)
   assert.equal(await fs.readFile(outputPath, 'utf8'), 'retained-paid-video')
 })
+
+for (const stage of ['poll', 'content']) {
+  test(`video ${stage} retries the accepted task read without another paid POST`, async () => {
+    const outputDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openpet-task-read-retry-'))
+    let posts = 0
+    let reads = 0
+    const provider = createGrokVideoProvider({
+      baseUrl: 'https://api.mangoqwq.com/v1', apiKey: 'runtime-only-key', sleepImpl: async () => {},
+      fetchImpl: async (url) => {
+        if (url.endsWith('/videos')) { posts += 1; return jsonResponse({ id: 'retained-task', status: stage === 'poll' ? 'queued' : 'completed' }) }
+        if (url.endsWith('/content')) {
+          if (stage === 'content' && ++reads === 1) return binaryResponse(Buffer.from('{}'), 'application/json', 503)
+          return binaryResponse(Buffer.from('retained-video'))
+        }
+        if (++reads === 1) return jsonResponse({ error: { code: 'service_unavailable' } }, 503)
+        return jsonResponse({ id: 'retained-task', status: 'completed' })
+      }
+    })
+    const result = await provider.generateVideo({ model: 'grok-imagine-video', prompt: 'jump once', outputDir })
+    assert.equal(posts, 1)
+    assert.equal(reads, 2)
+    assert.equal(result.taskId, 'retained-task')
+    assert.equal(await fs.readFile(result.absolutePath, 'utf8'), 'retained-video')
+  })
+
+  test(`exhausted video ${stage} read cannot be retried as a new generation`, async () => {
+    let posts = 0
+    let reads = 0
+    const provider = createGrokVideoProvider({
+      baseUrl: 'https://api.mangoqwq.com/v1', apiKey: 'runtime-only-key', sleepImpl: async () => {},
+      fetchImpl: async (url) => {
+        if (url.endsWith('/videos')) { posts += 1; return jsonResponse({ id: 'known-paid-task', status: stage === 'poll' ? 'queued' : 'completed' }) }
+        reads += 1
+        return jsonResponse({ error: { code: 'service_unavailable' } }, 503)
+      }
+    })
+    await assert.rejects(provider.generateVideo({ model: 'grok-imagine-video', prompt: 'jump once', outputDir: await fs.mkdtemp(path.join(os.tmpdir(), 'openpet-read-exhausted-')) }), error => {
+      assert.equal(error.retryable, false)
+      assert.equal(error.status, 503)
+      assert.equal(error.taskId, 'known-paid-task')
+      assert.equal(error.stage, stage)
+      return true
+    })
+    assert.equal(posts, 1)
+    assert.equal(reads, 2)
+  })
+}
+
+test('ambiguous video submission cannot be automatically submitted again', async () => {
+  for (const fail of [async () => jsonResponse({}, 524), async () => { throw new TypeError('connection reset') }]) {
+    const provider = createGrokVideoProvider({ baseUrl: 'https://api.mangoqwq.com/v1', apiKey: 'runtime-only-key', fetchImpl: fail })
+    await assert.rejects(provider.generateVideo({ model: 'grok-imagine-video', prompt: 'jump once', outputDir: await fs.mkdtemp(path.join(os.tmpdir(), 'openpet-unknown-submit-')) }), error => {
+      assert.equal(error.retryable, false)
+      assert.equal(error.stage, 'submit')
+      assert.equal(error.taskId, undefined)
+      return true
+    })
+  }
+})
+
+test('video polling limit cannot trigger a replacement paid task', async () => {
+  const provider = createGrokVideoProvider({ baseUrl: 'https://api.mangoqwq.com/v1', apiKey: 'runtime-only-key', fetchImpl: async () => jsonResponse({ id: 'still-running', status: 'queued' }) })
+  await assert.rejects(provider.generateVideo({ model: 'grok-imagine-video', prompt: 'jump once', outputDir: await fs.mkdtemp(path.join(os.tmpdir(), 'openpet-poll-limit-')), maxPolls: 1 }), error => {
+    assert.equal(error.retryable, false)
+    assert.equal(error.taskId, 'still-running')
+    assert.equal(error.stage, 'poll')
+    return true
+  })
+})
+
+test('cancellation during a task read retry does not issue another request', async () => {
+  const controller = new AbortController()
+  let requests = 0
+  let waits = 0
+  const provider = createGrokVideoProvider({
+    baseUrl: 'https://api.mangoqwq.com/v1', apiKey: 'runtime-only-key',
+    fetchImpl: async () => {
+      requests += 1
+      return requests === 1 ? jsonResponse({ id: 'cancel-task', status: 'queued' }) : jsonResponse({}, 503)
+    },
+    sleepImpl: async () => { if (++waits === 2) controller.abort(new Error('cancel read retry')) }
+  })
+  await assert.rejects(provider.generateVideo({ model: 'grok-imagine-video', prompt: 'jump once', outputDir: await fs.mkdtemp(path.join(os.tmpdir(), 'openpet-cancel-read-')), signal: controller.signal }), /cancel read retry/)
+  assert.equal(requests, 2)
+})
+
+test('video submission timeout is ambiguous and does not enable generation replay', async () => {
+  const provider = createGrokVideoProvider({ baseUrl: 'https://api.mangoqwq.com/v1', apiKey: 'runtime-only-key', fetchImpl: async (_url, { signal }) => new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(new Error('request aborted')), { once: true })) })
+  await assert.rejects(provider.generateVideo({ model: 'grok-imagine-video', prompt: 'jump once', outputDir: await fs.mkdtemp(path.join(os.tmpdir(), 'openpet-submit-timeout-')), timeoutMs: 100 }), error => {
+    assert.equal(error.code, 'video_provider_timeout')
+    assert.equal(error.retryable, false)
+    assert.equal(error.stage, 'submit')
+    return true
+  })
+})
+
+test('permanent task read rejection is not retried or resubmitted', async () => {
+  let requests = 0
+  const provider = createGrokVideoProvider({
+    baseUrl: 'https://api.mangoqwq.com/v1', apiKey: 'runtime-only-key', sleepImpl: async () => {},
+    fetchImpl: async () => ++requests === 1 ? jsonResponse({ id: 'task-forbidden', status: 'queued' }) : jsonResponse({}, 403)
+  })
+  await assert.rejects(provider.generateVideo({ model: 'grok-imagine-video', prompt: 'jump once', outputDir: await fs.mkdtemp(path.join(os.tmpdir(), 'openpet-forbidden-read-')) }), error => error.retryable === false && error.taskId === 'task-forbidden')
+  assert.equal(requests, 2)
+})
+
+test('submission cancellation preserves a caller supplied primitive reason', async () => {
+  const controller = new AbortController()
+  const provider = createGrokVideoProvider({ baseUrl: 'https://api.mangoqwq.com/v1', apiKey: 'runtime-only-key', fetchImpl: async () => { controller.abort('stop-video'); throw new Error('aborted') } })
+  await assert.rejects(provider.generateVideo({ model: 'grok-imagine-video', prompt: 'jump once', outputDir: await fs.mkdtemp(path.join(os.tmpdir(), 'openpet-primitive-cancel-')), signal: controller.signal }), reason => reason === 'stop-video')
+})
