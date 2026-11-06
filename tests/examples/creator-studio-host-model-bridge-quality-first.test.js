@@ -22,6 +22,43 @@ const path = require('node:path')
 const sharp = require('sharp')
 const { OFFICIAL_FULL_PET_ACTION_IDS } = require('../../examples/plugins/creator-studio/lib/full-pet-row-contract')
 
+test('running video prepares one QA-approved contact pose for all candidates and keeps idle unchanged', async () => {
+  const canonical = { relativePath: 'canonical.png', sha256: 'a'.repeat(64) }
+  const calls = []
+  const resolveStart = hostModelBridgeModule.__testInternals.createVideoStartReferenceResolver({
+    dataDir: '/data', run: { runId: 'pose-run' }, settings: { model: 'gpt-image-2', timeoutMs: 120000 },
+    action: { actionId: 'running-right', movingParts: ['locomotion limbs'], framePlan: ['right-facing first contact'] }, canonical,
+    generateKeyframe: async (input) => {
+      calls.push(input)
+      return { ok: true, referenceImage: { relativePath: 'start.png' }, keyframe: { sha256: 'b'.repeat(64) } }
+    }
+  })
+  const [first, second] = await Promise.all([resolveStart(), resolveStart()])
+  assert.equal(calls.length, 1)
+  assert.equal(first, second)
+  assert.equal(first.relativePath, 'start.png')
+  assert.equal(first.sha256, 'b'.repeat(64))
+  assert.equal(calls[0].keyframeRole, 'start')
+  assert.equal(calls[0].referenceImages[0].relativePath, canonical.relativePath)
+  assert.match(calls[0].action.viewDirection, /right-facing.*side/i)
+  assert.equal(calls[0].action.animationType, 'locomotion_loop')
+  const resolveIdle = hostModelBridgeModule.__testInternals.createVideoStartReferenceResolver({ action: { actionId: 'idle' }, canonical,
+    generateKeyframe: async () => { throw new Error('idle must not generate a pose') } })
+  assert.equal(await resolveIdle(), canonical)
+})
+
+test('a rejected running start pose stops video preparation without falling back to front-facing canonical', async () => {
+  let calls = 0
+  const resolveStart = hostModelBridgeModule.__testInternals.createVideoStartReferenceResolver({
+    dataDir: '/data', run: { runId: 'pose-fail' }, settings: {}, action: { actionId: 'running-right' },
+    canonical: { relativePath: 'canonical.png' },
+    generateKeyframe: async () => { calls += 1; return { ok: false, error: 'identity check failed' } }
+  })
+  await assert.rejects(resolveStart(), { code: 'video_start_frame_rejected' })
+  await assert.rejects(resolveStart(), { code: 'video_start_frame_rejected' })
+  assert.equal(calls, 1)
+})
+
 test('host canonical pool keeps paid duplicates quality-eligible while tracking diversity separately', async () => {
   const hashes = ['a'.repeat(64), 'a'.repeat(64), 'b'.repeat(64), 'c'.repeat(64)]
   const persisted = []

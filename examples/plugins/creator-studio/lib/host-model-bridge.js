@@ -3150,6 +3150,38 @@ const evaluateCanonicalCandidatePool = async ({
 
 const generateSelectedFullPetAction = (options = {}) => runQualityFirstAction(options)
 
+const createVideoStartReferenceResolver = ({ dataDir, run, settings, action, canonical, generateKeyframe = generateActionKeyframe }) => {
+  let pending
+  return async () => {
+    // An image-to-video provider preserves its supplied first frame. A front
+    // canonical cannot also be the first contact of a side-facing gait.
+    if (action.actionId !== 'running-right') return canonical
+    pending ||= generateKeyframe({
+      dataDir, run, settings,
+      selectedModel: String(settings.model || ''),
+      requestedTimeoutMs: resolveCreatorProviderTimeout(settings.timeoutMs),
+      action: {
+        ...action,
+        name: 'right-facing in-place running gait',
+        animationType: 'locomotion_loop',
+        viewDirection: 'strict right-facing side view',
+        animatedParts: action.movingParts,
+        lockedParts: action.fixedParts
+      },
+      keyframeRole: 'start',
+      referenceImages: [{ ...canonical, path: path.join(dataDir, canonical.relativePath), role: 'canonical-reference' }]
+    }).then((result) => {
+      if (!result.ok || !result.referenceImage || !result.keyframe?.sha256) {
+        throw Object.assign(new Error('Running video requires a quality-approved action start frame'), {
+          code: 'video_start_frame_rejected', modelAttempts: result.modelAttempts || []
+        })
+      }
+      return { ...result.referenceImage, sha256: result.keyframe.sha256 }
+    })
+    return pending
+  }
+}
+
 const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null } = {}) => {
   const settings = await readHostModelSettings()
   const videoSettings = settings.videoGeneration && typeof settings.videoGeneration === 'object'
@@ -3159,7 +3191,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
   const useVideoActionPipeline = Boolean(videoSettings?.hasApiKey === true && isGrokVideoModel(videoModel))
   // Processing bindings also cover evaluator semantics. Older checkpoints
   // were scored without action intent or generated from conflicting motion text.
-  const actionProcessorVersion = useVideoActionPipeline ? 8 : 4
+  const actionProcessorVersion = useVideoActionPipeline ? 9 : 4
   const sourceReference = resolveOriginalReferenceImage({ dataDir, run })
   if (!isUsableLocalReferenceImage({ dataDir, referenceImage: sourceReference })) {
     throw createProviderReferenceContractError('reference_image_required', 'Quality-first generation requires one usable local reference image')
@@ -3365,6 +3397,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
     }
     const canonicalPath = path.join(dataDir, canonical.relativePath)
     if (useVideoActionPipeline) {
+      const resolveStartReference = createVideoStartReferenceResolver({ dataDir, run, settings, action, canonical })
       const runner = await generateSelectedFullPetAction({
         context: {
           actionId,
@@ -3381,6 +3414,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
             run,
             action,
             canonical,
+            startFrame: await resolveStartReference(),
             model: videoModel,
             scaleProfile: actionProfile,
             attemptKind,
@@ -3414,6 +3448,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
             videoTemporalQuality: videoResult.temporalQuality,
             videoRawTemporalQuality: videoResult.rawTemporalQuality,
             artifacts: [
+              { role: 'video-first-frame', path: path.join(dataDir, videoResult.providerReference.relativePath), sha256: videoResult.providerReference.sha256 },
               { role: 'raw-video', path: rawVideoPath, sha256: String(videoResult.rawVideo.sha256 || sha256File(rawVideoPath)) },
               { role: 'raw-sheet', path: processed.rawSheet.path, sha256: processed.rawSheet.sha256 },
               { role: 'processed-sheet', path: processed.processedSheet.path, sha256: processed.processedSheet.sha256 },
@@ -4272,6 +4307,7 @@ module.exports = {
     createCanonicalRequestedChanges,
     createFailedCanonicalCandidate,
     createQualityFirstActionCandidateTask,
+    createVideoStartReferenceResolver,
     evaluateQualityFirstActionCandidate,
     evaluateCanonicalCandidatePool,
     createSoftIdentityRetryRequestedChanges,

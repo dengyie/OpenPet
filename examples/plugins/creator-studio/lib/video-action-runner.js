@@ -267,6 +267,7 @@ const runVideoAction = async ({
   run,
   action,
   canonical,
+  startFrame = canonical,
   model = 'grok-imagine-video-1.5',
   fps = 12,
   canvas = { width: 512, height: 512 },
@@ -284,6 +285,7 @@ const runVideoAction = async ({
   if (!runId || !actionId) throw runnerError('Video action run and action identifiers are required')
   signal?.throwIfAborted()
   const reference = resolveReference({ dataDir, reference: canonical })
+  const startReference = resolveReference({ dataDir, reference: startFrame })
   const relativeDir = String(outputRelativeDir || '').replace(/\\/g, '/').replace(/\/$/, '')
   if (!relativeDir || relativeDir.startsWith('/') || relativeDir.split('/').some((part) => !part || part === '..' || part === '.') || relativeDir.includes('\0')) {
     throw runnerError('Video action output path is invalid')
@@ -294,7 +296,7 @@ const runVideoAction = async ({
   const firstFramePath = path.resolve(dataDir, ...firstFrameRelativePath.split('/'))
   fs.mkdirSync(path.dirname(firstFramePath), { recursive: true })
   const [videoWidth, videoHeight] = PROVIDER_VIDEO_SIZE.split('x').map(Number)
-  await sharp(path.resolve(dataDir, reference.relativePath))
+  await sharp(path.resolve(dataDir, startReference.relativePath))
     .resize({ width: videoWidth, height: videoHeight, fit: 'contain', background: '#12ff4d' })
     .flatten({ background: '#12ff4d' }).png().toFile(firstFramePath)
   signal?.throwIfAborted()
