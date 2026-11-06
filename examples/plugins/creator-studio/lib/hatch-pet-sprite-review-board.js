@@ -215,7 +215,10 @@ const createCanonicalEvaluatorBoard = async ({ sourcePath, candidates = [], outp
   return writeBoard({ width: 3072, height: 2048, outputPath, rendered })
 }
 
-const createActionEvaluatorBoard = async ({ sourcePath, canonicalPath, adjacentPath = '', candidateFrames = [], outputPath }) => {
+const createActionEvaluatorBoard = async ({ sourcePath, canonicalPath, adjacentPath = '', candidateFrames = [], runtimeFrames = [], outputPath }) => {
+  if (!Array.isArray(runtimeFrames) || (runtimeFrames.length && (runtimeFrames.length !== candidateFrames.length || adjacentPath))) {
+    throw new Error('Runtime review frames require the same frame count and an unused top reference region')
+  }
   const layout = getSpriteLayout(candidateFrames.length)
   const definitions = [
     { sourcePath, region: { regionId: 'source', role: 'source-identity', x: 0, y: 0, width: 512, height: 512 } },
@@ -224,6 +227,12 @@ const createActionEvaluatorBoard = async ({ sourcePath, canonicalPath, adjacentP
   if (adjacentPath) {
     definitions.push({ sourcePath: adjacentPath, region: { regionId: 'adjacent-action', role: 'adjacent-action', x: 1024, y: 0, width: 1024, height: 512 } })
   }
+  runtimeFrames.forEach((frame, index) => {
+    definitions.push({ sourcePath: frame.path, region: {
+      regionId: `runtime-frame-${index + 1}`, role: 'runtime-frame', frameIndex: index,
+      x: 1024 + (index % 4) * 256 + 64, y: Math.floor(index / 4) * 256 + 64, width: 128, height: 128
+    } })
+  })
   const horizontalOffset = Math.round((2048 - (layout.columns * 512)) / 2)
   candidateFrames.forEach((frame, index) => {
     const column = index % layout.columns

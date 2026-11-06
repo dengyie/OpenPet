@@ -91,6 +91,38 @@ test('action evaluator board uses fixed top references and lower 4x2 frame grid'
   assert.equal(result.regions.find((region) => region.regionId === 'frame-8').y, 1024)
 })
 
+test('video review retains detail pixels and native runtime previews in separate regions', async () => {
+  const dir = createTempDir()
+  const detailPath = path.join(dir, 'detail.png')
+  const runtimePath = path.join(dir, 'runtime.png')
+  const pixels = Buffer.alloc(512 * 512 * 4)
+  for (let y = 0; y < 512; y += 1) for (let x = 0; x < 512; x += 1) {
+    const offset = (y * 512 + x) * 4
+    const value = x % 2 ? 255 : 0
+    pixels.set([value, value, value, 255], offset)
+  }
+  await sharp(pixels, { raw: { width: 512, height: 512, channels: 4 } }).png().toFile(detailPath)
+  await sharp(detailPath).resize(128, 128).png().toFile(runtimePath)
+  const board = await createActionEvaluatorBoard({
+    sourcePath: detailPath, canonicalPath: detailPath,
+    candidateFrames: Array.from({ length: 6 }, () => ({ path: detailPath })),
+    runtimeFrames: Array.from({ length: 6 }, () => ({ path: runtimePath })),
+    outputPath: path.join(dir, 'board.png')
+  })
+  const detail = board.regions.find(r => r.regionId === 'frame-1')
+  const runtime = board.regions.find(r => r.regionId === 'runtime-frame-1')
+  assert.ok(runtime, 'runtime-size evidence must remain visible alongside full-resolution frames')
+  assert.equal(runtime.width, 128)
+  const renderedDetail = await sharp(board.path).extract({ left: detail.x, top: detail.y, width: 512, height: 512 }).raw().toBuffer()
+  assert.deepEqual(renderedDetail, pixels, 'detail evidence must not be reconstructed from the lossy runtime reduction')
+  const renderedRuntime = await sharp(board.path).extract({ left: runtime.x, top: runtime.y, width: 128, height: 128 }).raw().toBuffer()
+  assert.deepEqual(renderedRuntime, await sharp(runtimePath).raw().toBuffer())
+  await assert.rejects(createActionEvaluatorBoard({
+    sourcePath: detailPath, canonicalPath: detailPath,
+    candidateFrames: Array.from({ length: 6 }, () => ({ path: detailPath })), runtimeFrames: [{ path: runtimePath }], outputPath: path.join(dir, 'invalid.png')
+  }), /same frame count/)
+})
+
 test('final package evaluator board keeps source, canonical, action review, and atlas in fixed regions', async () => {
   const dir = createTempDir()
   const inputs = Object.fromEntries(['source', 'canonical', 'actions', 'atlas'].map((name, index) => [name, path.join(dir, `${name}.png`)]))

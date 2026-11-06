@@ -15,10 +15,10 @@ const MOTION_PRESETS = Object.freeze({
     id: 'idle-subtle-loop-v1',
     phases: [
       { id: 'canonical-neutral', prompt: 'match the accepted neutral pose and body root' },
-      { id: 'inhale', prompt: 'begin subtle chest breathing while keeping all limbs and facial geometry in the reference resting pose' },
-      { id: 'secondary-motion', prompt: 'complete one natural eye blink while chest breathing continues; keep the closed mouth or beak shape unchanged' },
-      { id: 'peak', prompt: 'reach the quiet chest breathing peak without flapping, lifting limbs, translating the body, or changing scale' },
-      { id: 'settle', prompt: 'settle toward the accepted neutral pose' },
+      { id: 'blink-start', prompt: 'begin closing the eyelids while the entire body stays still in the reference resting pose' },
+      { id: 'blink-closed', prompt: 'close the eyelids for one natural blink; keep the head outline, mouth or beak and all limbs unchanged' },
+      { id: 'blink-open', prompt: 'reopen the eyes without moving or reshaping the body' },
+      { id: 'neutral-hold', prompt: 'hold the accepted neutral pose with eyes fully open' },
       { id: 'canonical-return', prompt: 'return to the accepted neutral pose for a seamless loop' }
     ]
   }),
@@ -234,8 +234,9 @@ const inferAnimationType = (action = {}) => {
 const getDefaultLockedParts = (action = {}) => {
   if (isIdleAction(action)) {
     return [
-      'face',
-      'eyes',
+      'head outline and facial geometry except eyelids',
+      'closed mouth or beak shape',
+      'resting limbs and appendages',
       'identity markings',
       'body proportions',
       'character scale',
@@ -261,7 +262,7 @@ const getDefaultLockedParts = (action = {}) => {
 
 const resolvePrimaryAnimatedPart = (action = {}) => {
   if (isWorkStateAction(action)) return 'visible attention features and one small identity-safe processing or scanning motion'
-  if (isIdleAction(action)) return 'subtle breathing or another small identity-safe local motion only'
+  if (isIdleAction(action)) return 'eyelids closing and reopening for one natural blink; the body stays still'
   const custom = Array.isArray(action.animatedParts)
     ? action.animatedParts.map(normalizeText).filter(Boolean)
     : []
@@ -278,9 +279,9 @@ const resolvePrimaryAnimatedPart = (action = {}) => {
 const ACTION_PHASES = Object.freeze({
   idle: Object.freeze([
     'match the canonical identity pose, viewpoint, silhouette, scale, markings, accessories, and lower-center root',
-    'begin one subtle identity-safe local motion without moving the body root',
-    'reach the quiet local-motion peak while preserving the canonical silhouette',
-    'return from the local-motion peak without changing scale or viewpoint',
+    'begin closing the eyelids while the body remains still',
+    'close the eyelids for one blink while preserving the canonical silhouette',
+    'reopen the eyes without changing scale or viewpoint',
     'settle back into the canonical starting pose for a seamless quiet loop'
   ]),
   wave: Object.freeze([

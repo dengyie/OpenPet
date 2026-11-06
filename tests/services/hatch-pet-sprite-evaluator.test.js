@@ -160,6 +160,26 @@ test('action evaluator retains the intended motion and rejects an unlabeled acti
   await assert.rejects(() => createSpriteEvaluatorRequest({ ...input, qa: { actionIntent: { ...actionIntent, frameCount: 4 } } }), /frame plan/i)
 })
 
+test('video evaluator receives detail and runtime region coordinates without changing quality thresholds', async () => {
+  const boardDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-video-review-evidence-'))
+  const boardPath = path.join(boardDir, 'board.png')
+  await sharp({ create: { width: 128, height: 128, channels: 4, background: '#eee' } }).png().toFile(boardPath)
+  const regions = [
+    { regionId: 'frame-1', role: 'candidate-frame', x: 256, y: 512, width: 512, height: 512 },
+    { regionId: 'runtime-frame-1', role: 'runtime-frame', x: 1088, y: 64, width: 128, height: 128 }
+  ]
+  const profile = getQualityFirstQualityProfile()
+  const request = await createSpriteEvaluatorRequest({
+    scope: 'grounded-action', board: { path: boardPath, regions }, profile,
+    qa: { actionIntent: { actionId: 'idle', loop: true, frameCount: 1, framePlan: ['one blink with a still body'] } }
+  })
+  const payload = JSON.parse(request.messages[1].content.find(part => part.type === 'text').text)
+  assert.deepEqual(payload.regions, regions)
+  assert.deepEqual(payload.minimumScores, profile.visual.groundedAction)
+  assert.match(request.messages[0].content, /actual 128-pixel output without enlargement/)
+  assert.match(request.messages[0].content, /Report actual defects in either set of regions/)
+})
+
 test('evaluation evidence is atomically stored under dataDir with a relative path', () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-sprite-evaluation-'))
   const relativePath = recordSpriteEvaluation({

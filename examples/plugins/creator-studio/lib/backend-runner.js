@@ -1121,6 +1121,11 @@ const runQualityFirstActionRepair = async ({
     status: 'generating',
     currentStep: normalizedActionId,
     generationLease: lease,
+    qualityFirst: {
+      ...run.qualityFirst,
+      phase: normalizedActionId === 'idle' ? 'generating-idle' : 'generating-actions',
+      nextAction: normalizedActionId === 'idle' ? 'generate-idle' : 'generate-actions'
+    },
     backendStatus: createBackendStatus({ backend: PROVIDER_BACKEND, state: 'running', message: `Regenerating ${normalizedActionId}`, updatedAt: startedAt })
   }
   writeRun({ dataDir, run: generatingRun })

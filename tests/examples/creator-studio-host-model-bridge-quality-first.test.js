@@ -298,11 +298,13 @@ test('quality-first candidate records include prompt and evaluator evidence arti
   const rawPath = path.join(candidateDir, 'raw.png')
   const promptRelativePath = 'runs/run-artifacts/prompts/idle-candidate-1.txt'
   const evidenceRelativePath = 'runs/run-artifacts/evaluations/idle-candidate-1.json'
+  const reviewPath = path.join(candidateDir, 'video/normalized/0001.png')
   for (const [filePath, value] of [
     [rawPath, 'raw'],
     [path.join(dataDir, promptRelativePath), 'prompt'],
     [path.join(dataDir, evidenceRelativePath), 'evaluation'],
-    [path.join(outputDir, 'evaluator-board.png'), 'board']
+    [path.join(outputDir, 'evaluator-board.png'), 'board'],
+    [reviewPath, 'normalized-detail']
   ]) {
     fs.mkdirSync(path.dirname(filePath), { recursive: true })
     fs.writeFileSync(filePath, value)
@@ -314,10 +316,11 @@ test('quality-first candidate records include prompt and evaluator evidence arti
       sha256: crypto.createHash('sha256').update('raw').digest('hex'),
       promptRelativePath,
       evaluationEvidenceRelativePath: evidenceRelativePath,
-      outputDir
+      outputDir,
+      processed: { reviewFrames: [{ index: 0, path: reviewPath }] }
     }
   })
-  assert.deepEqual(artifacts.map((entry) => entry.role), ['raw-sheet', 'prompt', 'evaluation-evidence', 'evaluator-board'])
+  assert.deepEqual(artifacts.map((entry) => entry.role), ['raw-sheet', 'prompt', 'evaluation-evidence', 'evaluator-board', 'review-frame-1'])
   assert.equal(artifacts.every((entry) => /^[a-f0-9]{64}$/.test(entry.sha256)), true)
 })
 
@@ -827,10 +830,24 @@ test('video action candidates build their evaluator board with the accepted cano
   assert.equal(requests[0].qa.actionIntent?.actionId, 'idle')
   assert.equal(requests[0].qa.actionIntent?.loop, true)
   assert.equal(requests[0].qa.actionIntent?.frameCount, 6)
-  assert.match(requests[0].qa.actionIntent?.framePlan.join(' ') || '', /breathing/i)
+  assert.match(requests[0].qa.actionIntent?.framePlan.join(' ') || '', /blink/i)
   assert.match(requests[0].qa.actionIntent.framePlan.join(' '), /subtle intensity.*viewer-right/)
   assert.deepEqual(requests[0].board.regions.slice(0, 2).map((region) => region.role), ['source-identity', 'canonical-identity'])
   assert.equal(fs.existsSync(path.join(outputDir, 'evaluator-board.png')), true)
+})
+
+test('video action review uses original normalized detail and retains runtime evidence', async () => {
+  const options = []
+  const runtimeFrames = Array.from({ length: 6 }, (_, index) => ({ index, path: `runtime-${index}.png` }))
+  const reviewFrames = Array.from({ length: 6 }, (_, index) => ({ index, path: `normalized-${index}.png` }))
+  await hostModelBridgeModule.__testInternals.evaluateQualityFirstActionCandidate({
+    dataDir: '/data', runId: 'review-video', actionId: 'idle', sourcePath: 'source.png', canonicalPath: 'canonical.png',
+    candidate: { outputDir: '/data/candidate', processed: { frames: runtimeFrames, reviewFrames }, qa: { ok: true } },
+    createBoard: async (input) => { options.push(input); return { path: '/data/board.png', sha256: 'a'.repeat(64), regions: [] } },
+    requestEvaluation: async () => ({ gate: { ok: true }, evaluation: {} })
+  })
+  assert.deepEqual(options[0].candidateFrames, reviewFrames)
+  assert.deepEqual(options[0].runtimeFrames, runtimeFrames)
 })
 
 test('final package quality stays advisory after any explicit human candidate selection', () => {
