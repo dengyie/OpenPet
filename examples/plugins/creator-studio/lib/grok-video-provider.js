@@ -248,6 +248,7 @@ const createGrokVideoProvider = ({ baseUrl, apiKey, fetchImpl = globalThis.fetch
         timeoutMs
       })
     } catch (error) {
+      throwIfAborted(signal)
       // A timeout or intermediary 5xx does not prove POST was rejected. The
       // caller retries whole generations, so replay would risk a second task.
       error.retryable = false
@@ -261,6 +262,7 @@ const createGrokVideoProvider = ({ baseUrl, apiKey, fetchImpl = globalThis.fetch
         try {
           return await read()
         } catch (error) {
+          throwIfAborted(signal)
           if (attempt === 0 && error.retryable === true && !signal?.aborted) {
             await sleepImpl(normalizedPollInterval, signal)
             throwIfAborted(signal)

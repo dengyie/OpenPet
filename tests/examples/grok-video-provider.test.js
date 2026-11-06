@@ -353,3 +353,29 @@ test('cancellation during a task read retry does not issue another request', asy
   await assert.rejects(provider.generateVideo({ model: 'grok-imagine-video', prompt: 'jump once', outputDir: await fs.mkdtemp(path.join(os.tmpdir(), 'openpet-cancel-read-')), signal: controller.signal }), /cancel read retry/)
   assert.equal(requests, 2)
 })
+
+test('video submission timeout is ambiguous and does not enable generation replay', async () => {
+  const provider = createGrokVideoProvider({ baseUrl: 'https://api.mangoqwq.com/v1', apiKey: 'runtime-only-key', fetchImpl: async (_url, { signal }) => new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(new Error('request aborted')), { once: true })) })
+  await assert.rejects(provider.generateVideo({ model: 'grok-imagine-video', prompt: 'jump once', outputDir: await fs.mkdtemp(path.join(os.tmpdir(), 'openpet-submit-timeout-')), timeoutMs: 100 }), error => {
+    assert.equal(error.code, 'video_provider_timeout')
+    assert.equal(error.retryable, false)
+    assert.equal(error.stage, 'submit')
+    return true
+  })
+})
+
+test('permanent task read rejection is not retried or resubmitted', async () => {
+  let requests = 0
+  const provider = createGrokVideoProvider({
+    baseUrl: 'https://api.mangoqwq.com/v1', apiKey: 'runtime-only-key', sleepImpl: async () => {},
+    fetchImpl: async () => ++requests === 1 ? jsonResponse({ id: 'task-forbidden', status: 'queued' }) : jsonResponse({}, 403)
+  })
+  await assert.rejects(provider.generateVideo({ model: 'grok-imagine-video', prompt: 'jump once', outputDir: await fs.mkdtemp(path.join(os.tmpdir(), 'openpet-forbidden-read-')) }), error => error.retryable === false && error.taskId === 'task-forbidden')
+  assert.equal(requests, 2)
+})
+
+test('submission cancellation preserves a caller supplied primitive reason', async () => {
+  const controller = new AbortController()
+  const provider = createGrokVideoProvider({ baseUrl: 'https://api.mangoqwq.com/v1', apiKey: 'runtime-only-key', fetchImpl: async () => { controller.abort('stop-video'); throw new Error('aborted') } })
+  await assert.rejects(provider.generateVideo({ model: 'grok-imagine-video', prompt: 'jump once', outputDir: await fs.mkdtemp(path.join(os.tmpdir(), 'openpet-primitive-cancel-')), signal: controller.signal }), reason => reason === 'stop-video')
+})

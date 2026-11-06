@@ -117,6 +117,6 @@ The five explicitly approved old snapshots were deleted individually earlier. Ro
 
 ### Video task retry ownership (2026-11-07)
 
-- [x] Reproduce whole-generation retry after a paid task's transient read failure; preserve accepted task identity and retry the same GET only. Focused71/tools694 pass.
+- [x] Reproduce whole-generation retry after a paid task's transient read failure; preserve accepted task identity and retry the same GET only. Focused74/tools694 pass.
 - [ ] Complete CI, merge/deploy the task retry fix, and verify one real Provider request over the documented EasyTier Mango route.
 - [ ] Formal nine-action acceptance remains open. Canonical-strip jumping probe96 is preview research, not an accepted action. The seven missing actions and unchanged gates remain authoritative.

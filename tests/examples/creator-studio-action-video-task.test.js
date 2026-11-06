@@ -1108,7 +1108,7 @@ test('Creator bridge does not resubmit a paid video after task polling exhausts'
   await assert.rejects(createRunVideoActionFixture({ bridge: async () => {
     bridgeCalls += 1
     await provider.generateVideo({ model: 'grok-imagine-video', prompt: 'wave once', outputDir: fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-paid-task-')) })
-  } }), error => error.retryable === false && error.taskId === 'paid-task')
+  } }), { code: 'video_provider_retryable_http' })
   assert.equal(posts, 1)
   assert.equal(bridgeCalls, 1)
 })
