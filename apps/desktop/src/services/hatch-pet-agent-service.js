@@ -692,10 +692,10 @@ const createHatchPetAgentService = ({
     }
   }
 
-  const renewBudgetWindow = ({ runId, reason = 'recovery' } = {}) => {
+  const renewBudgetWindow = ({ runId, reason = 'recovery', force = false } = {}) => {
     const config = getStoredConfig()
     const ledger = resolveBudgetLedger({ runId, limits: config.budgets, preferPersisted: true })
-    const renewed = renewBudgetWindowLedger(ledger, { reason })
+    const renewed = renewBudgetWindowLedger(ledger, { reason, force })
     if (renewed === ledger) {
       return { runId: normalizeText(runId, '', 128), renewed: false, budgetLedger: ledger, budget: createBudgetPublicView(ledger) }
     }

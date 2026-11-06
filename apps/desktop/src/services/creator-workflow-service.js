@@ -3175,7 +3175,7 @@ const createWorkflowInProgressResult = () => createWorkflowResult({
       const pluginDataDir = pluginService.getPluginCreatorDataDir(CREATOR_STUDIO_PLUGIN_ID)
       updateWorkflowProgress({ runId: normalizedRunId, commandId, message: label })
       startProgressPolling()
-      await hatchPetAgentService?.renewBudgetWindow?.({ runId: normalizedRunId, reason: commandId })
+      await hatchPetAgentService?.renewBudgetWindow?.({ runId: normalizedRunId, reason: commandId, force: true })
       const commandResult = await pluginService.runCommand(CREATOR_STUDIO_PLUGIN_ID, commandId, {
         runId: normalizedRunId,
         ...(normalizedActionId ? { actionId: normalizedActionId } : {})

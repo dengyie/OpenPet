@@ -346,3 +346,22 @@ test("Backend Creator retry progress does not lock the new Job to the prior run'
 	})
 	await creator.runWorkflow({ runId, operation: "retry-action", actionId: "idle" }, { report: throttle.report })
 })
+
+test("Backend Creator retries force a fresh Hatch budget window", async (t) => {
+	const ctx = await fixture()
+	t.after(() => ctx.db.close())
+	const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-creator-retry-budget-window-"))
+	t.after(() => fs.rmSync(dataDir, { recursive: true, force: true }))
+	const runId = "run-retry-budget-window"
+	const renewals = []
+	const creator = (await import("../../services/backend/domains/creator/index.js")).createCreatorDomain({
+		db: ctx.db,
+		creatorDataDir: () => dataDir,
+		runPluginCommand: async () => ({ run: { runId, status: "ready_for_review", creatorExecution: "backend" } }),
+		hatchPetAgent: () => ({ renewBudgetWindow: (input) => { renewals.push(input) } }),
+	})
+
+	await creator.runWorkflow({ runId, operation: "retry-action", actionId: "idle" })
+
+	assert.deepEqual(renewals, [{ runId, reason: "retry-action", force: true }])
+})
