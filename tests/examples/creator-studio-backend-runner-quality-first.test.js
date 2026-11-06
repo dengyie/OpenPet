@@ -717,6 +717,49 @@ test('quality-first action repair reruns only the requested action and preserves
   ])
 })
 
+for (const actionId of ['waving', 'running-right']) test(`rejected ${actionId} retry preserves the partial package without claiming repair`, async () => {
+  const dataDir = createDataDir()
+  const created = createRun({ dataDir, input: {
+    petName: 'Rejected Retry Pet', backend: 'provider',
+    generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1', actions: [{ actionId }], questions: [] }
+  } })
+  const canonical = { candidateId: 'canonical-1', sha256: 'a'.repeat(64) }
+  writeRun({ dataDir, run: {
+    ...created, status: 'ready_for_review', currentStep: 'review',
+    qualityFirst: {
+      phase: 'ready_for_review', acceptedCanonical: canonical,
+      actionResults: { idle: { ok: true }, 'running-left': { ok: true, selectedCandidateId: 'stale-mirror' } }
+    }
+  } })
+  let finalizedResults
+  const output = await runQualityFirstActionRepair({
+    dataDir, runId: created.runId, actionId, profile: { hash: 'profile' }, plan: { hash: 'plan' },
+    runtime: {
+      runAction: async () => ({ ok: false, actionId, disposition: 'omitted', failureCode: 'action_quality_gate_failed', candidates: [] }),
+      persistActionResult: async () => {},
+      finalizePackage: async ({ actionResults }) => {
+        finalizedResults = actionResults
+        return { basicActions: { omittedActionIds: [actionId] }, artifacts: { outputDir: 'partial-package' } }
+      }
+    }
+  })
+  assert.equal(output.run.status, 'ready_for_review', 'the accepted idle package remains reviewable')
+  assert.equal(output.run.qualityFirst.actionResults[actionId].ok, false)
+  if (actionId === 'running-right') {
+    assert.equal(finalizedResults['running-left'].ok, false, 'a rejected source cannot retain its old accepted mirror')
+    assert.equal(finalizedResults['running-left'].selectedCandidateId, '')
+    assert.equal(finalizedResults['running-left'].failureCode, 'source_action_rejected')
+  } else {
+    assert.equal(finalizedResults['running-left'].selectedCandidateId, 'stale-mirror', 'unrelated actions stay intact')
+  }
+  assert.match(output.run.backendStatus.message, new RegExp(`Action ${actionId}.*quality review`))
+  assert.doesNotMatch(output.run.backendStatus.message, /repaired/i)
+  const event = readRunLogs({ dataDir, runId: created.runId }).at(-1)
+  assert.equal(event.event, 'quality-first.action.repair-rejected')
+  assert.equal(event.level, 'warn')
+  assert.equal(event.data.failureCode, 'action_quality_gate_failed')
+})
+
 for (const actionId of ['idle', 'waving']) test(`quality-first ${actionId} retry publishes its active phase before Provider work`, async () => {
   const dataDir = createDataDir()
   const created = createRun({ dataDir, input: {

@@ -87,6 +87,16 @@ test('running video loops keep the right-facing gait active without returning to
   }
 })
 
+test('waving video isolates the selected greeting appendage and preserves the face', () => {
+  for (const leadSide of ['viewer-left', 'viewer-right']) {
+    const prompt = buildVideoPrompt({ driver: createMotionDriver({ actionId: 'waving', motionParameters: { leadSide } }) })
+    assert.match(prompt, new RegExp(`only.*${leadSide}.*greeting appendage`, 'i'))
+    assert.match(prompt, /opposite appendage.*resting pose/i)
+    assert.match(prompt, /eyes.*mouth or beak.*unchanged/i)
+    assert.match(prompt, /do not.*both.*appendages|never.*bilateral/i)
+  }
+})
+
 test('video repair prompt targets the recorded temporal failure', () => {
   const driver = createMotionDriver({ actionId: 'idle' })
   const initial = buildVideoPrompt({
