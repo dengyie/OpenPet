@@ -70,6 +70,19 @@ test('idle motion isolates one blink without requesting body breathing or squash
   assert.doesNotMatch(prompt, /chest breathing|chest expansion|breathing cycle/i)
 })
 
+test('running video loops keep the right-facing gait active without returning to front-facing idle', () => {
+  const driver = createMotionDriver({ actionId: 'running-right' })
+  for (const attemptKind of ['initial', 'repair']) {
+    const prompt = buildVideoPrompt({ driver, attemptKind, failureCodes: ['loop-seam-too-large', 'visual-defect-action-unreadable'] })
+    assert.match(prompt, /right-facing.*run.*in place/i)
+    assert.match(prompt, /contact.*down.*passing.*up/i)
+    assert.match(prompt, /complete gait cycle/i)
+    assert.match(prompt, /first.*final.*gait phase/i)
+    assert.doesNotMatch(prompt, /same neutral pose|fully settle|finish settling|all visible motion in the middle/i)
+    assert.match(prompt, /do not turn.*front/i)
+  }
+})
+
 test('video repair prompt targets the recorded temporal failure', () => {
   const driver = createMotionDriver({ actionId: 'idle' })
   const initial = buildVideoPrompt({

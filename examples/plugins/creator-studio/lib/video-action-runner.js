@@ -222,17 +222,24 @@ const resolveReference = ({ dataDir, reference }) => {
 const buildVideoPrompt = ({ driver, attemptKind = 'initial', failureCodes = [] }) => {
   const actionId = driver.actionId
   const beats = driver.framePlan.map((beat) => beat.replace(/^Frame \d+:\s*/i, '')).join('; ')
+  const isRunningGait = actionId === 'running-right'
   const loopContract = driver.loop
-    ? 'Frame 1 and the final frame must depict the same neutral pose, root position, silhouette, body scale, camera framing, and background. Complete all visible motion in the middle of the clip, then fully settle back to that exact starting state before the final frame; do not end mid-motion.'
+    ? isRunningGait
+      ? 'Show one complete gait cycle with continuous motion. The first and final extracted frames must share the same right-facing gait phase, root position, body scale, camera framing, and background, so the next contact follows smoothly across the loop boundary. Keep the gait active through the end of the clip.'
+      : 'Frame 1 and the final frame must depict the same neutral pose, root position, silhouette, body scale, camera framing, and background. Complete all visible motion in the middle of the clip, then fully settle back to that exact starting state before the final frame; do not end mid-motion.'
     : 'Begin and end on fully readable poses with no cut-off motion.'
-  const actionGuidance = actionId === 'idle'
+  const actionGuidance = isRunningGait
+    ? 'Use a right-facing side view and run in place throughout the gait: alternate the two locomotion limbs through contact, down, passing, and up phases, then exchange their roles. Keep the body root centered. Do not turn toward the front, stop to stand, wave, or replace the gait with a hop. The reference defines the character identity; the ordered gait plan defines its pose and facing direction.'
+    : actionId === 'idle'
     ? 'For idle, only the eyelids may move: show one natural blink in the middle with the entire body completely still. Keep wings, arms, paws, hands, feet, and tail in their exact reference resting pose throughout. Keep the mouth or beak shape unchanged and closed. Keep the head and body outline, facial geometry, body dimensions, and chest completely fixed throughout the clip.'
     : actionId === 'jumping'
       ? 'For jumping, use a conservative jump height, keep the complete airborne pose in the middle 60 percent of the frame, and retain at least 20 percent empty space above the highest body point.'
       : ''
   const repairInstructions = attemptKind === 'repair'
     ? [...new Set((Array.isArray(failureCodes) ? failureCodes : [])
-        .map((code) => VIDEO_REPAIR_INSTRUCTIONS[String(code || '')])
+        .map((code) => isRunningGait && code === 'loop-seam-too-large'
+          ? 'Close the loop on the same right-facing gait phase with the root, camera, and character scale fixed; keep the locomotion limbs cycling across the boundary.'
+          : VIDEO_REPAIR_INSTRUCTIONS[String(code || '')])
         .filter(Boolean))]
     : []
   const repairGuidance = attemptKind === 'repair'

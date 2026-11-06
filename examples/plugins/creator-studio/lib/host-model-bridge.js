@@ -3159,7 +3159,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
   const useVideoActionPipeline = Boolean(videoSettings?.hasApiKey === true && isGrokVideoModel(videoModel))
   // Processing bindings also cover evaluator semantics. Older checkpoints
   // were scored without action intent or generated from conflicting motion text.
-  const actionProcessorVersion = useVideoActionPipeline ? 7 : 4
+  const actionProcessorVersion = useVideoActionPipeline ? 8 : 4
   const sourceReference = resolveOriginalReferenceImage({ dataDir, run })
   if (!isUsableLocalReferenceImage({ dataDir, referenceImage: sourceReference })) {
     throw createProviderReferenceContractError('reference_image_required', 'Quality-first generation requires one usable local reference image')
