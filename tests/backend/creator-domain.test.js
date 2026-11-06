@@ -315,3 +315,34 @@ test("Backend Creator verifies retained recovery bundles without calling a nonex
 	assert.equal(result.byteSize, Buffer.byteLength(recoveryBody))
 	assert.equal(result.run.state.creatorExecution, "backend")
 })
+
+test("Backend Creator retry progress does not lock the new Job to the prior run's terminal percentage", async (t) => {
+	const ctx = await fixture()
+	t.after(() => ctx.db.close())
+	t.mock.timers.enable({ apis: ["setInterval"] })
+	const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-creator-retry-progress-"))
+	t.after(() => fs.rmSync(dataDir, { recursive: true, force: true }))
+	const runId = "run-retry-progress"
+	const runDir = path.join(dataDir, "runs", runId)
+	fs.mkdirSync(runDir, { recursive: true })
+	const runPath = path.join(runDir, "run.json")
+	const writeRun = (status, phase) => fs.writeFileSync(runPath, JSON.stringify({
+		runId, status, currentStep: "idle", qualityFirst: { phase, actionResults: {} },
+	}))
+	writeRun("recovery-required", "recovery-required")
+	const frames = []
+	const { createProgressThrottle } = await import("../../services/backend/jobs/progress.js")
+	const throttle = createProgressThrottle({ onEmit: (frame) => frames.push(frame) })
+	const creator = (await import("../../services/backend/domains/creator/index.js")).createCreatorDomain({
+		db: ctx.db,
+		creatorDataDir: () => dataDir,
+		runPluginCommand: async () => {
+			writeRun("generating", "generating-idle")
+			t.mock.timers.tick(1_500)
+			assert.equal(frames.at(-1).percent, 30)
+			assert.notEqual(frames.at(-1).phase, "资产恢复")
+			return { run: { runId, status: "ready_for_review", creatorExecution: "backend" } }
+		},
+	})
+	await creator.runWorkflow({ runId, operation: "retry-action", actionId: "idle" }, { report: throttle.report })
+})
