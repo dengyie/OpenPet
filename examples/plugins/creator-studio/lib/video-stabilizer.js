@@ -78,6 +78,15 @@ const createStablePlacements = ({ frames = [], canvasWidth, canvasHeight, paddin
   const targetBaseline = baseline !== null && baseline !== undefined && Number.isFinite(Number(baseline))
     ? Number(baseline)
     : height * (1 - safePadding)
+  // Body size and airborne travel share a finite runtime canvas. Retarget the
+  // entire root trajectory with one factor when it would otherwise overflow;
+  // never shrink the body or clamp individual peaks. Reserve the Lanczos3
+  // resampling support at 128px, so its alpha halo cannot reach the cell edge.
+  const topClearance = Math.max(1, 3 * height / 128)
+  const trajectoryScale = relativeRoot ? Math.max(0, Math.min(1, ...boxes.map((box, index) => {
+    const travel = (groundedSourceRoot - sourceRoots[index]) * height
+    return travel > 0 ? (targetBaseline - box.height * scale - topClearance) / travel : 1
+  }))) : 1
   const placements = boxes.map((box, index) => {
     const scaledWidth = box.width * scale
     const scaledHeight = box.height * scale
@@ -85,7 +94,7 @@ const createStablePlacements = ({ frames = [], canvasWidth, canvasHeight, paddin
     const left = (width - scaledWidth) / 2
     // Preserve the source excursion in canvas ratios; scaling the displacement
     // by body scale would magnify jumps when a small source pet is enlarged.
-    const rootOffset = relativeRoot ? (sourceRoots[index] - groundedSourceRoot) * height : 0
+    const rootOffset = relativeRoot ? (sourceRoots[index] - groundedSourceRoot) * height * trajectoryScale : 0
     const outputBaseline = targetBaseline + rootOffset
     const top = outputBaseline - (sourceBaseline - box.top) * scale
     return Object.freeze({
@@ -103,6 +112,7 @@ const createStablePlacements = ({ frames = [], canvasWidth, canvasHeight, paddin
     canvas: { width, height },
     globalBounds: global,
     scale,
+    trajectoryScale,
     baseline: targetBaseline,
     placements: Object.freeze(placements)
   })

@@ -78,6 +78,7 @@ const extractVideoFrames = async ({
   dataDir,
   fps = 12,
   maxFrames = 32,
+  minFrames = maxFrames,
   ffmpegPath = 'ffmpeg',
   ffprobePath = 'ffprobe',
   spawnImpl = spawn,
@@ -89,11 +90,14 @@ const extractVideoFrames = async ({
   const absoluteOutputDir = assertInside({ root: dataDir, target: path.resolve(dataDir, normalizedOutputDir), label: 'video frame output' })
   const normalizedFps = Number(fps)
   const normalizedMaxFrames = Number(maxFrames)
+  const normalizedMinFrames = Number(minFrames)
   if (!Number.isInteger(normalizedFps) || normalizedFps < 1 || normalizedFps > 60) throw decoderError('Video decode FPS is invalid')
   if (!Number.isInteger(normalizedMaxFrames) || normalizedMaxFrames < 1 || normalizedMaxFrames > 128) throw decoderError('Video decode frame limit is invalid')
+  if (!Number.isInteger(normalizedMinFrames) || normalizedMinFrames < 1 || normalizedMinFrames > normalizedMaxFrames) throw decoderError('Video decode minimum frame count is invalid')
   const sourceFrameCount = await probeFrameCount({ videoPath: inputPath, dataDir, ffprobePath, spawnImpl, signal })
-  if (sourceFrameCount < normalizedMaxFrames) throw decoderError('Provider video contains fewer frames than the action contract', 'video_decoder_frame_count_mismatch')
-  const selection = selectFrameIndexes({ sourceFrameCount, sourceFps: 1, targetFrameCount: normalizedMaxFrames, targetFps: normalizedFps })
+  if (sourceFrameCount < normalizedMinFrames) throw decoderError('Provider video contains fewer frames than the action contract', 'video_decoder_frame_count_mismatch')
+  const selectedCount = Math.min(sourceFrameCount, normalizedMaxFrames)
+  const selection = selectFrameIndexes({ sourceFrameCount, sourceFps: 1, targetFrameCount: selectedCount, targetFps: normalizedFps })
   const selectFilter = selection.indexes.map((index) => `eq(n\\,${index})`).join('+')
   fs.mkdirSync(absoluteOutputDir, { recursive: true })
   const outputPattern = path.join(absoluteOutputDir, '%04d.png')
@@ -105,13 +109,13 @@ const extractVideoFrames = async ({
     unavailableMessage: 'ffmpeg is required to decode Provider videos',
     startFailedMessage: 'ffmpeg failed to start',
     failedMessage: 'ffmpeg failed to decode the video',
-    args: ['-hide_banner', '-loglevel', 'error', '-i', inputPath, '-vf', `select=${selectFilter},setpts=N/${normalizedFps}/TB`, '-vsync', '0', '-frames:v', String(normalizedMaxFrames), '-y', outputPattern]
+    args: ['-hide_banner', '-loglevel', 'error', '-i', inputPath, '-vf', `select=${selectFilter},setpts=N/${normalizedFps}/TB`, '-vsync', '0', '-frames:v', String(selectedCount), '-y', outputPattern]
   })
   const framePaths = fs.readdirSync(absoluteOutputDir)
     .filter((entry) => /^\d{4}\.png$/.test(entry))
     .sort()
     .map((entry) => path.join(absoluteOutputDir, entry))
-  if (framePaths.length !== normalizedMaxFrames) throw decoderError(`ffmpeg produced ${framePaths.length} video frames; expected ${normalizedMaxFrames}`, 'video_decoder_frame_count_mismatch')
+  if (framePaths.length !== selectedCount) throw decoderError(`ffmpeg produced ${framePaths.length} video frames; expected ${selectedCount}`, 'video_decoder_frame_count_mismatch')
   return Object.freeze({ fps: normalizedFps, frameCount: framePaths.length, sourceFrameCount, sourceIndexes: selection.indexes, outputDir: absoluteOutputDir, framePaths: Object.freeze(framePaths) })
 }
 

@@ -183,6 +183,8 @@ describe("dialog.request bridge", () => {
 		assert.equal(requestSchema.safeParse(request("hatch.key.save", { apiKey: "host-owned-secret" })).success, true)
 		assert.equal(requestSchema.safeParse(request("hatch.key.save", { apiKey: "" })).success, false)
 		assert.equal(requestSchema.safeParse(request("hatch.config.save", { config: { enabled: true, budgets: { maxProviderCalls: 20 } } })).success, true)
+		assert.equal(requestSchema.safeParse(request("hatch.config.save", { config: { budgets: { maxProviderCalls: 200 } } })).success, true)
+		assert.equal(requestSchema.safeParse(request("hatch.config.save", { config: { budgets: { maxProviderCalls: 201 } } })).success, false)
 		assert.equal(requestSchema.safeParse(request("hatch.config.save", { config: { apiKeyRef: "forged" } })).success, false)
 		assert.equal(requestSchema.safeParse(request("behavior.decision.replay", { decisionId: 3 })).success, true)
 		assert.equal(requestSchema.safeParse(request("behavior.decision.replay", { decisionId: 0 })).success, false)

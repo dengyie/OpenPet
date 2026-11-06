@@ -130,7 +130,7 @@ const normalizeHatchPetBudgets = (value = {}) => {
       source.maxProviderCalls,
       DEFAULT_HATCH_PET_BUDGETS.maxProviderCalls,
       1,
-      72
+      200
     ),
     maxElapsedMs: clampInteger(
       source.maxElapsedMs,

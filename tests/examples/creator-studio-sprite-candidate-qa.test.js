@@ -173,3 +173,11 @@ test('candidate qa rejects a jumping row without a readable raw trajectory', () 
   assert.equal(result.ok, false)
   assert.ok(result.failures.includes('jumping-trajectory-missing'))
 })
+
+test('jump QA checks output excursion even when the raw source has a large jump', () => {
+  const result = analyzeSpriteCandidate({ actionId: 'jumping', rawMetrics: {
+    frames: [0.8, 0.79, 0.8].map((anchorY) => ({ empty: false, subjectHeightRatio: 0.7, anchorY })),
+    rawTrajectory: { minY: 0.3, maxY: 0.8 }, outputTrajectory: { minY: 0.79, maxY: 0.8 }
+  }, actionPolicy: { anchorPolicy: 'action-relative-root-v1' } })
+  assert.ok(result.failures.includes('jumping-trajectory-missing'))
+})

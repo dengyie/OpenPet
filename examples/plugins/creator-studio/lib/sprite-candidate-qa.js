@@ -65,7 +65,7 @@ const analyzeSpriteCandidate = ({ actionId, rawMetrics = {}, profile = {}, actio
   if (actionPolicy.anchorPolicy !== 'action-relative-root-v1' && anchorYStd > (Number(profile.maxAnchorYStd) || 0.05)) {
     failures.push('anchor-baseline-drift')
   }
-  const trajectory = rawMetrics.rawTrajectory
+  const trajectory = rawMetrics.outputTrajectory || rawMetrics.rawTrajectory
   const jumpExcursion = trajectory
     ? Math.max(0, Number(trajectory.maxY) - Number(trajectory.minY))
     : 0
