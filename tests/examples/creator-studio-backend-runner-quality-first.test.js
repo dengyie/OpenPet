@@ -18,6 +18,7 @@ const { createQualityFirstFullPetOrchestrator } = require('../../examples/plugin
 const { createRun, readRun, readRunLogs, writeRun } = require('../../examples/plugins/creator-studio/lib/run-store')
 const { writeCandidateRecord } = require('../../examples/plugins/creator-studio/lib/sprite-candidate-store')
 const { getQualityFirstQualityProfile } = require('../../examples/plugins/creator-studio/lib/pet-generation-quality-profile')
+const { readCreatorWorkflowDiagnostics } = require('../../apps/desktop/src/services/creator-workflow-service')
 
 const createDataDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-quality-first-backend-'))
 const LEGACY_PNG_BYTES = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+Xn9pAAAAAElFTkSuQmCC', 'base64')
@@ -714,6 +715,42 @@ test('quality-first action repair reruns only the requested action and preserves
     'quality-first.action.repair-started',
     'quality-first.action.repaired'
   ])
+})
+
+for (const actionId of ['idle', 'waving']) test(`quality-first ${actionId} retry publishes its active phase before Provider work`, async () => {
+  const dataDir = createDataDir()
+  const created = createRun({ dataDir, input: {
+    petName: 'Retry Pet', backend: 'provider',
+    generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1', actions: [{ actionId }], questions: [] }
+  } })
+  const canonical = { candidateId: 'canonical-1', sha256: 'a'.repeat(64) }
+  const previousFailure = { ok: false, failureCode: 'action_quality_gate_failed' }
+  writeRun({ dataDir, run: {
+    ...created, status: 'recovery-required', currentStep: 'recovery',
+    qualityFirst: { phase: 'recovery-required', acceptedCanonical: canonical, actionResults: { [actionId]: previousFailure } }
+  } })
+  const runtime = {
+    runAction: async () => {
+      const active = readRun({ dataDir, runId: created.runId })
+      assert.equal(active.status, 'generating')
+      assert.equal(active.currentStep, actionId)
+      assert.equal(active.qualityFirst.phase, actionId === 'idle' ? 'generating-idle' : 'generating-actions')
+      const diagnostics = readCreatorWorkflowDiagnostics({ pluginDataDir: dataDir, runId: created.runId })
+      assert.equal(diagnostics.progress.qualityFirst.phase, active.qualityFirst.phase)
+      assert.notEqual(diagnostics.progress.phaseLabel, '资产恢复')
+      assert.deepEqual(active.qualityFirst.actionResults[actionId], previousFailure)
+      assert.deepEqual(active.qualityFirst.acceptedCanonical, canonical)
+      throw new Error('Provider failure during retry')
+    },
+    persistActionResult: async () => {},
+    finalizePackage: async () => ({ artifacts: {} })
+  }
+  await assert.rejects(runQualityFirstActionRepair({
+    dataDir, runId: created.runId, actionId, runtime, plan: { hash: 'plan' }, profile: { hash: 'profile' }
+  }), /Provider failure during retry/)
+  const failed = readRun({ dataDir, runId: created.runId })
+  assert.equal(failed.status, 'failed')
+  assert.deepEqual(failed.qualityFirst.actionResults[actionId], previousFailure)
 })
 
 for (const processorVersion of [1, 2, 3, 4]) test(`manual action selection reuses processor ${processorVersion} retained candidates without Provider generation`, async () => {

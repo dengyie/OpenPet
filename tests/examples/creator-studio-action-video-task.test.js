@@ -58,6 +58,18 @@ test('action video instructions cannot inherit conflicting motions from the char
   assert.doesNotMatch(createMotionDriver({ actionId: 'idle' }).framePlan.join(' '), /secondary movement/i)
 })
 
+test('idle motion isolates one blink without requesting body breathing or squash', () => {
+  const driver = createMotionDriver({ actionId: 'idle' })
+  const prompt = buildVideoPrompt({ driver })
+  assert.equal(driver.frameCount, 6)
+  assert.match(driver.framePlan.join(' '), /close.*eyelids/i)
+  assert.match(driver.framePlan.join(' '), /reopen.*eyes/i)
+  assert.doesNotMatch(driver.framePlan.join(' '), /breath|inhale|chest expansion/i)
+  assert.match(prompt, /only.*eyelids.*move/i)
+  assert.match(prompt, /body.*still/i)
+  assert.doesNotMatch(prompt, /chest breathing|chest expansion|breathing cycle/i)
+})
+
 test('video repair prompt targets the recorded temporal failure', () => {
   const driver = createMotionDriver({ actionId: 'idle' })
   const initial = buildVideoPrompt({
@@ -459,6 +471,8 @@ test('video candidates materialize a reusable 1024 grid and runtime frames', asy
     expectedFrameCount: 4
   })
   assert.equal(result.frames.length, 4)
+  assert.deepEqual(result.reviewFrames.map(frame => frame.path), normalizedFrames.map(frame => frame.path))
+  assert.equal((await sharp(result.reviewFrames[0].path).metadata()).width, 64, 'review retains source detail rather than an upsampled runtime image')
   assert.equal((await sharp(result.rawSheet.path).metadata()).width, 1024)
   assert.equal((await sharp(result.rawSheet.path).metadata()).height, 1024)
   assert.equal((await sharp(result.processedSheet.path).metadata()).width, 256)

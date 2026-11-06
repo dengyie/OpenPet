@@ -363,7 +363,8 @@ const evaluateQualityFirstActionCandidate = async ({
   const board = await createBoard({
     sourcePath,
     canonicalPath,
-    candidateFrames: candidate.processed.frames,
+    candidateFrames: candidate.processed.reviewFrames || candidate.processed.frames,
+    runtimeFrames: candidate.processed.reviewFrames ? candidate.processed.frames : [],
     outputPath: evaluatorBoardPath
   })
   const evaluation = await requestEvaluation({
@@ -631,6 +632,7 @@ const collectQualityFirstCandidateArtifacts = ({ dataDir, candidate = {} } = {})
   append('prompt', candidate.promptRelativePath ? path.join(dataDir, candidate.promptRelativePath) : '')
   append('evaluation-evidence', candidate.evaluationEvidenceRelativePath ? path.join(dataDir, candidate.evaluationEvidenceRelativePath) : '')
   append('evaluator-board', candidate.outputDir ? path.join(candidate.outputDir, 'evaluator-board.png') : '')
+  for (const frame of candidate.processed?.reviewFrames || []) append(`review-frame-${frame.index + 1}`, frame.path)
   return artifacts
 }
 
@@ -3157,7 +3159,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
   const useVideoActionPipeline = Boolean(videoSettings?.hasApiKey === true && isGrokVideoModel(videoModel))
   // Processing bindings also cover evaluator semantics. Older checkpoints
   // were scored without action intent or generated from conflicting motion text.
-  const actionProcessorVersion = useVideoActionPipeline ? 6 : 3
+  const actionProcessorVersion = useVideoActionPipeline ? 7 : 4
   const sourceReference = resolveOriginalReferenceImage({ dataDir, run })
   if (!isUsableLocalReferenceImage({ dataDir, referenceImage: sourceReference })) {
     throw createProviderReferenceContractError('reference_image_required', 'Quality-first generation requires one usable local reference image')

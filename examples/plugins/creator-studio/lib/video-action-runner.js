@@ -194,6 +194,7 @@ const createVideoCandidateArtifacts = async ({
   }
   return {
     frames,
+    reviewFrames: sourceFrames.map((frame, index) => ({ index, path: frame.path, sha256: sha256File(frame.path) })),
     processedSheet: { path: processedSheetPath, sha256: sha256File(processedSheetPath) },
     rawSheet: { path: rawSheetPath, sha256: sha256File(rawSheetPath) },
     contactSheet: { path: contactSheetPath, sha256: sha256File(contactSheetPath) },
@@ -225,7 +226,7 @@ const buildVideoPrompt = ({ driver, attemptKind = 'initial', failureCodes = [] }
     ? 'Frame 1 and the final frame must depict the same neutral pose, root position, silhouette, body scale, camera framing, and background. Complete all visible motion in the middle of the clip, then fully settle back to that exact starting state before the final frame; do not end mid-motion.'
     : 'Begin and end on fully readable poses with no cut-off motion.'
   const actionGuidance = actionId === 'idle'
-    ? 'For idle, only subtle chest breathing and eyelids may move: show one slow breathing cycle with no more than two percent chest expansion and one natural blink in the middle. Keep wings, arms, paws, hands, feet, and tail in their exact reference resting pose throughout. Keep the mouth or beak shape unchanged and closed; do not add a smile or speaking motion. Do not flap, lift, wave, rotate, translate, zoom, or resize the body. All facial geometry except the blinking eyelids stays fixed.'
+    ? 'For idle, only the eyelids may move: show one natural blink in the middle with the entire body completely still. Keep wings, arms, paws, hands, feet, and tail in their exact reference resting pose throughout. Keep the mouth or beak shape unchanged and closed. Keep the head and body outline, facial geometry, body dimensions, and chest completely fixed throughout the clip.'
     : actionId === 'jumping'
       ? 'For jumping, use a conservative jump height, keep the complete airborne pose in the middle 60 percent of the frame, and retain at least 20 percent empty space above the highest body point.'
       : ''
