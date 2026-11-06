@@ -673,6 +673,7 @@ const createRunVideoActionFixture = async ({
   failureCodes,
   processFrames,
   referenceCreate,
+  startFrameCreate,
   normalizedFramesFactory
 }) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-video-runner-'))
@@ -685,6 +686,9 @@ const createRunVideoActionFixture = async ({
     await sharp({ create: { width: 8, height: 8, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } } }).png().toFile(referencePath)
   }
   fs.writeFileSync(rawPath, 'fixture-video')
+  if (startFrameCreate) {
+    await sharp({ create: startFrameCreate }).png().toFile(path.join(root, 'start.png'))
+  }
   const fixtureFrameProcessor = async (options) => {
     const processed = processFrames
       ? await processFrames(options)
@@ -714,6 +718,7 @@ const createRunVideoActionFixture = async ({
     action,
     scaleProfile,
     canonical: { relativePath: 'reference.png', sha256: HASH_A, fileName: 'reference.png' },
+    ...(startFrameCreate ? { startFrame: { relativePath: 'start.png', sha256: HASH_B, fileName: 'start.png' } } : {}),
     attemptKind,
     failureCodes,
     signal,
@@ -723,6 +728,23 @@ const createRunVideoActionFixture = async ({
   })
   return { root, result }
 }
+
+test('video uses the action start pose while keeping canonical identity as the QA authority', async () => {
+  let reference
+  const { root, result } = await createRunVideoActionFixture({
+    action: { actionId: 'running-right' },
+    startFrameCreate: { width: 8, height: 8, channels: 4, background: '#3040ff' },
+    bridge: async (_route, payload) => {
+      reference = payload.referenceImages[0]
+      return { result: { outputs: [{ dataRelativePath: 'runs/run-video/video/raw/waving.mp4', sha256: HASH_B }] } }
+    }
+  })
+  const { data, info } = await sharp(path.join(root, reference.relativePath)).raw().toBuffer({ resolveWithObject: true })
+  const center = (Math.floor(info.height / 2) * info.width + Math.floor(info.width / 2)) * info.channels
+  assert.deepEqual([...data.subarray(center, center + 3)], [48, 64, 255])
+  assert.equal(result.providerTask.actionTask.reference.sha256, HASH_A)
+  assert.equal(result.identityQuality.ok, true, 'QA must compare output with the original canonical')
+})
 
 test('runVideoAction forwards the action anchor and supports the not-yet-created idle profile', async () => {
   for (const profile of [null, { runtimeStandingHeightPx: 90, runtimeCell: { height: 128 } }]) {

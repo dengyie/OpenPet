@@ -25,7 +25,15 @@ const openDashboardPage = async (server, testContext, beforeNavigate) => {
   trackBrowserCleanup(testContext, browser)
   const page = await browser.newPage()
   if (beforeNavigate) await beforeNavigate(page)
+  const listResponse = page.waitForResponse((response) =>
+    new URL(response.url()).pathname === '/api/runs' && response.request().method() === 'GET')
   await page.goto(`http://127.0.0.1:${server.address().port}`)
+  const list = await (await listResponse).json()
+  // Populating the select starts a second request; selected options alone do
+  // not mean that run details and review panels have been rendered.
+  if (Array.isArray(list.runs) && list.runs.length) {
+    await page.waitForFunction(() => document.querySelector('#status-line')?.textContent === 'Loaded latest run.')
+  }
   return { browser, page }
 }
 
@@ -1406,7 +1414,17 @@ test('creator studio dashboard shows imported action handoff failure details', a
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-dashboard-browser-imported-action-failed-'))
   await seedImportedFailedActionRun(dataDir)
   const server = await openDashboardServer(dataDir, t)
-  const { browser, page } = await openDashboardPage(server, t)
+  const { browser, page } = await openDashboardPage(server, t, async (page) => {
+    await page.route('**/api/runs/*', async (route) => {
+      if (/^\/api\/runs\/[^/]+$/.test(new URL(route.request().url()).pathname)) {
+        const response = await route.fetch()
+        await new Promise((resolve) => setTimeout(resolve, 150))
+        await route.fulfill({ response })
+      } else {
+        await route.continue()
+      }
+    })
+  })
 
   try {
     await page.waitForFunction(() => document.querySelector('#run-select')?.value?.length > 0)
