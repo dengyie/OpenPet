@@ -5,6 +5,7 @@ const sharp = require('sharp')
 
 const { createStablePlacements } = require('./video-stabilizer')
 const { measureBodyMask } = require('./character-scale-profile')
+const { selectJumpingFrameIndexes } = require('./video-frame-extractor')
 
 // Grok's requested chroma background is compressed and varies across the
 // frame. A low threshold leaves disconnected green islands that look like
@@ -196,6 +197,7 @@ const processFrameSequence = async ({
   padding = 0.1,
   anchorPolicy,
   targetStandingHeightRatio = null,
+  selectJumpPhases = false,
   signal
 } = {}) => {
   if (!Array.isArray(framePaths) || framePaths.length < 1 || framePaths.length > 128) throw matteError('framePaths must contain 1 to 128 frames')
@@ -205,8 +207,8 @@ const processFrameSequence = async ({
   const stableDir = path.join(outputDir, 'normalized')
   fs.mkdirSync(alphaDir, { recursive: true })
   fs.mkdirSync(stableDir, { recursive: true })
-  const alphaFrames = []
-  const frameMetrics = []
+  let alphaFrames = []
+  let frameMetrics = []
   for (let index = 0; index < framePaths.length; index += 1) {
     throwIfAborted(signal)
     const sourcePath = String(framePaths[index] || '')
@@ -216,9 +218,16 @@ const processFrameSequence = async ({
     fs.writeFileSync(alphaPath, matted.buffer)
     const metrics = await inspectAlphaBounds(matted.buffer)
     if (!metrics) throw matteError(`frame ${index} has no visible subject after matting`)
+    const box = metrics.bbox
+    if (anchorPolicy === 'action-relative-root-v1' && (box.left <= 0 || box.top <= 0 || box.left + box.width >= metrics.canvas.width || box.top + box.height >= metrics.canvas.height)) {
+      throw Object.assign(matteError(`frame ${index} subject is clipped in the source video`), { code: 'video_source_clipped' })
+    }
     alphaFrames.push({ path: alphaPath, sha256: matted.sha256 })
     frameMetrics.push(metrics)
   }
+  const selectedSourceIndexes = selectJumpPhases ? selectJumpingFrameIndexes(frameMetrics) : frameMetrics.map((_, index) => index)
+  alphaFrames = selectedSourceIndexes.map((index) => alphaFrames[index])
+  frameMetrics = selectedSourceIndexes.map((index) => frameMetrics[index])
   const placements = createStablePlacements({
     frames: frameMetrics,
     canvasWidth: Number(canvasWidth),
@@ -277,7 +286,9 @@ const processFrameSequence = async ({
     },
     metrics: frameMetrics,
     rawMetrics: frameMetrics,
-    normalizedMetrics: normalizedFrameMetrics
+    normalizedMetrics: normalizedFrameMetrics,
+    trajectoryScale: placements.trajectoryScale,
+    selectedSourceIndexes
   }
   const sidecarPath = path.join(outputDir, 'video-sidecar.json')
   fs.writeFileSync(sidecarPath, `${JSON.stringify(sidecar, null, 2)}\n`)
@@ -290,6 +301,7 @@ const processFrameSequence = async ({
     frameMetrics: Object.freeze(frameMetrics.map((metric) => Object.freeze(metric))),
     normalizedFrameMetrics: Object.freeze(normalizedFrameMetrics.map((metric) => Object.freeze(metric))),
     placements,
+    selectedSourceIndexes,
     spriteSheet: Object.freeze({
       path: spriteSheetPath,
       relativePath: sidecar.spriteSheet.relativePath,

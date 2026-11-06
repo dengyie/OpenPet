@@ -8,7 +8,7 @@ const sharp = require('sharp')
 
 const { createActionVideoTask } = require('../../examples/plugins/creator-studio/lib/action-video-task')
 const { createMotionDriver } = require('../../examples/plugins/creator-studio/lib/motion-driver-registry')
-const { createFrameTiming, createLoopIndexes, selectFrameIndexes } = require('../../examples/plugins/creator-studio/lib/video-frame-extractor')
+const { createFrameTiming, createLoopIndexes, selectFrameIndexes, selectJumpingFrameIndexes } = require('../../examples/plugins/creator-studio/lib/video-frame-extractor')
 const { extractVideoFrames } = require('../../examples/plugins/creator-studio/lib/video-decoder')
 const { createVideoArtifact } = require('../../examples/plugins/creator-studio/lib/video-artifact-contract')
 const { analyzeTemporalQuality, computeGlobalBounds, createStablePlacements } = require('../../examples/plugins/creator-studio/lib/video-stabilizer')
@@ -140,7 +140,17 @@ test('jumping video prompt reserves conservative top clearance', () => {
     failureCodes: ['frame-edge-contact']
   })
   assert.match(prompt, /conservative jump height/i)
-  assert.match(prompt, /at least 20 percent empty space above/i)
+  assert.match(prompt, /8 to 10 percent of the full frame height/i)
+  assert.match(prompt, /keep.*wings.*resting pose/i)
+  assert.match(prompt, /mouth or beak.*unchanged and closed/i)
+  assert.match(prompt, /vertical translation.*unchanged reference body/i)
+  assert.match(prompt, /shading gradients.*outline thickness/i)
+})
+
+test('jump phase extraction chooses a single ordered takeoff, peak and landing from actual roots', () => {
+  const frames = [90, 91, 85, 70, 60, 40, 42, 60, 75, 89, 90].map((y) => ({ root: { y }, canvas: { height: 100 } }))
+  assert.deepEqual(selectJumpingFrameIndexes(frames), [0, 3, 5, 7, 10])
+  assert.throws(() => selectJumpingFrameIndexes(frames.slice(0, 5)), /ordered takeoff/)
 })
 
 test('video technical eligibility rejects temporal integrity failures', () => {
@@ -240,6 +250,38 @@ test('video decoder samples the full source timeline including the final frame',
   assert.equal(calls[0].command, 'ffprobe')
   assert.equal(calls[1].command, 'ffmpeg')
   assert.match(calls[1].args[calls[1].args.indexOf('-vf') + 1], /eq\(n\\,0\).*eq\(n\\,23\)/)
+})
+
+test('jump decoder accepts a short complete source and rejects fewer than five frames', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-video-decode-min-'))
+  const videoPath = path.join(root, 'source.mp4')
+  fs.writeFileSync(videoPath, 'fixture-video')
+  let sourceCount = 12
+  let decodeCount = 0
+  const spawnImpl = (command, args) => {
+    const child = new EventEmitter()
+    child.stdout = new EventEmitter()
+    child.stderr = new EventEmitter()
+    child.kill = () => {}
+    process.nextTick(() => {
+      if (command === 'ffprobe') child.stdout.emit('data', Buffer.from(`${sourceCount}\n`))
+      else {
+        decodeCount += 1
+        const count = Number(args[args.indexOf('-frames:v') + 1])
+        for (let index = 1; index <= count; index += 1) fs.writeFileSync(args.at(-1).replace('%04d', String(index).padStart(4, '0')), `frame-${index}`)
+      }
+      child.emit('close', 0)
+    })
+    return child
+  }
+  const options = { videoPath, outputDir: 'frames', dataDir: root, fps: 12, maxFrames: 40, minFrames: 5, spawnImpl }
+  const result = await extractVideoFrames(options)
+  assert.equal(result.frameCount, 12)
+  assert.deepEqual(result.sourceIndexes, Array.from({ length: 12 }, (_, index) => index))
+  sourceCount = 4
+  await assert.rejects(() => extractVideoFrames({ ...options, outputDir: 'short' }), { code: 'video_decoder_frame_count_mismatch' })
+  await assert.rejects(() => extractVideoFrames({ ...options, minFrames: 41 }), /minimum frame count is invalid/)
+  assert.equal(decodeCount, 1, 'invalid sources must not start ffmpeg')
 })
 
 test('stabilizer computes a global envelope and common baseline', () => {
@@ -465,6 +507,61 @@ test('video normalization preserves jumping displacement and the declared runtim
     processed: grounded, outputDir: path.join(root, 'grounded-candidate'), layout: { columns: 2, rows: 2 }, expectedFrameCount: 3
   })
   assert.ok(Math.abs(groundedCandidate.metrics.rawTrajectory.maxY - groundedCandidate.metrics.rawTrajectory.minY - 0.15) < 0.01, 'raw trajectory must come from source frames even when output is stabilized')
+})
+
+test('airborne normalization fits a complete trajectory while preserving body size and landing', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-video-jump-envelope-'))
+  const subject = await sharp({ create: { width: 20, height: 30, channels: 4, background: '#eaa344' } }).png().toBuffer()
+  const framePaths = []
+  for (const [index, top] of [60, 45, 30, 45, 60].entries()) {
+    const framePath = path.join(root, `frame-${index}.png`)
+    await sharp({ create: { width: 80, height: 100, channels: 4, background: '#12ff4d' } })
+      .composite([{ input: subject, left: 30, top }]).png().toFile(framePath)
+    framePaths.push(framePath)
+  }
+  const result = await processFrameSequence({ framePaths, outputDir: path.join(root, 'output'), canvasWidth: 128, canvasHeight: 128,
+    anchorPolicy: 'action-relative-root-v1', targetStandingHeightRatio: 92 / 128 })
+  assert.ok(result.normalizedFrameMetrics.every((m) => m.bbox.height === 92 && !m.edgeTouch))
+  const roots = result.normalizedFrameMetrics.map((m) => m.root.y)
+  assert.deepEqual(result.normalizedFrameMetrics[0].bbox, result.normalizedFrameMetrics[4].bbox)
+  assert.ok(roots[0] - roots[2] >= 10, 'must retain a visible jump')
+  assert.ok(Math.abs((roots[0] - roots[1]) / (roots[0] - roots[2]) - 0.5) < 0.08, 'must preserve trajectory timing instead of clamping the peak')
+  assert.ok(result.placements.trajectoryScale > 0 && result.placements.trajectoryScale < 1)
+  const candidate = await createVideoCandidateArtifacts({ processed: result, outputDir: path.join(root, 'candidate'), layout: { columns: 3, rows: 2 }, expectedFrameCount: 5 })
+  assert.ok(candidate.metrics.rawTrajectory.maxY - candidate.metrics.rawTrajectory.minY > 0.29)
+  const excursion = candidate.metrics.outputTrajectory.maxY - candidate.metrics.outputTrajectory.minY
+  assert.ok(excursion >= 0.08 && excursion < 0.18, 'QA must receive the actual runtime excursion')
+  assert.equal(JSON.parse(fs.readFileSync(result.sidecarPath)).trajectoryScale, result.placements.trajectoryScale)
+})
+
+test('airborne retargeting rejects a source subject already clipped by the video edge', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-video-clipped-jump-'))
+  const framePath = path.join(root, 'frame.png')
+  const subject = await sharp({ create: { width: 20, height: 30, channels: 4, background: '#eaa344' } }).png().toBuffer()
+  await sharp({ create: { width: 80, height: 100, channels: 4, background: '#12ff4d' } })
+    .composite([{ input: subject, left: 30, top: 0 }]).png().toFile(framePath)
+  await assert.rejects(() => processFrameSequence({ framePaths: [framePath], outputDir: path.join(root, 'output'), canvasWidth: 128, canvasHeight: 128,
+    anchorPolicy: 'action-relative-root-v1', targetStandingHeightRatio: 92 / 128 }), { code: 'video_source_clipped' })
+})
+
+test('jump phase selection retains runtime edge clearance after 512-to-128 resampling', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-video-runtime-jump-'))
+  const subject = await sharp({ create: { width: 20, height: 30, channels: 4, background: '#eaa344' } }).png().toBuffer()
+  const framePaths = []
+  for (const [index, top] of [60, 60, 55, 45, 35, 30, 32, 45, 55, 60, 60].entries()) {
+    const framePath = path.join(root, `frame-${index}.png`)
+    await sharp({ create: { width: 80, height: 100, channels: 4, background: '#12ff4d' } })
+      .composite([{ input: subject, left: 30, top }]).png().toFile(framePath)
+    framePaths.push(framePath)
+  }
+  const processed = await processFrameSequence({ framePaths, outputDir: path.join(root, 'output'), canvasWidth: 512, canvasHeight: 512,
+    anchorPolicy: 'action-relative-root-v1', targetStandingHeightRatio: 92 / 128, selectJumpPhases: true })
+  assert.deepEqual(processed.selectedSourceIndexes, [0, 3, 5, 7, 10])
+  assert.deepEqual(JSON.parse(fs.readFileSync(processed.sidecarPath)).selectedSourceIndexes, [0, 3, 5, 7, 10])
+  const candidate = await createVideoCandidateArtifacts({ processed, outputDir: path.join(root, 'candidate'), layout: { columns: 3, rows: 2 }, expectedFrameCount: 5 })
+  assert.ok(candidate.metrics.frames.every((frame) => !frame.edgeTouch), 'downsampling must not put alpha on the runtime cell edge')
+  const excursion = candidate.metrics.outputTrajectory.maxY - candidate.metrics.outputTrajectory.minY
+  assert.ok(excursion >= 0.08, 'runtime jump must remain visible')
 })
 
 test('video grounded normalization uses the profile standing height', async () => {
@@ -842,6 +939,26 @@ test('runVideoAction sends an opaque green first frame at the requested video as
   assert.equal(source.width, 20)
   assert.equal(source.height, 30)
   assert.equal(source.hasAlpha, true)
+})
+
+test('jumping first frame reserves overhead space without altering the canonical', async () => {
+  let sentReference
+  const { root } = await createRunVideoActionFixture({
+    action: { actionId: 'jumping' },
+    referenceCreate: { width: 512, height: 512, channels: 4, background: '#ff9f30' },
+    bridge: async (_route, request) => {
+      sentReference = request.referenceImages[0]
+      return { result: { outputs: [{ dataRelativePath: 'runs/run-video/video/raw/waving.mp4', sha256: HASH_B }] } }
+    }
+  })
+  const { data, info } = await sharp(path.join(root, sentReference.relativePath)).raw().toBuffer({ resolveWithObject: true })
+  const at = (x, y) => [...data.subarray((y * info.width + x) * info.channels, (y * info.width + x) * info.channels + 3)]
+  assert.equal(info.width, 1280)
+  assert.equal(info.height, 720)
+  assert.deepEqual(at(640, 100), [18, 255, 77], 'top 20 percent must be empty before any jump')
+  assert.deepEqual(at(640, 240), [255, 159, 48])
+  assert.deepEqual(at(640, 719), [255, 159, 48], 'bottom alignment preserves the grounded start')
+  assert.equal((await sharp(path.join(root, 'reference.png')).metadata()).height, 512)
 })
 
 test('runVideoAction gates on normalized frames while retaining raw temporal diagnostics', async () => {

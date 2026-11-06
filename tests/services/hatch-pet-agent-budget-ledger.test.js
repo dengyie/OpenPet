@@ -70,6 +70,18 @@ test('budget ledger reserves and records bounded calls without exposing reservat
   assert.equal('reservations' in view, false)
 })
 
+test('abandoned reservations remain charged after the configured limit is lowered', () => {
+  const original = createBudgetLedger({ limits: { ...limits, maxProviderCalls: 1 } })
+  const restored = { ...original, usage: { ...original.usage, providerCalls: 2, providerFailures: 1 }, reservations: {
+    'provider-3': { type: 'provider', timeoutMs: 1000, reservedAtMs: Date.now() }
+  } }
+  const reconciled = reconcileAbandonedProviderReservations(restored)
+  assert.equal(reconciled.usage.providerCalls, 3)
+  assert.equal(reconciled.usage.providerFailures, 2)
+  assert.deepEqual(reconciled.reservations, {})
+  assert.equal(createBudgetPublicView(reconciled).remaining.providerCalls, 0)
+})
+
 test('recordProviderCall settles a call that finished after the elapsed budget expired', () => {
   let nowMs = 1_000
   let ledger = createBudgetLedger({ limits, startedAtMs: nowMs, now: () => nowMs })

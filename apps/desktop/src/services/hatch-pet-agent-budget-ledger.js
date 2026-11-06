@@ -195,13 +195,14 @@ const reconcileAbandonedProviderReservations = (ledger, { preserveReservationIds
   if (abandoned.length === 0) return ledger
   const nextReservations = { ...ledger.reservations }
   for (const [reservationId] of abandoned) delete nextReservations[reservationId]
-  const providerCalls = Math.min(ledger.limits.maxProviderCalls, ledger.usage.providerCalls + abandoned.length)
-  const reconciledCount = Math.max(0, providerCalls - ledger.usage.providerCalls)
+  // Reconciliation settles calls that may already have incurred cost. A new,
+  // lower admission limit must never truncate the historical charge count.
+  const providerCalls = ledger.usage.providerCalls + abandoned.length
   return updateLedger(ledger, {
     usage: {
       ...ledger.usage,
       providerCalls,
-      providerFailures: (ledger.usage.providerFailures || 0) + reconciledCount,
+      providerFailures: (ledger.usage.providerFailures || 0) + abandoned.length,
       lastProviderCode: 'abandoned-provider-reservation',
       costKnown: false
     },

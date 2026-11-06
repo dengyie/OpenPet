@@ -898,7 +898,32 @@ test('explicit retry renewal starts a fresh active window before the prior windo
   assert.equal(result.budgetLedger.windowVersion, 2)
   assert.equal(result.budgetLedger.renewalCount, 1)
   assert.equal(result.budgetLedger.lastRenewalReason, 'retry-action')
+  assert.equal(result.runId, runId)
+  const restored = h.service.renewBudgetWindow({ runId })
+  assert.equal(restored.runId, runId)
+  assert.equal(restored.budgetLedger.lastRenewalReason, 'retry-action')
+  const log = h.logs.find((entry) => entry.event === 'hatch-pet.budget.window-renewed')
+  assert.equal(log.details.runId, runId)
+  assert.equal(log.details.reason, 'retry-action')
   assert.equal(JSON.parse(fs.readFileSync(path.join(h.dataDir, 'runs', runId, 'budgets', 'ledger.json'), 'utf8')).windowVersion, 2)
+})
+
+test('lowering configured budgets preserves historical consumption and blocks further calls', () => {
+  const h = createHarness()
+  const runId = 'run-lowered-budget'
+  const runDir = path.join(h.dataDir, 'runs', runId, 'budgets')
+  fs.mkdirSync(runDir, { recursive: true })
+  const ledger = createBudgetLedger()
+  const usage = { ...ledger.usage, providerCalls: 80, providerFailures: 75, plannerCalls: 36, evaluatorCalls: 70 }
+  fs.writeFileSync(path.join(runDir, 'ledger.json'), JSON.stringify({ ...ledger, usage }))
+
+  const result = h.service.renewBudgetWindow({ runId, force: true, reason: 'retry-action' })
+
+  assert.deepEqual(result.budgetLedger.usage, { ...usage, lastProviderCode: '' })
+  assert.equal(result.budget.remaining.providerCalls, 0)
+  assert.throws(() => h.service.reserveProviderCall({ runId, timeoutMs: 1000 }), { code: 'hatch_pet_provider_call_budget_exhausted' })
+  const stored = JSON.parse(fs.readFileSync(path.join(runDir, 'ledger.json'), 'utf8'))
+  assert.equal(stored.usage.providerCalls, 80)
 })
 
 test('restoring a legacy ledger keeps an explicit null renewal timestamp null', () => {

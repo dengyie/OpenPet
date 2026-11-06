@@ -26,7 +26,8 @@ const VIDEO_TECHNICAL_FAILURES = new Set([
   'detached-effect-contamination',
   'identity-drift',
   'loop-seam-too-large',
-  'motion-is-static'
+  'motion-is-static',
+  'video_source_clipped'
 ])
 const PROVIDER_VIDEO_SIZE = '1280x720'
 const PROVIDER_VIDEO_ASPECT_RATIO = '16:9'
@@ -183,6 +184,7 @@ const createVideoCandidateArtifacts = async ({
   const rawTrajectory = sourceAnchors.length === frameCount && sourceAnchors.every(Number.isFinite)
     ? { minY: Math.min(...sourceAnchors), maxY: Math.max(...sourceAnchors) }
     : null
+  const outputAnchors = frameMetrics.map((frame) => frame.outputAnchorYRatio)
   const metrics = {
     version: 2,
     inputSha256: String(processed?.spriteSheet?.sha256 || ''),
@@ -190,6 +192,7 @@ const createVideoCandidateArtifacts = async ({
     canvas: { width: 128, height: 128 },
     layout: { columns, rows, cellCount: columns * rows, unusedCells: Array.from({ length: columns * rows - frameCount }, (_, index) => frameCount + index) },
     rawTrajectory,
+    outputTrajectory: { minY: Math.min(...outputAnchors), maxY: Math.max(...outputAnchors), scale: Number(processed?.placements?.trajectoryScale ?? 1) },
     frames: frameMetrics
   }
   return {
@@ -235,7 +238,7 @@ const buildVideoPrompt = ({ driver, attemptKind = 'initial', failureCodes = [] }
     : actionId === 'waving'
       ? `For waving, animate only the existing ${driver.motionParameters.leadSide} greeting appendage: lift it beside the face, give one clear outward greeting, and lower it back to rest. Keep the opposite appendage in its exact reference resting pose; do not raise both greeting appendages or replace the greeting with bilateral flapping. Keep the eyes and mouth or beak shape unchanged; no blink, speaking, smile change, head turn, body bounce, or foot movement. Preserve the existing anatomy and do not add a hand, arm, wing, or prop.`
     : actionId === 'jumping'
-      ? 'For jumping, use a conservative jump height, keep the complete airborne pose in the middle 60 percent of the frame, and retain at least 20 percent empty space above the highest body point.'
+      ? 'For jumping, use a conservative jump height: raise the body root by only 8 to 10 percent of the full frame height, then land at the exact starting baseline. Show one straight vertical translation of the unchanged reference body, with only the feet making a small takeoff and landing adjustment. Keep the head, face, body proportions and wings in their reference resting pose; do not flap or fly. Keep the eyes and mouth or beak shape unchanged and closed; no speaking, smiling, blinking, body squash, stretching, or rotation. Preserve the character shading gradients and outline thickness from the first frame throughout the entire clip. Retain at least 20 percent empty space above the highest body point.'
       : ''
   const repairInstructions = attemptKind === 'repair'
     ? [...new Set((Array.isArray(failureCodes) ? failureCodes : [])
@@ -298,9 +301,16 @@ const runVideoAction = async ({
   const firstFramePath = path.resolve(dataDir, ...firstFrameRelativePath.split('/'))
   fs.mkdirSync(path.dirname(firstFramePath), { recursive: true })
   const [videoWidth, videoHeight] = PROVIDER_VIDEO_SIZE.split('x').map(Number)
-  await sharp(path.resolve(dataDir, startReference.relativePath))
-    .resize({ width: videoWidth, height: videoHeight, fit: 'contain', background: '#12ff4d' })
-    .flatten({ background: '#12ff4d' }).png().toFile(firstFramePath)
+  // A standing reference that fills the video height leaves no room for an
+  // airborne pose. Reserve overhead space in the actual first-frame pixels;
+  // the normalized runtime body scale remains owned by scaleProfile below.
+  const referenceHeight = actionId === 'jumping' ? Math.round(videoHeight * 0.72) : videoHeight
+  const referenceBuffer = await sharp(path.resolve(dataDir, startReference.relativePath))
+    .resize({ width: videoWidth, height: referenceHeight, fit: 'contain', background: '#12ff4d' })
+    .flatten({ background: '#12ff4d' }).png().toBuffer()
+  await sharp({ create: { width: videoWidth, height: videoHeight, channels: 3, background: '#12ff4d' } })
+    .composite([{ input: referenceBuffer, left: 0, top: videoHeight - referenceHeight }])
+    .png().toFile(firstFramePath)
   signal?.throwIfAborted()
   const providerReference = { relativePath: firstFrameRelativePath, fileName: 'first-frame.png', mimeType: 'image/png', sha256: sha256File(firstFramePath) }
   const driver = createMotionDriver({ actionId, motionPresetId: action?.motionPresetId || '', motionParameters: action?.motionParameters || {}, fps })
@@ -376,7 +386,7 @@ const runVideoAction = async ({
   if (!output?.dataRelativePath) throw runnerError('Video Provider returned no output', 'video_provider_invalid_response')
   const rawPath = path.resolve(dataDir, ...String(output.dataRelativePath).split('/'))
   const frameDir = `${outputRelativeDir.replace(/\\/g, '/').replace(/\/$/, '')}/decoded/${safeSegment(actionId, 'action')}`
-  const decoded = await decode({ videoPath: rawPath, outputDir: frameDir, dataDir, fps: driver.fps, maxFrames: driver.frameCount, signal })
+  const decoded = await decode({ videoPath: rawPath, outputDir: frameDir, dataDir, fps: driver.fps, maxFrames: actionId === 'jumping' ? 40 : driver.frameCount, minFrames: driver.frameCount, signal })
   const processed = await processFrames({
     framePaths: decoded.framePaths,
     outputDir: path.resolve(dataDir, ...outputRelativeDir.split('/'), safeSegment(actionId, 'action')),
@@ -386,6 +396,7 @@ const runVideoAction = async ({
     backgroundColor: '#12ff4d',
     anchorPolicy: action.anchorPolicy,
     targetStandingHeightRatio: (Number(scaleProfile?.runtimeStandingHeightPx) || 92) / (Number(scaleProfile?.runtimeCell?.height) || 128),
+    selectJumpPhases: actionId === 'jumping',
     signal
   })
   const rawTemporalQuality = analyzeTemporalQuality({ frames: processed.frameMetrics, loop: driver.loop })

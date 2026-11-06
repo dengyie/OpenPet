@@ -74,7 +74,12 @@ function aiRuntimeFixture() {
 	}
 	const domain = {
 		getHatchConfig: () => structuredClone(hatchConfig),
-		saveConfig: (input) => { Object.assign(hatchConfig, input.hatchPet); return structuredClone(hatchConfig) },
+		saveConfig: (input) => {
+			const { budgets, ...patch } = input.hatchPet
+			Object.assign(hatchConfig, patch)
+			if (budgets) Object.assign(hatchConfig.budgets, budgets)
+			return structuredClone(hatchConfig)
+		},
 		publishSnapshot: () => {},
 	}
 	const image = {
@@ -146,6 +151,23 @@ test("Hatch start validates before enqueue and creates a run-scoped Job", async 
 	assert.equal(fixture.jobs[0].kind, "hatch.run")
 	assert.equal(fixture.jobs[0].resourceKey, "hatch:run-1")
 	assert.deepEqual(fixture.jobs[0].input, { runId: "run-1", mode: "full-pet", stage: "planning", scope: {}, workflowEvidence: { provider: {} } })
+})
+
+test("Hatch config enforces the same 200 Provider call maximum as the Control Center", async (t) => {
+	const fixture = aiRuntimeFixture()
+	await withAiRuntimeServer(t, { ...fixture, jobs: fixture.jobDispatcher }, async ({ request }) => {
+		const accepted = await request("/ai/hatch/config", { method: "PATCH", body: { config: { budgets: { maxProviderCalls: 200 } } } })
+		const result = await accepted.json()
+		assert.equal(accepted.status, 200, JSON.stringify(result))
+		assert.equal(result.data.budgets.maxProviderCalls, 200)
+		const rejected = await request("/ai/hatch/config", { method: "PATCH", body: { config: { budgets: { maxProviderCalls: 201 } } } })
+		assert.equal(rejected.status, 400)
+		for (const budgets of [null, [], "invalid", { unsupported: 1 }]) {
+			const invalid = await request("/ai/hatch/config", { method: "PATCH", body: { config: { budgets } } })
+			assert.equal(invalid.status, 400)
+		}
+		assert.equal(fixture.domain.getHatchConfig().budgets.maxProviderCalls, 200)
+	})
 })
 
 test("Hatch Job cancellation sends hatch.stop and cannot report success", async () => {

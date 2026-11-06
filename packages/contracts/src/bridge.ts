@@ -567,7 +567,7 @@ function aiTalkPayloadIssues(operation: AiTalkOperation, payload: Record<string,
       if (config.configMode !== undefined && !["follow-chat", "override"].includes(String(config.configMode))) issues.push("Hatch configMode is invalid")
       for (const key of ["provider", "baseUrl", "model"]) if (config[key] !== undefined && (typeof config[key] !== "string" || config[key].length > 2000)) issues.push("Hatch config " + key + " is invalid")
       if (config.budgets !== undefined) {
-        const limits: Record<string, [number, number]> = { maxIdentityRegenerations: [0, 10], maxActionAttemptsPerAction: [1, 20], maxEvaluationAttemptsPerArtifact: [1, 10], maxProviderCalls: [1, 1000], maxElapsedMs: [1000, 86400000], maxEstimatedCost: [0.01, 100000] }
+        const limits: Record<string, [number, number]> = { maxIdentityRegenerations: [0, 10], maxActionAttemptsPerAction: [1, 20], maxEvaluationAttemptsPerArtifact: [1, 10], maxProviderCalls: [1, 200], maxElapsedMs: [1000, 86400000], maxEstimatedCost: [0.01, 100000] }
         if (!exact(config.budgets, Object.keys(limits))) issues.push("Hatch budgets are invalid")
         else for (const [key, [min, max]] of Object.entries(limits)) {
           const entry = config.budgets[key]

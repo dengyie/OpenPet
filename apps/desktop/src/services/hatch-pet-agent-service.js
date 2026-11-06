@@ -605,7 +605,7 @@ const createHatchPetAgentService = ({
           reservedAtMs: Math.max(baseline.startedAtMs, Number(reservation.reservedAtMs) || baseline.startedAtMs)
         })])
     ))
-    const restoredUsageProviderCalls = Math.max(0, Math.min(baseline.limits.maxProviderCalls, Number(stored.usage.providerCalls) || 0))
+    const restoredUsageProviderCalls = Math.max(0, Number(stored.usage.providerCalls) || 0)
     // 恢复预约序号：优先用持久化值；旧账本没有该字段时，从已消耗计数 +
     // 存活预约的最大序号推导，保证重启后新预约 ID 不复用。
     const reservationIndices = Object.keys(restoredReservations)
@@ -625,15 +625,15 @@ const createHatchPetAgentService = ({
       lastRenewedAtMs: stored.lastRenewedAtMs === null || stored.lastRenewedAtMs === undefined || stored.lastRenewedAtMs === ''
         ? null
         : (Number.isFinite(Number(stored.lastRenewedAtMs)) ? Math.max(baseline.startedAtMs, Number(stored.lastRenewedAtMs)) : null),
-      lastRenewalReason: normalizeText(stored.lastRenewalReason, '', 80),
+      lastRenewalReason: normalizeText(stored.lastRenewalReason, 80),
       reservationSequence: restoredSequence,
       usage: Object.freeze({
         ...baseline.usage,
-        providerCalls: Math.max(0, Math.min(baseline.limits.maxProviderCalls, Number(stored.usage.providerCalls) || 0)),
-        providerFailures: Math.max(0, Math.min(baseline.limits.maxProviderCalls, Number(stored.usage.providerFailures) || 0)),
+        providerCalls: restoredUsageProviderCalls,
+        providerFailures: Math.max(0, Number(stored.usage.providerFailures) || 0),
         lastProviderCode: normalizeText(stored.usage.lastProviderCode, 80),
-        plannerCalls: Math.max(0, Math.min(baseline.limits.maxPlannerCalls, Number(stored.usage.plannerCalls) || 0)),
-        evaluatorCalls: Math.max(0, Math.min(baseline.limits.maxEvaluatorCalls, Number(stored.usage.evaluatorCalls) || 0)),
+        plannerCalls: Math.max(0, Number(stored.usage.plannerCalls) || 0),
+        evaluatorCalls: Math.max(0, Number(stored.usage.evaluatorCalls) || 0),
         estimatedCost: Math.max(0, Number(stored.usage.estimatedCost) || 0),
         costKnown: stored.usage.costKnown !== false
       }),
@@ -697,11 +697,11 @@ const createHatchPetAgentService = ({
     const ledger = resolveBudgetLedger({ runId, limits: config.budgets, preferPersisted: true })
     const renewed = renewBudgetWindowLedger(ledger, { reason, force })
     if (renewed === ledger) {
-      return { runId: normalizeText(runId, '', 128), renewed: false, budgetLedger: ledger, budget: createBudgetPublicView(ledger) }
+      return { runId: normalizeText(runId, 128), renewed: false, budgetLedger: ledger, budget: createBudgetPublicView(ledger) }
     }
     persistBudgetLedger({ runId, ledger: renewed })
-    recordLog({ level: 'info', event: 'hatch-pet.budget.window-renewed', message: 'Hatch-pet recovery budget window renewed', details: { runId: normalizeText(runId, '', 128), windowVersion: renewed.windowVersion, reason: normalizeText(reason, '', 80) } })
-    return { runId: normalizeText(runId, '', 128), renewed: true, budgetLedger: renewed, budget: createBudgetPublicView(renewed) }
+    recordLog({ level: 'info', event: 'hatch-pet.budget.window-renewed', message: 'Hatch-pet recovery budget window renewed', details: { runId: normalizeText(runId, 128), windowVersion: renewed.windowVersion, reason: normalizeText(reason, 80) } })
+    return { runId: normalizeText(runId, 128), renewed: true, budgetLedger: renewed, budget: createBudgetPublicView(renewed) }
   }
 
   const evaluateSprite = async ({ runId, scope, board, qa = {}, profile, budgetLedger = null, signal = null } = {}) => {

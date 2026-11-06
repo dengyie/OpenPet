@@ -57,9 +57,30 @@ const createLoopIndexes = ({ indexes, mode = 'loop' } = {}) => {
   throw extractorError('loop mode is invalid')
 }
 
+const selectJumpingFrameIndexes = (frames) => {
+  if (!Array.isArray(frames) || frames.length < 5) throw extractorError('jumping needs at least five source frames')
+  const roots = frames.map((frame) => Number(frame.root?.y) / Number(frame.canvas?.height))
+  if (!roots.every(Number.isFinite)) throw extractorError('jumping roots are invalid')
+  const peak = roots.indexOf(Math.min(...roots))
+  if (peak < 2 || peak > roots.length - 3) throw extractorError('jumping needs ordered takeoff, peak and landing')
+  const closest = (from, to, target) => {
+    let best = from
+    for (let index = from + 1; index < to; index += 1) {
+      if (Math.abs(roots[index] - target) < Math.abs(roots[best] - target)) best = index
+    }
+    return best
+  }
+  return Object.freeze([0,
+    closest(1, peak, (roots[0] + roots[peak]) / 2),
+    peak,
+    closest(peak + 1, roots.length - 1, (roots.at(-1) + roots[peak]) / 2),
+    roots.length - 1])
+}
+
 module.exports = {
   createFrameTiming,
   createLoopIndexes,
   extractorError,
-  selectFrameIndexes
+  selectFrameIndexes,
+  selectJumpingFrameIndexes
 }
