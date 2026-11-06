@@ -238,15 +238,43 @@ const createGrokVideoProvider = ({ baseUrl, apiKey, fetchImpl = globalThis.fetch
     await fs.mkdir(normalizedOutputDir, { recursive: true })
     const reference = await readReferenceDataUrl({ referenceDataUrl, referencePath, referenceMimeType })
     throwIfAborted(signal)
-    const submit = await requestJson({
-      url: `${normalizedBaseUrl}/videos`,
-      method: 'POST',
+    let submit
+    try {
+      submit = await requestJson({
+        url: `${normalizedBaseUrl}/videos`,
+        method: 'POST',
         body: createRequestBody({ model: normalizedModel, prompt: normalizedPrompt, referenceDataUrl: reference, seconds: normalizedSeconds, size: normalizedSize, request }),
-      signal,
-      timeoutMs
-    })
+        signal,
+        timeoutMs
+      })
+    } catch (error) {
+      // A timeout or intermediary 5xx does not prove POST was rejected. The
+      // caller retries whole generations, so replay would risk a second task.
+      error.retryable = false
+      error.stage = 'submit'
+      throw error
+    }
     throwIfAborted(signal)
     const taskId = normalizeTaskId(submit)
+    const readAcceptedTask = async (stage, read) => {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          return await read()
+        } catch (error) {
+          if (attempt === 0 && error.retryable === true && !signal?.aborted) {
+            await sleepImpl(normalizedPollInterval, signal)
+            throwIfAborted(signal)
+            continue
+          }
+          // Keep the paid task identity available for diagnosis. Exhausted
+          // reads must never become a fresh POST in runVideoAction's retry.
+          error.retryable = false
+          error.taskId = taskId
+          error.stage = stage
+          throw error
+        }
+      }
+    }
     let statusPayload = submit
     for (let poll = 0; poll < normalizedMaxPolls; poll += 1) {
       const status = normalizeStatus(statusPayload)
@@ -254,20 +282,22 @@ const createGrokVideoProvider = ({ baseUrl, apiKey, fetchImpl = globalThis.fetch
       if (TERMINAL_SUCCESS.has(status)) break
       if (TERMINAL_FAILURE.has(status)) {
         const failure = terminalFailureDetail(statusPayload, normalizedApiKey)
-        throw grokVideoError(
+        throw Object.assign(grokVideoError(
           failure.detail ? `video provider generation failed: ${failure.detail}` : 'video provider generation failed',
           'video_generation_failed',
           { retryable: failure.retryable }
-        )
+        ), { taskId, stage: 'poll' })
       }
-      if (poll === normalizedMaxPolls - 1) throw grokVideoError('video provider polling timed out', 'video_provider_timeout', { retryable: true })
+      if (poll === normalizedMaxPolls - 1) {
+        throw Object.assign(grokVideoError('video provider polling timed out', 'video_provider_timeout', { retryable: false }), { taskId, stage: 'poll' })
+      }
       await sleepImpl(normalizedPollInterval, signal)
       throwIfAborted(signal)
-      statusPayload = await requestJson({ url: `${normalizedBaseUrl}/videos/${encodeURIComponent(taskId)}`, signal, timeoutMs })
+      statusPayload = await readAcceptedTask('poll', () => requestJson({ url: `${normalizedBaseUrl}/videos/${encodeURIComponent(taskId)}`, signal, timeoutMs }))
     }
 
     throwIfAborted(signal)
-    let contentResult = await fetchBytes({
+    let contentResult = await readAcceptedTask('content', () => fetchBytes({
       fetchImpl,
       url: `${normalizedBaseUrl}/videos/${encodeURIComponent(taskId)}/content`,
       apiKey: normalizedApiKey,
@@ -275,7 +305,7 @@ const createGrokVideoProvider = ({ baseUrl, apiKey, fetchImpl = globalThis.fetch
       timeoutMs,
       accept: 'video/*,application/json',
       maxBytes: normalizedMaxBytes
-    })
+    }))
     throwIfAborted(signal)
     let contentBytes = contentResult.bytes
     let contentType = String(contentResult.response.headers?.get?.('content-type') || '').split(';')[0].toLowerCase()
@@ -288,7 +318,7 @@ const createGrokVideoProvider = ({ baseUrl, apiKey, fetchImpl = globalThis.fetch
       }
       const contentUrl = validateDownloadUrl(extractContentUrl(contentPayload), normalizedBaseUrl)
       if (!contentUrl) throw grokVideoError('video provider content response is invalid', 'video_provider_invalid_response')
-      contentResult = await fetchBytes({ fetchImpl, url: contentUrl, apiKey: '', signal, timeoutMs, accept: 'video/*', maxBytes: normalizedMaxBytes })
+      contentResult = await readAcceptedTask('content', () => fetchBytes({ fetchImpl, url: contentUrl, apiKey: '', signal, timeoutMs, accept: 'video/*', maxBytes: normalizedMaxBytes }))
       throwIfAborted(signal)
       contentBytes = contentResult.bytes
       contentType = String(contentResult.response.headers?.get?.('content-type') || '').split(';')[0].toLowerCase()

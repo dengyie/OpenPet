@@ -126,3 +126,19 @@ test('video service uses an independent config and persists only its own model c
   assert.deepEqual(persisted[0].modelCatalog.models, ['grok-imagine-video', 'grok-imagine-video-1.5'])
   assert.equal(persisted[0].baseUrl, 'https://api.mangoqwq.com/v1')
 })
+
+test('video failure diagnostics retain only the accepted task ID and code-owned phase', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'openpet-video-diagnostics-'))
+  await fs.writeFile(path.join(root, 'reference.png'), 'reference')
+  const logs = []
+  const service = createVideoGenerationModelService({
+    settingsService: { get: () => ({}) }, secretService: { getSecretValue: () => 'runtime-secret-key' },
+    appLogService: { record: entry => logs.push(entry) },
+    fetchImpl: async () => jsonResponse({ id: 'video_retained-task', status: 'queued' })
+  })
+  await assert.rejects(service.generateVideo({ prompt: 'jump once', referenceImages: [{ relativePath: 'reference.png' }], output: { dataDir: root, dataRelativeDir: 'output' }, maxPolls: 1 }), error => error.retryable === false)
+  const failed = logs.find(entry => entry.event === 'videoGeneration.request.failed')
+  assert.equal(failed.details.taskId, 'video_retained-task')
+  assert.equal(failed.details.stage, 'poll')
+  assert.doesNotMatch(JSON.stringify(logs), /runtime-secret-key/)
+})

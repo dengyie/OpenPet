@@ -1093,3 +1093,22 @@ test('video runner service coalesces concurrent duplicate requests', async () =>
   assert.equal(second, first)
   assert.equal(calls, 1)
 })
+
+test('Creator bridge does not resubmit a paid video after task polling exhausts', async () => {
+  const { createGrokVideoProvider } = require('../../examples/plugins/creator-studio/lib/grok-video-provider')
+  let posts = 0
+  let bridgeCalls = 0
+  const provider = createGrokVideoProvider({
+    baseUrl: 'https://api.mangoqwq.com/v1', apiKey: 'runtime-only-key', sleepImpl: async () => {},
+    fetchImpl: async (url) => {
+      if (url.endsWith('/videos')) { posts += 1; return { ok: true, status: 200, json: async () => ({ id: 'paid-task', status: 'queued' }) } }
+      return { ok: false, status: 503, json: async () => ({ error: { code: 'service_unavailable' } }) }
+    }
+  })
+  await assert.rejects(createRunVideoActionFixture({ bridge: async () => {
+    bridgeCalls += 1
+    await provider.generateVideo({ model: 'grok-imagine-video', prompt: 'wave once', outputDir: fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-paid-task-')) })
+  } }), error => error.retryable === false && error.taskId === 'paid-task')
+  assert.equal(posts, 1)
+  assert.equal(bridgeCalls, 1)
+})
