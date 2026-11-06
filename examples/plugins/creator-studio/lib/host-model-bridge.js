@@ -1639,6 +1639,7 @@ const generateActionKeyframe = async ({
   requestedTimeoutMs,
   action,
   keyframeRole = 'start',
+  appearanceIntent = resolveProviderAppearanceIntent(run),
   referenceImages = [],
   qualityReferenceImages = referenceImages,
   generationDeadlineMs = 0,
@@ -1656,7 +1657,7 @@ const generateActionKeyframe = async ({
     ? 'action-start-keyframe'
     : 'action-peak-keyframe'
   const promptBuild = buildActionKeyframePrompt({
-    appearanceIntent: resolveProviderAppearanceIntent(run),
+    appearanceIntent,
     referenceRole: listReferenceRoles(referenceImages).join(', ') || 'canonical-reference',
     action,
     keyframeRole: normalizedKeyframeRole,
@@ -1769,7 +1770,7 @@ const generateActionKeyframe = async ({
     keyframe.candidateSelection = candidateSelection
     if (!selectedCandidate && isSoftIdentityDescriptorRetryEligible(diagnosticCandidate?.quality)) {
       const softRetryPromptBuild = buildActionKeyframePrompt({
-        appearanceIntent: resolveProviderAppearanceIntent(run),
+        appearanceIntent,
         referenceRole: listReferenceRoles(referenceImages).join(', ') || 'canonical-reference',
         action,
         keyframeRole: normalizedKeyframeRole,
@@ -3160,13 +3161,15 @@ const createVideoStartReferenceResolver = ({ dataDir, run, settings, action, can
       dataDir, run, settings,
       selectedModel: String(settings.model || ''),
       requestedTimeoutMs: resolveCreatorProviderTimeout(settings.timeoutMs),
+      appearanceIntent: [],
       action: {
         ...action,
         name: 'right-facing in-place running gait',
         animationType: 'locomotion_loop',
-        viewDirection: 'strict right-facing side view',
-        animatedParts: action.movingParts,
-        lockedParts: action.fixedParts
+        viewDirection: 'strict right-facing side view: a 90-degree profile, not a front or three-quarter view',
+        animatedParts: ['both legs and feet only'],
+        lockedParts: [...(Array.isArray(action.fixedParts) ? action.fixedParts : []), 'head', 'eyes', 'beak or mouth', 'wings', 'chest marking'],
+        forbiddenMotion: ['front-facing rotation', 'three-quarter rotation', 'wing flap', 'wave', 'blink', 'shuffle', 'hop']
       },
       keyframeRole: 'start',
       referenceImages: [{ ...canonical, path: path.join(dataDir, canonical.relativePath), role: 'canonical-reference' }]
@@ -3191,7 +3194,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
   const useVideoActionPipeline = Boolean(videoSettings?.hasApiKey === true && isGrokVideoModel(videoModel))
   // Processing bindings also cover evaluator semantics. Older checkpoints
   // were scored without action intent or generated from conflicting motion text.
-  const actionProcessorVersion = useVideoActionPipeline ? 9 : 4
+  const actionProcessorVersion = useVideoActionPipeline ? 10 : 4
   const sourceReference = resolveOriginalReferenceImage({ dataDir, run })
   if (!isUsableLocalReferenceImage({ dataDir, referenceImage: sourceReference })) {
     throw createProviderReferenceContractError('reference_image_required', 'Quality-first generation requires one usable local reference image')

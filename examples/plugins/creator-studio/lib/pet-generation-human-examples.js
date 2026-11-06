@@ -209,7 +209,9 @@ const resolveGuidanceReasonCodes = ({ qualityGuidance, actionId = '', animationT
 
 const createQualityGuidanceLines = ({ qualityGuidance, actionId = '', animationType = '' } = {}) => (
   resolveGuidanceReasonCodes({ qualityGuidance, actionId, animationType })
-    .map((reasonCode) => QUALITY_GUIDANCE_PHRASES[reasonCode])
+    .map((reasonCode) => reasonCode === 'identity-drift' && animationType === 'locomotion_loop'
+      ? 'Preserve the exact species, anatomical proportions, markings, palette, material treatment, and accessories as viewed from the requested direction.'
+      : QUALITY_GUIDANCE_PHRASES[reasonCode])
     .filter(Boolean)
 )
 

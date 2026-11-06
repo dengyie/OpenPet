@@ -80,6 +80,10 @@ test('running video loops keep the right-facing gait active without returning to
     assert.match(prompt, /first.*final.*gait phase/i)
     assert.doesNotMatch(prompt, /same neutral pose|fully settle|finish settling|all visible motion in the middle/i)
     assert.match(prompt, /do not turn.*front/i)
+    assert.match(prompt, /strict 90-degree right-facing side profile/i)
+    assert.match(prompt, /animate only both legs and feet/i)
+    assert.match(prompt, /one foot is planted.*other is clearly extended/i)
+    assert.match(prompt, /do not shuffle.*flap.*wave.*blink/i)
   }
 })
 

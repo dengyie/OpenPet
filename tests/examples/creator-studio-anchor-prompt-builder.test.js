@@ -165,6 +165,31 @@ test('action keyframe prompts create separate start and peak images', () => {
   assertProviderNeutral(peak.prompt)
 })
 
+test('directional gait keyframes can rotate the identity reference without forcing front-visible features', () => {
+  for (const referenceRole of ['canonical-reference', 'full-pet-action-identity-board']) {
+    const { prompt } = buildActionKeyframePrompt({
+      referenceRole,
+      qualityGuidance: { reasonCounts: { 'identity-drift': 1 } },
+      action: { actionId: 'running-right', animationType: 'locomotion_loop', viewDirection: 'strict right-facing side view' }
+    })
+    assert.match(prompt, /ACTION PLAN controls the pose and viewing direction/i)
+    assert.match(prompt, /natural foreshortening and self-occlusion/i)
+    assert.doesNotMatch(prompt, /same body proportions and silhouette/i)
+    assert.doesNotMatch(prompt, /exact species, silhouette/i)
+    assert.doesNotMatch(prompt, /every body part or accessory visible in the reference present/i)
+    assertProviderNeutral(prompt)
+  }
+})
+
+test('running keyframes make the contact feet visible enough to condition the video gait', () => {
+  const { prompt } = buildActionKeyframePrompt({
+    action: { actionId: 'running-right', animationType: 'locomotion_loop', viewDirection: 'strict right-facing side view' },
+    keyframeRole: 'start'
+  })
+  assert.match(prompt, /both locomotion legs and feet clearly visible and separated/i)
+  assert.match(prompt, /one foot planted under the body/i)
+})
+
 test('sparse wave metadata still produces a complete moving-part contract', () => {
   const result = buildActionSpriteRowPrompt({ action: { actionId: 'dev8-provider-row-wave', motionPrompt: 'One front paw waves beside the face.', frameCount: 6 } })
   assert.match(result.prompt, /Primary motion: the selected visible waving appendage/i)
