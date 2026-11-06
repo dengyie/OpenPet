@@ -70,10 +70,15 @@ const selectJumpingFrameIndexes = (frames) => {
     }
     return best
   }
+  // The fourth contract pose is landing, not halfway through descent. Select
+  // the first return to the grounded root before the final recovery frame.
+  const groundTolerance = 0.02
+  const landing = roots.findIndex((root, index) => index > peak && index < roots.length - 1 && Math.abs(root - roots[0]) <= groundTolerance)
+  if (landing < 0 || Math.abs(roots.at(-1) - roots[0]) > groundTolerance) throw extractorError('jumping needs a grounded landing before recovery')
   return Object.freeze([0,
     closest(1, peak, (roots[0] + roots[peak]) / 2),
     peak,
-    closest(peak + 1, roots.length - 1, (roots.at(-1) + roots[peak]) / 2),
+    landing,
     roots.length - 1])
 }
 

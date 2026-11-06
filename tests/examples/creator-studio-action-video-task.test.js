@@ -149,8 +149,9 @@ test('jumping video prompt reserves conservative top clearance', () => {
 
 test('jump phase extraction chooses a single ordered takeoff, peak and landing from actual roots', () => {
   const frames = [90, 91, 85, 70, 60, 40, 42, 60, 75, 89, 90].map((y) => ({ root: { y }, canvas: { height: 100 } }))
-  assert.deepEqual(selectJumpingFrameIndexes(frames), [0, 3, 5, 7, 10])
+  assert.deepEqual(selectJumpingFrameIndexes(frames), [0, 3, 5, 9, 10])
   assert.throws(() => selectJumpingFrameIndexes(frames.slice(0, 5)), /ordered takeoff/)
+  assert.throws(() => selectJumpingFrameIndexes([90, 85, 40, 50, 60].map((y) => ({ root: { y }, canvas: { height: 100 } }))), /landing before recovery/)
 })
 
 test('video technical eligibility rejects temporal integrity failures', () => {
@@ -556,8 +557,8 @@ test('jump phase selection retains runtime edge clearance after 512-to-128 resam
   }
   const processed = await processFrameSequence({ framePaths, outputDir: path.join(root, 'output'), canvasWidth: 512, canvasHeight: 512,
     anchorPolicy: 'action-relative-root-v1', targetStandingHeightRatio: 92 / 128, selectJumpPhases: true })
-  assert.deepEqual(processed.selectedSourceIndexes, [0, 3, 5, 7, 10])
-  assert.deepEqual(JSON.parse(fs.readFileSync(processed.sidecarPath)).selectedSourceIndexes, [0, 3, 5, 7, 10])
+  assert.deepEqual(processed.selectedSourceIndexes, [0, 3, 5, 9, 10])
+  assert.deepEqual(JSON.parse(fs.readFileSync(processed.sidecarPath)).selectedSourceIndexes, [0, 3, 5, 9, 10])
   const candidate = await createVideoCandidateArtifacts({ processed, outputDir: path.join(root, 'candidate'), layout: { columns: 3, rows: 2 }, expectedFrameCount: 5 })
   assert.ok(candidate.metrics.frames.every((frame) => !frame.edgeTouch), 'downsampling must not put alpha on the runtime cell edge')
   const excursion = candidate.metrics.outputTrajectory.maxY - candidate.metrics.outputTrajectory.minY
