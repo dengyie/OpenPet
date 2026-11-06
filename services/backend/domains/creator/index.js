@@ -459,7 +459,15 @@ export function createCreatorDomain({ db, shell, ai, enqueueJob, runPluginComman
 	const runBackendCreatorCommandWithProgress = async (command, payload, ctx = {}) => {
 		const runId = safeId(payload.runId, "runId")
 		const reportProgress = () => reportBackendCreatorProgress(runId, ctx)
-		reportProgress()
+		// A retry starts while the durable run still contains its previous
+		// recovery-required result. Reporting that terminal 98% frame first
+		// makes the Job's monotonic progress throttle discard the real
+		// generating-idle/generating-actions frames that follow.
+		if (["retry-action", "retry-identity"].includes(command)) {
+			ctx.report?.({ phase: "starting-retry", percent: 5 })
+		} else {
+			reportProgress()
+		}
 		const progressTimer = setInterval(reportProgress, 1_500)
 		progressTimer.unref?.()
 		try {
