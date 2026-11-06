@@ -156,8 +156,8 @@ test.describe('Control Center smoke', () => {
     await page.goto('/')
     await page.getByRole('button', { name: 'AI' }).click()
 
-    const sectionHeadings = await page.locator('details.ai-section summary h2').allTextContents()
-    expect(sectionHeadings).toEqual([
+    // Navigation dispatch can finish before React commits the new pane.
+    await expect(page.locator('details.ai-section summary h2')).toHaveText([
       '模型 Provider',
       'Hatch Pet Agent',
       '长期记忆',
