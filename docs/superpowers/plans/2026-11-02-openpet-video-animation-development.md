@@ -457,3 +457,5 @@ Mango API 的 OpenAI-compatible Grok video provider 已作为独立 Provider 路
 - 2026-11-06：PR #110 已部署广州 main `120fdda2`，main CI `42133580893` success。Pip retry `aa229e1d` 的四候选整体84/53/79/77，最佳跨帧78，仍未通过。对比原始解码与归一化帧证明峰值身体452×518→530×489的变形来自原始视频。后续将idle统一为身体静止的一次眨眼，更新生成/评估与动静部位契约，image/video版本4/7；质量阈值不变，先单次隔离真实验证。另补idle/非idle重试状态回归，修复生成中遗留recovery-required/98%进度并保留旧失败证据。九动作与最终包仍待真实通过。
 
 - 隔离真实idle：仅新增1次视频（SHA `2957decc147d3cb89dc791f11406d5bd403067cc8b065ad9cd80e9244c1fcda8`）。眨眼跨帧92，但旧板因先128px再放大512px风格79；像素/调用边界回归确认评估前丢失细节。修复保留512px归一化帧并持久化hash，评估板同时展示全部实际128px成品预览，坐标/角色传给评估器，阈值不变。同一视频新证据板一次评估通过：整体90、风格88、小尺寸95；旧板与失败评估均保留，专项122通过。正式广州九动作与最终包仍待验证。
+
+- PR #111 已合入并部署广州 main `cd78d9c0`，main CI `42137596392` success；最终 VPS core 2332/1 skip、Control Center 81/81。正式 Pip run 仍为 `recovery-required`，idle 阻断；隔离候选通过不能代表正式九动作通过。根盘剩余约 423 MiB，恢复任务需先解决容量不足；历史快照与候选证据保留。详见 [线上恢复记录](../../release-evidence/remote-backend/2026-11-06-video-normalization-recovery.md)。
