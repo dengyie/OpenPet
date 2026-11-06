@@ -15,9 +15,9 @@ const MOTION_PRESETS = Object.freeze({
     id: 'idle-subtle-loop-v1',
     phases: [
       { id: 'canonical-neutral', prompt: 'match the accepted neutral pose and body root' },
-      { id: 'inhale', prompt: 'begin one subtle breathing or source-appropriate secondary movement' },
-      { id: 'secondary-motion', prompt: 'continue the small local movement without translating the body' },
-      { id: 'peak', prompt: 'reach the quiet motion peak while preserving identity and scale' },
+      { id: 'inhale', prompt: 'begin subtle chest breathing while keeping all limbs and facial geometry in the reference resting pose' },
+      { id: 'secondary-motion', prompt: 'complete one natural eye blink while chest breathing continues; keep the closed mouth or beak shape unchanged' },
+      { id: 'peak', prompt: 'reach the quiet chest breathing peak without flapping, lifting limbs, translating the body, or changing scale' },
       { id: 'settle', prompt: 'settle toward the accepted neutral pose' },
       { id: 'canonical-return', prompt: 'return to the accepted neutral pose for a seamless loop' }
     ]

@@ -428,7 +428,7 @@ Mango API 的 OpenAI-compatible Grok video provider 已作为独立 Provider 路
 
 用户后续提供了 Mango API Grok 视频模型，当前交付路线使用该 API；One-to-All GPU 推理仍是调研候选，不是本次 API 接入的部署前提。真实 Creator 验收须完成九个配置动作，不能只用三动作或单视频技术 smoke 替代。
 
-上游审计确认，旧请求的 `image_url` 被 Mango 通用任务 DTO 丢弃。OpenPet `2eb6f725` 改用原生 `image: {url: dataURL}`，Mango `e2e64b981` 在现有 Sora 插件登记 Grok host video protocol，两个修复均已部署。Mikan 的真实 Console 任务已记录 `input_image_count=1`，但返回额度/provision key 429。当前 Grok Web 的路由校验和 adapter 均拒绝图输入，因此需要在这两处补齐已查证的首帧协议。
+上游审计确认，旧请求的 `image_url` 被 Mango 通用任务 DTO 丢弃。OpenPet `2eb6f725` 改用原生 `image: {url: dataURL}`，Mango `e2e64b981` 在现有 Sora 插件登记 Grok host video protocol，两个修复均已部署。Mikan 的真实 Console 任务已记录 `input_image_count=1`，但返回额度/provision key 429。当时 Grok Web 的路由校验和 adapter 均拒绝图输入；后续首帧修复和上线结果见 13.3。
 
 [公开 transport 源码](https://github.com/Lee-SiHyeon/web-api-playbook/blob/901c9c619e85594bec365f7c599ec495ae4c6c68/service-packs/grok/src/grok-media-video-transport.mjs) 明确区分 `mediaGenInput.textToVideo` 与 `mediaGenInput.imageToVideo`。后者包含 `prompt`、`aspectRatio`、`duration`、`resolutionName`、`skipAudio`、`mode` 和单个 `inputAssets`；`useFirstFrame` 为可选布尔字段。源码只提供捕获请求的证据，不能据此宣称任意分辨率/时长或生产账号已经验证。
 
@@ -450,3 +450,6 @@ Mango API 的 OpenAI-compatible Grok video provider 已作为独立 Provider 路
 - 视频 processorVersion 升至 4，防止复用旧归一化 checkpoint。最终 Creator 九动作和 final-package 仍需在该修复部署后重跑，不能把单视频通过写成完整成品通过。
 - PR #106 已合入 main `d07bdf8f` 并部署广州；正式 idle 恢复完成三份技术合格的视频与 Vision 评估（74/84/84），仍因真实视觉阈值保持 recovery-required。发现视频 repair 提示词只消费技术失败码，忽略帧间、风格、小尺寸与动作可读性反馈；后续修复针对这些已发生的失败项给出明确纠正，并约束 idle 保持参考肢体姿势。完整证据见 [线上恢复记录](../../release-evidence/remote-backend/2026-11-06-video-normalization-recovery.md)。
 - PR #107 已部署为 main `6f943445`，main CI 全绿；四份新 idle 视频仍因视觉评分 68/69/69/64 未通过。进一步确认评估请求缺少动作 ID 与 frame plan，模型无法按 idle/挥手/跑步的真实语义评估可读性；补齐动作上下文并拒绝缺失上下文的动作请求。生成器还误读不存在的平铺参数，现改为消费计划的 `motionParameters`，与评估共用同一 registry 展开结果。新参数回归 red→green，专项 120/120；同一线上板真实复评 idle 可读性 18→86，但仍保留小尺寸与帧间质量失败。接下来以适合小尺寸的原创卡通角色验证九动作及最终包，不能放宽质量门或反复重评直到碰到 pass。
+
+- PR #108/#109 已合入 main `dfdf7b10` 并部署广州 ready/resident；动作评估上下文与嵌套运动参数已修复，image/video processorVersion 2/5 阻止复用旧评估。VPS core2325/1skip、UI81/81、专项127/127及PR CI/两平台构建通过。原创简洁卡通Pip已通过真实参考图生成、canonical四候选评估及身份接受，九动作Job正在执行，完整包仍待最终验证。
+- Pip动作Job最终仍在idle阻断：两份不同板的整体85/80、小尺寸92/90、动作可读性78/57，实际帧图有挥翅和喙形变化。新增失败回归确认视频提示词把用户整段九动作描述再次注入当前idle，且禁止肢体运动只列爪/手。后续修复删除视频动作提示词中的原始形象叙述与自由文本动作别名，以真实首帧像素和registry driver分别作为身份与动作来源；idle registry明确只允许胸部呼吸和眨眼，保持翅膀、其他肢体和嘴/喙不变。image/video版本3/6失效旧语义结果，专项128/128；等待部署和真实恢复，不宣称全链路通过。

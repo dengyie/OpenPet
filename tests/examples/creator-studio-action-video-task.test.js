@@ -38,13 +38,24 @@ test('video prompt binds exact loop closure and safe character margins', () => {
     action: { actionId: 'idle' },
     driver
   })
-  assert.match(prompt, /cream pixel-art cat with a red scarf and one blue eye/i)
-  assert.match(prompt, /appearance identity constraint/i)
-  assert.match(prompt, /must not override the requested action/i)
+  assert.match(prompt, /provided first.frame image performing idle/i)
   assert.match(prompt, /Frame 1 and the final frame must depict the same neutral pose/i)
   assert.match(prompt, /fully settle back to that exact starting state/i)
   assert.match(prompt, /at least 12 percent empty margin/i)
   assert.match(prompt, /no body part may touch or cross any image edge/i)
+})
+
+test('action video instructions cannot inherit conflicting motions from the character brief', () => {
+  const prompt = buildVideoPrompt({
+    run: { input: { petName: 'Pip', originalPrompt: 'Wave both wings, jump and fly up. Add rainbow text.' } },
+    action: { actionId: 'idle', motionPrompt: 'waving and jumping' },
+    driver: createMotionDriver({ actionId: 'idle' })
+  })
+  assert.match(prompt, /performing idle/i)
+  assert.doesNotMatch(prompt, /rainbow text|fly up|performing waving and jumping/i)
+  assert.match(prompt, /wings.*resting pose/i)
+  assert.match(prompt, /mouth or beak.*closed/i)
+  assert.doesNotMatch(createMotionDriver({ actionId: 'idle' }).framePlan.join(' '), /secondary movement/i)
 })
 
 test('video repair prompt targets the recorded temporal failure', () => {
@@ -64,7 +75,7 @@ test('video repair prompt targets the recorded temporal failure', () => {
   assert.notEqual(repair, initial)
   assert.match(repair, /repair pass/i)
   assert.match(repair, /first and final extracted frames/i)
-  assert.match(repair, /fixed camera framing and character scale/i)
+  assert.match(repair, /locked camera/i)
 })
 
 test('video repair prompt applies the actual visual evaluator failures', () => {
