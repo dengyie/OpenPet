@@ -115,10 +115,10 @@ const updateLedger = (ledger, changes) => Object.freeze({
     : ledger.reservations
 })
 
-const renewBudgetWindow = (ledger, { now = Date.now, reason = '' } = {}) => {
+const renewBudgetWindow = (ledger, { now = Date.now, reason = '', force = false } = {}) => {
   const windowStartedAtMs = toBoundedInteger(ledger.activeWindowStartedAtMs, ledger.startedAtMs)
   const currentNowMs = Math.max(windowStartedAtMs, toBoundedInteger(now(), windowStartedAtMs))
-  if (currentNowMs - windowStartedAtMs < ledger.limits.maxElapsedMs) return ledger
+  if (!force && currentNowMs - windowStartedAtMs < ledger.limits.maxElapsedMs) return ledger
   return updateLedger(ledger, {
     activeWindowStartedAtMs: currentNowMs,
     windowVersion: Math.max(1, toBoundedInteger(ledger.windowVersion, 1)) + 1,

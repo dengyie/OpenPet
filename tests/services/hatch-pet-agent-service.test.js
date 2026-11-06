@@ -889,6 +889,18 @@ test('recovery budget renewal persists a new active window without erasing usage
   assert.equal(stored.usage.providerCalls, 3)
 })
 
+test('explicit retry renewal starts a fresh active window before the prior window expires', () => {
+  const h = createHarness()
+  const runId = 'run-early-retry-window'
+  const result = h.service.renewBudgetWindow({ runId, reason: 'retry-action', force: true })
+
+  assert.equal(result.renewed, true)
+  assert.equal(result.budgetLedger.windowVersion, 2)
+  assert.equal(result.budgetLedger.renewalCount, 1)
+  assert.equal(result.budgetLedger.lastRenewalReason, 'retry-action')
+  assert.equal(JSON.parse(fs.readFileSync(path.join(h.dataDir, 'runs', runId, 'budgets', 'ledger.json'), 'utf8')).windowVersion, 2)
+})
+
 test('restoring a legacy ledger keeps an explicit null renewal timestamp null', () => {
   const h = createHarness()
   const runId = 'run-legacy-null-renewal'

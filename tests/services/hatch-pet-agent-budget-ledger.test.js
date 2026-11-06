@@ -113,6 +113,20 @@ test('renewBudgetWindow opens an explicit recovery window without resetting hist
   assert.doesNotThrow(() => reserveProviderCall(renewed, { timeoutMs: 480_000, now: () => nowMs }))
 })
 
+test('renewBudgetWindow force-opens a fresh retry window before the prior window expires', () => {
+  const nowMs = 1_000
+  const ledger = createBudgetLedger({ limits, startedAtMs: nowMs, now: () => nowMs })
+
+  const renewed = renewBudgetWindow(ledger, { now: () => nowMs, reason: 'retry-action', force: true })
+
+  assert.notEqual(renewed, ledger)
+  assert.equal(renewed.windowVersion, 2)
+  assert.equal(renewed.renewalCount, 1)
+  assert.equal(renewed.activeWindowStartedAtMs, nowMs)
+  assert.equal(renewed.lastRenewalReason, 'retry-action')
+  assert.equal(renewed.usage.providerCalls, 0)
+})
+
 test('cost overrun is recorded at settlement and enforced at the next reservation', () => {
   let nowMs = 1_000
   const cappedLimits = { ...limits, maxEstimatedCost: 1 }

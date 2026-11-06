@@ -628,7 +628,7 @@ export function createCreatorDomain({ db, shell, ai, enqueueJob, runPluginComman
 			const command = commandByOperation[operation]
 			if (!command) throw new ApiError("BACKEND_UNAVAILABLE", "This Creator step requires the desktop Shell")
 			if (["retry-action", "retry-identity"].includes(command)) {
-				await hatchPetAgent?.()?.renewBudgetWindow?.({ runId: String(input.runId || ""), reason: command })
+				await hatchPetAgent?.()?.renewBudgetWindow?.({ runId: String(input.runId || ""), reason: command, force: true })
 			}
 			const result = await runBackendCreatorCommandWithProgress(command, input, ctx)
 			const finish = () => {
