@@ -1179,6 +1179,13 @@ const runQualityFirstActionRepair = async ({
       const mirrored = await runtime.mirrorRunningLeft({ source: result, profile: effectiveProfile, canonical })
       await runtime.persistActionResult({ actionId: 'running-left', result: mirrored, canonical, profile: effectiveProfile })
       actionResults['running-left'] = createQualityFirstActionResultView(mirrored)
+    } else if (normalizedActionId === 'running-right') {
+      actionResults['running-left'] = createQualityFirstActionResultView({
+        ok: false,
+        actionId: 'running-left',
+        disposition: 'omitted',
+        failureCode: 'source_action_rejected'
+      })
     }
     const idleOk = normalizedActionId === 'idle' ? result?.ok === true : actionResults.idle?.ok === true
     const packageResult = idleOk ? await runtime.finalizePackage({ run, canonical, profile: effectiveProfile, actionResults }) : null
@@ -1195,6 +1202,7 @@ const runQualityFirstActionRepair = async ({
       ? await runtime.createRecoveryBundle({ run, actionResults, reason: 'idle_generation_failed' })
       : null
     const status = idleOk ? 'ready_for_review' : 'recovery-required'
+    const actionAccepted = result?.ok === true
     const completedRun = {
       ...generatingRun,
       ...(packageArtifacts && typeof packageArtifacts === 'object'
@@ -1205,7 +1213,12 @@ const runQualityFirstActionRepair = async ({
       currentStep: status === 'ready_for_review' ? 'review' : 'recovery',
       reviewStatus: status === 'ready_for_review' ? 'pending' : 'recovery-required',
       generationLease: undefined,
-      backendStatus: createBackendStatus({ backend: PROVIDER_BACKEND, state: status === 'ready_for_review' ? 'ready' : 'recovery-required', message: status === 'ready_for_review' ? `Action ${normalizedActionId} repaired` : 'Idle recovery required', updatedAt: now() }),
+      backendStatus: createBackendStatus({
+        backend: PROVIDER_BACKEND,
+        state: status === 'ready_for_review' ? 'ready' : 'recovery-required',
+        message: actionAccepted ? `Action ${normalizedActionId} repaired` : `Action ${normalizedActionId} still requires quality review`,
+        updatedAt: now()
+      }),
       qualityFirst: {
         ...run.qualityFirst,
         phase: status === 'ready_for_review' ? 'ready_for_review' : 'recovery-required',
@@ -1219,7 +1232,19 @@ const runQualityFirstActionRepair = async ({
       }
     }
     writeRun({ dataDir, run: completedRun })
-    appendDiagnosticRunLog({ dataDir, runId, event: 'quality-first.action.repaired', message: `Quality-first action ${normalizedActionId} repair completed`, data: { actionId: normalizedActionId, evidenceArchive }, now })
+    appendDiagnosticRunLog({
+      dataDir,
+      runId,
+      level: actionAccepted ? 'info' : 'warn',
+      event: actionAccepted ? 'quality-first.action.repaired' : 'quality-first.action.repair-rejected',
+      message: actionAccepted ? `Quality-first action ${normalizedActionId} repair completed` : `Quality-first action ${normalizedActionId} did not pass quality review`,
+      data: {
+        actionId: normalizedActionId,
+        evidenceArchive,
+        ...(!actionAccepted ? { failureCode: String(result?.failureCode || 'action_quality_gate_failed') } : {})
+      },
+      now
+    })
     return { outputDir: '', bundlePath: '', sha256: '', run: completedRun, repair: { scope: 'action', actionId: normalizedActionId, evidenceArchive } }
   } catch (error) {
     appendDiagnosticRunLog({ dataDir, runId, level: 'error', event: 'quality-first.action.repair-failed', message: `Quality-first action ${normalizedActionId} repair failed`, data: { actionId: normalizedActionId, failureCode: String(error?.code || 'action_repair_failed').replace(/[^A-Za-z0-9:_-]/g, '_').slice(0, 120) }, now })
