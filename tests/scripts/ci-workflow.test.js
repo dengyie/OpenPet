@@ -11,7 +11,7 @@ test('CI cancels superseded runs and bounds the verify job', () => {
     workflow,
     /^concurrency:\n  group: ci-\$\{\{ github\.workflow \}\}-\$\{\{ github\.event\.pull_request\.number \|\| github\.ref \}\}\n  cancel-in-progress: true$/m
   )
-  assert.match(workflow, /^  verify:\n    timeout-minutes: 30\n    runs-on: ubuntu-latest$/m)
+  assert.match(workflow, /^  verify:\n    timeout-minutes: 30\n    # Playwright 1\.60 does not publish Chromium dependencies for Ubuntu 26\.04;\n    # keep the verification runner on the supported Ubuntu 24\.04 image\.\n    runs-on: ubuntu-24\.04$/m)
 })
 
 test('CI installs Playwright Chromium before running Node tests', () => {
