@@ -281,7 +281,14 @@ const createTimeoutError = () => {
 const mergeHatchPetConfigWithoutDisplayDowngrade = (currentConfig = {}, partialConfig = {}) => {
   const current = isPlainObject(currentConfig) ? currentConfig : {}
   const partial = isPlainObject(partialConfig) ? partialConfig : {}
-  const next = { ...current, ...partial }
+  const next = {
+    ...current,
+    ...partial,
+    budgets: {
+      ...(isPlainObject(current.budgets) ? current.budgets : {}),
+      ...(isPlainObject(partial.budgets) ? partial.budgets : {})
+    }
+  }
   const currentBaseUrl = typeof current.baseUrl === 'string' ? current.baseUrl : ''
   const nextBaseUrl = typeof partial.baseUrl === 'string' ? partial.baseUrl : ''
   if (

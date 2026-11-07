@@ -55,6 +55,32 @@ test('AI key writes settle encrypted persistence before the response and key sta
   await domain.dispose()
 })
 
+test('Hatch partial budget updates preserve stored limits through the real provider and settings authority', async (t) => {
+  const { domain, patches } = await setup()
+  t.after(() => domain.dispose())
+  const budgets = {
+    maxIdentityRegenerations: 2,
+    maxActionAttemptsPerAction: 5,
+    maxEvaluationAttemptsPerArtifact: 2,
+    maxPlannerCalls: 17,
+    maxEvaluatorCalls: 68,
+    maxProviderCalls: 144,
+    maxElapsedMs: 21600000,
+    maxEstimatedCost: 12.5,
+  }
+  domain.saveConfig({ hatchPet: { enabled: true, budgets } })
+  domain.saveConfig({ hatchPet: { budgets: { maxEvaluatorCalls: 100 } } })
+  const expected = { ...budgets, maxEvaluatorCalls: 100 }
+  assert.deepEqual(domain.getHatchConfig().budgets, expected)
+  assert.deepEqual(patches.at(-1).patch.ai.hatchPet.budgets, expected)
+  assert.equal(domain.getHatchConfig().enabled, true)
+
+  domain.saveConfig({ hatchPet: { requireIdentityReviewBeforeActions: true } })
+  assert.deepEqual(domain.getHatchConfig().budgets, expected)
+  domain.saveConfig({ hatchPet: { budgets: { maxEstimatedCost: null } } })
+  assert.deepEqual(domain.getHatchConfig().budgets, { ...expected, maxEstimatedCost: null })
+})
+
 test('AI backend cancellation aborts the matching provider and does not persist partial messages', async () => {
   let started
   const ready = new Promise((resolve) => { started = resolve })
