@@ -10,7 +10,8 @@ const { createVideoCandidateArtifacts } = require('./video-action-runner')
 
 const RENDERER = 'canonical-support-rig-v1'
 const RIG_TYPE_BY_ACTION = Object.freeze({
-  jumping: 'continuous-lower-support'
+  jumping: 'continuous-lower-support',
+  review: 'continuous-head-inspection'
 })
 const error = (message, code = 'canonical_rig_invalid') => Object.assign(new Error(message), { code })
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex')
@@ -49,6 +50,70 @@ const processedFiles = processed => [
   ...['rawSheet', 'processedSheet', 'contactSheet', 'gif'].map(role => processed?.[role])
 ]
 
+// Inverse-map a continuous upper-body field rather than cutting out a head:
+// the neck blends into the untouched torso, with no new pixels or seams.
+const renderInspectionFrames = async ({ source, width, height, outputDir, transforms, signal }) => {
+  const scale = Math.min(512 * 0.74 / height, 512 * 0.70 / width)
+  const targetWidth = Math.round(width * scale)
+  const targetHeight = Math.round(height * scale)
+  const posed = await sharp(source).resize({ width: targetWidth, height: targetHeight, fit: 'fill' }).png().toBuffer()
+  const base = await sharp({ create: { width: 512, height: 512, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite([{ input: posed, left: Math.round((512 - targetWidth) / 2), top: 450 - targetHeight }]).ensureAlpha().raw().toBuffer()
+  const pivotX = 256
+  const pivotY = 450 - targetHeight * 0.55
+  const blendEndY = 450 - targetHeight * 0.44
+  const blendHeight = targetHeight * 0.24
+  const weightAt = y => {
+    const t = Math.max(0, Math.min(1, (blendEndY - y) / blendHeight))
+    return t * t * (3 - 2 * t)
+  }
+  const frames = []
+  for (const [index, transform] of transforms.entries()) {
+    canceled(signal)
+    const output = Buffer.from(base)
+    if (transform.headTiltDegrees || transform.nodOffset) {
+      for (let y = 0; y < Math.ceil(blendEndY); y++) {
+        canceled(signal)
+        for (let x = 0; x < 512; x++) {
+          let sx = x
+          let sy = y
+          for (let iteration = 0; iteration < 4; iteration++) {
+            const weight = weightAt(sy)
+            const angle = transform.headTiltDegrees * Math.PI / 180 * weight
+            const dx = x - pivotX
+            const dy = y - pivotY - transform.nodOffset * targetHeight * weight
+            sx = pivotX + Math.cos(angle) * dx + Math.sin(angle) * dy
+            sy = pivotY - Math.sin(angle) * dx + Math.cos(angle) * dy
+          }
+          const offset = (y * 512 + x) * 4
+          output.fill(0, offset, offset + 4)
+          const left = Math.floor(sx)
+          const top = Math.floor(sy)
+          let alpha = 0
+          const rgb = [0, 0, 0]
+          for (let oy = 0; oy <= 1; oy++) for (let ox = 0; ox <= 1; ox++) {
+            const px = left + ox
+            const py = top + oy
+            if (px < 0 || px >= 512 || py < 0 || py >= 512) continue
+            const sample = (py * 512 + px) * 4
+            const coverage = (ox ? sx - left : 1 - sx + left) * (oy ? sy - top : 1 - sy + top) * base[sample + 3]
+            alpha += coverage
+            for (let channel = 0; channel < 3; channel++) rgb[channel] += base[sample + channel] * coverage
+          }
+          if (alpha > 0) {
+            for (let channel = 0; channel < 3; channel++) output[offset + channel] = Math.round(rgb[channel] / alpha)
+            output[offset + 3] = Math.round(alpha)
+          }
+        }
+      }
+    }
+    const file = path.join(outputDir, `source-${index + 1}.png`)
+    await sharp(output, { raw: { width: 512, height: 512, channels: 4 } }).png().toFile(file)
+    frames.push(file)
+  }
+  return frames
+}
+
 const renderCanonicalSupportRig = async ({ dataDir, canonical, action, characterClass = 'grounded-compact-character', outputRelativeDir, profile = {}, signal } = {}) => {
   canceled(signal)
   dataDir = fs.realpathSync(dataDir)
@@ -73,7 +138,14 @@ const renderCanonicalSupportRig = async ({ dataDir, canonical, action, character
   const driver = createMotionDriver({ actionId: action.actionId, motionPresetId: action.motionPresetId, motionParameters: action.motionParameters })
   if (action.frameCount !== driver.frameCount) throw error('Canonical rig action frame count does not match the registered driver')
   const motionScale = driver.motionParameters.intensity === 'subtle' ? 0.85 : 1
-  const transforms = [
+  const transforms = action.actionId === 'review' ? [
+    { phase: 'neutral', headTiltDegrees: 0, nodOffset: 0 },
+    { phase: 'inspect-left', headTiltDegrees: -14, nodOffset: 0 },
+    { phase: 'compare-right', headTiltDegrees: 14, nodOffset: 0 },
+    { phase: 'acknowledge-nod', headTiltDegrees: 0, nodOffset: 0.075 },
+    { phase: 'recover', headTiltDegrees: 0, nodOffset: 0.025 },
+    { phase: 'neutral-return', headTiltDegrees: 0, nodOffset: 0 }
+  ].map(transform => ({ ...transform, headTiltDegrees: transform.headTiltDegrees * motionScale, nodOffset: transform.nodOffset * motionScale })) : [
     { phase: 'anticipation', lift: -0.015, supportScaleY: 0.72 },
     { phase: 'takeoff', lift: 0.12, supportScaleY: 1.08 },
     { phase: 'airborne-peak', lift: 0.29, supportScaleY: 0.94 },
@@ -86,7 +158,8 @@ const renderCanonicalSupportRig = async ({ dataDir, canonical, action, character
   const assemblyWidth = width
   const scale = Math.min(512 * 0.58 / height, 512 * 0.70 / assemblyWidth)
   const framePaths = []
-  for (const [index, transform] of transforms.entries()) {
+  if (action.actionId === 'review') framePaths.push(...await renderInspectionFrames({ source, width, height, outputDir, transforms, signal }))
+  else for (const [index, transform] of transforms.entries()) {
     canceled(signal)
     const lowerHeight = Math.max(1, Math.round((height - split) * transform.supportScaleY))
     const support = await sharp(lower).resize({ width, height: lowerHeight, fit: 'fill' }).png().toBuffer()
@@ -114,7 +187,9 @@ const renderCanonicalSupportRig = async ({ dataDir, canonical, action, character
   const manifest = {
     version: 1, renderer: RENDERER, actionId: action.actionId,
     source: { relativePath: canonical.relativePath, sha256: canonical.sha256, width: info.width, height: info.height, bounds: b },
-    rig: { type: RIG_TYPE_BY_ACTION[action.actionId], splitY: b.minY + split, assemblyPadding: 0 },
+    rig: action.actionId === 'review'
+      ? { type: RIG_TYPE_BY_ACTION[action.actionId], pivotX: 0.5, pivotHeightRatio: 0.55, blendEndHeightRatio: 0.44, blendHeightRatio: 0.24, interpolation: 'premultiplied-bilinear', inverseIterations: 4 }
+      : { type: RIG_TYPE_BY_ACTION[action.actionId], splitY: b.minY + split, assemblyPadding: 0 },
     driver, transforms,
     sourceFrames: framePaths.map(file => ({ relativePath: relative(dataDir, file), sha256: fileHash(file) })), runtimeFrames,
     processed: {

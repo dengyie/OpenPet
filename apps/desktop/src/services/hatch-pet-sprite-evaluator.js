@@ -380,6 +380,7 @@ const createSpriteEvaluatorRequest = async ({ scope, board, qa = {}, profile, re
       'Evaluate actionReadability against the specified action intent and ordered motion phases; do not guess a different action from the images.',
       'Evaluate idle against its declared frame plan; a natural blink with a still body is a complete idle action. Do not require a wave, translation, or large gesture.',
       ...(actionIntent.actionId === 'running' ? ['The internal actionId running means stationary task-processing or focused work; evaluate the declared in-place working gesture. Locomotion uses running-right and running-left.'] : []),
+      ...(actionIntent.actionId === 'review' ? ['The internal actionId review means deliberate inspection and comparison followed by a decision beat. Head-led observation and an acknowledgement nod are valid gestures; judge whether those phases are visibly clear in both detail and runtime frames.'] : []),
       'Distinguish intended pose and expression changes from unintended anatomy, identity, or rendering-style drift. Keep all quality thresholds in force.'
     ] : []),
     ...(regionSummary.some(region => region.role === 'runtime-frame') ? [

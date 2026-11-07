@@ -1,5 +1,14 @@
 # OpenPet Mesh Backend
 
+### 2026-11-08 current verification
+
+- Guangzhou runs main `37fa38da` (PR134), ready/resident; main CI42407337581 succeeded. Rollback `/var/backups/openpet/20261107T194259Z-37fa38da` is retained. The source archive SHA256 is `aec1a02ced0a5b157b07971e1bdd025f26da89df60f94b11a9544819b6dea065`. Four formal data hashes remain unchanged and all14 recorded source hashes match.
+- The Creator state HTTPS timeout is fixed: fresh authenticated status200 in772ms, sprite/final-board previews200 with matching retained hashes. Unauthenticated/revoked sessions401 and unauthorized settings403. Formal Pip remains6/9; right/left, review and final acceptance remain open.
+- User authorized32 additional evaluator calls, cap100→132. A SQLite backup preceded the single-field settings PATCH; Provider cap144 and ledger bytes were preserved. Current usage118 Provider/1 planner/102 evaluator, no reservations or reset.
+- Review-rig-v1 passed technical gates but readability76/overall89 was rejected. New v2 source pixels use14-degree head observation and a7.5%-height acknowledgement nod. A single real evaluation passed: identity97/readability88/crossFrame96/crossAction96/smallScale93/style97/overall94, no defects; boardSHA `dbd200934c55e70a1352b75de32cac0f94f02e2c3400f6f331865ce8f39e1c99`. Both probes are retained under the formal run's `probes/`; calls count in its ledger, artifacts are not promoted.
+- Review support adds a continuous head field and unchanged technical/visual/row/provenance gates. The registered plan/driver hash stays unchanged; only review processor15→16. Passing probe evidence is not formal acceptance. Guangzhou isolated final-source regressions72/72, documentation76/76, syntax/typecheck/build, contracts/API and docs-drift checks pass. Full CI, deployment and formal regeneration remain pending. No workstation UI, threshold reduction or override.
+
+
 > **速读 / 当前边界**：OpenPet 的 Backend host 运行在广州 CVM `gz-cvm`，只监听 `127.0.0.1:48330`；桌面端通过 EasyTier 上的 `ssh gz-cvm` 建立 `-L` API 与 `-R` Shell bridge。公网安全组、DNS 和公网端口均不需要变更。
 
 ## 当前状态（2026-11-08）

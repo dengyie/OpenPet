@@ -196,6 +196,22 @@ test('work-state evaluator resolves the running identifier as stationary task pr
   assert.equal(payload.actionIntent.actionId, 'running')
 })
 
+test('review-state evaluator uses inspection semantics while retaining the registered plan and quality thresholds', async () => {
+  const boardDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-review-intent-'))
+  const boardPath = path.join(boardDir, 'board.png')
+  await sharp({ create: { width: 128, height: 128, channels: 4, background: '#eee' } }).png().toFile(boardPath)
+  const profile = getQualityFirstQualityProfile()
+  const driver = require('../../examples/plugins/creator-studio/lib/motion-driver-registry').createMotionDriver({ actionId: 'review' })
+  const actionIntent = { actionId: 'review', loop: driver.loop, frameCount: driver.frameCount, framePlan: driver.framePlan }
+  const request = await createSpriteEvaluatorRequest({ scope: 'grounded-action', board: { path: boardPath, regions: REGIONS }, profile, qa: { actionIntent } })
+  assert.match(request.messages[0].content, /review.*inspection.*comparison/i)
+  assert.match(request.messages[0].content, /head.*observation.*acknowledgement/i)
+  assert.match(request.messages[0].content, /Keep all quality thresholds in force/)
+  const payload = JSON.parse(request.messages[1].content.find(part => part.type === 'text').text)
+  assert.deepEqual(payload.actionIntent, actionIntent)
+  assert.deepEqual(payload.minimumScores, profile.visual.groundedAction)
+})
+
 test('evaluation evidence is atomically stored under dataDir with a relative path', () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-sprite-evaluation-'))
   const relativePath = recordSpriteEvaluation({
