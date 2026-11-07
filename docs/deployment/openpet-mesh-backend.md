@@ -4,7 +4,7 @@
 
 ## 当前状态（2026-11-07）
 
-广州已部署main `cf9a0b35`（PR129，main CI42375000156成功），health ready/resident；回滚 `/var/backups/openpet/20261107T130824Z-cf9a0b35` 保留，root约1.4GiB。resident Backend使用服务器凭据持续工作。正式Pip已5/9（idle/waving/jumping/failed/waiting），Provider144与授权Evaluator100已配置，failed恢复后历史101/1/81保留；waiting已通过；工作/检查态具体动作修复待部署。四动作及最终质量门未完成。部分budget PATCH重置其他字段的问题已有本地回归及最小修复，待CI/部署；见[当前证据](../release-evidence/remote-backend/2026-11-07-locomotion-budget-admission.md)。额外旧快照检查时已不存在，没有删除或替代删除。
+广州已部署main `34cf3f5f`（PR131，main CI42393867636成功），health ready/resident；回滚 `/var/backups/openpet/20261107T171052Z-34cf3f5f` 保留，root约1.4GiB。resident Backend使用服务器凭据持续工作。正式Pip已5/9（idle/waving/jumping/failed/waiting），Provider144与授权Evaluator100已配置，failed恢复后历史108/1/90保留；waiting已通过；工作/检查态v14仍失败；重复包评估/工作态评估语义修复待部署。四动作及最终质量门未完成。部分budget PATCH已线上验证修复，新的重复评估/动作语义修复待CI/部署；见[当前证据](../release-evidence/remote-backend/2026-11-07-locomotion-budget-admission.md)。额外旧快照检查时已不存在，没有删除或替代删除。
 
 ## 拓扑与端口
 
