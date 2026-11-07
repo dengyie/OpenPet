@@ -1,6 +1,7 @@
 const crypto = require('node:crypto')
 const fs = require('node:fs')
 const path = require('node:path')
+const { normalizeRigProvenance, readCanonicalRigManifest } = require('./canonical-support-rig')
 
 const SAFE_SEGMENT = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/
 const sha256File = (filePath) => crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex')
@@ -127,7 +128,7 @@ const sanitizeBindings = (value) => {
   }
   return bindings
 }
-const sanitizeCandidate = ({ dataDir, candidate }) => {
+const sanitizeCandidate = ({ dataDir, candidate, actionId }) => {
   const source = candidate && typeof candidate === 'object' ? candidate : {}
   const candidateId = normalizeSegment(source.candidateId, 'candidateId')
   const sha256 = sanitizeSha256(source.sha256)
@@ -150,6 +151,13 @@ const sanitizeCandidate = ({ dataDir, candidate }) => {
   const modelAttempts = sanitizeModelAttempts(source.modelAttempts)
   const selection = sanitizeSelection({ value: source.selection, candidateId, sha256 })
   const bindings = sanitizeBindings(source.bindings)
+  const provenance = normalizeRigProvenance(source.provenance)
+  if (provenance) {
+    const manifestArtifact = artifacts.find(artifact => artifact.role === 'rig-manifest')
+    if (manifestArtifact?.relativePath !== provenance.manifest.relativePath || manifestArtifact.sha256 !== provenance.manifest.sha256) throw new Error('Candidate rig provenance must match its retained manifest artifact')
+    const manifest = readCanonicalRigManifest({ dataDir, provenance, actionId, canonicalSha256: bindings?.canonicalHash })
+    if (sha256 && sha256 !== manifest.processed.rawSheet.sha256) throw new Error('Candidate rig raw sheet hash does not match its manifest')
+  }
   return {
     candidateId,
     ...(sha256 ? { sha256 } : {}),
@@ -172,6 +180,7 @@ const sanitizeCandidate = ({ dataDir, candidate }) => {
     ...(source.technicalFailureCodes ? { technicalFailureCodes: sanitizeFailures(source.technicalFailureCodes) } : {}),
     ...(source.qualityWarningCodes ? { qualityWarningCodes: sanitizeFailures(source.qualityWarningCodes) } : {}),
     ...(bindings ? { bindings } : {}),
+    ...(provenance ? { provenance } : {}),
     ...(selection ? { selection } : {}),
     ...(modelAttempts.length ? { modelAttempts } : {}),
     ...(source.evaluation && typeof source.evaluation === 'object' ? { evaluation: {
@@ -186,7 +195,7 @@ const sanitizeCandidate = ({ dataDir, candidate }) => {
 const writeCandidateRecord = ({ dataDir, runId, scope, candidate } = {}) => {
   const normalizedRunId = normalizeSegment(runId, 'runId')
   const normalizedScope = normalizeSegment(scope, 'scope')
-  const safeCandidate = sanitizeCandidate({ dataDir, candidate })
+  const safeCandidate = sanitizeCandidate({ dataDir, candidate, actionId: normalizedScope.startsWith('action-') ? normalizedScope.slice(7) : undefined })
   const relativePath = path.join('runs', normalizedRunId, 'candidates', normalizedScope, safeCandidate.candidateId, 'candidate.json').replace(/\\/g, '/')
   const targetPath = path.resolve(dataDir, relativePath)
   writeAtomic(targetPath, { version: 1, runId: normalizedRunId, scope: normalizedScope, candidate: safeCandidate })

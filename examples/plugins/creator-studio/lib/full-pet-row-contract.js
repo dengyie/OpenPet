@@ -23,6 +23,7 @@ const OFFICIAL_FULL_PET_ACTION_IDS = Object.freeze(
 const FULL_PET_ROW_QUALITY = Object.freeze({
   ROW_REAL: 'row-real',
   APPROVED_MIRROR: 'approved-mirror',
+  APPROVED_RIG: 'approved-rig',
   PREVIEW_FALLBACK: 'preview-fallback',
   PENDING: 'pending',
   FAILED: 'failed'
