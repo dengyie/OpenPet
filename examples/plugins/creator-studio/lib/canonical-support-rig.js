@@ -10,8 +10,7 @@ const { createVideoCandidateArtifacts } = require('./video-action-runner')
 
 const RENDERER = 'canonical-support-rig-v1'
 const RIG_TYPE_BY_ACTION = Object.freeze({
-  jumping: 'continuous-lower-support',
-  'running-right': 'gait-lower-support'
+  jumping: 'continuous-lower-support'
 })
 const error = (message, code = 'canonical_rig_invalid') => Object.assign(new Error(message), { code })
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex')
@@ -74,45 +73,26 @@ const renderCanonicalSupportRig = async ({ dataDir, canonical, action, character
   const driver = createMotionDriver({ actionId: action.actionId, motionPresetId: action.motionPresetId, motionParameters: action.motionParameters })
   if (action.frameCount !== driver.frameCount) throw error('Canonical rig action frame count does not match the registered driver')
   const motionScale = driver.motionParameters.intensity === 'subtle' ? 0.85 : 1
-  const transforms = action.actionId === 'jumping'
-    ? [
-        { phase: 'anticipation', lift: -0.015, supportScaleY: 0.72 },
-        { phase: 'takeoff', lift: 0.12, supportScaleY: 1.08 },
-        { phase: 'airborne-peak', lift: 0.29, supportScaleY: 0.94 },
-        { phase: 'landing', lift: -0.017, supportScaleY: 0.70 },
-        { phase: 'grounded-recovery', lift: 0, supportScaleY: 1 }
-      ].map(transform => ({ ...transform, lift: transform.lift * motionScale, supportScaleY: 1 + (transform.supportScaleY - 1) * motionScale }))
-    : [
-        { phase: 'contact', lift: 0, supportScaleY: 1, supportOffsetX: 0.035, rootShiftX: 0 },
-        { phase: 'down', lift: -0.012, supportScaleY: 0.96, supportOffsetX: -0.030, rootShiftX: 0.015 },
-        { phase: 'passing', lift: 0.008, supportScaleY: 1.04, supportOffsetX: 0.025, rootShiftX: 0.025 },
-        { phase: 'up', lift: 0.014, supportScaleY: 1.02, supportOffsetX: -0.020, rootShiftX: 0.012 },
-        { phase: 'opposite-contact', lift: 0, supportScaleY: 1, supportOffsetX: -0.035, rootShiftX: 0 },
-        { phase: 'opposite-down', lift: -0.012, supportScaleY: 0.96, supportOffsetX: 0.030, rootShiftX: -0.015 },
-        { phase: 'opposite-passing', lift: 0.008, supportScaleY: 1.04, supportOffsetX: -0.025, rootShiftX: -0.025 },
-        { phase: 'loop-close', lift: 0.014, supportScaleY: 1.02, supportOffsetX: 0.020, rootShiftX: -0.012 }
-      ].map(transform => ({
-        ...transform,
-        lift: transform.lift * motionScale,
-        supportScaleY: 1 + (transform.supportScaleY - 1) * motionScale,
-        supportOffsetX: transform.supportOffsetX * motionScale,
-        rootShiftX: transform.rootShiftX * motionScale
-      }))
+  const transforms = [
+    { phase: 'anticipation', lift: -0.015, supportScaleY: 0.72 },
+    { phase: 'takeoff', lift: 0.12, supportScaleY: 1.08 },
+    { phase: 'airborne-peak', lift: 0.29, supportScaleY: 0.94 },
+    { phase: 'landing', lift: -0.017, supportScaleY: 0.70 },
+    { phase: 'grounded-recovery', lift: 0, supportScaleY: 1 }
+  ].map(transform => ({ ...transform, lift: transform.lift * motionScale, supportScaleY: 1 + (transform.supportScaleY - 1) * motionScale }))
   canceled(signal)
   if (fs.existsSync(outputDir)) throw error('Canonical rig output already exists')
   fs.mkdirSync(outputDir, { recursive: true })
-  const assemblyPadding = action.actionId === 'running-right' ? Math.ceil(width * 0.08) : 0
-  const assemblyWidth = width + assemblyPadding * 2
+  const assemblyWidth = width
   const scale = Math.min(512 * 0.58 / height, 512 * 0.70 / assemblyWidth)
   const framePaths = []
   for (const [index, transform] of transforms.entries()) {
     canceled(signal)
     const lowerHeight = Math.max(1, Math.round((height - split) * transform.supportScaleY))
     const support = await sharp(lower).resize({ width, height: lowerHeight, fit: 'fill' }).png().toBuffer()
-    const supportOffset = Math.round(Number(transform.supportOffsetX || 0) * width)
     const assembled = await sharp({ create: { width: assemblyWidth, height: split + lowerHeight, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite([
-      { input: upper, left: assemblyPadding, top: 0 },
-      { input: support, left: assemblyPadding + supportOffset, top: split }
+      { input: upper, left: 0, top: 0 },
+      { input: support, left: 0, top: split }
     ]).png().toBuffer()
     const targetWidth = Math.max(1, Math.round(width * scale))
     const targetHeight = Math.max(1, Math.round((split + lowerHeight) * scale))
@@ -120,8 +100,7 @@ const renderCanonicalSupportRig = async ({ dataDir, canonical, action, character
     const file = path.join(outputDir, `source-${index + 1}.png`)
     const top = Math.round(450 - transform.lift * height * scale - targetHeight)
     if (top <= 0 || top + targetHeight >= 512) throw error('Canonical rig phase exceeds the declared canvas')
-    const rootShiftX = Math.round(Number(transform.rootShiftX || 0) * width * scale)
-    await sharp({ create: { width: 512, height: 512, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite([{ input: posed, left: Math.round((512 - targetWidth) / 2) + rootShiftX, top }]).png().toFile(file)
+    await sharp({ create: { width: 512, height: 512, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite([{ input: posed, left: Math.round((512 - targetWidth) / 2), top }]).png().toFile(file)
     framePaths.push(file)
   }
   const normalized = await processFrameSequence({ framePaths, outputDir: path.join(outputDir, 'normalized'), canvasWidth: 512, canvasHeight: 512, backgroundMode: 'source-alpha', anchorPolicy: action.anchorPolicy, targetStandingHeightRatio: (Number(profile.runtimeStandingHeightPx) || 92) / (Number(profile.runtimeCell?.height) || 128), signal })
@@ -135,7 +114,7 @@ const renderCanonicalSupportRig = async ({ dataDir, canonical, action, character
   const manifest = {
     version: 1, renderer: RENDERER, actionId: action.actionId,
     source: { relativePath: canonical.relativePath, sha256: canonical.sha256, width: info.width, height: info.height, bounds: b },
-    rig: { type: RIG_TYPE_BY_ACTION[action.actionId], splitY: b.minY + split, assemblyPadding },
+    rig: { type: RIG_TYPE_BY_ACTION[action.actionId], splitY: b.minY + split, assemblyPadding: 0 },
     driver, transforms,
     sourceFrames: framePaths.map(file => ({ relativePath: relative(dataDir, file), sha256: fileHash(file) })), runtimeFrames,
     processed: {

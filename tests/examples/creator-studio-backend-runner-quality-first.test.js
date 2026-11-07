@@ -796,7 +796,7 @@ for (const actionId of ['idle', 'waving']) test(`quality-first ${actionId} retry
   assert.deepEqual(failed.qualityFirst.actionResults[actionId], previousFailure)
 })
 
-for (const processorVersion of [1, 2, 3, 4]) test(`manual action selection reuses processor ${processorVersion} retained candidates without Provider generation`, async () => {
+for (const processorVersion of [1, 2, 3, 4, 13]) test(`manual action selection reuses processor ${processorVersion} retained candidates without Provider generation`, async () => {
   const dataDir = createDataDir()
   const created = createRun({
     dataDir,
@@ -860,7 +860,8 @@ for (const processorVersion of [1, 2, 3, 4]) test(`manual action selection reuse
   } })
   const calls = []
   const runtime = {
-    actionProcessorVersion: processorVersion,
+    actionProcessorVersion: 99,
+    processorVersionForAction: (actionId) => { assert.equal(actionId, 'waving'); return processorVersion },
     runAction: async () => { throw new Error('manual selection must not call Provider generation') },
     materializeActionCandidate: async ({ actionId, candidate }) => {
       calls.push(['materialize', actionId, candidate.candidateId, candidate.selection.selectionAuthority])

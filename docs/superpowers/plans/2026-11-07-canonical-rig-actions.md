@@ -8,6 +8,10 @@
 
 **Tech Stack:** Existing Node, sharp, native test runner, Creator bridge and QA; no new dependencies or model downloads.
 
+## Current checkpoint (2026-11-07)
+
+PR125/126已合入main `b56c17ef`并部署，main CI42328906292成功。正式Pip idle/waving/jumping已接受（3/9）；右跑strip rig正式可读性8，paired-leg探针42，均未通过，新修复移除右跑rig入口。周期采样探针overall84仍失败；不据此声称跑步完成。Evaluator68/68耗尽、Provider92/144保留，额外评估预算决定待答复。root约3.3GiB；具体授权的额外快照已不存在，未删除。后续状态以[当前证据](../../release-evidence/remote-backend/2026-11-07-locomotion-budget-admission.md)为准，以下早期检查点保留历史。
+
 ## Global constraints
 
 - Keep existing quality thresholds and current accepted action evidence.
@@ -36,7 +40,7 @@ Files: `lib/host-model-bridge.js`, `lib/sprite-candidate-store.js`, `lib/full-pe
 - [x] Carry a bounded provenance object and hashed rig manifest artifact through candidate records, checkpoints, reuse and package metadata. Revalidate retained artifacts before reuse; preserve Provider checkpoints without regenerating accepted actions.
 - [x] Add `approved-rig` official row quality with manifest validation and original row QA. Reject a rig label without valid source manifest. Include per-action generation origin in final pet metadata.
 - [x] Update `docs/pet-character-generation.md` to permit audited canonical rigs for official rows while copied idle/transform-only preview placeholders remain excluded. Document supported renderers honestly.
-- [ ] Full core/UI on VPS/CI before merge. Focused regressions pass165 (one local ffmpeg skip), Guangzhou host suite passes39 with no skip, and contracts/API/typecheck/syntax/docs gates pass.
+- [x] Initial rig core/UI and CI completed before PR125/126 merge. Current sampling/budget changes require a fresh final-source pass. Focused regressions pass165 (one local ffmpeg skip), Guangzhou host suite passes39 with no skip, and contracts/API/typecheck/syntax/docs gates pass.
 
 ## 3. Real evidence and remaining actions
 
@@ -51,7 +55,7 @@ Files: `lib/host-model-bridge.js`, `lib/sprite-candidate-store.js`, `lib/full-pe
 - Fresh red evidence: padded composite pixel mismatch (22 RGB channels differ by one), retained selection rescaling audited frames, and missing portable export. Fixed with separate whole padded hashes, manifest-based restoration and complete export.
 - Local rig tests: 11 pass, one ffmpeg-dependent integration skipped because no workstation codec binary is installed.
 - Guangzhou isolated production-host integration: pass with the existing ffmpeg/ffprobe, native MPEG-4 fixture, mocked Provider/evaluator responses and real downstream rendering, row QA, packaging, checkpoint and archive selection. No real API spend for this regression.
-- Earlier fresh general renderer probe: real evaluator identity98/readability92/crossFrame97/crossAction97/smallScale96/style98/overall96, technical and row gates pass, zero Provider + one evaluator. This is isolated evidence only; formal Pip remains 2/9.
+- Earlier fresh general renderer probe: real evaluator identity98/readability92/crossFrame97/crossAction97/smallScale96/style98/overall96, technical and row gates pass, zero Provider + one evaluator. This is isolated evidence only; formal Pip was 2/9 at that earlier checkpoint; it is now3/9.
 
 - Fresh Guangzhou host/candidate suite: 39/39, zero skipped; local focused QA/candidate/checkpoint/atlas/video suites: 165 passed, one codec skip. Contracts build, API/channel reconciliation, documentation drift, JavaScript syntax, TypeScript and Control Center build all pass. Full core/UI CI is pending.
 

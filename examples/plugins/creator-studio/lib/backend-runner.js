@@ -890,7 +890,9 @@ const acceptQualityFirstActionCandidate = async ({
     plan,
     canonical,
     profile,
-    processorVersion: runtime.actionProcessorVersion || 1
+    processorVersion: typeof runtime.processorVersionForAction === 'function'
+      ? runtime.processorVersionForAction(normalizedActionId)
+      : runtime.actionProcessorVersion || 1
   })
   assertHumanCandidateSelection({
     candidate,

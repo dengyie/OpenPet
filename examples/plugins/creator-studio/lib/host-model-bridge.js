@@ -1,7 +1,7 @@
 const { callBridge } = require('./bridge-client')
 const { appendRunLog } = require('./run-store')
 const { FULL_PET_WORKFLOW_MAX_DURATION_MS } = require('./full-pet-workflow-contract')
-const { areSpriteCandidatesDuplicates, runQualityFirstAction } = require('./quality-first-action-runner')
+const { areSpriteCandidatesDuplicates, isHatchPetBudgetError, runQualityFirstAction } = require('./quality-first-action-runner')
 const { createMotionDriver } = require('./motion-driver-registry')
 const { archiveCandidateRevision, writeCandidateRecord } = require('./sprite-candidate-store')
 const { createQualityFirstFullPetOrchestrator } = require('./quality-first-full-pet-orchestrator')
@@ -1923,6 +1923,7 @@ const generateActionKeyframe = async ({
       })
     }
   } catch (error) {
+    if (isHatchPetBudgetError(error)) throw error
     const modelAttempts = Array.isArray(error?.modelAttempts)
       ? error.modelAttempts
       : Array.isArray(attempt?.attempts)
@@ -3197,6 +3198,13 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
   // Processing bindings also cover evaluator semantics. Older checkpoints
   // were scored without action intent or generated from conflicting motion text.
   const actionProcessorVersion = useVideoActionPipeline ? 12 : 4
+  // Locomotion sampling changes must not invalidate other accepted actions or
+  // the idle-owned scale profile. Mirrored left frames share the right version.
+  const processorVersionForAction = (actionId) => (
+    useVideoActionPipeline && (actionId === 'running-right' || actionId === 'running-left')
+      ? 13
+      : actionProcessorVersion
+  )
   const sourceReference = resolveOriginalReferenceImage({ dataDir, run })
   if (!isUsableLocalReferenceImage({ dataDir, referenceImage: sourceReference })) {
     throw createProviderReferenceContractError('reference_image_required', 'Quality-first generation requires one usable local reference image')
@@ -3319,6 +3327,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
         failureCodes: eligible ? [] : [cutout.failureCondition || 'canonical-technical-qa-failed']
       }
     } catch (error) {
+      if (isHatchPetBudgetError(error)) throw error
       return createFailedCanonicalCandidate({
         candidateId,
         promptRelativePath,
@@ -3370,7 +3379,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
       planHash: plan.hash,
       canonicalHash: canonical?.sha256,
       profileHash: actionProfile?.hash,
-        processorVersion: actionProcessorVersion,
+      processorVersion: processorVersionForAction(actionId),
       qualityProfileHash: qualityProfile.hash,
       requireBindings: true
     })
@@ -3392,6 +3401,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
         actionId,
         disposition: 'accepted',
         checkpointReused: true,
+        processorVersion: processorVersionForAction(actionId),
         diversityStatus: reusable.diversityStatus || 'sufficient',
         warningCodes: Array.isArray(reusable.warningConditions) ? reusable.warningConditions : [],
         distinctCandidateCount: Math.max(0, Number(reusable.distinctCandidateCount) || 0),
@@ -3530,7 +3540,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
                 planHash: plan.hash,
                 canonicalHash: canonical.sha256,
                 profileHash: actionId === 'idle' ? '' : String(actionProfile?.hash || ''),
-                processorVersion: actionProcessorVersion,
+                processorVersion: processorVersionForAction(actionId),
                 qualityProfileHash: qualityProfile.hash
               },
               artifacts: collectQualityFirstCandidateArtifacts({ dataDir, candidate })
@@ -3540,7 +3550,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
         },
         archiveCandidateRevision: async () => archiveCandidateRevision({ dataDir, runId: run.runId, scope: `action-${actionId}`, reason: 'video-action-repair' })
       })
-      return { ...runner, processorVersion: actionProcessorVersion }
+      return { ...runner, processorVersion: processorVersionForAction(actionId) }
     }
     const anchorPath = path.join(dataDir, `runs/${run.runId}/references/${actionId}/anchor-grid.png`)
     const boardPath = path.join(dataDir, `runs/${run.runId}/references/${actionId}/action-reference-board.png`)
@@ -3601,7 +3611,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
               planHash: plan.hash,
               canonicalHash: canonical.sha256,
               profileHash: actionId === 'idle' ? '' : String(actionProfile?.hash || ''),
-              processorVersion: actionProcessorVersion,
+              processorVersion: processorVersionForAction(actionId),
               qualityProfileHash: qualityProfile.hash
             },
             artifacts: collectQualityFirstCandidateArtifacts({ dataDir, candidate })
@@ -3611,7 +3621,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
       },
       archiveCandidateRevision: async () => archiveCandidateRevision({ dataDir, runId: run.runId, scope: `action-${actionId}`, reason: 'reason-directed-repair' })
     })
-    return { ...runner, processorVersion: actionProcessorVersion }
+    return { ...runner, processorVersion: processorVersionForAction(actionId) }
   }
   const materializeActionCandidate = async ({ actionId, candidate, profile, canonical }) => {
     const action = plan.actions.find((entry) => entry.actionId === actionId)
@@ -3687,6 +3697,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
       ok: true,
       actionId,
       disposition: 'accepted-by-human',
+      processorVersion: processorVersionForAction(actionId),
       selectedCandidateId: selectedCandidate.candidateId,
       selectedCandidate,
       selection: candidate.selection,
@@ -3756,7 +3767,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
         planHash: String(plan.hash || '').slice(0, 128),
         canonicalHash: String(canonical?.sha256 || '').slice(0, 128),
         profileHash: String(profile?.hash || '').slice(0, 128),
-        processorVersion: actionProcessorVersion,
+        processorVersion: processorVersionForAction(actionId),
         qualityProfileHash: String(qualityProfile?.hash || '').slice(0, 128)
       },
       row: packagedFrames.length > 0 ? {
@@ -3898,6 +3909,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
       ok: mirroredFrames.length === sourceFrames.length && mirroredFrames.length > 0,
       actionId: 'running-left',
       mirroredFrom: 'running-right',
+      processorVersion: processorVersionForAction('running-left'),
       selectedCandidateId: `${source.selectedCandidateId || 'running-right'}-mirror`,
       selectedCandidate: {
         model: selected?.model || '',
@@ -3972,6 +3984,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
   return {
     plan,
     actionProcessorVersion,
+    processorVersionForAction,
     planResult,
     // Web Backend runs always pause for an explicit identity choice before any
     // action generation. Desktop runs retain the planner's normal policy.

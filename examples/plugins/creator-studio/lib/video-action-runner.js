@@ -386,7 +386,7 @@ const runVideoAction = async ({
   if (!output?.dataRelativePath) throw runnerError('Video Provider returned no output', 'video_provider_invalid_response')
   const rawPath = path.resolve(dataDir, ...String(output.dataRelativePath).split('/'))
   const frameDir = `${outputRelativeDir.replace(/\\/g, '/').replace(/\/$/, '')}/decoded/${safeSegment(actionId, 'action')}`
-  const decoded = await decode({ videoPath: rawPath, outputDir: frameDir, dataDir, fps: driver.fps, maxFrames: actionId === 'jumping' ? 40 : driver.frameCount, minFrames: driver.frameCount, signal })
+  const decoded = await decode({ videoPath: rawPath, outputDir: frameDir, dataDir, fps: driver.fps, maxFrames: actionId === 'jumping' ? 40 : driver.frameCount, minFrames: driver.frameCount, loop: actionId === 'running-right', signal })
   const processed = await processFrames({
     framePaths: decoded.framePaths,
     outputDir: path.resolve(dataDir, ...outputRelativeDir.split('/'), safeSegment(actionId, 'action')),

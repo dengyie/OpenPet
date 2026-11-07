@@ -30,6 +30,7 @@ const hasDescriptors = (candidate) => Boolean(
   Array.isArray(candidate?.descriptors?.alphaMaskDescriptor) && candidate.descriptors.alphaMaskDescriptor.length
 )
 const errorSummary = (error) => String(error?.message || error || 'candidate processing failed').replace(/\s+/g, ' ').slice(0, 240)
+const isHatchPetBudgetError = error => /^hatch_pet_.*_budget_exhausted$/.test(String(error?.code || ''))
 
 const runQualityFirstAction = async ({
   context = {},
@@ -56,9 +57,9 @@ const runQualityFirstAction = async ({
   const dispatch = async (attemptKind, repairCodes = []) => {
     const dispatchIndex = Math.max(0, ...dispatches.map((entry) => Number(entry.dispatchIndex) || 0)) + 1
     const assignedCandidateId = `${candidateIdPrefix}-${dispatchIndex}`
-    await reserveCreativeDispatch({ actionId, attemptKind, candidateId: assignedCandidateId, dispatchIndex })
     let generated
     try {
+      await reserveCreativeDispatch({ actionId, attemptKind, candidateId: assignedCandidateId, dispatchIndex })
       generated = await generateCandidate({
         actionId,
         attemptKind,
@@ -67,6 +68,10 @@ const runQualityFirstAction = async ({
         failureCodes: repairCodes.slice()
       })
     } catch (error) {
+      if (isHatchPetBudgetError(error)) {
+        for (const candidate of allCandidates) await persistCandidate(candidate)
+        throw error
+      }
       const modelAttempts = Array.isArray(error?.modelAttempts) ? error.modelAttempts.slice(0, 16) : []
       const failureCode = String(error?.code || 'provider-generation-failed')
         .replace(/[^A-Za-z0-9:_-]/g, '_')
@@ -169,6 +174,10 @@ const runQualityFirstAction = async ({
       try {
         Object.assign(withQa, await evaluateCandidate(withQa))
       } catch (error) {
+        if (isHatchPetBudgetError(error)) {
+          Object.assign(candidate, withQa, { qualityWarningCodes: unique([...(withQa.qualityWarningCodes || []), error.code]) })
+          throw error
+        }
         Object.assign(withQa, { gate: { ok: false, outcome: 'cannot-evaluate', failures: ['candidate-evaluation-failed'], error: errorSummary(error) } })
       }
     } else failureCodes.push(...(withQa.qa?.failures || []))
@@ -188,8 +197,17 @@ const runQualityFirstAction = async ({
     evaluatedCandidates.push(candidate)
     return candidate
   }
-  for (const candidate of allCandidates) await evaluateGeneratedCandidate(candidate)
-  for (const candidate of allCandidates) await persistCandidate(candidate)
+  for (const [index, candidate] of allCandidates.entries()) {
+    try {
+      await evaluateGeneratedCandidate(candidate)
+    } catch (error) {
+      // Retain all assets already paid for, including the unevaluated tail of
+      // the initial batch, before stopping on a budget admission failure.
+      for (const pending of allCandidates.slice(index)) await persistCandidate(pending)
+      throw error
+    }
+    await persistCandidate(candidate)
+  }
   let selected = selectBestPassingCandidate({ candidates: evaluatedCandidates })
   if (!selected) {
     const repairCodes = unique(failureCodes)
@@ -204,8 +222,11 @@ const runQualityFirstAction = async ({
       }
     }
     const repair = await dispatch('repair', repairCodes)
-    await evaluateGeneratedCandidate(repair)
-    await persistCandidate(repair)
+    try {
+      await evaluateGeneratedCandidate(repair)
+    } finally {
+      await persistCandidate(repair)
+    }
     selected = selectBestPassingCandidate({ candidates: evaluatedCandidates })
   }
   const diversityStatus = distinctCandidates.length >= 2 ? 'sufficient' : 'degraded'
@@ -224,5 +245,6 @@ const runQualityFirstAction = async ({
 
 module.exports = {
   areSpriteCandidatesDuplicates,
+  isHatchPetBudgetError,
   runQualityFirstAction
 }

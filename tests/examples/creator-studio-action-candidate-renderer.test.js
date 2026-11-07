@@ -30,9 +30,9 @@ test('rig does not mask read/submission failures, runs only for supported repair
     if (actionId === 'running-right') await render({ attemptKind: 'repair', failureCodes: ['visual-defect-style-drift'] })
     if (actionId === 'running-left') await render({ attemptKind: 'repair', failureCodes: ['visual-defect-style-drift'] })
   }
-  assert.deepEqual(calls, ['video', 'video', 'video', 'video', 'rig', 'video', 'video', 'video'])
+  assert.deepEqual(calls, ['video', 'video', 'video', 'video', 'video', 'video', 'video', 'video'])
 
   const readabilityRender = createActionCandidateRenderer({ action: { actionId: 'running-right' }, characterClass: 'grounded-compact-character', generateVideo: async () => { calls.push('video') }, generateRig: async () => { calls.push('rig') } })
   await readabilityRender({ attemptKind: 'repair', failureCodes: ['visual-defect-action-unreadable'] })
-  assert.equal(calls.at(-1), 'rig')
+  assert.equal(calls.at(-1), 'video')
 })

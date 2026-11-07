@@ -210,7 +210,7 @@ const reconcileAbandonedProviderReservations = (ledger, { preserveReservationIds
   })
 }
 
-const reserveStructuredCall = (ledger, type, now) => {
+const assertStructuredCallBudget = (ledger, type, now) => {
   assertElapsedBudget(ledger, now)
   const usageKey = type === 'planner' ? 'plannerCalls' : 'evaluatorCalls'
   const limitKey = type === 'planner' ? 'maxPlannerCalls' : 'maxEvaluatorCalls'
@@ -220,6 +220,13 @@ const reserveStructuredCall = (ledger, type, now) => {
       `Hatch-pet ${type} call budget is exhausted`
     )
   }
+}
+
+const assertEvaluatorBudget = (ledger, { now = Date.now } = {}) => assertStructuredCallBudget(ledger, 'evaluator', now)
+
+const reserveStructuredCall = (ledger, type, now) => {
+  assertStructuredCallBudget(ledger, type, now)
+  const usageKey = type === 'planner' ? 'plannerCalls' : 'evaluatorCalls'
   return updateLedger(ledger, {
     usage: { ...ledger.usage, [usageKey]: ledger.usage[usageKey] + 1 }
   })
@@ -247,6 +254,7 @@ const createBudgetPublicView = (ledger, { now = Date.now } = {}) => {
 
 module.exports = {
   DEFAULT_LIMITS,
+  assertEvaluatorBudget,
   assertPlanFitsBudget,
   createBudgetLedger,
   createBudgetPublicView,

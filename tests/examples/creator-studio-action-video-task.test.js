@@ -221,6 +221,15 @@ test('frame extractor preserves ordered samples and loop modes', () => {
   assert.deepEqual(createLoopIndexes({ indexes: [0, 1, 2, 3], mode: 'ping-pong' }), [0, 1, 2, 3, 2, 1])
 })
 
+test('gait sampling retains eight distinct cyclic phases without the repeated endpoint', () => {
+  // A 24 FPS one-second cycle has 24 phases plus a repeated closing pose.
+  const selection = selectFrameIndexes({ sourceFrameCount: 25, sourceFps: 24, targetFrameCount: 8, targetFps: 12, loop: true })
+  const phases = selection.indexes.map(index => index / 24)
+  assert.deepEqual(phases, [0, 1 / 8, 2 / 8, 3 / 8, 4 / 8, 5 / 8, 6 / 8, 7 / 8])
+  assert.equal(new Set(phases.map(phase => phase % 1)).size, 8)
+  assert.throws(() => selectFrameIndexes({ sourceFrameCount: 8, sourceFps: 24, targetFrameCount: 8, loop: true }), /targetFrameCount/)
+})
+
 test('video decoder samples the full source timeline including the final frame', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-video-decoder-'))
   const videoPath = path.join(root, 'source.mp4')
@@ -283,6 +292,37 @@ test('jump decoder accepts a short complete source and rejects fewer than five f
   await assert.rejects(() => extractVideoFrames({ ...options, outputDir: 'short' }), { code: 'video_decoder_frame_count_mismatch' })
   await assert.rejects(() => extractVideoFrames({ ...options, minFrames: 41 }), /minimum frame count is invalid/)
   assert.equal(decodeCount, 1, 'invalid sources must not start ffmpeg')
+})
+
+test('gait decoder excludes closing pose and rejects insufficient distinct source phases before ffmpeg', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-video-gait-decode-'))
+  const videoPath = path.join(root, 'source.mp4')
+  fs.writeFileSync(videoPath, 'fixture-video')
+  let sourceCount = 25
+  let decodeCount = 0
+  const spawnImpl = (command, args) => {
+    const child = new EventEmitter()
+    child.stdout = new EventEmitter()
+    child.stderr = new EventEmitter()
+    child.kill = () => {}
+    process.nextTick(() => {
+      if (command === 'ffprobe') child.stdout.emit('data', Buffer.from(`${sourceCount}\n`))
+      else {
+        decodeCount += 1
+        const count = Number(args[args.indexOf('-frames:v') + 1])
+        for (let index = 1; index <= count; index += 1) fs.writeFileSync(args.at(-1).replace('%04d', String(index).padStart(4, '0')), `frame-${index}`)
+      }
+      child.emit('close', 0)
+    })
+    return child
+  }
+  const options = { videoPath, outputDir: 'frames', dataDir: root, maxFrames: 8, loop: true, spawnImpl }
+  const result = await extractVideoFrames(options)
+  assert.deepEqual(result.sourceIndexes, [0, 3, 6, 9, 12, 15, 18, 21])
+  assert.equal(result.frameCount, 8)
+  sourceCount = 8
+  await assert.rejects(() => extractVideoFrames({ ...options, outputDir: 'short' }), { code: 'video_decoder_frame_count_mismatch' })
+  assert.equal(decodeCount, 1)
 })
 
 test('stabilizer computes a global envelope and common baseline', () => {
@@ -784,6 +824,7 @@ const createRunVideoActionFixture = async ({
   attemptKind,
   failureCodes,
   processFrames,
+  decode,
   referenceCreate,
   startFrameCreate,
   normalizedFramesFactory
@@ -835,7 +876,7 @@ const createRunVideoActionFixture = async ({
     failureCodes,
     signal,
     bridge,
-    decode: async () => ({ framePaths: ['fixture-frame-1.png', 'fixture-frame-2.png'] }),
+    decode: decode || (async () => ({ framePaths: ['fixture-frame-1.png', 'fixture-frame-2.png'] })),
     processFrames: fixtureFrameProcessor
   })
   return { root, result }
@@ -856,6 +897,21 @@ test('video uses the action start pose while keeping canonical identity as the Q
   assert.deepEqual([...data.subarray(center, center + 3)], [48, 64, 255])
   assert.equal(result.providerTask.actionTask.reference.sha256, HASH_A)
   assert.equal(result.identityQuality.ok, true, 'QA must compare output with the original canonical')
+})
+
+test('video runner uses periodic sampling only for locomotion and retains settling endpoints', async () => {
+  for (const actionId of ['running-right', 'idle', 'waving', 'jumping']) {
+    let decodedOptions
+    await createRunVideoActionFixture({
+      action: { actionId },
+      bridge: async () => ({ result: { outputs: [{ dataRelativePath: 'runs/run-video/video/raw/waving.mp4', sha256: HASH_B }] } }),
+      decode: async options => {
+        decodedOptions = options
+        return { framePaths: ['fixture-frame-1.png', 'fixture-frame-2.png'] }
+      }
+    })
+    assert.equal(decodedOptions.loop, actionId === 'running-right')
+  }
 })
 
 test('runVideoAction forwards the action anchor and supports the not-yet-created idle profile', async () => {

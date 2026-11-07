@@ -10,6 +10,7 @@ const {
 } = require('./hatch-pet-agent-contracts')
 const { createHatchPetAgentStore } = require('./hatch-pet-agent-store')
 const {
+  assertEvaluatorBudget,
   createBudgetLedger,
   createBudgetPublicView,
   reconcileAbandonedProviderReservations,
@@ -665,6 +666,9 @@ const createHatchPetAgentService = ({
     const config = getStoredConfig()
     const ledger = resolveBudgetLedger({ runId, limits: config.budgets })
     const reservation = reserveBudgetProviderCall(ledger, { timeoutMs })
+    // Generated Creator assets require a downstream visual evaluation. Refuse
+    // paid generation when that stage is already unable to admit any call.
+    assertEvaluatorBudget(ledger)
     persistBudgetLedger({ runId, ledger: reservation.ledger })
     liveProviderReservations.add(reservationKey(runId, reservation.reservationId))
     return {
