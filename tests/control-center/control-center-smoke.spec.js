@@ -338,6 +338,20 @@ test.describe('Control Center smoke', () => {
     await expect(page.locator('.creator-pane')).toContainText('上传的图片仍是身份最高优先级')
   })
 
+  test('saves an evaluator budget independently and retains it after reload', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'AI' }).click()
+    const evaluator = page.getByLabel('Evaluator-call budget', { exact: true })
+    await expect(evaluator).toHaveValue('68')
+    await evaluator.fill('100')
+    await page.getByRole('button', { name: '保存 Agent 配置' }).click()
+    await expect(page.getByText('Hatch Pet Agent 配置已保存', { exact: true })).toBeVisible()
+    await page.reload()
+    await page.getByRole('button', { name: 'AI' }).click()
+    await expect(evaluator).toHaveValue('100')
+    await expect(page.getByLabel('Provider-call budget', { exact: true })).toHaveValue('64')
+  })
+
   test('explains why Generate Character is disabled and clears each resolved prerequisite', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'Create' }).click()

@@ -30,7 +30,7 @@ test('hatch-pet contracts default disabled and fixed shadow while clamping budge
   assert.equal(DEFAULT_HATCH_PET_AGENT_CONFIG.executionMode, 'shadow')
   const value = normalizeHatchPetAgentConfig({ enabled: true, executionMode: 'execute', apiKeyRef: 'attacker', budgets: { maxIdentityRegenerations: 99, maxActionAttemptsPerAction: 0, maxEvaluationAttemptsPerArtifact: 9, maxPlannerCalls: 999, maxEvaluatorCalls: 999, maxProviderCalls: 999, maxElapsedMs: 999999999, maxEstimatedCost: -2 } })
   assert.equal(value.executionMode, 'shadow')
-  assert.deepEqual(value.budgets, { maxIdentityRegenerations: 3, maxActionAttemptsPerAction: 1, maxEvaluationAttemptsPerArtifact: 3, maxPlannerCalls: 34, maxEvaluatorCalls: 68, maxProviderCalls: 200, maxElapsedMs: 43200000, maxEstimatedCost: 0.01 })
+  assert.deepEqual(value.budgets, { maxIdentityRegenerations: 3, maxActionAttemptsPerAction: 1, maxEvaluationAttemptsPerArtifact: 3, maxPlannerCalls: 34, maxEvaluatorCalls: 200, maxProviderCalls: 200, maxElapsedMs: 43200000, maxEstimatedCost: 0.01 })
 })
 
 test('operator provider-call budget above the default survives config normalization', () => {

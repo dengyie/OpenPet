@@ -122,6 +122,7 @@ const hatchConfigSaveSchema = v.strictObject({
   budgets: v.optional(v.strictObject({
     maxIdentityRegenerations: v.optional(v.pipe(v.number(), v.finite())), maxActionAttemptsPerAction: v.optional(v.pipe(v.number(), v.finite())),
     maxEvaluationAttemptsPerArtifact: v.optional(v.pipe(v.number(), v.finite())), maxProviderCalls: v.optional(v.pipe(v.number(), v.finite())),
+    maxEvaluatorCalls: v.optional(v.pipe(v.number(), v.finite(), v.integer(), v.minValue(1), v.maxValue(200))),
     maxElapsedMs: v.optional(v.pipe(v.number(), v.finite())), maxEstimatedCost: v.optional(v.nullable(v.pipe(v.number(), v.finite()))),
   })),
 })

@@ -358,10 +358,11 @@ export function validateHatchConfig(value) {
 	if (config.configMode !== undefined && !["follow-chat", "override"].includes(config.configMode)) throw new ApiError("VALIDATION_FAILED", "Hatch configMode is invalid")
 	for (const key of ["provider", "baseUrl", "model"]) if (config[key] !== undefined && (typeof config[key] !== "string" || config[key].length > 2000)) throw new ApiError("VALIDATION_FAILED", "Hatch config " + key + " is invalid")
 	if (config.budgets !== undefined) {
-		const limits = { maxIdentityRegenerations: [0, 10], maxActionAttemptsPerAction: [1, 20], maxEvaluationAttemptsPerArtifact: [1, 10], maxProviderCalls: [1, 200], maxElapsedMs: [1000, 86400000], maxEstimatedCost: [0.01, 100000] }
+		const limits = { maxIdentityRegenerations: [0, 10], maxActionAttemptsPerAction: [1, 20], maxEvaluationAttemptsPerArtifact: [1, 10], maxEvaluatorCalls: [1, 200], maxProviderCalls: [1, 200], maxElapsedMs: [1000, 86400000], maxEstimatedCost: [0.01, 100000] }
 		if (!config.budgets || typeof config.budgets !== "object" || Array.isArray(config.budgets) || Object.keys(config.budgets).some((key) => !Object.hasOwn(limits, key))) throw new ApiError("VALIDATION_FAILED", "Hatch budgets are invalid")
 		for (const [key, [min, max]] of Object.entries(limits)) {
 			const entry = config.budgets[key]
+			if (key === "maxEvaluatorCalls" && entry !== undefined && !Number.isInteger(entry)) throw new ApiError("VALIDATION_FAILED", "Hatch evaluator call budget must be an integer")
 			if (entry !== undefined && !(key === "maxEstimatedCost" && entry === null) && (typeof entry !== "number" || !Number.isFinite(entry) || entry < min || entry > max)) throw new ApiError("VALIDATION_FAILED", "Hatch budget " + key + " is invalid")
 		}
 	}

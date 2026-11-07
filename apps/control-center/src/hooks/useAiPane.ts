@@ -310,6 +310,7 @@ const defaultHatchPetAgentConfig: HatchPetAgentConfigView = {
     maxIdentityRegenerations: 1,
     maxActionAttemptsPerAction: 3,
     maxEvaluationAttemptsPerArtifact: 3,
+    maxEvaluatorCalls: 68,
     maxProviderCalls: 64,
     maxElapsedMs: 3600000,
     maxEstimatedCost: null
@@ -333,7 +334,15 @@ const buildHatchPetAgentConfigSaveRequest = (config: HatchPetAgentConfigView): H
   baseUrl: config.baseUrl,
   model: config.model,
   requireIdentityReviewBeforeActions: config.requireIdentityReviewBeforeActions,
-  budgets: { ...config.budgets }
+  budgets: {
+    maxIdentityRegenerations: config.budgets.maxIdentityRegenerations,
+    maxActionAttemptsPerAction: config.budgets.maxActionAttemptsPerAction,
+    maxEvaluationAttemptsPerArtifact: config.budgets.maxEvaluationAttemptsPerArtifact,
+    maxEvaluatorCalls: config.budgets.maxEvaluatorCalls,
+    maxProviderCalls: config.budgets.maxProviderCalls,
+    maxElapsedMs: config.budgets.maxElapsedMs,
+    maxEstimatedCost: config.budgets.maxEstimatedCost
+  }
 })
 
 export function useAiPane(activeTab = 'ai') {

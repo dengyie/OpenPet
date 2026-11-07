@@ -1891,6 +1891,18 @@ export function AiPane({
                   />
                 </label>
                 <label className="field-row">
+                  <span className="field-label">Evaluator-call budget</span>
+                  <input
+                    className="text-input"
+                    type="number"
+                    min={1}
+                    max={200}
+                    step={1}
+                    value={hatchPetAgentConfig.budgets.maxEvaluatorCalls}
+                    onChange={(event) => onChangeHatchPetAgent({ budgets: { ...hatchPetAgentConfig.budgets, maxEvaluatorCalls: Number(event.target.value) } })}
+                  />
+                </label>
+                <label className="field-row">
                   <span className="field-label">Provider-call budget</span>
                   <input
                     className="text-input"
