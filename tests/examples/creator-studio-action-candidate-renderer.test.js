@@ -21,13 +21,18 @@ test('video quality repair produces one rig candidate through the same persisten
   assert.equal(stored.length, 3)
 })
 
-test('rig does not mask read/submission/evaluation failures, run for unsupported actions or replace initial video', async () => {
+test('rig does not mask read/submission failures, runs only for supported repair actions, or replace initial video', async () => {
   const calls = []
-  for (const actionId of ['jumping', 'running-right']) {
+  for (const actionId of ['jumping', 'running-right', 'running-left']) {
     const render = createActionCandidateRenderer({ action: { actionId }, characterClass: 'grounded-compact-character', generateVideo: async () => { calls.push('video') }, generateRig: async () => { calls.push('rig') } })
     await render({ attemptKind: 'initial', failureCodes: ['visual-defect-style-drift'] })
     await render({ attemptKind: 'repair', failureCodes: ['video_provider_timeout', 'candidate-evaluation-failed'] })
     if (actionId === 'running-right') await render({ attemptKind: 'repair', failureCodes: ['visual-defect-style-drift'] })
+    if (actionId === 'running-left') await render({ attemptKind: 'repair', failureCodes: ['visual-defect-style-drift'] })
   }
-  assert.deepEqual(calls, Array(5).fill('video'))
+  assert.deepEqual(calls, ['video', 'video', 'video', 'video', 'rig', 'video', 'video', 'video'])
+
+  const readabilityRender = createActionCandidateRenderer({ action: { actionId: 'running-right' }, characterClass: 'grounded-compact-character', generateVideo: async () => { calls.push('video') }, generateRig: async () => { calls.push('rig') } })
+  await readabilityRender({ attemptKind: 'repair', failureCodes: ['visual-defect-action-unreadable'] })
+  assert.equal(calls.at(-1), 'rig')
 })
