@@ -65,6 +65,28 @@ test('support-strip deformation cannot substitute for articulated right-facing l
   assert.equal(fs.existsSync(path.join(f.dataDir, f.outputRelativeDir)), false)
 })
 
+test('review rig keeps the lower body fixed across six head-only inspection phases', async () => {
+  const f = await fixture()
+  const action = { actionId: 'review', anchorPolicy: 'action-relative-root-v1', frameCount: 6, layout: { columns: 3, rows: 2 } }
+  const result = await renderCanonicalSupportRig({ ...f, action })
+  assert.equal(result.processed.frames.length, 6)
+  const manifest = JSON.parse(fs.readFileSync(result.manifestPath))
+  assert.equal(manifest.rig.type, 'continuous-head-inspection')
+  assert.deepEqual(manifest.driver.framePlan, require('../../examples/plugins/creator-studio/lib/motion-driver-registry').createMotionDriver({ actionId: 'review' }).framePlan)
+  assert.deepEqual(manifest.transforms.map(t => t.phase), ['neutral', 'inspect-left', 'compare-right', 'acknowledge-nod', 'recover', 'neutral-return'])
+  const pixels = await Promise.all(manifest.sourceFrames.map(frame => sharp(path.join(f.dataDir, frame.relativePath)).ensureAlpha().raw().toBuffer()))
+  assert.deepEqual(pixels[0], pixels[5])
+  assert.ok(new Set(pixels.map(hash)).size >= 5)
+  for (const frame of pixels.slice(1)) assert.deepEqual(frame.subarray(350 * 512 * 4), pixels[0].subarray(350 * 512 * 4))
+  assert.equal(result.temporalQuality.ok, true, JSON.stringify(result.temporalQuality))
+  assert.equal(analyzeSpriteCandidate({ actionId: 'review', rawMetrics: result.processed.metrics, profile: f.profile, actionPolicy: action }).ok, true)
+  await validateCanonicalRigRow({ dataDir: f.dataDir, provenance: result.provenance, frames: result.processed.frames, actionId: 'review' })
+  const subtle = await renderCanonicalSupportRig({ ...f, action: { ...action, motionParameters: { intensity: 'subtle' } }, outputRelativeDir: 'candidates/review-subtle' })
+  const subtleManifest = JSON.parse(fs.readFileSync(subtle.manifestPath))
+  assert.ok(Math.abs(subtleManifest.transforms[1].headTiltDegrees) < Math.abs(manifest.transforms[1].headTiltDegrees))
+  assert.notEqual(subtle.processed.frames[1].sha256, result.processed.frames[1].sha256)
+})
+
 test('registered subtle jumping reduces the rendered motion while retaining its technical gate', async () => {
   const f = await fixture()
   const normal = await renderCanonicalSupportRig(f)
@@ -209,14 +231,15 @@ test('portable rig audit export retains enough evidence to validate without the 
   await assert.rejects(rigModule().exportCanonicalRigEvidence({ dataDir: f.dataDir, outputDir, provenance: wrong, frames: rig.processed.frames, actionId: 'jumping' }), /source hash/)
 })
 
-test('production host repairs video style drift with an audited rig, packages it and resumes without dispatch', { skip: spawnSync('ffmpeg', ['-version']).status !== 0 || spawnSync('ffprobe', ['-version']).status !== 0 }, async () => {
+for (const actionId of ['jumping', 'review']) test(`production host repairs ${actionId} video drift with an audited rig, packages it and resumes without dispatch`, { skip: spawnSync('ffmpeg', ['-version']).status !== 0 || spawnSync('ffprobe', ['-version']).status !== 0 }, async () => {
   const f = await fixture()
+  f.action = actionId === 'review' ? { actionId, anchorPolicy: 'action-relative-root-v1', frameCount: 6, layout: { columns: 3, rows: 2 } } : f.action
   const { createQualityFirstHostRuntime } = require('../../examples/plugins/creator-studio/lib/host-model-bridge')
   const { createSpriteAssetPlan } = require('../../examples/plugins/creator-studio/lib/sprite-asset-plan')
   const { writeActionCheckpoint } = require('../../examples/plugins/creator-studio/lib/full-pet-action-checkpoints')
   const { archiveCandidateRevision } = require('../../examples/plugins/creator-studio/lib/sprite-candidate-store')
-  const runId = 'host-rig-repair'
-  const plan = createSpriteAssetPlan({ version: 1, revision: 1, character: { assetClass: 'grounded-compact-character' }, actions: [{ actionId: 'jumping' }] })
+  const runId = `host-rig-repair-${actionId}`
+  const plan = createSpriteAssetPlan({ version: 1, revision: 1, character: { assetClass: 'grounded-compact-character' }, actions: [{ actionId }] })
   const fixtureRig = await renderCanonicalSupportRig(f)
   const manifest = JSON.parse(fs.readFileSync(fixtureRig.manifestPath))
   const videoDir = path.join(f.dataDir, 'fixture-video')
@@ -255,16 +278,16 @@ test('production host repairs video style drift with an audited rig, packages it
     const profile = { ...profileData, hash: hash(JSON.stringify(profileData)) }
     const run = { runId, petId: 'rig-test', input: { referenceImage: { relativePath: f.canonical.relativePath } } }
     const runtime = await createQualityFirstHostRuntime({ dataDir: f.dataDir, run, planOverride: plan })
-    const result = await runtime.runAction({ actionId: 'jumping', canonical: f.canonical, profile })
+    const result = await runtime.runAction({ actionId, canonical: f.canonical, profile })
     assert.equal(result.ok, true, JSON.stringify(result))
     assert.equal(result.selectedCandidate.provider, 'canonical-rig')
     const videos = calls.filter(route => route === '/creator/model-video-generate').length
     assert.ok(videos >= 2 && videos <= 3)
     assert.equal(result.candidates.filter(candidate => candidate.provenance?.kind === 'canonical-rig').length, 1)
     assert.ok(result.candidates.filter(candidate => !candidate.provenance).every(candidate => candidate.gate.ok === false))
-    await runtime.persistActionResult({ actionId: 'jumping', result, canonical: f.canonical, profile })
+    await runtime.persistActionResult({ actionId, result, canonical: f.canonical, profile })
     const before = calls.length
-    const resumed = await runtime.runAction({ actionId: 'jumping', canonical: f.canonical, profile })
+    const resumed = await runtime.runAction({ actionId, canonical: f.canonical, profile })
     assert.equal(resumed.checkpointReused, true)
     assert.equal(calls.length, before)
     const idle = []
@@ -276,13 +299,13 @@ test('production host repairs video style drift with an audited rig, packages it
     writeActionCheckpoint({ dataDir: f.dataDir, runId, result: { actionId: 'idle', ok: true, row: { quality: 'row-real', frames: idle } } })
     const packaged = await runtime.finalizePackage({ canonical: f.canonical })
     const metadata = JSON.parse(fs.readFileSync(path.join(f.dataDir, packaged.petJsonRelativePath)))
-    assert.equal(metadata.actionGeneration.jumping.quality, 'approved-rig')
-    const auditRoot = path.join(path.dirname(path.join(f.dataDir, packaged.petJsonRelativePath)), metadata.actionGeneration.jumping.evidenceRoot)
-    await validateCanonicalRigRow({ dataDir: auditRoot, provenance: metadata.actionGeneration.jumping.provenance, frames: metadata.actionGeneration.jumping.frames, actionId: 'jumping' })
+    assert.equal(metadata.actionGeneration[actionId].quality, 'approved-rig')
+    const auditRoot = path.join(path.dirname(path.join(f.dataDir, packaged.petJsonRelativePath)), metadata.actionGeneration[actionId].evidenceRoot)
+    await validateCanonicalRigRow({ dataDir: auditRoot, provenance: metadata.actionGeneration[actionId].provenance, frames: metadata.actionGeneration[actionId].frames, actionId })
     assert.ok(execFileSync('unzip', ['-Z1', path.join(f.dataDir, packaged.bundleRelativePath)], { encoding: 'utf8' }).includes('rig-manifest.json'))
-    const archive = archiveCandidateRevision({ dataDir: f.dataDir, runId, scope: 'action-jumping', now: () => '2026-11-07T01:00:00Z' })
+    const archive = archiveCandidateRevision({ dataDir: f.dataDir, runId, scope: `action-${actionId}`, now: () => '2026-11-07T01:00:00Z' })
     const archived = JSON.parse(fs.readFileSync(path.join(f.dataDir, archive, result.selectedCandidateId, 'candidate.json'))).candidate
-    const restored = await runtime.materializeActionCandidate({ actionId: 'jumping', candidate: archived, canonical: f.canonical, profile })
+    const restored = await runtime.materializeActionCandidate({ actionId, candidate: archived, canonical: f.canonical, profile })
     assert.deepEqual(restored.selectedCandidate.processed.frames.map(frame => frame.sha256), result.selectedCandidate.processed.frames.map(frame => frame.sha256))
   } finally {
     global.fetch = oldFetch

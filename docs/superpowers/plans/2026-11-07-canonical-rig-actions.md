@@ -1,5 +1,14 @@
 # Canonical Rig Actions Implementation Plan
 
+### 2026-11-08 current verification
+
+- Guangzhou runs main `37fa38da` (PR134), ready/resident; main CI42407337581 succeeded. Rollback `/var/backups/openpet/20261107T194259Z-37fa38da` is retained. The source archive SHA256 is `aec1a02ced0a5b157b07971e1bdd025f26da89df60f94b11a9544819b6dea065`. Four formal data hashes remain unchanged and all14 recorded source hashes match.
+- The Creator state HTTPS timeout is fixed: fresh authenticated status200 in772ms, sprite/final-board previews200 with matching retained hashes. Unauthenticated/revoked sessions401 and unauthorized settings403. Formal Pip remains6/9; right/left, review and final acceptance remain open.
+- User authorized32 additional evaluator calls, cap100→132. A SQLite backup preceded the single-field settings PATCH; Provider cap144 and ledger bytes were preserved. Current usage118 Provider/1 planner/102 evaluator, no reservations or reset.
+- Review-rig-v1 passed technical gates but readability76/overall89 was rejected. New v2 source pixels use14-degree head observation and a7.5%-height acknowledgement nod. A single real evaluation passed: identity97/readability88/crossFrame96/crossAction96/smallScale93/style97/overall94, no defects; boardSHA `dbd200934c55e70a1352b75de32cac0f94f02e2c3400f6f331865ce8f39e1c99`. Both probes are retained under the formal run's `probes/`; calls count in its ledger, artifacts are not promoted.
+- Review support adds a continuous head field and unchanged technical/visual/row/provenance gates. The registered plan/driver hash stays unchanged; only review processor15→16. Passing probe evidence is not formal acceptance. Guangzhou isolated final-source regressions72/72, documentation76/76, syntax/typecheck/build, contracts/API and docs-drift checks pass. Full CI, deployment and formal regeneration remain pending. No workstation UI, threshold reduction or override.
+
+
 > Execute inline in the existing isolated branch/worktree. User's persistent completion goal authorizes implementing the documented deterministic-rig route; do not promote research probe artifacts. No workstation UI and no unapproved snapshot deletion.
 
 **Goal:** Deliver all nine official actions and a quality-passing final pet through the production Creator workflow, retaining video as the primary route and adding source-faithful deterministic rigs where generation drifts.
@@ -19,7 +28,7 @@
 - [x] Reproduce rejected evaluator top-up through authenticated API (HTTP400) and service normalization (100→68).
 - [x] Add bounded integer evaluator-total configuration to existing API/bridge/service/types/Control Center and demo; keep default68, historical counters and Provider limits.
 - [x] Verify real route/service behavior, strict request validation and VPS UI save/reload.
-- [x] Merge after green CI, deploy and configure the authorized cap100 through the existing API, preserving Provider144 and history. The32 additional calls are now consumed; remaining formal actions and final acceptance need new explicit evaluation authorization.
+- [x] Merge after green CI, deploy and configure the authorized cap100 through the existing API, preserving Provider144 and history. The first32 additional calls were consumed. The user subsequently authorized a further32 calls (cap132), applied with all historical usage preserved; see the current verification above.
 
 - Keep existing quality thresholds and current accepted action evidence.
 - Nine-action completion requires every action, mirrored running-left, final atlas QA and final visual gate; two-action packages do not satisfy it.
