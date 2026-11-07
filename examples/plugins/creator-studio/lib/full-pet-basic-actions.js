@@ -83,7 +83,7 @@ const normalizeBasicActionRows = (rows) => (
 const isOfficialRealRow = (row) => (
   row &&
   row.fallback !== true &&
-  (row.quality === 'row-real' || row.quality === 'approved-mirror')
+  (row.quality === 'row-real' || row.quality === 'approved-mirror' || row.quality === 'approved-rig')
 )
 
 const getMissingRequiredRealActionIds = (basicActions, { defaultRequiredActionIds = [] } = {}) => {

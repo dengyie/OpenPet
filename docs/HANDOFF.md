@@ -17,6 +17,8 @@ This file is the compact maintainer continuation note. Historical phase-level de
 
 ## Current State
 
+- Canonical support-rig repair is being delivered under [the current plan](./superpowers/plans/2026-11-07-canonical-rig-actions.md). Only compact-character jumping is supported. New candidates retain explicit `approved-rig` source/driver/manifest/pixel evidence through selection, checkpoints and portable package audit. A Guangzhou isolated production-host regression exercised video rejection → fresh rig → evaluation → checkpoint reuse → ZIP evidence → archived selection. This is controlled test evidence, not formal Pip completion; production remains `92fae2a9`, formal accepted actions remain 2/9, and nine-action/final-package acceptance is still open.
+
 > Historical verification note (2026-10-29): `npm run test:backend` and `npm run test:tools` pass; Tools is **688/688**. Pure Node suites excluding the two Playwright browser-test files pass **3354**, with **1 skipped**. `npm run check:syntax`, contract build, API reconciliation, channel retirement, docs drift, and the Control Center production build pass. `npm run test:all` reports **26 browser-launch failures** because the pinned Chromium headless shell is absent at the configured cache path. No Electron or desktop UI acceptance was performed.
 
 - OpenPet is an Electron desktop pet platform with a React Control Center, pet packs, AI configuration, local extensions, and loopback-only local HTTP/MCP.

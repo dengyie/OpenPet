@@ -12,6 +12,7 @@ const {
 const { analyzeRowFrames } = require('./full-pet-row-qa')
 const { createOfficialRowPreviewArtifacts } = require('./full-pet-row-preview-artifacts')
 const { stabilizeRowFrames } = require('./full-pet-row-stable-slots')
+const { validateCanonicalRigRow } = require('./canonical-support-rig')
 const {
   createQualityProfileEvidence,
   getDefaultQualityProfile
@@ -458,6 +459,9 @@ const buildOfficialAtlasFromRows = async ({
     if (requestedQuality === FULL_PET_ROW_QUALITY.APPROVED_MIRROR && row.id !== 'running-left') {
       throw new Error('Only running-left may use approved-mirror official row quality')
     }
+    if (requestedQuality === FULL_PET_ROW_QUALITY.APPROVED_RIG) {
+      await validateCanonicalRigRow({ dataDir, provenance: input.provenance, frames, actionId: row.id, canonicalSha256: sha256File(entries[0].sourcePath) })
+    }
     const sourceKind = requestedQuality === FULL_PET_ROW_QUALITY.APPROVED_MIRROR
       ? 'approved-mirror'
       : 'row-strip'
@@ -474,6 +478,10 @@ const buildOfficialAtlasFromRows = async ({
     const qa = rowAnalysis.qa
     if (qa.quality === FULL_PET_ROW_QUALITY.FAILED) {
       throw new Error(`Official full-pet row ${row.id} failed QA: ${qa.errors.join(', ')}`)
+    }
+    if (requestedQuality === FULL_PET_ROW_QUALITY.APPROVED_RIG) {
+      await validateCanonicalRigRow({ dataDir, provenance: input.provenance, frames: rowAnalysis.frames, actionId: row.id, canonicalSha256: sha256File(entries[0].sourcePath) })
+      qa.quality = FULL_PET_ROW_QUALITY.APPROVED_RIG
     }
     rowFramesByActionId.set(row.id, rowAnalysis.frames)
     rowQas.push(qa)

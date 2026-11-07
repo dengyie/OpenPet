@@ -1,6 +1,6 @@
 # Pet Character And Action Generation
 
-> Updated: 2026-07-28
+> Updated: 2026-11-07
 > Owner: `codex/dev8`
 > Status: quality-first replacement implemented; focused development checks passed; independent Provider and visual verification pending
 
@@ -25,7 +25,7 @@ Candidate decisions have two independent dimensions:
 
 Automatic selection requires both fields. A human may select `technicalEligible=true, recommended=false` only after acknowledging the exact current warning codes. The selection is bound to `runId + candidateId + sha256`; its failed scores, defects, and gate evidence remain unchanged and visible. Missing, corrupt, unsafe, stale-bound, hash-mismatched, unprocessable, or incomplete assets can never be overridden.
 
-Official-quality output requires a source-faithful canonical character plus action-specific Provider generation. Base-image transforms or transform-only frames are preview fallbacks, not official-quality action rows.
+Official-quality output requires a source-faithful canonical character and independently validated action frames. Provider output uses `row-real`; registered canonical rigs may use `approved-rig` only with source, driver, manifest and runtime-pixel integrity plus the same technical, action, row and visual gates. Copied idle frames, unregistered transforms and research probe assets remain preview fallbacks.
 
 This branch does not claim `production-art-ready`. Real Provider requests, visual inspection, optional identity-checkpoint rehearsal, GIF/contact-sheet/atlas review, and final import/activation checks belong to the independent test task.
 
@@ -255,7 +255,17 @@ An optional failure is recorded as omitted and does not block later actions. The
 
 `idle` is the only required action. A missing optional action is acceptable and appears in `omittedActionIds`; every real completed row appears in `availableActionIds`. A low-quality action must not be accepted merely to make the package look complete.
 
-The landed official full-pet row package counts only `row-real` Provider output and an `approved-mirror` derived from an accepted directional row as official coverage. Deterministic packaging is implemented, but real Provider row generation and human visual review remain required before any art-readiness claim.
+The official full-pet row package counts `row-real` Provider output, an `approved-mirror` derived from an accepted directional row, and audited `approved-rig` rows. Human visual review remains required before any art-readiness claim. A partial package or `ready_for_review` state does not satisfy a request for all nine actions.
+
+### 9.1 Audited canonical rig repair
+
+`canonical-support-rig-v1` currently supports only `jumping` for `grounded-compact-character`. Video remains the initial route. Its existing reason-directed repair slot may render one fresh rig candidate when the video candidates report style drift, cross-frame inconsistency or excessive body-scale variance. Transport ambiguity, exhausted reads, cancellation and unavailable evaluation are not rig eligibility reasons. Unsupported actions and anatomy continue through their existing path.
+
+The renderer measures the canonical alpha bounds, keeps the upper source region intact and scales the continuous lower support strip through anticipation, takeoff, peak, landing and recovery. It infers the split at 84% of body height; there are no character-specific coordinates. Transparent source normalization bypasses chroma-key removal, preserving green source pixels and original gradients. This is a local render with zero Provider calls; visual evaluation still consumes the existing evaluator budget.
+
+The manifest binds the canonical bytes, registered motion driver, source frames, normalized review frames, runtime frames, metrics and artifacts. The original 128×128 runtime pixels and the complete padded 192×208 pixels have separate exact hashes because transparent compositing can round RGB channels. Candidate persistence verifies the manifest artifact and action scope. Checkpoint reuse, retained selection, row packaging and export revalidate the source and pixel evidence against the accepted canonical. Retained selection restores the audited frames without reslicing the raw sheet. Row QA may not silently modify a rig after it was evaluated.
+
+The final ZIP includes a `generation-audit/` tree containing the manifest, source, review/runtime/packaged frames and artifacts. `pet.json.actionGeneration` records row quality, provenance, evidence root, atlas row and retained frame paths. The evidence remains independently verifiable after export. An `approved-rig` label without valid evidence fails closed. Existing accepted Provider rows retain their processing bindings.
 
 If idle fails, generation stops in `recovery-required`. It does not create an idle placeholder or a misleading runnable pet.
 

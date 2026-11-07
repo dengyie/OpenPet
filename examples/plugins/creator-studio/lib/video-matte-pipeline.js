@@ -194,6 +194,7 @@ const processFrameSequence = async ({
   canvasHeight,
   fps = 12,
   backgroundColor = '#12ff4d',
+  backgroundMode = 'color-key',
   padding = 0.1,
   anchorPolicy,
   targetStandingHeightRatio = null,
@@ -203,6 +204,7 @@ const processFrameSequence = async ({
   if (!Array.isArray(framePaths) || framePaths.length < 1 || framePaths.length > 128) throw matteError('framePaths must contain 1 to 128 frames')
   if (!Number.isInteger(Number(canvasWidth)) || !Number.isInteger(Number(canvasHeight))) throw matteError('canvas is invalid')
   if (!Number.isInteger(Number(fps)) || fps < 1 || fps > 60) throw matteError('fps is invalid')
+  if (!['color-key', 'source-alpha'].includes(backgroundMode)) throw matteError('background mode is invalid')
   const alphaDir = path.join(outputDir, 'alpha')
   const stableDir = path.join(outputDir, 'normalized')
   fs.mkdirSync(alphaDir, { recursive: true })
@@ -213,7 +215,9 @@ const processFrameSequence = async ({
     throwIfAborted(signal)
     const sourcePath = String(framePaths[index] || '')
     if (!sourcePath || !fs.existsSync(sourcePath) || !fs.statSync(sourcePath).isFile()) throw matteError(`frame ${index} is missing`)
-    const matted = await processMatteFrame(sourcePath, { backgroundColor })
+    const matted = backgroundMode === 'source-alpha'
+      ? await sharp(sourcePath).ensureAlpha().png().toBuffer().then((buffer) => ({ buffer, sha256: crypto.createHash('sha256').update(buffer).digest('hex') }))
+      : await processMatteFrame(sourcePath, { backgroundColor })
     const alphaPath = path.join(alphaDir, `${String(index + 1).padStart(4, '0')}.png`)
     fs.writeFileSync(alphaPath, matted.buffer)
     const metrics = await inspectAlphaBounds(matted.buffer)

@@ -1,6 +1,7 @@
 const fs = require('node:fs')
 const path = require('node:path')
 const crypto = require('node:crypto')
+const { normalizeRigProvenance } = require('./canonical-support-rig')
 
 const CHECKPOINT_VERSION = 1
 const SAFE_REQUEST_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9:_-]{0,127}$/
@@ -61,6 +62,7 @@ const normalizeResult = ({ dataDir, result }) => {
 
   normalized.row = {
     ...result.row,
+    ...(result.row.provenance ? { provenance: normalizeRigProvenance(result.row.provenance) } : {}),
     frames: result.row.frames.map((frame) => {
       const resolved = ensureDataRelativePath(dataDir, frame.path)
       if (!fs.statSync(resolved.absolute).isFile()) throw new Error(`Action checkpoint frame is not a file: ${frame.path}`)
