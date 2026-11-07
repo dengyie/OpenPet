@@ -7,11 +7,13 @@ const { createMotionDriver } = require('./motion-driver-registry')
 const { processFrameSequence } = require('./video-matte-pipeline')
 const { analyzeTemporalQuality } = require('./video-stabilizer')
 const { createVideoCandidateArtifacts } = require('./video-action-runner')
+const { renderArticulatedBipedGait } = require('./articulated-biped-gait')
 
 const RENDERER = 'canonical-support-rig-v1'
 const RIG_TYPE_BY_ACTION = Object.freeze({
   jumping: 'continuous-lower-support',
-  review: 'continuous-head-inspection'
+  review: 'continuous-head-inspection',
+  'running-right': 'articulated-biped-gait'
 })
 const error = (message, code = 'canonical_rig_invalid') => Object.assign(new Error(message), { code })
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex')
@@ -114,7 +116,7 @@ const renderInspectionFrames = async ({ source, width, height, outputDir, transf
   return frames
 }
 
-const renderCanonicalSupportRig = async ({ dataDir, canonical, action, characterClass = 'grounded-compact-character', outputRelativeDir, profile = {}, signal } = {}) => {
+const renderCanonicalSupportRig = async ({ dataDir, canonical, poseReference, action, characterClass = 'grounded-compact-character', outputRelativeDir, profile = {}, signal } = {}) => {
   canceled(signal)
   dataDir = fs.realpathSync(dataDir)
   if (!supportsCanonicalRig({ actionId: action?.actionId, characterClass })) throw error('Canonical support rig does not support this action or anatomy', 'canonical_rig_unsupported')
@@ -122,6 +124,17 @@ const renderCanonicalSupportRig = async ({ dataDir, canonical, action, character
   const outputDir = inside(dataDir, outputRelativeDir)
   const sourceBytes = fs.readFileSync(sourcePath)
   if (!/^[a-f0-9]{64}$/.test(String(canonical?.sha256 || '')) || hash(sourceBytes) !== canonical.sha256) throw error('Canonical rig source hash mismatch', 'canonical_rig_source_mismatch')
+  const isGait = action.actionId === 'running-right'
+  let posePath
+  if (isGait) {
+    if (!poseReference) throw error('Articulated running requires a separately prepared side pose', 'canonical_rig_pose_required')
+    posePath = inside(dataDir, poseReference.relativePath)
+    if (!/^[a-f0-9]{64}$/.test(String(poseReference.sha256 || '')) || fileHash(posePath) !== poseReference.sha256) throw error('Canonical rig pose source hash mismatch')
+    const decodedPose = await sharp(posePath, { limitInputPixels: 2048 * 2048 }).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+    if (decodedPose.info.width < 64 || decodedPose.info.height < 64 || decodedPose.info.width > 2048 || decodedPose.info.height > 2048) throw error('Canonical rig pose dimensions must be 64 to 2048 pixels')
+    const pose = measureBodyMask({ data: decodedPose.data, width: decodedPose.info.width, height: decodedPose.info.height, characterClass })
+    if (pose.empty || pose.unmatchedComponents.length || pose.bodyBounds.minX <= 0 || pose.bodyBounds.minY <= 0 || pose.bodyBounds.maxX >= decodedPose.info.width - 1 || pose.bodyBounds.maxY >= decodedPose.info.height - 1) throw error('Canonical rig side pose must be one complete unclipped body')
+  }
   const decoded = await sharp(sourceBytes, { limitInputPixels: 2048 * 2048 }).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
   const { data, info } = decoded
   if (info.width < 64 || info.height < 64 || info.width > 2048 || info.height > 2048) throw error('Canonical rig source dimensions must be 64 to 2048 pixels')
@@ -138,7 +151,7 @@ const renderCanonicalSupportRig = async ({ dataDir, canonical, action, character
   const driver = createMotionDriver({ actionId: action.actionId, motionPresetId: action.motionPresetId, motionParameters: action.motionParameters })
   if (action.frameCount !== driver.frameCount) throw error('Canonical rig action frame count does not match the registered driver')
   const motionScale = driver.motionParameters.intensity === 'subtle' ? 0.85 : 1
-  const transforms = action.actionId === 'review' ? [
+  let transforms = action.actionId === 'review' ? [
     { phase: 'neutral', headTiltDegrees: 0, nodOffset: 0 },
     { phase: 'inspect-left', headTiltDegrees: -14, nodOffset: 0 },
     { phase: 'compare-right', headTiltDegrees: 14, nodOffset: 0 },
@@ -154,11 +167,17 @@ const renderCanonicalSupportRig = async ({ dataDir, canonical, action, character
   ].map(transform => ({ ...transform, lift: transform.lift * motionScale, supportScaleY: 1 + (transform.supportScaleY - 1) * motionScale }))
   canceled(signal)
   if (fs.existsSync(outputDir)) throw error('Canonical rig output already exists')
-  fs.mkdirSync(outputDir, { recursive: true })
+  if (!isGait) fs.mkdirSync(outputDir, { recursive: true })
   const assemblyWidth = width
   const scale = Math.min(512 * 0.58 / height, 512 * 0.70 / assemblyWidth)
   const framePaths = []
-  if (action.actionId === 'review') framePaths.push(...await renderInspectionFrames({ source, width, height, outputDir, transforms, signal }))
+  let gaitRig
+  if (isGait) {
+    const gait = await renderArticulatedBipedGait({ sourcePath: posePath, outputDir, motionScale, signal })
+    framePaths.push(...gait.framePaths)
+    transforms = gait.transforms
+    gaitRig = gait.rig
+  } else if (action.actionId === 'review') framePaths.push(...await renderInspectionFrames({ source, width, height, outputDir, transforms, signal }))
   else for (const [index, transform] of transforms.entries()) {
     canceled(signal)
     const lowerHeight = Math.max(1, Math.round((height - split) * transform.supportScaleY))
@@ -176,7 +195,7 @@ const renderCanonicalSupportRig = async ({ dataDir, canonical, action, character
     await sharp({ create: { width: 512, height: 512, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite([{ input: posed, left: Math.round((512 - targetWidth) / 2), top }]).png().toFile(file)
     framePaths.push(file)
   }
-  const normalized = await processFrameSequence({ framePaths, outputDir: path.join(outputDir, 'normalized'), canvasWidth: 512, canvasHeight: 512, backgroundMode: 'source-alpha', anchorPolicy: action.anchorPolicy, targetStandingHeightRatio: (Number(profile.runtimeStandingHeightPx) || 92) / (Number(profile.runtimeCell?.height) || 128), signal })
+  const normalized = await processFrameSequence({ framePaths, outputDir: path.join(outputDir, 'normalized'), canvasWidth: 512, canvasHeight: 512, backgroundMode: 'source-alpha', anchorPolicy: isGait ? 'action-relative-root-v1' : action.anchorPolicy, targetStandingHeightRatio: (Number(profile.runtimeStandingHeightPx) || 92) / (Number(profile.runtimeCell?.height) || 128), signal })
   canceled(signal)
   const processed = await createVideoCandidateArtifacts({ processed: normalized, outputDir: path.join(outputDir, 'artifacts'), layout: action.layout, expectedFrameCount: driver.frameCount, characterClass })
   const temporalQuality = analyzeTemporalQuality({ frames: normalized.normalizedFrameMetrics, loop: driver.loop })
@@ -187,7 +206,8 @@ const renderCanonicalSupportRig = async ({ dataDir, canonical, action, character
   const manifest = {
     version: 1, renderer: RENDERER, actionId: action.actionId,
     source: { relativePath: canonical.relativePath, sha256: canonical.sha256, width: info.width, height: info.height, bounds: b },
-    rig: action.actionId === 'review'
+    ...(isGait ? { poseReference: { relativePath: poseReference.relativePath, sha256: poseReference.sha256 } } : {}),
+    rig: isGait ? gaitRig : action.actionId === 'review'
       ? { type: RIG_TYPE_BY_ACTION[action.actionId], pivotX: 0.5, pivotHeightRatio: 0.55, blendEndHeightRatio: 0.44, blendHeightRatio: 0.24, interpolation: 'premultiplied-bilinear', inverseIterations: 4 }
       : { type: RIG_TYPE_BY_ACTION[action.actionId], splitY: b.minY + split, assemblyPadding: 0 },
     driver, transforms,
@@ -216,6 +236,7 @@ const readCanonicalRigManifest = ({ dataDir, provenance, actionId, canonicalSha2
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
   if (manifest.version !== 1 || manifest.renderer !== RENDERER || (actionId && manifest.actionId !== actionId) || !supportsCanonicalRig({ actionId: manifest.actionId })) throw error('Canonical rig manifest action or renderer mismatch')
   if (fileHash(inside(dataDir, manifest.source.relativePath)) !== provenance.canonicalSha256 || manifest.source.sha256 !== provenance.canonicalSha256) throw error('Canonical rig source hash mismatch')
+  if (manifest.actionId === 'running-right' && (!manifest.poseReference || !/^[a-f0-9]{64}$/.test(String(manifest.poseReference.sha256 || '')) || fileHash(inside(dataDir, manifest.poseReference.relativePath)) !== manifest.poseReference.sha256)) throw error('Canonical rig pose source hash mismatch')
   const driver = createMotionDriver(manifest.driver)
   if (driver.sha256 !== manifest.driver.sha256 || driver.sha256 !== provenance.motionDriverSha256) throw error('Canonical rig motion driver hash mismatch')
   if (manifest.runtimeFrames?.length !== driver.frameCount || manifest.sourceFrames?.length !== driver.frameCount || manifest.processed?.reviewFrames?.length !== driver.frameCount) throw error('Canonical rig frame count mismatch')
@@ -260,7 +281,7 @@ const exportCanonicalRigEvidence = async ({ dataDir, outputDir, provenance, fram
   const manifest = await validateCanonicalRigRow({ dataDir, provenance, frames, actionId, canonicalSha256 })
   fs.mkdirSync(outputDir, { recursive: true })
   const rowFrames = frames.map(frame => ({ relativePath: relative(fs.realpathSync(dataDir), frame.path || inside(dataDir, frame.relativePath)), sha256: fileHash(frame.path || inside(dataDir, frame.relativePath)) }))
-  const files = [provenance.manifest, manifest.source, ...manifest.sourceFrames, ...manifest.runtimeFrames, ...processedFiles(manifest.processed), ...rowFrames]
+  const files = [provenance.manifest, manifest.source, ...(manifest.poseReference ? [manifest.poseReference] : []), ...manifest.sourceFrames, ...manifest.runtimeFrames, ...processedFiles(manifest.processed), ...rowFrames]
   for (const entry of files) {
     const source = inside(dataDir, entry.relativePath)
     const target = inside(outputDir, entry.relativePath)
