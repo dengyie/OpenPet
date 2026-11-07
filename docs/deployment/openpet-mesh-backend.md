@@ -2,9 +2,9 @@
 
 > **速读 / 当前边界**：OpenPet 的 Backend host 运行在广州 CVM `gz-cvm`，只监听 `127.0.0.1:48330`；桌面端通过 EasyTier 上的 `ssh gz-cvm` 建立 `-L` API 与 `-R` Shell bridge。公网安全组、DNS 和公网端口均不需要变更。
 
-## 当前状态（2026-11-07）
+## 当前状态（2026-11-08）
 
-广州已部署main `34cf3f5f`（PR131，main CI42393867636成功），health ready/resident；回滚 `/var/backups/openpet/20261107T171052Z-34cf3f5f` 保留，root约1.4GiB。resident Backend使用服务器凭据持续工作。正式Pip已5/9（idle/waving/jumping/failed/waiting），Provider144与授权Evaluator100已配置，failed恢复后历史108/1/90保留；waiting已通过；工作/检查态v14仍失败；重复包评估/工作态评估语义修复待部署。四动作及最终质量门未完成。部分budget PATCH已线上验证修复，新的重复评估/动作语义修复待CI/部署；见[当前证据](../release-evidence/remote-backend/2026-11-07-locomotion-budget-admission.md)。额外旧快照检查时已不存在，没有删除或替代删除。
+广州当前运行main `f0a43f7e`（PR132，main CI42401325010成功），ready/resident；回滚 `/var/backups/openpet/20261107T183113Z-f0a43f7e` 保留。正式Pip已6/9：idle/waving/jumping/failed/waiting/running通过，工作态v15得93分；right/left、review及最终门仍未完成。历史Provider111/144、Planner1/34、Evaluator93/100，剩7次评估。最新右跑在300秒侧向首帧图片请求超时后结束，未进入视频、未增加评估，原部分包评估字节一致，证实未变化包不重复评估已上线。review v14仍拒绝，闭眼/张喙使动作像打哈欠；去除手抵下巴、改为头部观察与点头的v15修复正在验证，未声称视觉通过。根盘最后约602MiB，三份逐路径旧快照删除仍待授权；全部生成证据保留。 详见[当前证据](../release-evidence/remote-backend/2026-11-07-locomotion-budget-admission.md)。以下日期记录保留其历史含义。
 
 ## 拓扑与端口
 
