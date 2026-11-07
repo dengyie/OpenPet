@@ -1727,6 +1727,38 @@ test('backend runner no longer exports legacy full-pet repair entry points', () 
   assert.equal(Object.hasOwn(backendRunnerModule, 'runFullPetIdentityRepair'), false)
 })
 
+for (const { actionId, mirrorFails } of [{ actionId: 'waving' }, { actionId: 'running-right' }, { actionId: 'running-right', mirrorFails: true }]) test(`dependent ${mirrorFails ? 'mirror' : 'package'} failure retains newly accepted ${actionId} state and removes stale package links`, async () => {
+  const dataDir = createDataDir()
+  const created = createRun({ dataDir, input: { petName: 'Interrupted Pet', backend: 'provider', generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1', actions: [{ actionId: 'idle', name: 'Idle', frameCount: 6 }], questions: [] } } })
+  const canonical = { candidateId: 'canonical-1', sha256: 'a'.repeat(64) }
+  writeRun({ dataDir, run: {
+    ...created, status: 'ready_for_review', taskStatus: 'confirmed',
+    generationTask: { ...created.generationTask, pipeline: 'quality-first-v1' },
+    artifacts: { bundle: '/old/bundle.zip', spritesheet: '/old/sheet.webp' },
+    qualityFirst: { acceptedCanonical: canonical, package: { gate: { ok: true } }, actionResults: { idle: { ok: true }, 'running-left': { ok: true }, [actionId]: { ok: false } } }
+  } })
+  const error = Object.assign(new Error('evaluator exhausted'), { code: 'hatch_pet_evaluator_call_budget_exhausted' })
+  await assert.rejects(runQualityFirstActionRepair({
+    dataDir, runId: created.runId, actionId, plan: { hash: 'plan' }, profile: createHashBoundValue({ version: 1 }),
+    runtime: {
+      runAction: async () => ({ ok: true, actionId, selectedCandidateId: 'paid-and-passed', candidates: [] }),
+      persistActionResult: async () => {},
+      mirrorRunningLeft: async () => { if (mirrorFails) throw error; return { ok: true, actionId: 'running-left', selectedCandidateId: 'derived', candidates: [] } },
+      finalizePackage: async () => { throw error }
+    }
+  }), actual => actual === error)
+  const stored = readRun({ dataDir, runId: created.runId })
+  assert.equal(stored.status, 'failed')
+  assert.equal(stored.qualityFirst.actionResults[actionId].ok, true)
+  assert.equal(stored.qualityFirst.actionResults[actionId].selectedCandidateId, 'paid-and-passed')
+  assert.equal(stored.qualityFirst.actionResults.idle.ok, true)
+  if (actionId === 'running-right') assert.equal(stored.qualityFirst.actionResults['running-left'].ok, !mirrorFails)
+  assert.equal(Object.hasOwn(stored.qualityFirst, 'package'), false)
+  assert.equal(Object.hasOwn(stored.artifacts, 'bundle'), false)
+  assert.equal(Object.hasOwn(stored.artifacts, 'spritesheet'), false)
+  assert.equal(stored.qualityFirst.omittedActionIds.includes(actionId), false)
+})
+
 test('quality-first action repair fails closed when final package artifacts cannot be rebuilt', async () => {
   const dataDir = createDataDir()
   const created = createRun({

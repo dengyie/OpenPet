@@ -24,6 +24,7 @@ const { loadPetGenerationGovernance } = require('./pet-generation-governance')
 const { getQualityFirstQualityProfile } = require('./pet-generation-quality-profile')
 const { FIXTURE_BACKEND, PROVIDER_BACKEND, normalizeCreatorBackend } = require('./backend-mode')
 const { GENERATED_FULL_PET_ACTION_IDS } = require('./full-pet-basic-actions')
+const { OFFICIAL_FULL_PET_ACTION_IDS } = require('./full-pet-row-contract')
 const {
   assertHumanCandidateSelection,
   createCandidateSelection,
@@ -1146,6 +1147,25 @@ const runQualityFirstActionRepair = async ({
       ...(run.qualityFirst?.actionResults || {}),
       [normalizedActionId]: createQualityFirstActionResultView(result)
     }
+    if (normalizedActionId === 'running-right') {
+      actionResults['running-left'] = createQualityFirstActionResultView({
+        ok: false, actionId: 'running-left', disposition: 'omitted', failureCode: 'source_action_pending'
+      })
+    }
+    // Each checkpoint is durable before dependent work starts. Keep the public
+    // run aligned even when mirroring or package evaluation later fails.
+    const { package: _stalePackage, ...pendingQualityFirst } = generatingRun.qualityFirst
+    const persistActionProgress = () => writeRun({ dataDir, run: {
+      ...generatingRun,
+      artifacts: removeGeneratedPackageArtifacts(generatingRun.artifacts),
+      qualityFirst: {
+        ...pendingQualityFirst,
+        actionResults,
+        ...(effectiveProfile?.hash ? { scaleProfileHash: effectiveProfile.hash } : {}),
+        omittedActionIds: OFFICIAL_FULL_PET_ACTION_IDS.filter((id) => actionResults[id]?.ok !== true)
+      }
+    } })
+    persistActionProgress()
     if (
       normalizedActionId === 'idle' &&
       result?.ok === true &&
@@ -1181,6 +1201,7 @@ const runQualityFirstActionRepair = async ({
       const mirrored = await runtime.mirrorRunningLeft({ source: result, profile: effectiveProfile, canonical })
       await runtime.persistActionResult({ actionId: 'running-left', result: mirrored, canonical, profile: effectiveProfile })
       actionResults['running-left'] = createQualityFirstActionResultView(mirrored)
+      persistActionProgress()
     } else if (normalizedActionId === 'running-right') {
       actionResults['running-left'] = createQualityFirstActionResultView({
         ok: false,
@@ -1188,6 +1209,7 @@ const runQualityFirstActionRepair = async ({
         disposition: 'omitted',
         failureCode: 'source_action_rejected'
       })
+      persistActionProgress()
     }
     const idleOk = normalizedActionId === 'idle' ? result?.ok === true : actionResults.idle?.ok === true
     const packageResult = idleOk ? await runtime.finalizePackage({ run, canonical, profile: effectiveProfile, actionResults }) : null
