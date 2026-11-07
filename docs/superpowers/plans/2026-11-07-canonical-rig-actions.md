@@ -10,7 +10,7 @@
 
 ## Current checkpoint (2026-11-07)
 
-PR125/126已合入main `b56c17ef`并部署，main CI42328906292成功。正式Pip idle/waving/jumping已接受（3/9）；右跑strip rig正式可读性8，paired-leg探针42，均未通过，新修复移除右跑rig入口。周期采样探针overall84仍失败；不据此声称跑步完成。Evaluator68/68耗尽、Provider92/144保留，额外评估预算决定待答复。root约3.3GiB；具体授权的额外快照已不存在，未删除。后续状态以[当前证据](../../release-evidence/remote-backend/2026-11-07-locomotion-budget-admission.md)为准，以下早期检查点保留历史。
+当前广州已部署main `cf9a0b35`（PR129，main CI42375000156成功）。正式Pip idle/waving/jumping/failed已接受（4/9），failed通过checkpoint验证后复用，未增加Provider用量。用户已授权Evaluator100，Provider144保持，历史92/1/69保留；waiting恢复待终态。右跑画质与其他五动作及最终门尚未完成。root约1.7GiB，无新增删除。后续状态以[当前证据](../../release-evidence/remote-backend/2026-11-07-locomotion-budget-admission.md)为准，以下早期检查点保留历史。
 
 ## Global constraints
 
