@@ -58,6 +58,30 @@ test('support rig validates identity, supported anatomy/action and cancellation 
   assert.equal(fs.existsSync(path.join(f.dataDir, f.outputRelativeDir)), false)
 })
 
+test('support rig renders a registered eight-phase running-right gait with lower-body motion', async () => {
+  const f = await fixture()
+  const action = {
+    actionId: 'running-right',
+    motionPresetId: 'running-right-gait-v1',
+    anchorPolicy: 'compact-contact-root-v1',
+    frameCount: 8,
+    layout: { columns: 4, rows: 2 },
+    motionParameters: { intensity: 'normal', leadSide: 'viewer-right' }
+  }
+  const result = await renderCanonicalSupportRig({ ...f, action, outputRelativeDir: 'candidates/run-right' })
+  assert.equal(result.processed.frames.length, 8)
+  assert.equal(new Set(result.processed.frames.map(frame => frame.sha256)).size, 8)
+  assert.equal(result.provenance.kind, 'canonical-rig')
+  const manifest = JSON.parse(fs.readFileSync(result.manifestPath))
+  assert.equal(manifest.rig.type, 'gait-lower-support')
+  assert.deepEqual(manifest.transforms.map(t => t.phase), ['contact', 'down', 'passing', 'up', 'opposite-contact', 'opposite-down', 'opposite-passing', 'loop-close'])
+  assert.ok(manifest.transforms.some(t => t.supportOffsetX !== 0))
+  assert.ok(manifest.transforms.some(t => t.supportScaleY !== 1))
+  const qa = analyzeSpriteCandidate({ actionId: 'running-right', rawMetrics: result.processed.metrics, profile: f.profile, actionPolicy: action })
+  assert.equal(qa.ok, true, JSON.stringify(qa))
+  await validateCanonicalRigRow({ dataDir: f.dataDir, provenance: result.provenance, frames: result.processed.frames, actionId: 'running-right' })
+})
+
 test('registered subtle jumping reduces the rendered motion while retaining its technical gate', async () => {
   const f = await fixture()
   const normal = await renderCanonicalSupportRig(f)
