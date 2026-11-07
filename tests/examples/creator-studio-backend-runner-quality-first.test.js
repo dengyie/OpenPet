@@ -1727,6 +1727,26 @@ test('backend runner no longer exports legacy full-pet repair entry points', () 
   assert.equal(Object.hasOwn(backendRunnerModule, 'runFullPetIdentityRepair'), false)
 })
 
+test('retry preserves an unreported passing checkpoint for host validation before generating again', async () => {
+  const dataDir = createDataDir()
+  const created = createRun({ dataDir, input: { petName: 'Interrupted Pet', backend: 'provider', generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1', actions: [{ actionId: 'idle', name: 'Idle', frameCount: 6 }], questions: [] } } })
+  writeRun({ dataDir, run: { ...created, status: 'failed', generationTask: { ...created.generationTask, pipeline: 'quality-first-v1' }, qualityFirst: { acceptedCanonical: { candidateId: 'canonical-1', sha256: 'a'.repeat(64) }, actionResults: { idle: { ok: true }, failed: { ok: false } } } } })
+  const file = path.join(dataDir, 'runs', created.runId, 'full-pet-action-checkpoints.json')
+  fs.writeFileSync(file, JSON.stringify({ version: 1, runId: created.runId, actions: { failed: { actionId: 'failed', ok: true } } }))
+  await runQualityFirstActionRepair({
+    dataDir, runId: created.runId, actionId: 'failed', plan: { hash: 'plan' }, profile: createHashBoundValue({ version: 1 }),
+    runtime: {
+      runAction: async () => {
+        assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).actions.failed.ok, true)
+        return { ok: true, actionId: 'failed', checkpointReused: true, selectedCandidateId: 'checkpoint-failed', candidates: [] }
+      },
+      persistActionResult: async () => {},
+      finalizePackage: async () => ({ artifacts: {} })
+    }
+  })
+  assert.equal(readRun({ dataDir, runId: created.runId }).qualityFirst.actionResults.failed.ok, true)
+})
+
 for (const { actionId, mirrorFails } of [{ actionId: 'waving' }, { actionId: 'running-right' }, { actionId: 'running-right', mirrorFails: true }]) test(`dependent ${mirrorFails ? 'mirror' : 'package'} failure retains newly accepted ${actionId} state and removes stale package links`, async () => {
   const dataDir = createDataDir()
   const created = createRun({ dataDir, input: { petName: 'Interrupted Pet', backend: 'provider', generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1', actions: [{ actionId: 'idle', name: 'Idle', frameCount: 6 }], questions: [] } } })
