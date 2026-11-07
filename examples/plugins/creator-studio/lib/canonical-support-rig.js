@@ -125,12 +125,13 @@ const renderCanonicalSupportRig = async ({ dataDir, canonical, poseReference, ac
   const sourceBytes = fs.readFileSync(sourcePath)
   if (!/^[a-f0-9]{64}$/.test(String(canonical?.sha256 || '')) || hash(sourceBytes) !== canonical.sha256) throw error('Canonical rig source hash mismatch', 'canonical_rig_source_mismatch')
   const isGait = action.actionId === 'running-right'
-  let posePath
+  let poseBytes
+  let retainedPoseReference
   if (isGait) {
     if (!poseReference) throw error('Articulated running requires a separately prepared side pose', 'canonical_rig_pose_required')
-    posePath = inside(dataDir, poseReference.relativePath)
-    if (!/^[a-f0-9]{64}$/.test(String(poseReference.sha256 || '')) || fileHash(posePath) !== poseReference.sha256) throw error('Canonical rig pose source hash mismatch')
-    const decodedPose = await sharp(posePath, { limitInputPixels: 2048 * 2048 }).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+    poseBytes = fs.readFileSync(inside(dataDir, poseReference.relativePath))
+    if (!/^[a-f0-9]{64}$/.test(String(poseReference.sha256 || '')) || hash(poseBytes) !== poseReference.sha256) throw error('Canonical rig pose source hash mismatch')
+    const decodedPose = await sharp(poseBytes, { limitInputPixels: 2048 * 2048 }).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
     if (decodedPose.info.width < 64 || decodedPose.info.height < 64 || decodedPose.info.width > 2048 || decodedPose.info.height > 2048) throw error('Canonical rig pose dimensions must be 64 to 2048 pixels')
     const pose = measureBodyMask({ data: decodedPose.data, width: decodedPose.info.width, height: decodedPose.info.height, characterClass })
     if (pose.empty || pose.unmatchedComponents.length || pose.bodyBounds.minX <= 0 || pose.bodyBounds.minY <= 0 || pose.bodyBounds.maxX >= decodedPose.info.width - 1 || pose.bodyBounds.maxY >= decodedPose.info.height - 1) throw error('Canonical rig side pose must be one complete unclipped body')
@@ -173,7 +174,12 @@ const renderCanonicalSupportRig = async ({ dataDir, canonical, poseReference, ac
   const framePaths = []
   let gaitRig
   if (isGait) {
-    const gait = await renderArticulatedBipedGait({ sourcePath: posePath, outputDir, motionScale, signal })
+    const gait = await renderArticulatedBipedGait({ sourceBytes: poseBytes, outputDir, motionScale, signal })
+    // Keyframe output paths are reused by later Provider attempts. Keep the
+    // validated bytes with this candidate so retries cannot invalidate it.
+    const retainedPosePath = path.join(outputDir, 'pose-source.png')
+    fs.writeFileSync(retainedPosePath, poseBytes, { flag: 'wx' })
+    retainedPoseReference = { relativePath: relative(dataDir, retainedPosePath), sha256: hash(poseBytes) }
     framePaths.push(...gait.framePaths)
     transforms = gait.transforms
     gaitRig = gait.rig
@@ -206,7 +212,7 @@ const renderCanonicalSupportRig = async ({ dataDir, canonical, poseReference, ac
   const manifest = {
     version: 1, renderer: RENDERER, actionId: action.actionId,
     source: { relativePath: canonical.relativePath, sha256: canonical.sha256, width: info.width, height: info.height, bounds: b },
-    ...(isGait ? { poseReference: { relativePath: poseReference.relativePath, sha256: poseReference.sha256 } } : {}),
+    ...(isGait ? { poseReference: retainedPoseReference } : {}),
     rig: isGait ? gaitRig : action.actionId === 'review'
       ? { type: RIG_TYPE_BY_ACTION[action.actionId], pivotX: 0.5, pivotHeightRatio: 0.55, blendEndHeightRatio: 0.44, blendHeightRatio: 0.24, interpolation: 'premultiplied-bilinear', inverseIterations: 4 }
       : { type: RIG_TYPE_BY_ACTION[action.actionId], splitY: b.minY + split, assemblyPadding: 0 },
@@ -222,7 +228,7 @@ const renderCanonicalSupportRig = async ({ dataDir, canonical, poseReference, ac
   const manifestPath = path.join(outputDir, 'rig-manifest.json')
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n')
   canceled(signal)
-  return { processed, temporalQuality, driver, manifestPath, provenance: { kind: 'canonical-rig', renderer: RENDERER, canonicalSha256: canonical.sha256, motionDriverSha256: driver.sha256, manifest: { relativePath: relative(dataDir, manifestPath), sha256: fileHash(manifestPath) } } }
+  return { processed, temporalQuality, driver, manifestPath, ...(retainedPoseReference ? { poseReference: retainedPoseReference } : {}), provenance: { kind: 'canonical-rig', renderer: RENDERER, canonicalSha256: canonical.sha256, motionDriverSha256: driver.sha256, manifest: { relativePath: relative(dataDir, manifestPath), sha256: fileHash(manifestPath) } } }
 }
 
 const readCanonicalRigManifest = ({ dataDir, provenance, actionId, canonicalSha256 }) => {

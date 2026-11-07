@@ -74,7 +74,9 @@ test('articulated gait binds a separate side pose, exchanges feet and exports it
   const result = await renderCanonicalSupportRig({ ...f, action, poseReference })
   const manifest = JSON.parse(fs.readFileSync(result.manifestPath))
   assert.equal(manifest.rig.type, 'articulated-biped-gait')
-  assert.deepEqual(manifest.poseReference, poseReference)
+  assert.equal(manifest.poseReference.sha256, poseReference.sha256)
+  assert.notEqual(manifest.poseReference.relativePath, poseReference.relativePath)
+  assert.equal(manifest.poseReference.relativePath, `${f.outputRelativeDir}/pose-source.png`)
   assert.equal(result.processed.frames.length, 8)
   assert.equal(new Set(result.processed.frames.map(frame => frame.sha256)).size, 8)
   assert.ok(manifest.transforms[0].legs[0].x > manifest.transforms[0].legs[1].x)
@@ -83,11 +85,17 @@ test('articulated gait binds a separate side pose, exchanges feet and exports it
   assert.equal(analyzeSpriteCandidate({ actionId: action.actionId, rawMetrics: result.processed.metrics, profile: f.profile, actionPolicy: action }).ok, true)
   const auditRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-gait-export-'))
   await rigModule().exportCanonicalRigEvidence({ dataDir: f.dataDir, outputDir: auditRoot, provenance: result.provenance, frames: result.processed.frames, actionId: action.actionId })
-  assert.equal(hash(fs.readFileSync(path.join(auditRoot, poseReference.relativePath))), poseReference.sha256)
-  const changed = fs.readFileSync(posePath)
-  fs.appendFileSync(posePath, 'changed')
+  assert.equal(hash(fs.readFileSync(path.join(auditRoot, manifest.poseReference.relativePath))), poseReference.sha256)
+  // A later generated keyframe overwrites the shared input path. Retained rigs
+  // must keep their own verified source and remain independently exportable.
+  fs.writeFileSync(posePath, 'replacement from a later Provider attempt')
+  await validateCanonicalRigRow({ dataDir: f.dataDir, provenance: result.provenance, frames: result.processed.frames, actionId: action.actionId })
+  const afterRetryExport = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-gait-retry-export-'))
+  await rigModule().exportCanonicalRigEvidence({ dataDir: f.dataDir, outputDir: afterRetryExport, provenance: result.provenance, frames: result.processed.frames, actionId: action.actionId })
+  assert.equal(hash(fs.readFileSync(path.join(afterRetryExport, manifest.poseReference.relativePath))), poseReference.sha256)
+  fs.appendFileSync(path.join(f.dataDir, manifest.poseReference.relativePath), 'changed')
   await assert.rejects(validateCanonicalRigRow({ dataDir: f.dataDir, provenance: result.provenance, frames: result.processed.frames, actionId: action.actionId }), /pose.*hash/)
-  fs.writeFileSync(posePath, changed)
+
   await assert.rejects(renderCanonicalSupportRig({ ...f, action, poseReference: { ...poseReference, sha256: '0'.repeat(64) }, outputRelativeDir: 'invalid-pose' }), /pose.*hash/)
   assert.equal(fs.existsSync(path.join(f.dataDir, 'invalid-pose')), false)
 })
@@ -307,6 +315,7 @@ for (const actionId of ['jumping', 'review', 'running-right']) test(`production 
   process.env.OPENPET_BRIDGE_URL = 'http://127.0.0.1:1'
   process.env.OPENPET_BRIDGE_TOKEN = 'test-only'
   const calls = []
+  let generatedPosePath
   global.fetch = async (url, request) => {
     const route = new URL(url).pathname
     const payload = JSON.parse(request.body)
@@ -318,6 +327,7 @@ for (const actionId of ['jumping', 'review', 'running-right']) test(`production 
       const output = path.join(f.dataDir, relativePath)
       fs.mkdirSync(path.dirname(output), { recursive: true })
       fs.copyFileSync(path.join(f.dataDir, f.poseReference.relativePath), output)
+      generatedPosePath = output
       result = { outputs: [{ dataRelativePath: relativePath, mimeType: 'image/png', sha256: hash(fs.readFileSync(output)) }] }
     } else if (route === '/creator/model-video-generate') {
       const relativePath = `${payload.output.dataRelativeDir}/${payload.output.fileName}`
@@ -344,6 +354,8 @@ for (const actionId of ['jumping', 'review', 'running-right']) test(`production 
       const artifact = result.selectedCandidate.artifacts.find(file => file.role === 'rig-pose-source')
       assert.ok(artifact, 'production rig must retain its generated side pose')
       assert.equal(hash(fs.readFileSync(artifact.path)), artifact.sha256)
+      assert.notEqual(artifact.path, generatedPosePath)
+      assert.ok(artifact.path.endsWith('/rig/pose-source.png'))
       const mirror = await runtime.mirrorRunningLeft({ source: result })
       assert.equal(mirror.ok, true)
       for (const [index, frame] of mirror.selectedCandidate.processed.frames.entries()) {
@@ -356,6 +368,7 @@ for (const actionId of ['jumping', 'review', 'running-right']) test(`production 
     assert.equal(result.candidates.filter(candidate => candidate.provenance?.kind === 'canonical-rig').length, 1)
     assert.ok(result.candidates.filter(candidate => !candidate.provenance).every(candidate => candidate.gate.ok === false))
     await runtime.persistActionResult({ actionId, result, canonical: f.canonical, profile })
+    if (actionId === 'running-right') fs.writeFileSync(generatedPosePath, 'later Provider output')
     const before = calls.length
     const resumed = await runtime.runAction({ actionId, canonical: f.canonical, profile })
     assert.equal(resumed.checkpointReused, true)
