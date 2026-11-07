@@ -596,8 +596,10 @@ const MIME_BY_EXT = Object.freeze({
 const IMAGE_PREVIEW_INLINE_MAX_BYTES = 1_500_000
 const IMAGE_PREVIEW_SOURCE_MAX_BYTES = 25_000_000
 const PROMPT_TEXT_MAX_CHARS = 12000
-// Covers the 72-call run budget plus raw, processed, frame, GIF, and review artifacts per call.
-const PROCESS_ASSET_SCAN_MAX_FILES = 2048
+// Status polling projects a bounded view; full paid evidence stays on disk/export.
+const PROCESS_ASSET_MAX_FILES = 512
+const PROCESS_ASSET_SCAN_MAX_ENTRIES = 4096
+const PROCESS_CANDIDATE_MAX_FILES = 256
 
 const FAILURE_CODE_PLAIN_MESSAGES = Object.freeze({
   'identity-descriptor-distance-high': '角色身份特征偏离参考太多（轮廓/五官/配色不一致）',
@@ -747,59 +749,27 @@ const readPromptTextIfExists = (absolutePath) => {
   }
 }
 
-const listImageFilesRecursive = (dirPath, limit = 24) => {
+const listFilesRecursive = (dirPath, limit, matches, budget = { remaining: PROCESS_ASSET_SCAN_MAX_ENTRIES }) => {
   const results = []
-  if (!dirPath || !fs.existsSync(dirPath)) return results
+  if (limit <= 0 || budget.remaining <= 0 || !dirPath || !fs.existsSync(dirPath)) return results
   const stack = [dirPath]
-  while (stack.length && results.length < limit) {
+  while (stack.length && results.length < limit && budget.remaining > 0) {
     const current = stack.pop()
+    budget.remaining -= 1
     let entries = []
-    try {
-      entries = fs.readdirSync(current, { withFileTypes: true })
-    } catch (_) {
-      continue
-    }
+    try { entries = fs.readdirSync(current, { withFileTypes: true }) } catch (_) { continue }
     for (const entry of entries) {
-      if (results.length >= limit) break
+      if (results.length >= limit || budget.remaining <= 0) break
+      budget.remaining -= 1
       const full = path.join(current, entry.name)
-      if (entry.isDirectory()) {
-        stack.push(full)
-        continue
-      }
-      if (!entry.isFile()) continue
-      const ext = path.extname(entry.name).toLowerCase()
-      if (!MIME_BY_EXT[ext]) continue
-      results.push(full)
+      if (entry.isDirectory()) stack.push(full)
+      else if (entry.isFile() && matches(entry.name)) results.push(full)
     }
   }
   return results.sort()
 }
-
-const listPromptFilesRecursive = (dirPath, limit = 256) => {
-  const results = []
-  if (!dirPath || !fs.existsSync(dirPath)) return results
-  const stack = [dirPath]
-  while (stack.length && results.length < limit) {
-    const current = stack.pop()
-    let entries = []
-    try {
-      entries = fs.readdirSync(current, { withFileTypes: true })
-    } catch (_) {
-      continue
-    }
-    for (const entry of entries) {
-      if (results.length >= limit) break
-      const full = path.join(current, entry.name)
-      if (entry.isDirectory()) {
-        stack.push(full)
-        continue
-      }
-      if (!entry.isFile() || !/\.(txt|md)$/i.test(entry.name)) continue
-      results.push(full)
-    }
-  }
-  return results.sort()
-}
+const listImageFilesRecursive = (dirPath, limit = 24, budget) => listFilesRecursive(dirPath, limit, name => Boolean(MIME_BY_EXT[path.extname(name).toLowerCase()]), budget)
+const listPromptFilesRecursive = (dirPath, limit = 256, budget) => listFilesRecursive(dirPath, limit, name => /\.(txt|md)$/i.test(name), budget)
 
 const createFailureEvidenceList = (record = {}) => {
   const items = []
@@ -835,9 +805,12 @@ const createFailureEvidenceList = (record = {}) => {
 const collectProcessAssetsForRun = ({ pluginDataDir, runId, includePreviews = false }) => {
   const safeRun = getSafeCreatorRunDir({ pluginDataDir, runId, requireExisting: true })
   if (!safeRun) return []
-  const { runDir, runId: normalizedRunId } = safeRun
+  const { dataRoot, runDir, runId: normalizedRunId } = safeRun
   const processAssets = []
   const seen = new Set()
+  const scanBudget = { remaining: PROCESS_ASSET_SCAN_MAX_ENTRIES }
+  const remaining = () => Math.max(0, PROCESS_ASSET_MAX_FILES - processAssets.length)
+  const scanImages = (directory, limit) => listImageFilesRecursive(directory, Math.min(limit, remaining()), scanBudget)
 
   const add = ({
     absolutePath,
@@ -848,7 +821,7 @@ const collectProcessAssetsForRun = ({ pluginDataDir, runId, includePreviews = fa
     promptText = '',
     promptRelativePath = ''
   }) => {
-    if (!absolutePath || !fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isFile()) return
+    if (remaining() === 0 || !absolutePath || !fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isFile()) return
     const relative = toRunRelativePath({ pluginDataDir, runId: normalizedRunId, absolutePath })
     if (!relative || seen.has(relative)) return
     seen.add(relative)
@@ -868,135 +841,14 @@ const collectProcessAssetsForRun = ({ pluginDataDir, runId, includePreviews = fa
     })
   }
 
-  const anchorDir = path.join(runDir, 'inputs', 'anchors')
-  for (const absolute of listImageFilesRecursive(anchorDir, 12)) {
-    const base = path.basename(absolute).toLowerCase()
-    const isIdentity = /identity|canonical|character-anchor/.test(base)
-    add({
-      absolutePath: absolute,
-      kind: isIdentity ? 'identity' : 'anchor',
-      label: isIdentity ? '身份参考' : '锚定板',
-      role: isIdentity ? 'identity-reference' : 'anchor-board'
-    })
+  const runJson = readJsonIfExists(path.join(runDir, 'run.json'), null)
+  for (const candidate of [runJson?.qualityFirst?.package?.spritesheetRelativePath, runJson?.qualityFirst?.package?.visualEvaluation?.boardRelativePath]) {
+    const relativePath = normalizeSafeRelativePath(candidate)
+    if (!relativePath || !isRunRelativePath({ runId: normalizedRunId, relativePath })) continue
+    add({ absolutePath: path.join(dataRoot, relativePath), kind: 'sheet', label: 'Quality-first package output', role: 'quality-first-package' })
   }
-
-  const keyframeActionDir = path.join(runDir, 'inputs', 'keyframes', 'actions')
-  for (const absolute of listImageFilesRecursive(keyframeActionDir, 24)) {
-    const base = path.basename(absolute).toLowerCase()
-    if (!/conditioning|reference-board|identity-board/.test(base)) continue
-    const actionIdGuess = base.split('-')[0]
-    const kind = /conditioning/.test(base)
-      ? 'conditioning-board'
-      : (/identity/.test(base) ? 'identity' : 'anchor')
-    add({
-      absolutePath: absolute,
-      kind,
-      label: kind === 'conditioning-board' ? '条件板' : (kind === 'identity' ? '身份板' : '参考板'),
-      role: base.replace(/\.(png|webp|jpe?g|gif)$/i, ''),
-      actionId: isSafePathSegment(actionIdGuess) ? actionIdGuess : 'process'
-    })
-  }
-
-  const qualityReferenceDir = path.join(runDir, 'references')
-  for (const absolute of listImageFilesRecursive(qualityReferenceDir, 32)) {
-    const relativeToReferences = path.relative(qualityReferenceDir, absolute).split(path.sep)
-    const actionId = isSafePathSegment(relativeToReferences[0]) ? relativeToReferences[0] : 'process'
-    const base = path.basename(absolute).toLowerCase()
-    add({
-      absolutePath: absolute,
-      kind: /action-reference-board/.test(base) ? 'conditioning-board' : 'anchor',
-      label: /action-reference-board/.test(base) ? `${actionId} 条件板` : `${actionId} 角色锚定板`,
-      role: base.replace(/\.(png|webp|jpe?g|gif)$/i, ''),
-      actionId
-    })
-  }
-
-  const qualityCandidateDir = path.join(runDir, 'candidates')
-  for (const absolute of listImageFilesRecursive(qualityCandidateDir, PROCESS_ASSET_SCAN_MAX_FILES)) {
-    const relativeToCandidates = path.relative(qualityCandidateDir, absolute).split(path.sep)
-    const scope = normalizeText(relativeToCandidates[0])
-    const actionId = scope.startsWith('action-') ? scope.slice('action-'.length) : scope
-    if (!isSafePathSegment(actionId) || actionId === 'canonical') continue
-    const relativeText = relativeToCandidates.join('/').toLowerCase()
-    const base = path.basename(absolute).toLowerCase()
-    const kind = /\/frames\//.test(`/${relativeText}`)
-      ? 'frame'
-      : /contact-sheet/.test(base)
-        ? 'process'
-        : /animation\.gif$/.test(base)
-          ? 'process'
-          : /sheet/.test(base) || /\/raw\//.test(`/${relativeText}`)
-            ? 'sheet'
-            : 'process'
-    add({
-      absolutePath: absolute,
-      kind,
-      label: kind === 'frame' ? `${actionId} 候选帧` : kind === 'sheet' ? `${actionId} 候选原图` : `${actionId} 处理产物`,
-      role: relativeText.includes('/raw/') ? 'raw-candidate' : relativeText.includes('/processed/') ? 'processed-candidate' : 'candidate-evidence',
-      actionId
-    })
-  }
-
-  const repairRoot = path.join(runDir, 'repairs')
-  if (fs.existsSync(repairRoot)) {
-    let repairEntries = []
-    try {
-      repairEntries = fs.readdirSync(repairRoot, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory())
-        .sort((left, right) => left.name.localeCompare(right.name))
-    } catch (_) {}
-    for (const repairEntry of repairEntries) {
-      const archiveId = normalizeText(repairEntry.name).slice(0, 120)
-      for (const candidateDirName of ['candidates', 'candidate-archives']) {
-        const archivedCandidateRoot = path.join(repairRoot, repairEntry.name, candidateDirName)
-        for (const absolute of listImageFilesRecursive(archivedCandidateRoot, PROCESS_ASSET_SCAN_MAX_FILES)) {
-          const relativeParts = path.relative(archivedCandidateRoot, absolute).split(path.sep)
-          const scope = normalizeText(relativeParts[0])
-          const scopedActionId = scope === 'canonical'
-            ? 'identity'
-            : scope.startsWith('action-')
-              ? scope.slice('action-'.length)
-              : scope
-          const actionId = isSafePathSegment(scopedActionId) ? scopedActionId : 'process'
-          const identityAsset = actionId === 'identity'
-          add({
-            absolutePath: absolute,
-            kind: 'process',
-            label: identityAsset
-              ? `历史身份候选 · ${archiveId}`
-              : `历史 ${actionId} 付费候选 · ${archiveId}`,
-            role: 'repair-archive',
-            actionId
-          })
-        }
-      }
-      const archivedPromptRoot = path.join(repairRoot, repairEntry.name, 'prompts')
-      for (const absolute of listPromptFilesRecursive(archivedPromptRoot, 256)) {
-        const base = path.basename(absolute, path.extname(absolute))
-        const candidateMatch = base.match(/^([a-z0-9][a-z0-9._-]*?)-candidate(?:-|$)/i)
-        const normalizedBase = normalizeText(candidateMatch?.[1] || base)
-        const scopedActionId = /^canonical(?:-|$)/i.test(base) ? 'identity' : normalizedBase
-        const actionId = isSafePathSegment(scopedActionId) ? scopedActionId : 'process'
-        const promptRelativePath = toRunRelativePath({ pluginDataDir, runId: normalizedRunId, absolutePath: absolute })
-        const promptText = readPromptTextIfExists(absolute)
-        if (!promptRelativePath || !promptText) continue
-        add({
-          absolutePath: absolute,
-          kind: 'prompt',
-          label: actionId === 'identity'
-            ? `历史身份提示词 · ${archiveId}`
-            : `历史 ${actionId} 提示词 · ${archiveId}`,
-          role: 'repair-archive',
-          actionId,
-          promptText,
-          promptRelativePath
-        })
-      }
-    }
-  }
-
   const qualityPackageDir = path.join(runDir, 'quality-first')
-  for (const absolute of listImageFilesRecursive(qualityPackageDir, PROCESS_ASSET_SCAN_MAX_FILES)) {
+  for (const absolute of scanImages(qualityPackageDir, PROCESS_CANDIDATE_MAX_FILES)) {
     const base = path.basename(absolute).toLowerCase()
     add({
       absolutePath: absolute,
@@ -1006,7 +858,6 @@ const collectProcessAssetsForRun = ({ pluginDataDir, runId, includePreviews = fa
     })
   }
 
-  const runJson = readJsonIfExists(path.join(runDir, 'run.json'), null)
   const artifactCandidates = [
     runJson?.artifacts?.spritesheet,
     runJson?.artifacts?.spriteSheet,
@@ -1041,6 +892,133 @@ const collectProcessAssetsForRun = ({ pluginDataDir, runId, includePreviews = fa
         role: 'row-strip',
         actionId
       })
+    }
+  }
+  const anchorDir = path.join(runDir, 'inputs', 'anchors')
+  for (const absolute of scanImages(anchorDir, 12)) {
+    const base = path.basename(absolute).toLowerCase()
+    const isIdentity = /identity|canonical|character-anchor/.test(base)
+    add({
+      absolutePath: absolute,
+      kind: isIdentity ? 'identity' : 'anchor',
+      label: isIdentity ? '身份参考' : '锚定板',
+      role: isIdentity ? 'identity-reference' : 'anchor-board'
+    })
+  }
+
+  const keyframeActionDir = path.join(runDir, 'inputs', 'keyframes', 'actions')
+  for (const absolute of scanImages(keyframeActionDir, 24)) {
+    const base = path.basename(absolute).toLowerCase()
+    if (!/conditioning|reference-board|identity-board/.test(base)) continue
+    const actionIdGuess = base.split('-')[0]
+    const kind = /conditioning/.test(base)
+      ? 'conditioning-board'
+      : (/identity/.test(base) ? 'identity' : 'anchor')
+    add({
+      absolutePath: absolute,
+      kind,
+      label: kind === 'conditioning-board' ? '条件板' : (kind === 'identity' ? '身份板' : '参考板'),
+      role: base.replace(/\.(png|webp|jpe?g|gif)$/i, ''),
+      actionId: isSafePathSegment(actionIdGuess) ? actionIdGuess : 'process'
+    })
+  }
+
+  const qualityReferenceDir = path.join(runDir, 'references')
+  for (const absolute of scanImages(qualityReferenceDir, 32)) {
+    const relativeToReferences = path.relative(qualityReferenceDir, absolute).split(path.sep)
+    const actionId = isSafePathSegment(relativeToReferences[0]) ? relativeToReferences[0] : 'process'
+    const base = path.basename(absolute).toLowerCase()
+    add({
+      absolutePath: absolute,
+      kind: /action-reference-board/.test(base) ? 'conditioning-board' : 'anchor',
+      label: /action-reference-board/.test(base) ? `${actionId} 条件板` : `${actionId} 角色锚定板`,
+      role: base.replace(/\.(png|webp|jpe?g|gif)$/i, ''),
+      actionId
+    })
+  }
+
+  const qualityCandidateDir = path.join(runDir, 'candidates')
+  for (const absolute of scanImages(qualityCandidateDir, PROCESS_CANDIDATE_MAX_FILES)) {
+    const relativeToCandidates = path.relative(qualityCandidateDir, absolute).split(path.sep)
+    const scope = normalizeText(relativeToCandidates[0])
+    const actionId = scope.startsWith('action-') ? scope.slice('action-'.length) : scope
+    if (!isSafePathSegment(actionId) || actionId === 'canonical') continue
+    const relativeText = relativeToCandidates.join('/').toLowerCase()
+    const base = path.basename(absolute).toLowerCase()
+    const kind = /\/frames\//.test(`/${relativeText}`)
+      ? 'frame'
+      : /contact-sheet/.test(base)
+        ? 'process'
+        : /animation\.gif$/.test(base)
+          ? 'process'
+          : /sheet/.test(base) || /\/raw\//.test(`/${relativeText}`)
+            ? 'sheet'
+            : 'process'
+    add({
+      absolutePath: absolute,
+      kind,
+      label: kind === 'frame' ? `${actionId} 候选帧` : kind === 'sheet' ? `${actionId} 候选原图` : `${actionId} 处理产物`,
+      role: relativeText.includes('/raw/') ? 'raw-candidate' : relativeText.includes('/processed/') ? 'processed-candidate' : 'candidate-evidence',
+      actionId
+    })
+  }
+
+  const repairRoot = path.join(runDir, 'repairs')
+  if (fs.existsSync(repairRoot)) {
+    let repairEntries = []
+    try {
+      repairEntries = fs.readdirSync(repairRoot, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .sort((left, right) => right.name.localeCompare(left.name))
+    } catch (_) {}
+    for (const repairEntry of repairEntries) {
+      if (remaining() === 0 || scanBudget.remaining <= 0) break
+      const archiveId = normalizeText(repairEntry.name).slice(0, 120)
+      for (const candidateDirName of ['candidates', 'candidate-archives']) {
+        const archivedCandidateRoot = path.join(repairRoot, repairEntry.name, candidateDirName)
+        for (const absolute of scanImages(archivedCandidateRoot, PROCESS_CANDIDATE_MAX_FILES)) {
+          const relativeParts = path.relative(archivedCandidateRoot, absolute).split(path.sep)
+          const scope = normalizeText(relativeParts[0])
+          const scopedActionId = scope === 'canonical'
+            ? 'identity'
+            : scope.startsWith('action-')
+              ? scope.slice('action-'.length)
+              : scope
+          const actionId = isSafePathSegment(scopedActionId) ? scopedActionId : 'process'
+          const identityAsset = actionId === 'identity'
+          add({
+            absolutePath: absolute,
+            kind: 'process',
+            label: identityAsset
+              ? `历史身份候选 · ${archiveId}`
+              : `历史 ${actionId} 付费候选 · ${archiveId}`,
+            role: 'repair-archive',
+            actionId
+          })
+        }
+      }
+      const archivedPromptRoot = path.join(repairRoot, repairEntry.name, 'prompts')
+      for (const absolute of listPromptFilesRecursive(archivedPromptRoot, Math.min(256, remaining()), scanBudget)) {
+        const base = path.basename(absolute, path.extname(absolute))
+        const candidateMatch = base.match(/^([a-z0-9][a-z0-9._-]*?)-candidate(?:-|$)/i)
+        const normalizedBase = normalizeText(candidateMatch?.[1] || base)
+        const scopedActionId = /^canonical(?:-|$)/i.test(base) ? 'identity' : normalizedBase
+        const actionId = isSafePathSegment(scopedActionId) ? scopedActionId : 'process'
+        const promptRelativePath = toRunRelativePath({ pluginDataDir, runId: normalizedRunId, absolutePath: absolute })
+        const promptText = readPromptTextIfExists(absolute).slice(0, 1200)
+        if (!promptRelativePath || !promptText) continue
+        add({
+          absolutePath: absolute,
+          kind: 'prompt',
+          label: actionId === 'identity'
+            ? `历史身份提示词 · ${archiveId}`
+            : `历史 ${actionId} 提示词 · ${archiveId}`,
+          role: 'repair-archive',
+          actionId,
+          promptText,
+          promptRelativePath
+        })
+      }
     }
   }
 

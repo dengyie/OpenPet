@@ -3446,7 +3446,7 @@ test('creator workflow diagnostics keep archived paid retry assets visible after
   assert.match(archivedPrompts[0].promptRelativePath, /^runs\/run-retry-assets\/repairs\//)
 })
 
-test('creator workflow diagnostics do not truncate current or archived candidate assets within the run budget', () => {
+test('creator workflow diagnostics bound current and archived asset projection without deleting evidence', () => {
   const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-candidate-volume-'))
   const runId = 'run-candidate-volume'
   const runDir = path.join(pluginDataDir, 'runs', runId)
@@ -3478,10 +3478,46 @@ test('creator workflow diagnostics do not truncate current or archived candidate
   const current = diagnostics.progress.processAssets.filter((asset) => asset.role === 'processed-candidate')
   const archived = diagnostics.progress.processAssets.filter((asset) => asset.role === 'repair-archive')
 
-  assert.equal(current.length, 300)
-  assert.equal(archived.length, 300)
+  assert.equal(current.length, 256)
+  assert.equal(archived.length, 256)
+  assert.equal(diagnostics.progress.processAssets.length, 512)
+  assert.equal(fs.readdirSync(currentDir).length, 300)
+  assert.equal(fs.readdirSync(archivedDir).length, 300)
   assert.equal(current.every((asset) => asset.actionId === 'waving' && asset.previewable), true)
   assert.equal(archived.every((asset) => asset.actionId === 'waving' && asset.previewable), true)
+})
+
+test('creator diagnostics prioritize package output and bound aggregate retry history scans', () => {
+  const pluginDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-creator-history-bound-'))
+  const runId = 'run-history-bound'
+  const runDir = path.join(pluginDataDir, 'runs', runId)
+  const packageDir = path.join(runDir, 'quality-first', 'package')
+  fs.mkdirSync(packageDir, { recursive: true })
+  const sheetPath = path.join(packageDir, 'spritesheet.webp')
+  fs.writeFileSync(sheetPath, LEGACY_PNG_BYTES)
+  fs.writeFileSync(path.join(runDir, 'run.json'), JSON.stringify({
+    runId, status: 'ready_for_review', qualityFirst: { package: { spritesheetRelativePath: `runs/${runId}/quality-first/package/spritesheet.webp` } }
+  }))
+  for (let retry = 1; retry <= 6; retry += 1) {
+    const dir = path.join(runDir, 'repairs', `2026-07-${String(retry).padStart(2, '0')}-action-waving`, 'candidates', 'action-waving')
+    fs.mkdirSync(dir, { recursive: true })
+    for (let index = 0; index < 200; index += 1) fs.writeFileSync(path.join(dir, `${index}.png`), LEGACY_PNG_BYTES)
+  }
+  const originalReaddir = fs.readdirSync
+  const archiveReads = []
+  fs.readdirSync = function (target, ...args) {
+    if (String(target).includes(`${path.sep}repairs${path.sep}`)) archiveReads.push(String(target))
+    return originalReaddir.call(this, target, ...args)
+  }
+  let diagnostics
+  try { diagnostics = __testInternals.readWorkflowDiagnostics({ pluginDataDir, runId }) }
+  finally { fs.readdirSync = originalReaddir }
+  const assets = diagnostics.progress.processAssets
+  assert.ok(assets.length <= 512, `projected ${assets.length} assets`)
+  assert.ok(assets.some(asset => asset.relativePath.endsWith('/quality-first/package/spritesheet.webp')))
+  assert.ok(assets.some(asset => asset.relativePath.includes('/2026-07-06-action-waving/')))
+  assert.equal(archiveReads.some(target => target.includes('/2026-07-01-action-waving/')), false)
+  assert.ok(Buffer.byteLength(JSON.stringify(diagnostics)) < 1_000_000)
 })
 
 test('creator workflow asset preview loads on demand and rejects path escape', async () => {
