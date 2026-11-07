@@ -31,9 +31,9 @@ const distanceFromSeeds = (seed, width, height) => {
 // Deliberately limited to flat warm-body bipeds with contrasting orange feet.
 // Callers validate source paths, hashes, dimensions and composition first;
 // all rendered output must still pass the existing technical and visual gates.
-const renderArticulatedBipedGait = async ({ sourcePath, outputDir, motionScale = 1, signal }) => {
+const renderArticulatedBipedGait = async ({ sourceBytes, outputDir, motionScale = 1, signal }) => {
   signal?.throwIfAborted()
-  const { data, info } = await sharp(sourcePath, { limitInputPixels: 2048 * 2048 }).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+  const { data, info } = await sharp(sourceBytes, { limitInputPixels: 2048 * 2048 }).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
   const { width, height } = info
   const pixelCount = width * height
   const seeds = [new Uint8Array(pixelCount), new Uint8Array(pixelCount), new Uint8Array(pixelCount)]

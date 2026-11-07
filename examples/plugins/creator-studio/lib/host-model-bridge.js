@@ -3461,7 +3461,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
               artifacts: [
                 { role: 'rig-manifest', path: rig.manifestPath, sha256: rig.provenance.manifest.sha256 },
                 { role: 'rig-source', path: canonicalPath, sha256: canonical.sha256 },
-                ...(poseReference ? [{ role: 'rig-pose-source', path: path.join(dataDir, poseReference.relativePath), sha256: poseReference.sha256 }] : []),
+                ...(rig.poseReference ? [{ role: 'rig-pose-source', path: path.join(dataDir, rig.poseReference.relativePath), sha256: rig.poseReference.sha256 }] : []),
                 { role: 'raw-sheet', path: processed.rawSheet.path, sha256: processed.rawSheet.sha256 },
                 { role: 'processed-sheet', path: processed.processedSheet.path, sha256: processed.processedSheet.sha256 },
                 { role: 'contact-sheet', path: processed.contactSheet.path, sha256: processed.contactSheet.sha256 },
