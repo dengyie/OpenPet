@@ -58,6 +58,18 @@ test('support rig validates identity, supported anatomy/action and cancellation 
   assert.equal(fs.existsSync(path.join(f.dataDir, f.outputRelativeDir)), false)
 })
 
+test('registered subtle jumping reduces the rendered motion while retaining its technical gate', async () => {
+  const f = await fixture()
+  const normal = await renderCanonicalSupportRig(f)
+  const subtle = await renderCanonicalSupportRig({ ...f, action: { ...f.action, motionParameters: { intensity: 'subtle' } }, outputRelativeDir: 'candidates/subtle' })
+  const normalManifest = JSON.parse(fs.readFileSync(normal.manifestPath))
+  const subtleManifest = JSON.parse(fs.readFileSync(subtle.manifestPath))
+  assert.ok(subtleManifest.transforms[2].lift < normalManifest.transforms[2].lift)
+  assert.ok(subtleManifest.transforms[0].supportScaleY > normalManifest.transforms[0].supportScaleY)
+  assert.notEqual(subtle.processed.frames[2].sha256, normal.processed.frames[2].sha256)
+  assert.equal(analyzeSpriteCandidate({ actionId: 'jumping', rawMetrics: subtle.processed.metrics, profile: f.profile, actionPolicy: f.action }).ok, true)
+})
+
 test('support rig rejects escaped input/output and symlinked ancestors', async () => {
   const f = await fixture()
   const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-rig-outside-'))

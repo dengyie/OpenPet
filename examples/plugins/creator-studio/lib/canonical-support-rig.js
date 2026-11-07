@@ -67,13 +67,14 @@ const renderCanonicalSupportRig = async ({ dataDir, canonical, action, character
   const lower = await sharp(source).extract({ left: 0, top: split, width, height: height - split }).png().toBuffer()
   const driver = createMotionDriver({ actionId: action.actionId, motionPresetId: action.motionPresetId, motionParameters: action.motionParameters })
   if (action.frameCount !== driver.frameCount) throw error('Canonical rig action frame count does not match the registered driver')
+  const motionScale = driver.motionParameters.intensity === 'subtle' ? 0.85 : 1
   const transforms = [
     { phase: 'anticipation', lift: -0.015, supportScaleY: 0.72 },
     { phase: 'takeoff', lift: 0.12, supportScaleY: 1.08 },
     { phase: 'airborne-peak', lift: 0.29, supportScaleY: 0.94 },
     { phase: 'landing', lift: -0.017, supportScaleY: 0.70 },
     { phase: 'grounded-recovery', lift: 0, supportScaleY: 1 }
-  ]
+  ].map(transform => ({ ...transform, lift: transform.lift * motionScale, supportScaleY: 1 + (transform.supportScaleY - 1) * motionScale }))
   canceled(signal)
   if (fs.existsSync(outputDir)) throw error('Canonical rig output already exists')
   fs.mkdirSync(outputDir, { recursive: true })
