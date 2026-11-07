@@ -138,13 +138,13 @@ test('final package evaluator board keeps source, canonical, action review, and 
 
   const metadata = await sharp(result.path).metadata()
   assert.equal(metadata.width, 2048)
-  assert.equal(metadata.height, 1536)
+  assert.equal(metadata.height, 2048)
   assert.deepEqual(result.regions.map((region) => region.regionId), ['source', 'canonical', 'action-review', 'atlas'])
   assert.deepEqual(result.regions.map((region) => [region.x, region.y, region.width, region.height]), [
     [0, 0, 512, 512],
     [512, 0, 512, 512],
     [1024, 0, 1024, 512],
-    [0, 512, 2048, 1024]
+    [0, 512, 2048, 1536]
   ])
   const { data, info } = await sharp(result.path).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
   for (let index = 3; index < data.length; index += info.channels) assert.equal(data[index], 255)
@@ -170,7 +170,7 @@ test('final package evaluator board expands sparse official atlas cells into rea
   })
 
   assert.equal(result.regions.find((region) => region.regionId === 'action-review').fitMode, 'readable-action-montage')
-  assert.equal(result.regions.find((region) => region.regionId === 'atlas').fitMode, 'atlas-overview+readable-action-montage')
+  assert.equal(result.regions.find((region) => region.regionId === 'atlas').fitMode, 'complete-action-sequences')
   for (let card = 0; card < 9; card += 1) {
     const actionVisible = await countAlphaPixels(result.path, {
       left: 1024 + (card % 3) * 341,
@@ -189,4 +189,47 @@ test('evaluation evidence rejects unknown review-board region ids', () => {
     evaluation: { defects: [{ regionId: 'missing' }] },
     regions: [{ regionId: 'source' }]
   }), /unknown review-board region/)
+})
+
+test('final atlas proof retains every used phase at readable size, including a nonrepresentative work beat', async () => {
+  const dir = createTempDir()
+  const atlasPath = path.join(dir, 'phase-atlas.png')
+  const ordinary = await sharp({ create: { width: 80, height: 110, channels: 4, background: '#ddbb22' } }).png().toBuffer()
+  const peak = await sharp({ create: { width: 80, height: 110, channels: 4, background: '#ee22cc' } }).png().toBuffer()
+  const rows = require('../../examples/plugins/creator-studio/lib/full-pet-row-contract').OFFICIAL_FULL_PET_ROWS
+  const composites = rows.flatMap(row => Array.from({ length: row.frameCount }, (_, index) => ({
+    input: row.id === 'running' && index === 4 ? peak : ordinary,
+    left: index * 192 + 56,
+    top: row.row * 208 + 49
+  })))
+  await sharp({ create: { width: 1536, height: 1872, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite(composites).png().toFile(atlasPath)
+  const result = await createFinalPackageEvaluatorBoard({ sourcePath: atlasPath, canonicalPath: atlasPath, actionReviewPath: atlasPath, atlasPath, outputPath: path.join(dir, 'complete-phases.png') })
+  const atlas = result.regions.find(region => region.regionId === 'atlas')
+  const { data, info } = await sharp(result.path).extract({ left: atlas.x, top: atlas.y, width: atlas.width, height: atlas.height }).raw().toBuffer({ resolveWithObject: true })
+  let peakPixels = 0
+  for (let i = 0; i < data.length; i += info.channels) if (data[i] > 210 && data[i + 1] < 80 && data[i + 2] > 170) peakPixels++
+  assert.ok(peakPixels > 8000, `the fifth working beat needs readable proof, not only a tiny overview (${peakPixels} pixels)`)
+})
+
+test('complete atlas sequences keep a shared crop so airborne offsets survive the proof rendering', async () => {
+  const dir = createTempDir()
+  const atlasPath = path.join(dir, 'jump-atlas.png')
+  const subject = await sharp({ create: { width: 60, height: 60, channels: 4, background: '#cc22dd' } }).png().toBuffer()
+  await sharp({ create: { width: 1536, height: 1872, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite([
+    { input: subject, left: 66, top: 4 * 208 + 120 },
+    { input: subject, left: 2 * 192 + 66, top: 4 * 208 + 20 }
+  ]).png().toFile(atlasPath)
+  const result = await createFinalPackageEvaluatorBoard({ sourcePath: atlasPath, canonicalPath: atlasPath, actionReviewPath: atlasPath, atlasPath, outputPath: path.join(dir, 'jump-proof.png') })
+  const atlas = result.regions.find(region => region.regionId === 'atlas')
+  const { data, info } = await sharp(result.path).extract({ left: atlas.x, top: atlas.y, width: atlas.width, height: atlas.height }).raw().toBuffer({ resolveWithObject: true })
+  const centers = [0, 2].map(column => {
+    let sum = 0, count = 0
+    for (let y = 0; y < info.height; y++) for (let x = column * 256; x < (column + 1) * 256; x++) {
+      const i = (y * info.width + x) * info.channels
+      if (data[i] > 170 && data[i + 1] < 90 && data[i + 2] > 170) { sum += y; count++ }
+    }
+    assert.ok(count > 0)
+    return sum / count
+  })
+  assert.ok(centers[0] - centers[1] > 80, 'the airborne phase must stay above the grounded contact instead of being independently centered')
 })

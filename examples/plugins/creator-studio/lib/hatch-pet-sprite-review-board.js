@@ -105,20 +105,38 @@ const createActionMontage = async ({ sourcePath, width, height, framesPerAction 
 }
 
 const createFinalAtlasProof = async ({ sourcePath, width, height }) => {
-  const overviewWidth = Math.floor(width / 2)
-  const detailWidth = width - overviewWidth
-  const overview = await sharp(sourcePath)
-    .ensureAlpha()
-    .resize({ width: overviewWidth, height, fit: 'inside', withoutEnlargement: false, background: TRANSPARENT })
-    .png()
-    .toBuffer()
-  const details = await createActionMontage({ sourcePath, width: detailWidth, height, framesPerAction: 2 })
-  const overviewMetadata = await sharp(overview).metadata()
+  const metadata = await sharp(sourcePath).metadata()
+  const cellWidth = metadata.width / ATLAS_COLUMNS
+  const cellHeight = metadata.height / ATLAS_ROWS
+  const slotWidth = Math.floor(width / ATLAS_COLUMNS)
+  const slotHeight = Math.floor(height / ATLAS_ROWS)
+  const gap = 6
+  const composites = []
+  for (const row of OFFICIAL_FULL_PET_ROWS) {
+    const frames = []
+    let left = cellWidth, top = cellHeight, right = -1, bottom = -1
+    for (let index = 0; index < row.frameCount; index++) {
+      const frame = await sharp(sourcePath).extract({ left: index * cellWidth, top: row.row * cellHeight, width: cellWidth, height: cellHeight }).ensureAlpha().raw().toBuffer()
+      frames.push(frame)
+      for (let y = 0; y < cellHeight; y++) for (let x = 0; x < cellWidth; x++) {
+        if (!frame[(y * cellWidth + x) * 4 + 3]) continue
+        left = Math.min(left, x); top = Math.min(top, y)
+        right = Math.max(right, x); bottom = Math.max(bottom, y)
+      }
+    }
+    if (right < left) continue
+    // One crop and one scale for the complete action preserve the relative
+    // position/size of its poses, including flight and anticipation phases.
+    const crop = { left, top, width: right - left + 1, height: bottom - top + 1 }
+    for (const [index, frame] of frames.entries()) {
+      const input = await sharp(frame, { raw: { width: cellWidth, height: cellHeight, channels: 4 } }).extract(crop)
+        .resize({ width: slotWidth - gap * 2, height: slotHeight - gap * 2, fit: 'inside' }).png().toBuffer()
+      const rendered = await sharp(input).metadata()
+      composites.push({ input, left: index * slotWidth + Math.floor((slotWidth - rendered.width) / 2), top: row.row * slotHeight + Math.floor((slotHeight - rendered.height) / 2) })
+    }
+  }
   return sharp({ create: { width, height, channels: 4, background: TRANSPARENT } })
-    .composite([
-      { input: overview, left: Math.floor((overviewWidth - overviewMetadata.width) / 2), top: Math.floor((height - overviewMetadata.height) / 2) },
-      { input: details, left: overviewWidth, top: 0 }
-    ])
+    .composite(composites)
     .png()
     .toBuffer()
 }
@@ -134,7 +152,7 @@ const renderFinalVisualRegion = async ({ sourcePath, region, mode }) => {
       : await createFinalAtlasProof({ sourcePath: input, width: region.width, height: region.height })
     renderMode = mode === 'action-montage'
       ? 'readable-action-montage'
-      : 'atlas-overview+readable-action-montage'
+      : 'complete-action-sequences'
   } else {
     buffer = await sharp(input)
       .ensureAlpha()
@@ -259,7 +277,7 @@ const createFinalPackageEvaluatorBoard = async ({ sourcePath, canonicalPath, act
     { sourcePath, region: { regionId: 'source', role: 'source-identity', x: 0, y: 0, width: 512, height: 512 } },
     { sourcePath: canonicalPath, region: { regionId: 'canonical', role: 'canonical-identity', x: 512, y: 0, width: 512, height: 512 } },
     { sourcePath: actionReviewPath, region: { regionId: 'action-review', role: 'action-contact-sheet', x: 1024, y: 0, width: 1024, height: 512 } },
-    { sourcePath: atlasPath, region: { regionId: 'atlas', role: 'final-atlas', x: 0, y: 512, width: 2048, height: 1024 } }
+    { sourcePath: atlasPath, region: { regionId: 'atlas', role: 'final-atlas', x: 0, y: 512, width: 2048, height: 1536 } }
   ]
   const rendered = await Promise.all([
     renderRegion(definitions[0]),
@@ -267,7 +285,7 @@ const createFinalPackageEvaluatorBoard = async ({ sourcePath, canonicalPath, act
     renderFinalVisualRegion({ ...definitions[2], mode: 'action-montage' }),
     renderFinalVisualRegion({ ...definitions[3], mode: 'atlas-proof' })
   ])
-  return writeBoard({ width: 2048, height: 1536, outputPath, rendered })
+  return writeBoard({ width: 2048, height: 2048, outputPath, rendered })
 }
 
 const validateEvaluationRegions = ({ evaluation = {}, regions = [] } = {}) => {
