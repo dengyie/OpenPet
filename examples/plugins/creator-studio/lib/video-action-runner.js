@@ -224,6 +224,9 @@ const resolveReference = ({ dataDir, reference }) => {
 
 const buildVideoPrompt = ({ driver, attemptKind = 'initial', failureCodes = [] }) => {
   const actionId = driver.actionId
+  const actionLabel = actionId === 'running' ? 'focused work'
+    : actionId === 'review' ? 'deliberate inspection'
+      : actionId
   const beats = driver.framePlan.map((beat) => beat.replace(/^Frame \d+:\s*/i, '')).join('; ')
   const isRunningGait = actionId === 'running-right'
   const loopContract = driver.loop
@@ -239,7 +242,11 @@ const buildVideoPrompt = ({ driver, attemptKind = 'initial', failureCodes = [] }
       ? `For waving, animate only the existing ${driver.motionParameters.leadSide} greeting appendage: lift it beside the face, give one clear outward greeting, and lower it back to rest. Keep the opposite appendage in its exact reference resting pose; do not raise both greeting appendages or replace the greeting with bilateral flapping. Keep the eyes and mouth or beak shape unchanged; no blink, speaking, smile change, head turn, body bounce, or foot movement. Preserve the existing anatomy and do not add a hand, arm, wing, or prop.`
     : actionId === 'jumping'
       ? 'For jumping, use a conservative jump height: raise the body root by only 8 to 10 percent of the full frame height, then land at the exact starting baseline. Show one straight vertical translation of the unchanged reference body, with only the feet making a small takeoff and landing adjustment. Keep the head, face, body proportions and wings in their reference resting pose; do not flap or fly. Keep the eyes and mouth or beak shape unchanged and closed; no speaking, smiling, blinking, body squash, stretching, or rotation. Preserve the character shading gradients and outline thickness from the first frame throughout the entire clip. Retain at least 20 percent empty space above the highest body point.'
-      : ''
+      : actionId === 'running'
+        ? `For focused work, keep both feet fixed on the ground and the body root stationary. Move only the existing ${driver.motionParameters.leadSide} appendage inward toward the chest, make two small deliberate downward working beats close to the body, then return it to the exact resting pose. Keep the opposite appendage at rest. Keep the eyes open and unchanged; keep the mouth or beak unchanged and closed. Do not walk, run, hop, wave, flap, speak, blink, or add a tool or prop. This is the focused task-processing state, with a compact repeated work gesture.`
+        : actionId === 'review'
+          ? `For deliberate inspection, keep both feet fixed on the ground and preserve the reference viewpoint. Bring the existing ${driver.motionParameters.leadSide} appendage toward the chin in a thinking pose, use a small head tilt to inspect, then give one small acknowledgement nod and return to rest. Keep the opposite appendage at rest and the eyes open. Keep the mouth or beak closed in its reference shape. Do not wave, flap, speak, turn into a side profile, close the eyes, or add a tool or prop. Show inspection and a decision beat distinct from idle and waving.`
+          : ''
   const repairInstructions = attemptKind === 'repair'
     ? [...new Set((Array.isArray(failureCodes) ? failureCodes : [])
         .map((code) => isRunningGait && code === 'loop-seam-too-large'
@@ -254,7 +261,7 @@ const buildVideoPrompt = ({ driver, attemptKind = 'initial', failureCodes = [] }
     ? 'Return a short seamless loop with exactly one clearly visible blink and no other visible movement.'
     : 'Return a short seamless loop with visibly distinct motion phases.'
   return [
-    `Animate the exact character in the provided first-frame image performing ${actionId}. The first-frame image is the sole appearance reference.`,
+    `Animate the exact character in the provided first-frame image performing ${actionLabel}. The first-frame image is the sole appearance reference.`,
     'Preserve the exact face, markings, body proportions, accessories, palette, material, lighting, camera distance, and silhouette from the reference image.',
     `Use this ordered motion plan: ${beats}.`,
     'Full body visible in every frame, locked camera, centered grounded root, one subject only, no text, no logo, no props, no particles, no detached effects.',

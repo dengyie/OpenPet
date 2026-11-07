@@ -3198,12 +3198,13 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
   // Processing bindings also cover evaluator semantics. Older checkpoints
   // were scored without action intent or generated from conflicting motion text.
   const actionProcessorVersion = useVideoActionPipeline ? 12 : 4
-  // Locomotion sampling changes must not invalidate other accepted actions or
-  // the idle-owned scale profile. Mirrored left frames share the right version.
+  // Scope motion/semantic changes to their actions, preserving accepted rows
+  // and the idle-owned scale profile. Mirrored left shares the right version.
   const processorVersionForAction = (actionId) => (
-    useVideoActionPipeline && (actionId === 'running-right' || actionId === 'running-left')
-      ? 13
-      : actionProcessorVersion
+    !useVideoActionPipeline ? actionProcessorVersion
+      : actionId === 'running' || actionId === 'review' ? 14
+        : actionId === 'running-right' || actionId === 'running-left' ? 13
+          : actionProcessorVersion
   )
   const sourceReference = resolveOriginalReferenceImage({ dataDir, run })
   if (!isUsableLocalReferenceImage({ dataDir, referenceImage: sourceReference })) {
