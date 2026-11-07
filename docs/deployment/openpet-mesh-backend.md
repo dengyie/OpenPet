@@ -2,6 +2,10 @@
 
 > **速读 / 当前边界**：OpenPet 的 Backend host 运行在广州 CVM `gz-cvm`，只监听 `127.0.0.1:48330`；桌面端通过 EasyTier 上的 `ssh gz-cvm` 建立 `-L` API 与 `-R` Shell bridge。公网安全组、DNS 和公网端口均不需要变更。
 
+## 当前状态（2026-11-07）
+
+广州已部署main `b56c17ef`（PR126，main CI42328906292成功），service active、health ready/resident；回滚 `/var/backups/openpet/20261107T022952Z-1815199` 保留，root约3.3GiB。resident Backend使用服务器root-only凭据文件持续工作，桌面关闭不影响生成；下方早期“仅桌面内存注入”的描述为历史模式。当前正式Pip为3/9（idle/waving/jumping），Provider92/144、Evaluator68/68，评估额度已耗尽，六动作及最终质量门未完成。周期采样/预算修复尚未部署；见[当前证据](../release-evidence/remote-backend/2026-11-07-locomotion-budget-admission.md)。额外旧快照虽已获具体授权但检查时已不存在，没有执行删除或替代删除。
+
 ## 拓扑与端口
 
 | 组件 | 位置 | 监听 | 说明 |

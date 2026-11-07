@@ -2,6 +2,11 @@
 
 const assert = require("node:assert/strict")
 const { test } = require("node:test")
+const fs = require("node:fs")
+const os = require("node:os")
+const path = require("node:path")
+const { createHatchPetAgentService } = require("../../apps/desktop/src/services/hatch-pet-agent-service")
+const { createBudgetLedger } = require("../../apps/desktop/src/services/hatch-pet-agent-budget-ledger")
 
 let runCreatorProviderCall
 
@@ -62,6 +67,29 @@ test("non-Creator Provider calls do not acquire Hatch reservations", async () =>
 	})
 	assert.deepEqual(result, { ok: true })
 	assert.equal(factoryCalls, 0)
+})
+
+test("resident Creator refuses an exhausted downstream evaluator before contacting a paid Provider", async () => {
+	const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "openpet-creator-budget-admission-"))
+	const ledgerPath = path.join(dataDir, "runs/run-exhausted/budgets/ledger.json")
+	fs.mkdirSync(path.dirname(ledgerPath), { recursive: true })
+	const ledger = createBudgetLedger({ limits: { maxEvaluatorCalls: 1 } })
+	const bytes = JSON.stringify({ ...ledger, usage: { ...ledger.usage, evaluatorCalls: 1 } })
+	fs.writeFileSync(ledgerPath, bytes)
+	const agent = createHatchPetAgentService({
+		settingsService: { get: () => ({ ai: { hatchPet: { budgets: { maxEvaluatorCalls: 1 } } } }), update: () => { assert.fail("budget admission must not modify settings") } },
+		secretService: { getSecretValue: () => "", setSecret: () => { assert.fail("budget admission must not modify credentials") } },
+		aiService: { completeStructuredTool: async () => { assert.fail("budget admission must not call the evaluator") } },
+		pluginService: { getPluginCreatorDataDir: () => dataDir },
+	})
+	let providerCalls = 0
+	await assert.rejects(runCreatorProviderCall({
+		pluginId: "openpet.creator-studio", payload: { runId: "run-exhausted" },
+		hatchAgentFactory: () => agent,
+		operation: async () => { providerCalls++; return { ok: true } },
+	}), { code: "hatch_pet_evaluator_call_budget_exhausted" })
+	assert.equal(providerCalls, 0)
+	assert.equal(fs.readFileSync(ledgerPath, "utf8"), bytes)
 })
 
 test("a successful Provider call with a settlement failure is not settled a second time as a Provider failure", async () => {

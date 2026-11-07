@@ -4,6 +4,8 @@ This directory is the maintainer entrypoint for archived evidence artifacts.
 
 ## Current Priority Evidence
 
+- Current Creator motion/budget recovery: [`2026-11-07-locomotion-budget-admission.md`](./remote-backend/2026-11-07-locomotion-budget-admission.md)
+
 - Agent awareness smoke: [`agent-awareness-local-smoke/`](./agent-awareness-local-smoke/)
 - AI provider smoke: [`ai-provider-smoke/`](./ai-provider-smoke/)
 - Remote Backend mesh smoke: [`remote-backend/`](./remote-backend/)

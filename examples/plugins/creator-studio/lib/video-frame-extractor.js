@@ -8,15 +8,19 @@ const normalizeInteger = (value, label, { min, max }) => {
   return normalized
 }
 
-const selectFrameIndexes = ({ sourceFrameCount, sourceFps, targetFrameCount, targetFps = sourceFps } = {}) => {
+const selectFrameIndexes = ({ sourceFrameCount, sourceFps, targetFrameCount, targetFps = sourceFps, loop = false } = {}) => {
   const total = normalizeInteger(sourceFrameCount, 'sourceFrameCount', { min: 1, max: 100_000 })
+  if (typeof loop !== 'boolean') throw extractorError('loop must be a boolean')
   const inputFps = normalizeInteger(sourceFps, 'sourceFps', { min: 1, max: 240 })
-  const count = normalizeInteger(targetFrameCount, 'targetFrameCount', { min: 1, max: total })
+  const count = normalizeInteger(targetFrameCount, 'targetFrameCount', { min: 1, max: total - (loop ? 1 : 0) })
   const outputFps = normalizeInteger(targetFps, 'targetFps', { min: 1, max: 240 })
   const indexes = []
   const durationMs = ((total - 1) / inputFps) * 1000
   for (let index = 0; index < count; index += 1) {
-    const timeMs = count === 1 ? 0 : (index / (count - 1)) * durationMs
+    // Cyclic footage closes on its initial pose. That endpoint is the next
+    // cycle's first frame, so retain N phases in [0, period), not N-1 plus a
+    // duplicate. Settling actions still need the inclusive final pose.
+    const timeMs = count === 1 ? 0 : (index / (loop ? count : count - 1)) * durationMs
     const sourceIndex = Math.min(total - 1, Math.max(0, Math.round((timeMs / 1000) * inputFps)))
     if (indexes[index - 1] !== sourceIndex) indexes.push(sourceIndex)
   }

@@ -34,6 +34,65 @@ const createHarness = ({ generated, qaById = {}, evaluationById = {} }) => {
   }
 }
 
+test('runner stops on exhausted evaluation budget, retaining generated evidence without a repair dispatch', async () => {
+  const h = createHarness({ generated: [
+    { candidateId: 'candidate-1', descriptors: descriptors('0000', 0) },
+    { candidateId: 'candidate-2', descriptors: descriptors('ffff', 2) }
+  ] })
+  const failure = Object.assign(new Error('evaluation budget exhausted'), { code: 'hatch_pet_evaluator_call_budget_exhausted' })
+  let evaluations = 0
+  await assert.rejects(runQualityFirstAction({
+    context: { actionId: 'failed' }, ...h.callbacks,
+    evaluateCandidate: async () => {
+      if (++evaluations === 2) throw failure
+      return { gate: { ok: true, outcome: 'pass', failures: [] } }
+    }
+  }), error => error === failure)
+  assert.deepEqual(h.calls.persisted, ['candidate-1', 'candidate-2'])
+  assert.equal(h.calls.generated.length, 2)
+  assert.equal(h.calls.archives.length, 0)
+})
+
+test('runner propagates Provider budget refusal without spending a replacement or repair dispatch', async () => {
+  const failure = Object.assign(new Error('evaluation budget exhausted'), { code: 'hatch_pet_evaluator_call_budget_exhausted' })
+  let dispatches = 0
+  await assert.rejects(runQualityFirstAction({
+    context: { actionId: 'failed' }, reserveCreativeDispatch: () => {},
+    generateCandidate: async () => { dispatches++; throw failure },
+    processCandidate: async () => { assert.fail('no generated asset') },
+    evaluateCandidate: async () => { assert.fail('no generated asset') }
+  }), error => error === failure)
+  assert.equal(dispatches, 1)
+})
+
+test('runner retains a paid initial asset if the next dispatch loses budget admission', async () => {
+  const failure = Object.assign(new Error('evaluation budget exhausted'), { code: 'hatch_pet_evaluator_call_budget_exhausted' })
+  const h = createHarness({ generated: [] })
+  let dispatches = 0
+  await assert.rejects(runQualityFirstAction({
+    context: { actionId: 'failed' }, ...h.callbacks,
+    generateCandidate: async () => {
+      if (++dispatches === 2) throw failure
+      return { candidateId: 'candidate-1', descriptors: descriptors('0000', 0) }
+    }
+  }), error => error === failure)
+  assert.deepEqual(h.calls.persisted, ['candidate-1'])
+  assert.equal(h.calls.archives.length, 0)
+})
+
+test('runner retains prior paid assets when creative reservation refuses the next dispatch', async () => {
+  const failure = Object.assign(new Error('Provider call budget exhausted'), { code: 'hatch_pet_provider_call_budget_exhausted' })
+  const h = createHarness({ generated: [{ candidateId: 'candidate-1', descriptors: descriptors('0000', 0) }] })
+  let reservations = 0
+  await assert.rejects(runQualityFirstAction({
+    context: { actionId: 'failed' }, ...h.callbacks,
+    reserveCreativeDispatch: async () => { if (++reservations === 2) throw failure }
+  }), error => error === failure)
+  assert.deepEqual(h.calls.persisted, ['candidate-1'])
+  assert.equal(h.calls.generated.length, 1)
+  assert.equal(h.calls.archives.length, 0)
+})
+
 test('runner evaluates two distinct initial candidates and selects the best passing result', async () => {
   const h = createHarness({
     generated: [

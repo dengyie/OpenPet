@@ -865,6 +865,19 @@ test('host-owned provider reservations persist every image HTTP attempt includin
   assert.deepEqual(stored.reservations, {})
 })
 
+test('exhausted evaluator budget blocks paid Provider admission without consuming or mutating the ledger', () => {
+  const h = createHarness({ budgets: { maxEvaluatorCalls: 2 } })
+  const runId = 'run-evaluator-exhausted'
+  const ledgerPath = path.join(h.dataDir, 'runs', runId, 'budgets', 'ledger.json')
+  fs.mkdirSync(path.dirname(ledgerPath), { recursive: true })
+  const ledger = createBudgetLedger({ limits: { maxEvaluatorCalls: 2 } })
+  const bytes = JSON.stringify({ ...ledger, usage: { ...ledger.usage, evaluatorCalls: 2, providerCalls: 7 } })
+  fs.writeFileSync(ledgerPath, bytes)
+  assert.throws(() => h.service.reserveProviderCall({ runId, timeoutMs: 480000 }), { code: 'hatch_pet_evaluator_call_budget_exhausted' })
+  assert.equal(fs.readFileSync(ledgerPath, 'utf8'), bytes)
+  assert.equal(h.calls.length, 0)
+})
+
 test('recovery budget renewal persists a new active window without erasing usage', () => {
   const h = createHarness()
   const runId = 'run-recovery-window'

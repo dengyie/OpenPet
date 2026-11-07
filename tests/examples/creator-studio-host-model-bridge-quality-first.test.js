@@ -75,6 +75,46 @@ test('a rejected running start pose stops video preparation without falling back
   assert.equal(calls, 1)
 })
 
+test('action start preparation preserves typed budget refusal instead of wrapping it as pose rejection', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-keyframe-budget-'))
+  const failure = Object.assign(new Error('evaluation budget exhausted'), { code: 'hatch_pet_evaluator_call_budget_exhausted' })
+  await assert.rejects(hostModelBridgeModule.__testInternals.generateActionKeyframe({
+    dataDir, run: { runId: 'budget-start' }, settings: {}, selectedModel: 'gpt-image-2',
+    action: { actionId: 'running-right' }, referenceImages: [{ role: 'canonical-reference' }],
+    generateWithFallbackImpl: async () => { throw failure }
+  }), error => error === failure)
+})
+
+test('canonical generation stops on the first typed budget refusal without creating failed quality candidates', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-canonical-budget-'))
+  const runId = 'canonical-budget'
+  const reference = `runs/${runId}/reference.png`
+  fs.mkdirSync(path.dirname(path.join(dataDir, reference)), { recursive: true })
+  await sharp({ create: { width: 192, height: 208, channels: 4, background: '#6789ab' } }).png().toFile(path.join(dataDir, reference))
+  const plan = createSpriteAssetPlan({ version: 1, revision: 1, character: { assetClass: 'grounded-compact-character' }, actions: [{ actionId: 'idle' }] })
+  const run = { runId, input: { referenceImage: { relativePath: reference } } }
+  const previous = { url: process.env.OPENPET_BRIDGE_URL, token: process.env.OPENPET_BRIDGE_TOKEN, fetch: global.fetch }
+  process.env.OPENPET_BRIDGE_URL = 'http://127.0.0.1:1'
+  process.env.OPENPET_BRIDGE_TOKEN = 'fixture-token'
+  let attempts = 0
+  global.fetch = async url => {
+    if (String(url).endsWith('/creator/model-settings')) return new Response(JSON.stringify({ config: { model: 'gpt-image-2' } }), { status: 200 })
+    attempts++
+    return new Response(JSON.stringify({ ok: false, error: 'evaluation budget exhausted', errorCode: 'hatch_pet_evaluator_call_budget_exhausted' }), { status: 409 })
+  }
+  try {
+    const runtime = await createQualityFirstHostRuntime({ dataDir, run, planOverride: plan })
+    await assert.rejects(runtime.orchestrator.start({ run, plan: runtime.plan, actions: ['idle'] }), { code: 'hatch_pet_evaluator_call_budget_exhausted' })
+    assert.equal(attempts, 1)
+  } finally {
+    global.fetch = previous.fetch
+    if (previous.url == null) delete process.env.OPENPET_BRIDGE_URL
+    else process.env.OPENPET_BRIDGE_URL = previous.url
+    if (previous.token == null) delete process.env.OPENPET_BRIDGE_TOKEN
+    else process.env.OPENPET_BRIDGE_TOKEN = previous.token
+  }
+})
+
 test('host canonical pool keeps paid duplicates quality-eligible while tracking diversity separately', async () => {
   const hashes = ['a'.repeat(64), 'a'.repeat(64), 'b'.repeat(64), 'c'.repeat(64)]
   const persisted = []
@@ -450,6 +490,55 @@ test('host reloads retained paid action candidates for diversity-failure recover
   assert.equal(candidates[2].candidateId, 'candidate-3')
   assert.equal(candidates[2].rawPath, undefined)
   assert.equal(candidates[2].descriptors, undefined)
+})
+
+
+test('video locomotion processing invalidates only running bindings and preserves accepted rows', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-action-version-'))
+  const runId = 'scoped-version'
+  const reference = `runs/${runId}/reference.png`
+  const frame = path.join(dataDir, `runs/${runId}/frame.png`)
+  fs.mkdirSync(path.dirname(frame), { recursive: true })
+  await sharp({ create: { width: 192, height: 208, channels: 4, background: '#6789ab' } }).png().toFile(frame)
+  fs.copyFileSync(frame, path.join(dataDir, reference))
+  const plan = createSpriteAssetPlan({ version: 1, revision: 1, character: { assetClass: 'grounded-compact-character' }, actions: ['idle', 'waving', 'jumping', 'running-right'].map(actionId => ({ actionId })) })
+  const canonical = { sha256: 'a'.repeat(64), relativePath: reference }
+  const profile = { version: 1 }
+  profile.hash = crypto.createHash('sha256').update(JSON.stringify(profile)).digest('hex')
+  fs.writeFileSync(path.join(dataDir, `runs/${runId}/character-scale-profile.json`), JSON.stringify(profile))
+  const previous = { url: process.env.OPENPET_BRIDGE_URL, token: process.env.OPENPET_BRIDGE_TOKEN, fetch: global.fetch }
+  process.env.OPENPET_BRIDGE_URL = 'http://127.0.0.1:1'
+  process.env.OPENPET_BRIDGE_TOKEN = 'fixture-token'
+  global.fetch = async url => {
+    assert.match(String(url), /creator\/model-settings$/)
+    return new Response(JSON.stringify({ config: { videoGeneration: { hasApiKey: true, model: 'grok-imagine-video' } } }), { status: 200 })
+  }
+  try {
+    const runtime = await createQualityFirstHostRuntime({ dataDir, run: { runId, input: { referenceImage: { relativePath: reference } } }, planOverride: plan })
+    for (const actionId of ['idle', 'waving', 'jumping', 'running-right', 'running-left']) {
+      writeActionCheckpoint({ dataDir, runId, result: { actionId, ok: true,
+        bindings: { planHash: plan.hash, canonicalHash: canonical.sha256, profileHash: profile.hash, processorVersion: 12, qualityProfileHash: getQualityFirstQualityProfile().hash },
+        row: { actionId, quality: 'row-real', frames: [{ path: frame, index: 0, durationMs: 120 }] }
+      } })
+      const locomotion = actionId.startsWith('running-')
+      assert.equal(runtime.processorVersionForAction(actionId), locomotion ? 13 : 12)
+      if (!locomotion) {
+        const result = await runtime.runAction({ actionId, canonical, profile })
+        assert.equal(result.checkpointReused, true, actionId)
+      } else {
+        assert.equal(resolveReusableActionResult({ dataDir, runId, actionId, planHash: plan.hash, canonicalHash: canonical.sha256, profileHash: profile.hash, processorVersion: runtime.processorVersionForAction(actionId), qualityProfileHash: getQualityFirstQualityProfile().hash, requireBindings: true }), null)
+        await runtime.persistActionResult({ actionId, canonical, profile, result: { ok: false, failureCode: 'fixture' } })
+        assert.equal(readActionCheckpoints({ dataDir, runId }).actions[actionId].bindings.processorVersion, 13)
+      }
+    }
+    assert.deepEqual(await runtime.createCharacterScaleProfile({ canonical, idle: { checkpointReused: true } }), profile)
+  } finally {
+    global.fetch = previous.fetch
+    if (previous.url == null) delete process.env.OPENPET_BRIDGE_URL
+    else process.env.OPENPET_BRIDGE_URL = previous.url
+    if (previous.token == null) delete process.env.OPENPET_BRIDGE_TOKEN
+    else process.env.OPENPET_BRIDGE_TOKEN = previous.token
+  }
 })
 
 test('quality-first host runtime reuses a five-way-bound action checkpoint without Provider generation', async () => {
