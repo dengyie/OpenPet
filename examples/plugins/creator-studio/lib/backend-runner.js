@@ -1220,7 +1220,31 @@ const runQualityFirstActionRepair = async ({
       persistActionProgress()
     }
     const idleOk = normalizedActionId === 'idle' ? result?.ok === true : actionResults.idle?.ok === true
-    const packageResult = idleOk ? await runtime.finalizePackage({ run, canonical, profile: effectiveProfile, actionResults }) : null
+    // A rejected missing action cannot change the accepted atlas. Preserve its
+    // existing evaluation (including rejection) instead of paying to rescore it.
+    const previousPackage = run.qualityFirst?.package
+    const retainedActions = previousPackage?.basicActions?.availableActionIds
+    const acceptedActions = OFFICIAL_FULL_PET_ACTION_IDS.filter(id => actionResults[id]?.ok === true)
+    const retainedPackageCurrent = result?.ok !== true &&
+      run.qualityFirst?.actionResults?.[normalizedActionId]?.ok !== true &&
+      Array.isArray(retainedActions) && retainedActions.length === acceptedActions.length &&
+      acceptedActions.every(id => retainedActions.includes(id)) &&
+      typeof previousPackage?.visualEvaluation?.gate?.ok === 'boolean' &&
+      [['spritesheetRelativePath', 'spritesheetSha256'], ['bundleRelativePath', 'bundleSha256']].every(([pathKey, hashKey]) => {
+        try {
+          const relativePath = previousPackage[pathKey]
+          if (typeof relativePath !== 'string' || !relativePath.startsWith(`runs/${runId}/`) || relativePath.split(/[\\/]/).includes('..')) return false
+          const root = path.join(fs.realpathSync.native(dataDir), 'runs', runId)
+          const file = fs.realpathSync.native(path.resolve(dataDir, relativePath))
+          if (!file.startsWith(`${root}${path.sep}`) || !fs.statSync(file).isFile()) return false
+          return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex') === previousPackage[hashKey]
+        } catch (_) { return false }
+      })
+    const packageResult = idleOk
+      ? retainedPackageCurrent
+        ? { ...previousPackage, artifacts: run.artifacts || {} }
+        : await runtime.finalizePackage({ run, canonical, profile: effectiveProfile, actionResults })
+      : null
     if (idleOk && (!packageResult || typeof packageResult !== 'object' || !packageResult.artifacts || typeof packageResult.artifacts !== 'object')) {
       const error = new Error('Quality-first final package artifacts are missing')
       error.code = 'quality_first_final_package_missing'

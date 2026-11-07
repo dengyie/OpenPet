@@ -10,7 +10,7 @@
 
 ## Current checkpoint (2026-11-07)
 
-当前广州已部署main `cf9a0b35`（PR129，main CI42375000156成功）。正式Pip idle/waving/jumping/failed/waiting已接受（5/9），failed通过checkpoint验证后复用，未增加Provider用量。用户已授权Evaluator100，Provider144保持，历史101/1/81保留；waiting已通过；工作/检查态具体动作修复待部署。右跑画质与其他四动作及最终门尚未完成。root约1.4GiB，无新增删除。后续状态以[当前证据](../../release-evidence/remote-backend/2026-11-07-locomotion-budget-admission.md)为准，以下早期检查点保留历史。
+当前广州已部署main `34cf3f5f`（PR131，main CI42393867636成功）。正式Pip idle/waving/jumping/failed/waiting已接受（5/9），failed通过checkpoint验证后复用，未增加Provider用量。用户已授权Evaluator100，Provider144保持，历史108/1/90保留；waiting已通过；工作/检查态v14仍失败；重复包评估/工作态评估语义修复待部署。右跑画质与其他四动作及最终门尚未完成。root约1.4GiB，无新增删除。后续状态以[当前证据](../../release-evidence/remote-backend/2026-11-07-locomotion-budget-admission.md)为准，以下早期检查点保留历史。
 
 ## Global constraints
 

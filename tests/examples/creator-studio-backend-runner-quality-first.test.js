@@ -760,6 +760,45 @@ for (const actionId of ['waving', 'running-right']) test(`rejected ${actionId} r
   assert.equal(event.data.failureCode, 'action_quality_gate_failed')
 })
 
+for (const tampered of [false, true]) test(`rejected missing action retains an unchanged partial package only when its assets match (${tampered})`, async () => {
+  const dataDir = createDataDir()
+  const created = createRun({ dataDir, input: { petName: 'Unchanged Package', backend: 'provider', generationTask: { mode: 'full-pet', pipeline: 'quality-first-v1', actions: [{ actionId: 'review' }], questions: [] } } })
+  const base = `runs/${created.runId}/quality-first/package`
+  const sheetPath = path.join(dataDir, base, 'spritesheet.webp')
+  const bundlePath = path.join(dataDir, base, 'pet.zip')
+  fs.mkdirSync(path.dirname(sheetPath), { recursive: true })
+  fs.writeFileSync(sheetPath, 'retained-sheet')
+  fs.writeFileSync(bundlePath, 'retained-bundle')
+  const hash = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')
+  const retainedPackage = {
+    spritesheetRelativePath: `${base}/spritesheet.webp`, spritesheetSha256: hash(sheetPath),
+    bundleRelativePath: `${base}/pet.zip`, bundleSha256: hash(bundlePath),
+    basicActions: { availableActionIds: ['idle'], omittedActionIds: ['review'] },
+    visualEvaluation: { gate: { ok: false, outcome: 'repair', failures: ['visual-score-actionDistinctness-below-minimum'] }, evidenceRelativePath: 'retained-negative-evidence.json' }
+  }
+  writeRun({ dataDir, run: { ...created, status: 'ready_for_review', qualityFirst: {
+    acceptedCanonical: { candidateId: 'canonical-1', sha256: 'a'.repeat(64) },
+    actionResults: { idle: { ok: true }, review: { ok: false } }, package: retainedPackage
+  }, artifacts: { spritesheet: sheetPath, bundle: bundlePath } } })
+  if (tampered) fs.writeFileSync(sheetPath, 'altered-sheet')
+  let finalizations = 0
+  const output = await runQualityFirstActionRepair({
+    dataDir, runId: created.runId, actionId: 'review', profile: { hash: 'profile' }, plan: { hash: 'plan' },
+    runtime: {
+      runAction: async () => ({ ok: false, actionId: 'review', failureCode: 'action_quality_gate_failed', candidates: [] }),
+      persistActionResult: async () => {},
+      finalizePackage: async () => { finalizations += 1; return { basicActions: { omittedActionIds: ['review'] }, artifacts: {} } }
+    }
+  })
+  assert.equal(finalizations, tampered ? 1 : 0)
+  assert.equal(output.run.qualityFirst.actionResults.review.ok, false)
+  if (!tampered) {
+    assert.deepEqual(output.run.qualityFirst.package, retainedPackage)
+    assert.equal(output.run.artifacts.bundle, bundlePath)
+    assert.equal(output.run.qualityFirst.package.visualEvaluation.gate.ok, false)
+  }
+})
+
 for (const actionId of ['idle', 'waving']) test(`quality-first ${actionId} retry publishes its active phase before Provider work`, async () => {
   const dataDir = createDataDir()
   const created = createRun({ dataDir, input: {

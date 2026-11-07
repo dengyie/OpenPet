@@ -522,14 +522,15 @@ test('video motion processing invalidates locomotion and work-state bindings whi
       } })
       const locomotion = actionId.startsWith('running-')
       const stateGesture = actionId === 'running' || actionId === 'review'
-      assert.equal(runtime.processorVersionForAction(actionId), locomotion ? 13 : stateGesture ? 14 : 12)
+      const expectedVersion = locomotion ? 13 : actionId === 'running' ? 15 : stateGesture ? 14 : 12
+      assert.equal(runtime.processorVersionForAction(actionId), expectedVersion)
       if (!locomotion && !stateGesture) {
         const result = await runtime.runAction({ actionId, canonical, profile })
         assert.equal(result.checkpointReused, true, actionId)
       } else {
         assert.equal(resolveReusableActionResult({ dataDir, runId, actionId, planHash: plan.hash, canonicalHash: canonical.sha256, profileHash: profile.hash, processorVersion: runtime.processorVersionForAction(actionId), qualityProfileHash: getQualityFirstQualityProfile().hash, requireBindings: true }), null)
         await runtime.persistActionResult({ actionId, canonical, profile, result: { ok: false, failureCode: 'fixture' } })
-        assert.equal(readActionCheckpoints({ dataDir, runId }).actions[actionId].bindings.processorVersion, locomotion ? 13 : 14)
+        assert.equal(readActionCheckpoints({ dataDir, runId }).actions[actionId].bindings.processorVersion, expectedVersion)
       }
     }
     assert.deepEqual(await runtime.createCharacterScaleProfile({ canonical, idle: { checkpointReused: true } }), profile)

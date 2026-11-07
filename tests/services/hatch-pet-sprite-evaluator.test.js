@@ -180,6 +180,22 @@ test('video evaluator receives detail and runtime region coordinates without cha
   assert.match(request.messages[0].content, /Report actual defects in either set of regions/)
 })
 
+test('work-state evaluator resolves the running identifier as stationary task processing without relaxing scores', async () => {
+  const boardDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-work-intent-'))
+  const boardPath = path.join(boardDir, 'board.png')
+  await sharp({ create: { width: 128, height: 128, channels: 4, background: '#eee' } }).png().toFile(boardPath)
+  const profile = getQualityFirstQualityProfile()
+  const request = await createSpriteEvaluatorRequest({
+    scope: 'grounded-action', board: { path: boardPath, regions: REGIONS }, profile,
+    qa: { actionIntent: { actionId: 'running', loop: true, frameCount: 1, framePlan: ['focused work gesture'] } }
+  })
+  assert.match(request.messages[0].content, /running.*stationary task.processing/i)
+  assert.match(request.messages[0].content, /locomotion.*running-right.*running-left/i)
+  const payload = JSON.parse(request.messages[1].content.find(part => part.type === 'text').text)
+  assert.deepEqual(payload.minimumScores, profile.visual.groundedAction)
+  assert.equal(payload.actionIntent.actionId, 'running')
+})
+
 test('evaluation evidence is atomically stored under dataDir with a relative path', () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-sprite-evaluation-'))
   const relativePath = recordSpriteEvaluation({

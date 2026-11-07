@@ -2,10 +2,10 @@
 
 ## Current production and formal run
 
-- Runtime: Guangzhou main `cf9a0b35ed0f6e1be41056fc14ce83e5cede85e9` (PR #129); main CI `42375000156` succeeded. Rollback `/var/backups/openpet/20261107T130824Z-cf9a0b35` is retained; archive SHA-256 `7beb9c902285c1f585602b34eb956cba7363f64ac18918b5a04a0481d517c549`.
-- Fresh SSH health: ready/resident; root approximately 1.7 GiB available. Backend stays loopback, Nginx stays EasyTier-only. Nine deployed source hashes match main. Run, ledger, checkpoints and scale-profile hashes stayed identical across deployment before the authorized configuration change.
-- Formal run `2026-11-05-pip`: idle/waving/jumping/failed accepted (5/9). Recovery Job `creator.workflow:42ee00fa-5b0a-496f-9131-a38fa5558875` succeeded: the validated failed-action checkpoint was reused without another Provider call. Right/left, running and review remain missing. A partial package is not nine-action acceptance.
-- Authorized evaluator cap100 is applied. After failed recovery, cumulative usage is Provider92/144, Planner1/34 and Evaluator69/100; no history was reset. Subsequent recovery outcomes and cumulative totals are recorded below.
+- Runtime: Guangzhou main `34cf3f5f0c7d859257e3967c646ec89b7324173c` (PR #131), main CI42393867636 success. PR130 budget merge and PR131 work/review prompt fixes are deployed. Rollback `/var/backups/openpet/20261107T171052Z-34cf3f5f` retained; archive SHA256 `b7176c71ac16234d50af7876ac79befd563838053b67110ea914df3a7e9e7931`.
+- Activation verified ready/resident,12 source hashes and4 formal data hashes unchanged. Deployed real-domain/host/video tests86/86 passed. Single-field evaluator100 PATCH now preserves Provider144 and all historical ledger bytes, proving the partial-budget fix online. Main CI Node3581/2skip, core2401/2skip, UI82 and two platform builds passed.
+- Formal Pip remains5/9 accepted (idle/waving/jumping/failed/waiting). Work v14 Jobe8b77a78 and review v14 Job77c3003a completed but did not pass their original quality gates. Right/left, work and review plus final acceptance remain open.
+- History108 Provider/1 planner/90 evaluator; limits144/100,10 evaluations remain. No usage reset, override, probe promotion or threshold reduction. Root later measured about1.5GiB; no deletion performed.
 - The additional snapshot `/var/backups/openpet/20261026T081907Z-1678945` was explicitly approved but already absent when checked. No deletion or substitute deletion was performed.
 
 ## Reproduced defects and minimal fixes
@@ -58,3 +58,10 @@ Periodic board SHA `6c5c32284a2e60bf1dd7ca7bdc22480315b7a95ef3bd8f99f4fe567d4673
 - Use focused-work wording and two compact chest-adjacent working beats; inspection uses an existing appendage toward the chin, a small head tilt and acknowledgement nod. Feet stay fixed; the original viewpoint/face constraints prohibit stepping, flapping or speaking. No new anatomy or props are requested. The original quality gates remain mandatory.
 - Only video work/review processor bindings advance to14. Right/left remain13, all other video rows and the idle scale profile remain12. Red→green checkpoint regression verifies stale work/review refusal and accepted idle/wave/jump/failed/waiting reuse. Focused host/backend/video tests126/126 and syntax/typecheck/build pass; real verification still requires deployment.
 - PR130 is merged as main `dfc967661cf5f4b04bf9e5c4cdd86525aaa74502`, main CI42377269980 success; its budget fix will deploy with this follow-up to avoid an unnecessary second switch. Runtime remainscf9a0b35 until activation.
+
+## Rejected retries must not rescore unchanged packages
+
+- Repeated failed work/review retries produced the identical final-package board SHA `27aff31020a2e650cc95a0952e65f75a6b52856826a6734cd07cc1ba8b9bc69f`, yet each called the final evaluator again and overwrote its board-bound evidence. This wasted calls without adding an accepted action.
+- Red regression reproduces finalization of an unchanged package after a rejected missing action. The minimal fix retains the prior package and its original gate, including rejection, only when accepted action coverage is unchanged and the run-owned sprite/bundle files still match their recorded hashes. Changed coverage, missing/tampered assets or missing evaluation metadata rebuild normally. No score is invented or promoted.
+- The evaluation prompt also retained the internal ambiguous actionId running despite the generator label fix. A red request regression proves the evaluator lacked its task-state meaning. Its code-owned instruction now identifies stationary task processing and reserves locomotion for right/left; frame plan, scores and thresholds stay unchanged. Only work video binding advances15; review14/right-left13/other rows12 remain.
+- New real quality verification is pending CI/merge/deployment. Existing v14 rejected boards will not be rescored to seek a pass.
