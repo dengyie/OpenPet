@@ -4,7 +4,7 @@
 
 ## 当前状态（2026-11-08）
 
-广州当前运行main `f0a43f7e`（PR132，main CI42401325010成功），ready/resident；回滚 `/var/backups/openpet/20261107T183113Z-f0a43f7e` 保留。正式Pip已6/9：idle/waving/jumping/failed/waiting/running通过，工作态v15得93分；right/left、review及最终门仍未完成。历史Provider111/144、Planner1/34、Evaluator93/100，剩7次评估。最新右跑在300秒侧向首帧图片请求超时后结束，未进入视频、未增加评估，原部分包评估字节一致，证实未变化包不重复评估已上线。review v14仍拒绝，闭眼/张喙使动作像打哈欠；去除手抵下巴、改为头部观察与点头的v15修复正在验证，未声称视觉通过。根盘最后约602MiB，三份逐路径旧快照删除仍待授权；全部生成证据保留。 详见[当前证据](../release-evidence/remote-backend/2026-11-07-locomotion-budget-admission.md)。以下日期记录保留其历史含义。
+广州当前运行main `a08ddac0`（PR133，main CI42403743317成功），ready/resident；回滚 `/var/backups/openpet/20261107T190155Z-a08ddac0` 保留。正式Pip仍6/9：idle/waving/jumping/failed/waiting/running通过，缺right/left、review与最终门。历史Provider118/144、Planner1/34、Evaluator100/100，新增32次评估授权待答复，未擅自加额。review15新候选80/85仍拒绝，另一次主评估超时后回退无效；右跑最新Job22bd1a68的候选81/84仍拒绝，第三份素材保留，任务被预算硬门终止。三份已授权旧快照均逐项删除，根盘约3GiB，近期回滚与生成证据保留。PR134修复状态查询遍历全部历史导致13MB诊断/HTTPS超时；只读同数据验证降至545KB/0.64s，待CI合入部署，不代表动作质量通过。 详见[当前证据](../release-evidence/remote-backend/2026-11-07-locomotion-budget-admission.md)。以下日期记录保留其历史含义。
 
 ## 拓扑与端口
 
