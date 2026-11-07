@@ -97,6 +97,26 @@ test('waving video isolates the selected greeting appendage and preserves the fa
   }
 })
 
+test('running work-state video names focused work rather than locomotion and supplies a concrete in-place gesture', () => {
+  const prompt = buildVideoPrompt({ driver: createMotionDriver({ actionId: 'running' }) })
+  assert.match(prompt, /performing focused work/i)
+  assert.doesNotMatch(prompt, /performing running[. ]/i)
+  assert.match(prompt, /feet.*fixed.*ground/i)
+  assert.match(prompt, /existing.*appendage.*inward.*chest/i)
+  assert.match(prompt, /do not walk.*run.*hop.*wave.*flap/i)
+  assert.match(prompt, /eyes.*mouth or beak.*unchanged/i)
+})
+
+test('review video specifies a deliberate inspection gesture without speaking or turning away', () => {
+  const prompt = buildVideoPrompt({ driver: createMotionDriver({ actionId: 'review' }) })
+  assert.match(prompt, /performing deliberate inspection/i)
+  assert.match(prompt, /existing.*appendage.*chin/i)
+  assert.match(prompt, /head.*tilt.*acknowledgement nod/i)
+  assert.match(prompt, /feet.*fixed/i)
+  assert.match(prompt, /mouth or beak.*closed/i)
+  assert.match(prompt, /do not.*speak.*turn.*profile/i)
+})
+
 test('video repair prompt targets the recorded temporal failure', () => {
   const driver = createMotionDriver({ actionId: 'idle' })
   const initial = buildVideoPrompt({

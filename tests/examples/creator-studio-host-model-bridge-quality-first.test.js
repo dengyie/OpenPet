@@ -493,7 +493,7 @@ test('host reloads retained paid action candidates for diversity-failure recover
 })
 
 
-test('video locomotion processing invalidates only running bindings and preserves accepted rows', async () => {
+test('video motion processing invalidates locomotion and work-state bindings while preserving accepted rows', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-action-version-'))
   const runId = 'scoped-version'
   const reference = `runs/${runId}/reference.png`
@@ -501,7 +501,7 @@ test('video locomotion processing invalidates only running bindings and preserve
   fs.mkdirSync(path.dirname(frame), { recursive: true })
   await sharp({ create: { width: 192, height: 208, channels: 4, background: '#6789ab' } }).png().toFile(frame)
   fs.copyFileSync(frame, path.join(dataDir, reference))
-  const plan = createSpriteAssetPlan({ version: 1, revision: 1, character: { assetClass: 'grounded-compact-character' }, actions: ['idle', 'waving', 'jumping', 'running-right'].map(actionId => ({ actionId })) })
+  const plan = createSpriteAssetPlan({ version: 1, revision: 1, character: { assetClass: 'grounded-compact-character' }, actions: ['idle', 'waving', 'jumping', 'failed', 'waiting', 'review', 'running', 'running-right'].map(actionId => ({ actionId })) })
   const canonical = { sha256: 'a'.repeat(64), relativePath: reference }
   const profile = { version: 1 }
   profile.hash = crypto.createHash('sha256').update(JSON.stringify(profile)).digest('hex')
@@ -515,20 +515,21 @@ test('video locomotion processing invalidates only running bindings and preserve
   }
   try {
     const runtime = await createQualityFirstHostRuntime({ dataDir, run: { runId, input: { referenceImage: { relativePath: reference } } }, planOverride: plan })
-    for (const actionId of ['idle', 'waving', 'jumping', 'running-right', 'running-left']) {
+    for (const actionId of ['idle', 'waving', 'jumping', 'failed', 'waiting', 'review', 'running', 'running-right', 'running-left']) {
       writeActionCheckpoint({ dataDir, runId, result: { actionId, ok: true,
         bindings: { planHash: plan.hash, canonicalHash: canonical.sha256, profileHash: profile.hash, processorVersion: 12, qualityProfileHash: getQualityFirstQualityProfile().hash },
         row: { actionId, quality: 'row-real', frames: [{ path: frame, index: 0, durationMs: 120 }] }
       } })
       const locomotion = actionId.startsWith('running-')
-      assert.equal(runtime.processorVersionForAction(actionId), locomotion ? 13 : 12)
-      if (!locomotion) {
+      const stateGesture = actionId === 'running' || actionId === 'review'
+      assert.equal(runtime.processorVersionForAction(actionId), locomotion ? 13 : stateGesture ? 14 : 12)
+      if (!locomotion && !stateGesture) {
         const result = await runtime.runAction({ actionId, canonical, profile })
         assert.equal(result.checkpointReused, true, actionId)
       } else {
         assert.equal(resolveReusableActionResult({ dataDir, runId, actionId, planHash: plan.hash, canonicalHash: canonical.sha256, profileHash: profile.hash, processorVersion: runtime.processorVersionForAction(actionId), qualityProfileHash: getQualityFirstQualityProfile().hash, requireBindings: true }), null)
         await runtime.persistActionResult({ actionId, canonical, profile, result: { ok: false, failureCode: 'fixture' } })
-        assert.equal(readActionCheckpoints({ dataDir, runId }).actions[actionId].bindings.processorVersion, 13)
+        assert.equal(readActionCheckpoints({ dataDir, runId }).actions[actionId].bindings.processorVersion, locomotion ? 13 : 14)
       }
     }
     assert.deepEqual(await runtime.createCharacterScaleProfile({ canonical, idle: { checkpointReused: true } }), profile)
