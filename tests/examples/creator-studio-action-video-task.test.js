@@ -107,11 +107,14 @@ test('running work-state video names focused work rather than locomotion and sup
   assert.match(prompt, /eyes.*mouth or beak.*unchanged/i)
 })
 
-test('review video specifies a deliberate inspection gesture without speaking or turning away', () => {
+test('review video separates inspection and acknowledgement without a mouth-covering gesture', () => {
   const prompt = buildVideoPrompt({ driver: createMotionDriver({ actionId: 'review' }) })
   assert.match(prompt, /performing deliberate inspection/i)
-  assert.match(prompt, /existing.*appendage.*chin/i)
-  assert.match(prompt, /head.*tilt.*acknowledgement nod/i)
+  assert.match(prompt, /head.*tilt.*left.*right/i)
+  assert.match(prompt, /one.*acknowledgement nod/i)
+  assert.match(prompt, /both.*appendages.*resting pose/i)
+  assert.match(prompt, /eyes.*open.*unchanged/i)
+  assert.doesNotMatch(prompt, /appendage toward the chin|thinking pose/i)
   assert.match(prompt, /feet.*fixed/i)
   assert.match(prompt, /mouth or beak.*closed/i)
   assert.match(prompt, /do not.*speak.*turn.*profile/i)

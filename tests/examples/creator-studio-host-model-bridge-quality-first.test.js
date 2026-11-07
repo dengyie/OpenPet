@@ -493,7 +493,7 @@ test('host reloads retained paid action candidates for diversity-failure recover
 })
 
 
-test('video motion processing invalidates locomotion and work-state bindings while preserving accepted rows', async () => {
+test('video motion processing invalidates old locomotion and review bindings while preserving accepted work and other rows', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-action-version-'))
   const runId = 'scoped-version'
   const reference = `runs/${runId}/reference.png`
@@ -517,14 +517,14 @@ test('video motion processing invalidates locomotion and work-state bindings whi
     const runtime = await createQualityFirstHostRuntime({ dataDir, run: { runId, input: { referenceImage: { relativePath: reference } } }, planOverride: plan })
     for (const actionId of ['idle', 'waving', 'jumping', 'failed', 'waiting', 'review', 'running', 'running-right', 'running-left']) {
       writeActionCheckpoint({ dataDir, runId, result: { actionId, ok: true,
-        bindings: { planHash: plan.hash, canonicalHash: canonical.sha256, profileHash: profile.hash, processorVersion: 12, qualityProfileHash: getQualityFirstQualityProfile().hash },
+        bindings: { planHash: plan.hash, canonicalHash: canonical.sha256, profileHash: profile.hash, processorVersion: actionId === 'running' ? 15 : actionId === 'review' ? 14 : 12, qualityProfileHash: getQualityFirstQualityProfile().hash },
         row: { actionId, quality: 'row-real', frames: [{ path: frame, index: 0, durationMs: 120 }] }
       } })
       const locomotion = actionId.startsWith('running-')
       const stateGesture = actionId === 'running' || actionId === 'review'
-      const expectedVersion = locomotion ? 13 : actionId === 'running' ? 15 : stateGesture ? 14 : 12
+      const expectedVersion = locomotion ? 13 : stateGesture ? 15 : 12
       assert.equal(runtime.processorVersionForAction(actionId), expectedVersion)
-      if (!locomotion && !stateGesture) {
+      if (!locomotion && actionId !== 'review') {
         const result = await runtime.runAction({ actionId, canonical, profile })
         assert.equal(result.checkpointReused, true, actionId)
       } else {

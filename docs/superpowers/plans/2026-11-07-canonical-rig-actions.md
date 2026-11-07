@@ -8,9 +8,9 @@
 
 **Tech Stack:** Existing Node, sharp, native test runner, Creator bridge and QA; no new dependencies or model downloads.
 
-## Current checkpoint (2026-11-07)
+## Current checkpoint (2026-11-08)
 
-当前广州已部署main `34cf3f5f`（PR131，main CI42393867636成功）。正式Pip idle/waving/jumping/failed/waiting已接受（5/9），failed通过checkpoint验证后复用，未增加Provider用量。用户已授权Evaluator100，Provider144保持，历史108/1/90保留；waiting已通过；工作/检查态v14仍失败；重复包评估/工作态评估语义修复待部署。右跑画质与其他四动作及最终门尚未完成。root约1.4GiB，无新增删除。后续状态以[当前证据](../../release-evidence/remote-backend/2026-11-07-locomotion-budget-admission.md)为准，以下早期检查点保留历史。
+广州当前运行main `f0a43f7e`（PR132，main CI42401325010成功），ready/resident；回滚 `/var/backups/openpet/20261107T183113Z-f0a43f7e` 保留。正式Pip已6/9：idle/waving/jumping/failed/waiting/running通过，工作态v15得93分；right/left、review及最终门仍未完成。历史Provider111/144、Planner1/34、Evaluator93/100，剩7次评估。最新右跑在300秒侧向首帧图片请求超时后结束，未进入视频、未增加评估，原部分包评估字节一致，证实未变化包不重复评估已上线。review v14仍拒绝，闭眼/张喙使动作像打哈欠；去除手抵下巴、改为头部观察与点头的v15修复正在验证，未声称视觉通过。根盘最后约602MiB，三份逐路径旧快照删除仍待授权；全部生成证据保留。 详见[当前证据](../../release-evidence/remote-backend/2026-11-07-locomotion-budget-admission.md)。以下日期记录保留其历史含义。
 
 ## Global constraints
 

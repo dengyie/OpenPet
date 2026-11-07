@@ -3203,7 +3203,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
   const processorVersionForAction = (actionId) => (
     !useVideoActionPipeline ? actionProcessorVersion
       : actionId === 'running' ? 15
-        : actionId === 'review' ? 14
+        : actionId === 'review' ? 15
         : actionId === 'running-right' || actionId === 'running-left' ? 13
           : actionProcessorVersion
   )
