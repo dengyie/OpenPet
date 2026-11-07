@@ -61,7 +61,47 @@ test('support rig validates identity, supported anatomy/action and cancellation 
 test('support-strip deformation cannot substitute for articulated right-facing locomotion', async () => {
   const f = await fixture()
   const action = { actionId: 'running-right', frameCount: 8, layout: { columns: 4, rows: 2 } }
-  await assert.rejects(renderCanonicalSupportRig({ ...f, action }), { code: 'canonical_rig_unsupported' })
+  await assert.rejects(renderCanonicalSupportRig({ ...f, action }), { code: 'canonical_rig_pose_required' })
+  assert.equal(fs.existsSync(path.join(f.dataDir, f.outputRelativeDir)), false)
+})
+
+test('articulated gait binds a separate side pose, exchanges feet and exports its full source evidence', async () => {
+  const f = await fixture()
+  const posePath = path.join(f.dataDir, 'side-pose.png')
+  await sharp(Buffer.from('<svg width="300" height="340"><ellipse cx="150" cy="150" rx="88" ry="112" fill="#ffe45d" stroke="#42250d" stroke-width="7"/><ellipse cx="100" cy="283" rx="25" ry="14" fill="#ff9447" stroke="#42250d" stroke-width="7"/><ellipse cx="204" cy="273" rx="25" ry="14" fill="#ff9447" stroke="#42250d" stroke-width="7"/><circle cx="186" cy="100" r="10" fill="#42250d"/><path d="M224 125 L250 139 L225 150Z" fill="#ff9447" stroke="#42250d" stroke-width="6"/></svg>')).png().toFile(posePath)
+  const poseReference = { relativePath: 'side-pose.png', sha256: hash(fs.readFileSync(posePath)) }
+  const action = { actionId: 'running-right', anchorPolicy: 'action-relative-root-v1', frameCount: 8, layout: { columns: 4, rows: 2 } }
+  const result = await renderCanonicalSupportRig({ ...f, action, poseReference })
+  const manifest = JSON.parse(fs.readFileSync(result.manifestPath))
+  assert.equal(manifest.rig.type, 'articulated-biped-gait')
+  assert.deepEqual(manifest.poseReference, poseReference)
+  assert.equal(result.processed.frames.length, 8)
+  assert.equal(new Set(result.processed.frames.map(frame => frame.sha256)).size, 8)
+  assert.ok(manifest.transforms[0].legs[0].x > manifest.transforms[0].legs[1].x)
+  assert.ok(manifest.transforms[4].legs[0].x < manifest.transforms[4].legs[1].x)
+  assert.equal(result.temporalQuality.ok, true)
+  assert.equal(analyzeSpriteCandidate({ actionId: action.actionId, rawMetrics: result.processed.metrics, profile: f.profile, actionPolicy: action }).ok, true)
+  const auditRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-gait-export-'))
+  await rigModule().exportCanonicalRigEvidence({ dataDir: f.dataDir, outputDir: auditRoot, provenance: result.provenance, frames: result.processed.frames, actionId: action.actionId })
+  assert.equal(hash(fs.readFileSync(path.join(auditRoot, poseReference.relativePath))), poseReference.sha256)
+  const changed = fs.readFileSync(posePath)
+  fs.appendFileSync(posePath, 'changed')
+  await assert.rejects(validateCanonicalRigRow({ dataDir: f.dataDir, provenance: result.provenance, frames: result.processed.frames, actionId: action.actionId }), /pose.*hash/)
+  fs.writeFileSync(posePath, changed)
+  await assert.rejects(renderCanonicalSupportRig({ ...f, action, poseReference: { ...poseReference, sha256: '0'.repeat(64) }, outputRelativeDir: 'invalid-pose' }), /pose.*hash/)
+  assert.equal(fs.existsSync(path.join(f.dataDir, 'invalid-pose')), false)
+})
+
+test('articulated gait rejects unsupported colors and unsafe poses before output', async () => {
+  const f = await fixture()
+  const posePath = path.join(f.dataDir, 'blue-pose.png')
+  await sharp(Buffer.from('<svg width="300" height="340"><ellipse cx="150" cy="150" rx="88" ry="112" fill="#3366aa"/><path d="M100 250V285H125V250 M180 250V280H205V250" fill="#ff9447"/></svg>')).png().toFile(posePath)
+  const action = { actionId: 'running-right', frameCount: 8, layout: { columns: 4, rows: 2 } }
+  const poseReference = { relativePath: 'blue-pose.png', sha256: hash(fs.readFileSync(posePath)) }
+  await assert.rejects(renderCanonicalSupportRig({ ...f, action, poseReference }), { code: 'canonical_rig_unsupported' })
+  await assert.rejects(renderCanonicalSupportRig({ ...f, action, poseReference: { ...poseReference, relativePath: '../outside.png' } }), /safe relative/)
+  await sharp({ create: { width: 2049, height: 64, channels: 4, background: '#ffe45d' } }).png().toFile(posePath)
+  await assert.rejects(renderCanonicalSupportRig({ ...f, action, poseReference: { ...poseReference, sha256: hash(fs.readFileSync(posePath)) } }), /pose dimensions/)
   assert.equal(fs.existsSync(path.join(f.dataDir, f.outputRelativeDir)), false)
 })
 
@@ -231,7 +271,7 @@ test('portable rig audit export retains enough evidence to validate without the 
   await assert.rejects(rigModule().exportCanonicalRigEvidence({ dataDir: f.dataDir, outputDir, provenance: wrong, frames: rig.processed.frames, actionId: 'jumping' }), /source hash/)
 })
 
-for (const actionId of ['jumping', 'review']) test(`production host repairs ${actionId} video drift with an audited rig, packages it and resumes without dispatch`, { skip: spawnSync('ffmpeg', ['-version']).status !== 0 || spawnSync('ffprobe', ['-version']).status !== 0 }, async () => {
+for (const actionId of ['jumping', 'review', 'running-right']) test(`production host repairs ${actionId} video drift with an audited rig, packages it and resumes without dispatch`, { skip: spawnSync('ffmpeg', ['-version']).status !== 0 || spawnSync('ffprobe', ['-version']).status !== 0 }, async () => {
   const f = await fixture()
   f.action = actionId === 'review' ? { actionId, anchorPolicy: 'action-relative-root-v1', frameCount: 6, layout: { columns: 3, rows: 2 } } : f.action
   const { createQualityFirstHostRuntime } = require('../../examples/plugins/creator-studio/lib/host-model-bridge')
@@ -240,6 +280,16 @@ for (const actionId of ['jumping', 'review']) test(`production host repairs ${ac
   const { archiveCandidateRevision } = require('../../examples/plugins/creator-studio/lib/sprite-candidate-store')
   const runId = `host-rig-repair-${actionId}`
   const plan = createSpriteAssetPlan({ version: 1, revision: 1, character: { assetClass: 'grounded-compact-character' }, actions: [{ actionId }] })
+  if (actionId === 'running-right') {
+    f.action = { actionId, anchorPolicy: 'compact-grounded-baseline-v1', frameCount: 8, layout: { columns: 4, rows: 2 } }
+    const posePath = path.join(f.dataDir, 'side-pose.png')
+    await sharp(Buffer.from('<svg width="300" height="340"><ellipse cx="150" cy="150" rx="88" ry="112" fill="#ffe45d" stroke="#42250d" stroke-width="7"/><ellipse cx="100" cy="283" rx="25" ry="14" fill="#ff9447" stroke="#42250d" stroke-width="7"/><ellipse cx="204" cy="273" rx="25" ry="14" fill="#ff9447" stroke="#42250d" stroke-width="7"/><circle cx="186" cy="100" r="10" fill="#42250d"/><path d="M224 125 L250 139 L225 150Z" fill="#ff9447" stroke="#42250d" stroke-width="6"/></svg>')).png().toFile(posePath)
+    f.poseReference = { relativePath: 'side-pose.png', sha256: hash(fs.readFileSync(posePath)) }
+    // The generated side pose must pass the same identity/composition contract.
+    // Use the matching fixture as canonical, keeping it a separate file.
+    fs.copyFileSync(posePath, path.join(f.dataDir, f.canonical.relativePath))
+    f.canonical.sha256 = f.poseReference.sha256
+  }
   const fixtureRig = await renderCanonicalSupportRig(f)
   const manifest = JSON.parse(fs.readFileSync(fixtureRig.manifestPath))
   const videoDir = path.join(f.dataDir, 'fixture-video')
@@ -247,6 +297,8 @@ for (const actionId of ['jumping', 'review']) test(`production host repairs ${ac
   for (const [index, frame] of manifest.sourceFrames.entries()) {
     await sharp(path.join(f.dataDir, frame.relativePath)).flatten({ background: '#12ff4d' }).png().toFile(path.join(videoDir, `${index + 1}.png`))
   }
+  // Locomotion decoding excludes the duplicate terminal contact of a cycle.
+  if (actionId === 'running-right') fs.copyFileSync(path.join(videoDir, '1.png'), path.join(videoDir, '9.png'))
   const videoPath = path.join(videoDir, 'jump.mp4')
   execFileSync('ffmpeg', ['-loglevel', 'error', '-framerate', '5', '-i', path.join(videoDir, '%d.png'), '-c:v', 'mpeg4', '-pix_fmt', 'yuv420p', videoPath])
   const oldFetch = global.fetch
@@ -261,7 +313,13 @@ for (const actionId of ['jumping', 'review']) test(`production host repairs ${ac
     calls.push(route)
     let result
     if (route === '/creator/model-settings') return Response.json({ ok: true, config: { videoGeneration: { hasApiKey: true, model: 'grok-imagine-video-1.5' } } })
-    if (route === '/creator/model-video-generate') {
+    if (route === '/creator/model-image-generate') {
+      const relativePath = `${payload.output.dataRelativeDir}/side-pose.png`
+      const output = path.join(f.dataDir, relativePath)
+      fs.mkdirSync(path.dirname(output), { recursive: true })
+      fs.copyFileSync(path.join(f.dataDir, f.poseReference.relativePath), output)
+      result = { outputs: [{ dataRelativePath: relativePath, mimeType: 'image/png', sha256: hash(fs.readFileSync(output)) }] }
+    } else if (route === '/creator/model-video-generate') {
       const relativePath = `${payload.output.dataRelativeDir}/${payload.output.fileName}`
       const output = path.join(f.dataDir, relativePath)
       fs.mkdirSync(path.dirname(output), { recursive: true })
@@ -281,6 +339,18 @@ for (const actionId of ['jumping', 'review']) test(`production host repairs ${ac
     const result = await runtime.runAction({ actionId, canonical: f.canonical, profile })
     assert.equal(result.ok, true, JSON.stringify(result))
     assert.equal(result.selectedCandidate.provider, 'canonical-rig')
+    assert.equal(calls.filter(route => route === '/creator/model-image-generate').length, actionId === 'running-right' ? 1 : 0)
+    if (actionId === 'running-right') {
+      const artifact = result.selectedCandidate.artifacts.find(file => file.role === 'rig-pose-source')
+      assert.ok(artifact, 'production rig must retain its generated side pose')
+      assert.equal(hash(fs.readFileSync(artifact.path)), artifact.sha256)
+      const mirror = await runtime.mirrorRunningLeft({ source: result })
+      assert.equal(mirror.ok, true)
+      for (const [index, frame] of mirror.selectedCandidate.processed.frames.entries()) {
+        assert.deepEqual(await sharp(frame.path).ensureAlpha().raw().toBuffer(), await sharp(result.selectedCandidate.processed.frames[index].path).flop().ensureAlpha().raw().toBuffer())
+      }
+      await runtime.persistActionResult({ actionId: 'running-left', result: mirror, canonical: f.canonical, profile })
+    }
     const videos = calls.filter(route => route === '/creator/model-video-generate').length
     assert.ok(videos >= 2 && videos <= 3)
     assert.equal(result.candidates.filter(candidate => candidate.provenance?.kind === 'canonical-rig').length, 1)
@@ -302,6 +372,11 @@ for (const actionId of ['jumping', 'review']) test(`production host repairs ${ac
     assert.equal(metadata.actionGeneration[actionId].quality, 'approved-rig')
     const auditRoot = path.join(path.dirname(path.join(f.dataDir, packaged.petJsonRelativePath)), metadata.actionGeneration[actionId].evidenceRoot)
     await validateCanonicalRigRow({ dataDir: auditRoot, provenance: metadata.actionGeneration[actionId].provenance, frames: metadata.actionGeneration[actionId].frames, actionId })
+    if (actionId === 'running-right') {
+      assert.equal(metadata.actionGeneration['running-left'].quality, 'approved-mirror')
+      const rigManifest = JSON.parse(fs.readFileSync(path.join(auditRoot, metadata.actionGeneration[actionId].provenance.manifest.relativePath)))
+      assert.equal(hash(fs.readFileSync(path.join(auditRoot, rigManifest.poseReference.relativePath))), rigManifest.poseReference.sha256)
+    }
     assert.ok(execFileSync('unzip', ['-Z1', path.join(f.dataDir, packaged.bundleRelativePath)], { encoding: 'utf8' }).includes('rig-manifest.json'))
     const archive = archiveCandidateRevision({ dataDir: f.dataDir, runId, scope: `action-${actionId}`, now: () => '2026-11-07T01:00:00Z' })
     const archived = JSON.parse(fs.readFileSync(path.join(f.dataDir, archive, result.selectedCandidateId, 'candidate.json'))).candidate

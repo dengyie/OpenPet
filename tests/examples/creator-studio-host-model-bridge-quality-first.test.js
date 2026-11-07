@@ -522,7 +522,7 @@ test('video motion processing invalidates old locomotion and review bindings whi
       } })
       const locomotion = actionId.startsWith('running-')
       const stateGesture = actionId === 'running' || actionId === 'review'
-      const expectedVersion = locomotion ? 13 : actionId === 'review' ? 16 : stateGesture ? 15 : 12
+      const expectedVersion = locomotion ? 14 : actionId === 'review' ? 16 : stateGesture ? 15 : 12
       assert.equal(runtime.processorVersionForAction(actionId), expectedVersion)
       if (!locomotion && actionId !== 'review') {
         const result = await runtime.runAction({ actionId, canonical, profile })
