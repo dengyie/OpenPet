@@ -38,6 +38,18 @@ test("AI Talk HTTP facade maps conversations and Hatch requests to Backend route
 	assert.equal(calls[1].retry, false)
 })
 
+test("Hatch HTTP facade accepts bounded evaluator totals without exposing hidden budget controls", async () => {
+	const { createAiTalkHttpApi } = await import("../../apps/control-center/src/features/ai/talk-api.ts")
+	const v = await import("valibot")
+	const calls = []
+	const api = createAiTalkHttpApi({ request: async (input) => { calls.push(input); return {} } })
+	await api.saveHatchConfig({ budgets: { maxEvaluatorCalls: 100 } })
+	assert.equal(v.safeParse(calls[0].requestSchema, calls[0].body).success, true)
+	for (const maxEvaluatorCalls of [0, 201, 100.5, "100"]) {
+		assert.equal(v.safeParse(calls[0].requestSchema, { config: { budgets: { maxEvaluatorCalls } } }).success, false)
+	}
+})
+
 test("AI Talk HTTP facade owns image configuration and key routes", async () => {
 	const { createAiTalkHttpApi } = await import("../../apps/control-center/src/features/ai/talk-api.ts")
 	const calls = []

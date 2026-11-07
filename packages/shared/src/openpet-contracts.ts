@@ -3148,6 +3148,7 @@ export interface HatchPetAgentBudgetsView {
   maxIdentityRegenerations: number
   maxActionAttemptsPerAction: number
   maxEvaluationAttemptsPerArtifact: number
+  maxEvaluatorCalls: number
   maxProviderCalls: number
   maxElapsedMs: number
   maxEstimatedCost: number | null

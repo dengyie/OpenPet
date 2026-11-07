@@ -177,6 +177,7 @@ const defaultDemoHatchPetAgentConfig: HatchPetAgentConfigView = {
     maxIdentityRegenerations: 1,
     maxActionAttemptsPerAction: 3,
     maxEvaluationAttemptsPerArtifact: 3,
+    maxEvaluatorCalls: 68,
     maxProviderCalls: 64,
     maxElapsedMs: 3600000,
     maxEstimatedCost: null
@@ -1817,6 +1818,7 @@ const cloneDemoHatchPetAgentConfig = (
       maxIdentityRegenerations: clampDemoHatchPetInteger(sourceBudgets.maxIdentityRegenerations, 1, 0, 3),
       maxActionAttemptsPerAction: clampDemoHatchPetInteger(sourceBudgets.maxActionAttemptsPerAction, 3, 1, 6),
       maxEvaluationAttemptsPerArtifact: clampDemoHatchPetInteger(sourceBudgets.maxEvaluationAttemptsPerArtifact, 3, 1, 3),
+      maxEvaluatorCalls: clampDemoHatchPetInteger(sourceBudgets.maxEvaluatorCalls, 68, 1, 200),
       maxProviderCalls: clampDemoHatchPetInteger(sourceBudgets.maxProviderCalls, 64, 1, 200),
       maxElapsedMs: clampDemoHatchPetInteger(sourceBudgets.maxElapsedMs, 3600000, 60000, 14400000),
       maxEstimatedCost: estimatedCost

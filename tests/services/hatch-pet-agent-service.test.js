@@ -878,6 +878,26 @@ test('exhausted evaluator budget blocks paid Provider admission without consumin
   assert.equal(h.calls.length, 0)
 })
 
+test('saving an evaluator top-up preserves cumulative usage and only admits the newly available calls', () => {
+  const h = createHarness({ budgets: { maxProviderCalls: 144 } })
+  const runId = 'run-evaluator-top-up'
+  const ledgerPath = path.join(h.dataDir, 'runs', runId, 'budgets', 'ledger.json')
+  fs.mkdirSync(path.dirname(ledgerPath), { recursive: true })
+  const ledger = createBudgetLedger({ limits: { maxProviderCalls: 144 } })
+  const usage = { ...ledger.usage, evaluatorCalls: 68, providerCalls: 92, providerFailures: 29, lastProviderCode: 'ok' }
+  const bytes = JSON.stringify({ ...ledger, usage })
+  fs.writeFileSync(ledgerPath, bytes)
+  h.service.saveConfig({ budgets: { maxEvaluatorCalls: 100 } })
+  assert.equal(h.service.getConfig().budgets.maxEvaluatorCalls, 100)
+  assert.equal(fs.readFileSync(ledgerPath, 'utf8'), bytes)
+  const result = h.service.reserveProviderCall({ runId, timeoutMs: 300000 })
+  assert.equal(result.budgetLedger.limits.maxEvaluatorCalls, 100)
+  assert.equal(result.budgetLedger.limits.maxProviderCalls, 144)
+  assert.deepEqual(result.budgetLedger.usage, usage)
+  assert.equal(result.budget.remaining.evaluatorCalls, 32)
+  assert.equal(h.calls.length, 0)
+})
+
 test('recovery budget renewal persists a new active window without erasing usage', () => {
   const h = createHarness()
   const runId = 'run-recovery-window'

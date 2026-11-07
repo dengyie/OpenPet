@@ -124,7 +124,7 @@ const normalizeHatchPetBudgets = (value = {}) => {
       source.maxEvaluatorCalls,
       DEFAULT_HATCH_PET_BUDGETS.maxEvaluatorCalls,
       1,
-      68
+      200
     ),
     maxProviderCalls: clampInteger(
       source.maxProviderCalls,

@@ -14,6 +14,13 @@ PR125/126已合入main `b56c17ef`并部署，main CI42328906292成功。正式Pi
 
 ## Global constraints
 
+### Evaluator configuration recovery
+
+- [x] Reproduce rejected evaluator top-up through authenticated API (HTTP400) and service normalization (100→68).
+- [x] Add bounded integer evaluator-total configuration to existing API/bridge/service/types/Control Center and demo; keep default68, historical counters and Provider limits.
+- [x] Verify real route/service behavior, strict request validation and VPS UI save/reload.
+- [ ] Merge after green CI, deploy, configure the authorized cap100 through the existing API, then recover missing formal actions and evaluate the final package within the32 additional calls.
+
 - Keep existing quality thresholds and current accepted action evidence.
 - Nine-action completion requires every action, mirrored running-left, final atlas QA and final visual gate; two-action packages do not satisfy it.
 - No paid Provider request for deterministic rendering. Evaluations use existing budget ownership.

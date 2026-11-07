@@ -170,6 +170,21 @@ test("Hatch config enforces the same 200 Provider call maximum as the Control Ce
 	})
 })
 
+test("Hatch evaluator limit can be raised without changing other budgets and rejects invalid totals", async (t) => {
+	const fixture = aiRuntimeFixture()
+	await withAiRuntimeServer(t, { ...fixture, jobs: fixture.jobDispatcher }, async ({ request }) => {
+		const response = await request("/ai/hatch/config", { method: "PATCH", body: { config: { budgets: { maxEvaluatorCalls: 100 } } } })
+		assert.equal(response.status, 200, JSON.stringify(await response.clone().json()))
+		assert.equal((await response.json()).data.budgets.maxEvaluatorCalls, 100)
+		assert.equal(fixture.domain.getHatchConfig().budgets.maxProviderCalls, 20)
+		for (const maxEvaluatorCalls of [0, 201, 100.5, "100"]) {
+			const rejected = await request("/ai/hatch/config", { method: "PATCH", body: { config: { budgets: { maxEvaluatorCalls } } } })
+			assert.equal(rejected.status, 400)
+		}
+		assert.equal(fixture.domain.getHatchConfig().budgets.maxEvaluatorCalls, 100)
+	})
+})
+
 test("Hatch Job cancellation sends hatch.stop and cannot report success", async () => {
 	const { createHatchJobHandlers } = await import("../../services/backend/jobs/handlers/hatch.js")
 	const startSeen = Promise.withResolvers()
