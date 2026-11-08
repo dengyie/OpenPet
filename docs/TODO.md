@@ -9,6 +9,8 @@
 - Formal Pip remains7/9: idle/waving/jumping/failed/waiting/running/review accepted; right/left and final nine-action visual acceptance remain open. Existing seven-action package still fails its original final gate; spriteSHA `42e2e94f0dee2b535eaf7e4228c65c85dfc8696be47aa5fb7cf2444b5514500f`, bundleSHA `99483d7fdeb4e08f795b644f534ccfb7d661ef1fb8f266309d0318799dfe94e5`. HTTPS exposes that same partial package and both previews. The unchanged package was not rescored.
 - Authorized caps remain Provider144/Planner34/Evaluator132. Usage is now133/1/123, no reservations, providerFailures32; history was preserved. Next work is to diagnose the rejected rig phases against its actual pose before any changed candidate is evaluated. Repeating an unchanged board, copying the passing probe into formal state, or claiming9/9 from technical QA is prohibited. All checks use code/SSH/API/VPS; no workstation UI.
 
+- Follow-up grounded-gait repair: pixel/geometry regressions reproduced support-foot vertical sliding, unequal drawn bone lengths and overlapping passing feet. Contact targets now share one ground plane; connected joints and separated passing/flight poses are recorded. Normal/subtle invariants pass. On the same rejected formal pose, the changed second diagnostic board passed90/readability86/crossFrame91, only minor defects (boardSHA `a71cbe079e027d929fd5bab9712ce3f2403a2f6e075a3d024c367ede3a0b2264`). This consumed two evaluator calls in total with the rejected first diagnostic retained; usage133/1/125. Formal7/9 remains unchanged; main/production acceptance is still required.
+
 Earlier checkpoint records below are historical; this section is authoritative.
 
 

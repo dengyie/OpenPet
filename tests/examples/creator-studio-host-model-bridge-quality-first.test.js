@@ -517,12 +517,12 @@ test('video motion processing invalidates old locomotion and review bindings whi
     const runtime = await createQualityFirstHostRuntime({ dataDir, run: { runId, input: { referenceImage: { relativePath: reference } } }, planOverride: plan })
     for (const actionId of ['idle', 'waving', 'jumping', 'failed', 'waiting', 'review', 'running', 'running-right', 'running-left']) {
       writeActionCheckpoint({ dataDir, runId, result: { actionId, ok: true,
-        bindings: { planHash: plan.hash, canonicalHash: canonical.sha256, profileHash: profile.hash, processorVersion: actionId === 'running' ? 15 : actionId === 'review' ? 15 : 12, qualityProfileHash: getQualityFirstQualityProfile().hash },
+        bindings: { planHash: plan.hash, canonicalHash: canonical.sha256, profileHash: profile.hash, processorVersion: actionId.startsWith('running-') ? 14 : actionId === 'running' ? 15 : actionId === 'review' ? 15 : 12, qualityProfileHash: getQualityFirstQualityProfile().hash },
         row: { actionId, quality: 'row-real', frames: [{ path: frame, index: 0, durationMs: 120 }] }
       } })
       const locomotion = actionId.startsWith('running-')
       const stateGesture = actionId === 'running' || actionId === 'review'
-      const expectedVersion = locomotion ? 14 : actionId === 'review' ? 16 : stateGesture ? 15 : 12
+      const expectedVersion = locomotion ? 15 : actionId === 'review' ? 16 : stateGesture ? 15 : 12
       assert.equal(runtime.processorVersionForAction(actionId), expectedVersion)
       if (!locomotion && actionId !== 'review') {
         const result = await runtime.runAction({ actionId, canonical, profile })

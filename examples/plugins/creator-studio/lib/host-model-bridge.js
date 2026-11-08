@@ -3204,7 +3204,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
     !useVideoActionPipeline ? actionProcessorVersion
       : actionId === 'running' ? 15
         : actionId === 'review' ? 16
-        : actionId === 'running-right' || actionId === 'running-left' ? 14
+        : actionId === 'running-right' || actionId === 'running-left' ? 15
           : actionProcessorVersion
   )
   const sourceReference = resolveOriginalReferenceImage({ dataDir, run })
