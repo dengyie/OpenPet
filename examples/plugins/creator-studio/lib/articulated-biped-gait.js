@@ -5,13 +5,16 @@ const sharp = require('sharp')
 const TRANSPARENT = { r: 0, g: 0, b: 0, alpha: 0 }
 const CANVAS = 512
 // Contact, weight absorption, passing, flight; then exchange the legs.
+// Feet use a shared world-space ground plane; the hip bob must not move the
+// planted foot. The swing clears the support silhouette during passing.
+const GROUND_Y = 450
 const STANCE = [
-  { x: 40, y: 41, angle: -8 }, { x: 10, y: 33, angle: 0 },
-  { x: -16, y: 46, angle: 8 }, { x: -45, y: 45, angle: 28 }
+  { x: 44, bottomY: GROUND_Y, angle: 0 }, { x: 4, bottomY: GROUND_Y, angle: 0 },
+  { x: -34, bottomY: GROUND_Y, angle: 8 }, { x: -45, bottomY: 407, angle: 65 }
 ]
 const SWING = [
-  { x: -40, y: 10, angle: 45 }, { x: -22, y: -12, angle: 55 },
-  { x: 17, y: 0, angle: 5 }, { x: 43, y: 25, angle: -20 }
+  { x: -46, bottomY: 422, angle: 55 }, { x: -25, bottomY: 407, angle: 70 },
+  { x: 35, bottomY: 421, angle: -25 }, { x: 43, bottomY: 432, angle: -8 }
 ]
 
 const distanceFromSeeds = (seed, width, height) => {
@@ -77,24 +80,26 @@ const renderArticulatedBipedGait = async ({ sourceBytes, outputDir, motionScale 
     signal?.throwIfAborted()
     const phase = index % 4, bob = [0, 13, 0, -14][phase] * motionScale
     const hip = { x: 256, y: 389 + bob }
-    // The last flight has a clearer folded rear foot than a symmetric copy.
-    const legs = index === 7 ? [{ x: 43, y: 38, angle: -8 }, { x: -45, y: 8, angle: 65 }]
-      : index < 4 ? [STANCE[phase], SWING[phase]] : [SWING[phase], STANCE[phase]]
+    const legs = index < 4 ? [STANCE[phase], SWING[phase]] : [SWING[phase], STANCE[phase]]
     const footLayers = [], connectors = [], posedLegs = []
     for (let side = 0; side < 2; side++) {
       const original = legs[side]
-      const pose = { x: original.x * motionScale, y: original.y, angle: original.angle * motionScale }
-      posedLegs.push(pose)
-      const rootX = hip.x + (side ? 7 : -7), footX = hip.x + pose.x, footY = hip.y + pose.y
-      const dx = footX - rootX, dy = footY - hip.y, length = Math.hypot(dx, dy)
-      const bend = Math.sqrt(Math.max(0, 34 * 34 - length * length / 4))
-      const kneeX = (rootX + footX) / 2 - dy / length * bend
-      const kneeY = (hip.y + footY) / 2 + dx / length * bend
-      const svg = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512"><path d="M${rootX} ${hip.y - 8} L${kneeX} ${kneeY} L${footX} ${footY}" fill="none" stroke="#42250d" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/><path d="M${rootX} ${hip.y - 8} L${kneeX} ${kneeY} L${footX} ${footY}" fill="none" stroke="#ff9447" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>`)
-      const foot = await sharp(footPngs[side]).rotate(pose.angle, { background: TRANSPARENT }).png().toBuffer()
+      const foot = await sharp(footPngs[side]).rotate(original.angle * motionScale, { background: TRANSPARENT }).trim({ background: TRANSPARENT, threshold: 1 }).png().toBuffer()
       const footMeta = await sharp(foot).metadata()
+      const bottomY = GROUND_Y + (original.bottomY - GROUND_Y) * motionScale
+      const footX = hip.x + original.x * motionScale
+      const footTop = Math.round(bottomY - footMeta.height)
+      const ankle = { x: footX, y: footTop + footMeta.height * 0.42 }
+      const jointHip = { x: hip.x + (side ? 7 : -7), y: hip.y - 8 }
+      const dx = ankle.x - jointHip.x, dy = ankle.y - jointHip.y, length = Math.hypot(dx, dy)
+      const boneLength = 38
+      if (length <= 0 || length > boneLength * 2) throw Object.assign(new Error('Gait target exceeds connected leg reach'), { code: 'canonical_rig_unsupported' })
+      const bend = Math.sqrt(boneLength * boneLength - length * length / 4)
+      const knee = { x: (jointHip.x + ankle.x) / 2 - dy / length * bend, y: (jointHip.y + ankle.y) / 2 + dx / length * bend }
+      posedLegs.push({ x: original.x * motionScale, bottomY, angle: original.angle * motionScale, contact: original.bottomY === GROUND_Y, joints: { hip: jointHip, knee, ankle } })
+      const svg = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512"><path d="M${jointHip.x} ${jointHip.y} L${knee.x} ${knee.y} L${ankle.x} ${ankle.y}" fill="none" stroke="#42250d" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/><path d="M${jointHip.x} ${jointHip.y} L${knee.x} ${knee.y} L${ankle.x} ${ankle.y}" fill="none" stroke="#ff9447" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>`)
       connectors.push({ input: svg, left: 0, top: 0 })
-      footLayers.push({ input: foot, left: Math.round(footX - footMeta.width / 2 + 6), top: Math.round(footY - footMeta.height * 0.42) })
+      footLayers.push({ input: foot, left: Math.round(footX - footMeta.width / 2 + 6), top: footTop })
     }
     const layers = [connectors[0], footLayers[0], connectors[1], footLayers[1], { input: torso, left: Math.round((CANVAS - torsoMeta.width) / 2 + 9), top: Math.round(hip.y - torsoMeta.height + 8) }]
     const file = path.join(outputDir, `source-${index + 1}.png`)
@@ -104,7 +109,7 @@ const renderArticulatedBipedGait = async ({ sourceBytes, outputDir, motionScale 
   }
   return {
     framePaths, transforms,
-    rig: { type: 'articulated-biped-gait', anatomy: 'warm-body-orange-paired-feet', interpolation: 'source-pixel-parts-and-two-segment-connectors', canvas: { width: CANVAS, height: CANVAS } }
+    rig: { type: 'articulated-biped-gait', anatomy: 'warm-body-orange-paired-feet', motionVersion: 2, groundY: GROUND_Y, interpolation: 'source-pixel-parts-and-two-segment-connectors', canvas: { width: CANVAS, height: CANVAS } }
   }
 }
 
