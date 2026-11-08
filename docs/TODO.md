@@ -4,7 +4,8 @@
 
 - [x] Add bounded single-side work rig and common source-coordinate normalization for work/inspection. Reproduce belly/head/feet failures before fixing them; preserve unrelated action bindings and the idle scale profile.
 - [x] Verify exact formal-canonical detail and128px runtime frames in isolated diagnostics, with technical/temporal QA and manifest hashes. Local111 pass/four codec skips; VPS113 pass/no skips plus five final pixel/cancellation/input checks. No paid call or formal candidate mutation.
-- [ ] Finish fresh CI for PR [#141](https://github.com/dengyie/OpenPet/pull/141), then rebase before merge and deploy through the existing disk guard, rollback and shadow-instance SOP. Baseline9ef55ae4 already passed full CI and platform builds; these do not cover the new gesture changes.
+- [x] Runtime `ea2cbce4` in PR [#141](https://github.com/dengyie/OpenPet/pull/141) passed fresh CI42521149307: Node3609/core2429 (five skips each), Control Center82 and all build/contract/audit gates. Branch CI42521145070 and both platform builds42521149316 passed; the four codec integrations also pass on VPS.
+- [ ] Rebase before merge and deploy through the existing disk guard, rollback and shadow-instance SOP. The code is verified but not merged or deployed.
 - [ ] Obtain an explicit evaluator-cap decision before paid verification: usage131/132 leaves one call, but both repaired actions and the final package require at least three. Keep Provider137/144, historical counters, original final rejection and all evidence intact.
 - [ ] Complete formal action/final quality gates and verify the retained complete output through the web API. Local diagnostics and passing code tests do not establish nine-action art acceptance. Continue with the [existing plan](./superpowers/plans/2026-11-07-canonical-rig-actions.md).
 
@@ -36,7 +37,7 @@ Earlier dated checkpoint sections below are retained as history.
 This earlier checkpoint is historical; prefer the final acceptance recovery section above.
 
 
-> Last updated: 2026-11-07
+> Last updated: 2026-11-09
 > Purpose: this is the single active maintainer work queue.
 
 Use this file for open work and priority changes. Keep phase docs, reviews, and old roadmap files as background only; do not split active planning across multiple TODO documents again.

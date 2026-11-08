@@ -2,7 +2,7 @@
 
 ### 2026-11-09 source gesture repair (current development)
 
-- PR [#141](https://github.com/dengyie/OpenPet/pull/141) remains the isolated development change. Baseline9ef55ae4 passed CI42496576320 (Node3601/core2421/UI82, four Node/core skips) and both platform builds. The additional gesture repair below needs fresh CI before merge/deployment.
+- Runtime commit `ea2cbce4` in draft PR [#141](https://github.com/dengyie/OpenPet/pull/141) passed fresh [CI42521149307](https://github.com/dengyie/OpenPet/actions/runs/42521149307): Node3609/core2429 with five skips each, Control Center82, contracts/API/channel/docs/syntax/typecheck/build and dependency audits. Branch CI42521145070 and macOS/Windows builds42521149316 also passed. The four codec integration skips have independent passing VPS coverage. Merge/deployment and formal art acceptance remain open.
 - Three fresh failures exposed work-field deformation of the belly and per-frame normalization moving fixed head/feet in work and inspection. The work rig now limits its inverse map to one lateral appendage, protects the central body and renders two compact beats. Work/review normalization shares one source envelope and placement. Pixel regressions pass; only work15→16 and review16→17 bindings change, preserving the other accepted rows and idle scale profile.
 - Exact formal canonical SHA54c8e7c68e7076106a655a9930daae0005a2042f1c10a1ecc6fec43453fc3754 was rendered into isolated local diagnostics. Both actions pass technical/temporal QA with five unique phases and exact neutral closure. Actual128px work head/feet and inspection feet stay pixel-identical. This is local rendering evidence, not a paid visual verdict or formal action promotion.
 - Focused local verification passes111 with four codec skips; Guangzhou's existing codecs pass113 without skips, followed by five final pixel/cancellation/input checks without skips. Four renderer/normalizer source hashes match local and VPS. Tools694, syntax/typecheck/Control Center build, contracts/API/channel/docs checks pass. The isolated124MB VPS fixture directory was removed after preserving logs; root free space is863MiB, still below the1GiB deployment guard. See [source repair plan](./superpowers/plans/2026-11-07-canonical-rig-actions.md) and [rig contract](./pet-character-generation.md#91-audited-canonical-rig-repair).
@@ -34,7 +34,7 @@ Earlier dated checkpoint sections below are retained as history.
 This earlier checkpoint is historical; prefer the final acceptance recovery section above.
 
 
-> Last updated: 2026-11-07
+> Last updated: 2026-11-09
 > Canonical active queue: [`TODO.md`](./TODO.md)
 > Branch: `main`
 
