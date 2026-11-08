@@ -1,5 +1,21 @@
 # Creator locomotion and exhausted-evaluator admission
 
+### 2026-11-09 merged and deployed source gesture repair
+
+PR141 was rebased onto current main before merge; merge revision `3c563fa48f08d5569153612b7e5cd944032f1223` passed [main CI42523040762](https://github.com/dengyie/OpenPet/actions/runs/42523040762). Deployment archive SHA256 `22ebe5a946bcdd6f8ae0601b637c25d864f49d07d748d91fc038e7c194dab0d6`. Production19 source hashes match local main. The existing unchanged-lock/hardlink dependency SOP performed contracts/Web Control builds and API reconciliation; shadow health passed before consistent SQLite snapshot and atomic activation. Current rollback `/var/backups/openpet/20261108T210545Z-3c563fa4`, database integrity `ok`; previous rollback `/var/backups/openpet/20261108T081247Z-a1aeb7af` remains complete. Service is ready/resident, with only loopback48330/48332 listeners and no shadow listener.
+
+The deployed-source work/review/jump/gait/host/evidence slice passed115/115 with existing codecs, no skips or paid calls. HTTPS homepage, JS/CSS hashes, login, Creator state and last-run, nine action preview hashes, settings403, logout and revoked-token401 all passed. Initial validation assumptions about `/creator` and a nested preview `ok` field were corrected against actual route/envelope contracts; those script failures were not production regressions. Original formal bundle SHA `c99f21208af30ba5097fcd12f9408469852f3fb5ba0725a4c9d41cefc5fc90bb` and final `repair` gate remain intact.
+
+Verified low-risk cleanup targets were handled one at a time:
+
+- `/var/backups/openpet/20261031T193405Z-3681549/app/node_modules`: obsolete root-owned231MiB dependency install, resolved path verified, old source/lock retained and rebuildable, no process or current/required-rollback symlink references. Only this directory was removed; old data and the two required rollbacks remain. Free space859→1094MiB passed the1GiB staging guard.
+- `/tmp/openpet-deployed-gesture-validation-3c563fa4`: this turn's115MiB synthetic fixtures, root-owned, exact resolved path verified, generated only from deployed tests. Full passing log copied locally before deletion.
+- `/tmp/openpet-gesture-3c563fa4.tar.gz`: this turn's24MB source archive, exact hash verified, reproducible from merged Git revision; local archive, hashes, deployment record and rollback retained before deletion.
+
+After deployment and cleanup root free space is about687MiB. Four formal JSONs retain exact pre-deployment hashes: run `af2f4f4ba8550b4b516cf8b15a5fc893b31629175b2fec631859c0f30bd2ef3d`, ledger `55713f4563b2e18e19f9f7cde037a10f1caf6943f5d3a8ac1b44fdca554bbd86`, checkpoints `a44a99f349e23b01f8b0a10537a438b93b6eed82cfbbb52a25b8b2547de258c8`, scale profile `efb4503b20cc972ea2646643a93df177f8b673168eeda1b86f1422f202930b59`. Previous rollback metadata SHA `5703770529f795ed1859a120655bb19a24bd246d28e1d787f4a8b4bc0d7529c5` is also unchanged. All nine checkpoints remain; final gate still rejects distinctness/cross-action quality. Usage137/1/131 with caps144/34/132, failures32, no reservations. No new evaluation authorization was inferred, no paid call or formal mutation occurred. Detailed logs/JSONs are preserved at the existing local diagnostic root under `deployment-3c563fa4/`.
+
+Deployment is complete; formal work/review retries and final quality verification remain open pending explicit evaluator-cap authorization. One remaining evaluation cannot cover the minimum two actions plus final gate. The final pet is not accepted.
+
 ### 2026-11-09 source gesture repair (isolated evidence)
 
 Three fresh pixel regressions failed before implementation: work deformation entered the belly, and independent silhouette normalization translated fixed head/feet in work and inspection. The repaired field protects the central56% of the source body and uses the selected outer side only, with conservative minimum Jacobian0.143466 on the exact formal canonical. Work and inspection use one shared source crop/placement; work15→16 and review16→17 bindings invalidate only those older rows.

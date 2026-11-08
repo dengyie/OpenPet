@@ -1,5 +1,15 @@
 # OpenPet Mesh Backend
 
+### 2026-11-09 current verification
+
+- Guangzhou runs main `3c563fa48f08d5569153612b7e5cd944032f1223` (PR141, main CI42523040762 passed), ready/resident. Archive SHA256 `22ebe5a946bcdd6f8ae0601b637c25d864f49d07d748d91fc038e7c194dab0d6`;19 recorded source hashes match main. The work rig and work/inspection normalization repair are deployed; formal visual acceptance is pending.
+- Unchanged-lock dependency reuse, contracts/Web Control build, API reconciliation, shadow health, consistent SQLite snapshot (`integrity_check=ok`) and atomic activation passed. Current rollback `/var/backups/openpet/20261108T210545Z-3c563fa4` and previous rollback `/var/backups/openpet/20261108T081247Z-a1aeb7af` remain. Formal run/ledger/checkpoint/profile and prior rollback metadata hashes stayed identical.
+- Exact-deployed-source regression115/115 passed without skips. HTTPS homepage/static/login/Creator reads and all nine retained action previews passed; each preview matched the local artifact bytes. Missing/revoked authentication401 and settings403 passed. Backend listeners remain loopback48330/48332, with no shadow listeners left.
+- Only the verified obsolete dependency directory `/var/backups/openpet/20261031T193405Z-3681549/app/node_modules` was removed to cross the existing1GiB deployment guard. Its source, lock and historical data remain, with no current/required-rollback/process reference. After deployment, the exact115MiB synthetic test directory and24MB source tar were removed after preserving logs. Root is now about687MiB; future deployment must satisfy the same guard again. Current and previous rollback remain complete.
+- Formal Pip has nine accepted checkpoints but the original final package is still rejected. Provider137/144, Planner1/34, Evaluator131/132, failures32 and zero reservations are unchanged. No paid call, quota increase, probe promotion, workstation UI or software download. Next formal work/review/final evaluations await explicit evaluator-cap authorization. See [current evidence](../release-evidence/remote-backend/2026-11-07-locomotion-budget-admission.md).
+
+Earlier dated sections below are historical; this section is authoritative.
+
 ### 2026-11-08 current verification
 
 - Guangzhou now runs main `168495acc01d84ea2f2375de6ccedd570bd12741` (PR138), ready/resident. Main CI42417936153 succeeded. Archive SHA256 `814348cd87415f46800f9760a45bca959901bd2d49739ab745ab891aefdb7d4e`; all17 recorded source hashes match that exact main. Shadow/build/API checks passed before atomic activation; SQLite backup integrity is `ok`. Current rollback is `/var/backups/openpet/20261107T221242Z-168495ac`; the preceding rollback is also retained.

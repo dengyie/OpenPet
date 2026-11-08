@@ -1,11 +1,20 @@
 # OpenPet TODO
 
+### 2026-11-09 deployed repair and pending formal acceptance
+
+- [x] Rebase/merge PR [#141](https://github.com/dengyie/OpenPet/pull/141), pass main CI42523040762 and deploy main3c563fa4 through the unchanged-lock dependency,1GiB disk guard, shadow health, SQLite snapshot and atomic activation SOP. Production is ready/resident;19 source hashes match, deployed regression115/115 passes, authenticated HTTPS and nine retained preview hashes pass.
+- [x] Preserve formal run, ledger, action-checkpoints and scale profile byte-for-byte; retain original rejected package and current/previous rollback. Record verified obsolete-dependency cleanup and exact synthetic-fixture/tar cleanup in the [existing evidence](./release-evidence/remote-backend/2026-11-07-locomotion-budget-admission.md).
+- [ ] Await explicit evaluator-cap authorization before formal retries. Provider137/144 and Evaluator131/132 remain unchanged with no paid calls this turn. Two repaired actions plus final evaluation need at least three calls; one remains.
+- [ ] After authorization, use the supported formal workflow to regenerate/evaluate work and inspection, retain unrelated accepted rows, pass the final atlas/package/visual gates and verify the final retained output through web API. The current formal package is still rejected. Source code/CI/deployment and isolated diagnostics do not prove art acceptance.
+
+Earlier dated sections below retain their historical meaning.
+
 ### 2026-11-09 source gesture repair (active)
 
 - [x] Add bounded single-side work rig and common source-coordinate normalization for work/inspection. Reproduce belly/head/feet failures before fixing them; preserve unrelated action bindings and the idle scale profile.
 - [x] Verify exact formal-canonical detail and128px runtime frames in isolated diagnostics, with technical/temporal QA and manifest hashes. Local111 pass/four codec skips; VPS113 pass/no skips plus five final pixel/cancellation/input checks. No paid call or formal candidate mutation.
 - [x] Runtime `ea2cbce4` in PR [#141](https://github.com/dengyie/OpenPet/pull/141) passed fresh CI42521149307: Node3609/core2429 (five skips each), Control Center82 and all build/contract/audit gates. Branch CI42521145070 and both platform builds42521149316 passed; the four codec integrations also pass on VPS.
-- [ ] Rebase before merge and deploy through the existing disk guard, rollback and shadow-instance SOP. The code is verified but not merged or deployed.
+- [x] Rebase before merge and deploy through the existing disk guard, rollback and shadow-instance SOP; completed as main3c563fa4, with fresh verification above.
 - [ ] Obtain an explicit evaluator-cap decision before paid verification: usage131/132 leaves one call, but both repaired actions and the final package require at least three. Keep Provider137/144, historical counters, original final rejection and all evidence intact.
 - [ ] Complete formal action/final quality gates and verify the retained complete output through the web API. Local diagnostics and passing code tests do not establish nine-action art acceptance. Continue with the [existing plan](./superpowers/plans/2026-11-07-canonical-rig-actions.md).
 

@@ -1,5 +1,15 @@
 # OpenPet Handoff
 
+### 2026-11-09 gesture repair deployed (latest verified state)
+
+- PR [#141](https://github.com/dengyie/OpenPet/pull/141) was rebased onto current main, merged as `3c563fa48f08d5569153612b7e5cd944032f1223`, and deployed to Guangzhou after [main CI42523040762](https://github.com/dengyie/OpenPet/actions/runs/42523040762) passed. Source archive SHA256 `22ebe5a946bcdd6f8ae0601b637c25d864f49d07d748d91fc038e7c194dab0d6`. Production is `ready/resident`; all19 recorded source hashes match main. Contracts/Web Control build, API reconciliation and shadow health passed before activation. SQLite rollback snapshot integrity is `ok`.
+- Current rollback is `/var/backups/openpet/20261108T210545Z-3c563fa4`; the preceding `/var/backups/openpet/20261108T081247Z-a1aeb7af` is retained. The four formal run/ledger/checkpoint/profile hashes and previous rollback metadata hash are byte-identical across cleanup and deployment. Formal nine-action package remains rejected with the original bundle SHA and failure verdict intact.
+- Deployed-source focused regression passes115/115 without skips, using existing ffmpeg/ffprobe and mocked model interfaces. HTTPS homepage, built assets, login, Creator state/last-run and all nine action previews pass; preview bytes match retained files. Missing/revoked authorization returns401, settings access403. No workstation UI, binary/model download or paid call.
+- To meet the1GiB deployment guard, removed only obsolete `/var/backups/openpet/20261031T193405Z-3681549/app/node_modules` after verifying its resolved path, root ownership, lock-file recovery, absence of process/current/rollback references and protected hashes. Old source, lock and historical data remain. Free space rose from about859MiB to1094MiB before staging. After retaining the new rollback, removing the exact115MiB synthetic test directory and24MB source tar, free space is about687MiB; the same guard applies to future deployments.
+- Budget is unchanged: Provider137/144, Planner1/34, Evaluator131/132, failures32, zero reservations. The work/review repair is deployed but not formally evaluated. At least two action evaluations and a final-package evaluation remain; explicit evaluator-cap authorization is still required. Keep the goal open and do not rescore the old board or promote local diagnostics. See [current evidence](./release-evidence/remote-backend/2026-11-07-locomotion-budget-admission.md).
+
+Earlier dated sections below retain their historical meaning.
+
 ### 2026-11-09 source gesture repair (current development)
 
 - Runtime commit `ea2cbce4` in draft PR [#141](https://github.com/dengyie/OpenPet/pull/141) passed fresh [CI42521149307](https://github.com/dengyie/OpenPet/actions/runs/42521149307): Node3609/core2429 with five skips each, Control Center82, contracts/API/channel/docs/syntax/typecheck/build and dependency audits. Branch CI42521145070 and macOS/Windows builds42521149316 also passed. The four codec integration skips have independent passing VPS coverage. Merge/deployment and formal art acceptance remain open.
