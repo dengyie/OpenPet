@@ -362,6 +362,19 @@ test('stabilizer computes a global envelope and common baseline', () => {
   assert.throws(() => createStablePlacements({ frames, canvasWidth: 128, canvasHeight: 128, padding: Number.NaN }), /padding is invalid/)
 })
 
+test('source coordinate preservation rejects incompatible canvases and ambiguous mode values', async () => {
+  const frames = [
+    { canvas: { width: 512, height: 512 }, bbox: { left: 30, top: 30, width: 80, height: 150 } },
+    { canvas: { width: 256, height: 512 }, bbox: { left: 20, top: 30, width: 90, height: 150 } }
+  ]
+  assert.throws(() => createStablePlacements({ frames, canvasWidth: 128, canvasHeight: 128, preserveSourceCoordinates: true }), /identical source canvases/)
+  assert.throws(() => createStablePlacements({ frames: [null], canvasWidth: 128, canvasHeight: 128, preserveSourceCoordinates: true }), /identical source canvases/)
+  assert.throws(() => createStablePlacements({ frames, canvasWidth: 128, canvasHeight: 128, preserveSourceCoordinates: 'true' }), /must be a boolean/)
+  const outputDir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-invalid-source-mode-')), 'output')
+  await assert.rejects(processFrameSequence({ framePaths: ['missing.png'], outputDir, canvasWidth: 128, canvasHeight: 128, preserveSourceCoordinates: 'true' }), /must be a boolean/)
+  assert.equal(fs.existsSync(outputDir), false)
+})
+
 test('temporal quality rejects dropped masks and static frames', () => {
   const result = analyzeTemporalQuality({
     loop: true,

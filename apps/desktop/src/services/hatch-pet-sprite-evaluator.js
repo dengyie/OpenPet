@@ -344,6 +344,24 @@ const normalizeActionIntent = (value) => {
   return { actionId: value.actionId, loop: value.loop, frameCount: value.frameCount, framePlan: value.framePlan.map((beat) => beat.replace(/[\u0000-\u001f\u007f]/g, ' ').trim()) }
 }
 
+const normalizeFinalActionIntents = (values, regions) => {
+  const sequences = regions.filter(region => region.role === 'final-action-sequence')
+  const intents = values === undefined && !sequences.length ? [] : values
+  if (!Array.isArray(intents) || intents.length !== sequences.length || intents.length > 9) {
+    throw createInvalidError('final action intents must map every visible sequence exactly once')
+  }
+  const remaining = new Set(sequences.map(region => region.regionId))
+  return intents.map(value => {
+    if (!isPlainObject(value)) throw createInvalidError('final action intent sequence is invalid')
+    const { regionId, ...intent } = value
+    const normalized = normalizeActionIntent(intent)
+    if (regionId !== `sequence-${normalized.actionId}` || !remaining.delete(regionId)) {
+      throw createInvalidError('final action intents must map every visible sequence exactly once')
+    }
+    return { regionId, ...normalized }
+  })
+}
+
 const createSpriteEvaluatorRequest = async ({ scope, board, qa = {}, profile, repairReason = '' } = {}) => {
   const normalizedScope = String(scope || '').trim() === CANONICAL_COMPARISON_SCOPE
     ? CANONICAL_COMPARISON_SCOPE
@@ -364,6 +382,7 @@ const createSpriteEvaluatorRequest = async ({ scope, board, qa = {}, profile, re
       ? { x: region.x, y: region.y, width: region.width, height: region.height }
       : {})
   }))
+  const actionIntents = normalizedScope === 'final-package' ? normalizeFinalActionIntents(qa?.actionIntents, regionSummary) : []
   const boundedQa = {
     ok: qa?.ok === true,
     failures: Array.isArray(qa?.failures) ? qa.failures.slice(0, 24).map((value) => String(value).slice(0, 80)) : [],
@@ -382,6 +401,12 @@ const createSpriteEvaluatorRequest = async ({ scope, board, qa = {}, profile, re
       ...(actionIntent.actionId === 'running' ? ['The internal actionId running means stationary task-processing or focused work; evaluate the declared in-place working gesture. Locomotion uses running-right and running-left.'] : []),
       ...(actionIntent.actionId === 'review' ? ['The internal actionId review means deliberate inspection and comparison followed by a decision beat. Head-led observation and an acknowledgement nod are valid gestures; judge whether those phases are visibly clear in both detail and runtime frames.'] : []),
       'Distinguish intended pose and expression changes from unintended anatomy, identity, or rendering-style drift. Keep all quality thresholds in force.'
+    ] : []),
+    ...(actionIntents.length ? [
+      'The final-action-sequence regions map each atlas row to its declared action intent. Read frames left to right and compare all phases, including shared neutral endpoints.',
+      'The internal actionId running means stationary task-processing or focused work; locomotion uses running-right and running-left. The actionId review means deliberate inspection and comparison followed by a decision beat.',
+      'Judge actionDistinctness against these intended motions, and crossAction against actual identity, anatomy, scale and style consistency. Intended side views and airborne offsets are part of their actions; unintended drift remains a defect.',
+      'All final sequence rows and the summary share one atlas crop and scale within their respective regions. Assess the visible differences without assuming each action was independently fitted. Keep every quality threshold in force.'
     ] : []),
     ...(regionSummary.some(region => region.role === 'runtime-frame') ? [
       'Candidate-frame regions retain normalized full-resolution detail; runtime-frame regions show the actual 128-pixel output without enlargement. Use both as evidence.',
@@ -418,6 +443,7 @@ const createSpriteEvaluatorRequest = async ({ scope, board, qa = {}, profile, re
               regions: regionSummary,
               deterministicQa: boundedQa,
               ...(actionIntent ? { actionIntent } : {}),
+              ...(actionIntents.length ? { actionIntents } : {}),
               minimumScores: thresholds,
               minimumConfidence: profile.visual.confidence
             })

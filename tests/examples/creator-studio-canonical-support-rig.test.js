@@ -135,6 +135,76 @@ test('review rig keeps the lower body fixed across six head-only inspection phas
   assert.notEqual(subtle.processed.frames[1].sha256, result.processed.frames[1].sha256)
 })
 
+const workingFixture = async () => {
+  const f = await fixture()
+  const canonicalPath = path.join(f.dataDir, f.canonical.relativePath)
+  await sharp(Buffer.from('<svg width="300" height="340"><defs><linearGradient id="body" x2="0" y2="1"><stop stop-color="#ffed73"/><stop offset="1" stop-color="#edbc35"/></linearGradient></defs><path d="M90 148 C55 90 80 30 150 30 C220 30 245 90 210 148 C220 172 236 207 220 250 Q150 290 80 250 C64 207 80 172 90 148Z" fill="url(#body)" stroke="#392310" stroke-width="6"/><path d="M90 156 Q48 181 55 215 Q67 237 96 179 M210 156 Q252 181 245 215 Q233 237 204 179" fill="#ffe76b" stroke="#392310" stroke-width="6" stroke-linecap="round"/><ellipse cx="150" cy="220" rx="44" ry="37" fill="#fff5cc"/><circle cx="119" cy="104" r="9" fill="#392310"/><circle cx="181" cy="104" r="9" fill="#392310"/><path d="M139 126 Q150 145 161 126Z" fill="#f58b33" stroke="#392310" stroke-width="4"/><path d="M105 265 L95 291 L125 291 L132 265 M168 265 L175 291 L205 291 L195 265" fill="#f78528" stroke="#392310" stroke-width="4"/></svg>')).png().toFile(canonicalPath)
+  return { ...f, canonical: { ...f.canonical, sha256: hash(fs.readFileSync(canonicalPath)) }, action: { actionId: 'running', anchorPolicy: 'action-relative-root-v1', frameCount: 6, layout: { columns: 3, rows: 2 } }, outputRelativeDir: 'candidates/work-left' }
+}
+
+test('work rig renders two lead-side beats while preserving the face, opposite side and grounded feet', async () => {
+  const f = await workingFixture()
+  const result = await renderCanonicalSupportRig(f)
+  const manifest = JSON.parse(fs.readFileSync(result.manifestPath))
+  assert.equal(manifest.rig.type, 'continuous-side-work')
+  assert.equal(manifest.driver.actionId, 'running')
+  assert.equal(manifest.driver.frameCount, 6)
+  assert.deepEqual(manifest.transforms.map(t => t.phase), ['neutral', 'engage', 'work-peak-a', 'recover-working', 'work-peak-b', 'neutral-return'])
+  const pixels = await Promise.all(manifest.sourceFrames.map(frame => sharp(path.join(f.dataDir, frame.relativePath)).ensureAlpha().raw().toBuffer()))
+  assert.deepEqual(pixels[0], pixels[5], 'neutral endpoints must close exactly')
+  assert.equal(new Set(pixels.map(hash)).size, 5, 'all four inner work phases must be visible')
+  for (const frame of pixels.slice(1)) {
+    assert.deepEqual(frame.subarray(0, 220 * 512 * 4), pixels[0].subarray(0, 220 * 512 * 4), 'eyes/head must stay open and unchanged')
+    assert.deepEqual(frame.subarray(420 * 512 * 4), pixels[0].subarray(420 * 512 * 4), 'both feet must stay planted')
+    for (let y = 0; y < 512; y++) assert.deepEqual(frame.subarray((y * 512 + 256) * 4, (y + 1) * 512 * 4), pixels[0].subarray((y * 512 + 256) * 4, (y + 1) * 512 * 4), 'opposite appendage and central torso must stay fixed')
+    for (let y = 240; y < 400; y++) assert.deepEqual(frame.subarray((y * 512 + 188) * 4, (y * 512 + 324) * 4), pixels[0].subarray((y * 512 + 188) * 4, (y * 512 + 324) * 4), 'the belly marking must not deform with the appendage')
+  }
+  assert.ok(manifest.transforms[2].lift < manifest.transforms[1].lift, 'first work peak follows a downward beat')
+  assert.ok(manifest.transforms[4].lift < manifest.transforms[3].lift, 'second work peak follows a downward beat')
+  assert.equal(result.temporalQuality.ok, true, JSON.stringify(result.temporalQuality))
+  assert.equal(analyzeSpriteCandidate({ actionId: 'running', rawMetrics: result.processed.metrics, profile: f.profile, actionPolicy: f.action }).ok, true)
+  await validateCanonicalRigRow({ dataDir: f.dataDir, provenance: result.provenance, frames: result.processed.frames, actionId: 'running' })
+  const again = await renderCanonicalSupportRig({ ...f, outputRelativeDir: 'candidates/work-again' })
+  assert.deepEqual(again.processed.frames.map(frame => frame.sha256), result.processed.frames.map(frame => frame.sha256))
+})
+
+for (const actionId of ['running', 'review']) test(`${actionId} rig normalization preserves its fixed source coordinates instead of recentering moving silhouettes`, async () => {
+  const f = await workingFixture()
+  const result = await renderCanonicalSupportRig({ ...f, action: { ...f.action, actionId } })
+  const pixels = await Promise.all(result.processed.reviewFrames.map(frame => sharp(frame.path).ensureAlpha().raw().toBuffer()))
+  for (const frame of pixels.slice(1)) {
+    assert.deepEqual(frame.subarray(425 * 512 * 4), pixels[0].subarray(425 * 512 * 4), 'the same planted feet must remain at the same normalized pixels')
+    if (actionId === 'running') assert.deepEqual(frame.subarray(0, 200 * 512 * 4), pixels[0].subarray(0, 200 * 512 * 4), 'working limb motion cannot shift the normalized head')
+  }
+})
+
+test('work rig honors the lead side and intensity in actual source pixels', async () => {
+  const f = await workingFixture()
+  const changes = []
+  for (const leadSide of ['viewer-left', 'viewer-right']) {
+    const result = await renderCanonicalSupportRig({ ...f, action: { ...f.action, motionParameters: { leadSide } }, outputRelativeDir: `candidates/${leadSide}` })
+    const manifest = JSON.parse(fs.readFileSync(result.manifestPath))
+    const read = index => sharp(path.join(f.dataDir, manifest.sourceFrames[index].relativePath)).ensureAlpha().raw().toBuffer()
+    const [neutral, active] = await Promise.all([read(0), read(1)])
+    let delta = 0, weightedX = 0, count = 0
+    for (let i = 0; i < active.length; i += 4) {
+      if (active.subarray(i, i + 4).equals(neutral.subarray(i, i + 4))) continue
+      const x = (i / 4) % 512
+      assert.ok(leadSide === 'viewer-left' ? x < 256 : x >= 256, 'only the selected side may change')
+      for (let c = 0; c < 4; c++) delta += Math.abs(active[i + c] - neutral[i + c])
+      weightedX += x; count++
+    }
+    assert.ok(count > 600, 'the working appendage must visibly move')
+    changes.push({ leadSide, delta, x: weightedX / count })
+    const subtle = await renderCanonicalSupportRig({ ...f, action: { ...f.action, motionParameters: { leadSide, intensity: 'subtle' } }, outputRelativeDir: `candidates/${leadSide}-subtle` })
+    const subtleManifest = JSON.parse(fs.readFileSync(subtle.manifestPath))
+    assert.ok(subtleManifest.transforms[1].lift < manifest.transforms[1].lift)
+    assert.notEqual(subtle.processed.frames[1].sha256, result.processed.frames[1].sha256)
+  }
+  assert.ok(changes[0].x < 256 && changes[1].x > 256)
+  assert.ok(Math.abs(changes[0].delta / changes[1].delta - 1) < 0.08, 'symmetric source anatomy must move comparably on either side')
+})
+
 test('registered subtle jumping reduces the rendered motion while retaining its technical gate', async () => {
   const f = await fixture()
   const normal = await renderCanonicalSupportRig(f)
@@ -169,6 +239,16 @@ test('support rig rejects clipped or oversized identities and stops cancellation
   let checks = 0
   const signal = { throwIfAborted() { if (++checks === 4) throw reason } }
   await assert.rejects(renderCanonicalSupportRig({ ...f, signal }), error => error === reason)
+  assert.equal(fs.existsSync(path.join(f.dataDir, f.outputRelativeDir, 'source-1.png')), true)
+  assert.equal(fs.existsSync(path.join(f.dataDir, f.outputRelativeDir, 'rig-manifest.json')), false)
+})
+
+for (const actionId of ['running', 'review']) test(`${actionId} local rig stops cancellation during inverse sampling without publishing a manifest`, async () => {
+  const f = await workingFixture()
+  const reason = new Error('cancel inverse sampling')
+  let checks = 0
+  const signal = { throwIfAborted() { if (++checks === 8) throw reason } }
+  await assert.rejects(renderCanonicalSupportRig({ ...f, action: { ...f.action, actionId }, signal }), error => error === reason)
   assert.equal(fs.existsSync(path.join(f.dataDir, f.outputRelativeDir, 'source-1.png')), true)
   assert.equal(fs.existsSync(path.join(f.dataDir, f.outputRelativeDir, 'rig-manifest.json')), false)
 })
@@ -279,8 +359,8 @@ test('portable rig audit export retains enough evidence to validate without the 
   await assert.rejects(rigModule().exportCanonicalRigEvidence({ dataDir: f.dataDir, outputDir, provenance: wrong, frames: rig.processed.frames, actionId: 'jumping' }), /source hash/)
 })
 
-for (const actionId of ['jumping', 'review', 'running-right']) test(`production host repairs ${actionId} video drift with an audited rig, packages it and resumes without dispatch`, { skip: spawnSync('ffmpeg', ['-version']).status !== 0 || spawnSync('ffprobe', ['-version']).status !== 0 }, async () => {
-  const f = await fixture()
+for (const actionId of ['jumping', 'review', 'running', 'running-right']) test(`production host repairs ${actionId} video drift with an audited rig, packages it and resumes without dispatch`, { skip: spawnSync('ffmpeg', ['-version']).status !== 0 || spawnSync('ffprobe', ['-version']).status !== 0 }, async () => {
+  const f = actionId === 'running' ? await workingFixture() : await fixture()
   f.action = actionId === 'review' ? { actionId, anchorPolicy: 'action-relative-root-v1', frameCount: 6, layout: { columns: 3, rows: 2 } } : f.action
   const { createQualityFirstHostRuntime } = require('../../examples/plugins/creator-studio/lib/host-model-bridge')
   const { createSpriteAssetPlan } = require('../../examples/plugins/creator-studio/lib/sprite-asset-plan')

@@ -56,22 +56,34 @@ const isOfficialAtlas = ({ width, height }) => (
   Math.abs((width / height) - (1536 / 1872)) < 0.02
 )
 
-const createTrimmedFrame = async ({ sourcePath, metadata, frameIndex, width, height }) => {
-  const cellWidth = Math.floor(metadata.width / ATLAS_COLUMNS)
-  const cellHeight = Math.floor(metadata.height / ATLAS_ROWS)
-  const row = Math.floor(frameIndex / ATLAS_COLUMNS)
-  const column = frameIndex % ATLAS_COLUMNS
-  const cell = await sharp(sourcePath)
-    .extract({ left: column * cellWidth, top: row * cellHeight, width: cellWidth, height: cellHeight })
-    .ensureAlpha()
-    .png()
-    .toBuffer()
-  return sharp(cell)
-    .trim({ background: TRANSPARENT, threshold: 1 })
-    .resize({ width, height, fit: 'inside', withoutEnlargement: false, background: TRANSPARENT })
-    .png()
-    .toBuffer()
+// Share the atlas coordinate system across every action. Per-row or per-frame
+// fitting can invent scale drift and erase the very movement under review.
+const readAtlasProofFrames = async (sourcePath) => {
+  const metadata = await sharp(sourcePath).metadata()
+  const cellWidth = metadata.width / ATLAS_COLUMNS
+  const cellHeight = metadata.height / ATLAS_ROWS
+  const frames = new Map()
+  let left = cellWidth, top = cellHeight, right = -1, bottom = -1
+  for (const row of OFFICIAL_FULL_PET_ROWS) {
+    for (let index = 0; index < row.frameCount; index++) {
+      const frame = await sharp(sourcePath).extract({ left: index * cellWidth, top: row.row * cellHeight, width: cellWidth, height: cellHeight }).ensureAlpha().raw().toBuffer()
+      frames.set(row.row * ATLAS_COLUMNS + index, frame)
+      for (let y = 0; y < cellHeight; y++) for (let x = 0; x < cellWidth; x++) {
+        if (!frame[(y * cellWidth + x) * 4 + 3]) continue
+        left = Math.min(left, x); top = Math.min(top, y)
+        right = Math.max(right, x); bottom = Math.max(bottom, y)
+      }
+    }
+  }
+  return {
+    cellWidth, cellHeight, frames,
+    crop: right < left ? { left: 0, top: 0, width: cellWidth, height: cellHeight } : { left, top, width: right - left + 1, height: bottom - top + 1 }
+  }
 }
+
+const renderAtlasProofFrame = ({ atlas, frameIndex, width, height }) => sharp(atlas.frames.get(frameIndex), {
+  raw: { width: atlas.cellWidth, height: atlas.cellHeight, channels: 4 }
+}).extract(atlas.crop).resize({ width, height, fit: 'inside' }).png().toBuffer()
 
 const representativeFrameIndexes = (row) => {
   const indexes = [0, Math.floor((row.frameCount - 1) / 2), row.frameCount - 1]
@@ -79,7 +91,7 @@ const representativeFrameIndexes = (row) => {
 }
 
 const createActionMontage = async ({ sourcePath, width, height, framesPerAction = 3 }) => {
-  const metadata = await sharp(sourcePath).metadata()
+  const atlas = await readAtlasProofFrames(sourcePath)
   const columns = 3
   const rows = 3
   const cardWidth = Math.floor(width / columns)
@@ -93,7 +105,7 @@ const createActionMontage = async ({ sourcePath, width, height, framesPerAction 
     const frameIndexes = representativeFrameIndexes(row).slice(0, framesPerAction)
     for (let frameIndex = 0; frameIndex < frameIndexes.length; frameIndex += 1) {
       composites.push({
-        input: await createTrimmedFrame({ sourcePath, metadata, frameIndex: frameIndexes[frameIndex], width: slotWidth, height: slotHeight }),
+        input: await renderAtlasProofFrame({ atlas, frameIndex: frameIndexes[frameIndex], width: slotWidth, height: slotHeight }),
         left: (actionIndex % columns) * cardWidth + gap + frameIndex * (slotWidth + gap),
         top: Math.floor(actionIndex / columns) * cardHeight + gap
       })
@@ -105,32 +117,14 @@ const createActionMontage = async ({ sourcePath, width, height, framesPerAction 
 }
 
 const createFinalAtlasProof = async ({ sourcePath, width, height }) => {
-  const metadata = await sharp(sourcePath).metadata()
-  const cellWidth = metadata.width / ATLAS_COLUMNS
-  const cellHeight = metadata.height / ATLAS_ROWS
+  const atlas = await readAtlasProofFrames(sourcePath)
   const slotWidth = Math.floor(width / ATLAS_COLUMNS)
   const slotHeight = Math.floor(height / ATLAS_ROWS)
   const gap = 6
   const composites = []
   for (const row of OFFICIAL_FULL_PET_ROWS) {
-    const frames = []
-    let left = cellWidth, top = cellHeight, right = -1, bottom = -1
     for (let index = 0; index < row.frameCount; index++) {
-      const frame = await sharp(sourcePath).extract({ left: index * cellWidth, top: row.row * cellHeight, width: cellWidth, height: cellHeight }).ensureAlpha().raw().toBuffer()
-      frames.push(frame)
-      for (let y = 0; y < cellHeight; y++) for (let x = 0; x < cellWidth; x++) {
-        if (!frame[(y * cellWidth + x) * 4 + 3]) continue
-        left = Math.min(left, x); top = Math.min(top, y)
-        right = Math.max(right, x); bottom = Math.max(bottom, y)
-      }
-    }
-    if (right < left) continue
-    // One crop and one scale for the complete action preserve the relative
-    // position/size of its poses, including flight and anticipation phases.
-    const crop = { left, top, width: right - left + 1, height: bottom - top + 1 }
-    for (const [index, frame] of frames.entries()) {
-      const input = await sharp(frame, { raw: { width: cellWidth, height: cellHeight, channels: 4 } }).extract(crop)
-        .resize({ width: slotWidth - gap * 2, height: slotHeight - gap * 2, fit: 'inside' }).png().toBuffer()
+      const input = await renderAtlasProofFrame({ atlas, frameIndex: row.row * ATLAS_COLUMNS + index, width: slotWidth - gap * 2, height: slotHeight - gap * 2 })
       const rendered = await sharp(input).metadata()
       composites.push({ input, left: index * slotWidth + Math.floor((slotWidth - rendered.width) / 2), top: row.row * slotHeight + Math.floor((slotHeight - rendered.height) / 2) })
     }
@@ -272,7 +266,7 @@ const createActionEvaluatorBoard = async ({ sourcePath, canonicalPath, adjacentP
   return writeBoard({ width: 2048, height: 1536, outputPath, rendered })
 }
 
-const createFinalPackageEvaluatorBoard = async ({ sourcePath, canonicalPath, actionReviewPath, atlasPath, outputPath }) => {
+const createFinalPackageEvaluatorBoard = async ({ sourcePath, canonicalPath, actionReviewPath, atlasPath, availableActionIds = OFFICIAL_FULL_PET_ROWS.map(row => row.id), outputPath }) => {
   const definitions = [
     { sourcePath, region: { regionId: 'source', role: 'source-identity', x: 0, y: 0, width: 512, height: 512 } },
     { sourcePath: canonicalPath, region: { regionId: 'canonical', role: 'canonical-identity', x: 512, y: 0, width: 512, height: 512 } },
@@ -285,7 +279,19 @@ const createFinalPackageEvaluatorBoard = async ({ sourcePath, canonicalPath, act
     renderFinalVisualRegion({ ...definitions[2], mode: 'action-montage' }),
     renderFinalVisualRegion({ ...definitions[3], mode: 'atlas-proof' })
   ])
-  return writeBoard({ width: 2048, height: 2048, outputPath, rendered })
+  const metadata = await sharp(atlasPath).metadata()
+  const board = await writeBoard({ width: 2048, height: 2048, outputPath, rendered })
+  if (isOfficialAtlas(metadata)) {
+    // The row regions share the exact pixels in the atlas proof. Their IDs let
+    // the evaluator name a failing action instead of blaming an entire atlas.
+    const rowHeight = Math.floor(1536 / ATLAS_ROWS)
+    board.regions.push(...OFFICIAL_FULL_PET_ROWS.filter(row => availableActionIds.includes(row.id)).map(row => ({
+      regionId: `sequence-${row.id}`, role: 'final-action-sequence',
+      x: 0, y: 512 + row.row * rowHeight, width: row.frameCount * (2048 / ATLAS_COLUMNS), height: rowHeight
+    })))
+    fs.writeFileSync(board.metadataPath, `${JSON.stringify({ version: 1, width: board.width, height: board.height, sha256: board.sha256, regions: board.regions }, null, 2)}\n`)
+  }
+  return board
 }
 
 const validateEvaluationRegions = ({ evaluation = {}, regions = [] } = {}) => {

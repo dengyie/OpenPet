@@ -233,3 +233,56 @@ test('complete atlas sequences keep a shared crop so airborne offsets survive th
   })
   assert.ok(centers[0] - centers[1] > 80, 'the airborne phase must stay above the grounded contact instead of being independently centered')
 })
+
+test('final proof preserves cross-action size ratios rather than fitting every action independently', async () => {
+  const dir = createTempDir()
+  const atlasPath = path.join(dir, 'shared-scale.png')
+  const square = await sharp({ create: { width: 60, height: 60, channels: 4, background: '#cc22dd' } }).png().toBuffer()
+  const larger = await sharp({ create: { width: 90, height: 90, channels: 4, background: '#cc22dd' } }).png().toBuffer()
+  await sharp({ create: { width: 1536, height: 1872, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite([
+    { input: square, left: 66, top: 120 },
+    { input: square, left: 66, top: 4 * 208 + 120 },
+    { input: square, left: 2 * 192 + 66, top: 4 * 208 + 20 },
+    { input: larger, left: 51, top: 7 * 208 + 90 }
+  ]).png().toFile(atlasPath)
+  const board = await createFinalPackageEvaluatorBoard({ sourcePath: atlasPath, canonicalPath: atlasPath, actionReviewPath: atlasPath, atlasPath, outputPath: path.join(dir, 'board.png') })
+  const bounds = async (row) => {
+    const { data, info } = await sharp(board.path).extract({ left: 0, top: 512 + row * 170, width: 256, height: 170 }).raw().toBuffer({ resolveWithObject: true })
+    let left = info.width, right = -1
+    for (let y = 0; y < info.height; y++) for (let x = 0; x < info.width; x++) {
+      const i = (y * info.width + x) * info.channels
+      if (data[i] > 170 && data[i + 1] < 90 && data[i + 2] > 170) { left = Math.min(left, x); right = Math.max(right, x) }
+    }
+    return right - left + 1
+  }
+  const idleWidth = await bounds(0), jumpWidth = await bounds(4), largeWidth = await bounds(7)
+  assert.ok(Math.abs(idleWidth - jumpWidth) <= 1, `identical source subjects must retain equal size across actions (${idleWidth}, ${jumpWidth})`)
+  assert.ok(largeWidth / idleWidth > 1.4 && largeWidth / idleWidth < 1.6, 'a real source size mismatch must remain visible instead of being normalized away')
+  const jumpRegion = board.regions.find(region => region.regionId === 'sequence-jumping')
+  assert.equal(jumpRegion.role, 'final-action-sequence')
+  assert.equal(jumpRegion.y, 512 + 4 * 170)
+  assert.equal(jumpRegion.width, 5 * 256)
+})
+
+test('final summary preserves airborne motion instead of trimming each representative frame', async () => {
+  const dir = createTempDir()
+  const atlasPath = path.join(dir, 'summary-jump.png')
+  const square = await sharp({ create: { width: 60, height: 60, channels: 4, background: '#cc22dd' } }).png().toBuffer()
+  await sharp({ create: { width: 1536, height: 1872, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite([
+    { input: square, left: 66, top: 4 * 208 + 120 },
+    { input: square, left: 2 * 192 + 66, top: 4 * 208 + 20 },
+    { input: square, left: 4 * 192 + 66, top: 4 * 208 + 120 }
+  ]).png().toFile(atlasPath)
+  const board = await createFinalPackageEvaluatorBoard({ sourcePath: atlasPath, canonicalPath: atlasPath, actionReviewPath: atlasPath, atlasPath, outputPath: path.join(dir, 'board.png') })
+  const { data, info } = await sharp(board.path).extract({ left: 1024 + 341, top: 170, width: 341, height: 170 }).raw().toBuffer({ resolveWithObject: true })
+  const centers = [0, 1].map(slot => {
+    let sum = 0, count = 0
+    for (let y = 0; y < info.height; y++) for (let x = slot * 113; x < (slot + 1) * 113; x++) {
+      const i = (y * info.width + x) * info.channels
+      if (data[i] > 170 && data[i + 1] < 90 && data[i + 2] > 170) { sum += y; count++ }
+    }
+    assert.ok(count > 0)
+    return sum / count
+  })
+  assert.ok(centers[0] - centers[1] > 60, `the summary must preserve jump displacement (${centers.join(', ')})`)
+})

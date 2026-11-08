@@ -1,5 +1,28 @@
 # OpenPet TODO
 
+### 2026-11-09 source gesture repair (active)
+
+- [x] Add bounded single-side work rig and common source-coordinate normalization for work/inspection. Reproduce belly/head/feet failures before fixing them; preserve unrelated action bindings and the idle scale profile.
+- [x] Verify exact formal-canonical detail and128px runtime frames in isolated diagnostics, with technical/temporal QA and manifest hashes. Local111 pass/four codec skips; VPS113 pass/no skips plus five final pixel/cancellation/input checks. No paid call or formal candidate mutation.
+- [x] Runtime `ea2cbce4` in PR [#141](https://github.com/dengyie/OpenPet/pull/141) passed fresh CI42521149307: Node3609/core2429 (five skips each), Control Center82 and all build/contract/audit gates. Branch CI42521145070 and both platform builds42521149316 passed; the four codec integrations also pass on VPS.
+- [ ] Rebase before merge and deploy through the existing disk guard, rollback and shadow-instance SOP. The code is verified but not merged or deployed.
+- [ ] Obtain an explicit evaluator-cap decision before paid verification: usage131/132 leaves one call, but both repaired actions and the final package require at least three. Keep Provider137/144, historical counters, original final rejection and all evidence intact.
+- [ ] Complete formal action/final quality gates and verify the retained complete output through the web API. Local diagnostics and passing code tests do not establish nine-action art acceptance. Continue with the [existing plan](./superpowers/plans/2026-11-07-canonical-rig-actions.md).
+
+### 2026-11-08 final acceptance recovery (latest verified state)
+
+- Read-only SSH recovery confirms Guangzhou runs main `a1aeb7afe3a0b8ec8e0351c1eb688955948c1c51` (PR140), health `ready/resident`; rollback `/var/backups/openpet/20261108T081247Z-a1aeb7af` is retained. The previous 7/9 checkpoint below is historical.
+- Formal run `2026-11-05-pip` has all nine accepted action checkpoints and no omitted actions. Right running is `approved-rig`, left running is `approved-mirror`; idle/waving/failed/waiting/running/review are `row-real`, jumping is `approved-rig`. The final visual gate still rejects the package, so actual final acceptance remains open.
+- Formal atlas SHA256 `50ed3ddaef34c252dd5028478322d58ebd1d38ff884328afdd955817ab1c24d2`; bundle SHA256 `c99f21208af30ba5097fcd12f9408469852f3fb5ba0725a4c9d41cefc5fc90bb`. Formal final scores: identity96/distinctness81/crossAction85/smallScale93/style96/overall88; major cross-action inconsistency. Original artifacts and gate remain intact.
+- Recovered uncommitted final-board fixes into independent branch `codex/final-acceptance-recovery`, preserving the source worktree. One shared atlas crop/scale preserves cross-action size and airborne offsets; final evaluator requests map each visible sequence to its registered intent, including mirrored left gait and work/inspection semantics. This code is not yet merged or deployed.
+- Existing single real probe over that exact unchanged atlas used the corrected board SHA256 `7cc901cc9252244598a474a237701704a54fad2678433d99ccd1852b57315d9d`: identity95/distinctness78/crossAction90/smallScale91/style95/overall87, still `repair`. Major defects now identify `sequence-running` and `sequence-review`; minor defects remain in waiting/failed/right/left. This is diagnostic evidence, not a replacement formal verdict.
+- Current ledger: Provider137/144, Planner1/34, Evaluator131/132, providerFailures32, no reservations. No budget was increased or reset, no new paid call was made during takeover, and no source/probe was promoted. Repairing both flagged actions and passing the final package requires at least three fresh evaluations, while only one remains; further paid verification needs an explicit evaluator-cap decision.
+- Fresh regression proof: the recovered tests fail against unchanged main (54 pass/4 fail; equal source widths rendered158/59 and summary jump centers58/58), then all58 pass with the fix. Contracts/API/channel/docs checks and full syntax/typecheck/Control Center build pass. Local core has2395 pass/26 browser-launch failures/4 skips; all82 Control Center cases fail at browser launch because the pinned Chromium is absent. These are environment gaps; no browser was downloaded or workstation UI launched. CI/remote full-matrix verification remains required.
+- Next: finish code/codec and CI verification, then repair actual work/inspection source gestures without weakening thresholds; retain the final formal workflow and web API checks as acceptance gates. Free root space at recovery was647MiB; deployment still requires the existing1GiB guard and verified recoverable cleanup.
+
+Earlier dated checkpoint sections below are retained as history.
+
+
 ### 2026-11-08 current verification
 
 - Guangzhou now runs main `168495acc01d84ea2f2375de6ccedd570bd12741` (PR138), ready/resident. Main CI42417936153 succeeded. Archive SHA256 `814348cd87415f46800f9760a45bca959901bd2d49739ab745ab891aefdb7d4e`; all17 recorded source hashes match that exact main. Shadow/build/API checks passed before atomic activation; SQLite backup integrity is `ok`. Current rollback is `/var/backups/openpet/20261107T221242Z-168495ac`; the preceding rollback is also retained.
@@ -11,15 +34,15 @@
 
 - Follow-up grounded-gait repair: pixel/geometry regressions reproduced support-foot vertical sliding, unequal drawn bone lengths and overlapping passing feet. Contact targets now share one ground plane; connected joints and separated passing/flight poses are recorded. Normal/subtle invariants pass. On the same rejected formal pose, the changed second diagnostic board passed90/readability86/crossFrame91, only minor defects (boardSHA `a71cbe079e027d929fd5bab9712ce3f2403a2f6e075a3d024c367ede3a0b2264`). This consumed two evaluator calls in total with the rejected first diagnostic retained; usage133/1/125. Formal7/9 remains unchanged; main/production acceptance is still required.
 
-Earlier checkpoint records below are historical; this section is authoritative.
+This earlier checkpoint is historical; prefer the final acceptance recovery section above.
 
 
-> Last updated: 2026-11-07
+> Last updated: 2026-11-09
 > Purpose: this is the single active maintainer work queue.
 
 Use this file for open work and priority changes. Keep phase docs, reviews, and old roadmap files as background only; do not split active planning across multiple TODO documents again.
 
-- [ ] Complete [canonical rig delivery and real nine-action acceptance](./superpowers/plans/2026-11-07-canonical-rig-actions.md). Deployed main3496744a is ready/resident. Pip7/9; right/left and final gate remain open. Usage129/144 Provider and119/132 evaluator. A new articulated gait probe passed92/readability87; production host integration, CI/deployment and fresh formal generation remain required. Do not promote probe artifacts or rescore unchanged packages. See [current evidence](./release-evidence/remote-backend/2026-11-07-locomotion-budget-admission.md).
+- [ ] Complete [canonical rig delivery and real nine-action acceptance](./superpowers/plans/2026-11-07-canonical-rig-actions.md). Deployed main a1aeb7af has all nine actions, but the final gate still rejects work/inspection readability. Usage137/144 Provider and131/132 evaluator. Finish the recovered board fix, repair actual source gestures and obtain explicit evaluator-cap authorization before the minimum three remaining evaluations. See [current evidence](./release-evidence/remote-backend/2026-11-07-locomotion-budget-admission.md).
 - [x] Merge/deploy exhausted-evaluator admission, paid-evidence retention, scoped running version13 and removal of the unproven running strip rig. PR127 is deployed; exhausted-ledger smoke proved zero paid operations and unchanged ledger/checkpoints.
 
 ## Current Shell/Backend Migration

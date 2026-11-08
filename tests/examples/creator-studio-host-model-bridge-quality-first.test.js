@@ -493,7 +493,7 @@ test('host reloads retained paid action candidates for diversity-failure recover
 })
 
 
-test('video motion processing invalidates old locomotion and review bindings while preserving accepted work and other rows', async () => {
+test('local gesture processing invalidates old work and review bindings while preserving locomotion and other accepted rows', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-action-version-'))
   const runId = 'scoped-version'
   const reference = `runs/${runId}/reference.png`
@@ -517,16 +517,22 @@ test('video motion processing invalidates old locomotion and review bindings whi
     const runtime = await createQualityFirstHostRuntime({ dataDir, run: { runId, input: { referenceImage: { relativePath: reference } } }, planOverride: plan })
     for (const actionId of ['idle', 'waving', 'jumping', 'failed', 'waiting', 'review', 'running', 'running-right', 'running-left']) {
       writeActionCheckpoint({ dataDir, runId, result: { actionId, ok: true,
-        bindings: { planHash: plan.hash, canonicalHash: canonical.sha256, profileHash: profile.hash, processorVersion: actionId.startsWith('running-') ? 14 : actionId === 'running' ? 15 : actionId === 'review' ? 15 : 12, qualityProfileHash: getQualityFirstQualityProfile().hash },
+        bindings: { planHash: plan.hash, canonicalHash: canonical.sha256, profileHash: profile.hash, processorVersion: actionId.startsWith('running-') ? 15 : actionId === 'running' ? 15 : actionId === 'review' ? 16 : 12, qualityProfileHash: getQualityFirstQualityProfile().hash },
         row: { actionId, quality: 'row-real', frames: [{ path: frame, index: 0, durationMs: 120 }] }
       } })
       const locomotion = actionId.startsWith('running-')
       const stateGesture = actionId === 'running' || actionId === 'review'
-      const expectedVersion = locomotion ? 15 : actionId === 'review' ? 16 : stateGesture ? 15 : 12
+      const expectedVersion = locomotion ? 15 : actionId === 'review' ? 17 : stateGesture ? 16 : 12
       assert.equal(runtime.processorVersionForAction(actionId), expectedVersion)
-      if (!locomotion && actionId !== 'review') {
-        const result = await runtime.runAction({ actionId, canonical, profile })
-        assert.equal(result.checkpointReused, true, actionId)
+      if (!stateGesture) {
+        if (actionId === 'running-left') {
+          // Left is restored by the mirror/package workflow, not dispatched
+          // as a generated action in the plan.
+          assert.ok(resolveReusableActionResult({ dataDir, runId, actionId, planHash: plan.hash, canonicalHash: canonical.sha256, profileHash: profile.hash, processorVersion: expectedVersion, qualityProfileHash: getQualityFirstQualityProfile().hash, requireBindings: true }))
+        } else {
+          const result = await runtime.runAction({ actionId, canonical, profile })
+          assert.equal(result.checkpointReused, true, actionId)
+        }
       } else {
         assert.equal(resolveReusableActionResult({ dataDir, runId, actionId, planHash: plan.hash, canonicalHash: canonical.sha256, profileHash: profile.hash, processorVersion: runtime.processorVersionForAction(actionId), qualityProfileHash: getQualityFirstQualityProfile().hash, requireBindings: true }), null)
         await runtime.persistActionResult({ actionId, canonical, profile, result: { ok: false, failureCode: 'fixture' } })
@@ -1014,4 +1020,32 @@ test('final package quality stays advisory after any explicit human candidate se
 
 test('host model bridge no longer exports the removed legacy full-pet repair entry point', () => {
   assert.equal(Object.hasOwn(hostModelBridgeModule, 'regenerateFullPetActionsViaHostModelBridge'), false)
+})
+
+test('final package host passes all visible motion intents, including the mirrored left gait, to the evaluator', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-final-package-intents-'))
+  const runId = 'final-intents'
+  const runDir = path.join(dataDir, 'runs', runId)
+  fs.mkdirSync(runDir, { recursive: true })
+  const atlas = path.join(runDir, 'atlas.png')
+  await sharp({ create: { width: 1536, height: 1872, channels: 4, background: '#ddaa22' } }).png().toFile(atlas)
+  const rows = require('../../examples/plugins/creator-studio/lib/full-pet-row-contract').OFFICIAL_FULL_PET_ROWS
+  const plan = createSpriteAssetPlan({ version: 1, revision: 1, character: { assetClass: 'grounded-compact-character' }, actions: rows.filter(row => row.id !== 'running-left').map(row => ({ actionId: row.id })) })
+  const atlasQaPath = path.join(runDir, 'qa.json')
+  fs.writeFileSync(atlasQaPath, JSON.stringify({ ok: true, visualReview: { contactSheet: `runs/${runId}/atlas.png` }, basicActions: { availableActionIds: rows.map(row => row.id) } }))
+  let captured
+  await evaluateQualityFirstFinalPackage({
+    dataDir, runId, sourcePath: atlas, canonicalPath: atlas, spritesheetPath: atlas, atlasQaPath, actions: plan.actions,
+    requestEvaluation: async request => { captured = request; return { gate: { ok: true, outcome: 'pass', failures: [] } } }
+  })
+  assert.equal(captured.qa.actionIntents.length, 9)
+  assert.deepEqual(captured.qa.actionIntents.map(intent => intent.actionId), rows.map(row => row.id))
+  for (const intent of captured.qa.actionIntents) {
+    assert.ok(captured.board.regions.some(region => region.regionId === intent.regionId && region.role === 'final-action-sequence'))
+    assert.equal(intent.frameCount, rows.find(row => row.id === intent.actionId).frameCount)
+    assert.equal(intent.loop, true)
+  }
+  assert.match(captured.qa.actionIntents.find(intent => intent.actionId === 'running-left').framePlan[0], /left-facing/)
+  assert.match(captured.qa.actionIntents.find(intent => intent.actionId === 'running').framePlan[2], /work/)
+  assert.match(captured.qa.actionIntents.find(intent => intent.actionId === 'review').framePlan[2], /inspection/)
 })

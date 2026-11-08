@@ -1,6 +1,6 @@
 # Pet Character And Action Generation
 
-> Updated: 2026-11-07
+> Updated: 2026-11-09
 > Owner: `codex/dev8`
 > Status: quality-first replacement implemented; focused development checks passed; independent Provider and visual verification pending
 
@@ -259,11 +259,15 @@ The official full-pet row package counts `row-real` Provider output, an `approve
 
 ### 9.1 Audited canonical rig repair
 
-`canonical-support-rig-v1` supports `jumping`, `review`, and a restricted `running-right` gait for `grounded-compact-character`. Video remains the initial route. Its existing reason-directed repair slot may render one fresh rig candidate when the video candidates report style drift, cross-frame inconsistency, unreadable action or excessive body-scale variance. Transport ambiguity, exhausted reads, cancellation and unavailable evaluation are not rig eligibility reasons. Unsupported actions and anatomy continue through their existing path.
+`canonical-support-rig-v1` supports `jumping`, the `running` work state, `review`, and a restricted `running-right` gait for `grounded-compact-character`. Video remains the initial route. Its existing reason-directed repair slot may render one fresh rig candidate when the video candidates report style drift, cross-frame inconsistency, unreadable action or excessive body-scale variance. Transport ambiguity, exhausted reads, cancellation and unavailable evaluation are not rig eligibility reasons. Unsupported actions and anatomy continue through their existing path.
 
 The renderer measures the canonical alpha bounds, keeps the upper source region intact and scales the continuous lower support strip through anticipation, takeoff, peak, landing and recovery. It infers the split at 84% of body height; there are no character-specific coordinates. Transparent source normalization bypasses chroma-key removal, preserving green source pixels and original gradients. This is a local render with zero Provider calls; visual evaluation still consumes the existing evaluator budget.
 
-For `review`, a continuous upper-body inverse map produces left observation, right comparison, an acknowledgement nod and a neutral return. A smooth neck-to-torso blend keeps the lower body fixed; premultiplied bilinear sampling preserves source colors and alpha. The registered motion driver and plan hash remain unchanged, and only the review processor binding advances. It uses the same technical and visual gates.
+For the `running` work state, a continuous inverse map moves only the selected lateral appendage through two compact downward beats and an exact neutral return. The field is limited to 42–82% of source body height and the outer 22% of the selected side; the central 56%, head, opposite side and planted feet retain their source pixels. A conservative continuous Jacobian bound rejects folding before frames are written. Premultiplied bilinear sampling retains source colors and alpha. These source-relative bounds suit compact characters with lateral appendages; other anatomy still needs to pass the existing technical and visual gates.
+
+For `review`, a continuous upper-body inverse map produces left observation, right comparison, an acknowledgement nod and a neutral return. A smooth neck-to-torso blend keeps the lower body fixed; premultiplied bilinear sampling preserves source colors and alpha.
+
+Work and inspection frames use one shared source envelope, scale and placement during normalization. Independently centering each changing silhouette would move the untouched head and feet. This source-coordinate mode requires identical source canvases and is enabled only for these two rigs; video stabilization, jumping and gait normalization retain their existing paths. Work binding 16 and review binding 17 invalidate their older action checkpoints while preserving unrelated accepted rows, the idle scale profile, registered motion driver and plan hashes. The same technical and visual gates remain mandatory.
 
 For `running-right`, the existing quality-approved side keyframe is required separately from the canonical identity. A restricted flat warm-body/orange-foot biped renderer segments source parts, alternates stance/swing legs and adds two-segment knee connectors in matching template colors. It retains eight contact/down/passing/flight phases, with action-relative normalization preserving bounded bob; the original grounded row/visual gates still apply. It is not a universal anatomy or palette renderer: missing separable parts reject before output. The renderer captures the validated pose bytes once, saves a candidate-owned `pose-source.png`, and binds this immutable copy in the manifest, artifacts, checkpoint reuse and portable export. Shared Provider keyframe paths may be overwritten by later attempts; they are not a retained rig dependency. The separate pose hash and canonical hash remain mandatory. Only right/left processing bindings advance; accepted unrelated rows and registered driver/plan hashes remain valid. Left is mirrored from an accepted right row.
 

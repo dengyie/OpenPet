@@ -354,3 +354,27 @@ test('canonical evaluation evidence retains all four paid candidate score record
   const stored = JSON.parse(fs.readFileSync(path.join(dataDir, relativePath), 'utf8'))
   assert.equal(stored.evaluation.candidates.length, 4)
 })
+
+test('final evaluator maps every visible sequence to its registered intent and retains strict package scores', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-final-intents-'))
+  const boardPath = path.join(dir, 'board.png')
+  await sharp({ create: { width: 128, height: 128, channels: 4, background: '#eee' } }).png().toFile(boardPath)
+  const regions = [
+    { regionId: 'sequence-running', role: 'final-action-sequence', x: 0, y: 0, width: 64, height: 64 },
+    { regionId: 'sequence-review', role: 'final-action-sequence', x: 0, y: 64, width: 64, height: 64 }
+  ]
+  const actionIntents = ['running', 'review'].map(actionId => {
+    const driver = require('../../examples/plugins/creator-studio/lib/motion-driver-registry').createMotionDriver({ actionId })
+    return { regionId: `sequence-${actionId}`, actionId, loop: driver.loop, frameCount: driver.frameCount, framePlan: driver.framePlan }
+  })
+  const profile = getQualityFirstQualityProfile()
+  const input = { scope: 'final-package', board: { path: boardPath, regions }, profile }
+  const request = await createSpriteEvaluatorRequest({ ...input, qa: { ok: true, actionIntents } })
+  const payload = JSON.parse(request.messages[1].content.find(part => part.type === 'text').text)
+  assert.deepEqual(payload.actionIntents, actionIntents)
+  assert.deepEqual(payload.minimumScores, profile.visual.finalPackage)
+  assert.match(request.messages[0].content, /running.*stationary task.processing/i)
+  assert.match(request.messages[0].content, /review.*inspection/i)
+  await assert.rejects(createSpriteEvaluatorRequest({ ...input, qa: { actionIntents: actionIntents.slice(0, 1) } }), /intent.*sequence|sequence.*intent/i)
+  await assert.rejects(createSpriteEvaluatorRequest({ ...input, qa: { actionIntents: [actionIntents[0], actionIntents[0]] } }), /intent.*sequence|sequence.*intent/i)
+})
