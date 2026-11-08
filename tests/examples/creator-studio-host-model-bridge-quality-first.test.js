@@ -1015,3 +1015,31 @@ test('final package quality stays advisory after any explicit human candidate se
 test('host model bridge no longer exports the removed legacy full-pet repair entry point', () => {
   assert.equal(Object.hasOwn(hostModelBridgeModule, 'regenerateFullPetActionsViaHostModelBridge'), false)
 })
+
+test('final package host passes all visible motion intents, including the mirrored left gait, to the evaluator', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-final-package-intents-'))
+  const runId = 'final-intents'
+  const runDir = path.join(dataDir, 'runs', runId)
+  fs.mkdirSync(runDir, { recursive: true })
+  const atlas = path.join(runDir, 'atlas.png')
+  await sharp({ create: { width: 1536, height: 1872, channels: 4, background: '#ddaa22' } }).png().toFile(atlas)
+  const rows = require('../../examples/plugins/creator-studio/lib/full-pet-row-contract').OFFICIAL_FULL_PET_ROWS
+  const plan = createSpriteAssetPlan({ version: 1, revision: 1, character: { assetClass: 'grounded-compact-character' }, actions: rows.filter(row => row.id !== 'running-left').map(row => ({ actionId: row.id })) })
+  const atlasQaPath = path.join(runDir, 'qa.json')
+  fs.writeFileSync(atlasQaPath, JSON.stringify({ ok: true, visualReview: { contactSheet: `runs/${runId}/atlas.png` }, basicActions: { availableActionIds: rows.map(row => row.id) } }))
+  let captured
+  await evaluateQualityFirstFinalPackage({
+    dataDir, runId, sourcePath: atlas, canonicalPath: atlas, spritesheetPath: atlas, atlasQaPath, actions: plan.actions,
+    requestEvaluation: async request => { captured = request; return { gate: { ok: true, outcome: 'pass', failures: [] } } }
+  })
+  assert.equal(captured.qa.actionIntents.length, 9)
+  assert.deepEqual(captured.qa.actionIntents.map(intent => intent.actionId), rows.map(row => row.id))
+  for (const intent of captured.qa.actionIntents) {
+    assert.ok(captured.board.regions.some(region => region.regionId === intent.regionId && region.role === 'final-action-sequence'))
+    assert.equal(intent.frameCount, rows.find(row => row.id === intent.actionId).frameCount)
+    assert.equal(intent.loop, true)
+  }
+  assert.match(captured.qa.actionIntents.find(intent => intent.actionId === 'running-left').framePlan[0], /left-facing/)
+  assert.match(captured.qa.actionIntents.find(intent => intent.actionId === 'running').framePlan[2], /work/)
+  assert.match(captured.qa.actionIntents.find(intent => intent.actionId === 'review').framePlan[2], /inspection/)
+})

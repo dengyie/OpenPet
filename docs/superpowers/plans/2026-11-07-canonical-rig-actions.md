@@ -1,5 +1,19 @@
 # Canonical Rig Actions Implementation Plan
 
+### 2026-11-08 final acceptance recovery (latest verified state)
+
+- Read-only SSH recovery confirms Guangzhou runs main `a1aeb7afe3a0b8ec8e0351c1eb688955948c1c51` (PR140), health `ready/resident`; rollback `/var/backups/openpet/20261108T081247Z-a1aeb7af` is retained. The previous 7/9 checkpoint below is historical.
+- Formal run `2026-11-05-pip` has all nine accepted action checkpoints and no omitted actions. Right running is `approved-rig`, left running is `approved-mirror`; idle/waving/failed/waiting/running/review are `row-real`, jumping is `approved-rig`. The final visual gate still rejects the package, so actual final acceptance remains open.
+- Formal atlas SHA256 `50ed3ddaef34c252dd5028478322d58ebd1d38ff884328afdd955817ab1c24d2`; bundle SHA256 `c99f21208af30ba5097fcd12f9408469852f3fb5ba0725a4c9d41cefc5fc90bb`. Formal final scores: identity96/distinctness81/crossAction85/smallScale93/style96/overall88; major cross-action inconsistency. Original artifacts and gate remain intact.
+- Recovered uncommitted final-board fixes into independent branch `codex/final-acceptance-recovery`, preserving the source worktree. One shared atlas crop/scale preserves cross-action size and airborne offsets; final evaluator requests map each visible sequence to its registered intent, including mirrored left gait and work/inspection semantics. This code is not yet merged or deployed.
+- Existing single real probe over that exact unchanged atlas used the corrected board SHA256 `7cc901cc9252244598a474a237701704a54fad2678433d99ccd1852b57315d9d`: identity95/distinctness78/crossAction90/smallScale91/style95/overall87, still `repair`. Major defects now identify `sequence-running` and `sequence-review`; minor defects remain in waiting/failed/right/left. This is diagnostic evidence, not a replacement formal verdict.
+- Current ledger: Provider137/144, Planner1/34, Evaluator131/132, providerFailures32, no reservations. No budget was increased or reset, no new paid call was made during takeover, and no source/probe was promoted. Repairing both flagged actions and passing the final package requires at least three fresh evaluations, while only one remains; further paid verification needs an explicit evaluator-cap decision.
+- Fresh regression proof: the recovered tests fail against unchanged main (54 pass/4 fail; equal source widths rendered158/59 and summary jump centers58/58), then all58 pass with the fix. Contracts/API/channel/docs checks and full syntax/typecheck/Control Center build pass. Local core has2395 pass/26 browser-launch failures/4 skips; all82 Control Center cases fail at browser launch because the pinned Chromium is absent. These are environment gaps; no browser was downloaded or workstation UI launched. CI/remote full-matrix verification remains required.
+- Next: finish code/codec and CI verification, then repair actual work/inspection source gestures without weakening thresholds; retain the final formal workflow and web API checks as acceptance gates. Free root space at recovery was647MiB; deployment still requires the existing1GiB guard and verified recoverable cleanup.
+
+Earlier dated checkpoint sections below are retained as history.
+
+
 ### 2026-11-08 current verification
 
 - Guangzhou now runs main `168495acc01d84ea2f2375de6ccedd570bd12741` (PR138), ready/resident. Main CI42417936153 succeeded. Archive SHA256 `814348cd87415f46800f9760a45bca959901bd2d49739ab745ab891aefdb7d4e`; all17 recorded source hashes match that exact main. Shadow/build/API checks passed before atomic activation; SQLite backup integrity is `ok`. Current rollback is `/var/backups/openpet/20261107T221242Z-168495ac`; the preceding rollback is also retained.
@@ -9,7 +23,7 @@
 - Formal Pip remains7/9: idle/waving/jumping/failed/waiting/running/review accepted; right/left and final nine-action visual acceptance remain open. Existing seven-action package still fails its original final gate; spriteSHA `42e2e94f0dee2b535eaf7e4228c65c85dfc8696be47aa5fb7cf2444b5514500f`, bundleSHA `99483d7fdeb4e08f795b644f534ccfb7d661ef1fb8f266309d0318799dfe94e5`. HTTPS exposes that same partial package and both previews. The unchanged package was not rescored.
 - Authorized caps remain Provider144/Planner34/Evaluator132. Usage is now133/1/123, no reservations, providerFailures32; history was preserved. Next work is to diagnose the rejected rig phases against its actual pose before any changed candidate is evaluated. Repeating an unchanged board, copying the passing probe into formal state, or claiming9/9 from technical QA is prohibited. All checks use code/SSH/API/VPS; no workstation UI.
 
-Earlier checkpoint records below are historical; this section is authoritative.
+This earlier checkpoint is historical; prefer the final acceptance recovery section above.
 
 
 > Execute inline in the existing isolated branch/worktree. User's persistent completion goal authorizes implementing the documented deterministic-rig route; do not promote research probe artifacts. No workstation UI. Necessary verified low-risk cleanup may proceed directly under the updated deletion rule; risky or uncertain deletion requires confirmation.
@@ -79,3 +93,15 @@ Files: `lib/host-model-bridge.js`, `lib/sprite-candidate-store.js`, `lib/full-pe
 - Fresh Guangzhou host/candidate suite: 39/39, zero skipped; local focused QA/candidate/checkpoint/atlas/video suites: 165 passed, one codec skip. Contracts build, API/channel reconciliation, documentation drift, JavaScript syntax, TypeScript and Control Center build all pass. Full core/UI CI is pending.
 
 - Review found that the first rig implementation hashed `subtle` intensity without changing pixels. A red regression proved it; motion amplitude now follows the registered intensity, with the same technical QA. Local rig suite passes12 plus one codec skip.
+
+## Final package evidence fidelity (2026-11-08)
+
+Observed failure: the formal nine-action atlas has no omitted rows, but the final board scores distinctness81/crossAction85. The board independently crops/scales every row and independently trims each summary frame, introducing size differences and suppressing airborne displacement. The final request also drops the motion intent available to single-action evaluations. Fix this evidence boundary before spending on further source generation; keep the original atlas and all quality thresholds.
+
+- [x] Add failing pixel regressions: equal-size subjects in different rows retain equal scale, summary airborne offsets survive, and real size mismatches stay visible.
+- [x] Share one alpha crop and scale across all official used frames in each board region. Remove the replaced per-frame trim path.
+- [x] Carry registered action intents with row coordinates into the final evaluator, including work/inspection semantics, and keep required scores unchanged. Test the host-to-request boundary.
+- [x] Run focused code/codec regressions. Render and inspect a fresh board over the exact unchanged formal atlas, then use the existing real evaluator once with the retained ledger.
+- [ ] If real final quality passes, merge after rebasing, deploy with rollback, run the formal supported workflow to persist its package verdict, verify web API and update canonical records. If it rejects a specific source defect, repair that source and verify again within the authorized budget.
+
+The real corrected-board evaluation remains rejected (work/inspection major); see the latest recovery section above. Only the local focused board/evaluator/host codec slice has passed; the full remote codec/CI matrix and final formal verdict remain open.

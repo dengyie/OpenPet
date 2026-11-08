@@ -422,6 +422,7 @@ const evaluateQualityFirstFinalPackage = async ({
   canonicalPath,
   spritesheetPath,
   atlasQaPath,
+  actions = [],
   allowVisualQualityWarnings = false,
   requestEvaluation = requestHatchPetSpriteEvaluation
 } = {}) => {
@@ -446,6 +447,7 @@ const evaluateQualityFirstFinalPackage = async ({
     canonicalPath: safeCanonicalPath,
     actionReviewPath,
     atlasPath: safeSpritesheetPath,
+    availableActionIds: atlasQa?.basicActions?.availableActionIds || [],
     outputPath
   })
   const evaluated = await requestEvaluation({
@@ -459,6 +461,16 @@ const evaluateQualityFirstFinalPackage = async ({
     qa: {
       ok: true,
       failures: [],
+      actionIntents: board.regions.filter(region => region.role === 'final-action-sequence').map(region => {
+        const actionId = region.regionId.slice('sequence-'.length)
+        const driverActionId = actionId === 'running-left' ? 'running-right' : actionId
+        const action = actions.find(entry => entry.actionId === driverActionId)
+        const driver = createMotionDriver({ actionId: driverActionId, motionPresetId: action?.motionPresetId || '', motionParameters: action?.motionParameters || {} })
+        const framePlan = actionId === 'running-left'
+          ? driver.framePlan.map(beat => beat.replace(/\b(left|right)\b/g, direction => direction === 'right' ? 'left' : 'right'))
+          : driver.framePlan
+        return { regionId: region.regionId, actionId, loop: driver.loop, frameCount: driver.frameCount, framePlan }
+      }),
       metrics: {
         atlasVisiblePixels: Math.max(0, Number(atlasQa.visiblePixels) || 0),
         availableActionCount: Array.isArray(atlasQa?.basicActions?.availableActionIds)
@@ -3823,6 +3835,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
       canonicalPath: path.join(dataDir, canonical.relativePath),
       spritesheetPath: packaged.spritesheetPath,
       atlasQaPath: packaged.atlasQaPath,
+      actions: plan.actions,
       allowVisualQualityWarnings: hasHumanCandidateSelection({ canonical, actionResults })
     })
     const generatedImage = {
