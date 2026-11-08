@@ -8,11 +8,13 @@ const { processFrameSequence } = require('./video-matte-pipeline')
 const { analyzeTemporalQuality } = require('./video-stabilizer')
 const { createVideoCandidateArtifacts } = require('./video-action-runner')
 const { renderArticulatedBipedGait } = require('./articulated-biped-gait')
+const { renderWorkingFrames } = require('./canonical-working-rig')
 
 const RENDERER = 'canonical-support-rig-v1'
 const RIG_TYPE_BY_ACTION = Object.freeze({
   jumping: 'continuous-lower-support',
   review: 'continuous-head-inspection',
+  running: 'continuous-side-work',
   'running-right': 'articulated-biped-gait'
 })
 const error = (message, code = 'canonical_rig_invalid') => Object.assign(new Error(message), { code })
@@ -152,7 +154,14 @@ const renderCanonicalSupportRig = async ({ dataDir, canonical, poseReference, ac
   const driver = createMotionDriver({ actionId: action.actionId, motionPresetId: action.motionPresetId, motionParameters: action.motionParameters })
   if (action.frameCount !== driver.frameCount) throw error('Canonical rig action frame count does not match the registered driver')
   const motionScale = driver.motionParameters.intensity === 'subtle' ? 0.85 : 1
-  let transforms = action.actionId === 'review' ? [
+  let transforms = action.actionId === 'running' ? [
+    { phase: 'neutral', inward: 0, lift: 0 },
+    { phase: 'engage', inward: 0.02, lift: 0.10 },
+    { phase: 'work-peak-a', inward: 0.03, lift: 0.018 },
+    { phase: 'recover-working', inward: 0.018, lift: 0.095 },
+    { phase: 'work-peak-b', inward: 0.025, lift: 0.026 },
+    { phase: 'neutral-return', inward: 0, lift: 0 }
+  ].map(transform => ({ ...transform, inward: transform.inward * motionScale, lift: transform.lift * motionScale })) : action.actionId === 'review' ? [
     { phase: 'neutral', headTiltDegrees: 0, nodOffset: 0 },
     { phase: 'inspect-left', headTiltDegrees: -14, nodOffset: 0 },
     { phase: 'compare-right', headTiltDegrees: 14, nodOffset: 0 },
@@ -173,6 +182,7 @@ const renderCanonicalSupportRig = async ({ dataDir, canonical, poseReference, ac
   const scale = Math.min(512 * 0.58 / height, 512 * 0.70 / assemblyWidth)
   const framePaths = []
   let gaitRig
+  let workingRig
   if (isGait) {
     const gait = await renderArticulatedBipedGait({ sourceBytes: poseBytes, outputDir, motionScale, signal })
     // Keyframe output paths are reused by later Provider attempts. Keep the
@@ -183,6 +193,10 @@ const renderCanonicalSupportRig = async ({ dataDir, canonical, poseReference, ac
     framePaths.push(...gait.framePaths)
     transforms = gait.transforms
     gaitRig = gait.rig
+  } else if (action.actionId === 'running') {
+    const work = await renderWorkingFrames({ source, width, height, outputDir, transforms, leadSide: driver.motionParameters.leadSide, signal })
+    framePaths.push(...work.framePaths)
+    workingRig = work.rig
   } else if (action.actionId === 'review') framePaths.push(...await renderInspectionFrames({ source, width, height, outputDir, transforms, signal }))
   else for (const [index, transform] of transforms.entries()) {
     canceled(signal)
@@ -201,7 +215,8 @@ const renderCanonicalSupportRig = async ({ dataDir, canonical, poseReference, ac
     await sharp({ create: { width: 512, height: 512, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite([{ input: posed, left: Math.round((512 - targetWidth) / 2), top }]).png().toFile(file)
     framePaths.push(file)
   }
-  const normalized = await processFrameSequence({ framePaths, outputDir: path.join(outputDir, 'normalized'), canvasWidth: 512, canvasHeight: 512, backgroundMode: 'source-alpha', anchorPolicy: isGait ? 'action-relative-root-v1' : action.anchorPolicy, targetStandingHeightRatio: (Number(profile.runtimeStandingHeightPx) || 92) / (Number(profile.runtimeCell?.height) || 128), signal })
+  const preserveSourceCoordinates = action.actionId === 'running' || action.actionId === 'review'
+  const normalized = await processFrameSequence({ framePaths, outputDir: path.join(outputDir, 'normalized'), canvasWidth: 512, canvasHeight: 512, backgroundMode: 'source-alpha', anchorPolicy: isGait ? 'action-relative-root-v1' : action.anchorPolicy, targetStandingHeightRatio: (Number(profile.runtimeStandingHeightPx) || 92) / (Number(profile.runtimeCell?.height) || 128), preserveSourceCoordinates, signal })
   canceled(signal)
   const processed = await createVideoCandidateArtifacts({ processed: normalized, outputDir: path.join(outputDir, 'artifacts'), layout: action.layout, expectedFrameCount: driver.frameCount, characterClass })
   const temporalQuality = analyzeTemporalQuality({ frames: normalized.normalizedFrameMetrics, loop: driver.loop })
@@ -213,9 +228,9 @@ const renderCanonicalSupportRig = async ({ dataDir, canonical, poseReference, ac
     version: 1, renderer: RENDERER, actionId: action.actionId,
     source: { relativePath: canonical.relativePath, sha256: canonical.sha256, width: info.width, height: info.height, bounds: b },
     ...(isGait ? { poseReference: retainedPoseReference } : {}),
-    rig: isGait ? gaitRig : action.actionId === 'review'
+    rig: isGait ? gaitRig : workingRig || (action.actionId === 'review'
       ? { type: RIG_TYPE_BY_ACTION[action.actionId], pivotX: 0.5, pivotHeightRatio: 0.55, blendEndHeightRatio: 0.44, blendHeightRatio: 0.24, interpolation: 'premultiplied-bilinear', inverseIterations: 4 }
-      : { type: RIG_TYPE_BY_ACTION[action.actionId], splitY: b.minY + split, assemblyPadding: 0 },
+      : { type: RIG_TYPE_BY_ACTION[action.actionId], splitY: b.minY + split, assemblyPadding: 0 }),
     driver, transforms,
     sourceFrames: framePaths.map(file => ({ relativePath: relative(dataDir, file), sha256: fileHash(file) })), runtimeFrames,
     processed: {

@@ -46,18 +46,24 @@ const computeGlobalBounds = (frames = []) => {
   return Object.freeze({ left, top, right, bottom, width: right - left, height: bottom - top })
 }
 
-const createStablePlacements = ({ frames = [], canvasWidth, canvasHeight, padding = 0.1, baseline = null, anchorPolicy, targetStandingHeightRatio = null } = {}) => {
+const createStablePlacements = ({ frames = [], canvasWidth, canvasHeight, padding = 0.1, baseline = null, anchorPolicy, targetStandingHeightRatio = null, preserveSourceCoordinates = false } = {}) => {
   const width = Number(canvasWidth)
   const height = Number(canvasHeight)
   if (!Number.isInteger(width) || width < 1 || !Number.isInteger(height) || height < 1) throw stabilizerError('canvas is invalid')
   if (!Array.isArray(frames) || !frames.length) throw stabilizerError('frames must not be empty')
+  if (typeof preserveSourceCoordinates !== 'boolean') throw stabilizerError('preserveSourceCoordinates must be a boolean')
+  if (preserveSourceCoordinates && frames.some(frame => (
+    !Number.isInteger(frame?.canvas?.width) || !Number.isInteger(frame?.canvas?.height) ||
+    frame.canvas.width <= 0 || frame.canvas.height <= 0 ||
+    frame.canvas.width !== frames[0].canvas.width || frame.canvas.height !== frames[0].canvas.height
+  ))) throw stabilizerError('preserving source coordinates requires identical source canvases')
   const boxes = frames.map((frame, index) => normalizeBox(frame?.bbox, index))
   const global = computeGlobalBounds(frames)
   const numericPadding = Number(padding)
   if (!Number.isFinite(numericPadding)) throw stabilizerError('padding is invalid')
   const safePadding = clamp(numericPadding, 0, 0.4)
-  const maxWidth = Math.max(...boxes.map((box) => box.width))
-  const maxHeight = Math.max(...boxes.map((box) => box.height))
+  const maxWidth = preserveSourceCoordinates ? global.width : Math.max(...boxes.map((box) => box.width))
+  const maxHeight = preserveSourceCoordinates ? global.height : Math.max(...boxes.map((box) => box.height))
   const fitScale = Math.min(
     (width * (1 - safePadding * 2)) / maxWidth,
     (height * (1 - safePadding * 2)) / maxHeight
@@ -67,7 +73,7 @@ const createStablePlacements = ({ frames = [], canvasWidth, canvasHeight, paddin
   // Keep one scale for the sequence and the same runtime standing height as
   // other actions. Reject overflow rather than shrinking an action silently.
   const scale = targetRatio === null ? fitScale : height * targetRatio / median(boxes.map((box) => box.height))
-  const relativeRoot = anchorPolicy === 'action-relative-root-v1'
+  const relativeRoot = !preserveSourceCoordinates && anchorPolicy === 'action-relative-root-v1'
   const sourceRoots = relativeRoot ? frames.map((frame) => {
     const sourceHeight = Number(frame.canvas?.height)
     const rootY = Number(frame.root?.y)
@@ -87,7 +93,10 @@ const createStablePlacements = ({ frames = [], canvasWidth, canvasHeight, paddin
     const travel = (groundedSourceRoot - sourceRoots[index]) * height
     return travel > 0 ? (targetBaseline - box.height * scale - topClearance) / travel : 1
   }))) : 1
-  const placements = boxes.map((box, index) => {
+  const placements = boxes.map((frameBox, index) => {
+    // Local rigs already share a source coordinate system. Recentring their
+    // changing silhouette would translate the untouched head and planted feet.
+    const box = preserveSourceCoordinates ? global : frameBox
     const scaledWidth = box.width * scale
     const scaledHeight = box.height * scale
     const sourceBaseline = box.bottom

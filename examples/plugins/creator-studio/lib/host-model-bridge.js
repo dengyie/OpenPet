@@ -3214,8 +3214,8 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
   // and the idle-owned scale profile. Mirrored left shares the right version.
   const processorVersionForAction = (actionId) => (
     !useVideoActionPipeline ? actionProcessorVersion
-      : actionId === 'running' ? 15
-        : actionId === 'review' ? 16
+      : actionId === 'running' ? 16
+        : actionId === 'review' ? 17
         : actionId === 'running-right' || actionId === 'running-left' ? 15
           : actionProcessorVersion
   )

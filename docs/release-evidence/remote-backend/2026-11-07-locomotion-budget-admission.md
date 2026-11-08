@@ -1,5 +1,13 @@
 # Creator locomotion and exhausted-evaluator admission
 
+### 2026-11-09 source gesture repair (isolated evidence)
+
+Three fresh pixel regressions failed before implementation: work deformation entered the belly, and independent silhouette normalization translated fixed head/feet in work and inspection. The repaired field protects the central56% of the source body and uses the selected outer side only, with conservative minimum Jacobian0.143466 on the exact formal canonical. Work and inspection use one shared source crop/placement; work15→16 and review16→17 bindings invalidate only those older rows.
+
+Final local diagnostics are at `/Users/mango/.codex/visualizations/2026/11/08/01a1bbc5-f32d-75b2-87bb-5624f5fdbd91/openpet-gesture-0mbkyp/diagnostic.json`. Canonical SHA54c8e7c68e7076106a655a9930daae0005a2042f1c10a1ecc6fec43453fc3754 matches production. Work manifest SHA0c6cd21928f00ee6cea5554eca32b546f9eefc17c6cda83f1040212986525a72; inspection manifest SHA69fe3a787e9432ab904962d6b4caaee18c6b8a9a24d21d5552e1fcfc9801bd8d. Both have five unique phases, seam0 and passing technical/temporal QA; actual128px feet and work head are pixel-identical across the sequence. Both remain unevaluated local diagnostics, never formal candidates.
+
+Local focused suite:111 pass/four codec skips. VPS isolated source with existing ffmpeg/ffprobe:113 pass/no skips, including work repair→mock evaluator→checkpoint→package/export→archive selection and existing jump/review/gait paths; five final pixel/cancellation/input checks also pass. Four core renderer/normalizer hashes match local. Tools694 and syntax/typecheck/build/contracts/API/channel/docs checks pass. Logs retained locally as `/tmp/openpet-gesture-vps.log` and `/tmp/openpet-gesture-vps-additions.log` and in the diagnostic directory's `logs/`; final source needs fresh full CI. The exact temporary directory `/tmp/openpet-gesture-validation-20261109` (124MB, root-owned isolated source and synthetic fixtures, recoverable from this branch) was verified and deleted as one target after logs were preserved. Root free space returned to863MiB; production ready/resident and current rollback are unchanged, and the1GiB deployment guard still applies. No workstation UI, binary download, paid call, ledger reset, threshold change or formal-state mutation. Production remainsa1aeb7af; at least three further formal evaluations require an explicit evaluator-cap decision beyond131/132.
+
 ### 2026-11-08 final acceptance recovery (latest verified state)
 
 - Read-only SSH recovery confirms Guangzhou runs main `a1aeb7afe3a0b8ec8e0351c1eb688955948c1c51` (PR140), health `ready/resident`; rollback `/var/backups/openpet/20261108T081247Z-a1aeb7af` is retained. The previous 7/9 checkpoint below is historical.

@@ -199,12 +199,14 @@ const processFrameSequence = async ({
   anchorPolicy,
   targetStandingHeightRatio = null,
   selectJumpPhases = false,
+  preserveSourceCoordinates = false,
   signal
 } = {}) => {
   if (!Array.isArray(framePaths) || framePaths.length < 1 || framePaths.length > 128) throw matteError('framePaths must contain 1 to 128 frames')
   if (!Number.isInteger(Number(canvasWidth)) || !Number.isInteger(Number(canvasHeight))) throw matteError('canvas is invalid')
   if (!Number.isInteger(Number(fps)) || fps < 1 || fps > 60) throw matteError('fps is invalid')
   if (!['color-key', 'source-alpha'].includes(backgroundMode)) throw matteError('background mode is invalid')
+  if (typeof preserveSourceCoordinates !== 'boolean') throw matteError('preserveSourceCoordinates must be a boolean')
   const alphaDir = path.join(outputDir, 'alpha')
   const stableDir = path.join(outputDir, 'normalized')
   fs.mkdirSync(alphaDir, { recursive: true })
@@ -238,7 +240,8 @@ const processFrameSequence = async ({
     canvasHeight: Number(canvasHeight),
     padding,
     anchorPolicy,
-    targetStandingHeightRatio
+    targetStandingHeightRatio,
+    preserveSourceCoordinates
   })
   const normalizedFrames = []
   const normalizedFrameMetrics = []
@@ -292,6 +295,7 @@ const processFrameSequence = async ({
     rawMetrics: frameMetrics,
     normalizedMetrics: normalizedFrameMetrics,
     trajectoryScale: placements.trajectoryScale,
+    preserveSourceCoordinates,
     selectedSourceIndexes
   }
   const sidecarPath = path.join(outputDir, 'video-sidecar.json')

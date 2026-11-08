@@ -260,7 +260,7 @@ test('creator studio live docs keep the official hatch-pet full-action policy tr
   assert.match(petGenerationDoc, /running-right[\s\S]*running-left[\s\S]*framewise horizontal mirror/i, 'canonical docs should define running-left as the mirrored directional pair')
   assert.match(petGenerationDoc, /copied idle frames[\s\S]*unregistered transforms[\s\S]*preview fallbacks/i, 'canonical docs should reject copied idle and unaudited transforms as official action rows')
   assert.match(petGenerationDoc, /approved-rig[\s\S]*technical, action, row and visual gates/i, 'registered rigs must pass the existing quality gates')
-  assert.match(petGenerationDoc, /supports `jumping`, `review`, and a restricted `running-right` gait for `grounded-compact-character`/i, 'rig support must stay scoped to implemented anatomy and actions')
+  assert.match(petGenerationDoc, /supports `jumping`, the `running` work state, `review`, and a restricted `running-right` gait for `grounded-compact-character`/i, 'rig support must stay scoped to implemented anatomy and actions')
   assert.match(petGenerationDoc, /generation-audit\/[\s\S]*independently verifiable after export/i, 'official rig exports must retain portable audit evidence')
   assert.doesNotMatch(petGenerationDoc, /required real:[\s\S]*idle/i, 'canonical docs should not describe base-only idle coverage as an official real action')
   assert.match(creatorReadme, /pet-character-generation\.md/i, 'Creator Studio README should link to the canonical generation authority')

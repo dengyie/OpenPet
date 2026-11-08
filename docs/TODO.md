@@ -1,5 +1,13 @@
 # OpenPet TODO
 
+### 2026-11-09 source gesture repair (active)
+
+- [x] Add bounded single-side work rig and common source-coordinate normalization for work/inspection. Reproduce belly/head/feet failures before fixing them; preserve unrelated action bindings and the idle scale profile.
+- [x] Verify exact formal-canonical detail and128px runtime frames in isolated diagnostics, with technical/temporal QA and manifest hashes. Local111 pass/four codec skips; VPS113 pass/no skips plus five final pixel/cancellation/input checks. No paid call or formal candidate mutation.
+- [ ] Finish fresh CI for PR [#141](https://github.com/dengyie/OpenPet/pull/141), then rebase before merge and deploy through the existing disk guard, rollback and shadow-instance SOP. Baseline9ef55ae4 already passed full CI and platform builds; these do not cover the new gesture changes.
+- [ ] Obtain an explicit evaluator-cap decision before paid verification: usage131/132 leaves one call, but both repaired actions and the final package require at least three. Keep Provider137/144, historical counters, original final rejection and all evidence intact.
+- [ ] Complete formal action/final quality gates and verify the retained complete output through the web API. Local diagnostics and passing code tests do not establish nine-action art acceptance. Continue with the [existing plan](./superpowers/plans/2026-11-07-canonical-rig-actions.md).
+
 ### 2026-11-08 final acceptance recovery (latest verified state)
 
 - Read-only SSH recovery confirms Guangzhou runs main `a1aeb7afe3a0b8ec8e0351c1eb688955948c1c51` (PR140), health `ready/resident`; rollback `/var/backups/openpet/20261108T081247Z-a1aeb7af` is retained. The previous 7/9 checkpoint below is historical.
