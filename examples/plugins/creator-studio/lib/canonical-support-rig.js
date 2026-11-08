@@ -156,17 +156,17 @@ const renderCanonicalSupportRig = async ({ dataDir, canonical, poseReference, ac
   const motionScale = driver.motionParameters.intensity === 'subtle' ? 0.85 : 1
   let transforms = action.actionId === 'running' ? [
     { phase: 'neutral', inward: 0, lift: 0 },
-    { phase: 'engage', inward: 0.02, lift: 0.10 },
-    { phase: 'work-peak-a', inward: 0.03, lift: 0.018 },
-    { phase: 'recover-working', inward: 0.018, lift: 0.095 },
-    { phase: 'work-peak-b', inward: 0.025, lift: 0.026 },
+    { phase: 'engage', inward: 0.004, lift: 0.035 },
+    { phase: 'work-peak-a', inward: 0.006, lift: 0.010 },
+    { phase: 'recover-working', inward: 0.004, lift: 0.030 },
+    { phase: 'work-peak-b', inward: 0.005, lift: 0.012 },
     { phase: 'neutral-return', inward: 0, lift: 0 }
   ].map(transform => ({ ...transform, inward: transform.inward * motionScale, lift: transform.lift * motionScale })) : action.actionId === 'review' ? [
     { phase: 'neutral', headTiltDegrees: 0, nodOffset: 0 },
-    { phase: 'inspect-left', headTiltDegrees: -14, nodOffset: 0 },
-    { phase: 'compare-right', headTiltDegrees: 14, nodOffset: 0 },
-    { phase: 'acknowledge-nod', headTiltDegrees: 0, nodOffset: 0.075 },
-    { phase: 'recover', headTiltDegrees: 0, nodOffset: 0.025 },
+    { phase: 'inspect-left', headTiltDegrees: -8, nodOffset: 0 },
+    { phase: 'compare-right', headTiltDegrees: 8, nodOffset: 0 },
+    { phase: 'acknowledge-nod', headTiltDegrees: 0, nodOffset: 0.035 },
+    { phase: 'recover', headTiltDegrees: 0, nodOffset: 0.012 },
     { phase: 'neutral-return', headTiltDegrees: 0, nodOffset: 0 }
   ].map(transform => ({ ...transform, headTiltDegrees: transform.headTiltDegrees * motionScale, nodOffset: transform.nodOffset * motionScale })) : [
     { phase: 'anticipation', lift: -0.015, supportScaleY: 0.72 },

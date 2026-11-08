@@ -2,7 +2,12 @@ const path = require('node:path')
 const sharp = require('sharp')
 
 const CANVAS = 512
-const WORK_REGION = Object.freeze({ top: 0.42, bottom: 0.82, protectedCoreHalfWidth: 0.28 })
+// Keep the work beat on the outer edge of the lead appendage.  The earlier
+// field reached too far into the torso: even a bounded lift could pull the
+// wing across the beak and read as a waving or folded gesture.  A wider
+// protected core and a shorter vertical band keep the face, belly and root
+// source-faithful while leaving a small, legible scanning beat at the side.
+const WORK_REGION = Object.freeze({ top: 0.40, bottom: 0.78, protectedCoreHalfWidth: 0.36 })
 
 // This is a local deformation of the existing lead-side appendage. The map is
 // the identity outside that side of the mid-body: the eyes, beak, other side
