@@ -350,6 +350,7 @@ const normalizeAction = (value, sheet) => {
       'name',
       'animationType',
       'moment',
+      'heldObject',
       'viewDirection',
       'loopType',
       'movingParts',
@@ -363,10 +364,12 @@ const normalizeAction = (value, sheet) => {
     'action'
   )
   const frameBeats = normalizeFrameBeats(value.frameBeats ?? value.framePlan, sheet)
+  if (value.heldObject != null && value.heldObject !== 'task-tablet-v1') throw createTaskError('image_prompt_contract_invalid', 'Unsupported held action object')
   return deepFreeze({
     name: sanitizeVisualDirective(value.name),
     animationType: sanitizeVisualDirective(value.animationType),
     moment: sanitizeVisualDirective(value.moment),
+    ...(value.heldObject ? { heldObject: value.heldObject } : {}),
     viewDirection: sanitizeVisualDirective(value.viewDirection),
     loopType: sanitizeVisualDirective(value.loopType),
     movingParts: normalizeVisualDirectives(value.movingParts),

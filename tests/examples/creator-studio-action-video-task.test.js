@@ -102,9 +102,12 @@ test('running work-state video names focused work rather than locomotion and sup
   assert.match(prompt, /performing focused work/i)
   assert.doesNotMatch(prompt, /performing running[. ]/i)
   assert.match(prompt, /feet.*fixed.*ground/i)
-  assert.match(prompt, /existing.*appendage.*inward.*chest/i)
-  assert.match(prompt, /do not walk.*run.*hop.*wave.*flap/i)
+  assert.match(prompt, /existing.*appendage.*tap/i)
+  assert.match(prompt, /rigid.*tablet/i)
+  assert.match(prompt, /do not wave, walk, run, hop, flap/i)
   assert.match(prompt, /eyes.*mouth or beak.*unchanged/i)
+  assert.match(prompt, /rigid.*tablet/i)
+  assert.match(prompt, /exact starting state/i)
 })
 
 test('review video separates inspection and acknowledgement without a mouth-covering gesture', () => {
@@ -112,7 +115,8 @@ test('review video separates inspection and acknowledgement without a mouth-cove
   assert.match(prompt, /performing deliberate inspection/i)
   assert.match(prompt, /head.*tilt.*left.*right/i)
   assert.match(prompt, /one.*acknowledgement nod/i)
-  assert.match(prompt, /both.*appendages.*resting pose/i)
+  assert.match(prompt, /both existing appendages holding/i)
+  assert.match(prompt, /rigid tablet/i)
   assert.match(prompt, /eyes.*open.*unchanged/i)
   assert.doesNotMatch(prompt, /appendage toward the chin|thinking pose/i)
   assert.match(prompt, /feet.*fixed/i)
@@ -415,6 +419,21 @@ test('temporal quality ignores background-only pixel changes when measuring moti
   })
   assert.ok(result.failures.includes('motion-is-static'))
   assert.equal(result.metrics.uniqueMotionFrameCount, 1)
+})
+
+test('temporal quality recognizes visible internal processing strokes without silhouette motion', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-internal-work-'))
+  const frames = []
+  for (let index = 0; index < 3; index++) {
+    const file = path.join(root, `${index}.png`)
+    await sharp(Buffer.from(`<svg width="128" height="128"><rect x="30" y="24" width="68" height="88" fill="#ffdd55"/><rect x="45" y="70" width="${30 - index * 8}" height="8" fill="#392310"/></svg>`)).png().toFile(file)
+    frames.push(file)
+  }
+  const processed = await processFrameSequence({ framePaths: frames, outputDir: path.join(root, 'normalized'), canvasWidth: 128, canvasHeight: 128, backgroundMode: 'source-alpha' })
+  assert.equal(new Set(processed.normalizedFrameMetrics.map(frame => frame.bodyMaskSha256)).size, 1)
+  const temporal = analyzeTemporalQuality({ frames: processed.normalizedFrameMetrics })
+  assert.equal(temporal.ok, true, JSON.stringify(temporal.failures))
+  assert.equal(temporal.metrics.uniqueMotionFrameCount, 3)
 })
 
 test('video artifact contract rejects traversal and preserves frame cardinality', () => {

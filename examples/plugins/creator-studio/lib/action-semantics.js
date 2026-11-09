@@ -382,9 +382,10 @@ const buildActionFramePlan = ({ action = {}, frameCount = 6 } = {}) => {
 const getKeyframePoseInstruction = ({ action = {}, keyframeRole = 'start' } = {}) => {
   const isStart = /start|first|neutral/i.test(normalizeText(keyframeRole))
   const animationType = inferAnimationType(action)
-  if (isWorkStateAction(action)) {
+  if (isWorkStateAction(action) || getActionId(action) === 'review') {
+    const leadSide = action.motionParameters?.leadSide === 'viewer-right' ? 'viewer-right' : 'viewer-left'
     return isStart
-      ? 'Pose: neutral focused work-state pose with the full body anchored and the canonical viewpoint preserved.'
+      ? `Pose: the existing ${leadSide} appendage tip rests over a held tablet, ready to tap. The opposite appendage grips the tablet side. Both feet planted; head, open eyes, closed beak and viewpoint unchanged.`
       : 'Pose: clearest processing, focus, or scanning moment using only a small identity-safe local motion while the body root, scale, and viewpoint remain fixed.'
   }
   if (isIdleAction(action)) {

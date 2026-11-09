@@ -2,6 +2,7 @@ const crypto = require('node:crypto')
 const fs = require('node:fs')
 const path = require('node:path')
 const sharp = require('sharp')
+const { createVisibleFeatureMask } = require('./visible-feature-mask')
 
 const { createStablePlacements } = require('./video-stabilizer')
 const { measureBodyMask } = require('./character-scale-profile')
@@ -166,7 +167,8 @@ const inspectAlphaBounds = async (input) => {
     hash: body.bodyMaskSha256,
     edgeTouch: left <= 0 || top <= 0 || right >= info.width - 1 || bottom >= info.height - 1,
     unmatchedComponentCount: body.unmatchedComponents.length,
-    bodyMaskSha256: body.bodyMaskSha256 || ''
+    bodyMaskSha256: body.bodyMaskSha256 || '',
+    visibleFeatureSha256: crypto.createHash('sha256').update(createVisibleFeatureMask({ data, ...info })).digest('hex')
   }
 }
 

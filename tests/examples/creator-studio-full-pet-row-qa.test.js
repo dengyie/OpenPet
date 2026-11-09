@@ -100,11 +100,11 @@ test('translated base-like content is rejected as transform-like', async () => {
   assert.ok(qa.errors.includes('row_transform_like'))
 })
 
-test('recolor-only frames are rejected as missing locomotion motion', async () => {
+for (const actionId of ['running', 'running-right', 'running-left']) test(`${actionId} rejects recolor-only frames without silhouette motion`, async () => {
   const tempDir = createTempDir()
   const frames = await writeFrames({
     outputDir: path.join(tempDir, 'recolor-running'),
-    frameCount: 6,
+    frameCount: actionId === 'running' ? 6 : 8,
     createRects: (index) => [
       { x: 62, y: 94, width: 68, height: 72, color: `hsl(${index * 45}, 70%, 55%)` },
       { x: 78, y: 166, width: 16, height: 18, color: `hsl(${index * 45}, 70%, 45%)` },
@@ -113,14 +113,14 @@ test('recolor-only frames are rejected as missing locomotion motion', async () =
   })
 
   const qa = await analyzeRowFrames({
-    actionId: 'running',
+    actionId,
     frames,
     sourceKind: 'row-strip'
   })
 
   assert.equal(qa.quality, FULL_PET_ROW_QUALITY.FAILED)
   assert.equal(qa.alphaMaskUniqueFrameCount, 1)
-  assert.ok(qa.errors.includes('row_locomotion_motion_missing'))
+  assert.ok(qa.errors.includes(actionId === 'running' ? 'row_work_motion_missing' : 'row_locomotion_motion_missing'))
 })
 
 test('recolor-only waving is rejected when the silhouette never moves', async () => {
@@ -145,11 +145,42 @@ test('recolor-only waving is rejected when the silhouette never moves', async ()
   assert.ok(qa.errors.includes('row_waving_motion_missing'))
 })
 
-test('upper-body-only motion is rejected for running rows', async () => {
+test('stationary work accepts two internal strokes inside an unchanged silhouette', async () => {
+  const frames = await writeFrames({
+    outputDir: path.join(createTempDir(), 'internal-work'),
+    frameCount: 6,
+    createRects: (index) => [
+      { x: 62, y: 94, width: 68, height: 72, color: '#f6b73c' },
+      { x: 78, y: 166, width: 16, height: 18, color: '#d49a2d' },
+      { x: 108, y: 166, width: 16, height: 18, color: '#d49a2d' },
+      { x: 100, y: [125, 120, 138, 121, 140, 125][index], width: 22, height: 5, color: '#392310' }
+    ]
+  })
+  const qa = await analyzeRowFrames({ actionId: 'running', frames, sourceKind: 'row-strip' })
+  assert.equal(qa.alphaMaskUniqueFrameCount, 1)
+  assert.equal(qa.quality, FULL_PET_ROW_QUALITY.ROW_REAL, JSON.stringify(qa.errors))
+})
+
+test('stationary work rejects isolated internal pixel noise with a fixed silhouette', async () => {
+  const frames = await writeFrames({
+    outputDir: path.join(createTempDir(), 'internal-noise'),
+    frameCount: 6,
+    createRects: (index) => [
+      { x: 62, y: 94, width: 68, height: 72, color: '#f6b73c' },
+      { x: 78, y: 166, width: 16, height: 18, color: '#d49a2d' },
+      { x: 108, y: 166, width: 16, height: 18, color: '#d49a2d' },
+      { x: 100 + index, y: 130, width: 1, height: 1, color: '#392310' }
+    ]
+  })
+  const qa = await analyzeRowFrames({ actionId: 'running', frames, sourceKind: 'row-strip' })
+  assert.ok(qa.errors.includes('row_work_motion_missing'))
+})
+
+for (const actionId of ['running', 'running-right', 'running-left']) test(`${actionId} applies its work-state or directional gait semantics to planted feet`, async () => {
   const tempDir = createTempDir()
   const frames = await writeFrames({
     outputDir: path.join(tempDir, 'upper-only-running'),
-    frameCount: 6,
+    frameCount: actionId === 'running' ? 6 : 8,
     createRects: (index) => [
       { x: 62, y: 96, width: 68, height: 70, color: '#f6b73c' },
       { x: 78, y: 166, width: 16, height: 18, color: '#d49a2d' },
@@ -159,21 +190,25 @@ test('upper-body-only motion is rejected for running rows', async () => {
   })
 
   const qa = await analyzeRowFrames({
-    actionId: 'running',
+    actionId,
     frames,
     sourceKind: 'row-strip'
   })
 
-  assert.equal(qa.quality, FULL_PET_ROW_QUALITY.FAILED)
   assert.equal(qa.lowerAlphaMaskUniqueFrameCount, 1)
-  assert.ok(qa.errors.includes('row_locomotion_lower_body_motion_missing'))
+  if (actionId === 'running') {
+    assert.equal(qa.quality, FULL_PET_ROW_QUALITY.ROW_REAL, JSON.stringify(qa.errors))
+  } else {
+    assert.equal(qa.quality, FULL_PET_ROW_QUALITY.FAILED)
+    assert.ok(qa.errors.includes('row_locomotion_lower_body_motion_missing'))
+  }
 })
 
-test('running rejects trivial one-pixel lower-body changes as fake gait motion', async () => {
+for (const actionId of ['running-right', 'running-left']) test(`${actionId} rejects trivial one-pixel lower-body changes as fake gait motion`, async () => {
   const tempDir = createTempDir()
   const frames = await writeFrames({
     outputDir: path.join(tempDir, 'pixel-running'),
-    frameCount: 6,
+    frameCount: 8,
     createRects: (index) => [
       { x: 62, y: 92, width: 68, height: 78, color: '#f6b73c' },
       { x: 78, y: 170, width: 16, height: 16, color: '#d49a2d' },
@@ -183,7 +218,7 @@ test('running rejects trivial one-pixel lower-body changes as fake gait motion',
   })
 
   const qa = await analyzeRowFrames({
-    actionId: 'running',
+    actionId,
     frames,
     sourceKind: 'row-strip'
   })

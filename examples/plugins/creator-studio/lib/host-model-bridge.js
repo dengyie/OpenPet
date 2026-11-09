@@ -3169,15 +3169,24 @@ const generateSelectedFullPetAction = (options = {}) => runQualityFirstAction(op
 const createVideoStartReferenceResolver = ({ dataDir, run, settings, action, canonical, generateKeyframe = generateActionKeyframe }) => {
   let pending
   return async () => {
-    // An image-to-video provider preserves its supplied first frame. A front
-    // canonical cannot also be the first contact of a side-facing gait.
-    if (action.actionId !== 'running-right') return canonical
+    // Pose-specific actions need an engaged first frame: a resting canonical
+    // cannot supply either a side contact or a chest-adjacent working limb.
+    if (!['running-right', 'running', 'review'].includes(action.actionId)) return canonical
+    const workState = action.actionId === 'running' || action.actionId === 'review'
     pending ||= generateKeyframe({
       dataDir, run, settings,
       selectedModel: String(settings.model || ''),
       requestedTimeoutMs: resolveCreatorProviderTimeout(settings.timeoutMs),
       appearanceIntent: [],
-      action: {
+      action: workState ? {
+        ...action,
+        name: action.actionId === 'review' ? 'deliberate task inspection' : 'stationary focused work',
+        animationType: 'stationary_loop',
+        viewDirection: 'preserve the canonical viewpoint',
+        animatedParts: ['one existing lead-side appendage tip ready to tap the held task tablet'],
+        lockedParts: ['head', 'eyes', 'beak or mouth', 'feet', 'body proportions', 'identity markings'],
+        forbiddenMotion: ['greeting wave', 'outward wing flap', 'walking', 'hopping', 'speaking', 'new hands or fingers', 'additional props or detached objects']
+      } : {
         ...action,
         name: 'right-facing in-place running gait',
         animationType: 'locomotion_loop',
@@ -3190,7 +3199,7 @@ const createVideoStartReferenceResolver = ({ dataDir, run, settings, action, can
       referenceImages: [{ ...canonical, path: path.join(dataDir, canonical.relativePath), role: 'canonical-reference' }]
     }).then((result) => {
       if (!result.ok || !result.referenceImage || !result.keyframe?.sha256) {
-        throw Object.assign(new Error('Running video requires a quality-approved action start frame'), {
+        throw Object.assign(new Error('Action video requires a quality-approved action start frame'), {
           code: 'video_start_frame_rejected', modelAttempts: result.modelAttempts || []
         })
       }
@@ -3214,8 +3223,8 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
   // and the idle-owned scale profile. Mirrored left shares the right version.
   const processorVersionForAction = (actionId) => (
     !useVideoActionPipeline ? actionProcessorVersion
-      : actionId === 'running' ? 16
-        : actionId === 'review' ? 17
+      : actionId === 'running' ? 18
+        : actionId === 'review' ? 18
         : actionId === 'running-right' || actionId === 'running-left' ? 15
           : actionProcessorVersion
   )
@@ -3449,7 +3458,7 @@ const createQualityFirstHostRuntime = async ({ dataDir, run, planOverride = null
           action,
           characterClass: plan.character.assetClass,
           generateRig: async ({ candidateId }) => {
-            const poseReference = actionId === 'running-right' ? await resolveStartReference() : null
+            const poseReference = ['running-right', 'running', 'review'].includes(actionId) ? await resolveStartReference() : null
             const rig = await renderCanonicalSupportRig({
               dataDir, canonical, poseReference, action, characterClass: plan.character.assetClass,
               profile: actionProfile,

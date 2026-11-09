@@ -63,10 +63,37 @@ test('running start preparation uses canonical pixels without reintroducing the 
   assert.deepEqual(input.appearanceIntent, [])
 })
 
-test('a rejected running start pose stops video preparation without falling back to front-facing canonical', async () => {
+for (const actionId of ['running', 'review']) test(`${actionId} prepares one held-task pose with the rigid tablet connected to existing appendages`, async () => {
+  const canonical = { relativePath: 'canonical.png', sha256: 'a'.repeat(64) }
+  const calls = []
+  const resolveStart = hostModelBridgeModule.__testInternals.createVideoStartReferenceResolver({
+    dataDir: '/data', run: { runId: 'work-pose' }, settings: { model: 'gpt-image-2' },
+    action: { actionId, motionParameters: { leadSide: 'viewer-right' } }, canonical,
+    generateKeyframe: async input => {
+      calls.push(input)
+      return { ok: true, referenceImage: { relativePath: 'working-start.png' }, keyframe: { sha256: 'b'.repeat(64) } }
+    }
+  })
+  const [first, second] = await Promise.all([resolveStart(), resolveStart()])
+  assert.equal(calls.length, 1)
+  assert.equal(first, second)
+  assert.equal(first.relativePath, 'working-start.png')
+  assert.equal(first.sha256, 'b'.repeat(64))
+  assert.equal(calls[0].action.animationType, 'stationary_loop')
+  assert.deepEqual(calls[0].appearanceIntent, [])
+  assert.equal(calls[0].referenceImages[0].sha256, canonical.sha256)
+  const prompt = require('../../examples/plugins/creator-studio/lib/anchor-prompt-builder').buildActionKeyframePrompt(calls[0]).prompt
+  assert.match(prompt, /viewer-right.*tip.*tablet/i)
+  assert.match(prompt, /opposite.*grips.*tablet/i)
+  assert.match(prompt, /two.*bars/i)
+  assert.doesNotMatch(prompt, /no[^.]*\bpanel\b/i)
+  assert.match(prompt, /feet.*planted/i)
+})
+
+for (const actionId of ['running-right', 'running', 'review']) test(`a rejected ${actionId} start pose stops video preparation without falling back to resting canonical`, async () => {
   let calls = 0
   const resolveStart = hostModelBridgeModule.__testInternals.createVideoStartReferenceResolver({
-    dataDir: '/data', run: { runId: 'pose-fail' }, settings: {}, action: { actionId: 'running-right' },
+    dataDir: '/data', run: { runId: 'pose-fail' }, settings: {}, action: { actionId },
     canonical: { relativePath: 'canonical.png' },
     generateKeyframe: async () => { calls += 1; return { ok: false, error: 'identity check failed' } }
   })
@@ -517,12 +544,12 @@ test('local gesture processing invalidates old work and review bindings while pr
     const runtime = await createQualityFirstHostRuntime({ dataDir, run: { runId, input: { referenceImage: { relativePath: reference } } }, planOverride: plan })
     for (const actionId of ['idle', 'waving', 'jumping', 'failed', 'waiting', 'review', 'running', 'running-right', 'running-left']) {
       writeActionCheckpoint({ dataDir, runId, result: { actionId, ok: true,
-        bindings: { planHash: plan.hash, canonicalHash: canonical.sha256, profileHash: profile.hash, processorVersion: actionId.startsWith('running-') ? 15 : actionId === 'running' ? 15 : actionId === 'review' ? 16 : 12, qualityProfileHash: getQualityFirstQualityProfile().hash },
+        bindings: { planHash: plan.hash, canonicalHash: canonical.sha256, profileHash: profile.hash, processorVersion: actionId.startsWith('running-') ? 15 : actionId === 'running' ? 16 : actionId === 'review' ? 16 : 12, qualityProfileHash: getQualityFirstQualityProfile().hash },
         row: { actionId, quality: 'row-real', frames: [{ path: frame, index: 0, durationMs: 120 }] }
       } })
       const locomotion = actionId.startsWith('running-')
       const stateGesture = actionId === 'running' || actionId === 'review'
-      const expectedVersion = locomotion ? 15 : actionId === 'review' ? 17 : stateGesture ? 16 : 12
+      const expectedVersion = locomotion ? 15 : stateGesture ? 18 : 12
       assert.equal(runtime.processorVersionForAction(actionId), expectedVersion)
       if (!stateGesture) {
         if (actionId === 'running-left') {
