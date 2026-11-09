@@ -49,6 +49,7 @@ const createVisualAction = ({ action = {}, keyframeRole = '', frameCount = 0 } =
     name,
     animationType: inferAnimationType(action),
     moment,
+    ...(['running', 'review'].includes(action.actionId) ? { heldObject: 'task-tablet-v1' } : {}),
     viewDirection: resolveViewDirection(action),
     loopType: normalizeActionText(action.loopType, resolveLoopIntent(action)),
     movingParts: Array.isArray(action.animatedParts) && action.animatedParts.length

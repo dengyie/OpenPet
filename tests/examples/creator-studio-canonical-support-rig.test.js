@@ -116,7 +116,7 @@ test('articulated gait rejects unsupported colors and unsafe poses before output
 test('review rig keeps the lower body fixed across six head-only inspection phases', async () => {
   const f = await fixture()
   const action = { actionId: 'review', anchorPolicy: 'action-relative-root-v1', frameCount: 6, layout: { columns: 3, rows: 2 } }
-  const result = await renderCanonicalSupportRig({ ...f, action })
+  const result = await renderCanonicalSupportRig({ ...f, action, poseReference: f.canonical })
   assert.equal(result.processed.frames.length, 6)
   const manifest = JSON.parse(fs.readFileSync(result.manifestPath))
   assert.equal(manifest.rig.type, 'continuous-head-inspection')
@@ -129,7 +129,7 @@ test('review rig keeps the lower body fixed across six head-only inspection phas
   assert.equal(result.temporalQuality.ok, true, JSON.stringify(result.temporalQuality))
   assert.equal(analyzeSpriteCandidate({ actionId: 'review', rawMetrics: result.processed.metrics, profile: f.profile, actionPolicy: action }).ok, true)
   await validateCanonicalRigRow({ dataDir: f.dataDir, provenance: result.provenance, frames: result.processed.frames, actionId: 'review' })
-  const subtle = await renderCanonicalSupportRig({ ...f, action: { ...action, motionParameters: { intensity: 'subtle' } }, outputRelativeDir: 'candidates/review-subtle' })
+  const subtle = await renderCanonicalSupportRig({ ...f, poseReference: f.canonical, action: { ...action, motionParameters: { intensity: 'subtle' } }, outputRelativeDir: 'candidates/review-subtle' })
   const subtleManifest = JSON.parse(fs.readFileSync(subtle.manifestPath))
   assert.ok(Math.abs(subtleManifest.transforms[1].headTiltDegrees) < Math.abs(manifest.transforms[1].headTiltDegrees))
   assert.notEqual(subtle.processed.frames[1].sha256, result.processed.frames[1].sha256)
@@ -139,8 +139,18 @@ const workingFixture = async () => {
   const f = await fixture()
   const canonicalPath = path.join(f.dataDir, f.canonical.relativePath)
   await sharp(Buffer.from('<svg width="300" height="340"><defs><linearGradient id="body" x2="0" y2="1"><stop stop-color="#ffed73"/><stop offset="1" stop-color="#edbc35"/></linearGradient></defs><path d="M90 148 C55 90 80 30 150 30 C220 30 245 90 210 148 C220 172 236 207 220 250 Q150 290 80 250 C64 207 80 172 90 148Z" fill="url(#body)" stroke="#392310" stroke-width="6"/><path d="M90 156 Q48 181 55 215 Q67 237 96 179 M210 156 Q252 181 245 215 Q233 237 204 179" fill="#ffe76b" stroke="#392310" stroke-width="6" stroke-linecap="round"/><ellipse cx="150" cy="220" rx="44" ry="37" fill="#fff5cc"/><circle cx="119" cy="104" r="9" fill="#392310"/><circle cx="181" cy="104" r="9" fill="#392310"/><path d="M139 126 Q150 145 161 126Z" fill="#f58b33" stroke="#392310" stroke-width="4"/><path d="M105 265 L95 291 L125 291 L132 265 M168 265 L175 291 L205 291 L195 265" fill="#f78528" stroke="#392310" stroke-width="4"/></svg>')).png().toFile(canonicalPath)
-  return { ...f, canonical: { ...f.canonical, sha256: hash(fs.readFileSync(canonicalPath)) }, action: { actionId: 'running', anchorPolicy: 'action-relative-root-v1', frameCount: 6, layout: { columns: 3, rows: 2 } }, outputRelativeDir: 'candidates/work-left' }
+  const posePath = path.join(f.dataDir, 'work-pose.png')
+  const posed = fs.readFileSync(canonicalPath)
+  await sharp(posed).composite([{ input: Buffer.from('<svg width="300" height="340"><path d="M90 160 Q135 178 126 210 Q110 218 72 200 M210 160 Q165 178 174 210 Q190 218 228 200" fill="#ffe76b" stroke="#392310" stroke-width="6" stroke-linecap="round"/></svg>') }]).png().toFile(posePath)
+  return { ...f, canonical: { ...f.canonical, sha256: hash(fs.readFileSync(canonicalPath)) }, poseReference: { relativePath: 'work-pose.png', sha256: hash(fs.readFileSync(posePath)) }, action: { actionId: 'running', anchorPolicy: 'action-relative-root-v1', frameCount: 6, layout: { columns: 3, rows: 2 } }, outputRelativeDir: 'candidates/work-left' }
 }
+
+test('work rig requires an independently prepared engaged pose before rendering', async () => {
+  const f = await workingFixture()
+  await assert.rejects(renderCanonicalSupportRig({ ...f, poseReference: undefined }), { code: 'canonical_rig_pose_required' })
+  await assert.rejects(renderCanonicalSupportRig({ ...f, poseReference: { ...f.poseReference, sha256: '0'.repeat(64) } }), /pose.*hash/)
+  assert.equal(fs.existsSync(path.join(f.dataDir, f.outputRelativeDir)), false)
+})
 
 test('work rig renders two lead-side beats while preserving the face, opposite side and grounded feet', async () => {
   const f = await workingFixture()
@@ -153,19 +163,47 @@ test('work rig renders two lead-side beats while preserving the face, opposite s
   const pixels = await Promise.all(manifest.sourceFrames.map(frame => sharp(path.join(f.dataDir, frame.relativePath)).ensureAlpha().raw().toBuffer()))
   assert.deepEqual(pixels[0], pixels[5], 'neutral endpoints must close exactly')
   assert.equal(new Set(pixels.map(hash)).size, 5, 'all four inner work phases must be visible')
+  const runtimePixels = await Promise.all(result.processed.frames.map(frame => sharp(frame.path).ensureAlpha().raw().toBuffer()))
+  for (const [index, frame] of runtimePixels.slice(1, 5).entries()) {
+    let changedPixels = 0
+    for (let offset = 0; offset < frame.length; offset += 4) {
+      // Ignore tiny resampling differences. Both downbeats must visibly
+      // differ from their preceding raised phase at the actual runtime size.
+      let difference = 0
+      for (let channel = 0; channel < 4; channel++) difference += Math.abs(frame[offset + channel] - runtimePixels[index][offset + channel])
+      if (difference >= 64) changedPixels++
+    }
+    assert.ok(changedPixels >= 125, `runtime work transition ${index + 1}→${index + 2} must retain a distinct beat at 128px; changed ${changedPixels} pixels`)
+  }
   for (const frame of pixels.slice(1)) {
     assert.deepEqual(frame.subarray(0, 220 * 512 * 4), pixels[0].subarray(0, 220 * 512 * 4), 'eyes/head must stay open and unchanged')
     assert.deepEqual(frame.subarray(420 * 512 * 4), pixels[0].subarray(420 * 512 * 4), 'both feet must stay planted')
     for (let y = 0; y < 512; y++) assert.deepEqual(frame.subarray((y * 512 + 256) * 4, (y + 1) * 512 * 4), pixels[0].subarray((y * 512 + 256) * 4, (y + 1) * 512 * 4), 'opposite appendage and central torso must stay fixed')
-    for (let y = 240; y < 400; y++) assert.deepEqual(frame.subarray((y * 512 + 188) * 4, (y * 512 + 324) * 4), pixels[0].subarray((y * 512 + 188) * 4, (y * 512 + 324) * 4), 'the belly marking must not deform with the appendage')
   }
+  assert.ok(manifest.rig.minimumJacobian >= 0.1, 'chest strokes must remain invertible')
+  assert.equal(manifest.poseReference.sha256, f.poseReference.sha256)
+  assert.notEqual(manifest.poseReference.relativePath, f.poseReference.relativePath)
   assert.ok(manifest.transforms[2].lift < manifest.transforms[1].lift, 'first work peak follows a downward beat')
   assert.ok(manifest.transforms[4].lift < manifest.transforms[3].lift, 'second work peak follows a downward beat')
   assert.equal(result.temporalQuality.ok, true, JSON.stringify(result.temporalQuality))
   assert.equal(analyzeSpriteCandidate({ actionId: 'running', rawMetrics: result.processed.metrics, profile: f.profile, actionPolicy: f.action }).ok, true)
+  const rowFrames = await Promise.all(result.processed.frames.map(async (frame, index) => {
+    const target = path.join(f.dataDir, `work-row-${index}.png`)
+    await sharp({ create: { width: 192, height: 208, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite([{ input: frame.path, left: 32, top: 40 }]).png().toFile(target)
+    return { path: target, index }
+  }))
+  const rowQa = await require('../../examples/plugins/creator-studio/lib/full-pet-row-qa').analyzeRowFrames({ actionId: 'running', frames: rowFrames, sourceKind: 'row-strip' })
+  assert.equal(rowQa.quality, 'row-real', JSON.stringify(rowQa.errors))
   await validateCanonicalRigRow({ dataDir: f.dataDir, provenance: result.provenance, frames: result.processed.frames, actionId: 'running' })
   const again = await renderCanonicalSupportRig({ ...f, outputRelativeDir: 'candidates/work-again' })
   assert.deepEqual(again.processed.frames.map(frame => frame.sha256), result.processed.frames.map(frame => frame.sha256))
+  fs.writeFileSync(path.join(f.dataDir, f.poseReference.relativePath), 'later Provider output')
+  await validateCanonicalRigRow({ dataDir: f.dataDir, provenance: result.provenance, frames: result.processed.frames, actionId: 'running' })
+  const auditRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openpet-work-export-'))
+  await rigModule().exportCanonicalRigEvidence({ dataDir: f.dataDir, outputDir: auditRoot, provenance: result.provenance, frames: result.processed.frames, actionId: 'running' })
+  assert.equal(hash(fs.readFileSync(path.join(auditRoot, manifest.poseReference.relativePath))), f.poseReference.sha256)
+  fs.appendFileSync(path.join(f.dataDir, manifest.poseReference.relativePath), 'changed')
+  await assert.rejects(validateCanonicalRigRow({ dataDir: f.dataDir, provenance: result.provenance, frames: result.processed.frames, actionId: 'running' }), /pose.*hash/)
 })
 
 for (const actionId of ['running', 'review']) test(`${actionId} rig normalization preserves its fixed source coordinates instead of recentering moving silhouettes`, async () => {
@@ -360,7 +398,7 @@ test('portable rig audit export retains enough evidence to validate without the 
 })
 
 for (const actionId of ['jumping', 'review', 'running', 'running-right']) test(`production host repairs ${actionId} video drift with an audited rig, packages it and resumes without dispatch`, { skip: spawnSync('ffmpeg', ['-version']).status !== 0 || spawnSync('ffprobe', ['-version']).status !== 0 }, async () => {
-  const f = actionId === 'running' ? await workingFixture() : await fixture()
+  const f = actionId === 'running' || actionId === 'review' ? await workingFixture() : await fixture()
   f.action = actionId === 'review' ? { actionId, anchorPolicy: 'action-relative-root-v1', frameCount: 6, layout: { columns: 3, rows: 2 } } : f.action
   const { createQualityFirstHostRuntime } = require('../../examples/plugins/creator-studio/lib/host-model-bridge')
   const { createSpriteAssetPlan } = require('../../examples/plugins/creator-studio/lib/sprite-asset-plan')
@@ -406,7 +444,7 @@ for (const actionId of ['jumping', 'review', 'running', 'running-right']) test(`
       const relativePath = `${payload.output.dataRelativeDir}/side-pose.png`
       const output = path.join(f.dataDir, relativePath)
       fs.mkdirSync(path.dirname(output), { recursive: true })
-      fs.copyFileSync(path.join(f.dataDir, f.poseReference.relativePath), output)
+      fs.copyFileSync(path.join(f.dataDir, (f.poseReference || f.canonical).relativePath), output)
       generatedPosePath = output
       result = { outputs: [{ dataRelativePath: relativePath, mimeType: 'image/png', sha256: hash(fs.readFileSync(output)) }] }
     } else if (route === '/creator/model-video-generate') {
@@ -429,13 +467,15 @@ for (const actionId of ['jumping', 'review', 'running', 'running-right']) test(`
     const result = await runtime.runAction({ actionId, canonical: f.canonical, profile })
     assert.equal(result.ok, true, JSON.stringify(result))
     assert.equal(result.selectedCandidate.provider, 'canonical-rig')
-    assert.equal(calls.filter(route => route === '/creator/model-image-generate').length, actionId === 'running-right' ? 1 : 0)
-    if (actionId === 'running-right') {
+    assert.equal(calls.filter(route => route === '/creator/model-image-generate').length, actionId === 'jumping' ? 0 : 1)
+    if (actionId !== 'jumping') {
       const artifact = result.selectedCandidate.artifacts.find(file => file.role === 'rig-pose-source')
       assert.ok(artifact, 'production rig must retain its generated side pose')
       assert.equal(hash(fs.readFileSync(artifact.path)), artifact.sha256)
       assert.notEqual(artifact.path, generatedPosePath)
       assert.ok(artifact.path.endsWith('/rig/pose-source.png'))
+    }
+    if (actionId === 'running-right') {
       const mirror = await runtime.mirrorRunningLeft({ source: result })
       assert.equal(mirror.ok, true)
       for (const [index, frame] of mirror.selectedCandidate.processed.frames.entries()) {
@@ -448,7 +488,7 @@ for (const actionId of ['jumping', 'review', 'running', 'running-right']) test(`
     assert.equal(result.candidates.filter(candidate => candidate.provenance?.kind === 'canonical-rig').length, 1)
     assert.ok(result.candidates.filter(candidate => !candidate.provenance).every(candidate => candidate.gate.ok === false))
     await runtime.persistActionResult({ actionId, result, canonical: f.canonical, profile })
-    if (actionId === 'running-right') fs.writeFileSync(generatedPosePath, 'later Provider output')
+    if (actionId !== 'jumping') fs.writeFileSync(generatedPosePath, 'later Provider output')
     const before = calls.length
     const resumed = await runtime.runAction({ actionId, canonical: f.canonical, profile })
     assert.equal(resumed.checkpointReused, true)

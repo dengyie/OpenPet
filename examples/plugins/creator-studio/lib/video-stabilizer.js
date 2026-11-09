@@ -138,7 +138,7 @@ const analyzeTemporalQuality = ({ frames = [], loop = false, maxLoopSeamRatio = 
       rootY: Number(root.y),
       alphaCoverage: Number(frame.alphaCoverage),
       maskCoverage: Number(frame.maskCoverage),
-      hash: String(frame.bodyMaskSha256 || frame.hash || ''),
+      hash: [frame.bodyMaskSha256 || frame.hash || '', frame.visibleFeatureSha256 || ''].filter(Boolean).join(':'),
       edgeTouch: frame.edgeTouch === true,
       unmatchedComponentCount: Math.max(0, Number(frame.unmatchedComponentCount) || 0)
     }

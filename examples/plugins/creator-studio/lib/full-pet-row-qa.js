@@ -1,5 +1,6 @@
 const crypto = require('crypto')
 const sharp = require('sharp')
+const { createVisibleFeatureMask } = require('./visible-feature-mask')
 const { createIdentityDescriptor, identityDescriptorDistance, rgbDistance } = require('./identity-descriptor')
 const {
   FULL_PET_ROW_QUALITY,
@@ -33,6 +34,7 @@ const measureFrame = async (frame, visibleAlphaThreshold) => {
   const upperAlphaMask = Buffer.alloc(info.width * info.height)
   const lowerAlphaMask = Buffer.alloc(info.width * info.height)
   const identityCoreAlphaMask = Buffer.alloc(info.width * info.height)
+  const workFeatureMask = createVisibleFeatureMask({ data, ...info, visibleAlphaThreshold })
   const regionSplitY = Math.floor(info.height * 0.56)
   const identityLeft = Math.floor(info.width * 0.28)
   const identityRight = Math.ceil(info.width * 0.72)
@@ -81,6 +83,7 @@ const measureFrame = async (frame, visibleAlphaThreshold) => {
       upperAlphaMask,
       lowerAlphaMask,
       identityCoreAlphaMask,
+      workFeatureMask,
       alphaCoverage: 0,
       opaqueCoverage: 0,
       meanRgb: { r: 0, g: 0, b: 0 },
@@ -112,6 +115,7 @@ const measureFrame = async (frame, visibleAlphaThreshold) => {
     upperAlphaMask,
     lowerAlphaMask,
     identityCoreAlphaMask,
+    workFeatureMask,
     alphaCoverage: visiblePixels / (info.width * info.height),
     opaqueCoverage: opaquePixels / (info.width * info.height),
     meanRgb: {
@@ -275,7 +279,8 @@ const analyzeRowFrames = async ({
     whole: summarizeMaskMotion(measures, 'alphaMask'),
     upper: summarizeMaskMotion(measures, 'upperAlphaMask'),
     lower: summarizeMaskMotion(measures, 'lowerAlphaMask'),
-    identityCore: summarizeMaskMotion(measures, 'identityCoreAlphaMask')
+    identityCore: summarizeMaskMotion(measures, 'identityCoreAlphaMask'),
+    workFeatures: summarizeMaskMotion(measures, 'workFeatureMask')
   }
   const startCentroidY = Number(visibleMeasures[0]?.centroid?.y || 0)
   const endCentroidY = Number(visibleMeasures[visibleMeasures.length - 1]?.centroid?.y || 0)
@@ -305,8 +310,15 @@ const analyzeRowFrames = async ({
   if (uniqueFrameCount > 1 && isTransformLike(measures)) {
     errors.push('row_transform_like')
   }
-  const locomotion = /^running(?:-|$)/.test(row.id)
+  // The bare running id is the stationary task-processing state. Only the
+  // directional actions require a locomotion gait and moving lower limbs.
+  const locomotion = row.id === 'running-right' || row.id === 'running-left'
   const verticalAction = row.id === 'jumping'
+  const workFeatureUniqueFrameCount = new Set(measures.map(measure => crypto.createHash('sha256').update(measure.workFeatureMask).digest('hex'))).size
+  const internalWorkMotion = workFeatureUniqueFrameCount >= Math.min(3, row.frameCount) && motion.workFeatures.pairs.filter(pair => pair.changedPixels >= Math.max(16, measures[0].visiblePixels * 0.0025)).length >= 3
+  if (row.id === 'running' && alphaMaskUniqueFrameCount < Math.min(3, row.frameCount) && !internalWorkMotion) {
+    errors.push('row_work_motion_missing')
+  }
   if (locomotion && alphaMaskUniqueFrameCount < Math.min(3, row.frameCount)) {
     errors.push('row_locomotion_motion_missing')
   }

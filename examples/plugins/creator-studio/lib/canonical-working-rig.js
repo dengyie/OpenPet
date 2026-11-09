@@ -2,12 +2,9 @@ const path = require('node:path')
 const sharp = require('sharp')
 
 const CANVAS = 512
-// Keep the work beat on the outer edge of the lead appendage.  The earlier
-// field reached too far into the torso: even a bounded lift could pull the
-// wing across the beak and read as a waving or folded gesture.  A wider
-// protected core and a shorter vertical band keep the face, belly and root
-// source-faithful while leaving a small, legible scanning beat at the side.
-const WORK_REGION = Object.freeze({ top: 0.40, bottom: 0.78, protectedCoreHalfWidth: 0.36 })
+// The input is an engaged chest-level pose. Include the inner wing tip rather
+// than squeezing a resting appendage against the outer body silhouette.
+const WORK_REGION = Object.freeze({ top: 0.43, bottom: 0.82, protectedCoreHalfWidth: 0, innerRampWidth: 0.15, outerRampWidth: 0.20 })
 
 // This is a local deformation of the existing lead-side appendage. The map is
 // the identity outside that side of the mid-body: the eyes, beak, other side
@@ -25,16 +22,15 @@ const renderWorkingFrames = async ({ source, width, height, outputDir, transform
   const endY = top + targetHeight * WORK_REGION.bottom
   const spanY = endY - startY
   const coreHalfWidth = targetWidth * WORK_REGION.protectedCoreHalfWidth
-  const spanX = targetWidth / 2 - coreHalfWidth
   const posed = await sharp(source).resize({ width: targetWidth, height: targetHeight, fit: 'fill' }).png().toBuffer()
   const base = await sharp({ create: { width: CANVAS, height: CANVAS, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
     .composite([{ input: posed, left, top }]).ensureAlpha().raw().toBuffer()
   const field = (x, y) => {
     const distance = direction * (centerX - x) - coreHalfWidth
     if (y <= startY || y >= endY || distance <= 0) return 0
-    const t = Math.min(1, distance / spanX)
     const phase = Math.PI * (y - startY) / spanY
-    const lateral = t * t * (3 - 2 * t)
+    const ramp = value => { const t = Math.max(0, Math.min(1, value)); return t * t * (3 - 2 * t) }
+    const lateral = ramp(distance / (targetWidth * WORK_REGION.innerRampWidth)) * ramp((targetWidth / 2 - distance) / (targetWidth * WORK_REGION.outerRampWidth))
     const vertical = Math.sin(phase) ** 2
     return lateral * vertical
   }
@@ -43,7 +39,8 @@ const renderWorkingFrames = async ({ source, width, height, outputDir, transform
   // at most1.5, so the following lower bound covers the continuous field,
   // including between pixels. The vertical extrema reduce to a sinusoid.
   const minimumJacobian = Math.min(1, ...vectors.map(vector => {
-    const horizontal = Math.abs(vector.x) * 1.5 / spanX
+    // The two lateral ramps do not overlap, so the narrower ramp bounds dx.
+    const horizontal = Math.abs(vector.x) * 1.5 / (targetWidth * Math.min(WORK_REGION.innerRampWidth, WORK_REGION.outerRampWidth))
     const vertical = Math.abs(vector.y) * Math.PI / spanY
     return 1 - horizontal / 2 - Math.hypot(horizontal / 2, vertical)
   }))

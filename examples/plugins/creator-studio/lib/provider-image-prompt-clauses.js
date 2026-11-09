@@ -184,7 +184,7 @@ const createPreserveClause = (task) => {
     priority: 90,
     text: `Keep unchanged: ${combined.join(', ')}. ${directionalGait
       ? 'Preserve the complete anatomy and accessories while allowing their visible projection to change with the requested side view. Far-side features may be naturally hidden by the body.'
-      : 'Keep every identity-bearing feature and every body part or accessory visible in the reference present, recognizable, and consistent.'} Do not invent, remove, duplicate, or redesign visible anatomy or accessories.`
+      : 'Keep every identity-bearing feature and every body part or accessory visible in the reference present, recognizable, and consistent.'} Do not invent, remove, duplicate, or redesign visible anatomy or accessories.${task.action?.heldObject === 'task-tablet-v1' ? ' The one held task tablet specified in the action plan is allowed; keep the character unchanged around it.' : ''}`
   })
 }
 
@@ -210,6 +210,7 @@ const createActionClauses = (task) => {
   if (task.taskType === 'character-image') return []
   const action = task.action || {}
   const details = [
+    action.heldObject === 'task-tablet-v1' ? 'Hold one rigid dark-framed cream tablet across the lower belly, about 38 percent of body width and 20 percent of body height. Two chunky dark interface bars, no letters, numbers, logo or glow. Existing appendages grip it and rest a tip over its face, with no human hands or fingers. It must visibly touch the holding appendages; no detached object. Keep the feet visible and leave the upper belly marking visible.' : '',
     action.viewDirection ? `Direction: ${action.viewDirection}.` : '',
     action.movingParts?.length ? `Primary motion: ${action.movingParts.join(', ')}.` : '',
     action.secondaryMotion?.length ? `Allowed secondary motion: ${action.secondaryMotion.join(', ')}.` : '',
@@ -249,7 +250,9 @@ const createBackgroundClause = (capabilities) => createClause({
 })
 
 const createExclusionClauses = ({ task, qualityGuidance }) => {
-  const deliverableExclusions = task.taskType === 'action-frame-sheet'
+  const deliverableExclusions = task.action?.heldObject === 'task-tablet-v1'
+    ? 'No text, letters, numbers, logo, watermark, image border, grid, duplicate character, extra limb, additional prop, scenery, detached effect, or identity redesign. Only the character and its one connected held tablet. Return only the requested image.'
+    : task.taskType === 'action-frame-sheet'
     ? 'No visible grid, text, labels, numbers, logo, watermark, border, presentation layout, duplicate placeholder frame, extra character, prop, scenery, or identity redesign. Return only the complete frame sheet.'
     : 'No text, labels, logo, watermark, border, panel, grid, duplicate character, duplicate pose, extra prop, scenery, presentation layout, or identity redesign. Return only the requested image.'
   const clauses = [createClause({
